@@ -16,7 +16,7 @@ from fixtures import FakeClient, scan_ws  # noqa: E402
 from prompt_render import render_tool  # noqa: E402
 
 from plaid_agent.igt.prompt import build_system_prompt  # noqa: E402
-from plaid_agent.igt.tools import TOOLS, WEB_TOOLS, WRITE_TOOLS, call_tool  # noqa: E402
+from plaid_agent.igt.toolkit import TOOLS, WEB_TOOLS, WRITE_TOOLS, call_tool  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'igt', 'SAMPLE_PROMPT.md')
 
@@ -27,7 +27,7 @@ the small project the tests use (`tests/fixtures.py`, project "Demo") with web
 lookup switched on so that every tool appears. This file is a snapshot for
 browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/igt/prompt.py` and the tools are declared in
-`src/plaid_agent/igt/tools.py`. Regenerate it with
+`src/plaid_agent/igt/toolkit.py`. Regenerate it with
 
     bb sample-prompts
 

@@ -9,7 +9,8 @@ from fixtures import scan_ws
 from fixtures_ext import ExtClient
 
 from plaid_agent.igt.plan import execute_plan, validate_ops
-from plaid_agent.igt.tools import call_tool, AUDIT_WINDOWS_DAYS
+from plaid_agent.igt.toolkit import call_tool
+from plaid_agent.igt.reads import AUDIT_WINDOWS_DAYS
 
 
 def _ago(days):

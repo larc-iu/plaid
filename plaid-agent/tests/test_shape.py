@@ -1,9 +1,8 @@
 """Word split/merge/delete and sentence split/merge: plan tools and execution."""
 import pytest
-from fixtures import scan_ws, FakeClient, document_raw, GLOSS, VOCAB
+from fixtures import scan_ws, FakeClient, document_raw, GLOSS
 
-from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tools import Workspace, call_tool
+from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.plan import execute_plan, normalize_ops
 
 
@@ -334,7 +333,6 @@ class _TextServer:
 
 
 def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
-    from fixtures import project_raw
     from plaid_agent.igt.project import load_project
     c = FakeClient()
     _TextServer(c)

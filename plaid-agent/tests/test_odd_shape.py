@@ -3,8 +3,8 @@ morpheme layer, fields not called Gloss (the gloss-like one not first), one
 lexicon with a schema naming its fields "meaning"/"category" and one with none."""
 from fixtures import scan_ws, odd_client
 
-from plaid_agent.igt.project import load_project, render_document
-from plaid_agent.igt.tools import Workspace, call_tool, TOOLS
+from plaid_agent.igt.project import render_document
+from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():

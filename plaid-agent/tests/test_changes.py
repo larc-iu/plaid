@@ -4,7 +4,7 @@ sentence and word to link to, and the change without its location."""
 from fixtures import FakeClient, scan_ws, VOCAB
 
 from plaid_agent.igt.changes import describe_change, describe_changes
-from plaid_agent.igt.tools import call_tool
+from plaid_agent.igt.toolkit import call_tool
 
 
 def _plan(*calls):

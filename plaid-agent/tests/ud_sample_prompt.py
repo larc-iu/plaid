@@ -17,7 +17,8 @@ from ud_fixtures import PID, ud_client  # noqa: E402
 
 from plaid_agent.ud.project import load_project  # noqa: E402
 from plaid_agent.ud.prompt import build_system_prompt  # noqa: E402
-from plaid_agent.ud.tools import TOOLS, WEB_TOOLS, WRITE_TOOLS, Workspace, call_tool  # noqa: E402
+from plaid_agent.ud.toolkit import TOOLS, WEB_TOOLS, WRITE_TOOLS, call_tool  # noqa: E402
+from plaid_agent.ud.tools import Workspace  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'ud', 'SAMPLE_PROMPT.md')
 
@@ -28,7 +29,7 @@ for the small project the tests use (`tests/ud_fixtures.py`, project "Spanish")
 with web lookup switched on so that every tool appears. This file is a snapshot
 for browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/ud/prompt.py` and the tools are declared in
-`src/plaid_agent/ud/tools.py`. Regenerate it with
+`src/plaid_agent/ud/toolkit.py`. Regenerate it with
 
     bb sample-prompts
 

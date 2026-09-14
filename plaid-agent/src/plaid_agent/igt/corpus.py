@@ -23,7 +23,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported
 from ..core.limits import ROW_LIMIT
 from .project import is_token_ignored
-from .tools import Workspace, ToolError
+from ..core.tools import ToolError
+from .workspace import Workspace
 
 LABEL_DOC_BUDGET = 10      # documents a bulk tool may load just to write positional labels
 RENDER_DOC_BUDGET = 8      # documents a read tool loads to render the hits it shows
@@ -809,7 +810,7 @@ def q_consistency(ws: Workspace, f):
     unlinked = (n, examples(where, ['?u', '?s'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} ({row[1].get("value")})') if n else [])
     where = [unit, ['vocab-link', '?u', '?v'], ['not', c.span('?s', f.layer_id), ['covers', '?s', '?u']]]
     n = c.count(where, ['?u'])
-    from .tools import linked_form
+    from .reads import linked_form
     linked_empty = (n, examples(where, ['?u'], lambda ref, u, row: f'{ref} {u.form if f.scope == "Morpheme" else u.surface} → {linked_form(u)}') if n else [])
     return values, by_form, unlinked, linked_empty
 

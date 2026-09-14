@@ -9,7 +9,8 @@ import pytest
 
 from plaid_agent.core.query import QueryRefused, parse_query, resolve_layer, rewrite
 from plaid_agent.ud.project import load_project
-from plaid_agent.ud.tools import Workspace, call_tool
+from plaid_agent.ud.tools import Workspace
+from plaid_agent.ud.toolkit import call_tool
 from ud_fixtures import PID, ud_client
 
 
@@ -103,7 +104,7 @@ def test_the_commonest_forms_can_be_asked_for_project_wide(ws):
     engine answers both halves (surfaces of tokens with no Form span, and
     Form spans by value), and the tool sums them: before, it read the first
     twelve documents by name and called that the corpus."""
-    from plaid_agent.ud.tools import call_tool
+    from plaid_agent.ud.toolkit import call_tool
 
     asked = []
 
@@ -123,7 +124,7 @@ def test_a_clipped_read_is_never_reported_as_the_whole_corpus(ws):
     """Including when it comes back EMPTY, which is the most misleading of
     all: this is the tool a session starts from, and it said there was
     nothing to review."""
-    from plaid_agent.ud.tools import call_tool
+    from plaid_agent.ud.toolkit import call_tool
 
     ws.client.query = lambda body: {'return': body.get('return'), 'columns': [], 'results': [], 'count': 0,
                                     'truncated': True}
@@ -147,7 +148,7 @@ def test_a_limit_the_model_wrote_into_the_query_is_refused_in_words(ws):
 def test_every_tool_that_takes_a_limit_refuses_a_non_number_in_words(ws):
     """Nine sites did `int(limit or N)` unguarded, so the model got a Python
     message about base 10 from tools whose contract is a readable refusal."""
-    from plaid_agent.ud.tools import call_tool
+    from plaid_agent.ud.toolkit import call_tool
 
     for tool, args in [
         ('search', {'field': 'lemma', 'pattern': 'x'}),

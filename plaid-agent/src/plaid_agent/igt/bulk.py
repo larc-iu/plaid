@@ -9,10 +9,12 @@ from typing import Any, Dict, List, Optional
 from ..core.replace import replacer as core_replacer
 from .plan import SCOPES
 from .project import word_ref
-from .tools import (Workspace, ToolError, t_set_analysis, entry_line, check_respell_overlap, span_op,
-                    has_own_form, morpheme_form_op, parse_analysis, analysis_op, _meta_patch,
-                    no_scope_reaches, op_target, refuse_shape_and_analysis,
-                    _refuse_doomed, _refuse_removing_survivor)
+from ..core.tools import ToolError
+from .lexicon import _meta_patch, _refuse_doomed, _refuse_removing_survivor
+from .tools import (t_set_analysis, check_respell_overlap, span_op, has_own_form, morpheme_form_op,
+                    parse_analysis, analysis_op, no_scope_reaches, refuse_shape_and_analysis)
+from .lexview import entry_line
+from .workspace import Workspace, op_target
 from .vocab import plan_delete_refs, plan_merge_refs, ref_ids
 from .stats import _analyzed, _docs
 

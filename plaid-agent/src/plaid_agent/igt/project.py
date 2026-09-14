@@ -751,3 +751,69 @@ def document_lines(documents: List[dict]) -> List[str]:
         mod = (d.get('time_modified') or '')[:10]
         out.append(f'  {d.get("name") or "(unnamed)"}  id={d["id"]}' + (f'  modified={mod}' if mod else ''))
     return out
+
+
+# --- cutting the text the way the editor does --------------------------------
+
+def _is_break_char(c: str, cfg) -> bool:
+    """Does this character end a word (the editor's shouldTokenizeCharacter,
+    with its exact punctuation class)? Unless whitelisted; or, under a
+    blacklist config, exactly the listed characters."""
+    punct = is_unicode_punctuation(c)
+    if not cfg:
+        return punct
+    if cfg.get('type') == 'unicodePunctuation':
+        return punct and c not in (cfg.get('whitelist') or [])
+    if cfg.get('type') == 'blacklist':
+        return c in (cfg.get('blacklist') or [])
+    return punct
+
+
+def split_sentences(text: str) -> List[tuple]:
+    """(begin, end) code-point ranges, one sentence per line (newline plus
+    following whitespace is the boundary), as the editor does."""
+    out = []
+    i, n = 0, len(text)
+    start = 0
+    while i <= n:
+        if i == n or text[i] == '\n':
+            if text[start:i].strip():
+                out.append((start, i))
+            i += 1
+            while i < n and text[i].isspace():
+                i += 1
+            start = i
+        else:
+            i += 1
+    return out
+
+
+def split_words(text: str, begin: int, end: int, cfg) -> List[tuple]:
+    """(begin, end) word ranges inside one sentence: whitespace and break
+    characters separate words; break characters are not tokens (they stay in
+    the gap), as in the editor."""
+    out = []
+    i = begin
+    cur = begin
+    while i < end:
+        c = text[i]
+        if c.isspace() or _is_break_char(c, cfg):
+            if i > cur and text[cur:i].strip():
+                out.append(_trimmed(text, cur, i))
+            i += 1
+            while i < end and text[i].isspace():
+                i += 1
+            cur = i
+        else:
+            i += 1
+    if cur < end and text[cur:end].strip():
+        out.append(_trimmed(text, cur, end))
+    return out
+
+
+def _trimmed(text, b, e):
+    while b < e and text[b].isspace():
+        b += 1
+    while e > b and text[e - 1].isspace():
+        e -= 1
+    return (b, e)

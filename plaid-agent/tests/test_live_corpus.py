@@ -4,7 +4,8 @@ from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import live_client, seed  # noqa: F401 - fixture
 
 from plaid_agent.igt.project import load_project, load_document
-from plaid_agent.igt.tools import Workspace, call_tool
+from plaid_agent.igt.workspace import Workspace
+from plaid_agent.igt.toolkit import call_tool
 
 
 @pytest.fixture(scope='module')

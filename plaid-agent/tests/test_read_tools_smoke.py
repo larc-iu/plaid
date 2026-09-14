@@ -21,12 +21,13 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
-from plaid_agent.igt.tools import (TOOLS as IGT_TOOLS, WRITE_TOOLS as IGT_WRITES,  # noqa: E402
-                                   _IMPL as IGT_IMPL, ToolError as IgtToolError)
-from plaid_agent.ud.tools import (TOOLS as UD_TOOLS, WRITE_TOOLS as UD_WRITES,  # noqa: E402
-                                  _IMPL as UD_IMPL, ToolError as UdToolError)
+from plaid_agent.core.tools import ToolError  # noqa: E402
+from plaid_agent.igt.toolkit import (TOOLS as IGT_TOOLS, WRITE_TOOLS as IGT_WRITES,  # noqa: E402
+                                     _IMPL as IGT_IMPL)
+from plaid_agent.ud.toolkit import (TOOLS as UD_TOOLS, WRITE_TOOLS as UD_WRITES,  # noqa: E402
+                                    _IMPL as UD_IMPL)
 
-REFUSALS = (IgtToolError, UdToolError, ValueError)
+REFUSALS = (ToolError, ValueError)
 
 # A value for every parameter a read tool requires or declares an enum for.
 IGT_ARGS = {'document': 'Text 1', 'pattern': 'a', 'field': 'Gloss', 'sequence': [{'Gloss': 'ERG'}], 'code': 'print(1)',
@@ -105,7 +106,7 @@ def _igt(scan: bool):
     from fixtures import project_raw, document_raw, lexicon_raw
     from fixtures_ext import ExtClient
     from plaid_agent.igt.project import load_project
-    from plaid_agent.igt.tools import Workspace
+    from plaid_agent.igt.workspace import Workspace
     c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
                   comments=[{'id': 'c1', 'document_id': 'd1', 'entity_type': 'document', 'entity_id': 'd1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',

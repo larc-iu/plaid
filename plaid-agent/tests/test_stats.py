@@ -1,7 +1,8 @@
-from fixtures import scan_ws, FakeClient, document_raw
+from fixtures import scan_ws, FakeClient
 
 from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tools import Workspace, call_tool, TOOLS, _IMPL, WRITE_TOOLS
+from plaid_agent.igt.workspace import Workspace
+from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL, WRITE_TOOLS
 
 
 def ws(client=None):
@@ -338,7 +339,7 @@ def test_naming_a_document_lists_every_reference_not_a_sample():
     for line in here.splitlines():
         parts = line.split('\t')
         if len(parts) == 3 and parts[0].strip().isdigit():
-            n, _form, examples = int(parts[0].strip()), parts[1], parts[2]
+            n, examples = int(parts[0].strip()), parts[2]
             assert len(examples.split(', ')) == n, line
     assert everywhere  # the corpus-wide view still renders
 

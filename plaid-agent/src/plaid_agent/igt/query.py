@@ -15,7 +15,8 @@ from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
 from ..core.query import (HELP, QueryRefused, documents_in, parse_query, render, rewrite, run)
 from .project import word_ref
-from .tools import Workspace, ToolError, _truncate
+from ..core.tools import ToolError
+from .workspace import Workspace, _truncate
 
 IGT_HELP = '''
 THIS PROJECT'S LAYERS, and how interlinear text sits on them:

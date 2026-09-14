@@ -4,7 +4,8 @@ import pytest
 
 from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
-from plaid_agent.ud.tools import TOOLS, WRITE_TOOLS, Workspace, call_tool
+from plaid_agent.ud.toolkit import TOOLS, WRITE_TOOLS, call_tool
+from plaid_agent.ud.tools import Workspace
 from ud_fixtures import DEPREL, LEMMA, PID, UPOS, WORD_LAYER, ud_client
 
 
@@ -1051,9 +1052,9 @@ def test_the_code_tool_is_withheld_where_code_cannot_run(ws, monkeypatch):
     binary. This lived under tests/core/, importing an app from the one
     directory that must not know about any."""
     from plaid_agent.core import sandbox
-    from plaid_agent.ud import tools
+    from plaid_agent.ud import toolkit
     monkeypatch.setattr(sandbox, 'available', lambda: 'no worker here')
-    names = {t['function']['name'] for t in tools.tools_for(ws)}
+    names = {t['function']['name'] for t in toolkit.tools_for(ws)}
     assert 'run_code' not in names and 'code_help' not in names
     assert 'Code cannot run on this assistant' in run(ws, 'run_code', code='1')
 
@@ -1135,6 +1136,6 @@ def test_a_change_made_by_name_beats_a_scope_at_approval(ws):
     run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='lemma', value='océano')
     _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-l1', 'ir', 'ud1', 'uw-1')])
     run(ws, 'replace_in_field', field='lemma', pattern='[a-z]+', replacement='X', regex=True)
-    counts = execute_plan(ws.client, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
+    execute_plan(ws.client, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
     updates = [a for r, m, a, k in ws.client.batches[0] if m == 'update']
     assert ('sp-l3', 'océano') in updates and ('sp-l3', 'X') not in updates and ('sp-l1', 'X') in updates

@@ -12,7 +12,9 @@ from typing import Any, Dict, List, Optional
 from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
 
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
-from .tools import Workspace, ToolError, _matcher, _truncate, entry_line
+from ..core.tools import ToolError
+from .lexview import entry_line
+from .workspace import Workspace, _matcher, _truncate
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS

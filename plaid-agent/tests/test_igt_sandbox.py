@@ -1,12 +1,10 @@
 """run_code over the IGT fixture: the view, a walk, a proposal."""
 
-import pytest
 
 from fixtures import FakeClient, scan_ws
 from live import require_sandbox
-from plaid_agent.core import sandbox
 from plaid_agent.igt.sandbox import view
-from plaid_agent.igt.tools import call_tool
+from plaid_agent.igt.toolkit import call_tool
 
 pytestmark = require_sandbox()
 

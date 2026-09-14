@@ -5,7 +5,7 @@ sends, so a tool added without a line in :mod:`plaid_agent.igt.trace` would
 show up in the tab as a bare function name.
 """
 
-from plaid_agent.igt.tools import TOOLS, WRITE_TOOLS
+from plaid_agent.igt.toolkit import TOOLS, WRITE_TOOLS
 from plaid_agent.core.trace import DOCUMENT, PLAN, READ, summarize_steps, trace_step
 from plaid_agent.igt.trace import TRACER, describe_step, progress_label, step_kind
 

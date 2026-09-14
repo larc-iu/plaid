@@ -8,8 +8,8 @@ import inspect
 
 import pytest
 
-from plaid_agent.igt import tools as igt
-from plaid_agent.ud import tools as ud
+from plaid_agent.igt import toolkit as igt
+from plaid_agent.ud import toolkit as ud
 
 
 @pytest.mark.parametrize('app', [ud, igt], ids=['ud', 'igt'])

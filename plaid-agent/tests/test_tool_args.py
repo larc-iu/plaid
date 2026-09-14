@@ -14,8 +14,8 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
-from plaid_agent.igt.tools import TOOLS as IGT_TOOLS, call_tool as igt_call  # noqa: E402
-from plaid_agent.ud.tools import TOOLS as UD_TOOLS, call_tool as ud_call  # noqa: E402
+from plaid_agent.igt.toolkit import TOOLS as IGT_TOOLS, call_tool as igt_call  # noqa: E402
+from plaid_agent.ud.toolkit import TOOLS as UD_TOOLS, call_tool as ud_call  # noqa: E402
 
 # Enough of each tool's other arguments to reach the integer.
 IGT_ARGS = {'document': 'Text 1', 'pattern': 'gam', 'field': 'Gloss', 'ref': 's1', 'refs': ['s1.w1'],
@@ -54,7 +54,7 @@ def _igt_ws():
     from fixtures import project_raw, document_raw, lexicon_raw
     from fixtures_ext import ExtClient
     from plaid_agent.igt.project import load_project
-    from plaid_agent.igt.tools import Workspace
+    from plaid_agent.igt.workspace import Workspace
     c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = True

@@ -5,7 +5,8 @@ import pytest
 from plaid_agent.ud.citations import parse_refs, resolve_citations
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.prompt import build_system_prompt
-from plaid_agent.ud.tools import Workspace, call_tool
+from plaid_agent.ud.tools import Workspace
+from plaid_agent.ud.toolkit import call_tool
 from plaid_agent.ud.trace import TRACER
 from ud_fixtures import PID, ud_client
 
@@ -112,7 +113,6 @@ def test_the_service_is_the_shared_one_with_uds_half():
 def test_the_toolkit_wires_uds_tools_to_the_shared_loop():
     from plaid_agent.ud.service import AssistantService
     kit = AssistantService().toolkit()
-    ws = object()
     assert kit.tracer is TRACER
     assert {t['function']['name'] for t in kit.tools_for(_NoWeb())} >= {'read_document', 'set_head'}
 

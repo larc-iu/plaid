@@ -10,7 +10,8 @@ from fixtures import project_raw, document_raw, lexicon_raw, VOCAB
 from live import live_client, seed  # noqa: F401 - fixture
 
 from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tools import Workspace, call_tool
+from plaid_agent.igt.workspace import Workspace
+from plaid_agent.igt.toolkit import call_tool
 from plaid_agent.igt.plan import execute_plan
 
 FIELDS = {

@@ -742,7 +742,8 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     if project is None:
         raise ValueError('a corpus-wide change needs the project to read the corpus with')
     from .bulk import REPLACE_MAX, SCOPED
-    from .tools import ToolError, Workspace, op_target
+    from ..core.tools import ToolError
+    from .workspace import Workspace, op_target
     ws = Workspace(client, project)
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
@@ -855,7 +856,7 @@ def create_document(client, project, name: str, text: str, metadata: Dict[str, A
 
 def _seed_text(client, project, doc_id: str, text: str) -> str:
     """A document's first text, with sentence and word tokens. Returns the text id."""
-    from .tools import split_sentences, split_words
+    from .project import split_sentences, split_words
     t = client.texts.create(project.text_layer_id, doc_id, text)
     text_id = t['id']
     sents = split_sentences(text)
@@ -914,7 +915,7 @@ def _write_text_edit(client, project, op: Dict[str, Any]) -> None:
     whatever text in it is untokenized, as the editor's baseline save plus
     its tokenizer would."""
     from .project import find_layer
-    from .tools import split_words
+    from .project import split_words
     doc_id, text_id, new = op['document_id'], op.get('text_id'), op['new']
     if not text_id:
         _seed_text(client, project, doc_id, new)

@@ -10,9 +10,10 @@ word takes its analysis, values, and links with it while the text stays."""
 
 from typing import Any, Dict, List, Optional
 
-from .project import Sentence, Word, resolve, word_ref
-from .tools import (Workspace, ToolError, _refs, _need, reshape_guards, split_sentences, split_words,
-                    refuse_comment_and_text_edit, refuse_shape_and_analysis)
+from ..core.tools import ToolError
+from .project import Sentence, Word, resolve, split_sentences, split_words, word_ref
+from .tools import (reshape_guards, refuse_comment_and_text_edit, refuse_shape_and_analysis)
+from .workspace import Workspace, _need, _refs
 
 
 def _shaped_ids(ws: Workspace, merges_only: bool) -> set:

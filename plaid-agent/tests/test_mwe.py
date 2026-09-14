@@ -9,7 +9,8 @@ from fixtures_ext import mwe_client, MWE_LINK, PHRASE_ITEM
 
 from plaid_agent.igt.plan import execute_plan, normalize_ops
 from plaid_agent.igt.project import render_document
-from plaid_agent.igt.tools import call_tool, op_target
+from plaid_agent.igt.toolkit import call_tool
+from plaid_agent.igt.workspace import op_target
 
 
 def ws(machine_mwe=False):

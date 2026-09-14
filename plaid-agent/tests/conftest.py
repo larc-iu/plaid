@@ -11,7 +11,7 @@ def fresh_document_cache():
     needs this. It used to be autouse and ran for every test in the suite,
     which put one app's internals in the conftest every app shares.
     """
-    from plaid_agent.igt import tools
-    tools._DOC_CACHE.clear()
-    yield tools._DOC_CACHE
-    tools._DOC_CACHE.clear()
+    from plaid_agent.igt import workspace
+    workspace._DOC_CACHE.clear()
+    yield workspace._DOC_CACHE
+    workspace._DOC_CACHE.clear()

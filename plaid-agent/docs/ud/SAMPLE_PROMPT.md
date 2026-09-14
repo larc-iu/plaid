@@ -5,7 +5,7 @@ for the small project the tests use (`tests/ud_fixtures.py`, project "Spanish")
 with web lookup switched on so that every tool appears. This file is a snapshot
 for browsing and may lag behind the code: the prompt is built in
 `src/plaid_agent/ud/prompt.py` and the tools are declared in
-`src/plaid_agent/ud/tools.py`. Regenerate it with
+`src/plaid_agent/ud/toolkit.py`. Regenerate it with
 
     bb sample-prompts
 

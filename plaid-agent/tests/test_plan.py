@@ -128,7 +128,7 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pa
     assert first[6][2]['precedence'] == 3 and first[6][2]['metadata']['morphType'] == 'suffix'
     # Second pass glosses the created morpheme by its minted id; the empty gloss is skipped.
     second = [(m, a) for r, m, a, k in c.batches[1]]
-    assert second == [('create', (MGLOSS, [f'new-tokens-5'], 'PL', second[0][1][3]))]
+    assert second == [('create', (MGLOSS, ['new-tokens-5'], 'PL', second[0][1][3]))]
 
 
 def test_execute_set_analysis_on_word_without_morphemes_creates_all():
@@ -181,7 +181,6 @@ def test_execute_links_entries_orthography_and_respells_last():
 
 def test_malformed_plans_are_rejected_before_any_write():
     import pytest
-    from plaid_agent.igt.plan import validate_ops, normalize_ops, PlanError
     c = FakeClient()
     for bad, msg in ([{'kind': 'bogus'}], 'unknown kind'), \
                     ([{'kind': 'set_analysis', 'word_id': 'w', 'text_id': 't', 'begin': 0, 'end': 1, 'morpheme_layer_id': 'm', 'morphemes': []}], 'non-empty'), \
@@ -241,7 +240,8 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
     either would have joined a plan that neither guard knew about."""
     import pytest
     from fixtures import scan_ws
-    from plaid_agent.igt import plan, tools
+    from plaid_agent.core.tools import ToolError
+    from plaid_agent.igt import plan, workspace
 
     monkeypatch.setattr(plan, 'SCOPES', plan.SCOPES + ('sweep',))
     with pytest.raises(ValueError, match='corpus-wide change'):
@@ -249,9 +249,9 @@ def test_igt_reads_its_scope_and_exclusive_kinds_off_the_registry(monkeypatch):
                            {'kind': 'split_word', 'word_id': 'w-1', 'position': 2, 'doc': 'd1'}])
 
     w = scan_ws(FakeClient())
-    monkeypatch.setattr(tools, 'EXCLUSIVE_KINDS', tools.EXCLUSIVE_KINDS + ('wipe',))
+    monkeypatch.setattr(workspace, 'EXCLUSIVE_KINDS', workspace.EXCLUSIVE_KINDS + ('wipe',))
     w.ops.append({'kind': 'wipe', 'label': 'a wipe'})
-    with pytest.raises(tools.ToolError, match='approved on its own'):
+    with pytest.raises(ToolError, match='approved on its own'):
         w.add_op({'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'value': 'x', 'label': ''})
 
 
@@ -508,7 +508,6 @@ def test_summarize():
 
 
 def test_execute_creates_documents_tokenized_like_the_editor():
-    from fixtures import project_raw
     from plaid_agent.igt.project import load_project
     c = FakeClient()
     project = load_project(c, 'p1')
@@ -596,7 +595,7 @@ def test_op_keys_survive_the_wire_unchanged():
     import re
     from test_tools import ws as tools_ws
     from test_shape import ws as shape_ws
-    from plaid_agent.igt.tools import call_tool
+    from plaid_agent.igt.toolkit import call_tool
 
     key_re = re.compile(r'^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)*$')
     ops = []

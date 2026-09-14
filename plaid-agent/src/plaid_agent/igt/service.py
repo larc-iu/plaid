@@ -14,7 +14,8 @@ from .citations import resolve_citations
 from .plan import execute_plan, summarize
 from .project import load_project
 from .prompt import build_system_prompt, lexicon_focus_note
-from .tools import Workspace, call_tool, tools_for
+from .toolkit import call_tool, tools_for
+from .workspace import Workspace
 from .trace import TRACER
 
 SUMMARY = """\

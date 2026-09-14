@@ -353,7 +353,7 @@ def scan_ws(client, project_id='p1'):
     """A workspace over the fake client: it has no query engine, so every
     corpus-wide tool takes the scan path (the query path is tested live)."""
     from plaid_agent.igt.project import load_project
-    from plaid_agent.igt.tools import Workspace
+    from plaid_agent.igt.workspace import Workspace
     w = Workspace(client, load_project(client, project_id))
     w.prefer_scan = True
     return w

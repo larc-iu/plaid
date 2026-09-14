@@ -1,8 +1,7 @@
 import pytest
 from fixtures import scan_ws, FakeClient
 
-from plaid_agent.igt.project import load_project
-from plaid_agent.igt.tools import Workspace, call_tool, TOOLS, _IMPL
+from plaid_agent.igt.toolkit import call_tool, TOOLS, _IMPL
 
 
 def ws():
@@ -542,15 +541,13 @@ def test_list_documents_pages_and_filters_and_overview_caps():
 
 
 def test_parsed_documents_are_cached_across_workspaces_by_version(fresh_document_cache):
-    from plaid_agent.igt import tools as T
+    from plaid_agent.igt import workspace as T
     from fixtures import document_raw
     c = FakeClient()
     c.no_doc_cache = False
     c._documents['d1']['version'] = 3
     a = scan_ws(c)
     d = a.doc('d1')
-    fetched = lambda: len([1 for e in c.log if e[:2] == ('documents', 'get')])  # noqa: E731
-    n0 = len(c.calls('documents', 'get')) if hasattr(c, 'calls') else None
     b = scan_ws(c)
     assert b.doc('d1') is d  # a second turn reuses the parsed document
     # A newer version is fetched afresh and replaces the cached one.
@@ -585,11 +582,11 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
 
 def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
     """The header said s1-s40 while the text was cut off inside sentence nine."""
-    from plaid_agent.igt import tools
+    from plaid_agent.igt import reads
     w = scan_ws(FakeClient())
     whole = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
-    monkeypatch.setattr(tools, 'MAX_RESULT_CHARS', whole.index('\n[s2]') + 300)
+    monkeypatch.setattr(reads, 'MAX_RESULT_CHARS', whole.index('\n[s2]') + 300)
     out = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert 'Showing s1-s1. The rest did not fit in one call.' in out
     assert 'read_document with from_sentence=2 for the next batch' in out

@@ -7,7 +7,7 @@ import pytest
 from fixtures import scan_ws, FakeClient
 
 from plaid_agent.igt.plan import execute_plan, normalize_ops
-from plaid_agent.igt.tools import call_tool
+from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():

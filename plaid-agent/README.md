@@ -195,6 +195,17 @@ test suite fails while either is stale.
 The modules below are `igt/` unless they say otherwise.
 
 - `core/web.py`: the optional web tools, the URL guard, and HTML to text.
+- `core/workspace.py`: the workspace both apps subclass. What one turn holds
+  while its tools run: the document list and how a name resolves against it,
+  the plan's size budget, the rule that a second change to one target replaces
+  the first, the refusals a plan owes itself (a change to something the plan
+  deletes is refused in either order, as the plan is built), and the note a
+  tool ends with. An app answers four things: its op-kind registry, what counts
+  as one change, its query helper, and the refusals only it owes.
+- `core/corpus.py`: the query engine bound to one workspace, and whether a read
+  was cut short. Each app adds the clauses that name what it annotates.
+- `core/citations.py`: the citation syntax, the order citations are read in,
+  and the budget one reply may spend fetching documents to resolve them.
 - `project.py`: loads a project's IGT shape (layers by role, fields by scope,
   the tagsets fields are held to, orthographies, lexicons) and documents, and
   renders documents as compact interlinear text. A tagset's values go into the
@@ -220,7 +231,16 @@ The modules below are `igt/` unless they say otherwise.
   numbering before it silently changes what an `entry_form` names. It skips
   where it cannot run (no node, or plaid-igt not installed beside the agent),
   never where the two disagree.
-- `tools.py`: the tools the model gets. Reads run immediately:
+- `workspace.py`: the turn's workspace (on `core.workspace`): loading
+  documents and lexicons, what a plan payload holds, and the helpers every tool
+  module needs to read a reference. `lexview.py` is a lexicon as one turn reads
+  it: the sense tree, the numbers a user is shown, and the line an entry prints
+  as.
+- `toolkit.py`: the tool table and the dispatch behind it. Every tool is
+  declared once beside the function that implements it, in `reads.py` (reading
+  a document, an entry, or the change history), `tools.py` (the plan tools that
+  annotate), `lexicon.py` (the plan tools that change a lexicon), `shape.py`,
+  `stats.py`, `bulk.py`, `query.py` and `sandbox.py`. Reads run immediately:
   `project_overview`, `list_documents`, `read_document`, `search`, `read_lexicon`,
   `lexicon_entry`, `concordance` (aligned context and pattern tally for a
   form or value), `analyses_of` (how a form, or a list of forms, has been

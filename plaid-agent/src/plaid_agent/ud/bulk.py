@@ -123,8 +123,7 @@ def t_replace_in_field(ws: Workspace, field: str = None, pattern: str = None, re
     rep = replacer(pattern, replacement, bool(regex), bool(whole), bool(case_sensitive))
     spec = rx(pattern, regex=bool(regex), whole=bool(whole), case_sensitive=bool(case_sensitive))
     document_id = ws.resolve_document_id(document) if document else None
-    from .stats import _corpus
-    c = _corpus(ws)
+    c = ws.corpus
     ws.on_progress(f'Finding every {field} matching "{pattern}"…')
     rows = matches(c, field, spec, document_id, REPLACE_MAX)
     if len(rows) > REPLACE_MAX:

@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
 from ..core.limits import MAX_FOCUS
 from .project import Sentence, Word, joiner, parse_ref, resolve, segmentation
-from .tools import Workspace
+from .workspace import Workspace
 
 REF = r's\d+(?:\.w\d+(?:\.m\d+)?)?'
 BRACE_RE = brace_re(REF)

@@ -12,7 +12,8 @@ from plaid_client.provenance import prov_state
 from ..core import sandbox
 from ..core.query import QueryRefused, parse_query, rewrite, run as run_query
 from .project import IgtDoc, word_ref
-from .tools import ToolError, Workspace, WRITE_TOOLS, call_tool
+from ..core.tools import ToolError
+from .workspace import Workspace
 
 IGT_HELP = '''
 THE SHAPE load(document) RETURNS:
@@ -107,6 +108,9 @@ def api(ws: Workspace) -> Dict[str, Callable]:
         except (QueryRefused, ToolError) as e:
             raise ValueError(str(e))
 
+    # The toolkit is the last module imported (it reads every tool module,
+    # this one included), so it is asked for here rather than at the top.
+    from .toolkit import WRITE_TOOLS, call_tool
     return {'documents': documents, 'load': load, 'query': query,
             'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS)}
 

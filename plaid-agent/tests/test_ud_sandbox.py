@@ -3,10 +3,10 @@
 import pytest
 
 from live import require_sandbox
-from plaid_agent.core import sandbox
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.sandbox import view
-from plaid_agent.ud.tools import Workspace, call_tool
+from plaid_agent.ud.tools import Workspace
+from plaid_agent.ud.toolkit import call_tool
 from ud_fixtures import PID, ud_client
 
 pytestmark = require_sandbox()

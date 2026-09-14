@@ -7,7 +7,7 @@ lived under the prompt's and under IGT's.
 """
 
 from plaid_agent.core.trace import DOCUMENT, PLAN, summarize_steps, trace_step
-from plaid_agent.ud.tools import TOOLS
+from plaid_agent.ud.toolkit import TOOLS
 from plaid_agent.ud.trace import TRACER, describe_step, progress_label, step_kind
 
 

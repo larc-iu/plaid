@@ -18,12 +18,6 @@ SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
 
 
-def _corpus(ws: Workspace) -> Corpus:
-    if getattr(ws, '_corpus', None) is None:
-        ws._corpus = Corpus(ws)
-    return ws._corpus
-
-
 def _value(w: Word, field: str) -> str:
     return w.form if field == 'form' else (w.deprel or '' if field == 'deprel' else w.value(field))
 
@@ -115,7 +109,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         out += [_hit_line(doc, s, w, _value(w, field)) for s, w in hits[:limit]]
         return _truncate('\n'.join(out))
 
-    c = _corpus(ws)
+    c = ws.corpus
     if field == 'form':
         docs = c.form_documents(spec)
     elif field == 'deprel':
@@ -183,7 +177,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         rows = sorted(counts.items(), key=lambda kv: -kv[1])
         where = f' in "{doc.name}"'
     else:
-        c = _corpus(ws)
+        c = ws.corpus
         if what == 'form':
             rows = [(r[0], r[-1]) for r in c.form_values()]
         elif what == 'deprel':
@@ -220,7 +214,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
         if k not in CONSISTENCY:
             raise ToolError(f'Unknown check "{k}". One of: ' + ', '.join(CONSISTENCY))
     limit = clamp_limit(limit, 25, 100)
-    c = _corpus(ws)
+    c = ws.corpus
     out: List[str] = []
     # Every check here states a count as a fact, so a clipped read has to be
     # said out loud: the engine's row limit makes "the commonest" the top of an
@@ -294,7 +288,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
     if kind not in WORKLIST_KINDS:
         raise ToolError(f'Unknown kind "{kind}". One of: ' + ', '.join(WORKLIST_KINDS))
     limit = clamp_limit(limit, *READ_LIMITS['worklist'])
-    c = _corpus(ws)
+    c = ws.corpus
     # A per-document count read from a clipped result is the top of a prefix,
     # and this is the tool a session starts from. Asked once per branch, of
     # every read that branch made.

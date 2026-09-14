@@ -6,7 +6,7 @@ from fixtures import scan_ws
 from fixtures_ext import ExtClient, contributed_document_raw, ANN, BOB
 
 from plaid_agent.igt.project import render_document
-from plaid_agent.igt.tools import call_tool
+from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():

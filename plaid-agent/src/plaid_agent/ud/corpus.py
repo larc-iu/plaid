@@ -15,7 +15,7 @@ Two things about the engine (v0) that shape everything here:
 
 from typing import Any, Dict, List
 
-from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported
+from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported by name here
 from ..core.limits import GROUP_LIMIT
 from .project import UdProject
 from .tools import Workspace

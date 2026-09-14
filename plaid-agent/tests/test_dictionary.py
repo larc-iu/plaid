@@ -10,7 +10,7 @@ form where an id belongs loses the user's work quietly.
 import pytest
 
 from fixtures import FakeClient, VOCAB, project_raw, document_raw, scan_ws
-from plaid_agent.igt.tools import call_tool
+from plaid_agent.igt.toolkit import call_tool
 
 # gloss and pos are ordinary text; variantOf points at one entry, seeAlso at
 # several, and etymology belongs to an entry rather than to each of its senses.
@@ -586,7 +586,7 @@ def test_read_lexicon_shows_the_number_on_entries_too_and_orders_by_it():
 
 
 def test_a_dotted_number_sorts_numerically():
-    from plaid_agent.igt.tools import _num_key
+    from plaid_agent.igt.lexview import _num_key
     assert sorted(['2.10', '2.9', '10', '2'], key=_num_key) == ['2', '2.9', '2.10', '10']
 
 

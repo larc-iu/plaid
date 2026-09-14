@@ -10,7 +10,7 @@ if any declared tool reaches that fallback.
 from typing import Any, Dict
 
 from ..core.trace import DOCUMENT, META, PLAN, READ, WEB, Tracer, count, in_doc, plural, q
-from .tools import WEB_TOOLS, WRITE_TOOLS
+from .toolkit import WEB_TOOLS, WRITE_TOOLS
 
 _META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status',
                          'discard_plan', 'drop_planned'})
