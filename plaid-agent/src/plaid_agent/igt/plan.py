@@ -613,7 +613,8 @@ SCOPES = ok.scopes(KIND)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 # The kinds that write to a morpheme by id, so a plan that rewrites the chain
 # those morphemes belong to knows which of its other ops are now moot.
-MORPHEME_WRITERS = tuple(name for name, keys in ok.token_keys(KIND).items() if 'morpheme_id' in keys)
+MORPHEME_KEY = 'morpheme_id'
+MORPHEME_WRITERS = tuple(name for name, keys in ok.token_keys(KIND).items() if MORPHEME_KEY in keys)
 
 
 def reshaped_subjects(ops: List[Dict[str, Any]], *shapes: str, merges_only: bool = False) -> set:
@@ -766,7 +767,11 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue
-        if k in MORPHEME_WRITERS and op['morpheme_id'] in rewritten:
+        # `.get`: the set of kinds is the registry's now, so this reads an op
+        # of whatever kind declares the key rather than the two that were
+        # named here, and one missing it is a plan refused by `validate_ops`
+        # rather than a KeyError from three steps further on.
+        if k in MORPHEME_WRITERS and op.get(MORPHEME_KEY) in rewritten:
             notes.append(f'dropped: {op.get("label") or "a morpheme change"} (that analysis is rewritten in this plan)')
             continue
         if k == 'confirm' and (doomed or dead):

@@ -108,6 +108,21 @@ def test_a_morpheme_writer_is_the_registry_s_token_keys():
     assert set(MORPHEME_WRITERS) == {'set_morpheme_form', 'set_morph_type'}
 
 
+def test_a_morpheme_writer_that_names_no_morpheme_does_not_take_the_plan_down(monkeypatch):
+    """The set is the registry's, so it is open-ended, and `normalize_ops`
+    INDEXED the key. A kind that declares it and an op without it (a scope
+    resolved into one, a tool with a bug) raised a KeyError three steps from
+    the cause, after the user had approved the plan, where `validate_ops`
+    would have named the missing key."""
+    from plaid_agent.igt import plan as igt_plan
+    monkeypatch.setattr(igt_plan, 'MORPHEME_WRITERS', igt_plan.MORPHEME_WRITERS + ('retag_morph',))
+    ops = [{'kind': 'set_analysis', 'word_id': 'w-1', 'existing': [{'id': 'm-1', 'span_ids': []}],
+            'morphemes': [{'form': 'a'}], 'label': 'an analysis'},
+           {'kind': 'retag_morph', 'label': 'a retag naming no morpheme'}]
+    out, notes = igt_plan.normalize_ops(ops)
+    assert out == ops and not notes
+
+
 # ---- UD --------------------------------------------------------------------
 
 def test_ud_supersession_uses_the_registry_target_everywhere():
