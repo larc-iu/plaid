@@ -83,7 +83,7 @@ def t_replace_in_field(ws: Workspace, field: str, pattern: str, replacement: str
                 units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for w in s.words for m in w.morphemes]
             for u, ref, what in units:
                 sp = u.fields.get(f.name)
-                cur = ws.planned_span_value(f.layer_id, u.id, sp.value if sp else '')
+                cur = ws.planned_value(f.layer_id, u.id, sp.value if sp else '')
                 if cur == '':
                     continue
                 new = rep(cur)
@@ -337,7 +337,7 @@ def t_set_field_for_form(ws: Workspace, form: str, field: str, value: str, only_
                     units = [(m, f'{word_ref(s, w)}.m{m.index}', m.form) for m in w.morphemes if m.form.casefold() == key]
                 for u, ref, what in units:
                     old = u.fields.get(f.name)
-                    cur = ws.planned_span_value(f.layer_id, u.id, old.value if old else '')
+                    cur = ws.planned_value(f.layer_id, u.id, old.value if old else '')
                     if cur == value or (only_empty and cur != ''):
                         continue
                     staged.append(span_op(ws, doc, ref, what, f, u.id, old, value))

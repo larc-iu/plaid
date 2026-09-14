@@ -1,9 +1,8 @@
 """Corpus-wide reads, through the query engine.
 
-A treebank is too big to scan: EWT is 1172 documents, and a tool that loaded
-them all to answer "how many AUX" would cost minutes and a great deal of
-memory for a number the engine has. So the corpus-wide tools ask the engine,
-and only load the documents whose hits they are actually going to print.
+How a query runs, how a pattern is written, and the three shapes of answer are
+:mod:`plaid_agent.core.corpus`. What is here is the clauses that name what a
+treebank annotates, and the reads built on them.
 
 Two things about the engine (v0) that shape everything here:
 
@@ -14,75 +13,29 @@ Two things about the engine (v0) that shape everything here:
   whole group set has to arrive for the top of it to be the real top.
 """
 
-import re
 from typing import Any, Dict, List
 
-from ..core.corpus import Clipping
-from ..core.limits import GROUP_LIMIT, ROW_LIMIT
+from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported
+from ..core.limits import GROUP_LIMIT
 from .project import UdProject
-from .tools import ToolError, Workspace
+from .tools import Workspace
 
 DOCS_PER_SEARCH = 12    # documents one search will load to print its hits
 
 
-def rx(pattern: str, *, regex: bool = False, whole: bool = False,
-       case_sensitive: bool = False) -> Dict[str, Any]:
-    """A regex constraint: a literal substring (escaped) or a pattern, whole
-    value when asked, case-insensitive unless asked otherwise."""
-    p = pattern if regex else re.escape(pattern)
-    if whole:
-        p = f'^(?:{p})$'
-    spec: Dict[str, Any] = {'regex': p}
-    if not case_sensitive:
-        spec['flags'] = 'i'
-    return spec
-
-
-def _err(e: Exception) -> ToolError:
-    msg = str(e)
-    m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
-    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
-
-
-class Corpus(Clipping):
+class Corpus(BaseCorpus):
     """Query helpers bound to one workspace."""
 
     def __init__(self, ws: Workspace):
-        super().__init__()
-        self.ws = ws
+        super().__init__(ws)
         self.p: UdProject = ws.project
 
-    # --- running ---------------------------------------------------------
-
-    def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
-        body = dict(body)
-        body['scope'] = {'project_ids': [self.p.id]}
-        try:
-            res = self.ws.client.query(body)
-        except Exception as e:  # noqa: BLE001 - the model gets the engine's own message
-            raise _err(e)
-        return res if isinstance(res, dict) else {}
-
-    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
-        """Entity rows, ``limit`` at most."""
-        body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities',
-                                'limit': min(int(limit), ROW_LIMIT)}
-        if order_by:
-            body['order_by'] = order_by
-        res = self.run(body)
-        self.note_truncation(res)
-        return res.get('results') or []
-
-    def count(self, where: List[Any], find: List[str]) -> int:
-        return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
-
-    def group(self, where: List[Any], group: List[str], limit: int = GROUP_LIMIT) -> List[list]:
-        """Grouped rows ``[key..., count]``, sorted here by count descending
-        because the engine will not order an aggregate."""
-        res = self.run({'where': where, 'limit': limit,
-                        'return': {'group': group, 'aggregates': [['count']]}})
-        self.note_truncation(res)
-        return sorted(res.get('results') or [], key=lambda r: -r[-1])
+    def group(self, where: List[Any], group: List[str], aggregates=None,
+              limit: int = GROUP_LIMIT) -> List[list]:
+        """Grouped rows, sorted here by count descending because the engine
+        will not order an aggregate."""
+        rows = super().group(where, group, aggregates, limit)
+        return sorted(rows, key=lambda r: -r[-1])
 
     # --- clauses ----------------------------------------------------------
 
@@ -168,9 +121,3 @@ class Corpus(Clipping):
     def documents_with(self, where: List[Any], var: str = '?s') -> List[tuple]:
         """[(document id, hits)] for a constraint, most hits first."""
         return [(row[0], row[-1]) for row in self.group(where, [f'{var}.doc']) if row[0]]
-
-    def doc_name(self, document_id: str) -> str:
-        for d in self.ws.documents():
-            if d['id'] == document_id:
-                return d.get('name') or document_id
-        return document_id

@@ -4,34 +4,28 @@ The model cites evidence by writing a tag: ``<cite doc="Text 1" ref="s3"/>``
 (``ref="s3.w2"`` for a word, ``ref="s3.w2.m1"`` for a morpheme, and a
 comma-separated list, ``ref="s3.w2,w5"``, for several items in one sentence),
 with the document and the reference exactly as the read tools print them.
-Every item named is highlighted in the example the reader sees. At the end of
-a turn the service resolves each citation against the documents the workspace
-has loaded and returns the sentence as structured interlinear data next to the
-reply, and the Assistant tab renders it as an example card with a link into the
-editor at that sentence. The model never pastes interlinear text itself: a
-citation is cheaper for it and better for the reader.
+Every item named is highlighted in the example the reader sees.
 
-A tag rather than the ``{{...}}`` braces this used to use: models trained on
-templating languages garble double braces, and quoted attributes keep a
-document name (which may contain spaces, digits, even something like "s12")
-apart from the reference after it.
+The syntax, the order citations are read in and the budget one reply may spend
+are :mod:`plaid_agent.core.citations`. What is here is what a reference may
+look like in this app, and what one card holds: the sentence as structured
+interlinear data, which the Assistant tab draws as an example card with a link
+into the editor at that sentence. The model never pastes interlinear text
+itself: a citation is cheaper for it and better for the reader.
 """
 
 import re
 from typing import Any, Dict, List
 
-from ..core.limits import CITE_DOC_BUDGET, MAX_CITATIONS, MAX_FOCUS
+from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
+from ..core.limits import MAX_FOCUS
 from .project import Sentence, Word, joiner, parse_ref, resolve, segmentation
-from .tools import Workspace, ToolError
+from .tools import Workspace
 
 REF = r's\d+(?:\.w\d+(?:\.m\d+)?)?'
-TAG_RE = re.compile(r'<\s*cite\b(?P<attrs>[^<>]*?)/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?', re.I)
-ATTR_RE = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>/]+))''')
-# Braces are still read: they were the old syntax, and a model that saw a lot
-# of them in training drifts back to them.
-BRACE_RE = re.compile(r'\{\{?\s*(?P<doc>[^{}\n]+?)\s+(?P<ref>' + REF + r')\s*\}\}?')
+BRACE_RE = brace_re(REF)
 # A bare reference ("s32.w16") is unambiguous only when the turn read one document.
-BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>' + REF + r')\b')
+BARE_RE = bare_re(REF)
 
 # One part of a ref="…" list: a whole reference, or only the piece that
 # differs from the one before it ("s3.w2,w5", "s3.w2.m1,m3").
@@ -66,16 +60,6 @@ def parse_refs(ref: str) -> List[str]:
     if not out:
         raise ValueError(f'Bad reference "{ref}": use s<n>, s<n>.w<n>, or s<n>.w<n>.m<n>')
     return out
-
-
-def tag_parts(attrs: str):
-    """-> (doc, ref) from a <cite> tag's attributes, either possibly ''."""
-    at = {}
-    for m in ATTR_RE.finditer(attrs):
-        at[m.group(1).lower()] = next(g for g in m.groups()[1:] if g is not None)
-    doc = at.get('doc') or at.get('document') or ''
-    ref = at.get('ref') or at.get('sentence') or ''
-    return doc.strip(), ref.strip()
 
 
 def tiers(project) -> List[Dict[str, str]]:
@@ -128,68 +112,34 @@ def _sentence_payload(s: Sentence, project, pieces_for=frozenset()) -> Dict[str,
                        if f.name in s.fields and s.fields[f.name].value != '']}
 
 
+def _one(ws: Workspace, doc, refs: List[str], view: str):
+    """The card one citation's references name, or None where they name
+    nothing in this document. One citation is one sentence: the first
+    reference that resolves fixes it, and the rest highlight items in it."""
+    sentence = None
+    focus: List[Dict[str, int]] = []
+    for r in refs:
+        try:
+            resolve(doc, r)  # for its bounds checks; the indexes come from the reference itself
+        except ValueError:
+            continue
+        si, wi, mi = parse_ref(r)
+        if sentence is None:
+            sentence = si
+        if si != sentence or wi is None or len(focus) >= MAX_FOCUS:
+            continue
+        if {'word': wi, 'morpheme': mi} not in focus:
+            focus.append({'word': wi, 'morpheme': mi})
+    if sentence is None:
+        return None
+    return {'focus': focus,
+            **_sentence_payload(doc.sentences[sentence - 1], ws.project,
+                                {f['word'] for f in focus if f['morpheme']})}
+
+
 def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
     """Every distinct citation in ``text`` that names a real sentence, in
     order of first mention. Unresolvable ones are left out (the UI shows them
     as the plain document and reference they name)."""
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    text = text or ''
-    loaded = list(ws._docs.values())
-    # Citing a document the turn never read costs a fetch each, and the user is
-    # waiting on the reply: read a few, and drop citations past that.
-    read_before = len(ws._docs)
-
-    def add(key: str, doc_name: str, ref: str) -> None:
-        if key in seen or len(out) >= MAX_CITATIONS:
-            return
-        seen.add(key)
-        try:
-            refs = parse_refs(ref)
-            did = ws.resolve_document_id(doc_name)
-            if did not in ws._docs and len(ws._docs) - read_before >= CITE_DOC_BUDGET:
-                return
-            doc = ws.doc(did)
-        except (ToolError, ValueError):
-            return
-        # One citation is one sentence: the first reference that resolves
-        # fixes it, and the rest highlight items in that sentence.
-        sentence = None
-        focus: List[Dict[str, int]] = []
-        for r in refs:
-            try:
-                resolve(doc, r)  # for its bounds checks; the indexes come from the reference itself
-            except ValueError:
-                continue
-            si, wi, mi = parse_ref(r)
-            if sentence is None:
-                sentence = si
-            if si != sentence or wi is None or len(focus) >= MAX_FOCUS:
-                continue
-            if {'word': wi, 'morpheme': mi} not in focus:
-                focus.append({'word': wi, 'morpheme': mi})
-        if sentence is None:
-            return
-        out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name, 'focus': focus,
-                    **_sentence_payload(doc.sentences[sentence - 1], ws.project,
-                                        {f['word'] for f in focus if f['morpheme']})})
-
-    # Every citation, wherever it is written, in the order it is written.
-    found: List[tuple] = []
-    for m in TAG_RE.finditer(text):
-        doc, ref = tag_parts(m.group('attrs'))
-        # A tag without doc= means one thing when the turn read one document.
-        if ref and (doc or len(loaded) == 1):
-            found.append((m.start(), m.group(0), doc or loaded[0].id, ref))
-    for m in BRACE_RE.finditer(text):
-        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref')))
-    # Sloppier models write "s32.w16" with no document at all: fine when the
-    # turn read exactly one document, where such a reference means one thing.
-    if len(loaded) == 1:
-        blank = lambda m: ' ' * len(m.group(0))  # noqa: E731 - keep offsets, so order survives
-        rest = BRACE_RE.sub(blank, TAG_RE.sub(blank, text))
-        for m in BARE_RE.finditer(rest):
-            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref')))
-    for _, key, doc, ref in sorted(found, key=lambda f: f[0]):
-        add(key, doc, ref)
-    return out
+    return core_resolve(ws, text, parse_refs=parse_refs, card=_one,
+                        brace=BRACE_RE, bare=BARE_RE)

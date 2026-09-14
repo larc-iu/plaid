@@ -9,6 +9,15 @@ told it can look something up or run code when it cannot.
 from typing import Any, Dict, List
 
 
+class ToolError(Exception):
+    """A tool-level failure whose message goes back to the model as the result.
+
+    One class, not one per app: the workspace and the corpus helper both raise
+    it from shared code, and an app that caught only its own would let those
+    through as a traceback instead of as a sentence the model can act on.
+    """
+
+
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
     """One tool declaration, in the shape every provider takes."""
     return {'type': 'function', 'function': {

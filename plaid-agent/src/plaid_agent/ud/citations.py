@@ -1,28 +1,25 @@
 """Turning the citation tags in a reply into example cards.
 
-A reply cites evidence with ``<cite doc="Viaje" ref="s3.w2"/>``. Each distinct
-citation becomes one card: the sentence it names, rendered, with the words the
-reference singles out marked so the reader's eye lands on what the claim rests
-on. A citation that names nothing real is left out, and the tab then shows the
-tag's own text.
+The syntax, the order citations are read in and the budget one reply may spend
+are :mod:`plaid_agent.core.citations`. What is here is what a reference may
+look like in this app, and what one card holds: the sentence it names, with the
+words the reference singles out marked so the reader's eye lands on what the
+claim rests on.
 """
 
 import re
 from typing import Any, Dict, List
 
-from ..core.limits import CITE_DOC_BUDGET, MAX_CITATIONS, MAX_FOCUS
+from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
+from ..core.limits import MAX_FOCUS
 from .project import COLUMNS, UdDoc, parse_ref, resolve
-from .tools import ToolError, Workspace
+from .tools import Workspace
 
 REF = r's\d+(?:\.w\d+(?:-\d+)?)?(?:\s*,\s*(?:s\d+\.)?w?\d+(?:-\d+)?)*'
 
-TAG_RE = re.compile(r'<\s*cite\b(?P<attrs>[^<>]*?)/?\s*>(?:[ \t]*<\s*/\s*cite\s*>)?', re.I)
-ATTR_RE = re.compile(r'''([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>/]+))''')
-# Braces are still read: a model that saw a lot of them in training drifts back
-# to them whatever the prompt says.
-BRACE_RE = re.compile(r'\{\{?\s*(?P<doc>[^{}\n]+?)\s+(?P<ref>' + REF + r')\s*\}\}?')
+BRACE_RE = brace_re(REF)
 # A bare reference is unambiguous only when the turn read exactly one document.
-BARE_RE = re.compile(r'(?<![\w{.])(?P<ref>s\d+\.w\d+(?:-\d+)?)\b')
+BARE_RE = bare_re(r's\d+\.w\d+(?:-\d+)?')
 
 # One part of a ref="…" list: a whole reference, or only the piece that differs
 # from the one before it ("s3.w2,w5"). The `w` is optional on a continuation,
@@ -67,21 +64,6 @@ def parse_refs(ref: str) -> List[str]:
 VIEWS = ('table', 'tree')
 
 
-def tag_parts(attrs: str):
-    """-> (doc, ref, view) from a <cite> tag's attributes.
-
-    ``doc`` and ``ref`` may each be ''. ``view`` is how the example is drawn,
-    which is what the model ASKS for: the reader can still switch the card.
-    """
-    at = {}
-    for m in ATTR_RE.finditer(attrs):
-        at[m.group(1).lower()] = next(g for g in m.groups()[1:] if g is not None)
-    doc = at.get('doc') or at.get('document') or ''
-    ref = at.get('ref') or at.get('sentence') or ''
-    view = at.get('view', '').strip().lower()
-    return doc.strip(), ref.strip(), (view if view in VIEWS else '')
-
-
 def _card(doc: UdDoc, sentence_index: int, focus: List[int],
           view: str = '') -> Dict[str, Any]:
     """One example card: the sentence as STRUCTURE, not as a rendered block.
@@ -121,64 +103,32 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int],
             'focus': focus, 'view': view or 'table'}
 
 
+def _one(ws: Workspace, doc: UdDoc, refs: List[str], view: str):
+    """The card one citation's references name, or None where they name nothing
+    in this document. One citation is one sentence: the first reference that
+    resolves fixes it, and the rest mark words inside it."""
+    sentence = None
+    focus: List[int] = []
+    for r in refs:
+        try:
+            resolve(doc, r)   # for its bounds checks
+        except ValueError:
+            continue
+        si, a, b = parse_ref(r)
+        if sentence is None:
+            sentence = si
+        if si != sentence or a is None or len(focus) >= MAX_FOCUS:
+            continue
+        for i in range(a, (b or a) + 1):
+            if i not in focus:
+                focus.append(i)
+    if sentence is None:
+        return None
+    return _card(doc, sentence, focus, view)
+
+
 def resolve_citations(ws: Workspace, text: str) -> List[Dict[str, Any]]:
     """Every distinct citation in ``text`` that names a real sentence, in order
     of first mention."""
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    text = text or ''
-    loaded = list(ws._docs.values())
-    read_before = len(ws._docs)
-
-    def add(key: str, doc_name: str, ref: str, view: str = '') -> None:
-        if key in seen or len(out) >= MAX_CITATIONS:
-            return
-        seen.add(key)
-        try:
-            refs = parse_refs(ref)
-            did = ws.resolve_document_id(doc_name)
-            # Citing a document the turn never read costs a fetch each, and the
-            # user is waiting on the reply.
-            if did not in ws._docs and len(ws._docs) - read_before >= CITE_DOC_BUDGET:
-                return
-            doc = ws.doc(did)
-        except (ToolError, ValueError):
-            return
-        # One citation is one sentence: the first reference that resolves fixes
-        # it, and the rest mark words inside it.
-        sentence = None
-        focus: List[int] = []
-        for r in refs:
-            try:
-                resolve(doc, r)   # for its bounds checks
-            except ValueError:
-                continue
-            si, a, b = parse_ref(r)
-            if sentence is None:
-                sentence = si
-            if si != sentence or a is None or len(focus) >= MAX_FOCUS:
-                continue
-            for i in range(a, (b or a) + 1):
-                if i not in focus:
-                    focus.append(i)
-        if sentence is None:
-            return
-        out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name,
-                    **_card(doc, sentence, focus, view)})
-
-    found: List[tuple] = []
-    for m in TAG_RE.finditer(text):
-        doc, ref, view = tag_parts(m.group('attrs'))
-        # A tag without doc= means one thing when the turn read one document.
-        if ref and (doc or len(loaded) == 1):
-            found.append((m.start(), m.group(0), doc or loaded[0].id, ref, view))
-    for m in BRACE_RE.finditer(text):
-        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), ''))
-    if len(loaded) == 1:
-        blank = lambda m: ' ' * len(m.group(0))  # noqa: E731 - keep offsets, so order survives
-        rest = BRACE_RE.sub(blank, TAG_RE.sub(blank, text))
-        for m in BARE_RE.finditer(rest):
-            found.append((m.start(), m.group(0), loaded[0].id, m.group('ref'), ''))
-    for _, key, doc, ref, view in sorted(found, key=lambda f: f[0]):
-        add(key, doc, ref, view)
-    return out
+    return core_resolve(ws, text, parse_refs=parse_refs, card=_one,
+                        brace=BRACE_RE, bare=BARE_RE, views=VIEWS)

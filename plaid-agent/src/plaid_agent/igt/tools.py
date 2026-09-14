@@ -25,8 +25,8 @@ from plaid_client.provenance import prov_state, MACHINE
 from ..core import opkind
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
-from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
-from ..core.tools import fn, tools_for as core_tools_for
+from ..core.workspace import BaseWorkspace
+from ..core.tools import ToolError, fn, tools_for as core_tools_for  # noqa: F401 - ToolError is re-exported
 
 from .plan import ANALYSIS, EXCLUSIVE_KINDS, KIND, TEXT_SHAPE, WORD_SHAPE
 
@@ -59,60 +59,32 @@ from .vocab import (
                     plan_homograph_order, SENSE_ORDER_KEY, fields_for_item, PARENT_KEY)
 
 
-class ToolError(Exception):
-    """A tool-level failure whose message goes back to the model as the result."""
 
 
-class Workspace:
+class Workspace(BaseWorkspace):
+    """One turn's view of an interlinear project: what it has loaded, the
+    lexicon it is building on, and the plan it is proposing."""
+
+    KIND = KIND
+    PLAN_NOTE = PLAN_NOTE
+
     def __init__(self, client, project: IgtProject, on_progress=None):
-        self.client = client
-        self.project = project
-        self.on_progress = on_progress or (lambda msg: None)
-        self._doc_list: Optional[List[dict]] = None
-        self._docs: Dict[str, IgtDoc] = {}
+        super().__init__(client, project, on_progress)
         self._lexicons: Dict[str, List[dict]] = {}
         self._views: Dict[str, tuple] = {}
         # The metadata an entry will carry once the plan runs, so a second
         # structural tool in one turn reads the tree the first is building.
         self.item_patches: Dict[str, dict] = {}
         self._patch_version = 0
-        self.ops: List[Dict[str, Any]] = []
-        # Ops superseded by a later op on the same target this turn, and how
-        # many of them a note has already told the model about. Two counters
-        # rather than one that is zeroed on being read, because a bulk tool
-        # stages through the single-item tool and throws its notes away: what
-        # those notes reported would go with them.
-        self.replaced = 0
-        self.reported_replaced = 0
-        # What the plan certainly deletes, kept in step with `ops` as it grows
-        # so the doomed-target guard is not a scan of the whole plan per op.
-        self._gone: set = set()
-        self._gone_at = 0
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
         # Corpus-wide tools ask the query engine unless told to scan every
         # document instead (tests compare the two).
         self.prefer_scan = False
-        # The turn's code worker (core.sandbox.Session), opened by the first
-        # run_code call and released by close().
-        self.code = None
-        self._corpus = None
-        # Set when the operator configured web search (see .web). None means
-        # the web tools are not offered at all.
-        self.web = None
 
-    def close(self) -> None:
-        """Release what the turn held: the code worker, if one was opened."""
-        if self.code is not None:
-            self.code.close()
-            self.code = None
-
-    @property
-    def corpus(self):
-        if self._corpus is None:
-            from .corpus import Corpus
-            self._corpus = Corpus(self)
-        return self._corpus
+    def make_corpus(self):
+        from .corpus import Corpus
+        return Corpus(self)
 
     def doc_tag(self, doc, show: bool = True) -> str:
         """The ``"<document>" `` prefix on a printed reference: the document's
@@ -132,31 +104,6 @@ class Workspace:
         return bool(document) or self.prefer_scan
 
     # --- loading ---------------------------------------------------------
-
-    def documents(self) -> List[dict]:
-        if self._doc_list is None:
-            self._doc_list = list(self.client.projects.list_documents(self.project.id) or [])
-        return self._doc_list
-
-    def resolve_document_id(self, document: str) -> str:
-        """Accept a document id or a unique document name."""
-        if not document:
-            raise ToolError('Name a document (id or exact name); project_overview lists them.')
-        docs = self.documents()
-        for d in docs:
-            if d['id'] == document:
-                return d['id']
-        by_name = [d for d in docs if (d.get('name') or '').lower() == document.lower()]
-        if len(by_name) == 1:
-            return by_name[0]['id']
-        if len(by_name) > 1:
-            raise ToolError(f'Several documents are named "{document}"; use an id: '
-                            + ', '.join(d['id'] for d in by_name))
-        starts = [d for d in docs if (d.get('name') or '').lower().startswith(document.lower())]
-        if len(starts) == 1:
-            return starts[0]['id']
-        raise ToolError(f'No document "{document}". Documents: '
-                        + ', '.join(f'"{d.get("name")}"' for d in docs[:50]))
 
     def doc(self, document: str) -> IgtDoc:
         did = self.resolve_document_id(document)
@@ -331,93 +278,13 @@ class Workspace:
 
     # --- plan --------------------------------------------------------------
 
-    def add_op(self, op: Dict[str, Any]) -> None:
-        """Append a plan op. An op on a target the plan already touches
-        REPLACES the earlier op (last wins), so a corrected instruction never
-        yields two writes to one span, token, or entry. The target key is
-        derived from the op's kind."""
-        # A page from the web is text by a stranger, and this turn has read
-        # one. Nothing it says gets to become a proposed change in the same
-        # breath: the user sees what was found first, and asks for the change
-        # separately if they want it.
-        if self.web is not None and self.web.read:
-            raise ToolError(
-                'This turn has read the web, so it cannot also plan changes. Tell the user what you '
-                'found and what you would change, and let them ask for it. The next turn can plan it '
-                'without looking anything up.')
-        # A restore rewrites a document wholesale, so nothing else can be
-        # planned against the ids and offsets read before it: a restore is
-        # always a plan of its own.
+    def guard_op(self, op: Dict[str, Any], replacing=None) -> None:
+        """A restore rewrites a document wholesale, so nothing else can be
+        planned against the ids and offsets read before it: a restore is
+        always a plan of its own."""
         if op.get('kind') not in EXCLUSIVE_KINDS and any(o.get('kind') in EXCLUSIVE_KINDS for o in self.ops):
             raise ToolError('The plan holds a restore, which must be approved on its own; discard_plan first, '
                             'or let the user approve the restore and plan this afterwards.')
-        key = op_target(op)
-        at = None
-        if key is not None:
-            at = next((i for i, prev in enumerate(self.ops) if op_target(prev) == key), None)
-        self.refuse_doomed(op, replacing=at)
-        if at is not None:
-            self.ops[at] = op
-            self.replaced += 1
-            self._gone_at = -1
-            return
-        self.reserve(1)
-        self.ops.append(op)
-        if self._gone_at == len(self.ops) - 1:
-            self._gone |= opkind.removed_ids(KIND, [op], only_certain=True)
-            self._gone_at = len(self.ops)
-
-    def certainly_gone(self) -> set:
-        """What the plan certainly deletes. Rebuilt whenever the plan was
-        changed by something other than :meth:`add_op` (a dropped change, a
-        discarded plan), which the length or the invalidated watermark says."""
-        if self._gone_at != len(self.ops):
-            self._gone = opkind.removed_ids(KIND, self.ops, only_certain=True)
-            self._gone_at = len(self.ops)
-        return self._gone
-
-    def refuse_doomed(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
-        """A change to something this plan certainly deletes, or a delete of
-        something this plan already changes, in either order.
-
-        Every tool that stages anything comes through here, which is the point:
-        the same clash used to be found only when the plan was applied, and the
-        change was dropped from a card the user had already approved.
-
-        ``replacing`` is the index of the op this one supersedes, which is not
-        part of the plan any more: a second delete of a word a split already
-        changes replaces that split rather than clashing with it.
-        """
-        if replacing is None:
-            planned, gone = self.ops, self.certainly_gone()
-        else:
-            planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
-        clash = opkind.delete_clash(KIND, planned, op, gone)
-        if clash:
-            raise ToolError(opkind.clash_message(*clash))
-
-    def add_ops(self, ops: List[Dict[str, Any]]) -> None:
-        # Asked for the whole batch first, so a tool with more changes than
-        # the plan can hold refuses before it has staged any of them.
-        self.reserve(len(ops))
-        for op in ops:
-            self.add_op(op)
-
-    def reserve(self, n: int) -> None:
-        """Refuse BEFORE staging what would push the plan past what a record
-        can hold, so a tool never leaves half of its changes behind."""
-        try:
-            core_reserve(len(self.ops), n, PLAN_NOTE, PLAN_MAX_OPS)
-        except PlanFull as e:
-            raise ToolError(str(e)) from None
-
-    def planned_span_value(self, layer_id: str, token_id: str, current: str) -> str:
-        """The value a span will have once the plan runs (a planned op wins
-        over the stored value), so bulk tools compose with earlier plans."""
-        for op in self.ops:
-            if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id and op.get('token_id') == token_id:
-                return op.get('value') or ''
-        return current
 
     def planned_respells(self, text_id: str) -> List[tuple]:
         return [(op['begin'], op['end']) for op in self.ops if op.get('kind') == 'respell' and op.get('text_id') == text_id]
@@ -488,16 +355,6 @@ class Workspace:
             if any(_op_mentions(op, ids) for op in self.ops):
                 out.append({'id': doc.id, 'name': doc.name, 'version': doc.version})
         return out
-
-    def planned_note(self, n: int) -> str:
-        note = (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
-                f'the plan now holds {len(self.ops)}). Describe the plan to the user in your reply.')
-        new = self.replaced - self.reported_replaced
-        if new > 0:
-            note += f' {new} earlier planned change{"s" if new != 1 else ""} on the same target{"s" if new != 1 else ""} superseded.'
-            self.reported_replaced = self.replaced
-        return note
-
 
 def _op_mentions(value, ids: set) -> bool:
     if isinstance(value, str):
@@ -3107,8 +2964,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     # Each tool answers for its OWN reads. The corpus helper lives as long as
     # the turn, so without this a report would carry the note about a clipped
     # read that an earlier tool in the same turn had made.
-    if ws._corpus is not None:
-        ws._corpus.forget_clipping()
+    ws.forget_clipping()
     try:
         return _truncate(fn(ws, **(args or {})))
     except (ToolError, ValueError) as e:  # ValueError: a name/reference lookup failed, message is for the model

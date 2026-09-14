@@ -17,12 +17,11 @@ counts, and forms are compared case-insensitively.
 """
 
 import math
-import re
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from ..core.corpus import Clipping
-from ..core.limits import GROUP_LIMIT, ROW_LIMIT
+from ..core.corpus import Corpus as BaseCorpus, rx  # noqa: F401 - rx is re-exported
+from ..core.limits import ROW_LIMIT
 from .project import is_token_ignored
 from .tools import Workspace, ToolError
 
@@ -31,64 +30,13 @@ RENDER_DOC_BUDGET = 8      # documents a read tool loads to render the hits it s
 MORE_DOCS_NOTE = '  … more hits in other documents (name a document, or narrow the pattern)'
 
 
-def rx(pattern: str, *, regex: bool = False, whole: bool = False, case_sensitive: bool = False) -> Dict[str, Any]:
-    """A regex constraint: a literal substring (escaped) or a pattern, whole
-    value when asked, case-insensitive unless asked otherwise."""
-    p = pattern if regex else re.escape(pattern)
-    if whole:
-        p = f'^(?:{p})$'
-    spec: Dict[str, Any] = {'regex': p}
-    if not case_sensitive:
-        spec['flags'] = 'i'
-    return spec
-
-
-def _err(e: Exception) -> ToolError:
-    msg = str(e)
-    m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
-    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
-
-
-class Corpus(Clipping):
+class Corpus(BaseCorpus):
     """Query helpers bound to one workspace (its client, project, caches)."""
 
     def __init__(self, ws: Workspace):
-        super().__init__()
-        self.ws = ws
-        self.p = ws.project
+        super().__init__(ws)
         self.W, self.M, self.S = self.p.word_layer_id, self.p.morpheme_layer_id, self.p.sentence_layer_id
         self._ref_names: Optional[Dict[str, str]] = None
-
-    # --- running queries ------------------------------------------------------
-
-    def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
-        body = dict(body)
-        body['scope'] = {'project_ids': [self.p.id]}
-        try:
-            res = self.ws.client.query(body)
-        except Exception as e:  # noqa: BLE001 - the model gets the engine's message
-            raise _err(e)
-        return res if isinstance(res, dict) else {}
-
-    def count(self, where: List[Any], find: List[str]) -> int:
-        """Distinct tuples of ``find`` (never inflated by joins)."""
-        return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
-
-    def group(self, where: List[Any], group: List[str], aggregates=None, limit: int = GROUP_LIMIT) -> List[list]:
-        """Grouped rows ``[key..., count]``; ``truncated`` is remembered on the
-        instance for callers that want to say so."""
-        res = self.run({'where': where, 'limit': limit,
-                        'return': {'group': group, 'aggregates': aggregates or [['count']]}})
-        self.note_truncation(res)
-        return res.get('results') or []
-
-    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
-        body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities', 'limit': min(limit, ROW_LIMIT)}
-        if order_by:
-            body['order_by'] = order_by
-        res = self.run(body)
-        self.note_truncation(res)
-        return res.get('results') or []
 
     # --- clause builders -------------------------------------------------------
 
@@ -161,12 +109,6 @@ class Corpus(Clipping):
         return (form if form not in (None, '') else (value or '')).casefold()
 
     # --- documents ------------------------------------------------------------
-
-    def doc_names(self) -> Dict[str, str]:
-        return {d['id']: d.get('name') or d['id'] for d in self.ws.documents()}
-
-    def doc_name(self, doc_id: str) -> str:
-        return self.doc_names().get(doc_id, doc_id)
 
     def document_metadata(self) -> Dict[str, dict]:
         """id -> metadata for every document, in one query."""
@@ -1081,7 +1023,7 @@ def q_replace_changes(ws: Workspace, f, rep, rows: List[list]) -> List[Dict[str,
     for sp, tok in rows:
         if not (isinstance(sp, dict) and isinstance(tok, dict)):
             continue
-        cur = ws.planned_span_value(f.layer_id, tok['id'], sp.get('value') or '')
+        cur = ws.planned_value(f.layer_id, tok['id'], sp.get('value') or '')
         if cur == '':
             continue
         new = rep(cur)
@@ -1201,7 +1143,7 @@ def q_set_field_for_form(ws: Workspace, form: str, f, value: str, only_empty: bo
             continue
         what = ((tok.get('metadata') or {}).get('form') if f.scope == 'Morpheme' else None) or tok.get('value') or ''
         old = Span(sp['id'], sp.get('value') or '', sp.get('metadata'), f.layer_id) if isinstance(sp, dict) else None
-        cur = ws.planned_span_value(f.layer_id, tok['id'], old.value if old else '')
+        cur = ws.planned_value(f.layer_id, tok['id'], old.value if old else '')
         if cur == value or (only_empty and cur != ''):
             continue
         head = c.label_ref(tok['document'], tok['id'], budget)

@@ -1,5 +1,12 @@
 """What both apps' corpus helpers share.
 
+A corpus is too big to scan: a tool that loaded every document to answer a
+question the query engine can answer would cost minutes and a great deal of
+memory. So the corpus-wide tools ask the engine, and load documents only to
+render the handful of hits they are going to print. :class:`Corpus` is the
+engine bound to one workspace: how a query runs, how a pattern is written, and
+the three shapes of answer.
+
 The engine will return only so many rows, and a report built on a read it cut
 short is the top of an arbitrary prefix presented as the top of the corpus.
 Worse, an empty clipped read reads as "nothing to do" for a corpus that may be
@@ -7,7 +14,11 @@ full of it. So every read records whether it was cut, and every report that
 states a tally says so when one was.
 """
 
-from typing import Any, Dict
+import re
+from typing import Any, Dict, List
+
+from .limits import GROUP_LIMIT, ROW_LIMIT
+from .tools import ToolError
 
 
 class Clipping:
@@ -46,3 +57,83 @@ class Clipping:
         return (f'\n(note) The engine returned as many rows as it will, so these {what} come '
                 f'from part of the corpus and not all of it. Narrowing it to one document or '
                 f'one field gives a complete answer.')
+
+
+def rx(pattern: str, *, regex: bool = False, whole: bool = False,
+       case_sensitive: bool = False) -> Dict[str, Any]:
+    """A regex constraint: a literal substring (escaped) or a pattern, whole
+    value when asked, case-insensitive unless asked otherwise."""
+    p = pattern if regex else re.escape(pattern)
+    if whole:
+        p = f'^(?:{p})$'
+    spec: Dict[str, Any] = {'regex': p}
+    if not case_sensitive:
+        spec['flags'] = 'i'
+    return spec
+
+
+def query_refused(e: Exception) -> ToolError:
+    """The engine's own complaint, for the model to read and correct."""
+    msg = str(e)
+    m = re.search(r'"error"\s*:\s*"([^"]+)"', msg)
+    return ToolError('Query rejected: ' + (m.group(1) if m else msg[:400]))
+
+
+class Corpus(Clipping):
+    """The query engine bound to one workspace (its client, its project).
+
+    An app subclasses this with the clauses that name what IT annotates. The
+    three shapes of answer are here: a count, entity rows, and grouped tallies.
+    """
+
+    def __init__(self, ws):
+        super().__init__()
+        self.ws = ws
+        self.p = ws.project
+
+    # --- running ----------------------------------------------------------
+
+    def run(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        body = dict(body)
+        body['scope'] = {'project_ids': [self.p.id]}
+        try:
+            res = self.ws.client.query(body)
+        except Exception as e:  # noqa: BLE001 - the model gets the engine's own message
+            raise query_refused(e)
+        return res if isinstance(res, dict) else {}
+
+    def count(self, where: List[Any], find: List[str]) -> int:
+        """Distinct tuples of ``find`` (never inflated by joins)."""
+        return int(self.run({'find': find, 'where': where, 'return': 'count'}).get('count') or 0)
+
+    def entities(self, where: List[Any], find: List[str], limit: int, order_by=None) -> List[list]:
+        """Entity rows, ``limit`` at most."""
+        body: Dict[str, Any] = {'find': find, 'where': where, 'return': 'entities',
+                                'limit': min(int(limit), ROW_LIMIT)}
+        if order_by:
+            body['order_by'] = order_by
+        res = self.run(body)
+        self.note_truncation(res)
+        return res.get('results') or []
+
+    def group(self, where: List[Any], group: List[str], aggregates=None,
+              limit: int = GROUP_LIMIT) -> List[list]:
+        """Grouped rows ``[key..., count]``. Whether the read was cut short is
+        remembered on the instance for callers that have to say so."""
+        res = self.run({'where': where, 'limit': limit,
+                        'return': {'group': group, 'aggregates': aggregates or [['count']]}})
+        self.note_truncation(res)
+        return res.get('results') or []
+
+    # --- documents --------------------------------------------------------
+
+    def doc_names(self) -> Dict[str, str]:
+        return {d['id']: d.get('name') or d['id'] for d in self.ws.documents()}
+
+    def doc_name(self, doc_id: str) -> str:
+        return self.doc_names().get(doc_id, doc_id)
+
+    def documents_with(self, where: List[Any], var: str = '?s') -> List[tuple]:
+        """[(document id, hits)] for a constraint, most hits first."""
+        rows = [(row[0], row[-1]) for row in self.group(where, [f'{var}.doc']) if row[0]]
+        return sorted(rows, key=lambda r: -r[1])

@@ -53,10 +53,23 @@ def test_set_field_plans_one_op_per_word(ws):
     assert ws.ops[0]['value'] == 'correr' and ws.ops[0]['ref'] == 's2.w1'
 
 
-def test_setting_the_same_field_twice_replaces_the_first_plan(ws):
+def test_setting_the_same_field_twice_replaces_the_first_plan_and_says_so(ws):
+    """The model asked for two changes and is getting one, so the reply says
+    which. The count is a watermark: it is reported once and not again, and a
+    tool that stages through another tool does not take the report with it."""
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='NOUN')
-    run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VERB')
+    out = run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='upos', value='VERB')
     assert len(ws.ops) == 1 and ws.ops[0]['value'] == 'VERB' and ws.replaced == 1
+    assert '1 earlier planned change on the same target superseded' in out
+    # Reported once.
+    assert 'superseded' not in run(ws, 'set_field', document='Viaje', refs=['s2.w2'],
+                                   field='upos', value='NOUN')
+    # Two at once read as two.
+    run(ws, 'set_field', document='Viaje', refs=['s2.w1', 's2.w2'], field='upos', value='ADJ')
+    out = run(ws, 'set_field', document='Viaje', refs=['s2.w1', 's2.w2'], field='upos', value='NOUN')
+    assert '2 earlier planned changes on the same targets superseded' in out
+    # A read tool never carries it.
+    assert 'superseded' not in run(ws, 'read_document', document='Viaje')
 
 
 def test_a_closed_vocabulary_refuses_a_value_it_does_not_list(ws):
@@ -250,8 +263,8 @@ def test_a_scope_and_a_reshape_of_the_same_document_cannot_share_a_plan(ws):
 
 
 def test_the_plan_refuses_to_grow_past_what_a_record_holds(ws, monkeypatch):
-    from plaid_agent.ud import tools
-    monkeypatch.setattr(tools, 'PLAN_MAX_OPS', 3)
+    from plaid_agent.core import workspace
+    monkeypatch.setattr(workspace, 'PLAN_MAX_OPS', 3)
     run(ws, 'set_field', document='Viaje', refs=['s1.w1', 's1.w2'], field='xpos', value='x')
     out = run(ws, 'set_field', document='Viaje', refs=['s1.w3', 's1.w4'], field='xpos', value='x')
     assert 'more than the 3 one plan may hold' in out

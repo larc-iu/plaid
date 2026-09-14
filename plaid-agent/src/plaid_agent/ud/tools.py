@@ -17,8 +17,8 @@ from typing import Any, Dict, List, Optional
 from ..core import opkind
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
-from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
-from ..core.tools import fn, tools_for as core_tools_for
+from ..core.workspace import BaseWorkspace
+from ..core.tools import ToolError, fn, tools_for as core_tools_for  # noqa: F401 - ToolError is re-exported
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
                    RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
@@ -39,65 +39,23 @@ SCOPE_KINDS = opkind.shaped(KIND, opkind.SCOPE)
 MAX_SCOPE_DOCS = 100
 
 
-class ToolError(Exception):
-    """A tool-level failure whose message goes back to the model as the result."""
 
 
 # --- the workspace ------------------------------------------------------------
 
-class Workspace:
+class Workspace(BaseWorkspace):
+    """One turn's view of a treebank project: what it has loaded and the plan
+    it is proposing."""
+
+    KIND = KIND
+    PLAN_NOTE = PLAN_NOTE
+
     def __init__(self, client, project: UdProject, on_progress=None):
-        self.client = client
-        self.project = project
-        self.on_progress = on_progress or (lambda msg: None)
-        self._doc_list: Optional[List[dict]] = None
-        self._docs: Dict[str, UdDoc] = {}
-        self.ops: List[Dict[str, Any]] = []
-        self.replaced = 0  # ops superseded by a later op on the same target this turn
-        # What the plan certainly deletes, kept in step with `ops` as it grows
-        # so the doomed-target guard is not a scan of the whole plan per op.
-        self._gone: set = set()
-        self._gone_at = 0
-        self._corpus = None  # the query helper, made on first corpus-wide read
-        # Set when the operator configured web search. None means the web tools
-        # are not offered to the model at all.
-        self.web = None
-        # The turn's code worker (core.sandbox.Session), opened by the first
-        # run_code call and released by close().
-        self.code = None
+        super().__init__(client, project, on_progress)
 
-    def close(self) -> None:
-        """Release what the turn held: the code worker, if one was opened."""
-        if self.code is not None:
-            self.code.close()
-            self.code = None
-
-    # --- loading ---------------------------------------------------------
-
-    def documents(self) -> List[dict]:
-        if self._doc_list is None:
-            self._doc_list = list(self.client.projects.list_documents(self.project.id) or [])
-        return self._doc_list
-
-    def resolve_document_id(self, document: str) -> str:
-        """Accept a document id, an exact name, or an unambiguous prefix."""
-        if not document:
-            raise ToolError('Name a document (id or exact name); project_overview lists them.')
-        docs = self.documents()
-        for d in docs:
-            if d['id'] == document:
-                return d['id']
-        by_name = [d for d in docs if (d.get('name') or '').lower() == document.lower()]
-        if len(by_name) == 1:
-            return by_name[0]['id']
-        if len(by_name) > 1:
-            raise ToolError(f'Several documents are named "{document}"; use an id: '
-                            + ', '.join(d['id'] for d in by_name))
-        starts = [d for d in docs if (d.get('name') or '').lower().startswith(document.lower())]
-        if len(starts) == 1:
-            return starts[0]['id']
-        raise ToolError(f'No document "{document}". Documents: '
-                        + ', '.join(f'"{d.get("name")}"' for d in docs[:50]))
+    def make_corpus(self):
+        from .corpus import Corpus
+        return Corpus(self)
 
     def doc(self, document: str) -> UdDoc:
         did = self.resolve_document_id(document)
@@ -121,68 +79,9 @@ class Workspace:
 
     # --- the plan --------------------------------------------------------
 
-    def add_op(self, op: Dict[str, Any]) -> None:
-        """Add one op, replacing an earlier op on the same target so a model
-        that changes its mind inside one turn does not plan two writes."""
-        # A page from the web is text by a stranger, and this turn has read
-        # one. Nothing it says gets to become a proposed change in the same
-        # breath: the user sees what was found first, and asks for the change
-        # separately if they want it.
-        #
-        # IGT has had this since its web tools landed, and the prompt UD ships
-        # (webtools.PROMPT) tells the model the workspace enforces it. UD's did
-        # not, so the assistant could stage a plan in a turn a web page had
-        # steered, and the user would have been approving a card whose origin
-        # was a stranger's page.
-        if self.web is not None and getattr(self.web, 'read', False):
-            raise ToolError(
-                'This turn has read the web, so it cannot also plan changes. Tell the user what you '
-                'found and what you would change, and let them ask for it. The next turn can plan it '
-                'without looking anything up.')
-        key = op_target(op)
-        at = None
-        if key is not None:
-            at = next((i for i, prev in enumerate(self.ops) if op_target(prev) == key), None)
-        self.refuse_doomed(op, replacing=at)
-        self.refuse_scope_clash(op, replacing=at)
-        if at is not None:
-            self.ops[at] = op
-            self.replaced += 1
-            self._gone_at = -1
-            return
-        self.reserve(1)
-        self.ops.append(op)
-        if self._gone_at == len(self.ops) - 1:
-            self._gone |= opkind.removed_ids(KIND, [op], only_certain=True)
-            self._gone_at = len(self.ops)
-
-    def certainly_gone(self) -> set:
-        """What the plan certainly deletes. Rebuilt whenever the plan was
-        changed by something other than :meth:`add_op` (a dropped change, a
-        discarded plan), which the length or the invalidated watermark says."""
-        if self._gone_at != len(self.ops):
-            self._gone = opkind.removed_ids(KIND, self.ops, only_certain=True)
-            self._gone_at = len(self.ops)
-        return self._gone
-
-    def refuse_doomed(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
-        """A change to something this plan certainly deletes, or a delete of
-        something this plan already changes, in either order.
-
-        Every tool that stages anything comes through here, which is the point:
-        the same clash used to be found only when the plan was applied, and the
-        change was dropped from a card the user had already approved.
-
-        ``replacing`` is the index of the op this one supersedes, which is not
-        part of the plan any more.
-        """
-        if replacing is None:
-            planned, gone = self.ops, self.certainly_gone()
-        else:
-            planned, gone = [o for i, o in enumerate(self.ops) if i != replacing], None
-        clash = opkind.delete_clash(KIND, planned, op, gone)
-        if clash:
-            raise ToolError(opkind.clash_message(*clash))
+    def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        _no_restore_planned(self)
+        self.refuse_scope_clash(op, replacing=replacing)
 
     def refuse_scope_clash(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """Two changes that cover a whole document, reaching one document,
@@ -206,23 +105,6 @@ class Workspace:
                 f'{prev.get("label") or prev.get("kind")} already covers a document this change '
                 'covers, and one of the two throws values away. Keep one of them (plan_status, '
                 'drop_planned), or plan them in separate turns.')
-
-    def reserve(self, n: int) -> None:
-        """Refuse BEFORE staging what would push the plan past what a record
-        can hold, so a tool never leaves half of its changes behind."""
-        try:
-            core_reserve(len(self.ops), n, PLAN_NOTE, PLAN_MAX_OPS)
-        except PlanFull as e:
-            raise ToolError(str(e)) from None
-
-    def planned_value(self, layer_id: str, token_id: str, current: str) -> str:
-        """The value a span will have once the plan runs, so a second tool in
-        the same turn reads what the first one planned."""
-        for op in self.ops:
-            if op.get('kind') == 'set_span' and op.get('layer_id') == layer_id \
-                    and op.get('token_id') == token_id:
-                return op.get('value') or ''
-        return current
 
     def plan_payload(self) -> Optional[Dict[str, Any]]:
         if not self.ops:
@@ -1230,10 +1112,15 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     # Each tool answers for its OWN reads. The corpus helper lives as long as
     # the turn, so without this a report would carry the note about a clipped
     # read that an earlier tool in the same turn had made.
-    if ws._corpus is not None:
-        ws._corpus.forget_clipping()
+    ws.forget_clipping()
     try:
-        return _truncate(fn(ws, **(args or {})))
+        out = _truncate(fn(ws, **(args or {})))
+        # A change this turn planned over one an earlier call planned is worth
+        # a sentence: the model asked for two and is getting one. Said here
+        # rather than in each tool, so a tool cannot be written without it.
+        if name in WRITE_TOOLS:
+            out += ws.superseded_note()
+        return out
     except (ToolError, ValueError) as e:  # ValueError: a reference lookup failed, message is for the model
         return f'Error: {e}'
     except (TypeError, AttributeError) as e:

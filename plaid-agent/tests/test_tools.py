@@ -311,8 +311,8 @@ def test_the_plan_refuses_to_grow_past_what_a_record_holds(monkeypatch):
     """The cap UD has had since the record budget was measured. Without it a
     corpus-wide edit staged thousands of ops, the record could not hold them,
     and the turn came back with no plan after the model had announced one."""
-    from plaid_agent.igt import tools
-    monkeypatch.setattr(tools, 'PLAN_MAX_OPS', 3)
+    from plaid_agent.core import workspace
+    monkeypatch.setattr(workspace, 'PLAN_MAX_OPS', 3)
     w = ws()
     call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w1', 's1.w2'], 'field': 'Gloss', 'value': 'X'})
     out = call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w3', 's2.w1'], 'field': 'Gloss', 'value': 'Y'})
@@ -446,7 +446,8 @@ def test_citations_come_back_in_the_order_written_and_stop_at_the_read_budget():
 
 def test_citations_do_not_fetch_more_documents_than_the_budget():
     from fixtures import document_raw
-    from plaid_agent.igt.citations import resolve_citations, CITE_DOC_BUDGET
+    from plaid_agent.core.limits import CITE_DOC_BUDGET
+    from plaid_agent.igt.citations import resolve_citations
     docs = {}
     for i in range(CITE_DOC_BUDGET + 3):
         raw = document_raw()
