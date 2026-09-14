@@ -3130,6 +3130,12 @@ class PlaidClient:
         on the FIRST write, so an operation that is never ended (crash) is
         still labeled in the log.
 
+        "Every write" is the writes of project data. Reads never join, and
+        neither do the out-of-band signals shaped like a write (a document lock
+        taken or renewed, a stopped service request, a service reporting
+        itself, an admin control): none of them is audited, so there would be
+        nothing under the label.
+
         Prefer the ``operation()`` context manager; this is the manual form.
 
         Args:

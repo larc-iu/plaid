@@ -189,6 +189,56 @@ def test_get_requests_never_carry_group_id():
     assert client._operation_group['written'] is False
 
 
+def test_an_out_of_band_signal_never_joins_the_operation():
+    # Shaped like a write, carrying no project data, never audited: a lock
+    # taken or renewed, a stopped service request, a service reporting itself,
+    # an admin control, and the query that travels as a POST. Stamping one
+    # does nothing server-side and marks the group written, which promises a
+    # group nothing ever created. The lock beat that renews a held lock puts a
+    # POST inside every long operation, so this is not a corner case.
+    from plaid_client.services import _report_event, cancel_service_request
+
+    client = _client()
+    calls = _stub_session(client)
+    gid = client.begin_operation('Parse the document')
+
+    client.documents.acquire_lock('D1')          # taking the lock
+    client.documents.acquire_lock('D1')          # the keep-alive beat
+    client.documents.release_lock('D1')
+    cancel_service_request(client, 'P1', 'R1')
+    _report_event(client, 'P1', 'R1', {'status': 'progress'})
+    client.admin.backup()
+    client.admin.release_lock('D1')
+    client.admin.clear_rate_limits()
+    client.query({'find': ['?t'], 'where': []})
+
+    assert len(calls) == 9
+    stamped = [c['url'] for c in calls if 'group-id' in c.get('url', '')]
+    assert stamped == [], f'these signals joined the operation: {stamped}'
+    assert client._operation_group['written'] is False
+
+    # So the relabel is skipped rather than PATCHing a group that never
+    # materialized.
+    client.end_operation('Parsed 40 sentences')
+    assert len(calls) == 9
+    assert not any(c['method'] == 'PATCH' for c in calls)
+    assert gid  # the id was still minted for the writes that may yet come
+
+
+def test_a_real_write_still_marks_the_operation_written():
+    # The other side of the same rule: nothing above narrowed what a write does.
+    client = _client()
+    calls = _stub_session(client)
+    gid = client.begin_operation('Parse the document')
+    client.documents.acquire_lock('D1')
+    client.spans.set_metadata('S1', {'a': 1})
+    assert client._operation_group['written'] is True
+    client.end_operation('Parsed 40 sentences')
+    patches = [c for c in calls if c['method'] == 'PATCH']
+    assert len(patches) == 1
+    assert patches[0]['url'].endswith(f'/api/v1/operation-groups/{gid}')
+
+
 def test_group_params_coexist_with_document_version_and_audit_message():
     client = _client()
     client.enter_strict_mode('D1')

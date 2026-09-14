@@ -32,7 +32,10 @@ import { transformRequest, transformResponse } from "./transforms.js";
 //
 // A bypassed call neither joins the batch nor spends its stamp. Strict mode
 // marks the batch's one expected document-version onto the first QUEUED write,
-// and a call that went over the wire on its own is not that write.
+// and a call that went over the wire on its own is not that write. It does not
+// join an open logical operation either: the audit group is a label for the
+// writes, and a signal that is never audited would mark the group written and
+// leave the relabel PATCH 404ing on a group nothing ever created.
 //
 // `noBatch` is not part of that judgment. It marks the five calls the batch
 // transport cannot carry at all (a batch inside a batch, the multipart media
@@ -410,7 +413,17 @@ export async function makeRequest(client, method, path, options = {}) {
   // Logical-operation group (see client.beginOperation): stamp every write
   // with the group id; the message rides along too so the server can label
   // the group lazily on whichever tagged write lands first.
-  if (client.operationGroup && method !== "GET") {
+  //
+  // A bypassing call is not one of those writes. The out-of-band signals are
+  // shaped like a write and carry no project data (a lock taken or renewed, a
+  // cancelled service request, a service reporting its progress, an admin
+  // control), and `query` is a read that travels as a POST. None of them lands
+  // in the audit log, so a stamp does nothing server-side while `written`
+  // promises a group that will never exist: the relabel PATCH then 404s. Same
+  // rule as the batch and the OCC stamp above, for the same reason: a
+  // bypassing call belongs to whoever made it, not to whatever operation
+  // happens to be open on this shared client.
+  if (client.operationGroup && method !== "GET" && !bypassBatch) {
     const group = client.operationGroup;
     const separator = url.includes("?") ? "&" : "?";
     url += `${separator}group-id=${encodeURIComponent(group.id)}`;

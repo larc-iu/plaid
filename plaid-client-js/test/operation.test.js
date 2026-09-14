@@ -8,6 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { PlaidClient } from '../src/index.js';
+import { reportRequestEvent } from '../src/services.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -139,6 +140,70 @@ test('GET requests never carry a group-id', () => {
   client.abortBatch();
   assert.ok(paths.every(p => !p.includes('group-id')));
   assert.strictEqual(client.operationGroup.written, false);
+});
+
+// Shaped like a write, carrying no project data, never audited: a lock taken
+// or renewed, a stopped service request, a service reporting itself, an admin
+// control, and the query that travels as a POST. Stamping one does nothing
+// server-side and marks the group written, which promises a group nothing ever
+// created. The lock beat that renews a held lock puts a POST inside every long
+// operation, so this is not a corner case.
+test('an out-of-band signal never joins the operation', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), method: opts.method });
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({}), text: async () => '',
+    };
+  };
+  const id = client.beginOperation('Parse the document');
+
+  await client.documents.acquireLock('D1');   // taking the lock
+  await client.documents.acquireLock('D1');   // the keep-alive beat
+  await client.documents.releaseLock('D1');
+  await client.messages.cancelServiceRequest('P1', 'R1');
+  await reportRequestEvent(client, 'P1', 'R1', { status: 'progress' });
+  await client.admin.backup();
+  await client.admin.releaseLock('D1');
+  await client.admin.clearRateLimits();
+  await client.query({ find: ['?t'], where: [] });
+
+  assert.strictEqual(calls.length, 9);
+  const stamped = calls.filter(c => c.url.includes('group-id')).map(c => c.url);
+  assert.deepStrictEqual(stamped, [], `these signals joined the operation: ${stamped.join(', ')}`);
+  assert.strictEqual(client.operationGroup.written, false);
+
+  // So the relabel is skipped rather than PATCHing a group that never
+  // materialized.
+  await client.endOperation('Parsed 40 sentences');
+  assert.strictEqual(calls.length, 9);
+  assert.ok(!calls.some(c => c.method === 'PATCH'));
+  assert.match(id, UUID_RE); // the id was still minted for the writes that may yet come
+});
+
+test('a real write still marks the operation written', async () => {
+  // The other side of the same rule: nothing above narrowed what a write does.
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), method: opts.method });
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({}), text: async () => '',
+    };
+  };
+  const id = client.beginOperation('Parse the document');
+  await client.documents.acquireLock('D1');
+  await client.spans.setMetadata('S1', { a: 1 });
+  assert.strictEqual(client.operationGroup.written, true);
+  await client.endOperation('Parsed 40 sentences');
+  const patches = calls.filter(c => c.method === 'PATCH');
+  assert.strictEqual(patches.length, 1);
+  assert.ok(patches[0].url.endsWith(`/api/v1/operation-groups/${id}`));
 });
 
 test('group params coexist with strict-mode document-version and a per-call auditMessage', () => {

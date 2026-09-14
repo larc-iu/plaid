@@ -3019,6 +3019,12 @@ class PlaidClient {
    * write, so an operation that is never ended (crash, closed tab) is still
    * labeled in the log.
    *
+   * "Every write" is the writes of project data. Reads never join, and neither
+   * do the out-of-band signals shaped like a write (a document lock taken or
+   * renewed, a stopped service request, a service reporting itself, an admin
+   * control): none of them is audited, so there would be nothing under the
+   * label.
+   *
    * @param {string} message - Human label for the operation.
    * @param {object} [opts] - Optional `{ id }`: adopt an existing group id instead of minting one (a service joining the requester's operation; `requestService` propagates an open operation to the service automatically).
    * @returns {string} The operation's group id.
