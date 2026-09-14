@@ -16,22 +16,11 @@ import { repeat } from 'lit-html/directives/repeat.js';
 import { live } from 'lit-html/directives/live.js';
 import { isPending } from '@ui/domain/CommentStore';
 import { timeAgo } from '@ui/lib/formatTime.js';
+import { initials } from '@ui/lib/initials.js';
 import { renderCommentBody } from './renderCommentBody.js';
 import './comments.css';
 
 const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
-
-// Initials for the avatar chip. Display names here are usually a person's
-// name, but fall back to an email local-part when the lookup failed.
-function initials(name) {
-  const cleaned = String(name || '')
-    .split('@')[0]
-    .replace(/[._-]+/g, ' ')
-    .trim();
-  const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (!parts.length) return '?';
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
-}
 
 // Keep a composer's submit button in step with what is typed.
 //

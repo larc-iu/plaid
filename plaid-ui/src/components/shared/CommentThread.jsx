@@ -5,6 +5,7 @@ import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { SafeMarkdown } from './markdown.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
+import { initials } from '../../lib/initials.js';
 import { isPending } from '../../domain/CommentStore.js';
 
 // One thread: its comments oldest first, and a box to add to it.
@@ -17,15 +18,6 @@ import { isPending } from '../../domain/CommentStore.js';
 // rather than deciding for themselves.
 
 const MAX_BODY = 10000; // matches plaid.sql.comment/max-body-length
-
-const initials = (name) => {
-  const parts = String(name || '')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return '?';
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
-};
 
 const onMetaEnter = (fn) => (event) => {
   if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {

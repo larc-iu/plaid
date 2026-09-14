@@ -1,18 +1,6 @@
 import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar.jsx';
 import { cn } from '../../lib/utils.js';
-
-// Initials fallback for a user with no picture. Two words give two letters
-// ("Ada Lovelace" -> AL); anything else gives one. A display name that is
-// still an email address gets its domain stripped first, or every avatar in a
-// roster from the same institution would read the same.
-function userInitials(displayName) {
-  if (!displayName) return '?';
-  const local = displayName.split('@')[0];
-  const words = local.split(/[\s._-]+/).filter(Boolean);
-  if (words.length === 0) return displayName.charAt(0).toUpperCase();
-  if (words.length === 1) return words[0].charAt(0).toUpperCase();
-  return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-}
+import { initials } from '../../lib/initials.js';
 
 /**
  * A user's profile picture, falling back to their initials.
@@ -45,7 +33,7 @@ export function UserAvatar({
       {/* The initials do not scale with the avatar on their own, so anything
           much larger than the default needs to say so. */}
       <AvatarFallback className={cn('text-xs', fallbackClassName)}>
-        {userInitials(displayName)}
+        {initials(displayName)}
       </AvatarFallback>
     </Avatar>
   );
