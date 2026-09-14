@@ -24,10 +24,6 @@ const { AssistantPanel } = await import('./AssistantPanel.jsx');
 const { AssistantTab } = await import('./AssistantTab.jsx');
 const { jobs, lastOpen, serviceCache } = await import('./jobs.js');
 
-// Nothing in the transcript scrolls in happy-dom, and the chat scrolls to the
-// bottom after every render.
-Element.prototype.scrollIntoView ??= () => {};
-
 const ADAPTER = {
   app: 'igt',
   command: 'plaid-igt-agent',
@@ -130,6 +126,17 @@ const flush = async (m, times = 4) => {
     await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
 };
 
+// What `compact` reaches, which is three class names and nothing else: the
+// chat's own card, the transcript's padding and the composer's.
+const shell = (m) => {
+  const section = m.container.querySelector('section');
+  return {
+    card: section.className,
+    transcript: section.querySelector('.overflow-y-auto').className,
+    composer: section.querySelector('.border-t').className,
+  };
+};
+
 const approve = async (m) => {
   const button = byText(m.container, 'button', 'Approve and apply');
   expect(button).not.toBeNull();
@@ -179,6 +186,20 @@ describe('AssistantPanel', () => {
     expect(m.container.textContent).toContain('sonnet');
     await m.unmount();
   });
+
+  it('draws no card of its own and pads a narrow column tightly', async () => {
+    // `compact`: the dock around the chat already draws a border, and a third
+    // of a screen cannot spare the tab's padding.
+    const client = fakeClient();
+    const m = await mount(<AssistantPanel {...base(client)} projectName="A project" />);
+    await flush(m);
+    const s = shell(m);
+    expect(s.card).not.toContain('border');
+    expect(s.card).toContain('min-h-0');
+    expect(s.transcript).toContain('px-3');
+    expect(s.composer).toContain('px-3');
+    await m.unmount();
+  });
 });
 
 describe('AssistantTab', () => {
@@ -217,6 +238,21 @@ describe('AssistantTab', () => {
     );
     await flush(m);
     expect(m.container.textContent).toContain('Assistant one');
+    await m.unmount();
+  });
+
+  it('draws its own card and the full padding, standing on a page', async () => {
+    const client = fakeClient();
+    const m = await mount(
+      <AssistantTab {...base(client)} projectName="A project" />,
+      '/projects/p1?tab=assistant',
+    );
+    await flush(m);
+    const s = shell(m);
+    expect(s.card).toContain('rounded-lg border');
+    expect(s.card).not.toContain('min-h-0');
+    expect(s.transcript).toContain('px-4');
+    expect(s.composer).toContain('px-4');
     await m.unmount();
   });
 });

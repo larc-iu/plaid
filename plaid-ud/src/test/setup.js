@@ -5,3 +5,11 @@
 import { configureUi } from '@ui/lib/uiConfig.js';
 
 configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud', appName: 'Plaid UD' });
+
+// Nothing scrolls in a test environment, and jsdom does not define
+// scrollIntoView at all, so a component that scrolls something into view after
+// a render (the assistant's transcript, a list reaching a row) throws on mount
+// under a `// @vitest-environment jsdom` pragma. happy-dom defines it as a
+// no-op, which is why this is here rather than in any one test file: what
+// needs it is whichever environment a test asks for.
+Element.prototype.scrollIntoView ??= () => {};
