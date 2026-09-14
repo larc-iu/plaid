@@ -39,8 +39,21 @@ const placeOf = (entry) => entry.documents?.[0] || entry.projects?.[0] || null;
 // `projectHref` and `documentHref` build the "Where" column's links. The apps
 // route differently: plaid-igt opens a document at `/projects/:p/documents/:d`,
 // plaid-ud at `.../annotate`, and a feed that hardcoded either would send half
-// its readers to a 404. Return null from a builder to render the name as plain
-// text instead of a link.
+// its readers to a 404. Both are REQUIRED, with no default: a feed whose Where
+// column silently stopped linking is the kind of loss nobody reports, so a
+// caller that forgets one is loud in development, the way the package's other
+// app-supplied facts are. Return null FROM a builder to render that one name as
+// plain text.
+const assertHrefBuilders = ({ projectHref, documentHref }) => {
+  const missing = [
+    typeof projectHref === 'function' ? null : 'projectHref',
+    typeof documentHref === 'function' ? null : 'documentHref',
+  ].filter(Boolean);
+  if (missing.length) {
+    throw new Error(`AuditFeed needs href builders from the app: ${missing.join(', ')}.`);
+  }
+};
+
 export const AuditFeed = ({
   fetchPage,
   showUser = false,
@@ -52,6 +65,7 @@ export const AuditFeed = ({
   projectHref,
   documentHref,
 }) => {
+  if (import.meta.env.DEV) assertHrefBuilders({ projectHref, documentHref });
   const [entries, setEntries] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -68,6 +82,11 @@ export const AuditFeed = ({
     // one while the first page of this one is still out.
     setEntries([]);
     setCursor(null);
+    // Both reads share one counter, so a re-scope while an older page is out
+    // makes that page stale and its `finally` skips the flag it set. Nothing
+    // else ever clears it, and the button then reads "Loading…" and stays
+    // disabled for the life of the mount.
+    setLoadingMore(false);
     try {
       const page = await fetchPage({ limit: CHUNK });
       if (!isCurrent()) return;

@@ -29,11 +29,21 @@ const deferred = () => {
 
 const feed = (d, resetKey) => (
   <MemoryRouter>
-    <AuditFeed fetchPage={d.fetchPage} resetKey={resetKey} title="Recent changes" />
+    <AuditFeed
+      fetchPage={d.fetchPage}
+      resetKey={resetKey}
+      title="Recent changes"
+      projectHref={(project) => `/projects/${project.id}`}
+      documentHref={(document, project) => `/projects/${project.id}/documents/${document.id}`}
+    />
   </MemoryRouter>
 );
 
 const shown = (container) => texts(container, 'td').join(' ');
+
+const olderButton = (container) =>
+  [...container.querySelectorAll('button')].find((b) => /Load older|Loading/.test(b.textContent)) ??
+  null;
 
 describe('the audit feed when its scope changes under it', () => {
   it('keeps the scope it was last asked for, however late the other answers', async () => {
@@ -75,10 +85,8 @@ describe('the audit feed when its scope changes under it', () => {
     const view = await renderComponent(feed(d, 'A'));
     await view.step(async () => d.settle('A', [entry('ay')], 'more-of-a'));
 
-    const older = [...view.container.querySelectorAll('button')].find((b) =>
-      /Load older/.test(b.textContent),
-    );
-    expect(older).not.toBe(undefined);
+    const older = olderButton(view.container);
+    expect(older).not.toBe(null);
     d.at('A-older');
     await view.step(() => older.click());
 
@@ -93,6 +101,30 @@ describe('the audit feed when its scope changes under it', () => {
     await view.unmount();
   });
 
+  it('leaves the older-changes button usable after a re-scope mid-fetch', async () => {
+    // Same shape as above, read off the CONTROL rather than the rows: the two
+    // reads share one counter, so the dropped older page skipped the flag its
+    // own `finally` would have cleared and the button stayed "Loading…".
+    const d = deferred();
+    d.at('A');
+    const view = await renderComponent(feed(d, 'A'));
+    await view.step(async () => d.settle('A', [entry('ay')], 'more-of-a'));
+
+    d.at('A-older');
+    await view.step(() => olderButton(view.container).click());
+    expect(olderButton(view.container).textContent).toContain('Loading');
+
+    d.at('B');
+    await view.rerender(feed(d, 'B'));
+    await view.step(async () => d.settle('B', [entry('bee')], 'more-of-b'));
+    await view.step(async () => d.settle('A-older', [entry('ay-older')]));
+
+    const button = olderButton(view.container);
+    expect(button.textContent).toContain('Load older');
+    expect(button.disabled).toBe(false);
+    await view.unmount();
+  });
+
   it('shows what the one scope it was asked for said', async () => {
     const d = deferred();
     d.at('A');
@@ -100,5 +132,24 @@ describe('the audit feed when its scope changes under it', () => {
     await view.step(async () => d.settle('A', [entry('ay')]));
     expect(shown(view.container)).toContain('ay');
     await view.unmount();
+  });
+});
+
+describe('the href builders the app owes the feed', () => {
+  it('are named when one is missing, rather than dropping the links', async () => {
+    // Each app routes to a document differently, so the package cannot guess.
+    // A feed mounted without them used to render the Where column as plain
+    // text, which reads as "there is nothing to open here".
+    const d = deferred();
+    d.at('A');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(
+      renderComponent(
+        <MemoryRouter>
+          <AuditFeed fetchPage={d.fetchPage} resetKey="A" projectHref={(p) => `/p/${p.id}`} />
+        </MemoryRouter>,
+      ),
+    ).rejects.toThrow(/documentHref/);
+    error.mockRestore();
   });
 });
