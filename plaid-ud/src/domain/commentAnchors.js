@@ -10,11 +10,11 @@
 // anything else came from another app on the same substrate and describes as
 // outdated, which is honest: this app cannot show you an IGT gloss.
 //
-// `describeAnchor` and `anchorCaption` live in plaid-ui: neither depends on
-// what a document looks like. Re-exported so this file is the one place the
-// app asks about an anchor.
+// `anchorCaption` lives in plaid-ui: it does not depend on what a document
+// looks like. Re-exported so this file is the one place the app asks about an
+// anchor.
 
-export { describeAnchor, anchorCaption } from '@ui/domain/commentAnchors';
+export { anchorCaption } from '@ui/domain/commentAnchors';
 
 const QUOTE_LIMIT = 60;
 

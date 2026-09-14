@@ -63,11 +63,6 @@ export const isClitic = (morphType) =>
 export const isBoundType = (morphType) =>
   typeof morphType === 'string' && (isClitic(morphType) || /fix$/.test(morphType.toLowerCase()));
 
-/** Is this morph type in the stem/root (lexical) group of the inventory? */
-export const isStemType = (morphType) =>
-  typeof morphType === 'string' &&
-  ['stem', 'bound stem', 'root', 'bound root'].includes(morphType.toLowerCase());
-
 /**
  * The joint between two adjacent morphemes in a word, given their
  * metadata.morphType values: "=" when either side is a clitic, else "-".

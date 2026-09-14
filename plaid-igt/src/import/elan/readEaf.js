@@ -245,15 +245,6 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
 /** The stereotype governing a tier, or null for an unconstrained top tier. */
 export const stereotypeOf = (eaf, tier) => eaf.linguisticTypes?.[tier.typeRef]?.constraint ?? null;
 
-/** Every annotation in the file, keyed by ANNOTATION_ID. */
-export function annotationIndex(eaf) {
-  const byId = new Map();
-  for (const tier of eaf.tiers) {
-    for (const ann of tier.annotations) byId.set(ann.id, { ann, tier });
-  }
-  return byId;
-}
-
 /**
  * Order a set of sibling REF_ANNOTATIONs by their PREVIOUS_ANNOTATION chain.
  * Symbolic_Subdivision children are an ordered sequence and the chain is how

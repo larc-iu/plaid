@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 // re-exported here so this file stays the one import every screen uses.
 import { humanizeError } from '@ui/lib/errors.js';
 
-export { humanizeError, isPermissionError, statusOf } from '@ui/lib/errors.js';
+export { humanizeError, isPermissionError } from '@ui/lib/errors.js';
 
 // App-wide feedback primitives (sonner-backed). Transient outcomes are toasts.
 // Signature mirrors plaid-ud's feedback util: (message, title?).

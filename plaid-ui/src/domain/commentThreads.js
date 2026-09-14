@@ -8,8 +8,6 @@
 
 import { describeAnchor, anchorCaption } from './commentAnchors.js';
 
-export const SORTS = Object.freeze(['recent', 'oldest', 'position']);
-
 // The words of a Markdown body, for a one-line summary and for search.
 export function plainText(markdown) {
   return String(markdown ?? '')

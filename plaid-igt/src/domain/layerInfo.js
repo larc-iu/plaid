@@ -51,9 +51,3 @@ export function getIgtLayerInfo(raw) {
     spanLayers,
   };
 }
-
-// `containsToken(outer, inner)` — character-extent containment, the canonical
-// IGT parentage test (no parent-ref keys on tokens). Inclusive on both ends.
-export function containsToken(outer, inner) {
-  return inner.begin >= outer.begin && inner.end <= outer.end;
-}

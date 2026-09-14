@@ -159,9 +159,6 @@ export function sortedEdges(g) {
   );
 }
 
-export const outEdges = (g, id) => sortedEdges(g).filter((e) => e.src === id);
-export const inEdges = (g, id) => sortedEdges(g).filter((e) => e.tgt === id);
-
 // A new edge id for an edge the commands add (never a server id).
 export function freshEdgeId(g) {
   return `new-${g.nextId++}`;
