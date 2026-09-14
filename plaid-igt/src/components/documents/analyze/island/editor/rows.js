@@ -73,9 +73,16 @@ export const rows = {
 
   _closeRowMenu() {
     if (!this._rowMenu) return;
+    // Escape arrives from inside the menu (its rows are checkboxes), and the
+    // render below takes the row the focus is on away with it. Focus goes back
+    // to the label that opened the menu, as closing the popover does.
+    const back = this.container.querySelector('.igt-rowmenu')?.contains(document.activeElement)
+      ? this._rowMenuAnchor
+      : null;
     this._rowMenu = null;
     this._rowMenuAnchor = null;
     this._render(true);
+    if (back?.isConnected) back.focus();
   },
 
   // Open the row menu under the label that was clicked (grid label or sentence

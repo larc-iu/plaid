@@ -12,13 +12,27 @@ export const copy = {
     return COPY_FORMATS.some((f) => f.id === stored) ? stored : 'plain';
   },
 
+  // The caret that opened the format menu, when focus is inside the menu:
+  // closing it takes away the row the focus is on, and focus would fall to the
+  // page. Read BEFORE the render that removes it, as the popover's does.
+  _copyMenuAnchor() {
+    const menu = this.container.querySelector('.igt-copy__menu');
+    return menu?.contains(document.activeElement)
+      ? (menu.closest('.igt-copy')?.querySelector('.igt-copy__caret') ?? null)
+      : null;
+  },
+
   _closeCopyMenu() {
     if (this._copyMenu == null) return;
+    const back = this._copyMenuAnchor();
     this._copyMenu = null;
     this._render(true);
+    if (back?.isConnected) back.focus();
   },
 
   async _copySentence(sentence, ctx, format) {
+    // Picking a format closes the menu too, so it hands focus back the same way.
+    const back = this._copyMenuAnchor();
     const fields = {
       morphFields: ctx.morphFields,
       wordFields: ctx.wordFields,
@@ -34,6 +48,7 @@ export const copy = {
       this._render(true);
     }, 1400);
     this._render(true);
+    if (back?.isConnected) back.focus();
   },
 
   async _writeClipboard(text) {
