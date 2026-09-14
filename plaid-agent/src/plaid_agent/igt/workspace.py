@@ -296,8 +296,12 @@ class Workspace(BaseWorkspace):
         """The plan, plus the two things a lexicon tool builds up beside it:
         the entries the plan creates and the metadata it is patching. A
         rollback that put only the ops back left a created entry with no op to
-        create it, and the next tool read a lexicon holding it."""
-        return {**super().snapshot(), 'new_entries': dict(self.new_entries),
+        create it, and the next tool read a lexicon holding it.
+
+        Both are copied all the way down: an entry a tool creates and then
+        sets a field on is one dict, edited in place, so a shallow copy came
+        back from a rollback carrying the edit."""
+        return {**super().snapshot(), 'new_entries': copy.deepcopy(self.new_entries),
                 'item_patches': copy.deepcopy(self.item_patches)}
 
     def restore(self, saved: Dict[str, Any]) -> None:

@@ -772,15 +772,83 @@ def test_a_delete_that_cannot_carry_its_references_stages_nothing():
     assert len(w.ops) == before and not ops_of(w, 'delete_entry')
 
 
-def test_a_rolled_back_tool_call_takes_the_entries_it_created_with_it():
-    """`new_entries` is turn state beside the plan: a rollback that put only
-    the ops back left an entry with no op to create it, and the next tool read
-    a lexicon holding it."""
+def test_a_refused_create_entry_leaves_no_phantom_entry():
+    """`new_entries` is turn state beside the plan, and it was written BEFORE
+    the op, outside any rollback: a refused create left an entry nothing in
+    the plan makes, and every later tool in the turn read a lexicon holding
+    it. Called the way the harness calls a tool, with no rollback around it."""
     w = dict_ws()
-    before_ops, before_new = len(w.ops), dict(w.new_entries)
+    _fill_plan(w, 0)   # no room for anything
+    before = len(w.ops)
+    out = call_tool(w, 'create_entry', {'form': 'ndiwo', 'fields': {'gloss': 'relish'}})
+    assert out.startswith('Error:') and 'plan' in out
+    assert w.new_entries == {} and len(w.ops) == before
+    assert 'ndiwo' not in call_tool(w, 'read_lexicon', {})
+
+
+def test_a_refused_field_leaves_the_entry_as_the_turn_found_it():
+    """The patch a later tool reads the entry through was written before the
+    op too, so a refused change left the field CHANGED for the rest of the
+    turn: a read showed a value nothing in the plan would write."""
+    w = dict_ws()
+    _fill_plan(w, 0)
+    out = call_tool(w, 'set_entry_field', {'entry_form': 'phika', 'field': 'gloss', 'value': 'stew'})
+    assert out.startswith('Error:')
+    assert w.item_patches == {}
+    assert 'stew' not in call_tool(w, 'lexicon_entry', {'entry_form': 'phika'})
+
+
+# Every lexicon tool that plans a change, and enough to call it with. A tool
+# missing from this table is swept by nothing, so the sweep below asks the
+# module which tools there are.
+LEXICON_PLANS = {
+    'create_entry': ({'form': 'ndiwo', 'fields': {'gloss': 'relish'}}, None),
+    'set_entry_field': ({'entry_form': 'phika', 'field': 'gloss', 'value': 'stew'}, None),
+    'add_sense': ({'entry_form': 'kwatha', 'fields': {'gloss': 'stew'}}, None),
+    'move_sense': ({'entry_form': 'kwatha#1.2', 'number': '1'}, None),
+    'make_sense_of': ({'entry_form': 'kwatha', 'under_form': 'phika'}, None),
+    'free_sense': ({'entry_form': 'kwatha#1.1'}, None),
+    'order_homographs': ({'entry_form': 'x#1', 'order': ['3', '1', '2']}, 'homographs'),
+    'promote_example': ({'entry_form': 'phika', 'document': 'd1', 'ref': 's1.w2'}, None),
+    'remove_example': ({'entry_form': 'phika', 'index': 0}, 'examples'),
+}
+
+# d-phika with a usage example already on it, for remove_example.
+EXAMPLED = [dict(it, metadata={**it['metadata'], 'examples': [{'document': 'd1', 'token': 'w-2'}]})
+            if it['id'] == 'd-phika' else it for it in ITEMS]
+
+
+@pytest.mark.parametrize('tool', sorted(LEXICON_PLANS))
+def test_a_refused_lexicon_tool_leaves_nothing_behind(tool):
+    """Every route in, not the one that was just fixed: each of these writes
+    what the rest of the turn reads (a pending entry, a metadata patch) and
+    then stages, so each owes the same all-or-nothing."""
+    import copy as _copy
+    args, items = LEXICON_PLANS[tool]
+    w = dict_ws(items={'homographs': HOMOGRAPHS, 'examples': EXAMPLED}.get(items))
+    _fill_plan(w, 0)
+    before = (len(w.ops), _copy.deepcopy(w.new_entries), _copy.deepcopy(w.item_patches))
+    out = call_tool(w, tool, dict(args))
+    assert out.startswith('Error:'), f'{tool} was not refused: {out[:120]}'
+    assert (len(w.ops), w.new_entries, w.item_patches) == before, f'{tool} left turn state behind'
+
+
+def test_the_sweep_covers_every_lexicon_plan_tool():
+    from plaid_agent.igt import lexicon
+    from plaid_agent.igt.toolkit import _IMPL
+    planned = {name for name, fn in _IMPL.items() if fn.__module__ == lexicon.__name__}
+    assert planned == set(LEXICON_PLANS), sorted(planned ^ set(LEXICON_PLANS))
+
+
+def test_a_rollback_puts_back_an_entry_a_tool_had_edited():
+    """`new_entries` was copied one level deep, so a rollback returned the
+    same dicts: a tool that edited a pending entry's fields and then failed
+    kept the edit."""
+    w = dict_ws()
+    call_tool(w, 'create_entry', {'form': 'ndiwo', 'fields': {'gloss': 'relish'}})
+    key = next(iter(w.new_entries))
     with pytest.raises(RuntimeError):
         with w.staging():
-            call_tool(w, 'create_entry', {'form': 'ndiwo', 'fields': {'gloss': 'relish'}})
-            assert w.new_entries and len(w.ops) > before_ops
+            call_tool(w, 'set_entry_field', {'entry_form': 'ndiwo', 'field': 'gloss', 'value': 'sauce'})
             raise RuntimeError('the tool gave up')
-    assert len(w.ops) == before_ops and w.new_entries == before_new
+    assert w.new_entries[key]['metadata']['gloss'] == 'relish'
