@@ -141,7 +141,7 @@ npm run dev
 ----
 
 The dev servers proxy API requests to the development server on port 8085. See each project's `vite.config.js`.
-JavaScript, JSX, and CSS in both projects are formatted by Prettier, enforced by the hook in `githooks/`.
+JavaScript, JSX, and CSS in the apps and plaid-ui are formatted by Prettier, and plaid-core's Clojure by cljfmt, both applied to staged files by the tracked hook in `.githooks/` (enable once per clone with `git config core.hooksPath .githooks`).
 
 == Database Access
 
