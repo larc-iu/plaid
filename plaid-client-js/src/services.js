@@ -10,6 +10,75 @@
  */
 import { transformRequest, transformResponse } from './transforms.js';
 
+// An absolute URL anywhere in an error message, with the phrase that introduces
+// it (`... at http://host/api/v1/spans`). Client and transport errors name the
+// endpoint they called, which is the service operator's business and not the
+// requester's.
+const URL_IN_TEXT = /(?:\s+(?:at|for url:?))?\s*\b[a-zA-Z][\w+.-]*:\/\/\S+/g;
+
+/**
+ * What a requester is told when an error carries no message of its own.
+ * Naming the JS class instead would say nothing they can act on.
+ */
+export const UNKNOWN_FAILURE = 'The service could not finish this request.';
+
+const redact = (text, secrets) => {
+  let out = text;
+  for (const secret of secrets || []) {
+    if (secret && String(secret).length >= 8) out = out.split(String(secret)).join('[redacted]');
+  }
+  return out.trim();
+};
+
+/**
+ * One line about a failure that is safe to show the person who asked.
+ *
+ * Strips absolute URLs (so an internal host never reaches a requester's screen)
+ * and any `secrets` given (a model provider's API key can come back inside its
+ * own error text). The whole error still goes to the operator's console: this
+ * is the requester's half only. The Python twin is `requester_message`.
+ *
+ * @param {any} error
+ * @param {string[]} [secrets]
+ * @returns {string}
+ */
+export function requesterMessage(error, secrets = []) {
+  if (error && typeof error.status === 'number') {
+    if (!error.status) return 'The Plaid server could not be reached.';
+    let text = String(error.message || '');
+    if (error.url) text = text.split(` at ${error.url}`).join('').split(error.url).join('');
+    text = text.trim().replace(/[\s,:;]+$/, '');
+    return redact(text, secrets) || `HTTP ${error.status}`;
+  }
+  // An Error is read by its message and nothing else: `String(new TypeError(''))`
+  // is 'TypeError', which names the class to the requester and tells them
+  // nothing they can act on.
+  const raw =
+    error && typeof error === 'object' && 'message' in error
+      ? String(error.message ?? '')
+      : String(error ?? '');
+  const text = raw.replace(URL_IN_TEXT, '').trim().replace(/[\s,:;]+$/, '');
+  return redact(text, secrets) || UNKNOWN_FAILURE;
+}
+
+/**
+ * What the requester is told when a request fails, named by the service.
+ *
+ * Every path that reports a failed request goes through here, so a raw message
+ * cannot reach a requester from one of them. (Python's twin additionally lets a
+ * `ValueError` through unprefixed, as an authored refusal; JS has no
+ * distinguished refusal type, so every failure is named by the service.)
+ *
+ * @param {any} error
+ * @param {string} [serviceName]
+ * @param {string[]} [secrets]
+ * @returns {string}
+ */
+export function serviceErrorMessage(error, serviceName = '', secrets = []) {
+  const text = requesterMessage(error, secrets);
+  return serviceName ? `${serviceName}: ${text}` : text;
+}
+
 /**
  * Discover the services seen on a project — a synchronous GET. Returns every
  * service ever registered on the project: currently connected ones carry
@@ -215,9 +284,17 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
           data: { ...(data || {}), stopped: true },
         });
       },
+      // Every failure a requester is shown goes out through here, whoever
+      // reports it, so the scrub lives here rather than only in `settle`: a
+      // service that catches its own error and calls `helper.error(err)`
+      // would otherwise put the endpoint the client called on the requester's
+      // screen. Already-sanitized text passes through unchanged.
       error: (error) => {
         finished();
-        return reportEvent(requestId, { status: 'error', data: { error: error?.message || error } });
+        return reportEvent(requestId, {
+          status: 'error',
+          data: { error: requesterMessage(error) },
+        });
       },
     };
 
@@ -227,7 +304,11 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
       if (error instanceof ServiceCancelled || error?.name === 'ServiceCancelled') {
         responseHelper.stopped();
       } else {
-        responseHelper.error(error?.message || error);
+        // What reaches the requester is the sanitized half: the raw message
+        // names the endpoint the client called, which is the operator's
+        // business. The console keeps the whole error.
+        console.error(`Service ${serviceId} failed request ${requestId}:`, error);
+        responseHelper.error(serviceErrorMessage(error, serviceName));
       }
     };
     try {

@@ -19,7 +19,6 @@ Two distinct kinds of "arguments", do not conflate them:
 
 import argparse
 import contextlib
-import re
 import sys
 import threading
 import time
@@ -29,47 +28,14 @@ from typing import Any, Dict, List, Optional
 from plaid_client.client import PlaidClient
 from plaid_client.http import PlaidAPIError, short_error
 from plaid_client.service_schema import build_extras
-from plaid_client.services import ServiceRegistrationError, ServiceCancelled
-
-# An absolute URL anywhere in an error message, with the phrase that introduces
-# it (`... at http://host/api/v1/spans`, requests' `... for url: http://...`).
-# Client and transport errors name the endpoint they called, which is the
-# service operator's business and not the requester's.
-_URL_IN_TEXT = re.compile(r'(?:\s+(?:at|for url:?))?\s*\b[a-zA-Z][\w+.-]*://\S+')
-
-#: What a requester is told when an exception carries no message of its own.
-#: Naming the Python class instead would say nothing they can act on.
-UNKNOWN_FAILURE = 'The service could not finish this request.'
-
-
-def requester_message(error, secrets=()) -> str:
-    """One line about a failure that is safe to show the person who asked.
-
-    Strips absolute URLs (so an internal host never reaches a requester's
-    screen) and any ``secrets`` given (a model provider's API key can come
-    back inside its own error text). The full exception, with its traceback,
-    still goes to the operator's log: this is the requester's half only.
-
-    A network failure is reported as one, rather than as urllib3's retry
-    chain: the requester can do nothing with the latter and it names hosts.
-    """
-    if isinstance(error, PlaidAPIError):
-        if not error.status:
-            return 'The Plaid server could not be reached.'
-        text = str(error)
-        if error.url:
-            text = text.replace(f' at {error.url}', '').replace(error.url, '')
-        text = text.strip().rstrip(' ,:;')
-        return _redact(text, secrets) or f'HTTP {error.status}'
-    text = _URL_IN_TEXT.sub('', str(error) or '').strip().rstrip(' ,:;')
-    return _redact(text, secrets) or UNKNOWN_FAILURE
-
-
-def _redact(text: str, secrets) -> str:
-    for secret in secrets or ():
-        if secret and len(str(secret)) >= 8:
-            text = text.replace(str(secret), '[redacted]')
-    return text.strip()
+# requester_message and UNKNOWN_FAILURE live in services.py, beside the code
+# that puts a message on the wire: `serve`'s own fallback needs them too and
+# this module imports that one, not the other way round. Re-exported here
+# because this is where services import them from.
+from plaid_client.services import (  # noqa: F401  (UNKNOWN_FAILURE, requester_message re-exported)
+    ServiceRegistrationError, ServiceCancelled,
+    UNKNOWN_FAILURE, requester_message, service_error_message,
+)
 
 
 @contextlib.contextmanager
@@ -266,8 +232,8 @@ class BaseService(ABC):
         changed, human work would be lost) — so it goes out as it stands.
         Anything else is a fault in the service, named by the service.
         """
-        text = requester_message(error, secrets=self.REQUEST_SECRETS)
-        return text if isinstance(error, ValueError) else f'{self.service_name}: {text}'
+        return service_error_message(error, self.service_name,
+                                     secrets=self.REQUEST_SECRETS)
 
     #: Handle requests concurrently (each on its own thread) instead of
     #: single-flight. Right for an I/O-bound service such as a chat assistant

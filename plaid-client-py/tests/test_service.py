@@ -1079,3 +1079,101 @@ def test_a_stop_ends_the_beat_and_leaves_the_work_to_notice_it():
 def test_no_helper_means_no_beat():
     with progress_heartbeat(None, 40, 'x', interval_s=0.01):
         pass
+
+
+# --- every path that reports a failure scrubs it first ------------------------
+
+class _FakeChannel:
+    ready_state = 1
+    error = None
+
+    def wait_until_settled(self, timeout=None):
+        return 1
+
+    def close(self):
+        self.ready_state = 2
+
+
+def _served(handler):
+    """Stand ``serve`` up against a fake channel.
+
+    Returns ``(registration, deliver, events)``: ``deliver(payload)`` plays a
+    ``service_request`` down the channel and ``events`` collects everything the
+    service reported back.
+    """
+    import plaid_client.services as svc
+
+    events = []
+    captured = {}
+
+    class _Messages:
+        def listen(self, project_id, on_event, path=None):
+            captured['on_event'] = on_event
+            return _FakeChannel()
+
+        def _request(self, method, path, body=None, **kwargs):
+            events.append(body)
+
+    class _Client:
+        messages = _Messages()
+
+    registration = svc.serve(
+        _Client(), 'p1',
+        {'service_id': 'svc1', 'service_name': 'Punkt Tokenizer'},
+        handler)
+
+    def deliver(data=None):
+        captured['on_event']('service_request', {'request_id': 'r1', 'data': data or {}})
+
+    return registration, deliver, events
+
+
+def _reported_error(handler):
+    registration, deliver, events = _served(handler)
+    try:
+        deliver()
+    finally:
+        registration.stop()
+    errors = [e['data']['error'] for e in events if e.get('status') == 'error']
+    assert len(errors) == 1, f'expected one error event, got {events}'
+    return errors[0]
+
+
+def test_serves_fallback_does_not_hand_the_requester_an_internal_url():
+    # A service written directly against `serve` (no BaseService) whose work
+    # raises. The raw text names the endpoint the client called.
+    def handler(_data, _helper):
+        raise PlaidAPIError(
+            'HTTP 400 Span value is required at http://plaid.internal:8085/api/v1/spans',
+            status=400, url='http://plaid.internal:8085/api/v1/spans', method='POST')
+
+    assert _reported_error(handler) == 'Punkt Tokenizer: HTTP 400 Span value is required'
+
+
+def test_serves_fallback_does_not_name_a_python_class():
+    def handler(_data, _helper):
+        raise KeyError()
+
+    message = _reported_error(handler)
+    assert 'KeyError' not in message
+    assert message == f'Punkt Tokenizer: {UNKNOWN_FAILURE}'
+
+
+def test_a_service_reporting_its_own_error_is_scrubbed_too():
+    # The guard is on the helper, not only on serve's fallback: a service that
+    # catches its own exception and reports it reaches the requester the same
+    # way.
+    def handler(_data, helper):
+        helper.error(Exception(
+            '404 Client Error: Not Found for url: http://plaid.internal:8085/api/v1/media?v=3'))
+
+    assert _reported_error(handler) == '404 Client Error: Not Found'
+
+
+def test_an_authored_refusal_keeps_its_own_words():
+    said = 'No gloss field by that name.'
+
+    def handler(_data, _helper):
+        raise ValueError(said)
+
+    assert _reported_error(handler) == said

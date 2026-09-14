@@ -10,6 +10,7 @@ waiting requester.
 import contextlib
 import json
 import logging
+import re
 import threading
 import time
 import urllib.parse
@@ -21,6 +22,64 @@ from plaid_client.sse import SSE_CONNECT_TIMEOUT_S, abort_response
 from plaid_client.transforms import transform_request, transform_response
 
 logger = logging.getLogger(__name__)
+
+# An absolute URL anywhere in an error message, with the phrase that introduces
+# it (`... at http://host/api/v1/spans`, requests' `... for url: http://...`).
+# Client and transport errors name the endpoint they called, which is the
+# service operator's business and not the requester's.
+_URL_IN_TEXT = re.compile(r'(?:\s+(?:at|for url:?))?\s*\b[a-zA-Z][\w+.-]*://\S+')
+
+#: What a requester is told when an exception carries no message of its own.
+#: Naming the Python class instead would say nothing they can act on.
+UNKNOWN_FAILURE = 'The service could not finish this request.'
+
+
+def requester_message(error, secrets=()) -> str:
+    """One line about a failure that is safe to show the person who asked.
+
+    Strips absolute URLs (so an internal host never reaches a requester's
+    screen) and any ``secrets`` given (a model provider's API key can come
+    back inside its own error text). The full exception, with its traceback,
+    still goes to the operator's log: this is the requester's half only.
+
+    A network failure is reported as one, rather than as urllib3's retry
+    chain: the requester can do nothing with the latter and it names hosts.
+    """
+    if isinstance(error, PlaidAPIError):
+        if not error.status:
+            return 'The Plaid server could not be reached.'
+        text = str(error)
+        if error.url:
+            text = text.replace(f' at {error.url}', '').replace(error.url, '')
+        text = text.strip().rstrip(' ,:;')
+        return _redact(text, secrets) or f'HTTP {error.status}'
+    text = _URL_IN_TEXT.sub('', str(error) or '').strip().rstrip(' ,:;')
+    return _redact(text, secrets) or UNKNOWN_FAILURE
+
+
+def service_error_message(error, service_name='', secrets=()) -> str:
+    """What the requester is told when a request fails, named by the service.
+
+    A ``ValueError`` is an authored refusal — its message was written for the
+    person who asked (no gloss field by that name, the document changed, human
+    work would be lost) — so it goes out as it stands. Anything else is a fault
+    in the service, named by the service.
+
+    Every path that reports a failed request goes through here: ``BaseService``
+    for a service built on it, and ``serve``'s own fallback for one written
+    directly against the channel.
+    """
+    text = requester_message(error, secrets=secrets)
+    if isinstance(error, ValueError) or not service_name:
+        return text
+    return f'{service_name}: {text}'
+
+
+def _redact(text: str, secrets) -> str:
+    for secret in secrets or ():
+        if secret and len(str(secret)) >= 8:
+            text = text.replace(str(secret), '[redacted]')
+    return text.strip()
 
 # How long to wait for a channel-open attempt to declare itself (headers back,
 # or the attempt failed). Comfortably above the SSE connect timeout so a
@@ -402,11 +461,21 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
                     logger.warning('Failed to send stop message')
 
             def error(self, error):
-                """Send an error response for the request."""
+                """Send an error response for the request.
+
+                Every failure a requester is shown goes out through here,
+                whoever reports it, so the scrub lives here rather than only in
+                ``serve``'s fallback: a service that catches its own exception
+                and calls ``helper.error(exc)`` would otherwise put the endpoint
+                the client called, or the Python class that raised, on the
+                requester's screen. Already-sanitized text passes through
+                unchanged.
+                """
                 self._finished()
                 try:
                     _report_event(client, project_id, req_id,
-                                  {'status': 'error', 'data': {'error': str(error)}})
+                                  {'status': 'error',
+                                   'data': {'error': requester_message(error)}})
                 except Exception:
                     logger.warning('Failed to send error message')
 
@@ -418,7 +487,13 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
             # knows, and whatever was written before the checkpoint stands.
             helper.stopped()
         except Exception as e:
-            helper.error(str(e))
+            # What reaches the requester is the sanitized half: the raw text
+            # names the endpoint the client called and, for an exception with
+            # no message of its own, the Python class that raised it. Neither
+            # is the requester's business, and the operator's log below keeps
+            # the whole thing.
+            logger.exception('Service %s failed request %s', service_id, req_id)
+            helper.error(service_error_message(e, service_name))
 
     # Open the inbound request channel; this registers the service for
     # discovery (presence = open channel). The opener hands back a connection
