@@ -603,6 +603,8 @@ In Python, `ServiceCancelled` inherits `BaseException`, not `Exception` — the 
 A handler must not run on the channel's own reader thread, or it blocks the very channel that carries `service_cancel` for the request it is running, and the stop is not read until the work it was meant to stop has finished. `BaseService` handles this: it takes its single-flight lock and then runs the work on a thread of its own, so one request at a time is still the rule and the channel stays readable. A service written directly against `serve` must do the same.
 ====
 
+To test a handler without a server, `plaid_client.testing` (Python) loads a service file, gives it a fake client with the request, lock and batch surface, and runs one request through `BaseService` on the thread the server would use, recording every progress beat and terminal report. The bundled services' own tests are written against it.
+
 === Presence and persistence
 
 A service can take work **only while connected**. There is no request queue: a request to a service that is absent (or that disconnects mid-request) fails immediately rather than waiting for the service to come back.
