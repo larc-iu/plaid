@@ -18,13 +18,17 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer :all]
             [plaid.fixtures :as fix :refer [with-db with-mount-states
-                                            with-rest-handler with-admin]]
+                                            with-rest-handler with-admin
+                                            with-clean-db]]
             [plaid.rest-api.v1.middleware :as mw]
             [plaid.sql.common :as psc]
             [ring.mock.request :as mock])
   (:import (java.sql SQLException)))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
+;; The control case below creates a project through the real stack; without
+;; this it outlives the namespace and shows up in whatever runs next.
+(use-fixtures :each with-clean-db)
 
 ;; ============================================================
 ;; BUG-B: wrap-malformed-json-400 unit

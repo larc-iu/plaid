@@ -3,8 +3,10 @@
   in-process state atoms (locks, rate-limit buckets) between deftests,
   not just the DB tables. The two pairs of deftests below would have
   flapped under the pre-#113 fixture (atom leftover from test 1 visible
-  in test 2). Test ordering matters — keep the `-a` / `-b` suffixes so
-  clojure.test runs them in alphabetical order within the namespace."
+  in test 2). Each pair only means anything when `-a` runs before `-b`,
+  and `-b` would pass for the wrong reason if it ran first (nothing has
+  been left behind yet), so `-b` asserts that `-a` ran. Keep the
+  `-a` / `-b` suffixes: the runner takes them in definition order."
   (:require [clojure.test :refer [deftest is use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     with-clean-db]]
@@ -18,15 +20,24 @@
 ;; Locks
 ;; ---------------------------------------------------------------------------
 
+(def ^:private ran
+  "Which `-a` deftests have run. A `-b` deftest asserts its partner's entry
+  is here, so running out of order is a loud failure rather than a pass on
+  state that was never dirtied."
+  (atom #{}))
+
 (def ^:private leaky-doc-id "isolation-doc-leak-locks")
 (def ^:private leaky-user-id "isolation-user-leak-locks")
 
 (deftest locks-isolation-a-acquire
+  (swap! ran conj :locks)
   (is (= :acquired (locks/acquire-lock! leaky-doc-id leaky-user-id)))
   (is (some? (locks/get-lock-info leaky-doc-id))
       "Sanity: the lock we just took should be visible inside the same test."))
 
 (deftest locks-isolation-b-cleared
+  (is (contains? @ran :locks)
+      "`locks-isolation-a-acquire` must run first, or this asserts nothing.")
   (is (nil? (locks/get-lock-info leaky-doc-id))
       "Lock acquired in `locks-isolation-a-acquire` must NOT survive into
        the next deftest — that's exactly what `with-clean-db` now
@@ -47,6 +58,7 @@
   ;; Five failures is well under the 10-failure limit, so we shouldn't
   ;; trip the bucket *during* this test — just leave it dirty so the
   ;; next deftest can prove the fixture cleared it.
+  (swap! ran conj :rate-limit)
   (dotimes [_ 5]
     (rl/record-failure! (fake-request) leaky-username))
   (is (false? (rl/over-limit? (fake-request) leaky-username))
@@ -55,6 +67,8 @@
       "Sanity: all 5 failures landed in the bucket."))
 
 (deftest rate-limit-isolation-b-cleared
+  (is (contains? @ran :rate-limit)
+      "`rate-limit-isolation-a-spam` must run first, or this asserts nothing.")
   (is (empty? (get @(#'rl/buckets-atom) [(:remote-addr (fake-request)) leaky-username]))
       "Failures recorded in `rate-limit-isolation-a-spam` must NOT survive
        into the next deftest. If this fails, `with-clean-db` is not

@@ -5,20 +5,16 @@
   Ideal: exactly one wins with 200, the other gets 409 because the OCC
   middleware re-reads the bumped version and rejects.
 
-  Current SQL-port reality: the OCC check in
-  `plaid.rest-api.v1.middleware/wrap-document-version` reads + dispatches
-  WITHOUT carrying a tx-level lock into the write — a classic TOCTOU
-  window. Both racers can land their writes if the read+handler dispatch
-  windows overlap. The fix is non-trivial (either a SELECT...FOR UPDATE
-  equivalent or a version-conditional UPDATE inside the write tx).
+  That is what happens (task #108). The in-tx version check inside
+  `plaid.sql.operation/submit-operation*` reads the document row through
+  the same write tx as the body, so two racers carrying the same stale
+  version cannot both commit. Before it, the check lived in
+  `plaid.rest-api.v1.middleware/wrap-document-version`, which read and
+  dispatched without carrying a tx-level lock into the write: a classic
+  TOCTOU window in which both racers could land.
 
-  This test PINS DOWN the current behavior so a future OCC tightening
-  produces a visible failure here: today we expect that across N
-  attempts, we observe a MIX of outcomes (some 200/200 races, some
-  200/409 strict-serial), with at least one 200 in every attempt
-  (no double-409 — at least one writer must commit). When/if OCC
-  becomes strict, flip `expect-strict-occ?` to true and the
-  assertions tighten."
+  So every attempt must resolve to exactly {200, 409}. A regression that
+  let both writers through even once fails here."
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request with-admin with-clean-db
@@ -28,19 +24,6 @@
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
 (use-fixtures :each with-clean-db)
-
-(def ^:private expect-strict-occ?
-  "Task #108: strict OCC is now in effect. The in-tx version check
-  inside `plaid.sql.operation/submit-operation*` reads the document
-  row through the same write tx as the body, so two racers carrying
-  the same stale version cannot both commit — exactly one wins, the
-  other observes the winner's bumped version and is rejected with a
-  409.
-
-  Set to false to pin the previous buggy behavior (where the
-  middleware did the check before the write tx opened — see the
-  module docstring for the TOCTOU window)."
-  true)
 
 (defn- patch-text-with-version
   "Issue a PATCH /texts/:id with ?document-version=<v>. Returns the full
@@ -86,21 +69,15 @@
           (str "Saw 409/409 on " double-409 " attempts: " results)))
     (testing "Every attempt produces at least one 200 (the winner)"
       (is any-200? (str "No 200 in any attempt: " results)))
-    (when expect-strict-occ?
-      (testing "STRICT OCC: EVERY attempt resolves to exactly {200, 409}.
-                Under BEGIN IMMEDIATE the loser's tx cannot start until
-                the winner commits, so its in-tx version check necessarily
-                sees the bump — there is no timing window in which both
-                may commit. The previous any-409?-across-8-attempts
-                assertion would have passed a partial regression that let
-                both writers through 7 times out of 8."
-        (doseq [[i pair] (map-indexed vector results)]
-          (is (= #{200 409} (set pair))
-              (str "Attempt " i " did not resolve to {200, 409}: " pair))))
-      ;; Kept for the failure-message ergonomics of the aggregate view.
-      (is any-409? (str "Expected 409s under strict OCC; got " results)))
-    (when-not expect-strict-occ?
-      (testing "Current racy OCC: both writes commonly succeed. This
-                test pins the behavior so a future fix flips the
-                signal — flip `expect-strict-occ?` when ready."
-        (is true)))))
+    (testing "STRICT OCC: EVERY attempt resolves to exactly {200, 409}.
+              Under BEGIN IMMEDIATE the loser's tx cannot start until
+              the winner commits, so its in-tx version check necessarily
+              sees the bump — there is no timing window in which both
+              may commit. The previous any-409?-across-8-attempts
+              assertion would have passed a partial regression that let
+              both writers through 7 times out of 8."
+      (doseq [[i pair] (map-indexed vector results)]
+        (is (= #{200 409} (set pair))
+            (str "Attempt " i " did not resolve to {200, 409}: " pair))))
+    ;; Kept for the failure-message ergonomics of the aggregate view.
+    (is any-409? (str "Expected 409s under strict OCC; got " results))))

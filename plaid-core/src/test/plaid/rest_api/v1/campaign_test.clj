@@ -290,7 +290,16 @@
             (is (empty? vs) (str cfg-id " seed=" seed " op#" i " (" op ")"))))))))
 
 (deftest campaign
-  (when (System/getenv "CAMPAIGN")
+  (if-not (System/getenv "CAMPAIGN")
+    ;; Not a silent pass: say that the harness did not run, and still assert
+    ;; the thing that is cheap to check without it, so a config table that
+    ;; went empty or a namespace that stopped loading is caught here rather
+    ;; than the next time someone sets CAMPAIGN.
+    ;; The runner captures a passing test's output, so the notice is only seen
+    ;; outside it (a REPL run). What keeps this deftest honest is the assertion:
+    ;; without one it reported a pass having checked nothing at all.
+    (do (println "SKIPPED campaign: env-gated, set CAMPAIGN=1 to run the harness")
+        (is (seq configs) "the campaign configs are defined even when the harness is not run"))
     (let [requested (or (System/getenv "CAMPAIGN_CONFIGS") "all")
           ids (if (= requested "all") (sort (keys configs)) (str/split requested #","))
           seeds (Integer/parseInt (or (System/getenv "CAMPAIGN_SEEDS") "12"))
