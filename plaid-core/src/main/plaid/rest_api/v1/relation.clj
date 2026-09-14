@@ -68,10 +68,13 @@
 (defn bulk-update-get-document-id
   "The document the OCC middleware checks `?document-version=` against. A
   bulk update reaching more than one document refuses the parameter
-  outright (`plaid.sql.bulk/bulk-update!`)."
+  outright (`plaid.sql.bulk/bulk-update!`). Reads the first entry that
+  resolves, not simply the first, the way `bulk-update-get-project-id`
+  does: an unknown id at the head of the list would otherwise leave the
+  document unresolved and answer 400 where the update's own 404 is the
+  caller's real answer."
   [{db :db params :parameters}]
-  (when-let [id (-> params :body first :id)]
-    (:relation/document (r/get db id))))
+  (some #(:relation/document (r/get db (:id %))) (:body params)))
 
 (def relation-routes
 

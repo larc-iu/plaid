@@ -179,6 +179,29 @@
     (assert-not-found res)
     (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")))
 
+(deftest an-unknown-id-in-first-position-under-occ-is-still-a-404
+  ;; The OCC middleware resolves the document off the body. Reading only the
+  ;; FIRST entry, an unknown id at the head left it unresolved and answered
+  ;; "no document was found with the provided version" (400), hiding the
+  ;; update's own 404 from the caller.
+  (let [{:keys [d1]} (setup)
+        v (version (:doc d1))
+        at (fn [path items]
+             (api-call admin-request {:method :patch
+                                      :path (str path "?document-version=" v)
+                                      :body items}))]
+    (testing "spans"
+      (assert-not-found (at "/api/v1/spans/bulk" [{:id (random-uuid) :value "X"}
+                                                  {:id (:s1 d1) :value "Y"}])))
+    (testing "relations"
+      (assert-not-found (at "/api/v1/relations/bulk" [{:id (random-uuid) :value "X"}
+                                                      {:id (:r d1) :value "Y"}])))
+    (testing "tokens"
+      (assert-not-found (at "/api/v1/tokens/bulk" [{:id (random-uuid) :metadata {"a" "b"}}
+                                                   {:id (:t1 d1) :metadata {"a" "b"}}])))
+    (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")
+    (is (= v (version (:doc d1))) "and the document was not bumped")))
+
 (deftest a-token-has-no-value-to-update
   (let [{:keys [d1]} (setup)]
     (testing "the route drops a stray value and applies the metadata"
