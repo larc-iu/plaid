@@ -54,6 +54,26 @@ def test_an_unknown_kind_raises_where_the_executor_asks_for_it():
     assert ok.kind_of(reg, {'kind': 'drop_it'}).noun == ('removal', 'removals')
 
 
+def test_a_plan_refuses_before_a_pass_runs_what_no_pass_would_apply():
+    """The three ways an op reaches the executor and is written as nothing at
+    all, under an operation label saying it was applied."""
+    reg = ok.registry([
+        ok.OpKind('now', ('change', 'changes'), apply=lambda ctx, op: 1),
+        ok.OpKind('later', ('change', 'changes'), stage='second', apply=lambda ctx, op: 1),
+        ok.OpKind('never', ('sweep', 'sweeps'), stage=ok.RESOLVED, shape=ok.SCOPE),
+    ])
+    stages = (ok.BATCH, 'second')
+    ok.check_applicable(reg, [{'kind': 'now'}, {'kind': 'later'}], stages)
+    with pytest.raises(ok.UnknownKind, match='unknown kind'):
+        ok.check_applicable(reg, [{'kind': 'nope'}], stages)
+    with pytest.raises(ok.UnknownKind, match='resolved before'):
+        ok.check_applicable(reg, [{'kind': 'never'}], stages)
+    # An applier that works and a stage the caller does not run: every pass
+    # skips it, nothing counts it, and the label says it was applied.
+    with pytest.raises(ok.UnknownKind, match="op 2 \\(later\\): no pass of the executor applies a kind staged 'second'"):
+        ok.check_applicable(reg, [{'kind': 'now'}, {'kind': 'later'}], (ok.BATCH,))
+
+
 def test_what_a_plan_deletes_is_read_off_the_kinds_that_delete():
     reg = _reg()
     ops = [{'kind': 'drop_it', 'id': 't1'}, {'kind': 'set_value', 'id': 't2', 'value': 'x'}]

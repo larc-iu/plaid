@@ -130,16 +130,24 @@ def registry(kinds: Iterable[OpKind]) -> Dict[str, OpKind]:
     return out
 
 
-def check_applicable(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]], first: int = 1) -> None:
+def check_applicable(reg: Mapping[str, OpKind], ops: Iterable[Dict[str, Any]],
+                     stages: Sequence[str], first: int = 1) -> None:
     """Refuse, BEFORE any pass of the executor runs, a plan carrying a kind
-    nobody declared or one that should have been resolved away.
+    nobody declared, one that should have been resolved away, or one staged
+    for a pass this executor does not run.
 
-    Either would otherwise be applied as nothing at all, under an operation
-    label saying it was applied, which is the worst outcome a plan has."""
+    ``stages`` is every pass the caller is about to run, so a kind declared
+    outside them refuses here rather than being skipped by each pass in turn,
+    counted as nothing, and reported applied. All three would otherwise reach
+    the user as an operation label saying a change was made that was not,
+    which is the worst outcome a plan has."""
     for i, op in enumerate(ops, start=first):
         spec = kind_of(reg, op, index=i)
         if spec.apply is None:
             raise UnknownKind(f'op {i} ({spec.name}): this kind is resolved before the plan is applied')
+        if spec.stage not in stages:
+            raise UnknownKind(f'op {i} ({spec.name}): no pass of the executor applies a kind staged '
+                              f'{spec.stage!r}')
 
 
 def kind_of(reg: Mapping[str, OpKind], op: Any, index: Optional[int] = None) -> OpKind:

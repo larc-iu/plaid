@@ -89,6 +89,12 @@ ANALYSIS = 'analysis'            # a word's morpheme chain is replaced
 TOKEN = 'token'                  # a sentence, a word, a morpheme, or a value on one
 ENTRY = 'entry'                  # a lexicon entry
 
+# The passes of the executor, which is the whole list a kind may be staged
+# for. IGT has one: everything it applies, it applies in the same loop. A kind
+# declared for any other pass would be applied by none of them, so the plan
+# refuses before the first batch opens (`core.opkind.check_applicable`).
+STAGES = (ok.BATCH,)
+
 
 # --- the executor's shared state -------------------------------------------------
 
@@ -727,10 +733,11 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
 
 
 def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
-    # An unknown kind, or one that should have been resolved away, refuses
-    # before the first batch opens rather than being written as nothing under
-    # a label saying it was applied.
-    ok.check_applicable(KIND, ops)
+    # An unknown kind, one that should have been resolved away, or one staged
+    # for a pass this executor does not run refuses before the first batch
+    # opens rather than being written as nothing under a label saying it was
+    # applied.
+    ok.check_applicable(KIND, ops, STAGES)
     with client.operation(label):
         ctx = Context(client, project, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
         b = ctx.b

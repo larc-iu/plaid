@@ -251,6 +251,52 @@ def test_an_unknown_igt_kind_refuses_instead_of_writing_nothing():
                  counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
 
 
+def test_a_kind_staged_for_a_pass_igt_does_not_run_refuses(monkeypatch):
+    """A working applier and a stage no pass runs: every pass skips the op,
+    nothing counts it, and the operation label says it was applied."""
+    import pytest
+    from plaid_agent.core.opkind import OpKind
+    from plaid_agent.core.plan import Stamps
+    from plaid_agent.igt import plan
+    from collections import Counter
+    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), stage='later',
+                                                    apply=lambda ctx, op: 1))
+    c = FakeClient()
+    with pytest.raises(ValueError, match='no pass of the executor'):
+        plan._execute(c, [{'kind': 'orphan', 'label': ''}], label='l', project=None,
+                      counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
+    assert c.batches == [] and c.log == []
+
+
+def test_a_kind_staged_for_a_pass_ud_does_not_run_refuses(monkeypatch):
+    import pytest
+    from plaid_agent.core.opkind import OpKind
+    from plaid_agent.core.plan import Stamps
+    from plaid_agent.ud import plan
+    from collections import Counter
+    monkeypatch.setitem(plan.KIND, 'orphan', OpKind('orphan', ('orphan', 'orphans'), stage='later',
+                                                    apply=lambda ctx, op: 1))
+    c = FakeClient()
+    with pytest.raises(ValueError, match='no pass of the executor'):
+        plan._execute(c, [{'kind': 'orphan', 'label': ''}], label='l',
+                      counts=Counter(), notes=[], stamps=Stamps('verified', 's'))
+    assert c.batches == [] and c.log == []
+
+
+def test_ud_runs_exactly_the_passes_it_declares(monkeypatch):
+    """STAGES is the list `check_applicable` refuses a kind outside of, so a
+    pass named there and never run would skip that kind again, and a pass run
+    without being named would refuse a kind it can apply."""
+    from plaid_agent.core.plan import Stamps
+    from plaid_agent.ud import plan
+    from collections import Counter
+    seen = []
+    monkeypatch.setattr(plan, '_run', lambda ctx, ops, stage: seen.append(stage))
+    plan._execute(FakeClient(), [], label='l', counts=Counter(), notes=[],
+                  stamps=Stamps('verified', 's'))
+    assert seen == list(plan.STAGES)
+
+
 def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():
     """The same two sets in the other app. UD applies its kinds in three
     passes, so the stage is part of the declaration too, and a kind that
@@ -263,7 +309,7 @@ def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():
             assert spec.apply is None, f'{name} never reaches the executor'
         else:
             assert callable(spec.apply), f'{name} has no apply function'
-            assert spec.stage in (opkind.BATCH, plan.IDS, plan.PARSE), f'{name} belongs to no pass'
+            assert spec.stage in plan.STAGES, f'{name} belongs to no pass'
     registered = {spec.apply for spec in plan.KIND.values() if spec.apply}
     orphans = _apply_functions(plan) - registered
     assert not orphans, f'appliers no kind names: {sorted(f.__name__ for f in orphans)}'

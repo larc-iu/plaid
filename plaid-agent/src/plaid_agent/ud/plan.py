@@ -42,6 +42,13 @@ WORD_SHAPE = 'word_shape'      # a token's words are deleted and remade
 IDS = 'ids'
 PARSE = 'parse'
 
+# Every pass `_execute` runs, which is the whole list a kind may be staged
+# for. A kind declared outside them belongs to no pass: each pass would skip
+# it, nothing would count it, and the operation label would say it was
+# applied. The plan refuses before the first pass runs
+# (`core.opkind.check_applicable`).
+STAGES = (ok.BATCH, IDS, PARSE)
+
 # How long the parser may say nothing before the plan gives up on it. This
 # measures SILENCE, not elapsed time: the parser reports progress as it goes,
 # so a long document does not trip it and a parser that has died does.
@@ -530,17 +537,17 @@ def _run(ctx: Context, ops, stage: str) -> None:
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
-    # An unknown plan operation kind, or one that should have been resolved
-    # away, refuses before any pass runs rather than being written as nothing
-    # under a label saying it was applied.
-    ok.check_applicable(KIND, ops, first=0)
+    # An unknown plan operation kind, one that should have been resolved away,
+    # or one staged for a pass below that does not exist refuses before any
+    # pass runs rather than being written as nothing under a label saying it
+    # was applied.
+    ok.check_applicable(KIND, ops, STAGES, first=0)
     with client.operation(label):
         ctx = Context(client, ops, stamps, counts, notes, TrackingBatcher(client, tracker=tracker))
         b = ctx.b
 
         # --- pass 1: the columns, and any lemma span a relation is going to need ---
-        # Every kind the executor sees that is not waiting on a minted id. A
-        # kind nobody wired up refuses here, in the pass every plan runs.
+        # Every kind the executor sees that is not waiting on a minted id.
         _run(ctx, ops, ok.BATCH)
 
         # Second sub-pass: the lemma spans a relation is going to need, now
