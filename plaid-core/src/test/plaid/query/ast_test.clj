@@ -499,6 +499,31 @@
                           {"find" ["?s"]
                            "where" [["span" "?s" {"layer" "g" "metadata" {"gloss" {"literal" []}}}]]}))))))
 
+(deftest literal-wrapper-in-a-predicate-term
+  (testing "a predicate literal that begins with ? goes in the same wrapper the metadata constraint takes"
+    (let [ast* (ast/parse+validate {"find" ["?s"]
+                                    "where" [["span" "?s" {"layer" "g"}]
+                                             ["=" "?s.metadata.gloss" {"literal" "?PL"}]]})]
+      (is (= "?PL" (nth (second (:where ast*)) 2))
+          "the wrapper is unwrapped to the literal, not read as a variable")))
+  (testing "a bare ?-string is still an unbound var, and the message names the wrapper"
+    (let [e (try (ast/parse+validate {"find" ["?s"]
+                                      "where" [["span" "?s" {"layer" "g"}]
+                                               ["=" "?s.metadata.gloss" "?PL"]]})
+                 (catch clojure.lang.ExceptionInfo ex ex))]
+      (is (= 400 (:code (ex-data e))))
+      (is (re-find #"\{\"literal\"" (ex-message e)))))
+  (testing "the wrapper is checked, not trusted"
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "g"}]
+                                                       ["=" "?s.metadata.gloss" {"literal" nil}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "g"}]
+                                                       ["=" "?s.metadata.gloss" {"literal" ["a"]}]]}))))
+    (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"]
+                                              "where" [["span" "?s" {"layer" "g"}]
+                                                       ["=" "?s.metadata.gloss" {"literal" "x" "regex" "y"}]]}))))))
+
 (deftest field-paths-review-fixes
   (testing "group by a field path is allowed (mirrors aggregate sources)"
     (is (some? (ast/expand {"where" [["token" "?t" {"layer" "w"}]]

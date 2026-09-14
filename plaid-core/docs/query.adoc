@@ -554,11 +554,16 @@ A predicate compares two already-bound terms: `[op, a, b]` where `op` is one of
 ["=",  "?v1", "?v2"]   # two value variables that must be equal
 ["<",  "?n", 5]        # a value variable bound to begin, vs a literal
 ["=",  "?s.value", "NOUN"]   # a field path vs a literal
+["=",  "?s.metadata.gloss", {"literal": "?PL"}]   # a literal that begins with ?
 ----
 
 * On entity variables only `=` / `!=` are allowed (ids have no order); this is
   how you say "two distinct matches" and keep an entity from matching itself.
 * On value variables and literals, all six operators work.
+* A term beginning with `?` reads as a variable. For a literal that really does
+  begin with `?`, use the same `{"literal": …}` wrapper the
+  <<Metadata,metadata constraint>> takes. It wraps one string, number, or
+  boolean.
 * Both variable terms must be bound elsewhere in `where`; a predicate filters, it
   never introduces a variable. Predicates are not allowed inside `not`.
 

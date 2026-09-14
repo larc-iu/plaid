@@ -212,6 +212,37 @@
                 (re-matches #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" s))))
 
 ;; ---------------------------------------------------------------------------
+;; The {"literal": v} escape
+;; ---------------------------------------------------------------------------
+;; On the JSON wire a string beginning with `?` is a variable, so a value that
+;; really begins with `?` (an uncertain gloss like "?PL") can only be written
+;; wrapped. Recognized in a :metadata constraint and in a predicate term, the two
+;; places a bare `?`-string would otherwise be read as a variable. Keys arrive
+;; from the wire as strings, so both spellings are accepted.
+
+(defn- literal-key
+  "The key a `{:literal v}` wrapper is written under, or nil if `x` is not one."
+  [x]
+  (when (map? x)
+    (cond (contains? x :literal) :literal
+          (contains? x "literal") "literal")))
+
+(defn- unwrap-literal
+  "The value inside a `{:literal v}` term. Rejects a companion key and a
+  non-scalar payload, so the wrapper cannot smuggle a map or a list past the
+  term checks."
+  [x]
+  (let [k (literal-key x)
+        extra (remove #{k} (keys x))]
+    (when (seq extra)
+      (err! :parse (str "A {\"literal\": …} term takes no other key(s), got: " (vec extra))))
+    (let [v (get x k)]
+      (when-not (or (string? v) (number? v) (boolean? v))
+        (err! :parse (str "A {\"literal\": …} term must wrap a string, number or boolean, got: "
+                          (pr-str v))))
+      v)))
+
+;; ---------------------------------------------------------------------------
 ;; Field references — dotted paths: ?t.begin / ?s.metadata.k… / ?sl.config.k…
 ;; ---------------------------------------------------------------------------
 ;; A field reference is a `?var` followed by a dotted path. It is a scalar TERM
@@ -252,10 +283,14 @@
 
 (declare ->var)
 (defn- ->term
-  "Normalize a predicate/aggregate scalar term: a dotted field path -> field-ref;
-  a `?name` -> var; anything else -> literal (passes through)."
+  "Normalize a predicate/aggregate scalar term: a `{:literal v}` wrapper -> the
+  wrapped value; a dotted field path -> field-ref; a `?name` -> var; anything
+  else -> literal (passes through)."
   [x]
-  (if (dotted-name? x) (->field-ref x) (->var x)))
+  (cond
+    (literal-key x) (unwrap-literal x)
+    (dotted-name? x) (->field-ref x)
+    :else (->var x)))
 
 (defn field-resolve
   "Interpret a field-ref's `path` against the head var's `kind`. Returns one of
@@ -688,6 +723,7 @@
       (= head :vocab-link) (-> kinds (assoc-kind (first args) :token) (assoc-kind (second args) :vocab))
       (= head :link-token) (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :token))
       (= head :link-item)  (-> kinds (assoc-kind (first args) :link) (assoc-kind (second args) :vocab))
+
       ;; a layer-constraint clause binds its var to the head's layer kind, and each
       ;; structural-slot var to its parent layer kind (assoc-kind detects conflicts
       ;; and rejects a dotted name in the slot)
@@ -1127,7 +1163,9 @@
           (cond
             (field-ref? t) (validate-field-ref! kinds positive t ordering?)
             (var? t) (do (when-not (positive t)
-                           (err! :validate (str "Predicate :" (name op) " references unbound var " t)))
+                           (err! :validate (str "Predicate :" (name op) " references unbound var " t
+                                                ". For a literal value that begins with '?', write {\"literal\": "
+                                                (pr-str (str t)) "}.")))
                          (when (and ordering? (not= :scalar (get kinds t)))
                            (err! :validate (str "Predicate :" (name op) " cannot order entity/layer variables "
                                                 "(ids are unordered); use := or :!="))))
