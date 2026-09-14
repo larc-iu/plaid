@@ -377,6 +377,8 @@ See <<_headwords_and_senses>>.
 **Bulk Add** takes rows pasted from a spreadsheet or read from a file.
 It lets you map the columns onto the entry fields, then reviews each row against the entries that already exist before anything is created, so a homonym stays separate and an existing entry is never overwritten unless you say so.
 **Replace** finds text in one field of every entry, the form included, and replaces it: as plain text, as a whole value, or as a regular expression.
+Plain text ignores case.
+The other two do not.
 A fourth kind, **is empty**, matches the entries that have no value in the field and sets one, which is how a status is given to a lexicon imported without any.
 It has no counterpart in Bulk Edit: an annotation field has no value on a word until something writes one, so filling every blank means visiting every word rather than matching what is there.
 Use **Validation** to find the words a field is missing on, or ask the assistant.
@@ -656,6 +658,10 @@ There are four operations:
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor.
 
+Respelling and replacing ask how to match, with the same three kinds the Search tab offers.
+Contains ignores case.
+Is exactly and matches a regular expression do not, and here a match is a write.
+
 Bulk Edit respects tagsets.
 A replacement a closed tagset refuses is skipped, and the preview says so.
 
@@ -856,6 +862,8 @@ To grab a single sentence instead, use **Copy as IGT** in the Analyze tab.
 A project's **Search** tab looks across every document.
 Pick where to look: word forms, morpheme forms, any annotation field at any scope, or the lexicon's entries.
 Type what to find, and choose whether a match **contains** it, **is exactly** it, or **matches** a regular expression.
+Contains ignores case.
+The other two do not.
 
 Results come in two views:
 
@@ -942,7 +950,9 @@ Three things can be done from it, and each only ever unblocks something: take a 
 
 **Logs** is what the server has been doing since it last started.
 Requests are one table, with the account behind each one, and everything else is another, with warnings, errors and their stack traces.
-Search, a status class and a level narrow both, clicking an account narrows to that person's work, and any column can be sorted, so the slowest requests are one click away.
+Search narrows both tables.
+A status class narrows the requests, a level narrows the events to that level and worse, and clicking an account narrows the requests to that person's work.
+Every column of the requests table sorts, so the slowest requests are one click away.
 **Live** keeps the page up to date while a problem is happening.
 Where the server writes to a log file, the tail of the file is at the bottom of the tab.
 
