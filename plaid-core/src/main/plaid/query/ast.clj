@@ -1002,7 +1002,7 @@
       (= head :related*)
       (let [[a b cmap] args]
         (when-not (and (var? a) (var? b))
-          (err! :validate ":related* takes two span variables, got: " (pr-str [a b])))
+          (err! :validate (str ":related* takes two span variables, got: " (pr-str [a b]))))
         (when (> (count args) 3)
           (err! :validate ":related* takes two span vars and a constraint map"))
         (when-not (and (map? cmap) (contains? cmap :layer))

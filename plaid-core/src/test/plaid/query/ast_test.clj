@@ -571,6 +571,17 @@
   (testing "a non-list :scope :project-ids is rejected"
     (is (= 400 (code-of #(ast/parse+validate {"find" ["?s"] "where" [["span" "?s" {"layer" "p"}]] "scope" {"project-ids" 5}}))))))
 
+(deftest related-arity-error-reports-its-message
+  (testing "a non-var :related* argument is a 400 carrying the written message"
+    (let [e (try (ast/parse+validate {"find" ["?a"]
+                                      "where" [["span" "?a" {"layer" "p"}]
+                                               ["related*" "?a" "notavar" {"layer" "dep"}]]})
+                 (catch clojure.lang.ExceptionInfo ex ex))]
+      (is (instance? clojure.lang.ExceptionInfo e) "not a ClassCastException from err!'s merge")
+      (is (= 400 (:code (ex-data e))))
+      (is (re-find #"two span variables" (ex-message e))
+          "the author reads what was written, not \"Internal query error\""))))
+
 (deftest attr-predicate-ops
   ;; the Datalog-style `~` (regex) and `in` (membership) ops + reference dot-paths
   (testing "~ / in / reference paths on bound vars validate"
