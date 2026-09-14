@@ -434,6 +434,21 @@ def test_a_confirm_skips_what_rides_a_token_the_plan_rewrites():
     assert notes == ['a confirmation: 3 annotations left unconfirmed (deleted in this plan)']
 
 
+def test_a_named_confirmation_keeps_what_a_text_edit_only_guesses_away():
+    """A text edit's word ids are a guess (the server diffs the text), so a
+    confirmation naming one of them is not refused: what survives is still
+    confirmed, and the note says how much was left out. A CERTAIN delete of
+    the same material refuses the plan instead."""
+    ops = [{'kind': 'edit_text', 'document_id': 'd1', 'text_id': 't', 'begin': 0, 'end': 5,
+            'old': 'Ali-d', 'new': 'Ali', 'word_ids': ['w-1'], 'morpheme_ids': ['m-1a'], 'label': 'retype s1'},
+           {'kind': 'confirm', 'named': True, 'span_ids': ['sp-1', 'sp-2'], 'token_ids': [], 'link_ids': [],
+            'on': {'sp-1': 'w-1', 'sp-2': 'w-9'}, 'label': 'confirm s1.w1'}]
+    out, notes = normalize_ops(ops)
+    confirm = [o for o in out if o['kind'] == 'confirm'][0]
+    assert confirm['span_ids'] == ['sp-2']
+    assert notes == ['confirm s1.w1: 1 annotation left unconfirmed (deleted in this plan)']
+
+
 def test_a_single_delete_never_repeats_what_a_bulk_already_took():
     # The split bulk-deletes the old chain; the analysis names the same
     # morphemes. A bulk_delete of gone ids is accepted, a SINGLE delete of one

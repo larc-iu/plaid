@@ -687,18 +687,20 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # on, the entry a link points at, the span a comment is anchored to,
         # the material a confirmation the model NAMED confirms.
         writes = ok.written_to(KIND, op)
-        if writes & doomed:
-            # A CERTAIN delete is refused as the plan is built, in both orders,
-            # so a card never promises a change that will not happen. Reaching
-            # here with one means the plan was built some way the staging guard
-            # does not cover, and refusing the whole plan says so rather than
-            # applying most of it.
-            if writes & certain:
-                raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
-                                 'another change in this plan')
-            # A text edit's word ids are a GUESS (the server diffs the text and
-            # may keep the word), so the op is dropped rather than refused: it
-            # is moot if the word goes, and the plan was already approved.
+        # A CERTAIN delete is refused as the plan is built, in both orders, so
+        # a card never promises a change that will not happen. Reaching here
+        # with one means the plan was built some way the staging guard does not
+        # cover, and refusing the whole plan says so rather than applying most
+        # of it.
+        if writes & certain:
+            raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
+                             'another change in this plan')
+        # A text edit's word ids are a GUESS (the server diffs the text and
+        # may keep the word), so the op is dropped rather than refused: it
+        # is moot if the word goes, and the plan was already approved. A
+        # confirmation covers several things and keeps the ones that survive,
+        # below.
+        if writes & doomed and k != 'confirm':
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue
@@ -708,7 +710,9 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         if k == 'confirm' and (doomed or dead):
             # A confirmation over a scope stands for the material awaiting
             # review in a document, which the model never named: what the plan
-            # deletes is left out of it here, and the note says how much.
+            # deletes is left out of it here, and the note says how much. One
+            # the model DID name reaches this only for a text edit's guess,
+            # since a certain delete refuses above.
             # `on` says which token each span and link sits on, because a span
             # whose token is deleted is gone without ever being named.
             on = op.get('on') or {}
