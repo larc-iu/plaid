@@ -13,8 +13,8 @@ import { EditorSessionContext } from './editorSession.js';
 // what a lemma is. So the session below poisons all three with a `lemma` entry
 // and the cell has to ignore it.
 
-vi.mock('../../../utils/notify.js', () => ({ notifyWarning: vi.fn() }));
-const { notifyWarning } = await import('../../../utils/notify.js');
+vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn() }));
+const { notifyWarning } = await import('../../../utils/feedback.jsx');
 
 const POISONED = {
   vocab: { lemma: ['dog', 'cat'], upos: ['NOUN', 'VERB'] },

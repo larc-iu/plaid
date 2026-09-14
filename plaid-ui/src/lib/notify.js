@@ -1,14 +1,10 @@
 import { toast } from 'sonner';
 import { humanizeError } from './errors.js';
 
-// The package's own toast primitives, for the screens that live here, and for
-// plaid-igt, whose `utils/feedback.js` re-exports them.
-//
-// plaid-ud keeps a copy (`src/utils/notify.js`) for one reason: its domain
-// layer imports it, its `node --test` suite loads that directly, and there
-// neither the `@ui` alias nor this file's own `sonner` import resolves. Both
-// route their error description through `errors.js`, which is what keeps the
-// wording identical.
+// The package's own toast primitives, for the screens that live here and for
+// both apps, whose `utils/feedback` modules re-export them. No domain class
+// imports these: a document reports through its `onError` callback and the
+// screen that owns it decides what to show.
 
 export const notifySuccess = (message, title, options) =>
   toast.success(title || message, { ...(title ? { description: message } : {}), ...options });

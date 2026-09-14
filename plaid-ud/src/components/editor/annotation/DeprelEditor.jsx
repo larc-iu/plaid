@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
-import { notifyWarning } from '../../../utils/notify.js';
+import { notifyWarning } from '../../../utils/feedback.jsx';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { textIncludes } from '@ui/domain/collation.js';
 

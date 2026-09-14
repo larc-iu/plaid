@@ -21,12 +21,15 @@ vi.mock('@ui/lib/integrityToast.js', () => toast);
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), logout: vi.fn(), user: { id: 'u1' } }));
 vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
 
+// Every document the shell builds, so a test can reach its error channel.
+const docs = vi.hoisted(() => []);
 vi.mock('../../domain/ConlluDocument.js', () => ({
   ConlluDocument: class {
     constructor({ raw }) {
       this.raw = raw;
       this.isSaving = false;
       this.sentences = [];
+      docs.push(this);
     }
   },
 }));
@@ -105,6 +108,7 @@ const textOf = (name) => view.container.querySelector(`[data-testid="${name}"]`)
 beforeEach(() => {
   toast.dismissIntegrityFindings.mockReset();
   feedback.notifyError.mockReset();
+  docs.length = 0;
   stores.length = 0;
   auth.getClient.mockReturnValue({
     projects: { get: vi.fn(async () => ({ id: 'p1', name: 'Project' })) },
@@ -178,6 +182,20 @@ describe('the document editor shell', () => {
     store.onError('Post comment: HTTP 423', err, 'Post comment');
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     expect(feedback.notifyError.mock.calls[0]).toEqual([err, 'Post comment']);
+    await view.unmount();
+  });
+
+  // The document's own channel is wired the same way: it shows nothing itself,
+  // and what it was doing is the title.
+  it('says so when the document refuses a write', async () => {
+    await mountAt('/projects/p1/documents/d1/annotate');
+    const doc = docs[docs.length - 1];
+    expect(typeof doc.onError).toBe('function');
+
+    const err = { status: 503 };
+    doc.onError('Failed to create relation: HTTP 503', err, 'Failed to create relation');
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    expect(feedback.notifyError.mock.calls[0]).toEqual([err, 'Failed to create relation']);
     await view.unmount();
   });
 

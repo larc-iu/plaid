@@ -133,6 +133,9 @@ export const DocumentEditorShell = () => {
           project: projectData,
           user,
         });
+        // The label is the title, since it is what a person scans, and the
+        // error is the description. The same line plaid-igt wires.
+        next.onError = (msg, err, label) => notifyError(err ?? msg, label);
         setProject(projectData);
         setDoc(next);
         setLoadError('');

@@ -13,7 +13,7 @@ import { EditorSessionContext } from './editorSession.js';
 // the half before the '=', see test/conlluDocumentMutations.test.js); walking
 // across the row with Tab, and Escape after typing, write nothing at all.
 
-vi.mock('../../../utils/notify.js', () => ({ notifyWarning: vi.fn() }));
+vi.mock('../../../utils/feedback.jsx', () => ({ notifyWarning: vi.fn() }));
 
 const MACHINE = { prov: 'inferred', provSource: 'service:stanza-parser' };
 

@@ -28,7 +28,6 @@ import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu } from './conlluSerialize.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
-import { notifyError } from '../utils/notify.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -73,6 +72,10 @@ export class ConlluDocument {
     this._conlluCacheVersion = -1;
     this._isSaving = false;
     this._error = '';
+    // The screen's error channel, `(message, err, label)`: the label is what
+    // was being done and `err` the client's error, for the screen to word.
+    // Null until the screen wires it. The domain layer shows nothing itself.
+    this.onError = null;
   }
 
   // Convenience factory: fetch a document by id and wrap it. `project` and
@@ -86,7 +89,7 @@ export class ConlluDocument {
   // document (see useHistoryView), where `reload` is this one refreshed.
   async atAsOf(asOf) {
     const raw = await this._client.documents.get(this.id, true, asOf || undefined);
-    return new ConlluDocument({
+    const next = new ConlluDocument({
       raw,
       client: this._client,
       projectId: this._projectId,
@@ -94,6 +97,9 @@ export class ConlluDocument {
       user: this._user,
       asOf,
     });
+    // The error handler is the screen's, not this instance's: carry it.
+    next.onError = this.onError;
+    return next;
   }
 
   // ----- who is writing (provenance) -----
@@ -170,13 +176,13 @@ export class ConlluDocument {
     this._listeners.forEach((fn) => fn());
   }
 
-  // Operation/validation errors surface as toasts (the editors no longer render
-  // a doc.error banner). We still track `_error` so callers can branch on
-  // outcome and so we don't fire a duplicate toast for the same sticky message.
+  // Operation and validation errors go to the screen's `onError`. `_error` is
+  // still tracked so callers can branch on outcome and the same sticky message
+  // is not reported twice.
   setError(msg) {
     if (this._error === msg) return;
     this._error = msg;
-    if (msg) notifyError(msg);
+    if (msg && this.onError) this.onError(msg);
     this._emit();
   }
 
@@ -239,12 +245,9 @@ export class ConlluDocument {
     } catch (err) {
       console.error(`${label}:`, err);
       this._error = `${label}: ${err.message || 'Unknown error'}`;
-      // The label is the toast's TITLE and the error object its message.
-      // Composing the two and handing over the string lost both halves: the
-      // toast reads its description through `humanizeError`, which finds the
-      // "HTTP 503" the raw message carries and REPLACES the whole sentence,
-      // label included, with "Could not reach the server."
-      notifyError(err, label);
+      // The raw error rides along so the screen can word it (statuses, network
+      // failures) while keeping the "Failed to ..." label as the title.
+      if (this.onError) this.onError(this._error, err, label);
       try {
         await this._reload();
       } catch (reloadErr) {

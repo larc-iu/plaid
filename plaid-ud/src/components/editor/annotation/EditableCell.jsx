@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
-import { notifyWarning } from '../../../utils/notify.js';
+import { notifyWarning } from '../../../utils/feedback.jsx';
 import {
   readFieldProbs,
   groupSuggestions,

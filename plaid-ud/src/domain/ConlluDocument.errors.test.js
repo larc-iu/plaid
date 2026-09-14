@@ -1,20 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ConlluDocument } from './ConlluDocument.js';
 
-// What a failed mutation SAYS. The document's error channel is a toast, and a
-// toast has two halves: the title names what was being done, the description
-// says what went wrong.
-//
-// This one composed both into a single string and handed it over as the
-// description. The description is read through `humanizeError`, which finds
-// the status the raw client message carries and replaces the WHOLE sentence
-// with its own, so the label went with it and every failure was titled
-// "Error". Asserted at the toast rather than at `notifyError`, because what
-// went wrong was which argument the label was in.
-
-const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }));
-vi.mock('sonner', () => ({ toast }));
-
-const { ConlluDocument } = await import('./ConlluDocument.js');
+// What a failed mutation REPORTS. The document shows nothing itself: it hands
+// the screen three things through `onError`, the composed message, the raw
+// error and the label of what it was doing. The label is the toast's title and
+// the error its description, and the screen (DocumentEditorShell) words it.
+// Handing over one composed string once lost both halves: the toast read the
+// status out of it and replaced the whole sentence, label included.
 
 const RAW = {
   id: 'doc-1',
@@ -33,7 +25,6 @@ const failingClient = (err) => ({
 const httpError = (status, message) => Object.assign(new Error(message), { status });
 
 beforeEach(() => {
-  toast.error.mockReset();
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -42,35 +33,54 @@ afterEach(() => {
 });
 
 describe('a mutation that fails', () => {
-  it('titles the toast with what it was doing and describes the status', async () => {
+  it('reports the label and the raw error separately', async () => {
     const err = httpError(
       503,
       'HTTP 503 Service Unavailable at http://localhost:8085/api/v1/documents/doc-1',
     );
     const doc = new ConlluDocument({ raw: RAW, client: failingClient(err), projectId: 'proj-1' });
+    doc.onError = vi.fn();
 
     const ok = await doc._withSaving('Failed to create relation', async () => {});
 
     expect(ok).toBe(false);
-    expect(toast.error).toHaveBeenCalledTimes(1);
-    const [title, options] = toast.error.mock.calls[0];
-    expect(title).toBe('Failed to create relation');
-    expect(options.description).toBe(
-      'Could not reach the server. Check your connection and try again.',
-    );
+    expect(doc.onError).toHaveBeenCalledTimes(1);
+    const [message, raw, label] = doc.onError.mock.calls[0];
+    expect(label).toBe('Failed to create relation');
+    expect(raw).toBe(err);
+    expect(message).toBe(`Failed to create relation: ${err.message}`);
+    expect(doc.error).toBe(message);
   });
 
-  it('describes an error that carries no status without repeating the label', async () => {
+  it('reports a validation refusal once, with no error object', () => {
+    const doc = new ConlluDocument({ raw: RAW, projectId: 'proj-1' });
+    doc.onError = vi.fn();
+    doc.setError('A feature is written Key=Value.');
+    doc.setError('A feature is written Key=Value.');
+    expect(doc.onError).toHaveBeenCalledTimes(1);
+    expect(doc.onError).toHaveBeenCalledWith('A feature is written Key=Value.');
+  });
+
+  it('says nothing when no screen has wired it', async () => {
     const doc = new ConlluDocument({
       raw: RAW,
       client: failingClient(new Error('the span layer is gone')),
       projectId: 'proj-1',
     });
+    const ok = await doc._withSaving('Failed to update annotation', async () => {});
+    expect(ok).toBe(false);
+    expect(doc.error).toBe('Failed to update annotation: the span layer is gone');
+  });
 
-    await doc._withSaving('Failed to update annotation', async () => {});
-
-    const [title, options] = toast.error.mock.calls[0];
-    expect(title).toBe('Failed to update annotation');
-    expect(options.description).toBe('the span layer is gone');
+  it('carries the handler onto a snapshot', async () => {
+    const doc = new ConlluDocument({
+      raw: RAW,
+      client: { documents: { get: async () => RAW } },
+      projectId: 'proj-1',
+    });
+    const onError = () => {};
+    doc.onError = onError;
+    const snapshot = await doc.atAsOf('2026-09-01T00:00:00Z');
+    expect(snapshot.onError).toBe(onError);
   });
 });

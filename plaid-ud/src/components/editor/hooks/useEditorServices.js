@@ -4,7 +4,7 @@ import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
-import { notifySuccess, notifyError } from '../../../utils/notify.js';
+import { notifySuccess, notifyError } from '../../../utils/feedback.jsx';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
 import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
 import { parseNotice } from '../../../domain/parseNotice.js';

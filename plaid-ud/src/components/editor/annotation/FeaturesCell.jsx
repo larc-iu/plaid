@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { featureRefusal, normalizeFeature } from '../../../utils/feats.js';
-import { notifyWarning } from '../../../utils/notify.js';
+import { notifyWarning } from '../../../utils/feedback.jsx';
 import { provMark } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession } from './editorSession.js';

@@ -1,7 +1,8 @@
 // App-wide feedback primitives. Transient outcomes are toasts; destructive
 // actions go through the shared ConfirmProvider (`useConfirm`), mounted once in
-// main.jsx. The toast functions live in notify.js (JSX-free, importable from
-// node); re-exported here so components keep one import site.
+// main.jsx. The toast functions are the shared package's, re-exported here so
+// components keep one import site. The domain layer never imports this: a
+// ConlluDocument reports through its `onError`, which the shell wires.
 export {
   notifySuccess,
   notifyError,
@@ -9,7 +10,7 @@ export {
   notifyWarning,
   notifyPromise,
   notifyWithAction,
-} from './notify.js';
+} from '@ui/lib/notify.js';
 
 // The error vocabulary is shared with plaid-igt through plaid-ui, and
 // re-exported here so this file stays the one import a screen needs: a screen
