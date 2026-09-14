@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from .project import Sentence, Word, resolve, word_ref
 from .tools import (Workspace, ToolError, _refs, _need, reshape_guards, split_sentences, split_words,
-                    refuse_shape_and_analysis)
+                    refuse_comment_and_text_edit, refuse_shape_and_analysis)
 
 
 def _shaped_ids(ws: Workspace, merges_only: bool) -> set:
@@ -255,11 +255,15 @@ def t_merge_sentences(ws: Workspace, document: str, ref: str) -> str:
 
 # --- text edits ----------------------------------------------------------------
 
-def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int, where: str) -> None:
-    """A region edit shifts everything after it, so it may only sit after
-    every respelling of the same text in the plan (the executor runs region
-    edits first, then respellings with their still-valid offsets), and
-    regions must not overlap."""
+def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int, where: str,
+                     token_ids=()) -> None:
+    """The refusals every text edit owes, whichever tool stages it.
+
+    A region edit shifts everything after it, so it may only sit after every
+    respelling of the same text in the plan (the executor runs region edits
+    first, then respellings with their still-valid offsets), and regions must
+    not overlap. ``token_ids`` is the words and morphemes the edit will name
+    as deleted, which nothing else in the plan may be anchored to."""
     for b, e in ws.planned_respells(text_id):
         if e > begin:
             raise ToolError(f'{where}: a respelling is planned at {b}-{e} in the same text, after this point; '
@@ -268,6 +272,7 @@ def _guard_text_edit(ws: Workspace, text_id: Optional[str], begin: int, end: int
         if op.get('kind') == 'edit_text' and op.get('text_id') == text_id and (op['begin'], op['end']) != (begin, end) \
                 and op['begin'] < max(end, begin + 1) and begin < max(op['end'], op['begin'] + 1):
             raise ToolError(f'{where}: overlaps a text edit already planned at {op["begin"]}-{op["end"]}')
+    refuse_comment_and_text_edit(ws, token_ids, where, commenting=False)
 
 
 def _clean_text(text: str) -> str:
@@ -312,12 +317,14 @@ def t_retype_sentence(ws: Workspace, document: str, ref: str, text: str) -> str:
     # sentence, and the analysis guard compares word ids. Handed a sentence id
     # it could never fire, so set_analysis then retype staged both and
     # approval silently dropped one of them.
-    _guard(ws, s, ref, word_ids=[w.id for w in s.words])
-    _guard_text_edit(ws, doc.text_id, b, e, f'{ws.doc_label(doc.id)} {ref}')
+    word_ids = [w.id for w in s.words]
+    morpheme_ids = [m.id for w in s.words for m in w.morphemes]
+    _guard(ws, s, ref, word_ids=word_ids)
+    _guard_text_edit(ws, doc.text_id, b, e, f'{ws.doc_label(doc.id)} {ref}', word_ids + morpheme_ids)
     n = len(split_sentences(text))
     ws.add_op({'kind': 'edit_text', 'document_id': doc.id, 'text_id': doc.text_id, 'sentence_id': s.id,
                'begin': b, 'end': e, 'old': old, 'new': text,
-               'word_ids': [w.id for w in s.words], 'morpheme_ids': [m.id for w in s.words for m in w.morphemes],
+               'word_ids': word_ids, 'morpheme_ids': morpheme_ids,
                'label': f'{ws.doc_label(doc.id)} {ref}: retype "{old[:40]}{"…" if len(old) > 40 else ""}" → '
                         f'"{text[:40]}{"…" if len(text) > 40 else ""}"' + (f' ({n} sentences)' if n > 1 else '')
                         + ' (unchanged words keep their analyses; changed text is re-tokenized without analysis; '

@@ -28,7 +28,7 @@ from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
 from ..core.tools import fn, tools_for as core_tools_for
 
-from .plan import ANALYSIS, KIND, WORD_SHAPE
+from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE
 
 from .project import (IgtProject, IgtDoc, Sentence, Word, Morpheme, Link, load_document, resolve, document_lines,
                       render_document, render_overview, render_word, mwe_ref, REVIEWABLE,
@@ -1525,6 +1525,41 @@ def refuse_shape_and_analysis(ws: Workspace, word_id, ref: str, *, analysing: bo
                         'over, or plan the two in separate turns.')
 
 
+# A text edit names every word and morpheme of the region it rewrites, and
+# the plan treats all of them as deleted. It is a GUESS: the edit goes through
+# the server's diffing text update, so an unchanged word keeps its token and
+# its analysis, and which words those are is not known until the edit runs.
+_TEXT_SHAPE_KINDS = opkind.shaped(KIND, TEXT_SHAPE)
+
+
+def _text_edit_names(ws: Workspace) -> set:
+    """Words and morphemes a text edit in the plan names as deleted."""
+    return opkind.removed_tokens(KIND, [op for op in ws.ops if op.get('kind') in _TEXT_SHAPE_KINDS])
+
+
+def refuse_comment_and_text_edit(ws: Workspace, ids, where: str, *, commenting: bool) -> None:
+    """A comment and a text edit over the word it is anchored to cannot share
+    one plan.
+
+    `normalize_ops` drops an op that names something the plan deletes, so the
+    comment disappeared with a note after the user had approved a card
+    promising it, in both orders. The edit's word ids are a guess and the
+    word usually survives, but the plan cannot tell, and every other guard
+    over a text edit treats those ids as deleted too
+    (:func:`refuse_shape_and_analysis`). So the two are refused here, where
+    the model can still put them in separate turns.
+    """
+    ids = {ids} if isinstance(ids, str) else set(ids or ())
+    if commenting:
+        clash = ids & _text_edit_names(ws)
+    else:
+        clash = ids & {op.get('entity_id') for op in ws.ops if op.get('kind') == 'add_comment'}
+    if clash:
+        raise ToolError(f'{where}: this plan rewrites the text over a word it also comments on, and the '
+                        'rewrite may take the word the comment is anchored to. discard_plan to start over, '
+                        'or plan the two in separate turns.')
+
+
 def parse_analysis(ws: Workspace, morphemes: list) -> List[Dict[str, Any]]:
     """The validated morpheme list of a set_analysis call."""
     if not morphemes or not isinstance(morphemes, list):
@@ -2614,9 +2649,12 @@ def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = 
     # refuse the batch it shares after the user approved it. A comment
     # outlives its anchor once written (that is the ruling), but it cannot be
     # written onto one that is already gone. `normalize_ops` drops such a
-    # comment with a note, whichever order the two were planned in.
+    # comment with a note, whichever order the two were planned in. A text
+    # edit is the one case where the drop is not right: what it deletes is a
+    # guess, so the two are refused here instead.
     etype, eid, caption, what = _anchor(ws, doc, ref, field)
     where = f'{ws.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{ws.doc_label(doc.id)}"'
+    refuse_comment_and_text_edit(ws, eid, where, commenting=True)
     ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
                'document_id': doc.id,
                'label': f'{where}: comment "{body[:60]}{"…" if len(body) > 60 else ""}"'

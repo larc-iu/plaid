@@ -139,6 +139,37 @@ def test_a_comment_on_something_the_plan_deletes_is_dropped_rather_than_failing_
     assert [o['kind'] for o in out] == ['add_comment', 'set_span'] and notes == []
 
 
+def test_a_comment_and_a_retype_over_it_are_refused_rather_than_one_being_dropped():
+    """A retype names every word of the sentence as deleted, but the edit
+    goes through the server's diffing update and an unchanged word keeps its
+    token, so the deletion is a guess. The drop above turned that guess into
+    a comment silently missing from a plan the user had approved, in both
+    orders. Every other guard over a text edit treats its word ids as
+    deleted, so this pair is refused where the model can still split it."""
+    c = ExtClient()
+    w = scan_ws(c)
+    call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w1', 'body': 'check this'})
+    assert 'rewrites the text over a word it also comments on' in call_tool(
+        w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    assert [o['kind'] for o in w.ops] == ['add_comment']
+
+    w2 = scan_ws(ExtClient())
+    call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    assert 'rewrites the text over a word it also comments on' in call_tool(
+        w2, 'add_comment', {'document': 'd1', 'ref': 's1.w1', 'body': 'check this'})
+    # A morpheme of a retyped word counts too: the retype names those as well.
+    assert 'rewrites the text over a word it also comments on' in call_tool(
+        w2, 'add_comment', {'document': 'd1', 'ref': 's1.w1.m2', 'body': 'x'})
+    assert [o['kind'] for o in w2.ops] == ['edit_text']
+
+    # A word the retype does not name, and an append, which names none.
+    w3 = scan_ws(ExtClient())
+    call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
+    call_tool(w3, 'add_comment', {'document': 'd1', 'ref': 's2.w1', 'body': 'ok'})
+    call_tool(w3, 'append_text', {'document': 'd1', 'text': 'Gam ar.'})
+    assert [o['kind'] for o in w3.ops] == ['edit_text', 'add_comment', 'edit_text']
+
+
 SUMMARY = {'name': False, 'document_metadata': True, 'total': 7,
            'texts': {'inserted': 0, 'updated': 1, 'deleted': 0},
            'tokens': {'inserted': 2, 'updated': 0, 'deleted': 1, 'by_layer': [
