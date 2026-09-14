@@ -80,17 +80,26 @@ export async function listAll(client, path, { pageSize = 1000, query = {} } = {}
 /**
  * Fetch a single page and return the raw envelope.
  *
+ * `bypassBatch` is for a read that belongs to whoever asked for it rather than
+ * to whatever batch happens to be open on the client: chrome that polls or
+ * loads beside an import or a bulk edit. Without it the page is queued into
+ * the batch, the caller gets `{batched: true}` instead of an envelope, and the
+ * queued GET takes a slot in the batch's results array. Left off by default,
+ * because a read-your-writes page inside a batch is deliberate in some callers.
+ *
  * @param {object} client - PlaidClient instance
  * @param {string} path - API path
  * @param {object} [opts]
  * @param {number} [opts.limit] - Page size (1..1000; server default 100)
  * @param {string} [opts.cursor] - Opaque cursor from a previous page
  * @param {object} [opts.query={}] - Extra query params
+ * @param {boolean} [opts.bypassBatch=false] - Go over the wire even while a batch is open
  * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
  */
-export async function listPage(client, path, { limit, cursor, query = {} } = {}) {
+export async function listPage(client, path, { limit, cursor, query = {}, bypassBatch } = {}) {
   return client._request('GET', path, {
     queryParams: buildQueryParams(query, limit, cursor),
+    bypassBatch,
   });
 }
 

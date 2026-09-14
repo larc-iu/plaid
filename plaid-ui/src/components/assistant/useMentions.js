@@ -31,6 +31,11 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
   // query on the endpoint, so this takes one page of the server's largest: a
   // project past that lists its first thousand, and the reader names the rest
   // the way they always have, by typing.
+  //
+  // `bypassBatch`: the panel is app chrome on the client the importers and the
+  // Grew runner hold batches on. Queued into one, this read answers
+  // `{batched: true}` instead of an envelope and takes a slot in the batch's
+  // results, which shifts every created id the batch's owner reads back.
   useEffect(() => {
     setDocuments(null);
   }, [projectId]);
@@ -38,7 +43,7 @@ export const useMentions = ({ client, projectId, enabled, text, setText, inputRe
     if (!open || documents || !client || !projectId) return undefined;
     let alive = true;
     client.projects
-      .listDocumentsPage(projectId, { limit: 1000 })
+      .listDocumentsPage(projectId, { limit: 1000, bypassBatch: true })
       .then((page) => alive && setDocuments(page?.entries || []))
       // Without them the list still offers what the screen knows, which is
       // the half a reader is most likely to want.

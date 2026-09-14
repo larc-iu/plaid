@@ -74,7 +74,20 @@ describe('useMentions', () => {
     const m = await mount(client, { offer });
     await m.type('about @');
     expect(m.read()).toBe('s1,Text 1,Text 2');
-    expect(client.projects.listDocumentsPage).toHaveBeenCalledWith('p1', { limit: 1000 });
+    await m.unmount();
+  });
+
+  // The panel is chrome on the singleton client an import or a bulk edit holds
+  // a batch open on, so a queued read would answer `{batched: true}` and shift
+  // the batch's own results.
+  it('reads the documents over the wire even while a batch is open', async () => {
+    const client = fakeClient([{ name: 'Text 1' }]);
+    const m = await mount(client);
+    await m.type('@');
+    expect(client.projects.listDocumentsPage).toHaveBeenCalledWith('p1', {
+      limit: 1000,
+      bypassBatch: true,
+    });
     await m.unmount();
   });
 

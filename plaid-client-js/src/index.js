@@ -2004,10 +2004,11 @@ class PlaidClient {
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {boolean} [opts.bypassBatch] - Go over the wire even while a batch is open
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listDocumentsPage: (id, { limit, cursor } = {}) =>
-        listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor }),
+      listDocumentsPage: (id, { limit, cursor, bypassBatch } = {}) =>
+        listPage(this, `/api/v1/projects/${id}/documents`, { limit, cursor, bypassBatch }),
       /**
        * Async-iterate a project's documents page by page; yields each page's
        * entries array.

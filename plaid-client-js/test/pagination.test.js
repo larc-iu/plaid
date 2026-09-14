@@ -24,7 +24,7 @@ function makeFakeClient(pages, { isBatching = false } = {}) {
     isBatching,
     async _request(method, path, options = {}) {
       const cursor = options.queryParams ? options.queryParams.cursor : undefined;
-      this.calls.push({ method, path, cursor });
+      this.calls.push({ method, path, cursor, bypassBatch: options.bypassBatch });
       if (i >= pages.length) {
         throw new Error(`unexpected extra request (call #${this.calls.length})`);
       }
@@ -146,4 +146,40 @@ test('listPage still issues a single request in batch mode (does not throw)', as
 
   assert.deepEqual(result, { batched: true });
   assert.equal(client.calls.length, 1, 'exactly one request queued');
+});
+
+// A page read by app chrome belongs to whoever asked for it, not to whatever
+// import or bulk edit holds a batch open on the same client. Queued, it answers
+// `{batched: true}` instead of an envelope AND shifts the batch's own results.
+test('listPage carries bypassBatch through to the request layer', async () => {
+  const client = makeFakeClient([{ entries: [], nextCursor: null }], { isBatching: true });
+
+  await listPage(client, '/api/v1/things', { limit: 1000, bypassBatch: true });
+
+  assert.equal(client.calls[0].bypassBatch, true);
+});
+
+test('listPage leaves bypassBatch off unless it is asked for', async () => {
+  const client = makeFakeClient([{ entries: [], nextCursor: null }]);
+
+  await listPage(client, '/api/v1/things');
+
+  assert.ok(!client.calls[0].bypassBatch);
+});
+
+test('listDocumentsPage forwards bypassBatch', async () => {
+  const { PlaidClient } = await import('../src/index.js');
+  const client = new PlaidClient('http://example.test', 'tok');
+  const calls = [];
+  client._request = (method, path, options = {}) => {
+    calls.push({ method, path, options });
+    return Promise.resolve({ entries: [], nextCursor: null });
+  };
+  client.isBatching = true;
+
+  await client.projects.listDocumentsPage('p1', { limit: 1000, bypassBatch: true });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.bypassBatch, true);
+  assert.equal(calls[0].options.queryParams.limit, 1000);
 });

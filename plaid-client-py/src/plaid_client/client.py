@@ -1976,7 +1976,8 @@ class ProjectsResource(_Resource):
         return list_all(self._client, f'/api/v1/projects/{id}/documents')
 
     def list_documents_page(self, id: str, *, limit: int | None = None,
-                            cursor: str | None = None) -> Any:
+                            cursor: str | None = None,
+                            bypass_batch: bool = False) -> Any:
         """List one page of a project's documents.
 
         Note: this endpoint does not support temporal (``as-of``) queries; the
@@ -1986,9 +1987,11 @@ class ProjectsResource(_Resource):
             id: The project ID
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            bypass_batch: Go over the wire even while a batch is open
         """
         return list_page(self._client, f'/api/v1/projects/{id}/documents',
-                         limit=limit, cursor=cursor)
+                         limit=limit, cursor=cursor,
+                         bypass_batch=bypass_batch)
 
     def iter_documents(self, id: str, *, page_size: int = 1000):
         """Iterate over pages of a project's documents, yielding each page's entries.

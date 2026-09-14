@@ -43,7 +43,8 @@ def _script_make_request(pages, calls):
 
     def fake(client, method, path, *, query_params=None, **kwargs):
         cursor = query_params.get('cursor') if query_params else None
-        calls.append({'method': method, 'path': path, 'cursor': cursor})
+        calls.append({'method': method, 'path': path, 'cursor': cursor,
+                      'bypass_batch': kwargs.get('bypass_batch')})
         i = state['i']
         if i >= len(pages):
             raise AssertionError(f'unexpected extra request (call #{len(calls)})')
@@ -177,6 +178,44 @@ def test_list_page_works_when_batching(monkeypatch):
     assert len(calls) == 1
 
 
+def test_list_page_carries_bypass_batch(monkeypatch):
+    # A page read by app chrome belongs to whoever asked for it, not to whatever
+    # import or bulk edit holds a batch open on the same client. Queued, it
+    # answers {'batched': True} instead of an envelope AND takes a slot in the
+    # batch's own results list.
+    calls = []
+    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
+
+    http.list_page(_FakeClient(is_batching=True), '/api/v1/things',
+                   limit=1000, bypass_batch=True)
+
+    assert calls[0]['bypass_batch'] is True
+
+
+def test_list_page_leaves_bypass_batch_off_by_default(monkeypatch):
+    calls = []
+    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
+
+    http.list_page(_FakeClient(), '/api/v1/things')
+
+    assert not calls[0]['bypass_batch']
+
+
+def test_list_documents_page_forwards_bypass_batch(monkeypatch):
+    from plaid_client.client import PlaidClient
+
+    calls = []
+    _patch(monkeypatch, [{'entries': [], 'next_cursor': None}], calls)
+    client = PlaidClient('http://example.test', 'tok')
+    client.is_batching = True
+
+    client.projects.list_documents_page('p1', limit=1000, bypass_batch=True)
+
+    assert len(calls) == 1
+    assert calls[0]['path'] == '/api/v1/projects/p1/documents'
+    assert calls[0]['bypass_batch'] is True
+
+
 def _run_standalone():
     """Fallback runner with no pytest dependency."""
     tests = [
@@ -188,6 +227,9 @@ def _run_standalone():
         test_iter_pages_suppresses_trailing_empty_page,
         test_iter_pages_raises_when_batching,
         test_list_page_works_when_batching,
+        test_list_page_carries_bypass_batch,
+        test_list_page_leaves_bypass_batch_off_by_default,
+        test_list_documents_page_forwards_bypass_batch,
     ]
     failures = 0
     for t in tests:

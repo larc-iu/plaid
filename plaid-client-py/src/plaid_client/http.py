@@ -163,7 +163,8 @@ def _merge_query(query, **extra):
     return merged
 
 
-def list_page(client, path, *, limit=None, cursor=None, query=None):
+def list_page(client, path, *, limit=None, cursor=None, query=None,
+              bypass_batch=False):
     """Fetch a single page from a paginated collection endpoint.
 
     Returns the transformed envelope dict ``{"entries": [...],
@@ -171,15 +172,25 @@ def list_page(client, path, *, limit=None, cursor=None, query=None):
     (after the client's response transform, which snake_cases ``next-cursor``
     to ``next_cursor``).
 
+    ``bypass_batch`` is for a read that belongs to whoever asked for it rather
+    than to whatever batch happens to be open on the client: chrome that polls
+    or loads beside an import or a bulk edit. Without it the page is queued
+    into the batch, the caller gets ``{"batched": True}`` instead of an
+    envelope, and the queued GET takes a slot in the batch's results list. Off
+    by default, because a read-your-writes page inside a batch is deliberate in
+    some callers.
+
     Args:
         client: PlaidClient instance.
         path: Collection path, e.g. ``/api/v1/projects``.
         limit: Page size (1..1000). ``None`` lets the server use its default.
         cursor: Opaque cursor from a previous page's ``next_cursor``.
         query: Extra query params (e.g. ``{"as-of": ...}``).
+        bypass_batch: Go over the wire even while a batch is open.
     """
     qp = _merge_query(query, limit=limit, cursor=cursor)
-    return make_request(client, 'GET', path, query_params=qp or None)
+    return make_request(client, 'GET', path, query_params=qp or None,
+                        bypass_batch=bypass_batch)
 
 
 def iter_pages(client, path, *, page_size=1000, query=None):
