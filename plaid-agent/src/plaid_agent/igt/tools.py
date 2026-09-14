@@ -77,7 +77,13 @@ class Workspace:
         self.item_patches: Dict[str, dict] = {}
         self._patch_version = 0
         self.ops: List[Dict[str, Any]] = []
-        self.replaced = 0  # ops superseded by a later op on the same target this turn
+        # Ops superseded by a later op on the same target this turn, and how
+        # many of them a note has already told the model about. Two counters
+        # rather than one that is zeroed on being read, because a bulk tool
+        # stages through the single-item tool and throws its notes away: what
+        # those notes reported would go with them.
+        self.replaced = 0
+        self.reported_replaced = 0
         self.new_entries: Dict[str, dict] = {}  # key -> {form, vocab_id, metadata}
         self._doc_ids: Dict[str, set] = {}  # document id -> every id the document contains
         # Corpus-wide tools ask the query engine unless told to scan every
@@ -447,9 +453,10 @@ class Workspace:
     def planned_note(self, n: int) -> str:
         note = (f'Planned {n} change{"s" if n != 1 else ""} (nothing is written until the user approves; '
                 f'the plan now holds {len(self.ops)}). Describe the plan to the user in your reply.')
-        if self.replaced:
-            note += f' {self.replaced} earlier planned change{"s" if self.replaced != 1 else ""} on the same target{"s" if self.replaced != 1 else ""} superseded.'
-            self.replaced = 0
+        new = self.replaced - self.reported_replaced
+        if new > 0:
+            note += f' {new} earlier planned change{"s" if new != 1 else ""} on the same target{"s" if new != 1 else ""} superseded.'
+            self.reported_replaced = self.replaced
         return note
 
 

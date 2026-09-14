@@ -343,6 +343,24 @@ def test_naming_a_document_lists_every_reference_not_a_sample():
     assert everywhere  # the corpus-wide view still renders
 
 
+def test_set_analysis_for_form_still_says_what_it_supersedes():
+    """Staging onto the real plan means every word goes through
+    `t_set_analysis`, which ends in `planned_note` and used to ZERO the
+    superseded count as it reported it. The inner notes are thrown away, so
+    running the tool twice over one form said nothing about the first run
+    being replaced."""
+    w = ws()
+    first = {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'fish'}}]}
+    second = {'form': 'GAM', 'morphemes': [{'form': 'gam', 'fields': {'Morph Gloss': 'net'}}]}
+    assert 'superseded' not in call_tool(w, 'set_analysis_for_form', first)
+    out = call_tool(w, 'set_analysis_for_form', second)
+    assert '1 earlier planned change on the same target superseded' in out
+    assert len(w.ops) == 1 and w.ops[0]['morphemes'][0]['fields'][0]['value'] == 'net'
+    # And it is reported once, not again on the next tool call.
+    assert 'superseded' not in call_tool(w, 'set_field', {'document': 'd1', 'ref': 's1.w3',
+                                                          'field': 'Gloss', 'value': 'x'})
+
+
 def test_set_analysis_for_form_shows_the_guards_the_real_plan(monkeypatch):
     """It used to stage into a scratch `ws.ops = []`, so every guard
     t_set_analysis makes looked at an empty plan: a word already being split,
