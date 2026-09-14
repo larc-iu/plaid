@@ -8,7 +8,7 @@ lived under the prompt's and under IGT's.
 
 from plaid_agent.core.trace import DOCUMENT, PLAN, summarize_steps, trace_step
 from plaid_agent.ud.toolkit import TOOLS
-from plaid_agent.ud.trace import TRACER, describe_step, progress_label, step_kind
+from plaid_agent.ud.trace import TRACER, describe_step
 
 
 def test_every_declared_tool_has_a_line_of_its_own():
@@ -23,9 +23,27 @@ def test_every_declared_tool_has_a_line_of_its_own():
 
 
 def test_a_step_is_classified_by_what_it_was_for():
-    assert step_kind('read_document') == DOCUMENT
-    assert step_kind('set_head') == PLAN
-    assert step_kind('confirm') == PLAN
+    assert TRACER.kind('read_document') == DOCUMENT
+    assert TRACER.kind('set_head') == PLAN
+    assert TRACER.kind('confirm') == PLAN
+
+
+def test_a_tool_both_apps_declare_is_the_same_kind_in_both():
+    """Each app listed its own bookkeeping tools, and the lists drifted:
+    query_help was META in IGT and READ here, so the same reference page
+    counted as a look at the data in one Assistant tab and not in the other.
+    One list in core answers it for both apps."""
+    from plaid_agent.core.trace import META
+    from plaid_agent.igt.toolkit import TOOLS as IGT_TOOLS
+    from plaid_agent.igt.trace import TRACER as IGT_TRACER
+
+    assert TRACER.kind('query_help') == META
+    shared = sorted({t['function']['name'] for t in TOOLS}
+                    & {t['function']['name'] for t in IGT_TOOLS})
+    assert shared, 'the two tool tables share nothing, so this proves nothing'
+    differ = [(n, IGT_TRACER.kind(n), TRACER.kind(n)) for n in shared
+              if IGT_TRACER.kind(n) != TRACER.kind(n)]
+    assert not differ, f'the same tool is two kinds: {differ}'
 
 
 def test_the_trace_reads_as_past_tense_lines():
@@ -51,5 +69,5 @@ def test_every_declared_tool_has_a_progress_line_of_its_own():
     through while a turn runs comes from progress_label, which has a fallback
     to a bare function name of its own."""
     missing = [t['function']['name'] for t in TOOLS
-               if progress_label(t['function']['name'], {}) == f"{t['function']['name']}…"]
+               if TRACER.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
     assert missing == [], f'no progress line for: {missing}'

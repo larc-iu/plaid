@@ -9,23 +9,8 @@ if any declared tool reaches that fallback.
 
 from typing import Any, Dict
 
-from ..core.trace import DOCUMENT, META, PLAN, READ, WEB, Tracer, count, in_doc, plural, q
+from ..core.trace import count, in_doc, plural, q, tracer_for
 from .toolkit import WEB_TOOLS, WRITE_TOOLS
-
-_META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status',
-                         'discard_plan', 'drop_planned'})
-
-
-def step_kind(name: str) -> str:
-    if name == 'read_document':
-        return DOCUMENT
-    if name in WEB_TOOLS:
-        return WEB
-    if name in WRITE_TOOLS:
-        return PLAN
-    if name in _META_TOOLS:
-        return META
-    return READ
 
 
 def across(a: Dict[str, Any]) -> str:
@@ -170,13 +155,4 @@ _PROGRESS = {
 }
 
 
-def progress_label(name: str, args: Dict[str, Any]) -> str:
-    fn = _PROGRESS.get(name)
-    if fn:
-        return fn(args)
-    if name in WRITE_TOOLS:
-        return 'Planning changes…'
-    return f'{name}…'
-
-
-TRACER = Tracer(kind=step_kind, describe=describe_step, progress=progress_label)
+TRACER = tracer_for(WEB_TOOLS, WRITE_TOOLS, describe_step, _PROGRESS)

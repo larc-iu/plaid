@@ -14,9 +14,11 @@ examples.
 
 import json
 import re
+from typing import Any, Callable, Dict, List, Optional
 
 from .args import clamp_limit
-from typing import Any, Callable, Dict, List, Optional
+from .limits import READ_LIMITS
+from .tools import ToolError, truncate
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 LAYER_SLOTS = ('layer', 'token-layer', 'text-layer', 'parent-token-layer', 'span-layer',
@@ -218,3 +220,29 @@ def documents_in(rows: List[Any], limit: int, cap: int = 25) -> List[str]:
             if isinstance(c, dict) and c.get('document') and c['document'] not in out:
                 out.append(c['document'])
     return out[:cap]
+
+
+def query_tool(ws, query: Any, limit: Any, layer_index: Callable, display: Callable,
+               ref_index: Callable) -> str:
+    """The ``query`` tool, for every app.
+
+    An app answers three things: what its layers are called
+    (``layer_index``), how a refusal names one (``display``), and how a row is
+    addressed back to the user (``ref_index``). The rest is the same wherever
+    the engine is asked a question.
+    """
+    try:
+        q = parse_query(query)
+        limit = clamp_limit(limit, *READ_LIMITS['query'])
+        idx = layer_index(ws)
+        docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
+        q = rewrite(q, idx, display(idx), docs)
+        ws.on_progress('Running the query…')
+        res = run(ws.client, q, ws.project.id)
+    except QueryRefused as e:
+        raise ToolError(str(e))
+    doc_names = {d['id']: d.get('name') for d in ws.documents()}
+    rows = res.get('results') or [] if isinstance(res, dict) else []
+    refs = ref_index(ws, documents_in(rows, limit))
+    layer_names = {h[1]: h[2] for hs in idx.values() for h in hs}
+    return truncate(render(res, q, limit, refs, layer_names, doc_names))

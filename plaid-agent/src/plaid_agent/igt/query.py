@@ -11,12 +11,9 @@ return nothing, so the help says it in as many words.
 
 from typing import Any, Dict, List, Optional
 
-from ..core.args import clamp_limit
-from ..core.limits import READ_LIMITS
-from ..core.query import (HELP, QueryRefused, documents_in, parse_query, render, rewrite, run)
+from ..core.query import HELP, query_tool
 from .project import word_ref
-from ..core.tools import ToolError
-from .workspace import Workspace, _truncate
+from .workspace import Workspace
 
 IGT_HELP = '''
 THIS PROJECT'S LAYERS, and how interlinear text sits on them:
@@ -140,18 +137,4 @@ def _ref_index(ws: Workspace, doc_ids: List[str]) -> Dict[str, str]:
 
 def t_query(ws: Workspace, query: Any = None, limit: int = 50) -> str:
     """Run a Plaid query over this project (read-only). See query_help."""
-    try:
-        q = parse_query(query)
-        limit = clamp_limit(limit, *READ_LIMITS['query'])
-        idx = _layer_index(ws)
-        docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
-        q = rewrite(q, idx, _display(idx), docs)
-        ws.on_progress('Running the query…')
-        res = run(ws.client, q, ws.project.id)
-    except QueryRefused as e:
-        raise ToolError(str(e))
-    doc_names = {d['id']: d.get('name') for d in ws.documents()}
-    rows = res.get('results') or [] if isinstance(res, dict) else []
-    refs = _ref_index(ws, documents_in(rows, limit))
-    layer_names = {h[1]: h[2] for hs in idx.values() for h in hs}
-    return _truncate(render(res, q, limit, refs, layer_names, doc_names))
+    return query_tool(ws, query, limit, _layer_index, _display, _ref_index)

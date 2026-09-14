@@ -20,7 +20,6 @@ from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind
-from ..core.limits import MAX_RESULT_CHARS
 from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
@@ -479,12 +478,6 @@ def _words_of(doc: IgtDoc, refs) -> List[tuple]:
         out.append((ref, _sentence_of(doc, w), w))
     out.sort(key=lambda t: t[2].begin)
     return out
-
-
-def _truncate(s: str) -> str:
-    if len(s) <= MAX_RESULT_CHARS:
-        return s
-    return s[:MAX_RESULT_CHARS] + f'\n... [truncated: {len(s) - MAX_RESULT_CHARS} more characters; narrow the request]'
 
 
 def _sentence_of(doc: IgtDoc, w: Word) -> Sentence:

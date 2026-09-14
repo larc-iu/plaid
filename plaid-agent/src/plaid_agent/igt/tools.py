@@ -15,16 +15,16 @@ from typing import Any, Dict, List, Optional
 from plaid_client.provenance import prov_state, MACHINE
 
 from ..core import opkind
-from ..core.args import clamp_limit
+from ..core.args import clamp_limit, whole
 from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError
+from ..core.tools import ToolError, truncate
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
                       segmentation, split_sentences, split_words, word_ref)
 from .lexview import morph_type
 from .reads import t_plan_status
-from .workspace import Workspace, _need, _refs, _sentence_of, _truncate, _words_of
+from .workspace import Workspace, _need, _refs, _sentence_of, _words_of
 
 
 # --- write tools (plan only) ---------------------------------------------------
@@ -804,7 +804,7 @@ def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str]
             anchor = (c.get('anchor_label') or c.get('entity_type') or '?') + (' [outdated]' if did else '')
         body = (c.get('body') or '').strip().replace('\n', ' ')
         lines.append(f'  {when}  {who}  @ {anchor}: {body}' + (' (edited)' if c.get('edited') else ''))
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = None,
@@ -913,28 +913,12 @@ def t_discard_plan(ws: Workspace) -> str:
     return f'Discarded {n} planned change{"s" if n != 1 else ""}.'
 
 
-def _whole(i) -> int:
-    """One plan index. A fraction is refused rather than truncated: 1.5 is not
-    change 1, and silently dropping change 1 for it is worse than a refusal."""
-    if isinstance(i, bool):
-        raise ValueError(i)
-    if isinstance(i, int):
-        return i
-    if isinstance(i, float):
-        if not i.is_integer():
-            raise ValueError(i)
-        return int(i)
-    if re.fullmatch(r'-?[0-9]+', str(i).strip()):
-        return int(str(i).strip())
-    raise ValueError(i)
-
-
 def t_drop_planned(ws: Workspace, indexes) -> str:
     """Drop some planned changes by their plan_status numbers, keeping the rest."""
     if isinstance(indexes, (int, str)):
         indexes = [indexes]
     try:
-        wanted = {_whole(i) for i in (indexes or [])}
+        wanted = {whole(i) for i in (indexes or [])}
     except (TypeError, ValueError):
         raise ToolError('indexes must be the whole numbers shown by plan_status, e.g. [2, 5]')
     bad = sorted(i for i in wanted if not 1 <= i <= len(ws.ops))

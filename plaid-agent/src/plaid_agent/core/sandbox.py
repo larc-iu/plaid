@@ -23,6 +23,8 @@ import atexit
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
+from .tools import ToolError
+
 OUTPUT_MAX = 12000                 # characters of output handed back, like every tool result
 # Every run happens in the turn's own worker, so TURN_EXEC_SECONDS is the only
 # interpreter budget there is, and the one the help and the timeout message
@@ -229,3 +231,15 @@ def plan_proxy(ws, call_tool, write_tools) -> Callable[..., str]:
             return f'Error: "{tool}" is not a plan tool. One of: ' + ', '.join(sorted(write_tools))
         return call_tool(ws, tool, args)
     return plan
+
+
+def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:
+    """The ``run_code`` tool, for every app. One worker per turn, opened on the
+    first call and released by the workspace's ``close()``; ``api(ws)`` is what
+    the app lets the code see."""
+    if getattr(ws, 'code', None) is None:
+        ws.code = Session()
+    try:
+        return run(code, api(ws), on_progress=ws.on_progress, session=ws.code)
+    except CodeError as e:
+        raise ToolError(str(e))

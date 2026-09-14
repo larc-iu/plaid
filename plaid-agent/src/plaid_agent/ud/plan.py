@@ -22,7 +22,8 @@ from typing import Any, Dict, List
 
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import CONFIRM, PlanError, Stamps, TrackingBatcher, applying, created_id, expand_ops
+from ..core.plan import (CONFIRM, PlanError, Stamps, TrackingBatcher, apply_add_comment,
+                         apply_restore_document, applying, created_id, expand_ops)
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 
@@ -119,13 +120,6 @@ def _apply_set_span(ctx: Context, op) -> int:
     return 1
 
 
-def _apply_add_comment(ctx: Context, op) -> int:
-    # Unaudited, like every comment; under the requester's name.
-    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                      anchor_label=o.get('anchor_label') or None))
-    return 1
-
-
 def _apply_set_deprel(ctx: Context, op) -> int:
     ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=ctx.restamp())
     return 1
@@ -142,11 +136,6 @@ def _apply_confirm(ctx: Context, op) -> int:
 def _apply_set_words(ctx: Context, op) -> int:
     from .shape import apply_set_words
     apply_set_words(ctx.client, op, ctx.b, ctx.stamp)
-    return 1
-
-
-def _apply_restore_document(ctx: Context, op) -> int:
-    ctx.restores.append(op)  # after the batches: the server's own operation
     return 1
 
 
@@ -300,7 +289,7 @@ KIND = ok.registry([
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
            required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE,
            deletes=lambda op: list(op.get('relation_ids') or [])),
-    OpKind('restore_document', ('restored document', 'restored documents'), apply=_apply_restore_document,
+    OpKind('restore_document', ('restored document', 'restored documents'), apply=apply_restore_document,
            required=('document_id', 'as_of'), shape=ok.EXCLUSIVE),
     # A scope names a document and fields, or a field and a pattern, and is
     # resolved to spans at approval, so the executor never sees one.
@@ -321,7 +310,7 @@ KIND = ok.registry([
            extra={'clears': lambda op: not (op.get('replacement') or '')}),
     OpKind('set_deprel', _RELABELED, required=('relation_id', 'deprel'), apply=_apply_set_deprel),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
-           apply=_apply_add_comment),
+           apply=apply_add_comment),
 ])
 
 # Every table below is the registry read a different way.

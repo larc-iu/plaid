@@ -9,7 +9,24 @@ So no tool calls `int()` on an argument. It calls one of these, which say what
 was wrong in the same voice as every other refusal.
 """
 
+import re
 from typing import Any, Optional
+
+
+def whole(i) -> int:
+    """One plan index. A fraction is refused rather than truncated: 1.5 is not
+    change 1, and silently dropping change 1 for it is worse than a refusal."""
+    if isinstance(i, bool):
+        raise ValueError(i)
+    if isinstance(i, int):
+        return i
+    if isinstance(i, float):
+        if not i.is_integer():
+            raise ValueError(i)
+        return int(i)
+    if re.fullmatch(r'-?[0-9]+', str(i).strip()):
+        return int(str(i).strip())
+    raise ValueError(i)
 
 
 def clamp_limit(raw: Any, default: int, cap: int, name: str = 'limit') -> int:

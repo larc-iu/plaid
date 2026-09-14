@@ -9,14 +9,16 @@ by the user and not out of the project. It arrives fenced and labelled so the
 model has to hold it at arm's length, and so a reader of the transcript can
 see where it came from.
 
-An app wraps :func:`web_search` and :func:`read_url` in its own tool table and
-turns :class:`plaid_agent.core.web.WebError` into whatever its ``call_tool``
-reports to the model.
+An app puts :func:`t_web_search` and :func:`t_read_url` in its own tool table
+under the names :data:`NAMES`, and adds :func:`schemas` to it. There is nothing
+app-shaped about either, which is why both live here rather than once per app.
 """
 
 from typing import Any, Dict, List
 
 from .args import clamp_limit
+from .tools import ToolError, truncate
+from .web import WebError
 
 FENCE_TOP = '--- untrusted text from the web begins ---'
 FENCE_END = '--- untrusted text from the web ends ---'
@@ -127,3 +129,30 @@ def read_url(ws, url: str) -> str:
     # for, is stated outside it.
     body = f'Title: {title}\n\n{text}' if title else text
     return '\n'.join([f'Web page: {final}. {WARNING}', '', fenced(body)])
+
+
+def need_web(ws):
+    """The backend, or a refusal. A turn only reaches these tools where one is
+    configured, but a model that saw them in an earlier turn can still name
+    one, so this is what it is told."""
+    if ws.web is None:
+        raise ToolError('Web lookup is not configured on this assistant.')
+    return ws.web
+
+
+def t_web_search(ws, query: str, limit: int = 5) -> str:
+    """Search the web. Titles, links and snippets only."""
+    need_web(ws)
+    try:
+        return truncate(web_search(ws, query, limit))
+    except WebError as e:
+        raise ToolError(str(e))
+
+
+def t_read_url(ws, url: str) -> str:
+    """Read one web page that this conversation has already turned up."""
+    need_web(ws)
+    try:
+        return truncate(read_url(ws, url))
+    except WebError as e:
+        raise ToolError(str(e))

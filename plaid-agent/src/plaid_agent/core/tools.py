@@ -8,6 +8,8 @@ told it can look something up or run code when it cannot.
 
 from typing import Any, Dict, List
 
+from .limits import MAX_RESULT_CHARS
+
 
 class ToolError(Exception):
     """A tool-level failure whose message goes back to the model as the result.
@@ -16,6 +18,15 @@ class ToolError(Exception):
     it from shared code, and an app that caught only its own would let those
     through as a traceback instead of as a sentence the model can act on.
     """
+
+
+def truncate(s: str) -> str:
+    """One tool result, cut to what a turn can carry, saying what was cut and
+    what to do about it. Every tool answer goes through this."""
+    if len(s) <= MAX_RESULT_CHARS:
+        return s
+    return s[:MAX_RESULT_CHARS] + (f'\n... [truncated: {len(s) - MAX_RESULT_CHARS} more characters; '
+                                   f'narrow the request]')
 
 
 def fn(name: str, description: str, properties: Dict[str, Any], required: List[str]) -> Dict[str, Any]:

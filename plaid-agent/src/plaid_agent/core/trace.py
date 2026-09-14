@@ -38,6 +38,43 @@ class Tracer:
     progress: Callable[[str, Dict[str, Any]], str]
 
 
+# Bookkeeping rather than a look at the data: the overview, the plan so far,
+# the reference pages. ONE list, because two of them drifted: query_help was
+# META in one app and READ in the other, so the same tool counted as a look at
+# the data in one Assistant tab and not in the other.
+META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
+                        'discard_plan', 'drop_planned'})
+
+
+def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], str],
+               progress: Dict[str, Callable[[Dict[str, Any]], str]]) -> Tracer:
+    """One app's tracer. What KIND a call was is read off the app's own tool
+    tables, and the line shown while it runs off the app's ``progress`` map,
+    with the same two fallbacks in every app: a plan tool says it is planning,
+    and anything else says its own name.
+    """
+    def kind(name: str) -> str:
+        if name == 'read_document':
+            return DOCUMENT
+        if name in web_tools:
+            return WEB
+        if name in write_tools:
+            return PLAN
+        if name in META_TOOLS:
+            return META
+        return READ
+
+    def label(name: str, args: Dict[str, Any]) -> str:
+        fn = progress.get(name)
+        if fn:
+            return fn(args)
+        if name in write_tools:
+            return 'Planning changes…'
+        return f'{name}…'
+
+    return Tracer(kind=kind, describe=describe, progress=label)
+
+
 # --- the words an app's descriptions are built from -----------------------------
 # Shared so two apps phrase the same shapes the same way.
 

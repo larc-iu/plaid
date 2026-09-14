@@ -15,10 +15,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import opkind
-from ..core.args import clamp_limit, read_int, sentence_number
+from ..core.args import clamp_limit, read_int, sentence_number, whole
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
 from ..core.workspace import BaseWorkspace
-from ..core.tools import ToolError
+from ..core.tools import ToolError, truncate
 from .plan import (COMPACT, EXCLUSIVE_KINDS, KIND,  # noqa: F401 - COMPACT is re-exported for the tests
                    RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op, scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
@@ -189,13 +189,6 @@ def op_target(op: Dict[str, Any]):
     return opkind.target_of(KIND, op)
 
 
-def _truncate(s: str) -> str:
-    if len(s) <= MAX_RESULT_CHARS:
-        return s
-    return s[:MAX_RESULT_CHARS] + (f'\n... [truncated: {len(s) - MAX_RESULT_CHARS} more characters; '
-                                   f'narrow the request]')
-
-
 # --- reads --------------------------------------------------------------------
 
 FIELDS = ('lemma', 'upos', 'xpos', 'features')
@@ -279,12 +272,12 @@ def t_read_document(ws: Workspace, document: str = None, from_sentence: int = No
     # should not have to page a long document to get there.
     if sentences:
         picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
-        return _truncate(render_document(doc, indexes=picked, budget=budget))
+        return truncate(render_document(doc, indexes=picked, budget=budget))
     lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
     hi = sentence_number(to_sentence, 'to_sentence') or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
     if hi - lo + 1 > MAX_SENTENCES_PER_READ:
         hi = lo + MAX_SENTENCES_PER_READ - 1
-    return _truncate(render_document(doc, from_sentence=lo, to_sentence=hi, budget=budget))
+    return truncate(render_document(doc, from_sentence=lo, to_sentence=hi, budget=budget))
 
 
 # --- planning helpers ----------------------------------------------------------
@@ -772,27 +765,11 @@ def t_discard_plan(ws: Workspace) -> str:
     return f'Discarded {n} planned change(s).' if n else 'Nothing was planned.'
 
 
-def _whole(i) -> int:
-    """One plan index. A fraction is refused rather than truncated: 1.5 is not
-    change 1, and silently dropping change 1 for it is worse than a refusal."""
-    if isinstance(i, bool):
-        raise ValueError(i)
-    if isinstance(i, int):
-        return i
-    if isinstance(i, float):
-        if not i.is_integer():
-            raise ValueError(i)
-        return int(i)
-    if re.fullmatch(r'-?[0-9]+', str(i).strip()):
-        return int(str(i).strip())
-    raise ValueError(i)
-
-
 def t_drop_planned(ws: Workspace, indexes=None) -> str:
     if not indexes:
         raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
     try:
-        drop = {_whole(i) for i in indexes}
+        drop = {whole(i) for i in indexes}
     except (TypeError, ValueError):
         raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
     bad = [i for i in drop if not 1 <= i <= len(ws.ops)]

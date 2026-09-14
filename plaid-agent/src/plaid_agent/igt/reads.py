@@ -14,13 +14,13 @@ from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
-from ..core.tools import ToolError
+from ..core.tools import ToolError, truncate
 
 from .project import (Word, Morpheme, document_lines, joiner, render_document, render_overview,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
-from .workspace import Workspace, _matcher, _meta_of, _truncate
+from .workspace import Workspace, _matcher, _meta_of
 
 
 # --- read tools ---------------------------------------------------------------
@@ -54,7 +54,7 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
     lines = [head] + document_lines(page)
     if offset + len(page) < len(docs):
         lines.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sentence: Optional[int] = None) -> str:
@@ -127,7 +127,7 @@ def _finish(out, total, limit, noun):
     if not out:
         return f'No {noun}.'
     head = f'{total} {noun}' + (f' (showing {limit})' if total > limit else '') + ':'
-    return _truncate('\n'.join([head] + out))
+    return truncate('\n'.join([head] + out))
 
 
 def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Optional[str] = None,
@@ -166,7 +166,7 @@ def t_read_lexicon(ws: Workspace, lexicon: Optional[str] = None, pattern: Option
                          + entry_line(it, view) + (' | (context)' if context else ''))
         if len(hits) > shown:
             lines.append(f'  ... {len(hits) - shown} more (narrow with pattern)')
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 def _bracket_line(w: Word, hit: Morpheme, field: Optional[str]) -> str:
@@ -269,7 +269,7 @@ def t_concordance(ws: Workspace, pattern: str, where: str = 'morpheme', document
         lines.append(f'  ... {len(patterns) - 25} more patterns')
     lines.append('Occurrences (previous [word] next | segmentation | morpheme fields || sentence):')
     lines.extend('  ' + h for h in lines_out)
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 MAX_FORMS_PER_CALL = 40
@@ -290,8 +290,8 @@ def t_analyses_of(ws: Workspace, form: Optional[str] = None, document: Optional[
     if len(wanted) > MAX_FORMS_PER_CALL:
         raise ToolError(f'At most {MAX_FORMS_PER_CALL} forms per call; split the list.')
     if len(wanted) > 1:
-        return _truncate('\n\n'.join(_analyses_of_one(ws, f, document) for f in wanted))
-    return _truncate(_analyses_of_one(ws, wanted[0], document))
+        return truncate('\n\n'.join(_analyses_of_one(ws, f, document) for f in wanted))
+    return truncate(_analyses_of_one(ws, wanted[0], document))
 
 
 def _analyses_of_one(ws: Workspace, form: str, document: Optional[str]) -> str:
@@ -435,7 +435,7 @@ def t_lexicon_entry(ws: Workspace, entry_form: Optional[str] = None, lexicon: Op
     if exs:
         lines.append('Examples:')
         lines.extend(exs)
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 def _dictionary_lines(ws: Workspace, view: LexView, target: dict) -> List[str]:
@@ -578,7 +578,7 @@ def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empt
                          + (': ' + '; '.join(unlinked) + (' …' if unlinked_n > len(unlinked) else '') if unlinked else '.'))
             lines.append(f'{linked_empty_n} linked but with no {f.name} value'
                          + (': ' + '; '.join(linked_empty) + (' …' if linked_empty_n > len(linked_empty) else '') if linked_empty else '.'))
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 # How far back recent_changes looks when no `since` is given, widening until
@@ -644,7 +644,7 @@ def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: int =
         docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])[:3])
         lines.append(f'  {when}  {who}: {what}' + (f'  [{docs}]' if docs else '')
                      + (f'  ({len(ops)} ops)' if len(ops) > 1 else '') + f'  as_of={after}')
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 def t_plan_status(ws: Workspace) -> str:

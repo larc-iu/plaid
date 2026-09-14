@@ -10,7 +10,8 @@ from typing import Any, Dict, List
 
 from .corpus import DOCS_PER_SEARCH, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
-from .tools import FIELDS, ToolError, Workspace, _truncate
+from ..core.tools import ToolError, truncate
+from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
 
@@ -107,7 +108,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         out = [f'{len(hits)} match(es) for {field} "{pattern}" in "{doc.name}"'
                + (f', showing {limit}' if len(hits) > limit else '') + ':']
         out += [_hit_line(doc, s, w, _value(w, field)) for s, w in hits[:limit]]
-        return _truncate('\n'.join(out))
+        return truncate('\n'.join(out))
 
     c = ws.corpus
     if field == 'form':
@@ -144,7 +145,7 @@ def t_search(ws: Workspace, field: str = None, pattern: str = None, document: st
         return f'No {field} matches "{pattern}".\n' + REGEX_NOTE.format(docs=', '.join(empty))
     if empty:
         out.append(REGEX_NOTE.format(docs=', '.join(empty)))
-    return _truncate(head + '\n' + '\n'.join(out) + c.clipped_note('documents'))
+    return truncate(head + '\n' + '\n'.join(out) + c.clipped_note('documents'))
 
 
 def _split_features(rows: List[tuple]) -> List[tuple]:
@@ -200,7 +201,7 @@ def t_frequency_list(ws: Workspace, what: str = 'lemma', document: str = None,
         out.append(f'  {n:>7}  {v}')
     if len(rows) > limit:
         out.append(f'  … and {len(rows) - limit} more')
-    return _truncate('\n'.join(out))
+    return truncate('\n'.join(out))
 
 
 CONSISTENCY = ('lemma-upos', 'form-lemma', 'rare-pairs')
@@ -261,7 +262,7 @@ def t_check_consistency(ws: Workspace, kind: str = None, limit: int = 25) -> str
             out.append(f'  {d} on {u}: {n}')
         if len(rare) > limit:
             out.append(f'  … and {len(rare) - limit} more')
-    return _truncate('\n'.join(out) + c.clipped_note('counts'))
+    return truncate('\n'.join(out) + c.clipped_note('counts'))
 
 
 def _deprel_upos_pairs(c: Corpus) -> Dict[tuple, int]:
@@ -318,7 +319,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                     out.append(_hit_line(doc, sent, w, w.form))
                 if len(hits) > limit:
                     out.append(f'  … and {len(hits) - limit} more (raise limit)')
-            return _truncate('\n'.join(out))
+            return truncate('\n'.join(out))
 
         for f in fields:
             if f == 'deprel':
@@ -335,7 +336,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
                 out.append(f'    {n:>6}  "{c.doc_name(did)}"')
             if len(docs) > limit:
                 out.append(f'    … and {len(docs) - limit} more documents')
-        return _truncate(('\n'.join(out) + c.clipped_note('documents')) or 'Nothing is missing.')
+        return truncate(('\n'.join(out) + c.clipped_note('documents')) or 'Nothing is missing.')
 
     stamp = {'prov': 'contributed'} if kind == 'contributed' else {'prov': 'inferred'}
     word = 'a contributor\'s unreviewed' if kind == 'contributed' else 'unconfirmed machine'
@@ -361,7 +362,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         out.append('')
         out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away. '
                    'Without refs, either covers the whole document as one planned change.')
-        return _truncate('\n'.join(out))
+        return truncate('\n'.join(out))
 
     for f in fields:
         if f == 'deprel':
@@ -386,7 +387,7 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
         return f'Nothing is waiting for review ({kind}).' + clipped
     out.append('')
     out.append('confirm marks these as reviewed; discard_predictions throws the machine ones away.')
-    return _truncate('\n'.join(out) + clipped)
+    return truncate('\n'.join(out) + clipped)
 
 
 # --- history and comments --------------------------------------------------------
@@ -459,7 +460,7 @@ def t_recent_changes(ws: Workspace, document: str = None, limit: int = 20,
         after = e.get('end_time') or e.get('time') or ''
         out.append(f'  {e.get("time")}  {who}  {docs}: {what} ({len(e.get("ops") or [])} op(s))')
         out.append(f'      as_of={after}')
-    return _truncate('\n'.join(out))
+    return truncate('\n'.join(out))
 
 
 def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = 30) -> str:
@@ -493,4 +494,4 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
     head = f'{len(got)} comment(s) in "{doc.name}"' + (f' on {ref}' if ref else '')
     if len(got) > limit:
         head += f', showing {limit}'
-    return _truncate(head + ':\n' + '\n'.join(out))
+    return truncate(head + ':\n' + '\n'.join(out))

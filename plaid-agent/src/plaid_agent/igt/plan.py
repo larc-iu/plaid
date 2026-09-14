@@ -77,7 +77,8 @@ from typing import Any, Dict, List
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
-                         TrackingBatcher, applying, created_id, expand_ops)
+                         TrackingBatcher, apply_add_comment, apply_restore_document, applying,
+                         created_id, expand_ops)
 from .vocab import parent_of
 
 # How a kind tags what it does to the shape of the text. RESHAPES is every
@@ -224,17 +225,6 @@ def _apply_unlink(ctx: Context, op) -> int:
 
 def _apply_set_morph_type(ctx: Context, op) -> int:
     ctx.b.update('tokens', op['morpheme_id'], metadata={'morphType': op.get('morph_type') or None})
-    return 1
-
-
-def _apply_add_comment(ctx: Context, op) -> int:
-    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                      anchor_label=o.get('anchor_label') or None))
-    return 1
-
-
-def _apply_restore_document(ctx: Context, op) -> int:
-    ctx.restores.append(op)  # after the batches: one server-side operation of its own
     return 1
 
 
@@ -561,9 +551,9 @@ KIND = ok.registry([
            deletes_tokens=lambda op: list(op.get('word_ids') or []) + list(op.get('morpheme_ids') or []),
            certain=False),
     OpKind('add_comment', ('comment', 'comments'), required=('entity_type', 'entity_id', 'body'),
-           apply=_apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
+           apply=apply_add_comment, at=('entity_id',), at_kind=TOKEN, token_keys=('entity_id',)),
     OpKind('restore_document', ('document restore', 'document restores'), required=('document_id', 'as_of'),
-           apply=_apply_restore_document, shape=ok.EXCLUSIVE,
+           apply=apply_restore_document, shape=ok.EXCLUSIVE,
            target=lambda op: ('restore', op.get('document_id'))),
     # Resolved to the ops it stands for at approval, so the executor never
     # sees one. The summary counts what it stands for.

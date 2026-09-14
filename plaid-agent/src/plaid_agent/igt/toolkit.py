@@ -13,8 +13,8 @@ from typing import Any, Dict, List
 
 from ..core import sandbox as _sandbox
 from ..core import webtools
-from ..core.tools import ToolError, fn, tools_for as core_tools_for
-from ..core.web import WebError
+from ..core.webtools import t_read_url, t_web_search
+from ..core.tools import ToolError, fn, tools_for as core_tools_for, truncate
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -34,7 +34,7 @@ from .tools import (t_add_comment, t_comments, t_confirm, t_create_document, t_d
                     t_discard_plan, t_drop_planned, t_link_entry, t_link_phrase, t_respell,
                     t_restore_document, t_set_analysis, t_set_document_metadata, t_set_field,
                     t_set_morpheme, t_set_orthography, t_unlink_entry, t_unlink_phrase)
-from .workspace import Workspace, _truncate
+from .workspace import Workspace
 
 # Offered only where the monty worker binary is present, and only where the
 # operator configured a search backend (see tools_for): a model that cannot
@@ -329,7 +329,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     # read that an earlier tool in the same turn had made.
     ws.forget_clipping()
     try:
-        return _truncate(fn(ws, **(args or {})))
+        return truncate(fn(ws, **(args or {})))
     except (ToolError, ValueError) as e:  # ValueError: a name/reference lookup failed, message is for the model
         return f'Error: {e}'
     except (TypeError, AttributeError) as e:
@@ -477,30 +477,6 @@ _IMPL.update({'split_word': t_split_word, 'merge_words': t_merge_words, 'delete_
               'split_sentence': t_split_sentence, 'merge_sentences': t_merge_sentences,
               'append_text': t_append_text, 'retype_sentence': t_retype_sentence})
 WEB_FENCE_TOP, WEB_FENCE_END, WEB_WARNING = webtools.FENCE_TOP, webtools.FENCE_END, webtools.WARNING
-
-
-def _need_web(ws: Workspace):
-    if ws.web is None:
-        raise ToolError('Web lookup is not configured on this assistant.')
-    return ws.web
-
-
-def t_web_search(ws: Workspace, query: str, limit: int = 5) -> str:
-    """Search the web. Titles, links and snippets only."""
-    _need_web(ws)
-    try:
-        return _truncate(webtools.web_search(ws, query, limit))
-    except WebError as e:
-        raise ToolError(str(e))
-
-
-def t_read_url(ws: Workspace, url: str) -> str:
-    """Read one web page that this conversation has already turned up."""
-    _need_web(ws)
-    try:
-        return _truncate(webtools.read_url(ws, url))
-    except WebError as e:
-        raise ToolError(str(e))
 
 
 

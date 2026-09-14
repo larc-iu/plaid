@@ -7,7 +7,7 @@ show up in the tab as a bare function name.
 
 from plaid_agent.igt.toolkit import TOOLS, WRITE_TOOLS
 from plaid_agent.core.trace import DOCUMENT, PLAN, READ, summarize_steps, trace_step
-from plaid_agent.igt.trace import TRACER, describe_step, progress_label, step_kind
+from plaid_agent.igt.trace import TRACER, describe_step
 
 
 def test_every_tool_has_a_line_of_its_own():
@@ -27,7 +27,7 @@ def test_every_tool_has_a_progress_line_of_its_own():
     it, because those tools do have past-tense lines.
     """
     missing = [t['function']['name'] for t in TOOLS
-               if progress_label(t['function']['name'], {}) == f"{t['function']['name']}…"]
+               if TRACER.progress(t['function']['name'], {}) == f"{t['function']['name']}…"]
     assert missing == [], f'no progress line for: {missing}'
 
 
@@ -35,7 +35,7 @@ def test_write_tools_are_the_ones_that_say_plan():
     assert WRITE_TOOLS == {t['function']['name'] for t in TOOLS
                            if t['function']['description'].startswith('PLAN:')}
     assert 'discard_plan' not in WRITE_TOOLS  # bookkeeping, not a change
-    assert all(step_kind(n) == PLAN for n in WRITE_TOOLS)
+    assert all(TRACER.kind(n) == PLAN for n in WRITE_TOOLS)
 
 
 def test_lines_read_as_sentences():

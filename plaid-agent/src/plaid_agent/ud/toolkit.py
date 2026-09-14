@@ -13,8 +13,8 @@ from typing import Any, Dict, List
 
 from ..core import sandbox as _sandbox
 from ..core import webtools
-from ..core.tools import ToolError, fn, tools_for as core_tools_for
-from ..core.web import WebError
+from ..core.webtools import t_read_url, t_web_search
+from ..core.tools import ToolError, fn, tools_for as core_tools_for, truncate
 
 from .bulk import t_replace_in_field
 from .query import t_query, t_query_help
@@ -24,7 +24,7 @@ from .sentences import t_merge_sentences, t_split_sentence
 from .shape import t_set_words
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
                     t_comments, t_frequency_list, t_recent_changes, t_search, t_worklist)
-from .tools import (FIELDS, Workspace, _truncate, t_add_comment, t_confirm, t_del_relation,
+from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
                     t_discard_plan, t_discard_predictions, t_drop_planned, t_list_documents,
                     t_plan_status, t_project_overview, t_read_document, t_run_parse, t_set_feature,
                     t_set_field, t_set_head)
@@ -279,27 +279,6 @@ _IMPL = {
 TOOLS += webtools.schemas('this corpus')
 
 
-def _need_web(ws: Workspace):
-    if ws.web is None:
-        raise ToolError('Web lookup is not configured on this assistant.')
-
-
-def t_web_search(ws: Workspace, query: str, limit: int = 5) -> str:
-    _need_web(ws)
-    try:
-        return _truncate(webtools.web_search(ws, query, limit))
-    except WebError as e:
-        raise ToolError(str(e))
-
-
-def t_read_url(ws: Workspace, url: str) -> str:
-    _need_web(ws)
-    try:
-        return _truncate(webtools.read_url(ws, url))
-    except WebError as e:
-        raise ToolError(str(e))
-
-
 _IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
 
 # A tool that plans a change says so in the first word of its description, and
@@ -322,7 +301,7 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     # read that an earlier tool in the same turn had made.
     ws.forget_clipping()
     try:
-        out = _truncate(fn(ws, **(args or {})))
+        out = truncate(fn(ws, **(args or {})))
         # A change this turn planned over one an earlier call planned is worth
         # a sentence: the model asked for two and is getting one. Said here
         # rather than in each tool, so a tool cannot be written without it.

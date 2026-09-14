@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 from plaid_client.provenance import prov_state, CONTRIBUTED_STATE, PROV_SOURCE_KEY
 
 from .project import IgtDoc, Sentence, Word, REVIEWABLE, mwe_form, render_word, segmentation, word_ref
-from ..core.tools import ToolError
+from ..core.tools import ToolError, truncate
 from .lexview import entry_line
-from .workspace import Workspace, _matcher, _truncate
+from .workspace import Workspace, _matcher
 from .vocab import descendants_of, validate_vocab_refs
 from ..core.args import clamp_limit, read_int
 from ..core.limits import READ_LIMITS
@@ -174,7 +174,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
 
     if by is None:
         describe(whole, n_docs, f'Project "{project.name}"' if not document else f'Document "{names[next(iter(names))]}"')
-        return _truncate(_with_note(lines, clipped))
+        return truncate(_with_note(lines, clipped))
 
     if by.lower() == 'document':
         gm, gs = project.gloss_field('Morpheme') or project.gloss_field('Word'), project.gloss_field('Sentence')
@@ -192,7 +192,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
                      _pct(n['hapax'], n['words']), f'{n["ttr"]:.2f}']
             cells += [str((metas.get(did) or {}).get(k, '') or '') for k in project.document_metadata]
             lines.append('\t'.join(c for c in cells if c is not None))
-        return _truncate(_with_note(lines, clipped))
+        return truncate(_with_note(lines, clipped))
 
     key = next((k for k in project.document_metadata if k.lower() == by.lower()), None)
     if not key:
@@ -202,7 +202,7 @@ def t_corpus_stats(ws: Workspace, document: Optional[str] = None, by: Optional[s
         groups[str((metas.get(did) or {}).get(key, '') or '(none)')].append(did)
     for val, ids in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         describe(total(ids), len(ids), f'{key} = {val}')
-    return _truncate(_with_note(lines, clipped))
+    return truncate(_with_note(lines, clipped))
 
 
 # --- frequency_list -----------------------------------------------------------------
@@ -268,7 +268,7 @@ def t_frequency_list(ws: Workspace, what: str = 'wordform', document: Optional[s
 
 
 def _with_note(lines, clipped: str) -> str:
-    """The clipped warning on the FIRST line, where `_truncate` cannot cut it.
+    """The clipped warning on the FIRST line, where `truncate` cannot cut it.
     Appended last it was the first thing lost on exactly the long report that
     had something to warn about."""
     if not clipped:
@@ -287,7 +287,7 @@ def _frequency_lines(items, spread, empty, field, what_l, limit, clipped: str = 
              + (f' (showing {limit})' if len(items) > limit else '') + '. count\tdocuments\tform' + clipped]
     for k, n in sorted(items, key=lambda kv: (-kv[1], kv[0]))[:limit]:
         lines.append(f'  {n}\t{len(spread.get(k) or ())}\t{k}')
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 # --- worklist ----------------------------------------------------------------------
@@ -414,7 +414,7 @@ def _worklist_lines(kind, f, lvl, limit, counts: Dict[str, int], examples: Dict[
              + '. count\tform\texamples' + clipped]
     for form, n in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]:
         lines.append(f'  {n}\t{form}\t{", ".join(examples.get(form) or [])}')
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 # --- check_lexicon -------------------------------------------------------------------
@@ -644,7 +644,7 @@ def t_check_lexicon(ws: Workspace, lexicon: Optional[str] = None, section: Optio
     # The sixth report, and the one with the widest grouping: one row per
     # link-token. Past the group limit "entries never linked" lists entries
     # whose links fell off the end of the read.
-    return _truncate(_with_note(lines, ws.corpus.clipped_note('links') if not ws.prefer_scan else ''))
+    return truncate(_with_note(lines, ws.corpus.clipped_note('links') if not ws.prefer_scan else ''))
 
 
 # --- check_integrity ----------------------------------------------------------------
@@ -707,7 +707,7 @@ def t_check_integrity(ws: Workspace, document: Optional[str] = None) -> str:
     if chars:
         lines.append('Unusual characters in the baseline (symbols, marks, controls, rare punctuation): '
                      + ', '.join(f'{c!r} U+{ord(c):04X} {unicodedata.name(c, "?")} ({n})' for c, n in chars.most_common(25)))
-    return _truncate('\n'.join(lines))
+    return truncate('\n'.join(lines))
 
 
 # --- sequence_search ----------------------------------------------------------------
@@ -781,7 +781,7 @@ def t_sequence_search(ws: Workspace, sequence: list, adjacent: bool = True, docu
                     show(tag, s, matches)
     if not total:
         return 'No sentence matches that sequence.' + clipped
-    return _truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match'
+    return truncate('\n'.join([f'{total} sentence{"s" if total != 1 else ""} match'
                                 + (f' (showing {limit})' if total > limit else '') + ':' + clipped] + out))
 
 

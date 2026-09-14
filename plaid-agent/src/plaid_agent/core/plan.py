@@ -337,3 +337,20 @@ def expand_ops(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         for i in range(int(op.get('count') or 0)):
             out.append({**fixed, **{k: vals[i] for k, vals in items.items()}})
     return out
+
+
+# --- the two appliers that are the same wherever they run -------------------------
+# A ``ctx`` here is the app's own execution context: it carries the client, the
+# batcher ``b``, and the list of restores to run after the batches.
+
+def apply_add_comment(ctx, op) -> int:
+    """A comment, unaudited like every comment and under the requester's name."""
+    ctx.b.add(lambda o=op: ctx.client.comments.create(o['entity_type'], o['entity_id'], o['body'],
+                                                      anchor_label=o.get('anchor_label') or None))
+    return 1
+
+
+def apply_restore_document(ctx, op) -> int:
+    """A restore runs after the batches: it is the server's own operation."""
+    ctx.restores.append(op)
+    return 1
