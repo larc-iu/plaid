@@ -634,18 +634,30 @@ def _scope_documents(ws: Workspace, documents, kind: str, fields: List[str]) -> 
 
 
 def _many(ws: Workspace, documents, field: str, one) -> str:
-    """Run a one-document review tool over several documents, and sum up."""
+    """Run a one-document review tool over several documents, and sum up.
+
+    All of them or none. A guard firing on the third document used to leave the
+    first two staged while the model was told the call had failed, so the user
+    was offered changes nobody had described to them.
+    """
     fields = _review_fields(field)
     kind = 'confirm' if one is t_confirm else 'discard'
     ids = _scope_documents(ws, documents, kind, fields)
+    saved, saved_replaced, saved_reported = list(ws.ops), ws.replaced, ws.reported_replaced
     planned = 0
     covered = []
-    for did in ids:
-        before = len(ws.ops)
-        one(ws, document=did, field=field)
-        if len(ws.ops) > before:
-            planned += ws.ops[-1].get('count') or 0
-            covered.append(ws.doc(did).name)
+    try:
+        for did in ids:
+            before = len(ws.ops)
+            one(ws, document=did, field=field)
+            if len(ws.ops) > before:
+                planned += ws.ops[-1].get('count') or 0
+                covered.append(ws.doc(did).name)
+    except Exception:
+        ws.ops[:] = saved
+        ws.replaced = saved_replaced
+        ws.reported_replaced = saved_reported
+        raise
     if not covered:
         return f'Nothing is waiting for review in the {len(ids)} document(s) named.'
     verb = 'confirming' if kind == 'confirm' else 'discarding'

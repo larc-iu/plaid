@@ -1081,6 +1081,25 @@ def test_a_review_over_several_documents_is_one_scope_op_each(ws):
 
 
 @pytest.mark.parametrize('tool', ['confirm', 'discard_predictions'])
+def test_a_review_over_several_documents_stages_all_of_them_or_none(tool):
+    """It ran the one-document tool per document with nothing to put back, so a
+    guard firing on the second document left the first one staged behind an
+    `Error:`, and the user was offered a change the model had been told it
+    could not make."""
+    from ud_fixtures import FakeClient, document_raw, project_raw
+    other = {**document_raw(), 'id': 'other', 'name': 'Otro', 'version': 9}
+    client = FakeClient(project=project_raw(), documents={'ud1': document_raw(), 'other': other})
+    ws = Workspace(client, load_project(client, PID))
+    ws.ops.append({'kind': 'run_parse', 'document_ids': ['other'], 'project_id': PID,
+                   'service_id': 'svc', 'language': 'es', 'label': 'parse "Otro"'})
+    before = list(ws.ops)
+    out = run(ws, tool, documents=['Viaje', 'Otro'])
+    assert 'already parses "Otro"' in out, out
+    assert ws.ops == before, 'the first document was left staged'
+    assert (ws.replaced, ws.reported_replaced) == (0, 0)
+
+
+@pytest.mark.parametrize('tool', ['confirm', 'discard_predictions'])
 def test_refs_and_documents_together_are_refused(ws, tool):
     """refs are positional inside ONE document. Given both, the refs were
     dropped and the card offered whole documents: the model asked about one

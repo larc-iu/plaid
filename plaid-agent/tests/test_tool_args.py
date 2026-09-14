@@ -62,12 +62,14 @@ def _igt_ws():
 
 
 def _ud_ws():
-    from fixtures_ext import ExtClient
-    from ud_fixtures import project_raw, document_raw
+    # This app's own fake client. It read IGT's, whose audit log names IGT's
+    # documents, so a UD tool reading one document's history read entries from
+    # the other app's project.
+    from ud_fixtures import PID, ExtClient, project_raw, document_raw
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
     c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
-    return Workspace(c, load_project(c, 'p1'))
+    return Workspace(c, load_project(c, PID))
 
 
 def _args(required, values, param):
