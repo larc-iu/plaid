@@ -53,7 +53,7 @@ export const useResumeConversation = ({
       // Only a conversation of THIS project, whose keys are the only ones this
       // screen reads, and only one that still exists (it may have been deleted
       // meanwhile).
-      const mine = metas.filter((m) => !m.projectId || m.projectId === projectId);
+      const mine = metas.filter((m) => m.projectId === projectId);
       const here = new Set(mine.map((m) => m.id));
       // A conversation named in the URL is respected, but only if it is this
       // project's. Walking from one project to another used to leave the one

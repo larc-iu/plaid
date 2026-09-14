@@ -365,6 +365,7 @@ export const AssistantChat = ({
     activeRef.current = next;
     setActive(next);
     const meta = buildMeta(
+      store,
       list.rows.find((m) => m.id === next.id),
       next,
       null,
@@ -428,7 +429,7 @@ export const AssistantChat = ({
     activeRef.current = conv;
     setActive(conv);
     if (convIdRef.current !== conv.id) setConvId(conv.id, { replace: true });
-    applyMeta(buildMeta(prevMeta, conv, service));
+    applyMeta(buildMeta(store, prevMeta, conv, service));
     showJob(startTurn({ store, service, conv, prevMeta, where }));
   };
 
@@ -491,9 +492,11 @@ export const AssistantChat = ({
     [active?.messages],
   );
   // A list of conversations puts an unsent one at the top, so a new
-  // conversation is a real place to be rather than a blank screen.
+  // conversation is a real place to be rather than a blank screen. It belongs
+  // to the project on screen, like every other row: nothing in a list of
+  // conversations is from nowhere.
   const rows = active?.draft
-    ? [{ id: active.id, title: 'New conversation', draft: true }, ...list.rows]
+    ? [{ id: active.id, projectId, title: 'New conversation', draft: true }, ...list.rows]
     : list.rows;
   // What either surface needs to draw that list: the rail in the tab, the
   // header's popover in the panel.
@@ -504,7 +507,7 @@ export const AssistantChat = ({
     projectNames: list.projectNames,
     opening,
     loading: list.loading,
-    hrefFor: (m) => adapter.convHref(m.projectId || projectId, m.id),
+    hrefFor: (m) => adapter.convHref(m.projectId, m.id),
     onDelete: list.remove,
   };
   const pendingPlan = display.some((d) => d.plan && d.status === null);

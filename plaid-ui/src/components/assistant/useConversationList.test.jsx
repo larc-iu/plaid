@@ -9,7 +9,7 @@ vi.mock('../../lib/notify.js', () => ({
 const { notifyError } = await import('../../lib/notify.js');
 const { renderComponent } = await import('../../test/renderComponent.jsx');
 const { useConversationList } = await import('./useConversationList.js');
-const { jobs } = await import('./jobs.js');
+const { buildMeta, jobs } = await import('./jobs.js');
 
 // The saved conversations behind both surfaces: which keys the read asks for,
 // what widening to every project changes, and what a delete does to the row.
@@ -151,6 +151,25 @@ describe('useConversationList', () => {
       box.list.applyMeta(meta('old', '2026-09-01T00:00:00Z', { projectId: 'here' })),
     );
     expect(read()).toBe('new@here,old@here');
+    await unmount();
+  });
+
+  it('leaves a settled row with the project it was listed under', async () => {
+    // Settling a turn rebuilds the sidebar entry and puts it back over the
+    // listed one. The entry the read tagged from its key is replaced, so what
+    // goes back has to carry the project itself.
+    const client = fakeClient([
+      { key: 'igt:assistant:here:meta:a', value: meta('a', '2026-09-09T00:00:00Z') },
+    ]);
+    const { box, read, step, unmount } = await mount(client);
+    await step(() => box.list.reload());
+    expect(read()).toBe('a@here');
+    await step(() =>
+      box.list.applyMeta(
+        buildMeta(box.list.store, { id: 'a' }, { id: 'a', messages: [], display: [] }, null),
+      ),
+    );
+    expect(read()).toBe('a@here');
     await unmount();
   });
 

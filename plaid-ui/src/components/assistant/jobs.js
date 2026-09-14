@@ -31,9 +31,9 @@ export const metaPrefix = (app, projectId) => `${app}:assistant:${projectId}:met
 // (plaid-core's sql/user_data.clj says the same thing from the other side).
 export const metaGlob = (app) => `${app}:assistant:*:meta:*`;
 
-// Which project a record belongs to, read off its key. The key is the only
-// place it is written: a sidebar entry carries no project id of its own, and
-// adding one would leave every conversation saved before today unattributed.
+// Which project a record belongs to, read off its key. The key is where it is
+// decided: the record LIVES under that project, so a listed entry is attributed
+// from the key rather than from anything written inside it.
 export const projectOfKey = (app, key) => {
   const head = `${app}:assistant:`;
   if (typeof key !== 'string' || !key.startsWith(head)) return null;
@@ -121,10 +121,17 @@ export const upsert = (meta) => (prev) =>
 
 // The sidebar entry after a write. `pending` names the request under way, if
 // any: {kind, requestId, serviceId, planId, asHuman, contributedBy, startedAt}.
-export const buildMeta = (prev, conv, service, pending = null, about = null) => {
+//
+// It carries the project it is written under, because the list holds rows from
+// more than one (All projects) and each is deleted and linked to under its OWN
+// project. An entry that named none put a row back into the list that had
+// forgotten where it lived. A listed row is still attributed from its KEY,
+// which is where a record's project is decided.
+export const buildMeta = (store, prev, conv, service, pending = null, about = null) => {
   const firstUser = conv.display.find((d) => d.kind === 'user');
   return {
     id: conv.id,
+    projectId: store.projectId,
     title: prev?.title || (firstUser ? titleFrom(firstUser.text) : 'New conversation'),
     createdAt: prev?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -179,21 +186,24 @@ export const readConv = async (store, id) => {
   const v = c?.value || {};
   return {
     conv: { id, messages: v.messages || [], display: v.display || [] },
-    meta: m?.value || null,
+    // Under this project's keys is the only place it was looked for, so that is
+    // the project it belongs to. The entry goes back into the list as it is,
+    // and a row there has to know its own project.
+    meta: m?.value ? { ...m.value, projectId } : null,
   };
 };
 
 // Delete one conversation: both keys, or neither. A transcript left behind
 // without its sidebar entry could never be reached again.
 //
-// The keys are built from the ROW's OWN project, falling back to the one on
-// screen for a conversation just started here (its entry carries no project
-// until it has been read back off its key). With the list widened past this
-// project, deleting a foreign row asked for a key under the project on screen,
-// which is a key that has never existed: a 404 every time, and the row stayed.
+// The keys are built from the ROW's OWN project. With the list widened past
+// this project, deleting a foreign row asked for a key under the project on
+// screen, which is a key that has never existed: a 404 every time, and the row
+// stayed. Every row carries its project, whether it was listed, read back, or
+// just written here.
 export const deleteConversation = (store, meta) => {
   const { client, userId, app } = store;
-  const projectId = meta.projectId || store.projectId;
+  const { projectId } = meta;
   return Promise.all([
     client.userData.delete(userId, convKey(app, projectId, meta.id)),
     client.userData.delete(userId, metaKey(app, projectId, meta.id)),
@@ -259,7 +269,7 @@ export const finishJob = async (j, store, service) => {
   } catch (e) {
     console.error('[Assistant] could not read the conversation back', e);
     conv = j.conv;
-    meta = buildMeta(j.prevMeta, conv, service);
+    meta = buildMeta(store, j.prevMeta, conv, service);
   }
   const stillOut = j.error?.pending === true;
   if (stillOut && j.kind === 'turn') notifyWarning(LOST_CONTACT, 'Assistant');
@@ -291,7 +301,7 @@ export const finishJob = async (j, store, service) => {
         ),
       };
     }
-    meta = buildMeta(meta, conv, service, null);
+    meta = buildMeta(store, meta, conv, service, null);
     await persistConv(store, conv, meta);
   }
   j.done = true;
@@ -346,6 +356,7 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
   });
   jobs.set(conv.id, j);
   const meta = buildMeta(
+    store,
     prevMeta,
     conv,
     service,
@@ -442,7 +453,7 @@ export const startApply = ({
   jobs.set(conv.id, j);
   // The attempt is recorded before it is made, so a tab that comes back
   // knows a plan was approved and rejoins, or offers to apply again.
-  const meta = buildMeta(prevMeta, conv, service, {
+  const meta = buildMeta(store, prevMeta, conv, service, {
     kind: 'apply',
     requestId,
     serviceId: service.serviceId,
