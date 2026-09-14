@@ -29,46 +29,48 @@ test.beforeAll(async () => {
   const project = await client.projects.create(`Prov replace ${Date.now()}`);
   S.projectId = project.id;
 
-  client.beginBatch();
-  client.textLayers.create(S.projectId, 'Text');
-  const textLayerId = (await client.submitBatch())[0].body.id;
+  const bTextLayer = await client.batched(async (b) => {
+    b.textLayers.create(S.projectId, 'Text');
+  });
+  const textLayerId = bTextLayer[0].body.id;
   S.textLayerId = textLayerId;
 
-  client.beginBatch();
-  client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-  client.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
-  const sentenceLayerId = (await client.submitBatch())[1].body.id;
+  const bSentenceLayer = await client.batched(async (b) => {
+    b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+    b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
+  });
+  const sentenceLayerId = bSentenceLayer[1].body.id;
   S.sentenceLayerId = sentenceLayerId;
 
-  client.beginBatch();
-  client.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
-  client.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
-  const wordLayerId = (await client.submitBatch())[1].body.id;
+  const bWordLayer = await client.batched(async (b) => {
+    b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
+    b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
+  });
+  const wordLayerId = bWordLayer[1].body.id;
 
-  client.beginBatch();
-  client.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
-  client.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
-  const morphemeLayerId = (await client.submitBatch())[1].body.id;
+  const bMorphemeLayer = await client.batched(async (b) => {
+    b.tokenLayers.setConfig(wordLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.WORD);
+    b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
+  });
+  const morphemeLayerId = bMorphemeLayer[1].body.id;
 
-  client.beginBatch();
-  client.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
-  for (const [name] of SPAN_SPECS) client.spanLayers.create(morphemeLayerId, name);
-  const b6 = await client.submitBatch();
+  const b6 = await client.batched(async (b) => {
+    b.tokenLayers.setConfig(morphemeLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SYNTACTIC_WORD);
+    for (const [name] of SPAN_SPECS) b.spanLayers.create(morphemeLayerId, name);
+  });
   const spanLayerIds = SPAN_SPECS.map((_, i) => b6[1 + i].body.id);
   const byKey = Object.fromEntries(SPAN_SPECS.map(([, key], i) => [key, spanLayerIds[i]]));
   S.byKey = byKey;
 
-  client.beginBatch();
-  SPAN_SPECS.forEach(([, key], i) =>
-    client.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true),
-  );
-  client.relationLayers.create(byKey.lemma, 'Dependency Relations');
-  const b7 = await client.submitBatch();
+  const b7 = await client.batched(async (b) => {
+    SPAN_SPECS.forEach(([, key], i) => b.spanLayers.setConfig(spanLayerIds[i], UD_NS, key, true));
+    b.relationLayers.create(byKey.lemma, 'Dependency Relations');
+  });
   const relationLayerId = b7[b7.length - 1].body.id;
   S.relationLayerId = relationLayerId;
-  client.beginBatch();
-  client.relationLayers.setConfig(relationLayerId, UD_NS, 'dependency', true);
-  await client.submitBatch();
+  await client.batched(async (b) => {
+    b.relationLayers.setConfig(relationLayerId, UD_NS, 'dependency', true);
+  });
 
   const body = 'the dog runs';
   const doc = await client.documents.create(S.projectId, 'Prov Doc');
@@ -80,23 +82,23 @@ test.beforeAll(async () => {
     [4, 7],
     [8, 12],
   ];
-  client.beginBatch();
-  client.tokens.bulkCreate([
-    { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
-  ]);
-  client.tokens.bulkCreate(
-    words.map(([b, e]) => ({ tokenLayerId: wordLayerId, text: text.id, begin: b, end: e })),
-  );
-  client.tokens.bulkCreate(
-    words.map(([b, e]) => ({
-      tokenLayerId: morphemeLayerId,
-      text: text.id,
-      begin: b,
-      end: e,
-      precedence: 0,
-    })),
-  );
-  const bTok = await client.submitBatch();
+  const bTok = await client.batched(async (b) => {
+    b.tokens.bulkCreate([
+      { tokenLayerId: sentenceLayerId, text: text.id, begin: 0, end: body.length },
+    ]);
+    b.tokens.bulkCreate(
+      words.map(([begin, end]) => ({ tokenLayerId: wordLayerId, text: text.id, begin, end })),
+    );
+    b.tokens.bulkCreate(
+      words.map(([begin, end]) => ({
+        tokenLayerId: morphemeLayerId,
+        text: text.id,
+        begin,
+        end,
+        precedence: 0,
+      })),
+    );
+  });
   S.sentTokId = bTok[0].body.ids[0];
   const morphIds = bTok[2].body.ids;
   S.morphIds = morphIds; // [the, dog, runs]
@@ -167,9 +169,9 @@ const gone = (x) => !!x.error;
 test('API: batched(update + patchMetadata) verifies on the server', async () => {
   const { client, byKey, morphIds } = S;
   const tmp = (await client.spans.create(byKey.xpos, [morphIds[0]], 'DT', MACHINE)).id;
-  await client.batched(async () => {
-    client.spans.update(tmp, 'DET');
-    client.spans.patchMetadata(tmp, { provConfirmed: true });
+  await client.batched(async (b) => {
+    b.spans.update(tmp, 'DET');
+    b.spans.patchMetadata(tmp, { provConfirmed: true });
   });
   const back = await client.spans.get(tmp);
   dump('api-batched', { value: back.value, metadata: back.metadata });

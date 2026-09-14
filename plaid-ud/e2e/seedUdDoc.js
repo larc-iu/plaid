@@ -36,33 +36,33 @@ export async function seedUdDoc(name, body, words, sentences) {
   const doc = await client.documents.create(project.id, 'Doc');
   const text = await client.texts.create(info.textLayer.id, doc.id, body);
 
-  client.beginBatch();
-  client.tokens.bulkCreate(
-    (sentences || [[0, body.length]]).map(([begin, end]) => ({
-      tokenLayerId: info.sentenceTokenLayer.id,
-      text: text.id,
-      begin,
-      end,
-    })),
-  );
-  client.tokens.bulkCreate(
-    words.map(([begin, end]) => ({
-      tokenLayerId: info.wordTokenLayer.id,
-      text: text.id,
-      begin,
-      end,
-    })),
-  );
-  client.tokens.bulkCreate(
-    words.map(([begin, end]) => ({
-      tokenLayerId: info.morphemeTokenLayer.id,
-      text: text.id,
-      begin,
-      end,
-      precedence: 0,
-    })),
-  );
-  const results = await client.submitBatch();
+  const results = await client.batched(async (b) => {
+    b.tokens.bulkCreate(
+      (sentences || [[0, body.length]]).map(([begin, end]) => ({
+        tokenLayerId: info.sentenceTokenLayer.id,
+        text: text.id,
+        begin,
+        end,
+      })),
+    );
+    b.tokens.bulkCreate(
+      words.map(([begin, end]) => ({
+        tokenLayerId: info.wordTokenLayer.id,
+        text: text.id,
+        begin,
+        end,
+      })),
+    );
+    b.tokens.bulkCreate(
+      words.map(([begin, end]) => ({
+        tokenLayerId: info.morphemeTokenLayer.id,
+        text: text.id,
+        begin,
+        end,
+        precedence: 0,
+      })),
+    );
+  });
   const sentenceIds = results[0].body.ids;
   const morphIds = results[2].body.ids;
 

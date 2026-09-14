@@ -42,10 +42,11 @@ try {
   let selfBatchOk = true,
     selfBatchErr = '';
   try {
-    a.beginBatch();
-    a.relations.delete(rel.id);
-    a.relations.create(rl.id, s2, s1, 'nsubj');
-    await a.submitBatch();
+    // `batch`, not `b`: `b` is the concurrent editor's client.
+    await a.batched(async (batch) => {
+      batch.relations.delete(rel.id);
+      batch.relations.create(rl.id, s2, s1, 'nsubj');
+    });
   } catch (e) {
     selfBatchOk = false;
     selfBatchErr = `${e.status} ${e.message}`;
@@ -67,10 +68,10 @@ try {
   await b.relations.create(rl.id, s2, s0, 'xcomp');
   let batchStale = null;
   try {
-    a.beginBatch();
-    a.relations.create(rl.id, s1, s2, 'amod');
-    a.relations.update?.(rel.id, 'noop'); // second op, may 404 — version check fires first
-    await a.submitBatch();
+    await a.batched(async (batch) => {
+      batch.relations.create(rl.id, s1, s2, 'amod');
+      batch.relations.update(rel.id, 'noop'); // second op, may 404 — version check fires first
+    });
   } catch (e) {
     batchStale = e.status;
   }

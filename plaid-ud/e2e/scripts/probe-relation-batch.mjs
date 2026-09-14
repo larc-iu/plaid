@@ -26,18 +26,18 @@ try {
   const [s0, s1, s2] = spans.ids;
 
   // 1. Single relations.create inside a batch — result body must carry id.
-  client.beginBatch();
-  client.relations.create(rl.id, s0, s1, 'dep');
-  const r1 = await client.submitBatch();
+  const r1 = await client.batched(async (b) => {
+    b.relations.create(rl.id, s0, s1, 'dep');
+  });
   const rel1 = r1[r1.length - 1]?.body?.id;
   console.log('create-in-batch last result body:', JSON.stringify(r1[r1.length - 1]?.body));
   if (!rel1) throw new Error('FAIL: no body.id from single create-in-batch');
 
   // 2. Atomic replace: delete old + create new in ONE batch (re-point head).
-  client.beginBatch();
-  client.relations.delete(rel1);
-  client.relations.create(rl.id, s2, s1, 'nsubj');
-  const r2 = await client.submitBatch();
+  const r2 = await client.batched(async (b) => {
+    b.relations.delete(rel1);
+    b.relations.create(rl.id, s2, s1, 'nsubj');
+  });
   const rel2 = r2[r2.length - 1]?.body?.id;
   if (!rel2) throw new Error('FAIL: no body.id from replace batch');
 
