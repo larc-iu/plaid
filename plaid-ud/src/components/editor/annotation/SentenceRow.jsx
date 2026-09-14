@@ -21,19 +21,10 @@ export const SentenceRow = React.memo(
     // 0-based here; the assistant addresses sentences from 1, as CoNLL-U does.
     sentenceIndex,
   }) => {
-    const {
-      onRelationCreate,
-      onRelationUpdate,
-      onRelationDelete,
-      onEditText,
-      onToggleField,
-      validators,
-      descriptions,
-      vocab,
-      colors,
-      reviewable,
-      visibleFields,
-    } = useEditorSession();
+    // What this row itself reads. The dependency tree and the deprel editor
+    // render under the same provider and read their own share of it, so nothing
+    // about relations or about the DEPREL vocabulary passes through here.
+    const { onEditText, onToggleField, reviewable, visibleFields } = useEditorSession();
 
     // Token data is already pre-processed in sentenceData
     const tokenData = sentenceData.tokens;
@@ -251,17 +242,10 @@ export const SentenceRow = React.memo(
           tokens={sentenceData.tokens.map((t) => t.token)}
           relations={relations}
           lemmaSpans={lemmaSpans}
-          onRelationCreate={onRelationCreate}
-          onRelationUpdate={onRelationUpdate}
-          onRelationDelete={onRelationDelete}
           textContent={textContentProvider}
           tokenPositions={tokenPositions}
-          deprelColors={colors?.deprel}
-          deprelVocab={vocab?.deprel}
           onExitDown={focusGridCell}
           onEditText={handleEditText}
-          validateDeprel={validators?.deprel}
-          deprelDescriptions={descriptions?.deprel}
           arcLayout={arcLayout}
         />
 

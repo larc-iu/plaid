@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { DeprelEditor } from './DeprelEditor.jsx';
+import { EditorSessionContext } from './editorSession.js';
 
 // The second argument of onCommit / onTab is the provenance question: did the
 // annotator put this label here, or did they only pass through? Re-entering a
@@ -17,17 +18,20 @@ import { DeprelEditor } from './DeprelEditor.jsx';
 const RELATION = { id: 'r1', value: 'nsubj', metadata: { prov: 'inferred' } };
 const VOCAB = ['nsubj', 'obj', 'obl', 'det'];
 
-const mount = (props) =>
+// The editor reads the DEPREL vocabulary, its rule and its glosses off the
+// grid's session, the way every cell reads its own field's.
+const mount = ({ session, ...props } = {}) =>
   renderComponent(
-    <DeprelEditor
-      relation={RELATION}
-      suggestions={VOCAB}
-      onCommit={() => {}}
-      onCancel={() => {}}
-      onDelete={() => {}}
-      onTab={() => {}}
-      {...props}
-    />,
+    <EditorSessionContext.Provider value={{ vocab: { deprel: VOCAB }, ...session }}>
+      <DeprelEditor
+        relation={RELATION}
+        onCommit={() => {}}
+        onCancel={() => {}}
+        onDelete={() => {}}
+        onTab={() => {}}
+        {...props}
+      />
+    </EditorSessionContext.Provider>,
   );
 
 // One character at a time, the way a keyboard does it. React suppresses an
@@ -106,7 +110,7 @@ describe('DeprelEditor', () => {
     const onCancel = vi.fn();
     const { container, step, unmount } = await mount({
       relation: { id: 'r2', value: 'obl:tmod', metadata: {} },
-      validate,
+      session: { validators: { deprel: validate } },
       onCommit,
       onCancel,
     });

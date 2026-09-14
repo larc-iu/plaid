@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 import { notifyWarning } from '../../../utils/notify.js';
+import { useEditorSession, controlledField } from './editorSession.js';
 
 // Inline editor for a dependency-relation label, rendered inside the tree's
 // SVG <foreignObject>. Mirrors the grid's vocab cells: a Combobox seeded with
@@ -25,16 +26,13 @@ import { notifyWarning } from '../../../utils/notify.js';
 //   Tab / Shift+Tab  → commit + move to the next/previous relation
 // A `done` ref guards against the blur firing a second commit after an
 // explicit Enter/Tab/Escape/Delete already closed the editor.
-export function DeprelEditor({
-  relation,
-  suggestions,
-  descriptions,
-  validate,
-  onCommit,
-  onCancel,
-  onDelete,
-  onTab,
-}) {
+export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) {
+  // The DEPREL vocabulary, what refuses a value outside it, and what each value
+  // means: one field's share of the session, read the way every grid cell reads
+  // its own. The editor renders inside the tree, which renders inside the grid's
+  // provider. What stays a prop is what only the tree can say: which relation is
+  // being edited, and where each way out of the editor leads.
+  const { suggestions, validate, descriptions } = controlledField(useEditorSession(), 'deprel');
   const [value, setValue] = useState(relation.value || 'dep');
   // `pristine` = focused but not yet typed: the list shows the full vocabulary
   // in its natural order and nothing is auto-highlighted. It answers that

@@ -3,6 +3,7 @@ import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
+import { useEditorSession } from './editorSession.js';
 import { ARC_BASE, arcHeight, arcPath } from '../../../utils/arcLayout.js';
 import './DependencyTree.css';
 
@@ -22,21 +23,20 @@ export const DependencyTree = forwardRef(
       tokens,
       relations,
       lemmaSpans,
-      onRelationCreate,
-      onRelationUpdate,
-      onRelationDelete,
       textContent,
       tokenPositions = [],
-      deprelColors,
-      deprelVocab,
       onExitDown,
       onEditText,
-      validateDeprel,
-      deprelDescriptions,
       arcLayout,
     },
     ref,
   ) => {
+    // The tree renders inside the grid's provider, so what the whole document
+    // shares it reads for itself: the relation handlers (all three null on a
+    // read-only document, which is what `isReadOnly` below asks) and the DEPREL
+    // colours. The deprel editor reads its own vocabulary the same way.
+    const { onRelationCreate, onRelationUpdate, onRelationDelete, colors } = useEditorSession();
+    const deprelColors = colors?.deprel;
     const [selectedSource, setSelectedSource] = useState(null);
     const [hoveredToken, setHoveredToken] = useState(null);
     const [editingRelation, setEditingRelation] = useState(null);
@@ -584,9 +584,6 @@ export const DependencyTree = forwardRef(
             >
               <DeprelEditor
                 relation={relation}
-                suggestions={deprelVocab}
-                descriptions={deprelDescriptions}
-                validate={validateDeprel}
                 onCommit={(v, typed) => {
                   commitLabel(relation, v, typed);
                   // Stay on this label (selected, not editing) so arrow/Tab nav
