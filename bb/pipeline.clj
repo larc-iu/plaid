@@ -115,8 +115,9 @@
     (p/shell {:dir app} "npm" "run" "lint"))
   ;; The JS client's own suite (the request layer, batching, OCC stamps,
   ;; pagination, service RPC). It was never in the gate either.
+  ;; The client declares no dependencies, so there is nothing to install and
+  ;; no lockfile for `npm ci` to read: `node --test` runs on the checkout.
   (step "Run the JavaScript test suite (plaid-client-js)")
-  (p/shell {:dir "plaid-client-js"} "npm" "ci")
   (p/shell {:dir "plaid-client-js"} "npm" "test")
   ;; After the JS step, deliberately: the assistant's mirror test runs the
   ;; app's own domain modules through node and SKIPS ITSELF when plaid-igt's
