@@ -543,7 +543,12 @@ def _run(ctx: Context, ops, stage: str) -> None:
         if spec.stage != stage:
             continue
         n = spec.apply(ctx, op)
-        ctx.counts[spec.noun[1]] += 1 if n is None else n
+        n = 1 if n is None else n
+        # An applier that wrote nothing (clearing a value that was not there)
+        # adds no key. A zero-valued one reaches the user as "0 field values"
+        # on the applied card.
+        if n:
+            ctx.counts[spec.noun[1]] += n
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:

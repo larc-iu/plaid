@@ -388,6 +388,30 @@ def test_the_applied_counts_use_the_same_nouns_as_the_approval_line():
     assert ud <= set(_plural_nouns(ud_plan)) and ud == {'removed dependencies', 'relabeled dependencies'}
 
 
+def test_an_op_that_wrote_nothing_adds_no_count():
+    """`counts[noun] += n` made the key whatever n was, so a plan whose only
+    op wrote nothing (clearing a value that was not there) came back as
+    "0 field values" on the applied card."""
+    from plaid_agent.ud.plan import execute_plan as ud_execute
+    from ud_fixtures import ud_client
+
+    clear = {'kind': 'set_span', 'layer_id': 'L', 'token_id': 'T', 'span_id': None, 'value': '', 'label': ''}
+    assert execute_plan(FakeClient(), [clear], source='s', label='l') == {}
+    assert ud_execute(ud_client(), [clear], source='s', label='l') == {}
+
+
+def test_a_corpus_wide_change_shows_a_kind_the_registry_lost():
+    """`ok.summarize` writes the identifier of a kind it does not know rather
+    than leaving the change out of the line the user approves. The
+    corpus-wide op counts several kinds at once and dropped an unknown one
+    silently, against the same rule."""
+    from plaid_agent.igt.plan import summarize
+
+    op = {'kind': 'bulk_scope', 'tool': 'replace_in_field', 'args': {}, 'count': 5,
+          'counts': {'set_span': 3, 'no_such_kind': 2}, 'label': ''}
+    assert summarize([op]) == '3 field values, 2 no_such_kind'
+
+
 def _plural_nouns(module):
     return [spec.noun[1] for spec in module.KIND.values()]
 

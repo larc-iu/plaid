@@ -403,8 +403,11 @@ def _discard_analysis_deletes(op):
 # --- the registry -------------------------------------------------------------------
 
 def _bulk_scope_summary(op, n):
-    # A stored replacement stands for `count` changes of several kinds.
-    return [(KIND[k].noun, int(v)) for k, v in (op.get('counts') or {}).items() if k in KIND]
+    # A stored replacement stands for `count` changes of several kinds. A kind
+    # the registry does not know shows its identifier, as `ok.summarize` does
+    # for an op of one: leaving a change out of the line the user approves is
+    # worse than an ugly word in it.
+    return [(KIND[k].noun if k in KIND else (k, k), int(v)) for k, v in (op.get('counts') or {}).items()]
 
 
 KIND = ok.registry([
@@ -754,7 +757,12 @@ def _execute(client, ops, *, label, project, counts, notes, stamps: Stamps, trac
         for op in ops:
             spec = KIND[op['kind']]
             n = spec.apply(ctx, op)
-            counts[spec.noun[1]] += 1 if n is None else n
+            n = 1 if n is None else n
+            # An applier that wrote nothing (clearing a value that was not
+            # there) adds no key. A zero-valued one reaches the user as
+            # "0 field values" on the applied card.
+            if n:
+                counts[spec.noun[1]] += n
 
         b.flush()
 
