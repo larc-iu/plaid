@@ -41,16 +41,16 @@ The project's guidelines:
 
 --- the project's guidelines begin ---
 
-## Glossing
+GUIDELINE: Glossing
 Leipzig, with this project's own exceptions.
 
 Loanwords are **not** segmented. Gloss them whole.
 
-## Orthography
+GUIDELINE: Orthography
 Nothing decided yet.
 (nothing written under this heading yet)
 
-## Translations
+GUIDELINE: Translations
 What a free translation should look like here.
 
 Idiomatic English, not a word-by-word rendering.

@@ -34,6 +34,10 @@ from .tools import ToolError, truncate
 FENCE_TOP = '--- the project\'s guidelines begin ---'
 FENCE_END = '--- the project\'s guidelines end ---'
 
+# What each guideline's title is introduced by. Deliberately NOT Markdown: see
+# the note where it is used.
+TITLE_MARK = 'GUIDELINE:'
+
 NAMES = ('read_guideline',)
 
 
@@ -149,7 +153,11 @@ def section(guidelines: Sequence[Guideline], budget: int = GUIDELINES_INLINE_CHA
     lines.append(FENCE_TOP)
     for g in guidelines:
         lines.append('')
-        lines.append(f'## {g.title}')
+        # Not a Markdown heading. A body is Markdown and routinely has its own
+        # `## Something` in it, which under a `## {title}` scheme reads as
+        # another guideline: the model would take a SECTION of one guideline
+        # for a guideline of its own and ask to read one by that name.
+        lines.append(f'{TITLE_MARK} {g.title}')
         lines.append(g.summary)
         if g.id in inline and g.body:
             lines.append('')
@@ -215,8 +223,9 @@ def t_read_guideline(ws, title: str) -> str:
     wanted = str(title or '').strip().casefold()
     for g in guidelines:
         if g.title.casefold() == wanted:
+            opening = f'{TITLE_MARK} {g.title}\n{g.summary}'
             if not g.body:
-                return f'## {g.title}\n{g.summary}\n\n(nothing written under this heading yet)'
-            return truncate(f'## {g.title}\n{g.summary}\n\n{_fenced(g.body)}')
+                return f'{opening}\n\n(nothing written under this heading yet)'
+            return truncate(f'{opening}\n\n{FENCE_TOP}\n{_fenced(g.body)}\n{FENCE_END}')
     have = ', '.join(f'"{g.title}"' for g in guidelines)
     raise ToolError(f'No guideline is titled "{title}". This project has: {have}.')

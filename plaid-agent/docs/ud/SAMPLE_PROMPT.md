@@ -37,16 +37,16 @@ The project's guidelines:
 
 --- the project's guidelines begin ---
 
-## Glossing
+GUIDELINE: Glossing
 How this treebank handles hard cases.
 
 A copula is the **head** of its clause here.
 
-## Features
+GUIDELINE: Features
 Nothing decided yet.
 (nothing written under this heading yet)
 
-## Lemmas
+GUIDELINE: Lemmas
 What the lemma column carries.
 
 Citation form, lowercase except proper nouns.
