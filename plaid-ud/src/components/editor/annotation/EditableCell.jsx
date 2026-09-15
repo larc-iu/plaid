@@ -10,6 +10,7 @@ import {
 } from '../../../utils/provenanceUi.js';
 import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession, controlledField } from './editorSession.js';
+import { caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { textIncludes } from '@ui/domain/collation.js';
 
 // Editable cell component for annotation fields
@@ -229,17 +230,18 @@ export const EditableCell = React.memo(
         if (onNavigate?.(field, tokenIndex, 'down')) e.preventDefault();
         return;
       }
-      if (e.key === 'ArrowLeft') {
-        const input = inputRef.current;
-        const atStart = input && input.selectionStart === 0 && input.selectionEnd === 0;
-        if (atStart && onNavigate?.(field, tokenIndex, 'left')) e.preventDefault();
-        return;
-      }
-      if (e.key === 'ArrowRight') {
-        const input = inputRef.current;
-        const len = input?.value?.length ?? 0;
-        const atEnd = input && input.selectionStart === len && input.selectionEnd === len;
-        if (atEnd && onNavigate?.(field, tokenIndex, 'right')) e.preventDefault();
+      // Which edge of the value a key presses towards is the CELL's own
+      // question: it is on `dir="auto"`, so an English lemma under an Arabic
+      // word is an LTR box whose logical end is still on its right. Which
+      // TOKEN the key then moves to is the grid's, and SentenceRow answers it.
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const side = e.key === 'ArrowRight' ? 'right' : 'left';
+        if (
+          caretAtArrowEdge(inputRef.current, side === 'right') &&
+          onNavigate?.(field, tokenIndex, side)
+        ) {
+          e.preventDefault();
+        }
         return;
       }
     };
@@ -494,17 +496,14 @@ export const EditableCell = React.memo(
               }
               return;
             }
-            if (e.key === 'ArrowLeft') {
-              const input = inputRef.current;
-              const atStart = input && input.selectionStart === 0 && input.selectionEnd === 0;
-              if (atStart && onNavigate?.(field, tokenIndex, 'left')) e.preventDefault();
-              return;
-            }
-            if (e.key === 'ArrowRight') {
-              const input = inputRef.current;
-              const len = input?.value?.length ?? 0;
-              const atEnd = input && input.selectionStart === len && input.selectionEnd === len;
-              if (atEnd && onNavigate?.(field, tokenIndex, 'right')) e.preventDefault();
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+              const side = e.key === 'ArrowRight' ? 'right' : 'left';
+              if (
+                caretAtArrowEdge(inputRef.current, side === 'right') &&
+                onNavigate?.(field, tokenIndex, side)
+              ) {
+                e.preventDefault();
+              }
             }
           }}
           filter={optionsFilter}

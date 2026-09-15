@@ -97,6 +97,62 @@ describe('a value decides for itself', () => {
   });
 });
 
+// Which cell Tab, Enter and the arrows reach. This grid navigates by SCREEN
+// GEOMETRY, so in an RTL sentence the next cell is the one further LEFT and
+// every horizontal comparison has to know it. Getting it wrong is worse than
+// leaving the grid unflipped: Tab would walk backwards through the sentence.
+describe('navigation follows the words', () => {
+  // happy-dom lays nothing out, so the cells are given a synthetic row. The
+  // x values are the ones an RTL grid produces: word 1 on the RIGHT.
+  const layOut = (cells, xs) =>
+    cells.forEach((el, i) => {
+      el.getBoundingClientRect = () => ({
+        left: xs[i],
+        right: xs[i] + 60,
+        top: 0,
+        bottom: 20,
+        width: 60,
+        height: 20,
+        x: xs[i],
+        y: 0,
+      });
+    });
+
+  // One cell per word, on the same tier: the word-annotation row.
+  const wordCells = () => [...host.querySelectorAll('.igt-field[data-cell-key^="wa:"]')];
+
+  it('moves to the cell on the LEFT when the sentence runs right to left', () => {
+    mount({ body: ARABIC, words: ARABIC_WORDS });
+    const cells = wordCells();
+    expect(cells).toHaveLength(2);
+    layOut(cells, [300, 100]);
+    expect(editor._navMove(cells[0], 'next')).toBe(true);
+    expect(document.activeElement).toBe(cells[1]);
+  });
+
+  it('moves back to the cell on the right', () => {
+    mount({ body: ARABIC, words: ARABIC_WORDS });
+    const cells = wordCells();
+    layOut(cells, [300, 100]);
+    expect(editor._navMove(cells[1], 'prev')).toBe(true);
+    expect(document.activeElement).toBe(cells[0]);
+  });
+
+  it('runs the usual way in a Latin sentence', () => {
+    mount();
+    const cells = wordCells();
+    expect(cells).toHaveLength(2);
+    layOut(cells, [100, 300]);
+    expect(editor._navMove(cells[0], 'next')).toBe(true);
+    expect(document.activeElement).toBe(cells[1]);
+  });
+
+  // Deliberately not tested here: what happens at the END of a row. This grid
+  // WRAPS into bands, and the second pass that crosses a band boundary would
+  // need every cell of every row laid out, not just the two on the tier under
+  // test. The e2e spec drives the real thing.
+});
+
 describe('the chrome is not data', () => {
   it('leaves the toolbar outside the block that flips', () => {
     mount({ body: ARABIC, words: ARABIC_WORDS });

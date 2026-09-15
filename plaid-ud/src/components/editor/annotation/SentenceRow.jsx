@@ -7,6 +7,7 @@ import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';
 import { TokenColumn } from './TokenColumn.jsx';
 import { useEditorSession } from './editorSession.js';
+import { arrowStep } from '@ui/lib/bidi.js';
 import './SentenceRow.css';
 
 // One sentence: the dependency tree over it, the annotation grid under that,
@@ -150,7 +151,10 @@ export const SentenceRow = React.memo(
           if (ni >= NAV_FIELDS.length) return false;
           nextField = NAV_FIELDS[ni];
         } else if (dir === 'left' || dir === 'right') {
-          const ni = tokenIndex + (dir === 'left' ? -1 : 1);
+          // The cell reports which way the key POINTS. Which token that is
+          // depends on the grid: in an RTL sentence the next token is the one
+          // further left. See @ui/lib/bidi.js.
+          const ni = tokenIndex + arrowStep(dir === 'right', textDirection === 'rtl');
           if (ni < 0 || ni >= tokenData.length) return false;
           nextTokenIdx = ni;
         } else {
@@ -163,7 +167,7 @@ export const SentenceRow = React.memo(
         el.focus();
         return true;
       },
-      [tokenData, NAV_FIELDS],
+      [tokenData, NAV_FIELDS, textDirection],
     );
 
     // ArrowDown out of a deprel label lands on that dependent token's top

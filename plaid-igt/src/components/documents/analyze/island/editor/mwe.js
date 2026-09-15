@@ -5,6 +5,7 @@ import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
+import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 
 // Multi-word expressions: gathering words into one link, the bracket and its
 // lanes, and the popover for the expression as a whole.
@@ -178,21 +179,24 @@ export const mwe = {
     const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol ?? sel?.cursorId;
     if (!wordId) return false;
     const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+    const visualRight = e.key === 'ArrowRight';
     if (isInput && !sel) {
-      // Only from a collapsed caret at the value's edge, the way ←/→ leave a
-      // cell; inside a value Shift+arrow still selects text.
-      const start = el.selectionStart ?? 0;
-      const end = el.selectionEnd ?? 0;
-      if (start !== end) return false;
-      const atEdge = e.key === 'ArrowLeft' ? start === 0 : end === (el.value ?? '').length;
-      if (!atEdge) return false;
+      // Only from a collapsed caret at the value's edge, the way the plain
+      // arrows leave a cell, and measured against the CELL's own direction:
+      // inside a value Shift+arrow still selects text.
+      if (!caretAtArrowEdge(el, visualRight)) return false;
     }
     e.preventDefault();
     e.stopPropagation();
     // Cmd as well as Ctrl, like every other chord here. Inside a value this
     // takes Cmd+Shift+Arrow only at the edge the caret is already on, where
     // the native select-to-line-end has nothing to select.
-    this._mweStep(wordId, e.key === 'ArrowRight' ? 1 : -1, { skip: e.ctrlKey || e.metaKey });
+    //
+    // The step is along the SENTENCE, so in an RTL grid it is Shift+← that
+    // gathers the next word.
+    this._mweStep(wordId, arrowStep(visualRight, this._gridRtl()), {
+      skip: e.ctrlKey || e.metaKey,
+    });
     return true;
   },
 

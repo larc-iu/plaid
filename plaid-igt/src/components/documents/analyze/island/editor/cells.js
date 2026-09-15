@@ -9,6 +9,7 @@ import {
   validateValue,
 } from '@/domain/tagsets';
 import { notifyError, notifyInfo } from '@/utils/feedback';
+import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -183,14 +184,20 @@ export const cells = {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return false;
     const el = e.target;
     if (this._alts && this._alts.cellKey === el.dataset.cellKey) return false;
-    const start = el.selectionStart ?? 0;
-    const end = el.selectionEnd ?? 0;
-    if (start !== end) return false;
-    const atEdge = e.key === 'ArrowLeft' ? start === 0 : end === (el.value ?? '').length;
-    if (!atEdge) return false;
-    if (!this._navMove(el, e.key === 'ArrowLeft' ? 'prev' : 'next')) return false;
+    // The two directions in one keystroke: the CELL's says whether the caret is
+    // at the edge this key presses towards, the GRID's says which neighbour
+    // that is. See @ui/lib/bidi.js.
+    const visualRight = e.key === 'ArrowRight';
+    if (!caretAtArrowEdge(el, visualRight)) return false;
+    const step = arrowStep(visualRight, this._gridRtl());
+    if (!this._navMove(el, step > 0 ? 'next' : 'prev')) return false;
     e.preventDefault();
     return true;
+  },
+
+  /** Is the grid laid out right to left? See @ui/domain/textDirection.js. */
+  _gridRtl() {
+    return this.doc?.textDirection === 'rtl';
   },
 
   // All focusable editable cells in DOM order (disabled inputs are excluded —
@@ -219,6 +226,12 @@ export const cells = {
     const cr = current.getBoundingClientRect();
     const cx = cr.left + cr.width / 2;
     const cy = cr.top + cr.height / 2;
+    // 'next' and 'prev' are READING order, which is what Enter and Tab mean by
+    // them. Screen x runs the other way in an RTL grid, so every horizontal
+    // comparison below goes through `ahead`: positive means later in the
+    // sentence, whichever way the words are laid out.
+    const sign = this._gridRtl() ? -1 : 1;
+    const ahead = (ex) => sign * (ex - cx);
     const rowTol = 12; // same-row band
     const colTol = 64; // same-column band
     const fields = this._navFields();
@@ -287,8 +300,10 @@ export const cells = {
     let best = vertical
       ? pickRow(true)
       : pick((el, ex, ey) => {
-          if (dir === 'next') return Math.abs(ey - cy) <= rowTol && ex > cx + 1 ? ex - cx : null;
-          return Math.abs(ey - cy) <= rowTol && ex < cx - 1 ? cx - ex : null;
+          if (Math.abs(ey - cy) > rowTol) return null;
+          const d = ahead(ex);
+          if (dir === 'next') return d > 1 ? d : null;
+          return d < -1 ? -d : null;
         });
 
     // Pass 2: cross the band boundary.
@@ -297,8 +312,12 @@ export const cells = {
       // direction, then the leftmost (next) / rightmost (prev) cell in it.
       best = pick((el, ex, ey) => {
         if (this._tierOf(el) !== tier) return null;
-        if (dir === 'next') return ey > cy + rowTol ? (ey - cy) * 10000 + ex : null;
-        return ey < cy - rowTol ? (cy - ey) * 10000 + (10000 - ex) : null;
+        // Within the next band, the cell EARLIEST in reading order wins; within
+        // the previous band, the latest. `sign * ex` orders them either way,
+        // and the band term is four orders of magnitude larger, so it decides
+        // first whatever the x coordinates are.
+        if (dir === 'next') return ey > cy + rowTol ? (ey - cy) * 10000 + sign * ex : null;
+        return ey < cy - rowTol ? (cy - ey) * 10000 + (10000 - sign * ex) : null;
       });
     }
     if (!best && vertical) best = pickRow(false);
