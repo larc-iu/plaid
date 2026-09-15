@@ -169,6 +169,19 @@ def test_an_empty_guideline_reads_as_empty_rather_than_missing(ws):
     assert 'nothing written under this heading yet' in out
 
 
+def test_two_guidelines_with_one_title_are_both_returned(ws):
+    # Titles are not unique, so picking the first would silently show half of
+    # what the project said on a subject with no sign the other half existed.
+    ws.project.guidelines = [
+        g('Glossing', summary='The first.', body='Loanwords are not segmented.', gid='a'),
+        g('Glossing', summary='The second.', body='Proper nouns are not glossed.', gid='b'),
+    ]
+    out = t_read_guideline(ws, 'Glossing')
+    assert 'Loanwords are not segmented.' in out
+    assert 'Proper nouns are not glossed.' in out
+    assert '2 guidelines titled "Glossing"' in out
+
+
 def test_a_project_with_no_manual_says_so(ws):
     ws.project.guidelines = []
     with pytest.raises(ToolError) as e:

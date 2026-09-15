@@ -215,17 +215,30 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
     ]
 
 
+def _one(g: Guideline) -> str:
+    opening = f'{TITLE_MARK} {g.title}\n{g.summary}'
+    if not g.body:
+        return f'{opening}\n\n(nothing written under this heading yet)'
+    return f'{opening}\n\n{FENCE_TOP}\n{_fenced(g.body)}\n{FENCE_END}'
+
+
 def t_read_guideline(ws, title: str) -> str:
-    """Read one guideline of the project in full, by title."""
+    """Read the project's guideline with this title, in full.
+
+    EVERY match, not the first. Titles are not unique (the server does not
+    police them and the editor only warns), so picking one would silently show
+    half of what the project said on a subject, with no sign that the other
+    half existed. Two are short and the answer says plainly that there were
+    two."""
     guidelines = in_reading_order(getattr(ws.project, 'guidelines', None) or [])
     if not guidelines:
         raise ToolError('This project has no guidelines.')
     wanted = str(title or '').strip().casefold()
-    for g in guidelines:
-        if g.title.casefold() == wanted:
-            opening = f'{TITLE_MARK} {g.title}\n{g.summary}'
-            if not g.body:
-                return f'{opening}\n\n(nothing written under this heading yet)'
-            return truncate(f'{opening}\n\n{FENCE_TOP}\n{_fenced(g.body)}\n{FENCE_END}')
-    have = ', '.join(f'"{g.title}"' for g in guidelines)
-    raise ToolError(f'No guideline is titled "{title}". This project has: {have}.')
+    found = [g for g in guidelines if g.title.casefold() == wanted]
+    if not found:
+        have = ', '.join(f'"{g.title}"' for g in guidelines)
+        raise ToolError(f'No guideline is titled "{title}". This project has: {have}.')
+    if len(found) == 1:
+        return truncate(_one(found[0]))
+    preamble = f'This project has {len(found)} guidelines titled "{found[0].title}". All of them:'
+    return truncate('\n\n'.join([preamble, *(_one(g) for g in found)]))
