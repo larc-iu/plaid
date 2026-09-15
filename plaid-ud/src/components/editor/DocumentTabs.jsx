@@ -48,7 +48,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
           {project?.name || 'Loading…'}
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="truncate text-muted-foreground">{document?.name || 'Loading…'}</span>
+        <span dir="auto" className="truncate text-muted-foreground">
+          {document?.name || 'Loading…'}
+        </span>
       </nav>
 
       <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])}>

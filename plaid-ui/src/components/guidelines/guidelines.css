@@ -14,6 +14,17 @@
   overflow-y: auto;
 }
 
+/* Each block picks its own direction from its own first strong character,
+   which is what `dir="auto"` does for an element and what `markdownToSafeHtml`
+   puts on every block of the rendered body. ProseMirror writes no attributes
+   of its own, so the same rule is stated here in CSS: a guideline is as likely
+   to be English prose about an Arabic example as it is to be Arabic
+   throughout, and the author has to see what every reader will. */
+.guideline-editor__doc > * {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
 .guideline-editor__doc:focus {
   outline: none;
   border-color: hsl(var(--ring));

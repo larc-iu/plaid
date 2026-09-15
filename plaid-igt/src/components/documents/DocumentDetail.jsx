@@ -402,7 +402,9 @@ const DocumentEditor = () => {
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">{doc.document.name}</h1>
+            <h1 dir="auto" className="text-3xl font-bold tracking-tight">
+              {doc.document.name}
+            </h1>
             {reconciling && crumbs}
 
             <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
