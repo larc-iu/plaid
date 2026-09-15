@@ -5,8 +5,11 @@
 // patch, reload in place, and the snapshot beside the live document. What a
 // document MEANS (its layers, rows, and every mutation) is the subclass's.
 //
-// Imports nothing: plaid-ud's node suite reaches this file by relative path,
-// where no alias and no package resolves. Errors leave through `onError`.
+// Imports one sibling with no imports of its own, and nothing else: plaid-ud's
+// node suite reaches this file by relative path, where no alias and no package
+// resolves. Errors leave through `onError`.
+
+import { resolveDirection } from './textDirection.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -84,6 +87,22 @@ export class DocumentModel {
   }
   get error() {
     return this._error;
+  }
+
+  /**
+   * Which way this document's data is laid out, 'ltr' or 'rtl'. What the
+   * document was SET to, and otherwise what its own text says.
+   *
+   * Every grid in both apps takes its column order from this one value, so a
+   * document reads one way throughout rather than sentence by sentence. A
+   * single cell still decides for itself: see `domain/textDirection.js`.
+   *
+   * `body` is the subclass's, and is the baseline text in both apps.
+   */
+  get textDirection() {
+    return this._derived('textDirection', () =>
+      resolveDirection(this._raw?.metadata, this.body ?? ''),
+    );
   }
 
   // ----- subscription bridge (useSyncExternalStore-compatible) -----

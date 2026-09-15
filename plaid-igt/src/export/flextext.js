@@ -45,6 +45,7 @@ import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarke
 import { morphFormOf } from '../domain/igtExport.js';
 import { lexiconView } from '../domain/vocabDictionary.js';
 import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
+import { userMetadata } from '@ui/domain/textDirection.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
@@ -134,7 +135,7 @@ const metadataItems = (indent, metadata, options) => {
   const lines = [];
   const comments = new Map(); // lang → [line]
   const comment = (lang, text) => comments.set(lang, [...(comments.get(lang) ?? []), text]);
-  for (const [key, value] of Object.entries(metadata || {})) {
+  for (const [key, value] of Object.entries(userMetadata(metadata))) {
     if (value == null || value === '') continue;
     const { base, ws } = parseFieldName(key);
     const type = TEXT_ITEM_TYPES[base.trim().toLowerCase()];

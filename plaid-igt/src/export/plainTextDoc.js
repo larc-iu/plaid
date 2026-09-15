@@ -11,6 +11,7 @@ import { morphFormOf, joinMorphemeTexts } from '../domain/igtExport.js';
 // match, else none) — the same one the .flextext export uses, so a sentence
 // gets a speaker prefix in exactly the cases it gets a FLEx phrase speaker.
 import { phraseSpeakerFor } from './flextext.js';
+import { userMetadata } from '@ui/domain/textDirection.js';
 
 const cpLen = (s) => [...(s ?? '')].length;
 
@@ -141,7 +142,7 @@ export function serializeDocumentPlain(igtDoc, selection) {
   if (selection?.includeHeader !== false) {
     const docData = igtDoc.document || {};
     const header = [docData.name ?? ''];
-    for (const [key, value] of Object.entries(docData.metadata || {})) {
+    for (const [key, value] of Object.entries(userMetadata(docData.metadata))) {
       if (value != null && value !== '') header.push(`${key}: ${value}`);
     }
     parts.push(header.filter((l) => l !== '').join('\n'));

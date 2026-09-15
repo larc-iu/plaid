@@ -49,7 +49,9 @@
 .md-body ul,
 .md-body ol {
   margin: 0.3em 0;
-  padding-left: 1.2em;
+  /* Logical, so an RTL list item indents and marks on its own side: the item
+     carries dir="auto" (see lib/markdown.js), the list does not. */
+  padding-inline-start: 1.2em;
 }
 .md-body ul {
   list-style: disc outside;
@@ -101,8 +103,8 @@
 
 .md-body blockquote {
   margin: 0.4em 0;
-  padding-left: 0.8em;
-  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  padding-inline-start: 0.8em;
+  border-inline-start: 3px solid rgba(0, 0, 0, 0.15);
   opacity: 0.85;
 }
 
@@ -127,7 +129,7 @@
 .md-body td {
   border: 1px solid rgba(0, 0, 0, 0.12);
   padding: 0.25em 0.5em;
-  text-align: left;
+  text-align: start;
 }
 .md-body th {
   font-weight: 600;
@@ -137,6 +139,6 @@
 /* Task-list checkboxes come through disabled; keep them out of the text flow's
    way rather than letting the form reset style them. */
 .md-body input[type='checkbox'] {
-  margin-right: 0.4em;
+  margin-inline-end: 0.4em;
   vertical-align: middle;
 }

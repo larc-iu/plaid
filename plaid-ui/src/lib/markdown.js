@@ -50,8 +50,37 @@ const PURIFY_CONFIG = {
     // looks like one; the attributes below are all it is allowed to carry.
     'input',
   ],
-  ALLOWED_ATTR: ['href', 'type', 'checked', 'disabled', 'align'],
+  // `dir` is allowed because the hook below writes it. A source that writes one
+  // by hand keeps it, which is the escape hatch for the paragraph the
+  // first-strong rule gets wrong.
+  ALLOWED_ATTR: ['href', 'type', 'checked', 'disabled', 'align', 'dir'],
 };
+
+// Blocks that get `dir="auto"`, so each one picks its own direction from its
+// own first strong character.
+//
+// Per BLOCK and not on the wrapper: a guideline is as likely to be English
+// prose about an Arabic example as it is to be Arabic throughout, and a
+// document-wide guess would lay one of the two out backwards. A list item
+// carries it rather than the list, so the marker moves to the side its own
+// text starts on.
+//
+// Not `pre`, and not `code`: a fenced block is source, and source reads left to
+// right whatever is quoted inside it.
+const AUTO_DIR_TAGS = new Set([
+  'P',
+  'LI',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'BLOCKQUOTE',
+  'TABLE',
+  'TD',
+  'TH',
+]);
 
 let hooked = false;
 function ensureHook() {
@@ -64,6 +93,9 @@ function ensureHook() {
     if (node.tagName === 'A' && node.hasAttribute('href')) {
       node.setAttribute('target', '_blank');
       node.setAttribute('rel', 'noopener noreferrer');
+    }
+    if (AUTO_DIR_TAGS.has(node.tagName) && !node.hasAttribute('dir')) {
+      node.setAttribute('dir', 'auto');
     }
   });
 }

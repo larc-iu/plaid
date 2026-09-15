@@ -36,6 +36,7 @@ import {
   exampleKey,
   exampleRefs,
 } from '../domain/vocabDictionary.js';
+import { userMetadata } from '@ui/domain/textDirection.js';
 import { readVocabFields } from '../domain/igtConfig.js';
 import { FIELD_TYPES } from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from './flextext.js';
@@ -426,7 +427,7 @@ export function buildCldfDataset({
       Name: doc.name ?? '',
       Plaid_ID: doc.id ?? '',
     };
-    for (const [key, value] of Object.entries(doc.metadata || {})) {
+    for (const [key, value] of Object.entries(userMetadata(doc.metadata))) {
       if (value === null || value === undefined || value === '') continue;
       if (CONTRIBUTION_TERMS[key]) {
         termedMetadata.add(key);

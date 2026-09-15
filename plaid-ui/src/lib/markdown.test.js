@@ -101,4 +101,36 @@ describe('markdownToSafeHtml', () => {
     expect(out.querySelector('div[onclick]')).toBeNull();
     expect(out.innerHTML).not.toContain('onclick');
   });
+
+  // Direction, block by block. Everything written in this app that holds prose
+  // comes through here: guideline bodies, comments, an assistant's answer, a
+  // service's own summary. `dir="auto"` on each block is what lets one document
+  // hold an Arabic paragraph and an English one and lay both out correctly.
+  describe('text direction', () => {
+    it('marks every block that holds prose', () => {
+      const out = draw(
+        '# Heading\n\nA paragraph.\n\n- an item\n\n> a quote\n\n| a |\n| --- |\n| 1 |',
+      );
+      for (const sel of ['h1', 'p', 'li', 'blockquote', 'table', 'th', 'td']) {
+        expect(out.querySelector(sel)?.getAttribute('dir'), sel).toBe('auto');
+      }
+    });
+
+    it('leaves a fenced block alone, because source reads one way', () => {
+      const out = draw('```\nconst x = 1;\n```');
+      expect(out.querySelector('pre')?.hasAttribute('dir')).toBe(false);
+      expect(out.querySelector('code')?.hasAttribute('dir')).toBe(false);
+    });
+
+    it('keeps a direction the source states', () => {
+      // The escape hatch for the paragraph first-strong gets wrong.
+      expect(draw('<p dir="rtl">مرحبا</p>').querySelector('p')?.getAttribute('dir')).toBe('rtl');
+    });
+
+    it('does not put a direction on a link or an emphasis', () => {
+      const out = draw('**bold** and [a link](https://example.org)');
+      expect(out.querySelector('strong')?.hasAttribute('dir')).toBe(false);
+      expect(out.querySelector('a')?.hasAttribute('dir')).toBe(false);
+    });
+  });
 });
