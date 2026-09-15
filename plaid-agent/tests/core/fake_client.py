@@ -117,7 +117,7 @@ class BaseFakeClient:
     token = 't'
     no_doc_cache = True  # fixtures reuse document ids with different content
 
-    def __init__(self, project, documents, audit=None):
+    def __init__(self, project, documents, audit=None, guidelines=None):
         self.log = []
         self.doc_reads = []  # (document id, layers asked for) per body read
         self.batches = []  # each: list of log entries submitted together
@@ -125,6 +125,7 @@ class BaseFakeClient:
         self._project = project
         self._documents = documents
         self.audit = list(audit or [])
+        self._guidelines = list(guidelines or [])
         self.bulk_calls = []  # (resource, items) per bulk_update, for tests about the batching
         for name in RESOURCES:
             setattr(self, name, Recorder(self.log, name, self.bulk_calls))
@@ -244,6 +245,30 @@ class BaseFakeClient:
             page, rest = rows[:limit or 100], rows[limit or 100:]
             return {'entries': page,
                     'next_cursor': page[-1]['key'] if rest else None}
+
+    class _Guidelines:
+        """The project's annotation manual. App-neutral, like everything here:
+        a guideline has the same shape whatever the project annotates."""
+
+        def __init__(self, c):
+            self.c = c
+
+        def list(self, pid, *, include_bodies=None, **kw):
+            rows = list(getattr(self.c, '_guidelines', None) or [])
+            if include_bodies:
+                return [dict(r) for r in rows]
+            return [{k: v for k, v in r.items() if k != 'body'} | {'body_chars': len(r.get('body') or '')}
+                    for r in rows]
+
+        def get(self, gid):
+            for r in getattr(self.c, '_guidelines', None) or []:
+                if r.get('id') == gid:
+                    return dict(r)
+            raise PlaidAPIError('Guideline not found', status_code=404)
+
+    @property
+    def guidelines(self):
+        return BaseFakeClient._Guidelines(self)
 
     @property
     def projects(self):

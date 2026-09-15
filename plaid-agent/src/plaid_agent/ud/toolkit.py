@@ -12,8 +12,10 @@ so nothing here may be imported back by one of them.
 from typing import Any, Dict, List
 
 from ..core import sandbox as _sandbox
+from ..core import guidelines as _guidelines
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
+from ..core.guidelines import t_read_guideline
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import t_replace_in_field
@@ -276,6 +278,12 @@ _IMPL = {
     'drop_planned': t_drop_planned,
 }
 
+# The project's own annotation manual. Always offered: the titles and
+# summaries are in the prompt, and this reads one in full.
+TOOLS += _guidelines.schemas('this treebank: how this project annotates, and what it has decided about hard cases')
+_IMPL.update({'read_guideline': t_read_guideline})
+
+# Offered only when the operator configured a search backend (see tools_for).
 TOOLS += webtools.schemas('this corpus')
 
 

@@ -91,8 +91,9 @@ until the user approves the plan card.
 '''
 
 # A hole the prompt keeps until the project is known, so `filled` does not
-# call it a paragraph nobody wrote.
-_LATE = ('project_name', 'shape', 'overview_docs')
+# call it a paragraph nobody wrote. `guidelines` is one of them because a
+# project's manual is read at the same moment its shape is.
+_LATE = ('project_name', 'shape', 'overview_docs', 'guidelines')
 _HOLE = re.compile(r'\{([a-z_]+)\}')
 
 

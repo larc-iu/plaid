@@ -61,6 +61,7 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       out.push('## Assistant', '');
       // What it did before answering, in the service's own words.
       if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
+      if (d.contextNote) out.push(`*${d.contextNote}*`, '');
       if (d.text) out.push(replyToMarkdown(d.text, d.citations, ctx), '');
       if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted), '');
     }

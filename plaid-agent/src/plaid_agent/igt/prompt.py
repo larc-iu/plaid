@@ -6,6 +6,7 @@ what run_code is for. Everything here is IGT's own.
 """
 
 from ..core import prompt as shared, sandbox, webtools
+from ..core.guidelines import section as guidelines_section
 from ..core.limits import OVERVIEW_DOCS
 from .project import IgtProject, SCOPES, tagset_lines
 
@@ -20,6 +21,7 @@ lexicon (vocabulary) of entries that words and morphemes link to.
 {plan_contract}
 
 {project_shape}
+{guidelines}
 
 {how_to_work}
 - Use the tools rather than guessing. Read before you write; check the lexicon and existing analyses before \
@@ -131,5 +133,9 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
     # after the overview moved to fifty.
     out = SYSTEM.replace('{overview_docs}', str(OVERVIEW_DOCS))
     out = out.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
+    # Not str.format here either, and for a sharper reason than the layer
+    # names above: a guideline body is prose someone typed, and prose has
+    # braces in it.
+    out = out.replace('{guidelines}', guidelines_section(project.guidelines))
     out = out + WEB if web else out
     return out + CODE if sandbox.available() is None else out

@@ -65,6 +65,15 @@ MAX_SENTENCES_PER_READ = 40
 # pages and filters, and the overview says so.
 OVERVIEW_DOCS = 50
 
+# Characters of guideline bodies that go into the system prompt whole. Past
+# it only the PINNED ones are inlined and the rest are left to read_guideline.
+# Characters and not tokens: nothing in this package counts tokens, on purpose
+# (see the note in core/conversation.py about what the server actually
+# measures), and a per-provider-wrong token count would be worse than a plain
+# length. About four thousand words, which is a whole small manual, because
+# the case worth optimizing for is the project whose manual fits.
+GUIDELINES_INLINE_CHARS = 24000
+
 # Example lines a bulk answer shows before "… n more". Enough to see what the
 # pattern did, few enough to leave room for the answer around it.
 SAMPLE_LINES = 8

@@ -121,14 +121,30 @@ def audit_raw():
     ]
 
 
+def guidelines_raw():
+    """The project's annotation manual: one pinned, one not, one with an empty
+    body (a guideline titled now and written later)."""
+    return [
+        {'id': 'gl1', 'title': 'Glossing', 'pinned': True,
+         'summary': 'How this treebank handles hard cases.',
+         'body': 'A copula is the **head** of its clause here.'},
+        {'id': 'gl2', 'title': 'Lemmas', 'pinned': False,
+         'summary': 'What the lemma column carries.',
+         'body': 'Citation form, lowercase except proper nouns.'},
+        {'id': 'gl3', 'title': 'Features', 'pinned': False,
+         'summary': 'Nothing decided yet.', 'body': ''},
+    ]
+
+
 class FakeClient(BaseFakeClient):
     """The app-neutral fake client with this app's project, document and audit
     log. A treebank has no vocabulary layers, so it offers none."""
 
-    def __init__(self, project=None, documents=None, audit=None):
+    def __init__(self, project=None, documents=None, audit=None, guidelines=None):
         super().__init__(project or project_raw(),
                          documents if documents is not None else {'ud1': document_raw()},
-                         audit if audit is not None else audit_raw())
+                         audit if audit is not None else audit_raw(),
+                         guidelines if guidelines is not None else guidelines_raw())
 
 
 class ExtClient(ExtFakeClient, FakeClient):

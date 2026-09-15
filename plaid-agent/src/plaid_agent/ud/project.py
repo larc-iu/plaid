@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
 
+from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import review_mark
 
@@ -103,6 +104,9 @@ class UdProject:
     vocab: Dict[str, Any] = dc_field(default_factory=dict)
     modes: Dict[str, str] = dc_field(default_factory=dict)
     descriptions: Dict[str, Dict[str, str]] = dc_field(default_factory=dict)
+    # The project's own annotation manual. Loaded with the project because the
+    # prompt names it every turn; see plaid_agent.core.guidelines.
+    guidelines: List[Guideline] = dc_field(default_factory=list)
 
     def read_layer_ids(self) -> List[str]:
         """The layers a document read has to carry, for ``?layers=``.
@@ -139,6 +143,7 @@ class UdProject:
 
 def load_project(client, project_id: str) -> UdProject:
     p = client.projects.get(project_id)
+    guidelines = load_guidelines(client, project_id)
     text_layer = find_by_role(p.get('text_layers'), ROLES.BASELINE)
     if not text_layer:
         raise ValueError('This project has no baseline text layer (not set up for UD?)')
@@ -194,6 +199,7 @@ def load_project(client, project_id: str) -> UdProject:
             'upos': _descriptions(configs.get('upos')), 'xpos': _descriptions(configs.get('xpos')),
             'deprel': _descriptions(relation_config),
         },
+        guidelines=guidelines,
     )
 
 

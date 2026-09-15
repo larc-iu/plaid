@@ -6,6 +6,7 @@ and what run_code is for. Everything here is UD's own.
 """
 
 from ..core import prompt as shared, sandbox, webtools
+from ..core.guidelines import section as guidelines_section
 from .project import UdProject
 
 # Values of one vocabulary shown in the prompt. Project_overview lists the rest.
@@ -19,6 +20,7 @@ those words.
 {plan_contract}
 
 {project_shape}
+{guidelines}
 
 What a word is here:
 - A TOKEN is what the text is divided into. A WORD is what gets annotated. Usually they are the same thing. \
@@ -93,8 +95,8 @@ CODE = shared.code_section(
     outright='search, frequency_list, worklist or check_consistency')
 
 WEB = webtools.prompt(
-    'what a dependency relation conventionally covers, how a construction is analyzed in the UD '
-    'guidelines or in related treebanks, a reference for a claim',
+    'what a dependency relation conventionally covers, how a construction is analyzed in the '
+    'published UD documentation or in related treebanks, a reference for a claim',
     'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
 
 
@@ -119,7 +121,9 @@ def build_system_prompt(project: UdProject, web: bool = False) -> str:
             f'{k}={"/".join(v)}' if v else k for k, v in sorted(feats.items())))
     else:
         lines.append('- features: no inventory set, any Feature=Value is allowed')
-    # Not str.format: a project's own values may contain braces.
+    # Not str.format: a project's own values may contain braces. A guideline
+    # body is prose someone typed, so it certainly does.
     out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))
+    out = out.replace('{guidelines}', guidelines_section(project.guidelines))
     out = out + WEB if web else out
     return out + CODE if sandbox.available() is None else out

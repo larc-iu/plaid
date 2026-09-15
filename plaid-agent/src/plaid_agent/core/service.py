@@ -56,6 +56,7 @@ from urllib.parse import urlsplit
 from plaid_client import BaseService, TASKS, service_source
 
 from .agent import ModelConfig, Toolkit, TurnCancelled, context_window, ping_model, run_turn
+from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
 from .plan import PlanError
@@ -351,7 +352,8 @@ class BaseAssistantService(BaseService):
             if window:
                 usage['window'] = window
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
-                              turn.steps, turn.summary, model, usage)
+                              turn.steps, turn.summary, model, usage,
+                              guidelines_in_context(getattr(project, 'guidelines', None) or []))
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
                      record_budget(client))
         try:

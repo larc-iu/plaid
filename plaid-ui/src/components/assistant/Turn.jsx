@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, MapPin, Quote, Wrench } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, MapPin, Quote, Wrench } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
@@ -163,6 +163,16 @@ export const Turn = ({
         )}
         {item.stepsSummary && item.steps?.length > 0 && (
           <ToolTrace steps={item.steps} summary={item.stepsSummary} results={results} />
+        )}
+        {/* What the turn was GIVEN, as against what it did: how much of the
+            project's guidelines were in the prompt. Its own line and not part
+            of the trace, because a turn that called no tool has no trace and
+            this still has to show. */}
+        {item.contextNote && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <BookOpen className="h-3 w-3 shrink-0" />
+            {item.contextNote}
+          </div>
         )}
         {item.text ? (
           <CitedMarkdown

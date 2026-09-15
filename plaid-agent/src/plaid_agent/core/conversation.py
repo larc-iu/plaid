@@ -125,7 +125,8 @@ def user_item(text: str) -> Dict[str, Any]:
 
 def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Dict[str, Any]],
                    steps: List[Dict[str, Any]], steps_summary: str, model: Optional[str],
-                   usage: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+                   usage: Optional[Dict[str, int]] = None,
+                   context_note: str = '') -> Dict[str, Any]:
     """What the person sees of a reply. A step's own output is not repeated
     here: it is the ``tool`` message with the same id in the transcript.
 
@@ -133,11 +134,19 @@ def assistant_item(text: str, plan: Optional[Dict[str, Any]], citations: List[Di
     reply, with ``window`` absent when the model's limit is not known. It lives
     per reply rather than on the sidebar entry so that the growth is visible
     and so that reading the newest is how you get the current figure.
+
+    ``context_note`` says what the turn was GIVEN, as against what it did: at
+    present, how much of the project's guidelines were in the prompt. It is
+    per reply and not per conversation because the answer changes as the
+    manual is written, and it is shown at all because a rule the model was
+    never given is the one way this fails without anyone seeing it.
     """
     item = {'kind': 'assistant', 'text': text or '', 'plan': plan, 'citations': citations or [],
             'status': None, 'model': model, 'steps': steps or [], 'steps_summary': steps_summary or ''}
     if usage:
         item['usage'] = usage
+    if context_note:
+        item['context_note'] = context_note
     return item
 
 

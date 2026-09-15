@@ -43,7 +43,7 @@ class Tracer:
 # META in one app and READ in the other, so the same tool counted as a look at
 # the data in one Assistant tab and not in the other.
 META_TOOLS = frozenset({'project_overview', 'list_documents', 'plan_status', 'query_help',
-                        'discard_plan', 'drop_planned'})
+                        'discard_plan', 'drop_planned', 'read_guideline'})
 
 
 def tracer_for(web_tools, write_tools, describe: Callable[[str, Dict[str, Any]], str],

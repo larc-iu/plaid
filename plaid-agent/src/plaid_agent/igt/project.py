@@ -17,6 +17,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
 from ..core.provenance import CONTRIBUTED, REVIEWABLE, UNVERIFIED, mark as _mark, review_mark  # noqa: F401
@@ -126,6 +127,9 @@ class IgtProject:
     document_metadata: List[str]
     # document metadata field -> tagset (dataclasses.field spelled out: the class has a field() method)
     metadata_tagsets: Dict[str, dict] = dataclasses.field(default_factory=dict)
+    # The project's own annotation manual. Loaded with the project because the
+    # prompt names it every turn; see plaid_agent.core.guidelines.
+    guidelines: List[Guideline] = dataclasses.field(default_factory=list)
 
     def field(self, name: str) -> Field:
         """Case-insensitive field lookup by display name, falling back to the
@@ -250,6 +254,7 @@ class IgtProject:
 
 def load_project(client, project_id: str) -> IgtProject:
     p = client.projects.get(project_id)
+    guidelines = load_guidelines(client, project_id)
     text_layer = find_by_role(p.get('text_layers'), ROLES.BASELINE)
     if not text_layer:
         raise ValueError('This project has no baseline text layer (not set up for IGT?)')
@@ -287,6 +292,7 @@ def load_project(client, project_id: str) -> IgtProject:
         vocabs=[_vocab_entry(v) for v in (p.get('vocabs') or [])],
         document_metadata=[m['name'] for m in metadata],
         metadata_tagsets=metadata_tagsets,
+        guidelines=guidelines,
     )
 
 

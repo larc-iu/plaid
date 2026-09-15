@@ -97,14 +97,30 @@ def audit_raw():
     ]
 
 
+def guidelines_raw():
+    """The project's annotation manual: one pinned, one not, one with an empty
+    body (a guideline titled now and written later)."""
+    return [
+        {'id': 'gl1', 'title': 'Glossing', 'pinned': True,
+         'summary': 'Leipzig, with this project\'s own exceptions.',
+         'body': 'Loanwords are **not** segmented. Gloss them whole.'},
+        {'id': 'gl2', 'title': 'Translations', 'pinned': False,
+         'summary': 'What a free translation should look like here.',
+         'body': 'Idiomatic English, not a word-by-word rendering.'},
+        {'id': 'gl3', 'title': 'Orthography', 'pinned': False,
+         'summary': 'Nothing decided yet.', 'body': ''},
+    ]
+
+
 class FakeClient(BaseFakeClient):
     """The app-neutral fake client with this app's project, document, lexicon
     and audit log."""
 
-    def __init__(self, project=None, documents=None, lexicon=None, audit=None):
+    def __init__(self, project=None, documents=None, lexicon=None, audit=None, guidelines=None):
         super().__init__(project or project_raw(),
                          documents if documents is not None else {'d1': document_raw()},
-                         audit if audit is not None else audit_raw())
+                         audit if audit is not None else audit_raw(),
+                         guidelines if guidelines is not None else guidelines_raw())
         self._lexicon = lexicon or lexicon_raw()
 
     class _VocabLayers:

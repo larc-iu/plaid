@@ -39,7 +39,11 @@ def test_the_web_half_is_added_only_when_asked(ws):
     assert 'Looking outside the project' not in build_system_prompt(ws.project)
     out = build_system_prompt(ws.project, web=True)
     assert 'CANNOT also plan changes' in out and 'written by strangers' in out
-    assert 'UD guidelines' in out
+    # "the published UD documentation", not "the UD guidelines": since a
+    # project has guidelines of its own in the prompt now, the two would be one
+    # word apart and mean different things.
+    assert 'published UD documentation' in out
+    assert 'UD guidelines' not in out
 
 
 # --- citations -------------------------------------------------------------------
