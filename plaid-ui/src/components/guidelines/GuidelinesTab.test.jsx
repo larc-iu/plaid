@@ -52,6 +52,15 @@ const mount = ({ client = fakeClient(), ...props } = {}) =>
     </MemoryRouter>,
   ).then((r) => ({ ...r, client }));
 
+// Typing into a controlled input. React keeps its own record of the value and
+// skips onChange when the DOM value is assigned directly, so the change has to
+// go through the native setter first.
+const typeInto = (el, value) => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(el, value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
 /** The titles in the list, in the order they are drawn. */
 const rowTitles = (container) => texts(container, 'button[class*="border-b"] span.font-medium');
 
@@ -123,6 +132,26 @@ describe('a writer', () => {
     expect(labels()).toContain('New');
     await step(() => byText(container, 'button', 'Alpha').click());
     expect(labels()).toContain('Edit');
+    await unmount();
+  });
+
+  it('notes a title already in use while typing, and still saves it', async () => {
+    // Titles are not unique and the server does not police them. The note has
+    // to appear before there is any work to lose, and must not block the save.
+    const { container, client, step, unmount } = await mount({ canWrite: true });
+    await step(() => byText(container, 'button', 'New').click());
+    const title = container.querySelector('#guideline-title');
+    await step(() => typeInto(title, 'Alpha'));
+    expect(container.querySelector('#guideline-title-taken')?.textContent).toBe(
+      'Another guideline has this title.',
+    );
+
+    await step(() => typeInto(container.querySelector('#guideline-summary'), 'A second one.'));
+    await step(() => byText(container, 'button', 'Save').click());
+    expect(client.guidelines.create).toHaveBeenCalledWith('p1', 'Alpha', 'A second one.', {
+      body: '',
+      pinned: false,
+    });
     await unmount();
   });
 

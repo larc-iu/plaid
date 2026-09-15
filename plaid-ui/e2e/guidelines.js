@@ -149,15 +149,27 @@ export const guidelinesTests = ({
     expect(after.summary).toBe('Not pinned yet.');
   });
 
-  test('a duplicate title is refused and says so', async ({ page }) => {
+  test('a title already in use is a note while typing, not a refusal at save', async ({ page }) => {
+    // Deliberately not enforced. The note appears before a word of the body has
+    // been written, and the save goes through: refusing here would throw away a
+    // document someone had just typed to prevent two rows sharing a name.
     await seed({ title: 'Taken', summary: 'The first one.', body: 't' });
     await open(page);
     await page.getByRole('button', { name: 'New', exact: true }).click();
     await page.locator('#guideline-title').fill(titled('Taken'));
+    await expect(page.locator('#guideline-title-taken')).toHaveText(
+      'Another guideline has this title.',
+    );
+
     await page.locator('#guideline-summary').fill('The second one.');
     await expect(page.locator('.guideline-editor__doc')).toBeVisible({ timeout: EDITOR_TIMEOUT });
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('[data-sonner-toast]')).toContainText('Guideline created.');
 
-    await expect(page.locator('[data-sonner-toast]')).toContainText('already exists');
+    const both = (await client().guidelines.list(projectId())).filter(
+      (g) => g.title === titled('Taken'),
+    );
+    expect(both).toHaveLength(2);
+    both.forEach((g) => created.push(g.id));
   });
 };

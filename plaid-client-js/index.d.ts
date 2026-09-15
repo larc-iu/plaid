@@ -365,7 +365,7 @@ type CommentableType =
 interface Guideline {
   id: string;
   projectId: string;
-  /** The handle, unique within the project. The assistant asks for a guideline by title. */
+  /** The handle the assistant asks for a guideline by. Not required to be unique. */
   title: string;
   /** What it covers, in one line. */
   summary: string;

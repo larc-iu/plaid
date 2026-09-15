@@ -3,6 +3,10 @@
   list of short Markdown documents. See `plaid.sql.guideline` for the shape and
   the migration for the design.
 
+  Titles are NOT unique. See `plaid.sql.guideline` for why, and note the
+  consequence for anything addressing a guideline by title: it may match more
+  than one, and has to answer for all of them rather than pick.
+
   ## Permissions
 
   A guideline takes the project's standing: reading is a project READ, writing
@@ -82,8 +86,9 @@
                           (pgl/list-in-project db id (assoc opts :include-bodies?
                                                             (:include-bodies query))))))}
 
-      :post {:summary (str "Create a guideline. <body>title</body> is the handle and is unique "
-                           "within the project, so a title already in use is a 409. "
+      :post {:summary (str "Create a guideline. <body>title</body> is the handle an assistant asks "
+                           "for one by. It is NOT required to be unique: a client that cares warns "
+                           "about a title already in use rather than refusing the write. "
                            "<body>summary</body> is the one line that says what the guideline "
                            "covers. <body>body</body> is Markdown and may be empty. A "
                            "<body>pinned</body> guideline is one the assistant is given in full "
@@ -120,9 +125,7 @@
                           (not-found guideline-id)))}
 
        :patch {:summary (str "Update a guideline. Every field is optional and an omitted one is "
-                             "left alone, so an edit to the body need not restate the title. "
-                             "Renaming to a title another guideline in the project already has "
-                             "is a 409.")
+                             "left alone, so an edit to the body need not restate the title.")
                :middleware [[pra/wrap-writer-required get-project-id]]
                :parameters {:body [:map
                                    [:title {:optional true} :string]

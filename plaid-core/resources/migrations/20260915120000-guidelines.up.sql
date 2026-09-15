@@ -20,9 +20,12 @@
 -- Guideline ops carry `:document nil`, like every layer write, so no document
 -- version moves and no reader's OCC token is invalidated by one.
 --
--- `title` is UNIQUE per project because it is the handle: the assistant asks
--- for a guideline BY TITLE, never by id, so two rows sharing one would make
--- that ambiguous.
+-- `title` is the handle: the assistant asks for a guideline BY TITLE, never by
+-- id. It is deliberately NOT unique, though. Enforcing that would refuse a save
+-- after someone had written a whole document, to prevent a confusion that is
+-- mild (two rows named the same in a list they own) and that the assistant can
+-- absorb on its own (read_guideline answers with every match). The editor warns
+-- while the title is being typed instead, and saves either way.
 CREATE TABLE guidelines (
   id         TEXT    NOT NULL PRIMARY KEY,
   project_id TEXT    NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -39,7 +42,3 @@ CREATE TABLE guidelines (
 -- TEXT columns compared as strings, which an INTEGER flag cannot be. Pinned
 -- rows are grouped by whoever is displaying them.
 CREATE INDEX idx_guidelines_project ON guidelines(project_id, title, id);
---;;
--- The handle. Also what makes a duplicate title a 409 instead of a second row
--- the assistant cannot tell apart from the first.
-CREATE UNIQUE INDEX idx_guidelines_project_title ON guidelines(project_id, title);

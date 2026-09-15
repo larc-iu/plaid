@@ -5,9 +5,11 @@
 
   Two things about the shape are load-bearing and easy to undo by accident.
 
-  `title` is the HANDLE. The assistant asks for a guideline by title, never by
-  id, so titles are unique within a project and a duplicate is a 409 rather
-  than a second indistinguishable row.
+  `title` is the HANDLE: the assistant asks for a guideline by title, never by
+  id. It is NOT unique, deliberately. Refusing a save because a title is taken
+  would reject a document somebody had just written, to prevent a confusion
+  that is mild and that `read_guideline` absorbs by answering with every match.
+  The editor warns while the title is typed instead.
 
   The page order is `(title, id)` and NOT pinned-first, because
   `plaid.sql.pagination/paginate` keysets over NOT NULL TEXT columns compared
@@ -118,23 +120,6 @@
     (throw (ex-info (str "Guideline body exceeds " max-body-length " characters")
                     {:code 400 :length (count body)}))))
 
-(defn- assert-title-free!
-  "Throw a 409 when `title` is already taken in `project-id`. `except-id` is
-  the guideline being renamed, which does not collide with itself.
-
-  Checked rather than left to `idx_guidelines_project_title` so the caller
-  gets a sentence instead of a constraint name. The index is still the
-  backstop, and both run inside the one write lock."
-  [tx project-id title except-id]
-  (when-let [clash (psc/q1 tx {:select [:id]
-                               :from   [:guidelines]
-                               :where  (cond-> [:and
-                                                [:= :project_id project-id]
-                                                [:= :title title]]
-                                         except-id (conj [:<> :id except-id]))})]
-    (throw (ex-info (str "A guideline titled \"" title "\" already exists in this project")
-                    {:code 409 :id (:id clash)}))))
-
 ;; ============================================================
 ;; Mutations
 ;; ============================================================
@@ -157,7 +142,6 @@
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
                                          {:code 400 :id project-id})))
-                       (assert-title-free! tx project-id title nil)
                        (let [ts (op/op-ts)]
                          (crud/insert! tx :guidelines
                                        {:id         new-id
@@ -183,8 +167,7 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Guideline" eid) {:code 404 :id eid})))
                        (when (contains? m :guideline/title)
-                         (validate-text! "Guideline title" (:guideline/title m) max-title-length)
-                         (assert-title-free! tx (:project_id existing) (:guideline/title m) eid))
+                         (validate-text! "Guideline title" (:guideline/title m) max-title-length))
                        (when (contains? m :guideline/summary)
                          (validate-text! "Guideline summary" (:guideline/summary m) max-summary-length))
                        (when (contains? m :guideline/body)

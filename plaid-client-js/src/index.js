@@ -3026,13 +3026,15 @@ class PlaidClient {
 
     this.guidelines = {
       /**
-       * Create a guideline in a project. `title` is the handle and is unique
-       * within the project, so a title already in use is a 409. `summary` is
+       * Create a guideline in a project. `title` is the handle an assistant
+       * asks for one by. It is NOT required to be unique, so a title already
+       * in use is written like any other: warn about it, do not refuse it.
+       * `summary` is
        * the one line saying what the guideline covers - it is what the
        * assistant reads to decide whether to open the body. A `pinned`
        * guideline is one the assistant is given in full on every turn.
        * @param {string} projectId - The project the guideline belongs to
-       * @param {string} title - The handle, unique in the project (1..100 characters)
+       * @param {string} title - The handle an assistant asks for one by (1..100 characters)
        * @param {string} summary - What it covers, in one line (1..200 characters)
        * @param {object} [opts]
        * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
@@ -3057,8 +3059,6 @@ class PlaidClient {
       /**
        * Update a guideline. Every field is optional and an omitted one is
        * left alone, so an edit to the body need not restate the title.
-       * Renaming to a title another guideline in the project already has is
-       * a 409.
        * @param {string} id - The guideline id
        * @param {object} [changes]
        * @param {string} [changes.title] - The new handle

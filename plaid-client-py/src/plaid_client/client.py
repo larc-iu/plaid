@@ -1264,10 +1264,11 @@ class GuidelinesResource(_Resource):
     matching comments: the people who annotate are the people who discover
     what the conventions have to be.
 
-    ``title`` is the handle. It is unique within a project, so a title already
-    in use is a 409 rather than a second row nothing can tell apart. ``summary``
-    is the one line saying what the guideline covers, and is what the assistant
-    reads to decide whether to open the body. A ``pinned`` guideline is one the
+    ``title`` is the handle an assistant asks for one by. It is NOT required to
+    be unique: refusing a write because a title is taken would throw away a
+    document that had just been typed, so a client warns about it instead.
+    ``summary`` is the one line saying what the guideline covers, and is what
+    the assistant reads to decide whether to open the body. A ``pinned`` guideline is one the
     assistant is given in full on every turn.
 
     Writes are audited, so a change shows in the project's activity. They are
@@ -1280,7 +1281,7 @@ class GuidelinesResource(_Resource):
 
         Args:
             project_id: The project the guideline belongs to
-            title: The handle, unique in the project (1..100 characters)
+            title: The handle an assistant asks for one by (1..100 characters)
             summary: What it covers, in one line (1..200 characters)
             body: The Markdown text (up to 20000 characters; may be empty)
             pinned: Send this one to the assistant in full on every turn
@@ -1302,8 +1303,7 @@ class GuidelinesResource(_Resource):
         """Update a guideline.
 
         Every field is optional and an omitted one is left alone, so an edit to
-        the body need not restate the title. Renaming to a title another
-        guideline in the project already has is a 409.
+        the body need not restate the title.
 
         Args:
             guideline_id: The guideline to change

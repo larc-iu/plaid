@@ -6,9 +6,9 @@
     1. The ACL is the project's: readers read, writers write. Writers rather
        than maintainers is a deliberate choice, so a reader being refused is
        asserted on every write verb rather than on one of them.
-    2. `title` is the HANDLE. It is unique within a project, a duplicate is a
-       409 rather than a second indistinguishable row, and a rename into a
-       taken title is the same 409.
+    2. `title` is the HANDLE but is NOT unique, deliberately: a taken title is
+       a client's warning, never a refused write. The tests say so outright,
+       because a uniqueness constraint is the obvious thing to add back.
     3. The list is the AGENT'S read: it pages, it is ordered by title, and it
        reports `body-chars` so a caller can budget before fetching bodies.
     4. Writes are AUDITED but not time-travelable. An operation row with a
@@ -139,15 +139,21 @@
 ;; 2. Title is the handle
 ;; ============================================================
 
-(deftest a-duplicate-title-is-a-conflict-not-a-second-row
+(deftest a-taken-title-is-accepted-rather-than-refused
+  ;; The server does not police this. Refusing here would reject a document
+  ;; someone had just written, to prevent a confusion the editor can warn about
+  ;; before a word is typed and `read_guideline` can absorb by answering with
+  ;; both. If a unique index ever comes back, this is the test it breaks.
   (let [proj (setup-project "Titles")
         _ (made (create-guideline admin-request proj {:title "Glossing" :summary "First."}))
         dup (create-guideline admin-request proj {:title "Glossing" :summary "Second."})]
-    (testing "the second create is a 409 naming the title"
-      (is (= 409 (:status dup)))
-      (is (clojure.string/includes? (-> dup :body :error) "Glossing")))
-    (testing "only one row was written"
-      (is (= 1 (count (-> (list-guidelines admin-request proj) :body :entries)))))))
+    (testing "the second create is written like any other"
+      (is (= 201 (:status dup))))
+    (testing "both rows are there, and both are listed"
+      (let [entries (-> (list-guidelines admin-request proj) :body :entries)]
+        (is (= 2 (count entries)))
+        (is (= ["Glossing" "Glossing"] (mapv :guideline/title entries)))
+        (is (= #{"First." "Second."} (set (mapv :guideline/summary entries))))))))
 
 (deftest the-same-title-in-a-different-project-is-fine
   (let [p1 (setup-project "P1")
@@ -155,14 +161,14 @@
     (is (some? (made (create-guideline admin-request p1 {:title "Glossing" :summary "A."}))))
     (is (some? (made (create-guideline admin-request p2 {:title "Glossing" :summary "B."}))))))
 
-(deftest renaming-into-a-taken-title-is-refused-but-renaming-to-its-own-is-not
+(deftest renaming-onto-a-taken-title-is-accepted-too
   (let [proj (setup-project "Rename")
         a (made (create-guideline admin-request proj {:title "Alpha" :summary "A."}))
         _ (made (create-guideline admin-request proj {:title "Beta" :summary "B."}))]
-    (testing "into a taken title: 409"
-      (is (= 409 (:status (patch-guideline admin-request a {:title "Beta"})))))
-    (testing "to the title it already has: fine, a guideline does not collide with itself"
-      (assert-status 200 (patch-guideline admin-request a {:title "Alpha" :summary "A2."}))
+    (assert-status 200 (patch-guideline admin-request a {:title "Beta"}))
+    (is (= "Beta" (-> (get-guideline admin-request a) :body :guideline/title)))
+    (testing "and renaming to the title it already has is an ordinary no-op patch"
+      (assert-status 200 (patch-guideline admin-request a {:title "Beta" :summary "A2."}))
       (is (= "A2." (-> (get-guideline admin-request a) :body :guideline/summary))))))
 
 ;; ============================================================

@@ -9,8 +9,8 @@ import { Suspended } from '../shared/Suspended.jsx';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, TALL_LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
-import { compareText, textIncludes } from '../../domain/collation.js';
-import { humanizeError, serverMessage, statusOf } from '../../lib/errors.js';
+import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
+import { humanizeError } from '../../lib/errors.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { cn } from '../../lib/utils.js';
@@ -35,15 +35,6 @@ const inReadingOrder = (entries) =>
   [...entries].sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareText(a.title, b.title));
 
 const blankDraft = () => ({ id: null, title: '', summary: '', body: '', pinned: false });
-
-// 409 means a document changed under you everywhere else in these apps, and a
-// title already taken here. The general wording would tell someone who typed a
-// duplicate title that their edit had been refreshed, which did not happen and
-// does not say what to fix. The server's own sentence names the title.
-const saveError = (error) =>
-  statusOf(error) === 409
-    ? serverMessage(error) || 'Another guideline already has that title.'
-    : humanizeError(error, 'Could not save the guideline.');
 
 /** One row in the list. */
 const GuidelineRow = ({ entry, selected, onSelect }) => (
@@ -191,7 +182,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       if (draft.id) setOpened(await client.guidelines.get(draft.id));
       notifySuccess(draft.id ? 'Guideline saved.' : 'Guideline created.');
     } catch (error) {
-      notifyError(saveError(error));
+      notifyError(humanizeError(error, 'Could not save the guideline.'));
     } finally {
       setSaving(false);
     }
@@ -227,6 +218,15 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   };
 
   const editing = draft !== null;
+  // Titles are not unique and the server does not police them, so this is a
+  // note and not a blocker: it is said while the title is being typed, which is
+  // before there is any work to lose, and Save goes through either way.
+  const titleTaken =
+    editing &&
+    draft.title.trim() &&
+    entries.some(
+      (g) => g.id !== draft.id && collationKey(g.title) === collationKey(draft.title.trim()),
+    );
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -296,8 +296,14 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                 maxLength={100}
                 spellCheck={false}
                 placeholder="Glossing conventions"
+                aria-describedby={titleTaken ? 'guideline-title-taken' : undefined}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               />
+              {titleTaken && (
+                <p id="guideline-title-taken" className="text-xs text-muted-foreground">
+                  Another guideline has this title.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium" htmlFor="guideline-summary">
