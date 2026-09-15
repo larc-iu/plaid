@@ -18,6 +18,7 @@ import pytest
 sys.path.insert(0, 'tests')
 
 from plaid_agent.core.guidelines import (  # noqa: E402
+    t_add_guideline, t_revise_guideline,
     FENCE_END, FENCE_TOP, Guideline, in_context, in_reading_order, load, section,
     t_read_guideline)
 from plaid_agent.core.limits import GUIDELINES_INLINE_CHARS  # noqa: E402
@@ -43,10 +44,14 @@ def test_pinned_come_first_then_title_case_insensitively():
 
 # --- what goes in the prompt ------------------------------------------------
 
-def test_a_project_with_no_guidelines_says_nothing_at_all():
-    # Not "this project has no guidelines": a project without a manual has to
-    # read to the model exactly as it did before the feature existed.
-    assert section([]) == ''
+def test_a_project_with_no_guidelines_is_still_told_it_may_start_one():
+    # The moment a convention is worth writing down is usually the moment there
+    # is nowhere to write it. A model told only about guidelines that exist
+    # would never offer to start the first one.
+    out = section([])
+    assert 'has not written any down yet' in out
+    assert 'add_guideline' in out
+    # Nothing to report about context when there is no manual.
     assert in_context([]) == ''
 
 
@@ -218,3 +223,80 @@ def test_a_server_that_cannot_answer_leaves_the_project_without_a_manual():
             raise AttributeError('no such resource')
 
     assert load(Old(), PID) == []
+
+
+# --- drafting one ------------------------------------------------------------
+#
+# An assistant may DRAFT a guideline and may not write one. Everything below is
+# about that line: what reaches the plan, and what is refused before it does.
+
+def test_a_draft_is_a_plan_op_and_writes_nothing(ws):
+    out = t_add_guideline(ws, 'Loanwords', 'What we do with borrowings.',
+                          'Loanwords are not segmented.')
+    assert 'Planned 1 change' in out
+    assert 'nothing is written until the user approves' in out
+    op = ws.ops[-1]
+    assert op['kind'] == 'add_guideline'
+    assert op['title'] == 'Loanwords'
+    assert 'Loanwords' in op['label'], 'the approval line names what is being added'
+    # Nothing reached the server.
+    assert not [c for c in ws.client.log if c[0] == 'guidelines']
+
+
+def test_a_revision_carries_the_id_and_what_it_was_read_against(ws):
+    t_revise_guideline(ws, 'Translations', body='Idiomatic, and keep the speaker punctuation.')
+    op = ws.ops[-1]
+    assert op['kind'] == 'revise_guideline'
+    assert op['guideline_id'] == 'gl2'
+    # Staged against what it read: a person editing between the plan and its
+    # approval must not have their words replaced by a draft made without them.
+    assert 'updated_at' in op
+
+
+def test_a_revision_of_nothing_is_not_planned(ws):
+    out = t_revise_guideline(ws, 'Translations',
+                             body='Idiomatic English, not a word-by-word rendering.')
+    assert 'already says this' in out
+    assert not ws.ops
+
+
+def test_a_revision_needs_something_to_change(ws):
+    with pytest.raises(ToolError) as e:
+        t_revise_guideline(ws, 'Translations')
+    assert 'Say what to change' in str(e.value)
+
+
+def test_revising_a_title_that_names_two_is_refused_rather_than_guessed(ws):
+    ws.project.guidelines = [g('Glossing', gid='a'), g('Glossing', gid='b')]
+    with pytest.raises(ToolError) as e:
+        t_revise_guideline(ws, 'Glossing', body='x')
+    assert 'does not say which' in str(e.value)
+    assert not ws.ops
+
+
+def test_revising_one_that_does_not_exist_points_at_the_other_tool(ws):
+    with pytest.raises(ToolError) as e:
+        t_revise_guideline(ws, 'Ergativity', body='x')
+    assert 'add_guideline' in str(e.value)
+
+
+def test_a_draft_that_repeats_a_title_is_planned_and_flagged(ws):
+    # Titles are not unique, so this is not refused. The model is told, so it
+    # can say so rather than quietly leaving the project with two.
+    out = t_add_guideline(ws, 'Glossing', 'A second one.', 'Body.')
+    assert 'already has a guideline titled' in out
+    assert ws.ops[-1]['kind'] == 'add_guideline'
+
+
+def test_an_essay_is_refused_before_it_reaches_the_plan(ws):
+    with pytest.raises(ToolError) as e:
+        t_add_guideline(ws, 'Long', 'Too much.', 'x' * 5000)
+    assert 'one convention' in str(e.value)
+    assert not ws.ops
+
+
+def test_a_draft_needs_a_title_and_a_summary(ws):
+    for kwargs in ({'title': '  ', 'summary': 'S'}, {'title': 'T', 'summary': ' '}):
+        with pytest.raises(ToolError):
+            t_add_guideline(ws, body='B', **kwargs)
+    assert not ws.ops

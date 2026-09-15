@@ -364,7 +364,8 @@ def test_the_payload_carries_the_document_version_it_was_read_at(ws):
 
 def test_every_declared_tool_is_a_plan_tool_or_is_not(ws):
     names = {t['function']['name'] for t in TOOLS}
-    assert WRITE_TOOLS == {'set_field', 'set_head', 'del_relation', 'confirm',
+    assert WRITE_TOOLS == {'add_guideline', 'revise_guideline',
+                           'set_field', 'set_head', 'del_relation', 'confirm',
                            'discard_predictions', 'run_parse', 'set_words',
                            'split_sentence', 'merge_sentences', 'restore_document',
                            'replace_in_field', 'add_comment', 'set_feature'}

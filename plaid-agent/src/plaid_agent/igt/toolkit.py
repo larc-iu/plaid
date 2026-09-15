@@ -15,7 +15,7 @@ from ..core import sandbox as _sandbox
 from ..core import guidelines as _guidelines
 from ..core import webtools
 from ..core.webtools import t_read_url, t_web_search
-from ..core.guidelines import t_read_guideline
+from ..core.guidelines import t_add_guideline, t_read_guideline, t_revise_guideline
 from ..core.limits import OVERVIEW_DOCS
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
@@ -491,6 +491,11 @@ _IMPL.update({'query_help': t_query_help, 'query': t_query})
 # summaries are in the prompt, and this reads one in full.
 TOOLS += _guidelines.schemas('interlinear text: how this project glosses, segments and translates')
 _IMPL.update({'read_guideline': t_read_guideline})
+
+# Drafting one is a PLAN, like every other change: the user approves it on the
+# card before anything is written.
+TOOLS += _guidelines.write_schemas()
+_IMPL.update({'add_guideline': t_add_guideline, 'revise_guideline': t_revise_guideline})
 
 # Offered only when the operator configured a search backend (see tools_for).
 TOOLS += webtools.schemas('this corpus and its lexicons')

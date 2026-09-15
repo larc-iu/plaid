@@ -21,6 +21,7 @@ and the relations go in the next.
 from collections import Counter
 from typing import Any, Dict, List
 
+from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (CONFIRM, PlanError, Stamps, TrackingBatcher, apply_add_comment,
@@ -321,6 +322,9 @@ def _resolve_replace_scope(res: Resolution, op):
 # --- the registry -------------------------------------------------------------------
 
 KIND = ok.registry([
+    # The project's annotation manual. Shared with the other app: a
+    # guideline has the same shape whatever the project annotates.
+    *_guidelines.kinds(OpKind),
     OpKind('set_span', _FIELD_VALUE, required=('layer_id', 'token_id'), apply=_apply_set_span,
            target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            token_keys=('token_id',), extra={'entity': _span_entity},

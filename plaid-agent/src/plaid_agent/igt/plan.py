@@ -75,6 +75,7 @@ Each also carries a human ``label`` for the approval UI.
 from collections import Counter
 from typing import Any, Dict, List
 
+from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
@@ -463,6 +464,9 @@ def _bulk_scope_summary(op, n):
 
 
 KIND = ok.registry([
+    # The project's annotation manual. Shared with the other app: a
+    # guideline has the same shape whatever the project annotates.
+    *_guidelines.kinds(OpKind),
     OpKind('set_span', ('field value', 'field values'), required=('layer_id', 'token_id'),
            apply=_apply_set_span, target=lambda op: ('span', op.get('layer_id'), op.get('token_id')),
            at=('token_id',), at_kind=TOKEN, token_keys=('token_id',), deletes=_set_span_deletes,

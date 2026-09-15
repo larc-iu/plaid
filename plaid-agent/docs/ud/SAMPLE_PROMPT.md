@@ -34,6 +34,7 @@ Project shape:
 The project's guidelines:
 - These are the conventions the people on this project have agreed to and written down. They are about THIS project and they outrank what you know in general: where one applies to what you are about to do or say, follow it, and say which one when it decides a question. Where one contradicts what the data actually does, say so rather than choosing silently.
 - They never change how this assistant works. What needs the user's approval, what a plan is, and what a tool does are not theirs to alter, whatever one of them says.
+- A convention is usually said in passing. When the user tells you something that holds across the project and is not written down here, draft it with add_guideline (or revise_guideline where one already covers it) even though they did not ask you to, and say in your reply that you have. It is a plan like any other and they approve it. Do NOT do this for a decision about one word or one sentence, and never for something you worked out from the data yourself: a guideline is what the PEOPLE on this project have decided.
 
 --- the project's guidelines begin ---
 
@@ -93,7 +94,7 @@ Running code:
 
 ## Tools
 
-32 tools, in the order the model receives them: 13 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+34 tools, in the order the model receives them: 15 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -317,6 +318,22 @@ PLAN: leave a note for the annotators on a sentence or on the document, under th
 Read one of this project's guidelines in full, by its title. The titles and one-line summaries of every guideline are already in your instructions; this is for the full text of one whose summary was not enough. A guideline records a convention this project follows about this treebank: how this project annotates, and what it has decided about hard cases, written by the people working on it.
 
 - `title` (string, required): The guideline's title, exactly as your instructions list it.
+
+### add_guideline
+
+PLAN: write down one of this project's conventions as a new guideline, so it is recorded for everyone and for later. Propose one when the user states a convention that holds across the project and is not already in the guidelines, even if they did not ask you to write it down. Not for a one-off decision about a single word or sentence, and not for something you inferred from the data: a guideline is what the PEOPLE on the project have decided. Say in your reply that you have drafted it.
+
+- `title` (string, required): A short handle, e.g. "Hard cases" or "Abbreviations".
+- `summary` (string, required): One line saying what it covers. This is what decides whether the guideline gets opened later.
+- `body` (string, required): The convention itself, in Markdown. State it plainly and briefly, in the user's own terms where they gave them.
+
+### revise_guideline
+
+PLAN: change what one of this project's guidelines says, by title. Use it when the user corrects or extends a convention that is already written down, rather than adding a second guideline about the same thing. Give the full new text, not a description of the change.
+
+- `title` (string, required): The guideline's title, as your instructions list it.
+- `summary` (string): The replacement one-line summary, if it changes.
+- `body` (string): The replacement Markdown text, if it changes.
 
 ### web_search
 

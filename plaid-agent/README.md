@@ -130,7 +130,24 @@ the case the model reads wrong.
 
 Each reply carries a line saying how much of the manual that turn actually had
 (`Guidelines: all 6 in context`, or `Guidelines: 2 of 5 in context, 3 to open`),
-which is what makes the failure above visible. The manual is fenced in the prompt: not because a project's own
+which is what makes the failure above visible.
+
+**Drafting one.** `add_guideline` and `revise_guideline` are PLAN tools, so the
+assistant proposes and a person approves, exactly like a gloss. They exist
+because a convention is usually stated in passing: somebody says "we never
+segment loanwords" while asking about something else, and nobody thinks to go
+and write it down. The prompt tells the model to draft one unprompted in that
+case, and tells it not to for a one-off decision or for anything it worked out
+from the data itself. A project with an empty manual is told it may start one,
+or the first guideline would never be offered.
+
+A revision carries the `updated_at` it was staged against, so a plan approved
+after somebody edited that guideline is refused rather than replacing their
+words with a draft written without them.
+
+Nothing marks the guideline itself as machine-drafted: once a person approves
+it, it is the project's words. Who drafted it is a history question, and the
+audit log answers it (the operation group's message begins `Assistant:`). The manual is fenced in the prompt: not because a project's own
 writers are hostile, but so that a guideline cannot end the fence and start
 issuing instructions in the harness's voice, and so a reader of the transcript
 can see where the words came from.
