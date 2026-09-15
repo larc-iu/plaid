@@ -1256,6 +1256,121 @@ class CommentsResource(_Resource):
                              skip_response_transform=True)
 
 
+class GuidelinesResource(_Resource):
+    """A project's annotation manual: a flat list of short Markdown documents
+    stating the conventions the project follows.
+
+    Reading takes READ access to the project and writing takes WRITE access,
+    matching comments: the people who annotate are the people who discover
+    what the conventions have to be.
+
+    ``title`` is the handle. It is unique within a project, so a title already
+    in use is a 409 rather than a second row nothing can tell apart. ``summary``
+    is the one line saying what the guideline covers, and is what the assistant
+    reads to decide whether to open the body. A ``pinned`` guideline is one the
+    assistant is given in full on every turn.
+
+    Writes are audited, so a change shows in the project's activity. They are
+    NOT time-travelable: ``as_of`` reads and restore are document-scoped."""
+
+    def create(self, project_id: str, title: str, summary: str, *,
+               body: str | None = None, pinned: bool | None = None,
+               audit_message=None) -> Any:
+        """Create a guideline in a project.
+
+        Args:
+            project_id: The project the guideline belongs to
+            title: The handle, unique in the project (1..100 characters)
+            summary: What it covers, in one line (1..200 characters)
+            body: The Markdown text (up to 20000 characters; may be empty)
+            pinned: Send this one to the assistant in full on every turn
+            audit_message: Message recorded on the operation
+        """
+        return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
+                             body=_body_of(title=title, summary=summary,
+                                           body=_UNSET if body is None else body,
+                                           pinned=_UNSET if pinned is None else pinned),
+                             audit_message=audit_message)
+
+    def get(self, guideline_id: str) -> Any:
+        """Read one guideline, Markdown body included."""
+        return self._request('GET', f'/api/v1/guidelines/{guideline_id}')
+
+    def update(self, guideline_id: str, *, title: str | None = None,
+               summary: str | None = None, body: str | None = None,
+               pinned: bool | None = None, audit_message=None) -> Any:
+        """Update a guideline.
+
+        Every field is optional and an omitted one is left alone, so an edit to
+        the body need not restate the title. Renaming to a title another
+        guideline in the project already has is a 409.
+
+        Args:
+            guideline_id: The guideline to change
+            title: The new handle
+            summary: The new one-line summary
+            body: The new Markdown text
+            pinned: Whether the assistant always gets it in full
+            audit_message: Message recorded on the operation
+        """
+        return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
+                             body=_body_of(title=_UNSET if title is None else title,
+                                           summary=_UNSET if summary is None else summary,
+                                           body=_UNSET if body is None else body,
+                                           pinned=_UNSET if pinned is None else pinned),
+                             audit_message=audit_message)
+
+    def delete(self, guideline_id: str, audit_message=None) -> Any:
+        """Delete a guideline."""
+        return self._request('DELETE', f'/api/v1/guidelines/{guideline_id}',
+                             audit_message=audit_message)
+
+    def list(self, project_id: str, *, include_bodies: bool | None = None) -> Any:
+        """List a project's guidelines, by title.
+
+        Transparently follows server-side pagination cursors and returns the
+        full flat list.
+
+        Without ``include_bodies`` each entry carries ``body_chars``, the length
+        of its body, so a caller can budget before fetching any. Pinned
+        guidelines are NOT sorted first: ``pinned`` is on every entry and
+        grouping is the caller's.
+
+        Args:
+            project_id: The project to read
+            include_bodies: Return each body instead of its length
+        """
+        return list_all(self._client, f'/api/v1/projects/{project_id}/guidelines',
+                        query={'include-bodies': include_bodies})
+
+    def list_page(self, project_id: str, *, limit: int | None = None,
+                  cursor: str | None = None, include_bodies: bool | None = None) -> Any:
+        """List one page of a project's guidelines.
+
+        Args:
+            project_id: The project to read
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+            include_bodies: Return each body instead of its length
+        """
+        return list_page(self._client, f'/api/v1/projects/{project_id}/guidelines',
+                         limit=limit, cursor=cursor,
+                         query={'include-bodies': include_bodies})
+
+    def iter_pages(self, project_id: str, *, page_size: int = 1000,
+                   include_bodies: bool | None = None):
+        """Iterate a project's guidelines page by page, yielding each page's entries.
+
+        Args:
+            project_id: The project to read
+            page_size: Per-request page size
+            include_bodies: Return each body instead of its length
+        """
+        return iter_pages(self._client, f'/api/v1/projects/{project_id}/guidelines',
+                          page_size=page_size,
+                          query={'include-bodies': include_bodies})
+
+
 class InvitesResource(_Resource):
     """Invite links (signup) and admin-issued password reset links.
 
@@ -2992,6 +3107,7 @@ def _install_resources(target):
     target.user_data = UserDataResource(target)
     target.invites = InvitesResource(target)
     target.comments = CommentsResource(target)
+    target.guidelines = GuidelinesResource(target)
     target.token_layers = TokenLayersResource(target)
     target.documents = DocumentsResource(target)
     target.messages = MessagesResource(target)

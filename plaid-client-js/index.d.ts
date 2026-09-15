@@ -357,6 +357,62 @@ interface CommentFilters {
 type CommentableType =
   "document" | "text" | "token" | "span" | "relation" | "vocab-item";
 
+/**
+ * One entry in a project's annotation manual: a short Markdown document
+ * stating a convention the project follows. Read by the people on the
+ * project, and by the assistant before it proposes anything.
+ */
+interface Guideline {
+  id: string;
+  projectId: string;
+  /** The handle, unique within the project. The assistant asks for a guideline by title. */
+  title: string;
+  /** What it covers, in one line. */
+  summary: string;
+  /** The Markdown text. Present on a single read and on a list made with `includeBodies`. */
+  body?: string;
+  /** The body's length in characters. Present on a list made WITHOUT `includeBodies`. */
+  bodyChars?: number;
+  /** Whether the assistant is given this one in full on every turn. */
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface GuidelinesBundle {
+  create(
+    projectId: string,
+    title: string,
+    summary: string,
+    opts?: { body?: string; pinned?: boolean },
+    auditMessage?: string,
+  ): Promise<{ id: string }>;
+  get(id: string): Promise<Guideline>;
+  update(
+    id: string,
+    changes?: {
+      title?: string;
+      summary?: string;
+      body?: string;
+      pinned?: boolean;
+    },
+    auditMessage?: string,
+  ): Promise<Guideline>;
+  delete(id: string, auditMessage?: string): Promise<any>;
+  list(
+    projectId: string,
+    opts?: { includeBodies?: boolean },
+  ): Promise<Guideline[]>;
+  listPage(
+    projectId: string,
+    opts?: { includeBodies?: boolean; limit?: number; cursor?: string },
+  ): Promise<Page<Guideline>>;
+  iterPages(
+    projectId: string,
+    opts?: { includeBodies?: boolean; pageSize?: number },
+  ): AsyncGenerator<Guideline[]>;
+}
+
 interface Comment {
   id: string;
   /** The owning project, or null for a comment on a vocabulary entry. */
@@ -1203,6 +1259,7 @@ export declare class PlaidClient {
   admin: AdminBundle;
   audit: AuditBundle;
   comments: CommentsBundle;
+  guidelines: GuidelinesBundle;
   tokenLayers: TokenLayersBundle;
   documents: DocumentsBundle;
   messages: MessagesBundle;

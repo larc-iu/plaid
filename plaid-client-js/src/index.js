@@ -3023,6 +3023,105 @@ class PlaidClient {
           },
         ),
     };
+
+    this.guidelines = {
+      /**
+       * Create a guideline in a project. `title` is the handle and is unique
+       * within the project, so a title already in use is a 409. `summary` is
+       * the one line saying what the guideline covers - it is what the
+       * assistant reads to decide whether to open the body. A `pinned`
+       * guideline is one the assistant is given in full on every turn.
+       * @param {string} projectId - The project the guideline belongs to
+       * @param {string} title - The handle, unique in the project (1..100 characters)
+       * @param {string} summary - What it covers, in one line (1..200 characters)
+       * @param {object} [opts]
+       * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
+       * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
+       */
+      create: (
+        projectId,
+        title,
+        summary,
+        { body, pinned } = {},
+        auditMessage,
+      ) =>
+        this._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
+          auditMessage,
+          body: bodyOf({ title, summary, body, pinned }),
+        }),
+      /**
+       * Read one guideline, Markdown body included.
+       * @param {string} id - The guideline id
+       */
+      get: (id) => this._request("GET", `/api/v1/guidelines/${id}`),
+      /**
+       * Update a guideline. Every field is optional and an omitted one is
+       * left alone, so an edit to the body need not restate the title.
+       * Renaming to a title another guideline in the project already has is
+       * a 409.
+       * @param {string} id - The guideline id
+       * @param {object} [changes]
+       * @param {string} [changes.title] - The new handle
+       * @param {string} [changes.summary] - The new one-line summary
+       * @param {string} [changes.body] - The new Markdown text
+       * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
+       */
+      update: (id, { title, summary, body, pinned } = {}, auditMessage) =>
+        this._request("PATCH", `/api/v1/guidelines/${id}`, {
+          auditMessage,
+          body: bodyOf({ title, summary, body, pinned }),
+        }),
+      /**
+       * Delete a guideline.
+       * @param {string} id - The guideline id
+       */
+      delete: (id, auditMessage) =>
+        this._request("DELETE", `/api/v1/guidelines/${id}`, { auditMessage }),
+      /**
+       * List a project's guidelines, by title. Transparently follows
+       * pagination cursors and returns the full flat array.
+       *
+       * Without `includeBodies` each entry carries `bodyChars`, the length of
+       * its body, so a caller can budget before fetching any. Pinned
+       * guidelines are NOT sorted first: `pinned` is on every entry and
+       * grouping is the caller's.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {boolean} [opts.includeBodies] - Return each body instead of its length
+       */
+      list: (projectId, { includeBodies } = {}) =>
+        listAll(this, `/api/v1/projects/${projectId}/guidelines`, {
+          query: { "include-bodies": includeBodies },
+        }),
+      /**
+       * Fetch a single page of a project's guidelines.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {boolean} [opts.includeBodies] - Return each body instead of its length
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      listPage: (projectId, { limit, cursor, includeBodies } = {}) =>
+        listPage(this, `/api/v1/projects/${projectId}/guidelines`, {
+          limit,
+          cursor,
+          query: { "include-bodies": includeBodies },
+        }),
+      /**
+       * Async-iterate a project's guidelines page by page; yields each page's entries array.
+       * @param {string} projectId - The project to read
+       * @param {object} [opts]
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @param {boolean} [opts.includeBodies] - Return each body instead of its length
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterPages: (projectId, { pageSize, includeBodies } = {}) =>
+        iterPages(this, `/api/v1/projects/${projectId}/guidelines`, {
+          pageSize,
+          query: { "include-bodies": includeBodies },
+        }),
+    };
   }
 
   // --- Core methods ---
