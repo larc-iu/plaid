@@ -4,8 +4,18 @@
 // section and a preset's editor are pages of their own.
 
 // Bulk Edit, Validation and Activity are maintainers-only. The Assistant is
-// open to everyone, since it acts under the reader's own permissions.
-const CONTENT_TABS = ['documents', 'search', 'bulk', 'validate', 'activity', 'assistant'];
+// open to everyone, since it acts under the reader's own permissions, and so
+// are Guidelines: a reader reads the manual, and the writes inside it are
+// gated on the tab's own canWrite.
+const CONTENT_TABS = [
+  'documents',
+  'search',
+  'guidelines',
+  'bulk',
+  'validate',
+  'activity',
+  'assistant',
+];
 
 const MAINTAINER_TABS = new Set(['bulk', 'validate', 'activity']);
 

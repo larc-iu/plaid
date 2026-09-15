@@ -32,7 +32,7 @@ const mount = async (initial, canManage) => {
 describe('contentTabsFor', () => {
   it('gives a maintainer every tab and a reader the open ones', () => {
     expect(contentTabsFor(true)).toContain('bulk');
-    expect(contentTabsFor(false)).toEqual(['documents', 'search', 'assistant']);
+    expect(contentTabsFor(false)).toEqual(['documents', 'search', 'guidelines', 'assistant']);
   });
 });
 

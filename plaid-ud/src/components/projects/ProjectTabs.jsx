@@ -51,22 +51,25 @@ export const ProjectTabs = ({ projectId, project }) => {
   const p = location.pathname;
   const active = p.endsWith('/search')
     ? 'search'
-    : p.endsWith('/assistant')
-      ? 'assistant'
-      : p.endsWith('/import-export')
-        ? 'import-export'
-        : p.endsWith('/activity')
-          ? 'activity'
-          : p.endsWith('/validate')
-            ? 'validate'
-            : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
-              ? 'settings'
-              : 'documents';
+    : p.endsWith('/guidelines')
+      ? 'guidelines'
+      : p.endsWith('/assistant')
+        ? 'assistant'
+        : p.endsWith('/import-export')
+          ? 'import-export'
+          : p.endsWith('/activity')
+            ? 'activity'
+            : p.endsWith('/validate')
+              ? 'validate'
+              : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
+                ? 'settings'
+                : 'documents';
 
   const routes = {
     documents: `/projects/${projectId}/documents`,
     search: `/projects/${projectId}/search`,
     assistant: `/projects/${projectId}/assistant`,
+    guidelines: `/projects/${projectId}/guidelines`,
     activity: `/projects/${projectId}/activity`,
     validate: `/projects/${projectId}/validate`,
     settings: settingsTo,
@@ -94,6 +97,9 @@ export const ProjectTabs = ({ projectId, project }) => {
           </TabsTrigger>
           <TabsTrigger value="search" to={routes.search}>
             Search
+          </TabsTrigger>
+          <TabsTrigger value="guidelines" to={routes.guidelines}>
+            Guidelines
           </TabsTrigger>
           {(assistantAvailable || active === 'assistant') && (
             <TabsTrigger value="assistant" to={routes.assistant}>

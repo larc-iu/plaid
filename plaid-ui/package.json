@@ -22,6 +22,12 @@
     "@radix-ui/react-switch": "*",
     "@radix-ui/react-tabs": "*",
     "@radix-ui/react-tooltip": "*",
+    "@tiptap/core": "*",
+    "@tiptap/extension-table": "*",
+    "@tiptap/markdown": "*",
+    "@tiptap/pm": "*",
+    "@tiptap/react": "*",
+    "@tiptap/starter-kit": "*",
     "class-variance-authority": "*",
     "clsx": "*",
     "dompurify": "*",
@@ -68,6 +74,24 @@
       "optional": true
     },
     "@radix-ui/react-tooltip": {
+      "optional": true
+    },
+    "@tiptap/core": {
+      "optional": true
+    },
+    "@tiptap/extension-table": {
+      "optional": true
+    },
+    "@tiptap/markdown": {
+      "optional": true
+    },
+    "@tiptap/pm": {
+      "optional": true
+    },
+    "@tiptap/react": {
+      "optional": true
+    },
+    "@tiptap/starter-kit": {
       "optional": true
     },
     "class-variance-authority": {

@@ -1,0 +1,73 @@
+/* The editing surface.
+ *
+ * A guideline is READ through `.md-body` (see markdown.css), so the editor
+ * wears the same class and adds only what an editable box needs: a border, room
+ * to type in, and a visible caret line. Anything that styles a heading or a list
+ * differently here would mean the author and the reader see two documents. */
+
+.guideline-editor__doc {
+  min-height: 24rem;
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background));
+  overflow-y: auto;
+}
+
+.guideline-editor__doc:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+/* ProseMirror puts the placeholder on an empty doc via a pseudo-element. */
+.guideline-editor__doc p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* A table is editable here, so its cells need visible edges and a grip target.
+ * The rendered side gets its table styling from markdown.css. */
+.guideline-editor__doc table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+
+.guideline-editor__doc th,
+.guideline-editor__doc td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.25rem 0.5rem;
+  vertical-align: top;
+  position: relative;
+}
+
+.guideline-editor__doc th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+}
+
+/* The cell or cells the selection covers. */
+.guideline-editor__doc .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.12);
+  pointer-events: none;
+}
+
+/* Dragging a column edge. */
+.guideline-editor__doc .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary));
+  pointer-events: none;
+}

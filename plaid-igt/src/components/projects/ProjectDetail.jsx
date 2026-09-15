@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { Activity, FileText, Search, Replace, ShieldCheck, Download, Settings } from 'lucide-react';
+import {
+  Activity,
+  BookOpen,
+  Download,
+  FileText,
+  Replace,
+  Search,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
@@ -22,6 +31,10 @@ const ProjectAssistant = lazyNamed(
   'ProjectAssistant',
 );
 const ProjectActivity = lazyNamed(() => import('./ProjectActivity.jsx'), 'ProjectActivity');
+const GuidelinesTab = lazyNamed(
+  () => import('@ui/components/guidelines/GuidelinesTab.jsx'),
+  'GuidelinesTab',
+);
 const ProjectExport = lazyNamed(() => import('./ProjectExport.jsx'), 'ProjectExport');
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { isReviewed } from '@larc-iu/plaid-client';
@@ -314,6 +327,9 @@ export const ProjectDetail = () => {
           <TabsTrigger value="search" to={tabHref(`/projects/${projectId}`, 'search')}>
             <Search className="h-4 w-4" /> Search
           </TabsTrigger>
+          <TabsTrigger value="guidelines" to={tabHref(`/projects/${projectId}`, 'guidelines')}>
+            <BookOpen className="h-4 w-4" /> Guidelines
+          </TabsTrigger>
           {canManage && (
             <TabsTrigger value="bulk" to={tabHref(`/projects/${projectId}`, 'bulk')}>
               <Replace className="h-4 w-4" /> Bulk Edit
@@ -401,6 +417,11 @@ export const ProjectDetail = () => {
                 !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
               }
             />
+          </Suspended>
+        </TabsContent>
+        <TabsContent value="guidelines">
+          <Suspended>
+            <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />
           </Suspended>
         </TabsContent>
         <TabsContent value="export">

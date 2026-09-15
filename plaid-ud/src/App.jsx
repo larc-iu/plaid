@@ -31,6 +31,10 @@ const ProjectAssistantPage = lazyNamed(
   () => import('./components/projects/ProjectAssistantPage.jsx'),
   'ProjectAssistantPage',
 );
+const ProjectGuidelinesPage = lazyNamed(
+  () => import('./components/projects/ProjectGuidelinesPage.jsx'),
+  'ProjectGuidelinesPage',
+);
 const ProjectActivity = lazyNamed(
   () => import('./components/projects/ProjectActivity.jsx'),
   'ProjectActivity',
@@ -125,6 +129,18 @@ function App() {
               element={
                 <Suspended>
                   <ProjectAssistantPage />
+                </Suspended>
+              }
+            />
+
+            {/* The project's own annotation manual, shared with plaid-igt.
+                Anyone who can open the project reads it; writing is gated
+                inside the tab and by the server. */}
+            <Route
+              path="projects/:projectId/guidelines"
+              element={
+                <Suspended>
+                  <ProjectGuidelinesPage />
                 </Suspended>
               }
             />
