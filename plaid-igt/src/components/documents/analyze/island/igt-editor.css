@@ -731,7 +731,7 @@
   border-inline-start: 1px solid var(--igt-hairline);
 }
 .igt-labels + .igt-gap-col {
-  border-left: none;
+  border-inline-start: none;
 }
 .igt-gap-form {
   position: relative;
@@ -1769,7 +1769,7 @@
 .igt-cmt-badge--inline {
   position: static;
   flex: 0 0 auto;
-  margin-left: -4px;
+  margin-inline-start: -4px;
 }
 
 .igt-cmt-badge:hover,
@@ -1939,8 +1939,7 @@
 }
 .igt-mwe {
   position: absolute;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   top: calc(21px + 16px * var(--igt-lane, 0));
   height: 16px;
   pointer-events: none;
@@ -1948,8 +1947,7 @@
 .igt-mwe__rule {
   position: absolute;
   top: 3px;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   height: 0;
   border-top: 1px solid #b4bcc8;
 }

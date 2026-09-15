@@ -377,9 +377,11 @@ const SenseTree = ({
             <span className="min-w-0 truncate">
               {isCurrent ? (
                 <>
-                  <span className="igt-sense-self font-medium">{item.form}</span>
+                  <span dir="auto" className="igt-sense-self font-medium">
+                    {item.form}
+                  </span>
                   {item.metadata?.gloss ? (
-                    <span className="ml-1 text-xs text-muted-foreground">
+                    <span dir="auto" className="ms-1 text-xs text-muted-foreground">
                       {String(item.metadata.gloss)}
                     </span>
                   ) : null}
@@ -494,11 +496,14 @@ export const HomographDialog = ({ open, onOpenChange, group, currentId, onReorde
               <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
                 {i + 1}
               </span>
-              <span className="font-medium underline decoration-dotted underline-offset-2">
+              <span
+                dir="auto"
+                className="font-medium underline decoration-dotted underline-offset-2"
+              >
                 {r.form}
               </span>
               {r.metadata?.gloss ? (
-                <span className="truncate text-xs text-muted-foreground">
+                <span dir="auto" className="truncate text-xs text-muted-foreground">
                   {String(r.metadata.gloss)}
                 </span>
               ) : null}

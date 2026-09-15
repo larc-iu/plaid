@@ -210,6 +210,12 @@ export const DataTable = ({
                       {columns.map((c) => (
                         <td
                           key={c.key}
+                          // Every list in three apps comes through here, and
+                          // what is in a cell is data: a document's name, a
+                          // headword, a gloss, a search hit. Each decides its
+                          // own direction, and a cell with no strong RTL
+                          // character in it is unaffected.
+                          dir="auto"
                           className={cn(
                             'px-3 py-2',
                             c.align === 'right' && 'text-right',

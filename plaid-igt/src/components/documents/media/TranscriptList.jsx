@@ -329,7 +329,9 @@ const SegmentRow = memo(function SegmentRow({
       )}
 
       {readOnly ? (
-        <p className="whitespace-pre-wrap py-1.5 text-sm">{text}</p>
+        <p dir="auto" className="whitespace-pre-wrap py-1.5 text-sm">
+          {text}
+        </p>
       ) : (
         <Textarea
           ref={(el) => {

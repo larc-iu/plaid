@@ -86,6 +86,10 @@ const Row = ({ item, active, onPick, onHover }) => (
     )}
   >
     <span className="shrink-0 font-medium">{item.label}</span>
-    {item.hint && <span className="truncate text-xs text-muted-foreground">{item.hint}</span>}
+    {item.hint && (
+      <span dir="auto" className="truncate text-xs text-muted-foreground">
+        {item.hint}
+      </span>
+    )}
   </button>
 );

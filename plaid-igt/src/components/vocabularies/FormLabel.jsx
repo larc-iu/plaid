@@ -15,10 +15,13 @@
 // hook the e2e specs select it by, the React counterpart of the island's
 // `igt-vocab__num`.
 export const FormLabel = ({ form, index, className = '' }) => (
-  <span className={className}>
+  // `dir="auto"` and a LOGICAL gap on the number: a headword is the language
+  // being documented, and the subscript follows the form in reading order, so
+  // on an Arabic entry both sit to its left.
+  <span dir="auto" className={className}>
     {form}
     {index ? (
-      <sub className="vocab-num ml-0.5 font-normal tabular-nums text-muted-foreground">{index}</sub>
+      <sub className="vocab-num ms-0.5 font-normal tabular-nums text-muted-foreground">{index}</sub>
     ) : null}
   </span>
 );

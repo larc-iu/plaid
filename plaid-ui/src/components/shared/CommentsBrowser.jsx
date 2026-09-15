@@ -47,7 +47,8 @@ const ThreadRow = ({
         </button>
         <button type="button" className="min-w-0 flex-1 text-left" onClick={onToggle}>
           <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
-            {label}
+            {/* The word, value or entry this thread is about. */}
+            <span dir="auto">{label}</span>
             {detail && <span className="font-normal text-muted-foreground">{detail}</span>}
             {thread.outdated && (
               <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">
