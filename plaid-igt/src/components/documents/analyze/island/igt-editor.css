@@ -376,10 +376,20 @@
   outline-offset: 2px;
 }
 
-/* ---- sentence block ---- */
+/* ---- sentence block ----
+   The unit that MIRRORS. `dir` is set on this element per document (see
+   IgtEditor's `_sentence`), so the number, the row labels, the word columns,
+   the morpheme chains and the sentence annotations all flip together as one
+   block. The toolbar, the pager, the legend and the row menu sit outside it
+   and never move: this is about the data, not about the app.
+
+   Everything inside that positions itself along the inline axis therefore uses
+   a LOGICAL property. A `left` in here is a bug that only shows up in Arabic. */
 .igt-sentence {
   position: relative;
-  padding: 20px 12px 20px 34px;
+  padding-block: 20px;
+  /* The wide side is the gutter the sentence number sits in. */
+  padding-inline: 34px 12px;
 }
 .igt-sentence:nth-child(odd) {
   background: #ffffff;
@@ -404,7 +414,7 @@
 
 .igt-sentence__num {
   position: absolute;
-  left: 8px;
+  inset-inline-start: 8px;
   top: 14px;
   /* Shrink-wraps its digits rather than reserving a fixed 18px: the comment
      badge anchors to this box, and a box wider than its text would leave the
@@ -414,11 +424,12 @@
   color: var(--igt-gray-500);
 }
 
-/* ---- One sentence's tools (hover-revealed top-right): Ask, then Copy ---- */
+/* ---- One sentence's tools (hover-revealed, at the end of the line the text
+   reads towards): Ask, then Copy ---- */
 .igt-sentence__tools {
   position: absolute;
   top: 8px;
-  right: 10px;
+  inset-inline-end: 10px;
   z-index: 6;
   display: flex;
   align-items: stretch;
@@ -562,18 +573,20 @@
 }
 
 /* The labels column is the FIRST flex item inside the wrapping .igt-tokens
-   container, so wrapped bands flow back to the container's left edge instead
-   of staying offset by the label width. The container's small padding-left
-   gives wrapped bands a ~1em hanging indent; the matching negative margin
-   pulls the labels themselves back to the true left edge. */
+   container, so wrapped bands flow back to the container's starting edge
+   instead of staying offset by the label width. The container's small
+   padding-inline-start gives wrapped bands a ~1em hanging indent, and the
+   matching negative margin pulls the labels themselves back to the true
+   starting edge. In an RTL document that edge is the right one, and the column
+   sticks there. */
 .igt-labels {
   flex: 0 0 var(--igt-label-w);
   min-width: var(--igt-label-w);
-  margin-left: -14px;
+  margin-inline-start: -14px;
   display: flex;
   flex-direction: column;
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   background: inherit;
   z-index: 2;
 }
@@ -587,9 +600,8 @@
   color: var(--igt-gray-700);
   white-space: nowrap;
   overflow: hidden;
-  padding-right: 8px;
-  padding-left: 8px;
-  border-left: 3px solid transparent;
+  padding-inline: 8px;
+  border-inline-start: 3px solid transparent;
   cursor: pointer;
 }
 /* The label opens the Rows menu, which is where a row's scope is written out
@@ -617,16 +629,16 @@
 /* Scope accents: orthography (slate), word (blue), morpheme (teal). The
    sentence-scoped Translation label is styled separately below. */
 .igt-row-label--orth {
-  border-left-color: var(--igt-slate-400);
+  border-inline-start-color: var(--igt-slate-400);
 }
 .igt-row-label--word {
-  border-left-color: var(--igt-blue);
+  border-inline-start-color: var(--igt-blue);
 }
 .igt-row-label--morph {
   height: var(--igt-morph-h);
   font-weight: 600;
   color: var(--igt-teal-soft);
-  border-left-color: var(--igt-teal-soft);
+  border-inline-start-color: var(--igt-teal-soft);
 }
 /* The "Morphemes" label fronts the morpheme FORM row, which is taller than
    the annotation rows when vocab hints are in play. */
@@ -639,8 +651,8 @@
 .igt-row-label--spacer {
   height: var(--igt-form-h);
   background: var(--igt-band);
-  border-left-color: transparent;
-  border-top-left-radius: 6px;
+  border-inline-start-color: transparent;
+  border-start-start-radius: 6px;
 }
 
 .igt-tokens {
@@ -650,15 +662,16 @@
   row-gap: 18px;
   flex: 1 1 0;
   min-width: 0;
-  padding-left: 14px; /* hanging indent for wrapped bands (~1em) */
+  padding-inline-start: 14px; /* hanging indent for wrapped bands (~1em) */
   /* Reserved for the comment badge of whichever column ends a band. The badge
-     hangs off its cell's right edge (`left: 100%`), so without a gutter the
-     band's LAST column pushes it past the grid's clip edge: the badge is
-     sliced in half and .igt-grid's overflow-x safety net turns into a real
-     scrollbar on every sentence that wraps. Padding rather than a narrower
-     box, because wrapping measures the CONTENT box: columns now stop a badge's
-     width short of the edge, and the badge paints in the gutter they left. */
-  padding-right: var(--igt-badge-gutter);
+     hangs off its cell's far edge (`inset-inline-start: 100%`), so without a
+     gutter the band's LAST column pushes it past the grid's clip edge: the
+     badge is sliced in half and .igt-grid's overflow-x safety net turns into a
+     real scrollbar on every sentence that wraps. Padding rather than a
+     narrower box, because wrapping measures the CONTENT box: columns now stop
+     a badge's width short of the edge, and the badge paints in the gutter they
+     left. Logical, so in an RTL document the gutter is on the left. */
+  padding-inline-end: var(--igt-badge-gutter);
 }
 
 .igt-token-col {
@@ -666,10 +679,10 @@
   flex-direction: column;
   min-width: 72px;
   width: max-content;
-  border-left: 1px solid var(--igt-hairline);
+  border-inline-start: 1px solid var(--igt-hairline);
 }
 .igt-labels + .igt-token-col {
-  border-left: none;
+  border-inline-start: none;
 }
 
 .igt-token-form {
@@ -715,7 +728,7 @@
   align-self: stretch;
   min-width: 0;
   width: max-content;
-  border-left: 1px solid var(--igt-hairline);
+  border-inline-start: 1px solid var(--igt-hairline);
 }
 .igt-labels + .igt-gap-col {
   border-left: none;
@@ -1365,8 +1378,8 @@
      page picks up a few px of horizontal scroll. MARGIN, not padding: the row
      is the badge's own containing block, and padding would widen the box the
      badge's `left: 100%` measures against. It also lands the translation
-     field's right edge where the token grid's last column ends. */
-  margin-right: var(--igt-badge-gutter);
+     field's far edge where the token grid's last column ends. */
+  margin-inline-end: var(--igt-badge-gutter);
 }
 .igt-sentence-anno__label {
   flex: 0 0 var(--igt-label-w);
@@ -1374,8 +1387,8 @@
   font-weight: 600;
   font-size: 12px;
   color: var(--igt-green);
-  border-left: 3px solid var(--igt-green);
-  padding-left: 8px;
+  border-inline-start: 3px solid var(--igt-green);
+  padding-inline-start: 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1427,7 +1440,7 @@
   flex: 1 1 auto;
   min-width: 320px;
   max-width: 680px;
-  text-align: left;
+  text-align: start;
   line-height: 1.4;
   border-bottom: 1px solid var(--igt-gray-200);
   resize: none;
@@ -1629,7 +1642,14 @@
   /* Make room for the caret rather than drawing it over the last character.
      field-sizing: content measures the text and ADDS the padding, so widening
      this side is what buys the space; the base padding is 6px. */
-  padding-right: 14px;
+  padding-inline-end: 14px;
+}
+/* background-position has no logical form, so the chevron needs saying twice.
+   `:dir()` and not an `[dir='rtl']` ancestor, because a cell carries
+   `dir="auto"` and resolves on its own content: an English gloss inside an
+   Arabic grid is an LTR field and keeps its chevron on the right. */
+.igt-field--alts:focus:dir(rtl) {
+  background-position: left 2px center;
 }
 .igt-alts {
   position: fixed;
@@ -1711,11 +1731,13 @@
 
 .igt-cmt-badge {
   position: absolute;
-  /* Tangent: the badge's left edge meets the form's right edge, whatever the
-     column or the opener beneath it happens to be doing. */
+  /* Tangent: the badge meets the form's far edge, whatever the column or the
+     opener beneath it happens to be doing. `inset-inline-start: 100%` lands it
+     just past the inline-END edge in both directions, which is the mirror we
+     want, and the gutter reserved for it on .igt-tokens is logical too. */
   top: -7px;
-  left: 100%;
-  right: auto;
+  inset-inline-start: 100%;
+  inset-inline-end: auto;
   z-index: 2;
   min-width: 15px;
   height: 15px;
@@ -1932,19 +1954,20 @@
   border-top: 1px solid #b4bcc8;
 }
 .igt-mwe--start .igt-mwe__rule {
-  left: 10px;
+  inset-inline-start: 10px;
 }
 .igt-mwe--end .igt-mwe__rule {
-  right: 10px;
+  inset-inline-end: 10px;
 }
 .igt-mwe--pass .igt-mwe__rule {
   border-top-style: dotted;
 }
-/* The label is the MWE's opener: a real button, left-aligned just under the
-   line's start. */
+/* The label is the MWE's opener: a real button, aligned just under the line's
+   start, whichever side that is. */
 .igt-mwe__label {
   position: relative;
-  margin: 5px 0 0 1px;
+  margin: 5px 0 0;
+  margin-inline-start: 1px;
   z-index: 3;
   font: inherit;
   font-size: 10px;

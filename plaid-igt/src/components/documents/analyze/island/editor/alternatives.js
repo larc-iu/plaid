@@ -255,7 +255,7 @@ export const alternatives = {
                 aria-selected=${i === a.active}
                 @click=${() => this._pickAltByKey(cellKey, it)}
               >
-                <span class="igt-alts__value">${it.value}</span>
+                <span class="igt-alts__value" dir="auto">${it.value}</span>
                 <span class="igt-alts__desc">${it.description ?? nothing}</span>
                 <span class="igt-alts__tag">${tag(it)}</span>
               </div>`,

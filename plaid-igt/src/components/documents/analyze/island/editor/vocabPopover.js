@@ -409,12 +409,16 @@ export const vocabPopover = {
       this._render(true);
     };
 
+    // `dir="ltr"` on the panel: it is chrome, not data, and reads one way
+    // whatever the grid under it is doing, the way a menu does. The entry forms
+    // inside it carry `dir="auto"` and decide for themselves.
     return html`
       <div
         class="igt-vocab-pop"
         data-igt-pop
         style=${posStyle}
         role="dialog"
+        dir="ltr"
         aria-label=${isMwe ? 'Link words to lexicon' : 'Link to lexicon'}
         @click=${(e) => e.stopPropagation()}
       >
@@ -422,6 +426,7 @@ export const vocabPopover = {
         <input
           class="igt-vocab-pop__search"
           spellcheck="false"
+          dir="auto"
           data-pop-autofocus
           placeholder="Search lexicon…"
           aria-label="Search lexicon"
@@ -457,7 +462,7 @@ export const vocabPopover = {
                     else act.toggle(it, linked);
                   }}
                 >
-                  <span class="igt-vocab-pop__main">
+                  <span class="igt-vocab-pop__main" dir="auto">
                     ${linked
                       ? html`<a
                           class="igt-vocab-pop__form igt-vocab-pop__goto"
@@ -524,6 +529,7 @@ export const vocabPopover = {
                     <input
                       class="igt-vocab-pop__create-input"
                       spellcheck="false"
+                      dir="auto"
                       aria-label="New entry form"
                       .value=${live(this._popoverCreateEdit)}
                       @click=${(e) => e.stopPropagation()}

@@ -375,6 +375,7 @@ export const chrome = {
       <div
         class="igt-sentence"
         data-sentence-id=${sentence.id}
+        dir=${this.doc.textDirection}
         style=${`--igt-mwe-lanes:${lanes + (sel ? 1 : 0)}`}
         role="group"
         aria-label=${`Sentence ${index + 1}`}

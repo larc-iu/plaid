@@ -622,6 +622,7 @@ export class IgtEditor {
             : nothing}
         rows="1"
         spellcheck="false"
+        dir="auto"
         ?disabled=${this.readOnly}
         .igtAlts=${alternatives || null}
         .igtTagset=${tagset}
@@ -694,6 +695,7 @@ export class IgtEditor {
       placeholder=${g ? g.value : nothing}
       size=${this._fieldSize(g ? g.value : v)}
       spellcheck="false"
+      dir="auto"
       ?disabled=${this.readOnly}
       ${uncontrolledValue(v)}
       @focus=${this._onFieldFocus}

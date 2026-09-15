@@ -295,6 +295,7 @@ export const grid = {
                   : nothing}
               size=${this._fieldSize(value)}
               spellcheck="false"
+              dir="auto"
               ?disabled=${this.readOnly}
               ${uncontrolledValue(value)}
               @focus=${this._onMorphFormFocus}
@@ -477,6 +478,7 @@ export const grid = {
       opener = html`<button
         type="button"
         class="igt-vocab__opener igt-vocab__hint ${stateClass}"
+        dir="auto"
         data-vocab-opener=${id}
         data-pop-opener=${`vocab:${id}`}
         ?disabled=${!canLink}
