@@ -132,7 +132,7 @@ Each reply carries a line saying how much of the manual that turn actually had
 (`Guidelines: all 6 in context`, or `Guidelines: 2 of 5 in context, 3 to open`),
 which is what makes the failure above visible.
 
-**Drafting one.** `add_guideline` and `revise_guideline` are PLAN tools, so the
+**Drafting one.** `add_guideline`, `revise_guideline` and `rewrite_guideline` are PLAN tools, so the
 assistant proposes and a person approves, exactly like a gloss. They exist
 because a convention is usually stated in passing: somebody says "we never
 segment loanwords" while asking about something else, and nobody thinks to go
@@ -141,9 +141,17 @@ case, and tells it not to for a one-off decision or for anything it worked out
 from the data itself. A project with an empty manual is told it may start one,
 or the first guideline would never be offered.
 
-A revision carries the `updated_at` it was staged against, so a plan approved
-after somebody edited that guideline is refused rather than replacing their
-words with a draft written without them.
+Changing one that exists is `revise_guideline`, a find/replace on one passage,
+worked out at staging so the plan card can show `"old" → "new"` and the rest of
+the guideline stays byte-for-byte. `rewrite_guideline` replaces the whole body
+and is what the card's Rewrite badge is for: approving one means agreeing to
+lose wording somebody wrote, sight unseen. The prompt tells the model to prefer
+the targeted one. (That badge is `opkind.PROSE` now, shared, because UD had no
+such flag and its card could never mark a rewrite however it was shaped.)
+
+Either carries the `updated_at` it was staged against, so a plan approved after
+somebody edited that guideline is refused rather than replacing their words
+with a draft written without them.
 
 Nothing marks the guideline itself as machine-drafted: once a person approves
 it, it is the project's words. Who drafted it is a history question, and the

@@ -38,7 +38,7 @@ _ENTRY_KINDS = opkind.located_at(KIND, ENTRY)
 # again; these two change the linguist's own transcription, which no
 # annotation owns. The card marks them so a rewrite cannot arrive with the
 # same visual weight as a gloss (see PlanCard).
-_TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE))
+_TEXT_KINDS = frozenset(opkind.shaped(KIND, TEXT_SHAPE, opkind.PROSE))
 
 
 def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

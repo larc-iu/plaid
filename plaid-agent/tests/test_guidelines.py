@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, 'tests')
 
 from plaid_agent.core.guidelines import (  # noqa: E402
-    t_add_guideline, t_revise_guideline,
+    t_add_guideline, t_revise_guideline, t_rewrite_guideline,
     FENCE_END, FENCE_TOP, Guideline, in_context, in_reading_order, load, section,
     t_read_guideline)
 from plaid_agent.core.limits import GUIDELINES_INLINE_CHARS  # noqa: E402
@@ -243,41 +243,113 @@ def test_a_draft_is_a_plan_op_and_writes_nothing(ws):
     assert not [c for c in ws.client.log if c[0] == 'guidelines']
 
 
-def test_a_revision_carries_the_id_and_what_it_was_read_against(ws):
-    t_revise_guideline(ws, 'Translations', body='Idiomatic, and keep the speaker punctuation.')
+def test_a_targeted_edit_changes_one_passage_and_leaves_the_rest_byte_for_byte(ws):
+    ws.project.guidelines = [g('Style', body='Keep it short.\nGloss proper nouns as PN.\nUse NFC.',
+                               gid='gl9')]
+    t_revise_guideline(ws, 'Style', find='as PN', replace='as PN, person names only')
     op = ws.ops[-1]
     assert op['kind'] == 'revise_guideline'
-    assert op['guideline_id'] == 'gl2'
+    assert op['guideline_id'] == 'gl9'
+    assert op['body'] == 'Keep it short.\nGloss proper nouns as PN, person names only.\nUse NFC.'
     # Staged against what it read: a person editing between the plan and its
     # approval must not have their words replaced by a draft made without them.
     assert 'updated_at' in op
 
 
-def test_a_revision_of_nothing_is_not_planned(ws):
-    out = t_revise_guideline(ws, 'Translations',
-                             body='Idiomatic English, not a word-by-word rendering.')
+def test_the_line_the_user_approves_shows_what_becomes_what(ws):
+    ws.project.guidelines = [g('Style', body='Gloss proper nouns as PN.', gid='gl9')]
+    t_revise_guideline(ws, 'Style', find='as PN', replace='as PN, person names only')
+    label = ws.ops[-1]['label']
+    assert '"as PN" → "as PN, person names only"' in label
+
+
+def test_a_passage_that_is_not_there_is_refused_and_says_to_quote_it_exactly(ws):
+    ws.project.guidelines = [g('Style', body='Gloss proper nouns as PN.', gid='gl9')]
+    with pytest.raises(ToolError) as e:
+        t_revise_guideline(ws, 'Style', find='as pn', replace='x')
+    assert 'character for character' in str(e.value)
+    assert not ws.ops
+
+
+def test_a_passage_appearing_twice_is_refused_rather_than_guessed(ws):
+    ws.project.guidelines = [g('Style', body='Use NFC. Always use NFC here.', gid='gl9')]
+    with pytest.raises(ToolError) as e:
+        t_revise_guideline(ws, 'Style', find='se NFC', replace='x')
+    assert 'appears 2 times' in str(e.value)
+    assert not ws.ops
+
+
+def test_a_targeted_edit_can_delete_a_passage(ws):
+    ws.project.guidelines = [g('Style', body='Keep it short. Use NFC.', gid='gl9')]
+    t_revise_guideline(ws, 'Style', find=' Use NFC.', replace='')
+    assert ws.ops[-1]['body'] == 'Keep it short.'
+
+
+def test_a_rewrite_carries_the_id_and_what_it_was_read_against(ws):
+    t_rewrite_guideline(ws, 'Translations', body='Idiomatic, and keep the speaker punctuation.')
+    op = ws.ops[-1]
+    assert op['kind'] == 'rewrite_guideline'
+    assert op['guideline_id'] == 'gl2'
+    assert 'updated_at' in op
+
+
+def test_a_rewrite_of_nothing_is_not_planned(ws):
+    out = t_rewrite_guideline(ws, 'Translations',
+                              body='Idiomatic English, not a word-by-word rendering.')
     assert 'already says this' in out
     assert not ws.ops
 
 
-def test_a_revision_needs_something_to_change(ws):
+def test_a_rewrite_needs_something_to_change(ws):
     with pytest.raises(ToolError) as e:
-        t_revise_guideline(ws, 'Translations')
+        t_rewrite_guideline(ws, 'Translations')
     assert 'Say what to change' in str(e.value)
 
 
 def test_revising_a_title_that_names_two_is_refused_rather_than_guessed(ws):
     ws.project.guidelines = [g('Glossing', gid='a'), g('Glossing', gid='b')]
     with pytest.raises(ToolError) as e:
-        t_revise_guideline(ws, 'Glossing', body='x')
+        t_rewrite_guideline(ws, 'Glossing', body='x')
     assert 'does not say which' in str(e.value)
     assert not ws.ops
 
 
 def test_revising_one_that_does_not_exist_points_at_the_other_tool(ws):
     with pytest.raises(ToolError) as e:
-        t_revise_guideline(ws, 'Ergativity', body='x')
+        t_rewrite_guideline(ws, 'Ergativity', body='x')
     assert 'add_guideline' in str(e.value)
+
+
+def test_the_mark_reaches_the_card_row_in_both_apps():
+    # The chain is: op kind shape -> changes.describe_change -> the row's
+    # `writesText` -> the badge. UD had no such flag at all before this, so its
+    # card could never mark a rewrite however it was shaped.
+    from plaid_agent.igt import changes as igt_changes
+    from plaid_agent.ud import changes as ud_changes
+    rewrite = {'kind': 'rewrite_guideline', 'guideline_id': 'g1', 'label': 'x'}
+    edit = {'kind': 'revise_guideline', 'guideline_id': 'g1', 'label': 'x'}
+
+    class _WS:
+        _docs = {}
+        def doc_label(self, _):
+            return ''
+    ws = _WS()
+    assert igt_changes.describe_change(ws, rewrite)['writes_text'] is True
+    assert igt_changes.describe_change(ws, edit)['writes_text'] is False
+    assert ud_changes.describe_change(ws, rewrite)['writes_text'] is True
+    assert ud_changes.describe_change(ws, edit)['writes_text'] is False
+
+
+def test_only_a_wholesale_rewrite_is_marked_on_the_card():
+    # The badge says "you are agreeing to lose wording you cannot see here".
+    # A targeted edit shows what it changes, so it does not wear one.
+    from plaid_agent.core import opkind
+    from plaid_agent.igt.plan import KIND as IGT_KIND
+    from plaid_agent.ud.plan import KIND as UD_KIND
+    for KIND in (IGT_KIND, UD_KIND):
+        marked = set(opkind.shaped(KIND, opkind.PROSE))
+        assert 'rewrite_guideline' in marked
+        assert 'revise_guideline' not in marked
 
 
 def test_a_draft_that_repeats_a_title_is_planned_and_flagged(ws):

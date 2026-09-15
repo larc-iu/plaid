@@ -675,6 +675,8 @@ Nothing you have typed is lost: the editor keeps it, and saving a second time ov
 The Assistant can draft a guideline as well as read one.
 If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
 It will not do this for a decision about a single word, or for something it worked out from the data on its own.
+When it changes a guideline that already exists, the card shows you the exact passage it is replacing and what with.
+A change that replaces the whole guideline is marked **Rewrite** instead, because there the previous wording is not on the card for you to compare.
 
 Every change to a guideline is recorded in the project's Activity, with who made it and when, including the ones the Assistant drafted.
 

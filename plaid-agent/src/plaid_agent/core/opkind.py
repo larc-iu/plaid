@@ -40,6 +40,13 @@ SCOPE = 'scope'
 # plan.
 EXCLUSIVE = 'exclusive'
 
+# An operation that REPLACES PROSE A PERSON WROTE, rather than changing a value
+# beside it. The card marks these, because approving one means agreeing to lose
+# the previous wording, and the previous wording was somebody's work. The
+# card's flag for it is still called `writesText`, after the first kind of
+# prose either app had.
+PROSE = 'prose'
+
 # The stage of the executor that applies a kind. ``BATCH`` is the first pass
 # and the default; ``RESOLVED`` is a kind the executor never sees because it
 # was resolved beforehand. An app names any further stages itself.

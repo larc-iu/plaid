@@ -33,7 +33,9 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'add_guideline':
         return f'Drafted a guideline, {q(a.get("title"))}'
     if name == 'revise_guideline':
-        return f'Revised the guideline {q(a.get("title"))}'
+        return f'Edited the guideline {q(a.get("title"))}'
+    if name == 'rewrite_guideline':
+        return f'Rewrote the guideline {q(a.get("title"))}'
     if name == 'list_documents':
         return 'Listed the documents' + (f' matching {q(a["pattern"])}' if a.get('pattern') else '')
     if name == 'read_document':
@@ -137,7 +139,8 @@ _PROGRESS = {
     'project_overview': lambda a: 'Looking at the project…',
     'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
     'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
-    'revise_guideline': lambda a: f'Revising the guideline "{a.get("title", "")}"…',
+    'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
+    'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
     'list_documents': lambda a: 'Listing the documents…',
     'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
     'split_sentence': lambda a: 'Splitting a sentence…',

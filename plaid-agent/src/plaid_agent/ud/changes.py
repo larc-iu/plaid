@@ -10,7 +10,14 @@ addressing inside a document: UD locates a change by its CoNLL-U reference
 
 from typing import Any, Dict, List, Optional
 
+from ..core import opkind
+from .plan import KIND
 from .project import resolve
+
+# Changes that replace prose a person wrote. UD annotates values rather than
+# prose, so until guidelines there was nothing here and the card's Rewrite
+# badge never appeared in this app.
+_PROSE_KINDS = frozenset(opkind.shaped(KIND, opkind.PROSE))
 
 
 def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -18,7 +25,8 @@ def describe_changes(ws, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def describe_change(ws, op: Dict[str, Any]) -> Dict[str, Any]:
-    return {'label': op.get('label') or '', 'where': locate(ws, op)}
+    return {'label': op.get('label') or '', 'where': locate(ws, op),
+            'writes_text': op.get('kind') in _PROSE_KINDS}
 
 
 def locate(ws, op: Dict[str, Any]) -> Optional[Dict[str, Any]]:
