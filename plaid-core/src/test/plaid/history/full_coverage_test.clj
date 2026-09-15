@@ -163,6 +163,7 @@
   #{"document/create" "document/delete" "document/delete-metadata"
     "document/patch-metadata" "document/restore" "document/set-metadata"
     "document/update"
+    "guideline/create" "guideline/delete" "guideline/update"
     "layer/assoc-editor-config-pair" "layer/dissoc-editor-config-pair"
     "project/add-maintainer" "project/add-reader" "project/add-vocab"
     "project/add-writer" "project/create" "project/delete"
@@ -217,7 +218,7 @@
 (def ^:private mirrored-tables
   #{"users" "projects" "documents" "text_layers" "token_layers" "span_layers"
     "relation_layers" "texts" "tokens" "spans" "relations" "vocab_layers"
-    "vocab_items" "vocab_links" "api_tokens"})
+    "vocab_items" "vocab_links" "api_tokens" "guidelines"})
 
 (def ^:private handled-change-types
   #{"insert" "update" "delete" "doc-version-bump"})
@@ -291,6 +292,24 @@
             _ (assert-status 204 (proj-role :post "maintainers" proj u-acl))    ; add-maintainer
             _ (assert-status 204 (proj-role :post "maintainers" proj u-maint2)) ; add-maintainer
             _ (assert-status 204 (proj-role :delete "maintainers" proj u-acl))  ; remove-maintainer (u-maint2 remains)
+
+            ;; ---- guidelines: the project's annotation manual (create/update/delete) ----
+            gl (created-id (api-call admin-request
+                                     {:method :post
+                                      :path (str "/api/v1/projects/" proj "/guidelines")
+                                      :body {:title "Glossing" :summary "How this project glosses."
+                                             :body "Loanwords are **not** segmented."}}))  ; guideline/create
+            _ (assert-ok (api-call admin-request
+                                   {:method :patch
+                                    :path (str "/api/v1/guidelines/" gl)
+                                    :body {:pinned true}}))                        ; guideline/update
+            gl-throw (created-id (api-call admin-request
+                                           {:method :post
+                                            :path (str "/api/v1/projects/" proj "/guidelines")
+                                            :body {:title "Throwaway" :summary "Deleted below."}}))
+            _ (assert-no-content (api-call admin-request
+                                           {:method :delete
+                                            :path (str "/api/v1/guidelines/" gl-throw)}))  ; guideline/delete
 
             ;; ---- text layers (create/update/shift) + a throwaway to delete ----
             tlA (-> (create-text-layer admin-request proj "TLA") :body :id)  ; text-layer/create

@@ -116,6 +116,10 @@
    ;; comments: FK-cascades off projects/documents, but listed explicitly and
    ;; EARLY so a deftest's comments are gone even when its project isn't.
    "comments"
+   ;; guidelines: FK-cascades off projects, listed explicitly for the same
+   ;; reason as comments — a deftest's guidelines are gone even when its
+   ;; project is not, and a stale title would collide with the next one's.
+   "guidelines"
    "vocab_link_tokens"
    "vocab_links"
    "vocab_items"
