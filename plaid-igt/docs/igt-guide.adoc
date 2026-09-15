@@ -647,6 +647,29 @@ It also looks for zero morphs spelled some other way than ∅ (see <<_typing_spe
 
 NOTE: The Assistant and the LLM glossing service read a governed field's tagset before proposing values, so they use its spellings. Nothing they write is refused, though. A model's off-list output can be a useful signal that the tagset is missing something, and the Validation tab is where you will see it.
 
+= Guidelines
+
+The **Guidelines** tab is the project's own annotation manual: the conventions the people working on it have agreed to, written down where everyone can read them.
+Tagsets say which values a field takes.
+Guidelines are for what a list of values cannot say: that loanwords are not segmented, that a free translation is idiomatic rather than word-by-word, that this project follows Leipzig except for the ergative.
+
+Everyone who can open the project can read them, and anyone who can annotate can write them.
+
+Each guideline has a title, a one-line summary, and a body written in a rich-text editor (bold, headings, lists, tables, links).
+The title is how it is referred to, so it is unique within the project.
+The summary says what the guideline covers.
+It is worth keeping short and worth getting right: it is the line shown under the title in the list, and it is what the Assistant reads to decide whether to open a guideline before answering.
+If you cannot say in one line what a guideline covers, it is two guidelines.
+One topic each is what makes them findable, by a person and by the Assistant.
+
+The editor writes Markdown, and **Markdown** switches to the source if you would rather type it.
+
+Pinning a guideline sends it to the Assistant in full on every question.
+Unpinned guidelines are sent in full too while the manual is small, and the Assistant opens them by name once it is large.
+Under each of its replies is a line saying how much of the manual that answer had in front of it.
+
+Every change to a guideline is recorded in the project's Activity, with who made it and when.
+
 = Bulk Edit
 
 The **Bulk Edit** tab (maintainers) changes many places at once, the way FieldWorks' Change Spelling does.
@@ -669,7 +692,7 @@ A replacement a closed tagset refuses is skipped, and the preview says so.
 
 The **Assistant** tab is a chat with a language model that knows your project.
 Ask it what is still unglossed, whether a suffix is glossed consistently, or to summarize the morphology it can see.
-It reads the documents, the lexicon, the search results, and the history to answer, and it shows what it read.
+It reads the documents, the lexicon, the search results, the project's guidelines, and the history to answer, and it shows what it read.
 
 When you ask it to change something, it does not touch the data.
 It proposes a **plan**, which you **Approve** or **Discard**.

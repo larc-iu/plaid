@@ -78,6 +78,15 @@ Only the owning user and admins can read or write it; nothing in it is audited o
 An admin can also list entries across every account at once (`/admin/user-data`), narrowing by key prefix or by a glob over the whole key — which is how an app browses one feature's records without dragging every other key's value along.
 It is not a place for annotation data, which belongs in layers where it is shared, audited, and queryable, nor for media, which has its own endpoints.
 
+=== Guidelines
+
+A project may carry a flat list of **guidelines** (`/projects/{id}/guidelines`, `/guidelines/{id}`): short Markdown documents recording the conventions the people working on it have agreed to — how a hard case is annotated, what a field is for, what the project leaves alone.
+Each has a `title` (unique within the project, and the handle an assistant asks for one by, so a duplicate is a 409), a one-line `summary`, a Markdown `body`, and a `pinned` flag that an assistant reads as "send this one in full on every turn".
+Reading takes Reader access and writing takes Writer, matching comments rather than layer configuration: the people who annotate are the people who discover what the conventions have to be.
+The list is ordered by title and paginated like every other collection (see <<Pagination>>); without `include-bodies` each entry carries `body-chars` instead of its text, so a caller can budget before fetching any.
+Writes ARE audited, so a change appears in the project's audit feed with pre- and post-images and announces on its event stream — but guidelines are project-scoped rather than document-scoped, so they are not time-travelable: `?as-of=` on these routes is a 400, not an answer.
+They are deleted with the project.
+
 == Clients
 Plaid's functionality is exposed for development as a REST API.
 This allows you to use Plaid from any programming language with an HTTP client library.
