@@ -1356,6 +1356,24 @@ Keeping these two kinds of configuration apart is what allows several apps to co
 
 We also advise app developers to consider the _absence_ of a role tag to be a meaningful signal: if a layer is not tagged with a role, then as a matter of convention, no other app should read or modify it.
 
+=== Text direction
+
+One further shared convention lives on a **document**, in the same reserved namespace but under its `metadata` rather than a layer's config:
+
+[,js]
+----
+await client.documents.patchMetadata(docId, { plaid: { textDirection: "rtl" } });
+----
+
+The value is `"ltr"` or `"rtl"`, and the key's absence means "read the text", which is what almost every document says.
+Plaid's substrate has no notion of what language anything is in, and for a single field it does not need one: a string is a sequence of code points, and the Unicode bidirectional algorithm lays it out.
+What that cannot settle is the order of COLUMNS in an interlinear block or a dependency grid, because the container holding them also holds row labels written in the metalanguage.
+So a client resolves one direction per document and lays its grid out by it, falling back to counting the strong characters in the document's own text.
+This is an override for the corpus that text cannot speak for, such as a right-to-left language written in a Latin transliteration.
+
+Note that document metadata is otherwise a flat table of fields a person entered, one per name, and this key is an object.
+A client that walks metadata generically, such as an exporter writing one column per key, should skip the `plaid` namespace rather than serialize it.
+
 == Provenance
 
 Annotation projects routinely mix human labor with machine output—a parser fills in a first pass, an auto-linker proposes vocabulary links, an importer carries another tool's analysis—and it matters enormously which is which: machine output is cheap and replaceable, while human judgment is expensive and must never be silently destroyed.

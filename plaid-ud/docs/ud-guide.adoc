@@ -201,6 +201,14 @@ Fields save as you leave them, and clearing one removes the note rather than sto
 
 Everything here goes out with the document: `# source = ...` above a document, `# sent_id` and `# text_en` above a sentence.
 
+== Text Direction
+
+A document's **Details** tab also holds **Text direction**, which says which way its tokens are laid out.
+
+It is set to **Automatic**, which reads the document's own text. A treebank in Arabic, Hebrew, Thaana, N'Ko or any other right-to-left script lays its tokens out right to left in the annotation grid, with the row labels on the right and the dependency arcs over the words where they now are. Set it by hand for a document the text cannot speak for, such as a right-to-left language written here in a Latin transliteration.
+
+Direction affects the way tokens are laid out, not the values in them. Every field decides for itself, so a UPOS tag or an English lemma reads left to right in a column standing under an Arabic word. Arrow keys follow the words: in a right-to-left sentence the next token is the one to the left, so it is the left arrow that moves forward through the sentence.
+
 == What This Project Has Said Before
 
 In a **Lemma**, **XPOS** or **Features** cell, **Alt+Down** lists the values this project has already used for a word like this one, with how many times each.
@@ -538,7 +546,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | Shortcut | Action
 
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row.
-| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value.
+| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_text_direction>>.
 | **Enter** | Commit the cell, taking the highlighted suggestion if the list is open.
 | **Esc** | Cancel the edit, or close an open list or panel.
 | **Backspace** (Features) | On the empty input, select the last feature, so a second press removes it.

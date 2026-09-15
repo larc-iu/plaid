@@ -126,6 +126,13 @@ A metadata field can be held to a tagset, for example so that a genre is always 
 **Copy** makes a second document in the same project under a name you give it, holding the same text, annotations, vocabulary links, and recording.
 Comments are not copied.
 
+**Text direction** says which way the document's data is laid out.
+It is set to **Automatic**, which reads the baseline text: a document written in Arabic, Hebrew, Thaana, N'Ko or any other right-to-left script lays its words out right to left in the Analyze grid, with the row labels on the right.
+Set it by hand for a document the text cannot speak for, such as a right-to-left language written here in a Latin transliteration.
+
+Direction affects the way words are laid out, not the values in them.
+Every field decides for itself, so a gloss written in English reads left to right in a column standing under an Arabic word.
+
 == Baseline
 
 The **Baseline** tab holds the raw text you are analyzing, in whatever orthography you work in.
@@ -1051,7 +1058,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac, and Alt is the Option ke
 
 | **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Enter is the only key that accepts a guess.
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
-| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value.
+| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_metadata>>.
 | **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first.
 | **Alt+↓** | List every value the project has given this form, with counts. **↑** / **↓** move through the list, **Enter** takes the highlighted value, **Esc** closes the list. A field held to a tagset opens its list on its own.
 | **Enter** (sentence field) | Save the value and stay. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
