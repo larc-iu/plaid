@@ -9,12 +9,13 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@ui/components/ui/dialog';
+import { TextDirectionField } from '@ui/components/shared/TextDirectionField.jsx';
 import { useMetadataOperations } from './useMetadataOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';
 
 export function DocumentMetadata() {
-  const { readOnly } = useDocumentCtx();
+  const { doc, readOnly } = useDocumentCtx();
   const ops = useMetadataOperations();
 
   return (
@@ -129,6 +130,10 @@ export function DocumentMetadata() {
                 )}
             </div>
           )}
+
+          <div className="border-t" />
+
+          <TextDirectionField doc={doc} disabled={readOnly} />
         </div>
       </div>
 

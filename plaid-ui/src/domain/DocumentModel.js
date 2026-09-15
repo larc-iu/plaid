@@ -9,7 +9,14 @@
 // node suite reaches this file by relative path, where no alias and no package
 // resolves. Errors leave through `onError`.
 
-import { resolveDirection } from './textDirection.js';
+import {
+  AUTO,
+  LTR,
+  RTL,
+  readTextDirection,
+  resolveDirection,
+  textDirectionPatch,
+} from './textDirection.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -102,6 +109,35 @@ export class DocumentModel {
   get textDirection() {
     return this._derived('textDirection', () =>
       resolveDirection(this._raw?.metadata, this.body ?? ''),
+    );
+  }
+
+  /** What the document was SET to: 'ltr', 'rtl', or 'auto' for "read the text". */
+  get textDirectionSetting() {
+    return readTextDirection(this._raw?.metadata);
+  }
+
+  /**
+   * Set or clear the direction override. `AUTO` puts the document back to
+   * following its own text.
+   *
+   * A PATCH, and the whole reserved namespace restated: a document metadata
+   * PATCH replaces a nested namespace wholesale, and another app sharing this
+   * document keeps its own fields beside it.
+   */
+  async setTextDirection(value) {
+    const next = value === LTR || value === RTL ? value : AUTO;
+    if (this.textDirectionSetting === next) return false;
+    const patch = textDirectionPatch(this._raw?.metadata, next);
+    return this._withSaving(
+      'Failed to save the text direction',
+      async () => {
+        this._applyRawPatch((raw) => {
+          raw.metadata = { ...(raw.metadata || {}), ...patch };
+        });
+        await this._client.documents.patchMetadata(this.id, patch);
+      },
+      'Set text direction',
     );
   }
 

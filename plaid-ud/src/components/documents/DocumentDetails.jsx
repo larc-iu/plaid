@@ -12,6 +12,7 @@ import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { TextDirectionField } from '@ui/components/shared/TextDirectionField.jsx';
 import { MetadataFields } from '../common/MetadataFields.jsx';
 import { readMetadataFields, metadataRows } from '../../utils/udMetadata.js';
 import {
@@ -132,6 +133,8 @@ export const DocumentDetails = () => {
             <Label htmlFor="document-id">ID</Label>
             <Input id="document-id" value={documentId} readOnly disabled />
           </div>
+
+          <TextDirectionField doc={doc} disabled={readOnly} />
 
           {modified && (
             <p className="text-xs text-muted-foreground" title={fullTimestamp(modified)}>
