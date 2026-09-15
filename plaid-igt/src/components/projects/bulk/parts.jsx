@@ -195,6 +195,7 @@ export const SubstitutionFields = ({
       <Input
         id="bulk-find"
         compose={matchType !== 'regex'}
+        dir={matchType === 'regex' ? 'ltr' : 'auto'}
         value={find}
         onChange={(e) => setFind(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}
@@ -222,6 +223,7 @@ export const SubstitutionFields = ({
       <Input
         id="bulk-repl"
         compose={matchType !== 'regex'}
+        dir={matchType === 'regex' ? 'ltr' : 'auto'}
         value={repl}
         onChange={(e) => setRepl(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onEnter()}

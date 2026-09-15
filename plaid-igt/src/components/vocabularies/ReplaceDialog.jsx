@@ -230,6 +230,7 @@ export const ReplaceDialog = ({
                 <Input
                   id="vocab-replace-find"
                   compose={matchType !== 'regex'}
+                  dir={matchType === 'regex' ? 'ltr' : 'auto'}
                   value={find}
                   onChange={(e) => setFind(e.target.value)}
                   placeholder={matchType === 'regex' ? 'pattern, e.g. ([aeiou])h' : 'text'}
@@ -243,6 +244,7 @@ export const ReplaceDialog = ({
               <Input
                 id="vocab-replace-with"
                 compose={matchType !== 'regex'}
+                dir={matchType === 'regex' ? 'ltr' : 'auto'}
                 value={repl}
                 onChange={(e) => setRepl(e.target.value)}
                 placeholder={

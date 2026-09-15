@@ -547,6 +547,10 @@ export const BulkAddDialog = ({
           </div>
           <Textarea
             compose
+            // Tab-separated columns. A format, so it reads one way: an Arabic
+            // form in the first column would otherwise flip the line and put
+            // the columns in visually reversed order.
+            dir="ltr"
             rows={8}
             value={pasted}
             onChange={(e) => setPasted(e.target.value)}

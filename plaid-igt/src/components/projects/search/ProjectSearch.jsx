@@ -148,6 +148,9 @@ export const ProjectSearch = ({ project, projectId, client }) => {
           <SearchInput
             className="min-w-64 flex-1"
             placeholder="Search this project…"
+            // A pattern is a format and reads one way. A plain search is
+            // whatever was typed into it.
+            dir={matchType === 'regex' ? 'ltr' : 'auto'}
             value={queryText}
             onChange={setQueryText}
             onKeyDown={(e) => {
