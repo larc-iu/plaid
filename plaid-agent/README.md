@@ -129,8 +129,8 @@ all-or-none rather than as-many-as-fit, because a manual half in the prompt is
 the case the model reads wrong.
 
 Each reply carries a line saying how much of the manual that turn actually had
-(`Guidelines: all 6 in context`), which is what makes the failure above
-visible. The manual is fenced in the prompt: not because a project's own
+(`Guidelines: all 6 in context`, or `Guidelines: 2 of 5 in context, 3 to open`),
+which is what makes the failure above visible. The manual is fenced in the prompt: not because a project's own
 writers are hostile, but so that a guideline cannot end the fence and start
 issuing instructions in the harness's voice, and so a reader of the transcript
 can see where the words came from.

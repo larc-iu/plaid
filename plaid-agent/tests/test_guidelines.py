@@ -72,7 +72,7 @@ def test_past_the_budget_only_the_pinned_body_is_inlined():
     assert 'p' * 100 in out
     assert 'o' * GUIDELINES_INLINE_CHARS not in out
     assert 'read_guideline("Other")' in out
-    assert in_context(big) == 'Guidelines: 1 pinned in context, 1 available'
+    assert in_context(big) == 'Guidelines: 1 of 2 in context, 1 to open'
 
 
 def test_it_is_all_or_none_and_never_half_the_manual():
@@ -83,7 +83,7 @@ def test_it_is_all_or_none_and_never_half_the_manual():
     assert 'a' * 10 not in out, 'the small one must not be inlined once the big one does not fit'
     assert 'b' * 100 not in out
     assert 'read_guideline("A")' in out and 'read_guideline("B")' in out
-    assert in_context(over) == 'Guidelines: 2 available, none in context'
+    assert in_context(over) == 'Guidelines: none of 2 in context'
 
 
 def test_exactly_at_the_budget_still_fits():
@@ -95,7 +95,17 @@ def test_exactly_at_the_budget_still_fits():
 def test_one_character_over_does_not():
     over = [g('A', body=body_of(GUIDELINES_INLINE_CHARS + 1))]
     assert 'read_guideline("A")' in section(over)
-    assert in_context(over) == 'Guidelines: 1 available, none in context'
+    assert in_context(over) == 'Guidelines: none of 1 in context'
+
+
+def test_the_context_line_does_not_call_an_empty_guideline_pinned():
+    # Found on the dev server: with one pinned, one empty and three deferred,
+    # the line read "2 pinned in context" and only one of the two was pinned.
+    # This line exists to be checked against reality, so it has to be true.
+    mixed = [g('Pinned', body='p' * 100, pinned=True),
+             g('Empty', body=''),
+             g('Long', body=body_of(GUIDELINES_INLINE_CHARS))]
+    assert in_context(mixed) == 'Guidelines: 2 of 3 in context, 1 to open'
 
 
 def test_an_empty_guideline_is_not_something_to_go_and_read():

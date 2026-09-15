@@ -192,8 +192,11 @@ def in_context(guidelines: Sequence[Guideline],
         return f'Guidelines: all {total} in context'
     shown = total - len(held_back)
     if shown == 0:
-        return f'Guidelines: {total} available, none in context'
-    return f'Guidelines: {shown} pinned in context, {len(held_back)} available'
+        return f'Guidelines: none of {total} in context'
+    # Not "N pinned in context": what is in context past the budget is the
+    # pinned ones AND the empty ones, and calling an empty guideline pinned is
+    # a plain untruth on a line whose whole job is to be checkable.
+    return f'Guidelines: {shown} of {total} in context, {len(held_back)} to open'
 
 
 def schemas(subject: str) -> List[Dict[str, Any]]:
