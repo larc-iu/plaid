@@ -129,6 +129,20 @@ def test_list_page_threads_limit_and_cursor():
         restore()
 
 
+def test_update_sends_the_expected_updated_at_as_a_query_param():
+    client = _recording_client()
+    client.guidelines.update('g1', body='New text.', expected_updated_at='2026-09-01T00:00:00Z')
+    call = client.calls[0]
+    assert call['query_params'] == {'updated-at': '2026-09-01T00:00:00Z'}
+    assert call['body'] == {'body': 'New text.'}
+
+
+def test_an_update_without_one_is_unconditional():
+    client = _recording_client()
+    client.guidelines.update('g1', pinned=True)
+    assert client.calls[0]['query_params'] == {'updated-at': None}
+
+
 def test_get_and_delete_address_one_guideline_by_id():
     client = _recording_client()
     client.guidelines.get('g1')

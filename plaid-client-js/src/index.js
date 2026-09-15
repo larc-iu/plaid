@@ -3059,16 +3059,27 @@ class PlaidClient {
       /**
        * Update a guideline. Every field is optional and an omitted one is
        * left alone, so an edit to the body need not restate the title.
+       *
+       * Pass `expectedUpdatedAt` (the `updatedAt` you last read) when a person
+       * has been editing prose: the write then fails with 409 rather than
+       * overwriting somebody who saved in between. Leave it off for a pin
+       * toggle or a script, which have nothing of anyone's to lose.
        * @param {string} id - The guideline id
        * @param {object} [changes]
        * @param {string} [changes.title] - The new handle
        * @param {string} [changes.summary] - The new one-line summary
        * @param {string} [changes.body] - The new Markdown text
        * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
+       * @param {string} [changes.expectedUpdatedAt] - Write only if this is still the stored updatedAt
        */
-      update: (id, { title, summary, body, pinned } = {}, auditMessage) =>
+      update: (
+        id,
+        { title, summary, body, pinned, expectedUpdatedAt } = {},
+        auditMessage,
+      ) =>
         this._request("PATCH", `/api/v1/guidelines/${id}`, {
           auditMessage,
+          queryParams: { "updated-at": expectedUpdatedAt },
           body: bodyOf({ title, summary, body, pinned }),
         }),
       /**

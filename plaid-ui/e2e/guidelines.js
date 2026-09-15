@@ -149,6 +149,37 @@ export const guidelinesTests = ({
     expect(after.summary).toBe('Not pinned yet.');
   });
 
+  test('a save is refused when someone else saved first, and keeps every word', async ({
+    page,
+  }) => {
+    // The real two-writer case: open it in the browser, have somebody else save
+    // through the API, then save. Without the conditional write both return 200
+    // and the first person's paragraph is gone with nothing said to anyone.
+    const id = await seed({ title: 'Contested', summary: 'Two writers.', body: 'As opened.' });
+    await open(page);
+    await rowFor(page, titled('Contested')).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await expect(page.locator('.guideline-editor__doc')).toBeVisible({ timeout: EDITOR_TIMEOUT });
+
+    // Somebody else, between this reader's open and their save.
+    await client().guidelines.update(id, { body: 'Written by somebody else.' });
+
+    const doc = page.locator('.guideline-editor__doc');
+    await doc.click();
+    await page.keyboard.type(' And my own sentence.');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(page.locator('[data-sonner-toast]')).toContainText('Save again to overwrite');
+    // Still editing, and nothing typed was thrown away.
+    await expect(doc).toContainText('And my own sentence.');
+    expect((await client().guidelines.get(id)).body).toBe('Written by somebody else.');
+
+    // The second save is the overwrite the message offered.
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('.md-body')).toContainText('And my own sentence.');
+    expect((await client().guidelines.get(id)).body).toContain('And my own sentence.');
+  });
+
   test('a title already in use is a note while typing, not a refusal at save', async ({ page }) => {
     // Deliberately not enforced. The note appears before a word of the body has
     // been written, and the save goes through: refusing here would throw away a

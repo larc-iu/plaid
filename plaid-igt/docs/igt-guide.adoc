@@ -669,6 +669,9 @@ Pinning a guideline sends it to the Assistant in full on every question.
 Unpinned guidelines are sent in full too while the manual is small, and the Assistant opens them by name once it is large.
 Under each of its replies is a line saying how much of the manual that answer had in front of it.
 
+If somebody else saves a guideline while you have it open, your save is refused rather than overwriting theirs.
+Nothing you have typed is lost: the editor keeps it, and saving a second time overwrites theirs deliberately.
+
 Every change to a guideline is recorded in the project's Activity, with who made it and when.
 
 = Bulk Edit

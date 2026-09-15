@@ -11,7 +11,9 @@
        because a uniqueness constraint is the obvious thing to add back.
     3. The list is the AGENT'S read: it pages, it is ordered by title, and it
        reports `body-chars` so a caller can budget before fetching bodies.
-    4. Writes are AUDITED but not time-travelable. An operation row with a
+    4. A write is CONDITIONAL when the caller says what it read, so two people
+       editing one guideline cannot silently overwrite each other.
+    5. Writes are AUDITED but not time-travelable. An operation row with a
        post-image exists for every write, and `?as-of=` is refused rather
        than quietly answered with today's data."
   (:require [clojure.string]
@@ -42,8 +44,12 @@
                  :body attrs}))
 
 (defn- patch-guideline
-  [req guideline-id attrs]
-  (api-call req {:method :patch :path (str "/api/v1/guidelines/" guideline-id) :body attrs}))
+  ([req guideline-id attrs] (patch-guideline req guideline-id attrs nil))
+  ([req guideline-id attrs expected-updated-at]
+   (api-call req {:method :patch
+                  :path (str "/api/v1/guidelines/" guideline-id
+                             (when expected-updated-at (str "?updated-at=" expected-updated-at)))
+                  :body attrs})))
 
 (defn- delete-guideline
   [req guideline-id]
@@ -262,6 +268,51 @@
     (is (= 400 (status-of (partial admin-request) :post
                           (str "/api/v1/projects/" proj "/guidelines")
                           {:summary "No title."})))))
+
+;; ============================================================
+;; A conditional write, so two people cannot silently overwrite each other
+;; ============================================================
+
+(deftest a-second-writer-does-not-silently-overwrite-the-first
+  ;; Without this, two people who opened the same guideline both save 200 and
+  ;; the first one's paragraph is gone with nothing said to anyone. A manual is
+  ;; exactly the thing two people edit after the same meeting.
+  (let [proj (setup-project "Conflict")
+        gid (made (create-guideline admin-request proj
+                                    {:title "Glossing" :summary "S" :body "Both opened this."}))
+        loaded (-> (get-guideline admin-request gid) :body :guideline/updated-at)]
+    (testing "the first writer saves against what they read"
+      (assert-status 200 (patch-guideline admin-request gid {:body "Writer A wrote this."} loaded)))
+    (testing "the second, holding the same stale token, is refused"
+      (let [resp (patch-guideline admin-request gid
+                                  {:body "Writer B, who never saw A."} loaded)]
+        (is (= 409 (:status resp)))
+        (is (clojure.string/includes? (-> resp :body :error) "changed by someone else"))))
+    (testing "and nothing of theirs was written"
+      (is (= "Writer A wrote this." (-> (get-guideline admin-request gid) :body :guideline/body))))
+    (testing "re-reading gives a token that works"
+      (let [fresh (-> (get-guideline admin-request gid) :body :guideline/updated-at)]
+        (assert-status 200 (patch-guideline admin-request gid {:body "Writer B, now informed."} fresh))
+        (is (= "Writer B, now informed."
+               (-> (get-guideline admin-request gid) :body :guideline/body)))))))
+
+(deftest a-write-with-no-token-is-unconditional
+  ;; What a pin toggle and a script want: they are not editing prose and have
+  ;; nothing to lose to someone else's paragraph.
+  (let [proj (setup-project "Unconditional")
+        gid (made (create-guideline admin-request proj {:title "T" :summary "S" :body "one"}))]
+    (assert-status 200 (patch-guideline admin-request gid {:body "two"}))
+    (assert-status 200 (patch-guideline admin-request gid {:pinned true}))
+    (is (= "two" (-> (get-guideline admin-request gid) :body :guideline/body)))))
+
+(deftest restating-a-guideline-does-not-invalidate-anyone-s-token
+  ;; `updated_at` moves only when something else does, so a no-op save by one
+  ;; person does not make everybody else's editor refuse to save.
+  (let [proj (setup-project "NoOpToken")
+        gid (made (create-guideline admin-request proj {:title "T" :summary "S" :body "one"}))
+        loaded (-> (get-guideline admin-request gid) :body :guideline/updated-at)]
+    (assert-status 200 (patch-guideline admin-request gid {:title "T" :summary "S" :body "one"}))
+    (assert-status 200 (patch-guideline admin-request gid {:body "two"} loaded))))
 
 ;; ============================================================
 ;; 4. Audited, but not time-travelable

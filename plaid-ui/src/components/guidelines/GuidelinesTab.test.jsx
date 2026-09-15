@@ -15,7 +15,14 @@ import { GuidelinesTab } from './GuidelinesTab.jsx';
 
 const INDEX = [
   { id: 'g1', title: 'Zeta', summary: 'Last by title.', pinned: false, bodyChars: 5 },
-  { id: 'g2', title: 'Alpha', summary: 'First by title.', pinned: false, bodyChars: 2 },
+  {
+    id: 'g2',
+    title: 'Alpha',
+    summary: 'First by title.',
+    pinned: false,
+    bodyChars: 2,
+    updatedAt: '2026-09-01T00:00:00Z',
+  },
   {
     id: 'g3',
     title: 'Translations',
@@ -152,6 +159,40 @@ describe('a writer', () => {
       body: '',
       pinned: false,
     });
+    await unmount();
+  });
+
+  it('sends what the draft was opened against, so a second writer cannot overwrite blind', async () => {
+    const { container, client, step, unmount } = await mount({ canWrite: true });
+    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+    await step(() => byText(container, 'button', 'Save').click());
+
+    expect(client.guidelines.update).toHaveBeenCalledWith(
+      'g2',
+      expect.objectContaining({ expectedUpdatedAt: '2026-09-01T00:00:00Z' }),
+    );
+    await unmount();
+  });
+
+  it('keeps the text on a conflict, and the next save overwrites', async () => {
+    // humanizeError's 409 says the view was refreshed and the edit should be
+    // redone. For a body somebody typed that would mean discarding a document,
+    // so this keeps every word and lets them decide.
+    const conflict = Object.assign(new Error('HTTP 409 changed'), { status: 409 });
+    const client = fakeClient({ update: vi.fn().mockRejectedValueOnce(conflict) });
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+    await step(() => byText(container, 'button', 'Save').click());
+
+    // Still editing, with the draft intact.
+    expect(container.querySelector('#guideline-title')?.value).toBe('Alpha');
+
+    client.guidelines.update.mockResolvedValueOnce({});
+    await step(() => byText(container, 'button', 'Save').click());
+    const second = client.guidelines.update.mock.calls[1][1];
+    expect(second.expectedUpdatedAt).toBeUndefined();
     await unmount();
   });
 

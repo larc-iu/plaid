@@ -395,6 +395,8 @@ interface GuidelinesBundle {
       summary?: string;
       body?: string;
       pinned?: boolean;
+      /** Write only if this is still the stored updatedAt; 409 otherwise. */
+      expectedUpdatedAt?: string;
     },
     auditMessage?: string,
   ): Promise<Guideline>;

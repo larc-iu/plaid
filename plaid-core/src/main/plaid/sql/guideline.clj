@@ -156,8 +156,17 @@
 
 (defn merge
   "Patch a guideline. Every key in `m` is optional and an absent one is left
-  alone, so a body edit does not have to restate the title."
-  [db eid m user-id]
+  alone, so a body edit does not have to restate the title.
+
+  `expected-updated-at` is the `updated_at` the caller last read. When it is
+  given and no longer matches, nothing is written and this is a 409: somebody
+  else saved between the read and the write, and overwriting them silently is
+  how a manual loses a paragraph nobody can account for. Omit it and the write
+  is unconditional, which is what a pin toggle or a script wants.
+
+  `updated_at` only moves when something else does (see the no-op filter
+  below), so restating a guideline does not invalidate anyone's token."
+  [db eid m user-id & [expected-updated-at]]
   (submit-operation! [tx db {:type        :guideline/update
                              :project     (project-id db eid)
                              :document    nil
@@ -166,6 +175,10 @@
                      (let [existing (psc/fetch-by-id tx :guidelines eid)]
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Guideline" eid) {:code 404 :id eid})))
+                       (when (and expected-updated-at
+                                  (not= expected-updated-at (:updated_at existing)))
+                         (throw (ex-info "This guideline was changed by someone else after you opened it"
+                                         {:code 409 :id eid :updated-at (:updated_at existing)})))
                        (when (contains? m :guideline/title)
                          (validate-text! "Guideline title" (:guideline/title m) max-title-length))
                        (when (contains? m :guideline/summary)

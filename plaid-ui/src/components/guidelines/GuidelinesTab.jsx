@@ -10,7 +10,7 @@ import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, TALL_LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
-import { humanizeError } from '../../lib/errors.js';
+import { humanizeError, statusOf } from '../../lib/errors.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { cn } from '../../lib/utils.js';
@@ -64,6 +64,10 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   const [opened, setOpened] = useState(null);
   const [draft, setDraft] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Set when a save was refused because somebody else had saved first. The
+  // NEXT save goes through unconditionally, which is what "Save again to
+  // overwrite it" promises. Cleared whenever a different draft is opened.
+  const [overwrite, setOverwrite] = useState(false);
   const [query, setQuery] = useState('');
   const [params, setParams] = useSearchParams();
   const confirm = useConfirm();
@@ -148,10 +152,15 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
 
   const startNew = () => {
     setSelectedId(null);
+    setOverwrite(false);
     setDraft(blankDraft());
   };
 
-  const startEdit = () => opened && setDraft({ ...opened, body: opened.body ?? '' });
+  const startEdit = () => {
+    if (!opened) return;
+    setOverwrite(false);
+    setDraft({ ...opened, body: opened.body ?? '' });
+  };
 
   const save = async () => {
     const title = draft.title.trim();
@@ -168,6 +177,9 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           summary,
           body: draft.body,
           pinned: draft.pinned,
+          // What this draft was opened against. Leaving it off is what makes
+          // the retry after a conflict an overwrite rather than another 409.
+          expectedUpdatedAt: overwrite ? undefined : draft.updatedAt,
         });
       } else {
         const { id } = await client.guidelines.create(projectId, title, summary, {
@@ -177,12 +189,25 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
         setSelectedId(id);
       }
       setDraft(null);
+      setOverwrite(false);
       await load();
       // Reopen so the pane shows what was saved rather than what was loaded.
       if (draft.id) setOpened(await client.guidelines.get(draft.id));
       notifySuccess(draft.id ? 'Guideline saved.' : 'Guideline created.');
     } catch (error) {
-      notifyError(humanizeError(error, 'Could not save the guideline.'));
+      if (statusOf(error) === 409) {
+        // NOT humanizeError's 409 wording. That one is written for a document,
+        // where the editor resyncs and the change being redone is one cell. A
+        // guideline body is a document somebody typed, so nothing here is
+        // discarded and nothing is refreshed underneath them: the draft stays
+        // exactly as it is and the next save wins.
+        setOverwrite(true);
+        notifyError(
+          'Someone else changed this guideline after you opened it. Save again to overwrite it.',
+        );
+      } else {
+        notifyError(humanizeError(error, 'Could not save the guideline.'));
+      }
     } finally {
       setSaving(false);
     }
@@ -331,7 +356,10 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setDraft(null)}
+                onClick={() => {
+                  setOverwrite(false);
+                  setDraft(null);
+                }}
                 disabled={saving}
               >
                 Cancel

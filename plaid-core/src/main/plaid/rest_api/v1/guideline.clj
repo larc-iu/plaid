@@ -125,14 +125,20 @@
                           (not-found guideline-id)))}
 
        :patch {:summary (str "Update a guideline. Every field is optional and an omitted one is "
-                             "left alone, so an edit to the body need not restate the title.")
+                             "left alone, so an edit to the body need not restate the title. "
+                             "Pass <query>updated-at</query> (the <code>updated-at</code> you "
+                             "last read) to make the write conditional: if somebody else saved "
+                             "in between, nothing is written and the answer is a 409. Without "
+                             "it the write is unconditional.")
                :middleware [[pra/wrap-writer-required get-project-id]]
-               :parameters {:body [:map
+               :parameters {:query [:map [:updated-at {:optional true} :string]]
+                            :body [:map
                                    [:title {:optional true} :string]
                                    [:summary {:optional true} :string]
                                    [:body {:optional true} :string]
                                    [:pinned {:optional true} boolean?]]}
-               :handler (fn [{{{:keys [guideline-id]} :path body :body} :parameters
+               :handler (fn [{{{:keys [guideline-id]} :path body :body
+                               {:keys [updated-at]} :query} :parameters
                               db :db user-id :user/id}]
                           (let [m (cond-> {}
                                     (contains? body :title)   (assoc :guideline/title (:title body))
@@ -140,7 +146,7 @@
                                     (contains? body :body)    (assoc :guideline/body (:body body))
                                     (contains? body :pinned)  (assoc :guideline/pinned (:pinned body)))]
                             (from-result
-                             (pgl/merge db guideline-id m user-id)
+                             (pgl/merge db guideline-id m user-id updated-at)
                              (fn [_] {:status 200 :body (pgl/get db guideline-id)}))))}
 
        :delete {:summary "Delete a guideline."

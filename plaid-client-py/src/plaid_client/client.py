@@ -1299,11 +1299,17 @@ class GuidelinesResource(_Resource):
 
     def update(self, guideline_id: str, *, title: str | None = None,
                summary: str | None = None, body: str | None = None,
-               pinned: bool | None = None, audit_message=None) -> Any:
+               pinned: bool | None = None, expected_updated_at: str | None = None,
+               audit_message=None) -> Any:
         """Update a guideline.
 
         Every field is optional and an omitted one is left alone, so an edit to
         the body need not restate the title.
+
+        Pass ``expected_updated_at`` (the ``updated_at`` you last read) when a
+        person has been editing prose: the write then fails with 409 rather
+        than overwriting somebody who saved in between. Leave it off for a pin
+        toggle or a script, which have nothing of anyone's to lose.
 
         Args:
             guideline_id: The guideline to change
@@ -1311,9 +1317,11 @@ class GuidelinesResource(_Resource):
             summary: The new one-line summary
             body: The new Markdown text
             pinned: Whether the assistant always gets it in full
+            expected_updated_at: Write only if this is still the stored updated_at
             audit_message: Message recorded on the operation
         """
         return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
+                             query_params={'updated-at': expected_updated_at},
                              body=_body_of(title=_UNSET if title is None else title,
                                            summary=_UNSET if summary is None else summary,
                                            body=_UNSET if body is None else body,
