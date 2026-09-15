@@ -1,6 +1,7 @@
 import { Fragment, useLayoutEffect, useRef } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
+import { detectDirection } from '@ui/domain/textDirection.js';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
 import { citationHighlights, citationRows, citationTitle, sentenceHref } from './adapter.js';
 
@@ -21,6 +22,11 @@ export const ExampleCard = ({ c, projectId }) => {
   const rows = words.length ? citationRows(c) : [];
   const highlights = citationHighlights(c);
   const scroller = useRef(null);
+  // The card has no document to ask, so the sentence itself is the evidence.
+  // `dir` goes on the TABLE, which reverses its columns, and not on the
+  // scroller around it: that box stays LTR so the centering below keeps
+  // measuring `scrollLeft` the one way every browser agrees on.
+  const dir = detectDirection(c.text || words.map((w) => w.form).join(' '));
 
   // A long sentence scrolls inside the card, so bring what is cited into view:
   // centre the highlighted columns before the card is painted (only the card
@@ -50,15 +56,19 @@ export const ExampleCard = ({ c, projectId }) => {
           {citationTitle(c)}
         </a>
       </div>
-      {!words.length && <div className="py-0.5">{c.text}</div>}
+      {!words.length && (
+        <div className="py-0.5" dir="auto">
+          {c.text}
+        </div>
+      )}
       <div ref={scroller} className="overflow-x-auto">
-        <table className="border-separate border-spacing-0 whitespace-nowrap">
+        <table dir={dir} className="border-separate border-spacing-0 whitespace-nowrap">
           <tbody>
             {rows.map((r, i) => (
               <tr key={i}>
                 <th
                   scope="row"
-                  className="pr-3 text-left align-top text-[11px] font-normal leading-5 text-muted-foreground"
+                  className="pe-3 text-start align-top text-[11px] font-normal leading-5 text-muted-foreground"
                 >
                   {r.label}
                 </th>
@@ -103,7 +113,7 @@ export const ExampleCard = ({ c, projectId }) => {
         </table>
       </div>
       {(c.fields || []).map((f) => (
-        <div key={f.field} className="mt-2 italic">
+        <div key={f.field} className="mt-2 italic" dir="auto">
           <span className="not-italic text-xs text-muted-foreground">{f.field}: </span>
           {f.value}
         </div>

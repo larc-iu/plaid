@@ -531,6 +531,7 @@ export const EditableCell = React.memo(
         id={`${tokenId}-${field}`}
         type="text"
         spellCheck={false}
+        dir="auto"
         data-orig={restingValue}
         value={displayValue}
         onChange={handleChange}

@@ -15,6 +15,7 @@
 // sentence, which is what the switch under it is for.
 
 import { arcHeight, arcPath, assignLevels } from '../../utils/arcLayout.js';
+import { RTL, detectDirection } from '@ui/domain/textDirection.js';
 
 const WORD_GAP = 16; // space between words
 const CHAR = 7.2; // monospace advance at the card's font size
@@ -31,6 +32,17 @@ const CARD_BASE = 14;
 const CARD_STEP = 12;
 const CARD_CORNER = 8;
 const LABEL_LIFT = 3; // a label rides this far above its own arc
+
+// Placed words, laid out from the other end. The editor's tree gets this for
+// free because it measures real DOM boxes and the flex container has already
+// flipped them; this one places its words by character count, so it has to
+// mirror them itself.
+//
+// Positions only. `arcPath` already handles an arc whose ends run backwards,
+// and the stacking works on indexes rather than coordinates, so nothing else
+// in this file has to know.
+const mirror = (placed, width) =>
+  placed.map((w) => ({ ...w, x: width - w.x, left: width - (w.left + w.width) }));
 
 // Each word's x centre and width, from its widest cell.
 export const measure = (words) => {
@@ -107,10 +119,16 @@ const placeArc = (placed, arc, height, baseY, topY) => {
 // `hidden` counts what the partial tree leaves out, and counts it the same in
 // both states: it is what the switch is offered on, so a switch that turned
 // itself off once pressed would strand the reader in the whole tree.
-export const layout = (rows, { maxHeight = 150, all = false } = {}) => {
+export const layout = (rows, { maxHeight = 150, all = false, direction = null } = {}) => {
   // A range line (a multi-word token) is not a word of the tree.
   const words = rows.filter((r) => !r.token);
-  const placed = measure(words);
+  const measured = measure(words);
+  // The card has no document to ask, so the forms themselves are the evidence.
+  // A caller that does know says so.
+  const dir = direction ?? detectDirection(words.map((w) => w.form).join(' '));
+  const edge = measured.at(-1);
+  const width = Math.max(80, Math.round((edge?.left ?? 0) + (edge?.width ?? 0) + PAD));
+  const placed = dir === RTL ? mirror(measured, width) : measured;
   const every = arcs(placed);
   const narrowed = cited(placed, every);
   const shown = all ? every : narrowed;
@@ -141,13 +159,13 @@ export const layout = (rows, { maxHeight = 150, all = false } = {}) => {
   const height = Math.round(Math.min(maxHeight, Math.max(52, tallest + BASELINE + LABEL_H + PAD)));
   const baseY = height - BASELINE;
   const topY = PAD;
-  const last = placed.at(-1);
   return {
     words: placed,
     arcs: shown.map((a, id) => ({ ...a, ...placeArc(placed, a, riseOf(id), baseY, topY) })),
     hidden: every.length - narrowed.length,
     height,
-    width: Math.max(80, Math.round((last?.left ?? 0) + (last?.width ?? 0) + PAD)),
+    width,
+    direction: dir,
     baseY,
   };
 };

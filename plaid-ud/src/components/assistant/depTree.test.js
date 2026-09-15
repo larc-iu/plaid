@@ -145,3 +145,53 @@ describe('layout', () => {
     expect(out.width).toBeGreaterThan(0);
   });
 });
+
+// The editor's tree gets this free: it measures DOM boxes the flex container
+// has already flipped. This one places its words by character count, so it is
+// the one renderer in either app that has to mirror itself.
+describe('an RTL sentence', () => {
+  // "قرأ الولد الكتاب": read.PST the.boy the.book.
+  const arabic = [
+    { id: '1', form: 'قرأ', head: '0', deprel: 'root', token: false },
+    { id: '2', form: 'الولد', head: '1', deprel: 'nsubj', token: false },
+    { id: '3', form: 'الكتاب', head: '1', deprel: 'obj', token: false },
+  ];
+
+  it('puts the first word on the right', () => {
+    const out = layout(arabic);
+    expect(out.direction).toBe('rtl');
+    const xs = out.words.map((w) => w.x);
+    expect(xs[0]).toBeGreaterThan(xs[1]);
+    expect(xs[1]).toBeGreaterThan(xs[2]);
+  });
+
+  it('keeps every word inside the box it reports', () => {
+    const out = layout(arabic);
+    for (const w of out.words) {
+      expect(w.left).toBeGreaterThanOrEqual(0);
+      expect(w.left + w.width).toBeLessThanOrEqual(out.width);
+    }
+  });
+
+  it('draws the same arcs, ending at the same words', () => {
+    // Mirroring is positions only. What an arc MEANS is an index pair, and a
+    // dependency still ends at its dependent.
+    const out = layout(arabic, { all: true });
+    expect(out.arcs.map((a) => a.deprel).sort()).toEqual(['nsubj', 'obj', 'root']);
+    for (const a of out.arcs) expect(a.tipX).toBe(out.words[a.to].x);
+  });
+
+  it('leaves a Latin sentence where it was', () => {
+    const out = layout(rows);
+    expect(out.direction).toBe('ltr');
+    const xs = out.words.map((w) => w.x);
+    expect(xs[0]).toBeLessThan(xs[1]);
+  });
+
+  it('lets a caller that knows say so', () => {
+    // A transliterated corpus: Latin forms, laid out the way the language reads.
+    expect(layout(rows, { direction: 'rtl' }).words[0].x).toBeGreaterThan(
+      layout(rows, { direction: 'rtl' }).words[1].x,
+    );
+  });
+});

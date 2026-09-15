@@ -24,7 +24,8 @@ export const SentenceRow = React.memo(
     // What this row itself reads. The dependency tree and the deprel editor
     // render under the same provider and read their own share of it, so nothing
     // about relations or about the DEPREL vocabulary passes through here.
-    const { onEditText, onToggleField, reviewable, visibleFields } = useEditorSession();
+    const { onEditText, onToggleField, reviewable, visibleFields, textDirection } =
+      useEditorSession();
 
     // Token data is already pre-processed in sentenceData
     const tokenData = sentenceData.tokens;
@@ -229,7 +230,7 @@ export const SentenceRow = React.memo(
     const sentenceNumber = sentenceIndex + 1;
 
     return (
-      <div className="sentence-container">
+      <div className="sentence-container" dir={textDirection}>
         {/* The sentence's number, top-left and quiet: it is how you refer to
           this sentence, not something to read. It sits over the tree, which
           covers the whole block, and is click-through so that a mouseup in this

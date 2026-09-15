@@ -95,6 +95,7 @@ export const TokenColumn = React.memo(
             the parser) gets the same marking as the cells. */}
         <div
           className={`token-form${provMark(data.form?.metadata) ? ` token-form--${provMark(data.form.metadata)}` : ''}`}
+          dir="auto"
           title={
             provState(data.form?.metadata) === PROV_STATES.HUMAN
               ? undefined

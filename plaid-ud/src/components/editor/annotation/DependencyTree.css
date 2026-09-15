@@ -11,6 +11,10 @@
 }
 
 .tree-svg {
+  /* The arcs are drawn from measured screen positions and mirror themselves,
+     but a deprel label is `nsubj`, not language data. The SVG keeps its own
+     direction so the labels anchor the same way in an RTL sentence. */
+  direction: ltr;
   display: block;
   background-color: transparent; /* Make background transparent */
   border: none; /* Remove border for overlay */

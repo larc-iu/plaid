@@ -1,4 +1,13 @@
 /* Main containers */
+
+/* The unit that MIRRORS. `dir` is set on this element per document (see
+   SentenceRow), so in an RTL text the tokens run right to left and the labels
+   column sits on the right. The arcs need no geometry work at all: they are
+   drawn from positions measured off the DOM (useTokenPositions), so flipping
+   the flex container flips them with it.
+
+   Everything inside that positions itself along the inline axis therefore uses
+   a LOGICAL property. A `left` in here is a bug that only shows up in Arabic. */
 .sentence-container {
   margin: 20px;
   margin-top: 56px;
@@ -20,7 +29,7 @@
   display: flex;
   gap: 6px;
   margin-top: 6px;
-  margin-left: 80px;
+  margin-inline-start: 80px;
 }
 
 /* Unobtrusive by default — transparent fill, light violet stroke, dimmed — so it
@@ -105,7 +114,7 @@
 .sentence-id {
   position: absolute;
   top: 0;
-  left: 8px;
+  inset-inline-start: 8px;
   z-index: 11;
   pointer-events: none;
   font-family: monospace;
@@ -128,7 +137,7 @@
   flex-direction: column;
   width: 80px;
   padding: 0 8px;
-  margin-right: 8px;
+  margin-inline-end: 8px;
   flex: 0 0 auto;
 }
 
@@ -136,7 +145,7 @@
   display: flex;
   flex-direction: column;
   padding: 0 8px;
-  margin-right: 8px;
+  margin-inline-end: 8px;
   white-space: nowrap;
   flex: 0 0 auto;
   min-width: 0; /* Allow column to shrink */
@@ -212,7 +221,7 @@
 
 .row-label__chevron {
   flex: 0 0 auto;
-  margin-right: 2px;
+  margin-inline-end: 2px;
   color: #6b7280;
 }
 
@@ -361,7 +370,7 @@
 
 .feature-delete-btn {
   position: absolute;
-  right: 2px;
+  inset-inline-end: 2px;
   top: 50%;
   transform: translateY(-50%);
   color: #ef4444;

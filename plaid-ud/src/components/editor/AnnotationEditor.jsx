@@ -336,6 +336,10 @@ export const AnnotationEditor = () => {
       // A document with no writer of its own reviews machine work, which is
       // what every reader of this predicate assumed before it was one value.
       reviewable: doc?.writer.reviewable ?? needsReview,
+      // Which way the tokens run. One value for the document, so a sentence
+      // that happens to open with a Latin loanword does not stand backwards
+      // among its neighbours.
+      textDirection: doc?.textDirection ?? 'ltr',
     }),
     [
       readOnly,

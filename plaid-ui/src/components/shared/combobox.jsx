@@ -154,6 +154,9 @@ export const Combobox = React.forwardRef(function Combobox(
     >
       <PopoverPrimitive.Anchor asChild>
         <input
+          // Before the spread, so a caller that knows its field is a format
+          // rather than a sentence can say so.
+          dir="auto"
           {...inputProps}
           ref={setInputRef}
           value={value}
