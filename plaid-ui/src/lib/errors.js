@@ -54,13 +54,25 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     default:
       break;
   }
-  const msg = String((error && error.message) || error || '')
+  return serverMessage(error) || fallback;
+};
+
+/**
+ * What the SERVER said, made fit to read: the status line, the URL and the ids
+ * taken off, and nothing else.
+ *
+ * Split out of `humanizeError` because a status code does not always mean the
+ * same thing. 409 is a document that changed under you nearly everywhere, and
+ * a title already taken on a guideline: the general wording would tell that
+ * user their edit had been refreshed, which did not happen and does not say
+ * what to fix. A screen with its own meaning for a status reaches for this.
+ */
+export const serverMessage = (error) =>
+  String((error && error.message) || error || '')
     .replace(/\s*at\s+https?:\/\/\S+/gi, '') // " at http://…/api/v1/…"
     .replace(UUID_RE, 'this item')
     .replace(/^HTTP \d+\s*/i, '')
     .trim();
-  return msg || fallback;
-};
 
 // A sign-in that fails says one thing to the person typing, so the general
 // wording for 401 ("your session has expired") does not belong on that screen.

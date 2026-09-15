@@ -10,7 +10,7 @@ import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, TALL_LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { compareText, textIncludes } from '../../domain/collation.js';
-import { humanizeError } from '../../lib/errors.js';
+import { humanizeError, serverMessage, statusOf } from '../../lib/errors.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { cn } from '../../lib/utils.js';
@@ -35,6 +35,15 @@ const inReadingOrder = (entries) =>
   [...entries].sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareText(a.title, b.title));
 
 const blankDraft = () => ({ id: null, title: '', summary: '', body: '', pinned: false });
+
+// 409 means a document changed under you everywhere else in these apps, and a
+// title already taken here. The general wording would tell someone who typed a
+// duplicate title that their edit had been refreshed, which did not happen and
+// does not say what to fix. The server's own sentence names the title.
+const saveError = (error) =>
+  statusOf(error) === 409
+    ? serverMessage(error) || 'Another guideline already has that title.'
+    : humanizeError(error, 'Could not save the guideline.');
 
 /** One row in the list. */
 const GuidelineRow = ({ entry, selected, onSelect }) => (
@@ -182,7 +191,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       if (draft.id) setOpened(await client.guidelines.get(draft.id));
       notifySuccess(draft.id ? 'Guideline saved.' : 'Guideline created.');
     } catch (error) {
-      notifyError(humanizeError(error, 'Could not save the guideline.'));
+      notifyError(saveError(error));
     } finally {
       setSaving(false);
     }
