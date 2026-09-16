@@ -171,7 +171,10 @@ export const mwe = {
       e.preventDefault();
       e.stopPropagation();
       if (sel.tokenIds.size >= 2) this._openMwePopover();
-      else notifyInfo('Add another word first: Shift+click it, or Shift+→ from a cell');
+      else
+        notifyInfo(
+          `Add another word first: Shift+click it, or Shift+${this._gatherKey()} from a cell`,
+        );
       return true;
     }
     if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.shiftKey || e.altKey) return false;
@@ -382,6 +385,13 @@ export const mwe = {
     ></span>`;
   },
 
+  // The arrow that gathers the NEXT word. It follows the sentence rather than
+  // the screen, so in an RTL grid it is the LEFT one, and every string that
+  // names it has to say so.
+  _gatherKey() {
+    return this._gridRtl() ? '←' : '→';
+  },
+
   // The label on the first member: the MWE's opener (a real button, in the
   // review sweep when machine-made), or what to do next while gathering.
   _mweLabel(mwe, token) {
@@ -403,7 +413,7 @@ export const mwe = {
       title =
         n >= 2
           ? 'Enter links these words to one entry · Shift+click adds or removes a word · Esc drops them'
-          : 'Shift+click a word, or Shift+→ from a cell, to gather it into the multi-word expression · Esc drops it';
+          : `Shift+click a word, or Shift+${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc drops it`;
     }
     let popover = nothing;
     if (open) {
@@ -418,6 +428,7 @@ export const mwe = {
     return html`<button
         type="button"
         class="igt-mwe__label ${provClass('igt-mwe__label', state)}"
+        dir="auto"
         data-vocab-opener=${key}
         data-pop-opener=${`vocab:${key}`}
         data-mwe=${key}

@@ -153,6 +153,21 @@ describe('navigation follows the words', () => {
   // test. The e2e spec drives the real thing.
 });
 
+describe('the copy names the key that works', () => {
+  // Gathering a multi-word expression steps along the SENTENCE, so the arrow
+  // that does it is the left one in an RTL grid. Two strings tell a person
+  // which key to press, and both would otherwise name the wrong one.
+  it('says the left arrow in an RTL grid', () => {
+    mount({ body: ARABIC, words: ARABIC_WORDS });
+    expect(editor._gatherKey()).toBe('←');
+  });
+
+  it('says the right arrow in a Latin one', () => {
+    mount();
+    expect(editor._gatherKey()).toBe('→');
+  });
+});
+
 describe('the chrome is not data', () => {
   it('leaves the toolbar outside the block that flips', () => {
     mount({ body: ARABIC, words: ARABIC_WORDS });
