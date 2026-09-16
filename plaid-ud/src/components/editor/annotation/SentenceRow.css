@@ -7,18 +7,34 @@
    the flex container flips them with it.
 
    Everything inside that positions itself along the inline axis therefore uses
-   a LOGICAL property. A `left` in here is a bug that only shows up in Arabic. */
-.sentence-container {
-  margin: 20px;
-  margin-top: 56px;
+   a LOGICAL property. A `left` in here is a bug that only shows up in Arabic.
+
+   Each sentence scrolls sideways on its own, and a scroll starts from the edge
+   its direction starts from, so every sentence opens at its first word and the
+   first words on a page line up whichever way the text runs. The page cannot
+   do that for an RTL text. It is LTR, so it only ever scrolls rightwards, and
+   an RTL grid overflows to the left, past the page's origin, where no
+   scrollbar reaches. */
+.sentence-scroll {
+  overflow-x: auto;
   /* Generous gap below each sentence so the whitespace groups a sentence with
      its own "Accept predictions" button (which sits below the grid) and clearly
-     separates it from the next sentence. */
-  margin-bottom: 88px;
-  /* NOT `width: 100%`, which is 100% of the parent's content box and then
-     pushed right by the margin, so every sentence hung 20px past the edge of
-     the page. Harmless while nothing was over there; the assistant dock is,
-     and the overhang went under it. A block box fills the width it is given. */
+     separates it from the next sentence. Out here and not on the block inside,
+     so the scrollbar sits under the sentence it scrolls. */
+  margin-bottom: 80px;
+}
+
+.sentence-container {
+  /* The top margin is inside the scroller, where it holds the 50px of tree
+     drawn above this block (DependencyTree.css). The scroller clips anything
+     outside it. */
+  margin: 56px 20px 8px;
+  /* As wide as the sentence, so the tree and the grid, which both fill this
+     box, are as wide as each other. The arcs are measured from the grid's edge
+     and drawn from the SVG's, and a grid overflowing a narrower box moves one
+     of those edges and not the other. */
+  width: max-content;
+  min-width: calc(100% - 40px); /* the two 20px margins */
   position: relative; /* Enable absolute positioning for children */
 }
 

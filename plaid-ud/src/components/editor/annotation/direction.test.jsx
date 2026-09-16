@@ -69,13 +69,13 @@ const mountRow = (session) =>
 describe('the annotation grid takes its direction from the document', () => {
   it('lays an RTL document out right to left', async () => {
     const { container, unmount } = await mountRow({ textDirection: 'rtl' });
-    expect(container.querySelector('.sentence-container').getAttribute('dir')).toBe('rtl');
+    expect(container.querySelector('.sentence-scroll').getAttribute('dir')).toBe('rtl');
     await unmount();
   });
 
   it('leaves an LTR document alone', async () => {
     const { container, unmount } = await mountRow({ textDirection: 'ltr' });
-    expect(container.querySelector('.sentence-container').getAttribute('dir')).toBe('ltr');
+    expect(container.querySelector('.sentence-scroll').getAttribute('dir')).toBe('ltr');
     await unmount();
   });
 

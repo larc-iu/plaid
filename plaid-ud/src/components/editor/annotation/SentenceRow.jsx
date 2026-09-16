@@ -234,97 +234,99 @@ export const SentenceRow = React.memo(
     const sentenceNumber = sentenceIndex + 1;
 
     return (
-      <div className="sentence-container" dir={textDirection}>
-        {/* The sentence's number, top-left and quiet: it is how you refer to
+      <div className="sentence-scroll" dir={textDirection}>
+        <div className="sentence-container">
+          {/* The sentence's number, top-left and quiet: it is how you refer to
           this sentence, not something to read. It sits over the tree, which
           covers the whole block, and is click-through so that a mouseup in this
           corner still reaches the arc being drawn underneath. */}
-        <div className="sentence-id">{sentenceNumber}</div>
+          <div className="sentence-id">{sentenceNumber}</div>
 
-        {/* Dependency tree visualization */}
-        <DependencyTree
-          ref={treeRef}
-          tokens={sentenceData.tokens.map((t) => t.token)}
-          relations={relations}
-          lemmaSpans={lemmaSpans}
-          textContent={textContentProvider}
-          tokenPositions={tokenPositions}
-          onExitDown={focusGridCell}
-          onEditText={handleEditText}
-          arcLayout={arcLayout}
-        />
+          {/* Dependency tree visualization */}
+          <DependencyTree
+            ref={treeRef}
+            tokens={sentenceData.tokens.map((t) => t.token)}
+            relations={relations}
+            lemmaSpans={lemmaSpans}
+            textContent={textContentProvider}
+            tokenPositions={tokenPositions}
+            onExitDown={focusGridCell}
+            onEditText={handleEditText}
+            arcLayout={arcLayout}
+          />
 
-        {/* Main container with labels and columns */}
-        <div
-          className="sentence-grid"
-          ref={sentenceGridRef}
-          style={{ paddingTop: `${arcLayout.gridPaddingTop}px` }}
-        >
-          {/* Labels column */}
-          <div className="labels-column">
-            {/* Empty space for token form row */}
-            <div className="label-spacer"></div>
+          {/* Main container with labels and columns */}
+          <div
+            className="sentence-grid"
+            ref={sentenceGridRef}
+            style={{ paddingTop: `${arcLayout.gridPaddingTop}px` }}
+          >
+            {/* Labels column */}
+            <div className="labels-column">
+              {/* Empty space for token form row */}
+              <div className="label-spacer"></div>
 
-            {/* Row headers — always visible, click to expand/collapse */}
-            <RowLabelHeader
-              field="lemma"
-              label="LEMMA"
-              expanded={visibleFields.lemma}
-              onToggle={onToggleField}
-            />
-            <RowLabelHeader
-              field="xpos"
-              label="XPOS"
-              expanded={visibleFields.xpos}
-              onToggle={onToggleField}
-            />
-            <RowLabelHeader
-              field="upos"
-              label="UPOS"
-              expanded={visibleFields.upos}
-              onToggle={onToggleField}
-            />
-            <RowLabelHeader
-              field="feats"
-              label="FEATS"
-              expanded={visibleFields.feats}
-              onToggle={onToggleField}
-              style={
-                visibleFields.feats
-                  ? {
-                      minHeight: `${featsExpandedHeight}px`,
-                      alignItems: 'flex-start',
-                      paddingTop: '6px',
-                    }
-                  : undefined
-              }
-            />
+              {/* Row headers — always visible, click to expand/collapse */}
+              <RowLabelHeader
+                field="lemma"
+                label="LEMMA"
+                expanded={visibleFields.lemma}
+                onToggle={onToggleField}
+              />
+              <RowLabelHeader
+                field="xpos"
+                label="XPOS"
+                expanded={visibleFields.xpos}
+                onToggle={onToggleField}
+              />
+              <RowLabelHeader
+                field="upos"
+                label="UPOS"
+                expanded={visibleFields.upos}
+                onToggle={onToggleField}
+              />
+              <RowLabelHeader
+                field="feats"
+                label="FEATS"
+                expanded={visibleFields.feats}
+                onToggle={onToggleField}
+                style={
+                  visibleFields.feats
+                    ? {
+                        minHeight: `${featsExpandedHeight}px`,
+                        alignItems: 'flex-start',
+                        paddingTop: '6px',
+                      }
+                    : undefined
+                }
+              />
+            </div>
+
+            {/* Token columns */}
+            {tokenData.map((data, index) => (
+              <TokenColumn
+                key={data.token.id}
+                data={data}
+                index={index}
+                columnWidth={columnWidths[index]}
+                maxFeatures={maxFeatures}
+                getTabIndex={getTabIndex}
+                onNavigate={onNavigate}
+                tokenRefs={tokenRefs}
+                relationInferred={inferredRelTokenIds.has(data.token.id)}
+              />
+            ))}
           </div>
 
-          {/* Token columns */}
-          {tokenData.map((data, index) => (
-            <TokenColumn
-              key={data.token.id}
-              data={data}
-              index={index}
-              columnWidth={columnWidths[index]}
-              maxFeatures={maxFeatures}
-              getTabIndex={getTabIndex}
-              onNavigate={onNavigate}
-              tokenRefs={tokenRefs}
-              relationInferred={inferredRelTokenIds.has(data.token.id)}
-            />
-          ))}
+          <SentenceActions
+            sentenceData={sentenceData}
+            sentenceNumber={sentenceNumber}
+            commentAnchorLabel={commentAnchorLabel}
+            hasInferred={hasInferred}
+            hasMachine={hasMachine}
+            onEditText={handleEditText}
+          />
         </div>
-
-        <SentenceActions
-          sentenceData={sentenceData}
-          sentenceNumber={sentenceNumber}
-          commentAnchorLabel={commentAnchorLabel}
-          hasInferred={hasInferred}
-          hasMachine={hasMachine}
-          onEditText={handleEditText}
-        />
       </div>
     );
   },

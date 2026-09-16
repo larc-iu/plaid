@@ -45,7 +45,7 @@ const open = async (page) => {
 
 test('the first token of an Arabic sentence is on the right', async ({ page }) => {
   await open(page);
-  await expect(page.locator('.sentence-container').first()).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('.sentence-scroll').first()).toHaveAttribute('dir', 'rtl');
 
   const cols = page.locator('.sentence-container .token-column');
   await expect(cols).toHaveCount(3);
@@ -73,6 +73,41 @@ test('the tree is drawn over the words where they actually are', async ({ page }
   const last = await cols.nth(2).boundingBox();
   expect(svg.x).toBeLessThanOrEqual(last.x + 1);
   expect(svg.x + svg.width).toBeGreaterThanOrEqual(first.x - 1);
+});
+
+test('a long sentence opens at its first word and scrolls to its last', async ({ page }) => {
+  // Too narrow for three words and the labels. The sentence scrolls in a box of
+  // its own, and a box laid out RTL starts from its right edge, where the first
+  // word is. The page could not do this: it is LTR and only scrolls rightwards,
+  // while an RTL grid overflows to the left.
+  await page.setViewportSize({ width: 240, height: 900 });
+  await open(page);
+  const scroller = page.locator('.sentence-scroll').first();
+  const seen = () =>
+    scroller.evaluate((s) => {
+      const box = s.getBoundingClientRect();
+      const cols = [...s.querySelectorAll('.token-column')].map((c) => c.getBoundingClientRect());
+      return {
+        overflows: s.scrollWidth > s.clientWidth,
+        inView: cols.map((c) => c.left >= box.left - 1 && c.right <= box.right + 1),
+        wordsLeft: Math.min(...cols.map((c) => c.left)),
+        svgLeft: s.querySelector('svg').getBoundingClientRect().left,
+      };
+    });
+
+  const atOpen = await seen();
+  expect(atOpen.overflows).toBe(true);
+  expect(atOpen.inView[0]).toBe(true);
+  expect(atOpen.inView[2]).toBe(false);
+
+  await scroller.evaluate((s) => {
+    s.scrollLeft = -s.scrollWidth;
+  });
+  const atEnd = await seen();
+  expect(atEnd.inView[2]).toBe(true);
+  // The arcs are measured from the grid's edge and drawn from the SVG's, so the
+  // SVG has to reach as far as the grid does.
+  expect(atEnd.svgLeft).toBeLessThanOrEqual(atEnd.wordsLeft);
 });
 
 test('arrow keys walk the sentence rightwards', async ({ page }) => {
