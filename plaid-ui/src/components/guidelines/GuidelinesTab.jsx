@@ -28,8 +28,6 @@ import { cn } from '../../lib/utils.js';
 // static import.
 const GuidelineEditor = lazyNamed(() => import('./GuidelineEditor.jsx'), 'GuidelineEditor');
 
-const SEARCH_FROM = 8;
-
 /** The list order the assistant also uses: pinned first, then by title. */
 const inReadingOrder = (entries) =>
   [...entries].sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareText(a.title, b.title));
@@ -255,29 +253,32 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-      <div className="flex w-full shrink-0 flex-col gap-2 lg:w-80">
-        <div className="flex items-center gap-2">
-          {entries.length >= SEARCH_FROM && (
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search guidelines…"
-              className="flex-1"
-            />
-          )}
-          {canWrite && (
-            <Button type="button" size="sm" onClick={startNew} className="ml-auto">
-              <Plus className="h-4 w-4" />
-              New
-            </Button>
-          )}
+      <div className="flex w-full shrink-0 flex-col overflow-hidden rounded-md border lg:w-80">
+        {/* The list's own header, inside its border: the count on the left and
+            New opposite it. The button used to sit in a bare row above the
+            border with nothing beside it until a search box appeared, so on a
+            project with a handful of guidelines it floated in mid-air. */}
+        <div className="flex flex-col gap-2 border-b p-2">
+          <div className="flex items-center justify-between gap-2">
+            <ListCount shown={matched.length} total={entries.length} noun="guideline" />
+            {canWrite && (
+              <Button type="button" size="sm" onClick={startNew}>
+                <Plus className="h-4 w-4" />
+                New
+              </Button>
+            )}
+          </div>
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search guidelines…"
+            inputClassName="h-8"
+          />
         </div>
 
-        <div className="flex items-center justify-between">
-          <ListCount shown={matched.length} total={entries.length} noun="guideline" />
-        </div>
-
-        <div className="overflow-hidden rounded-md border">
+        {/* The rows and their pagers are one group, so a row's
+            `last:border-b-0` still sees the last row as the last child. */}
+        <div className="min-w-0">
           <ListPager {...paged} onPage={paged.setPage} position="top" />
           {loading ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">Loading…</p>
