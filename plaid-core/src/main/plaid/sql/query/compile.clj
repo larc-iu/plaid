@@ -896,7 +896,8 @@
 ;; The match query projects (DISTINCT) the group columns, the aggregate source
 ;; columns, and EVERY entity/layer var's id — so DISTINCT counts true matches
 ;; (every distinct binding of all variables), not raw join rows. exec then wraps
-;; this in `SELECT <group>, <agg fns> ... GROUP BY <group>`.
+;; this in `SELECT <group>, <agg fns> ... GROUP BY <group>`. `distinct-redundant?`
+;; drops the DISTINCT when the projection cannot repeat a row anyway.
 
 (defn aggregate-plan
   "The aggregate plan compile-query attached as metadata (or nil): :group-cols /
@@ -966,6 +967,22 @@
       (err-500! (str "ACL invariant violated: entity/layer vars without a scope predicate: " (vec unscoped))
                 {:vars (vec unscoped)}))))
 
+(defn- distinct-redundant?
+  "True when the aggregate projection is already duplicate-free, so the DISTINCT
+  can be dropped. It holds when every alias in the FROM is an entity/layer VAR
+  alias: aggregate mode projects every var alias's `id`, each one its table's
+  primary key, so the projected tuple identifies at most one row of the join and
+  no two rows can be equal. Any OTHER alias may repeat a match — a junction row
+  (`span_tokens`, `vocab_link_tokens`) or a `project_vocabs` grant multiplies it —
+  and keeps the DISTINCT. The test is deliberately by exclusion, so a join alias
+  added later is duplicate-generating until someone proves otherwise.
+
+  Worth the care: the DISTINCT is a temp B-tree over every match, and on the alpha
+  server the project list's per-layer token count spent 3.8s in it and 0.2s without."
+  [st]
+  (let [var-aliases (set (vals (:var->alias @st)))]
+    (every? var-aliases (map second (:from @st)))))
+
 (defn compile-query
   "Resolved AST -> HoneySQL map. Throws 500 only on internal invariant failures."
   [resolved]
@@ -1006,8 +1023,11 @@
     (assert-acl-invariant! st)
     (if (clauses/aggregate? resolved)
       ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
-      (let [{:keys [select plan]} (aggregate-projection st (:return resolved))]
-        (vary-meta {:select-distinct select :from (:from @st) :where (into [:and] (:where @st))}
+      ;; projection FIRST: a group key like a token's surface form joins its text,
+      ;; and that alias has to be in :from before distinct-redundant? reads it.
+      (let [{:keys [select plan]} (aggregate-projection st (:return resolved))
+            select-kw (if (distinct-redundant? st) :select :select-distinct)]
+        (vary-meta {select-kw select :from (:from @st) :where (into [:and] (:where @st))}
                    assoc ::aggregate plan))
       (let [order-pairs (order-projection st (:order-by resolved))
             select (into (find-select st (:find resolved)) (map first) order-pairs)

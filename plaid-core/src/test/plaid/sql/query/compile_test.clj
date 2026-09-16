@@ -121,3 +121,46 @@
     (is (some #(and (vector? %) (= :relations (first %))) (nodes hq)))
     (is (re-find #"source_span_id = " sql))
     (is (re-find #"target_span_id = " sql))))
+
+;; ---------------------------------------------------------------------------
+;; DISTINCT elision in aggregate mode
+;; ---------------------------------------------------------------------------
+;; Aggregate mode projects every var alias's `id`, so when the FROM holds nothing
+;; but var aliases the rows are already distinct and the DISTINCT is pure cost —
+;; a temp B-tree over every match. On the alpha server the project list's
+;; per-layer token count spent 3.8s in it and 0.2s without. Any other alias can
+;; repeat a match, and keeps it.
+
+(defn- agg-select-key
+  "Whether the compiled aggregate match query is DISTINCT or not."
+  [hq]
+  (cond (:select-distinct hq) :select-distinct
+        (:select hq)          :select
+        :else                 nil))
+
+(deftest aggregate-drops-redundant-distinct
+  (testing "tokens joined only to their layer var: every FROM alias is projected"
+    (let [hq (qc/compile-query
+              (resolved {"where" [["token" "?t" {"layer" "?l"}]]
+                         "return" {"group" ["?l"] "aggregates" [["count"]]}}
+                        #{"P1"} nil))]
+      (is (= :select (agg-select-key hq)))
+      (is (not (clojure.string/includes? (sql-of hq) "DISTINCT"))))))
+
+(deftest aggregate-keeps-distinct-over-a-junction
+  (testing "covers pulls in span_tokens, which can repeat a span — DISTINCT stays"
+    (let [hq (qc/compile-query
+              (resolved {"where" [["span" "?s" {"layer" "pos"}]
+                                  ["token" "?t" {"layer" "?tl"}]
+                                  ["covers" "?s" "?t"]]
+                         "return" {"group" ["?tl"] "aggregates" [["count"]]}}
+                        #{"P1"} ["L1"]))]
+      (is (= :select-distinct (agg-select-key hq))))))
+
+(deftest aggregate-keeps-distinct-over-a-vocab-grant
+  (testing "a vocab layer granted to two in-scope projects yields two grant rows"
+    (let [hq (qc/compile-query
+              (resolved {"where" [["vocab" "?i" {}]]
+                         "return" {"group" [] "aggregates" [["count"]]}}
+                        #{"P1" "P2"} nil))]
+      (is (= :select-distinct (agg-select-key hq))))))
