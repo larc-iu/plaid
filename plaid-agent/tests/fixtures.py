@@ -102,13 +102,11 @@ def guidelines_raw():
     body (a guideline titled now and written later)."""
     return [
         {'id': 'gl1', 'title': 'Glossing', 'pinned': True,
-         'summary': 'Leipzig, with this project\'s own exceptions.',
          'body': 'Loanwords are **not** segmented. Gloss them whole.'},
         {'id': 'gl2', 'title': 'Translations', 'pinned': False,
-         'summary': 'What a free translation should look like here.',
          'body': 'Idiomatic English, not a word-by-word rendering.'},
         {'id': 'gl3', 'title': 'Orthography', 'pinned': False,
-         'summary': 'Nothing decided yet.', 'body': ''},
+         'body': ''},
     ]
 
 

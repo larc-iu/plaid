@@ -26,7 +26,6 @@
 (def attr-keys [:guideline/id
                 :guideline/project
                 :guideline/title
-                :guideline/summary
                 :guideline/body
                 :guideline/pinned
                 :guideline/created-at
@@ -35,12 +34,6 @@
 (def ^:const max-title-length
   "Ceiling on a title. A title is a handle and a list row, not a sentence."
   100)
-
-(def ^:const max-summary-length
-  "Ceiling on the one-line summary. This is the line the assistant reads to
-  decide whether to open the guideline, and the line under the title in the
-  list, so it stays short enough to be both."
-  200)
 
 (def ^:const max-body-length
   "Ceiling on one guideline's body, in characters. About three thousand words,
@@ -62,7 +55,6 @@
     (cond-> {:guideline/id         (:id row)
              :guideline/project    (:project_id row)
              :guideline/title      (:title row)
-             :guideline/summary    (:summary row)
              :guideline/pinned     (= 1 (:pinned row))
              :guideline/created-at (:created_at row)
              :guideline/updated-at (:updated_at row)}
@@ -111,8 +103,8 @@
                     {:code 400 :length (count v)}))))
 
 (defn- validate-body!
-  "A body may be empty (a guideline can be created from its title and summary
-  and written later), but not absent and not past the ceiling."
+  "A body may be empty (a guideline can be created from its title and written
+  later), but not absent and not past the ceiling."
   [body]
   (when-not (string? body)
     (throw (ex-info "Guideline body must be a string" {:code 400})))
@@ -125,11 +117,10 @@
 ;; ============================================================
 
 (defn create
-  "Create a guideline in `project-id`. `attrs` takes `:guideline/title`,
-  `:guideline/summary`, and optionally `:guideline/body` and
-  `:guideline/pinned`. Returns the new id."
+  "Create a guideline in `project-id`. `attrs` takes `:guideline/title`, and
+  optionally `:guideline/body` and `:guideline/pinned`. Returns the new id."
   [db project-id attrs user-id]
-  (let [{:guideline/keys [title summary body pinned]} attrs
+  (let [{:guideline/keys [title body pinned]} attrs
         new-id (psc/new-uuid)]
     (submit-operation! [tx db {:type        :guideline/create
                                :project     project-id
@@ -137,7 +128,6 @@
                                :description (str "Create guideline \"" title "\"")
                                :user        user-id}]
                        (validate-text! "Guideline title" title max-title-length)
-                       (validate-text! "Guideline summary" summary max-summary-length)
                        (validate-body! (or body ""))
                        (when (nil? (psc/fetch-by-id tx :projects project-id))
                          (throw (ex-info (psc/err-msg-not-found "Project" project-id)
@@ -147,7 +137,6 @@
                                        {:id         new-id
                                         :project_id project-id
                                         :title      title
-                                        :summary    summary
                                         :body       (or body "")
                                         :pinned     (if pinned 1 0)
                                         :created_at ts
@@ -181,15 +170,11 @@
                                          {:code 409 :id eid :updated-at (:updated_at existing)})))
                        (when (contains? m :guideline/title)
                          (validate-text! "Guideline title" (:guideline/title m) max-title-length))
-                       (when (contains? m :guideline/summary)
-                         (validate-text! "Guideline summary" (:guideline/summary m) max-summary-length))
                        (when (contains? m :guideline/body)
                          (validate-body! (:guideline/body m)))
                        (let [attrs (cond-> {}
                                      (contains? m :guideline/title)
                                      (assoc :title (:guideline/title m))
-                                     (contains? m :guideline/summary)
-                                     (assoc :summary (:guideline/summary m))
                                      (contains? m :guideline/body)
                                      (assoc :body (:guideline/body m))
                                      (contains? m :guideline/pinned)

@@ -126,13 +126,11 @@ def guidelines_raw():
     body (a guideline titled now and written later)."""
     return [
         {'id': 'gl1', 'title': 'Glossing', 'pinned': True,
-         'summary': 'How this treebank handles hard cases.',
          'body': 'A copula is the **head** of its clause here.'},
         {'id': 'gl2', 'title': 'Lemmas', 'pinned': False,
-         'summary': 'What the lemma column carries.',
          'body': 'Citation form, lowercase except proper nouns.'},
         {'id': 'gl3', 'title': 'Features', 'pinned': False,
-         'summary': 'Nothing decided yet.', 'body': ''},
+         'body': ''},
     ]
 
 

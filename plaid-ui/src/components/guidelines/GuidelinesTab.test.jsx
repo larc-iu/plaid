@@ -14,11 +14,10 @@ import { GuidelinesTab } from './GuidelinesTab.jsx';
 //   4. The editor is LAZY, so a reader never pays for Tiptap.
 
 const INDEX = [
-  { id: 'g1', title: 'Zeta', summary: 'Last by title.', pinned: false, bodyChars: 5 },
+  { id: 'g1', title: 'Zeta', pinned: false, bodyChars: 5 },
   {
     id: 'g2',
     title: 'Alpha',
-    summary: 'First by title.',
     pinned: false,
     bodyChars: 2,
     updatedAt: '2026-09-01T00:00:00Z',
@@ -26,7 +25,6 @@ const INDEX = [
   {
     id: 'g3',
     title: 'Translations',
-    summary: 'Pinned, so first of all.',
     pinned: true,
     bodyChars: 9,
   },
@@ -153,9 +151,8 @@ describe('a writer', () => {
       'Another guideline has this title.',
     );
 
-    await step(() => typeInto(container.querySelector('#guideline-summary'), 'A second one.'));
     await step(() => byText(container, 'button', 'Save').click());
-    expect(client.guidelines.create).toHaveBeenCalledWith('p1', 'Alpha', 'A second one.', {
+    expect(client.guidelines.create).toHaveBeenCalledWith('p1', 'Alpha', {
       body: '',
       pinned: false,
     });

@@ -1264,17 +1264,16 @@ class GuidelinesResource(_Resource):
     matching comments: the people who annotate are the people who discover
     what the conventions have to be.
 
-    ``title`` is the handle an assistant asks for one by. It is NOT required to
-    be unique: refusing a write because a title is taken would throw away a
-    document that had just been typed, so a client warns about it instead.
-    ``summary`` is the one line saying what the guideline covers, and is what
-    the assistant reads to decide whether to open the body. A ``pinned`` guideline is one the
-    assistant is given in full on every turn.
+    ``title`` is the handle an assistant asks for one by, and the only thing a
+    person has to keep current. It is NOT required to be unique: refusing a
+    write because a title is taken would throw away a document that had just
+    been typed, so a client warns about it instead. A ``pinned`` guideline is
+    one the assistant is given in full on every turn.
 
     Writes are audited, so a change shows in the project's activity. They are
     NOT time-travelable: ``as_of`` reads and restore are document-scoped."""
 
-    def create(self, project_id: str, title: str, summary: str, *,
+    def create(self, project_id: str, title: str, *,
                body: str | None = None, pinned: bool | None = None,
                audit_message=None) -> Any:
         """Create a guideline in a project.
@@ -1282,13 +1281,12 @@ class GuidelinesResource(_Resource):
         Args:
             project_id: The project the guideline belongs to
             title: The handle an assistant asks for one by (1..100 characters)
-            summary: What it covers, in one line (1..200 characters)
             body: The Markdown text (up to 20000 characters; may be empty)
             pinned: Send this one to the assistant in full on every turn
             audit_message: Message recorded on the operation
         """
         return self._request('POST', f'/api/v1/projects/{project_id}/guidelines',
-                             body=_body_of(title=title, summary=summary,
+                             body=_body_of(title=title,
                                            body=_UNSET if body is None else body,
                                            pinned=_UNSET if pinned is None else pinned),
                              audit_message=audit_message)
@@ -1298,8 +1296,8 @@ class GuidelinesResource(_Resource):
         return self._request('GET', f'/api/v1/guidelines/{guideline_id}')
 
     def update(self, guideline_id: str, *, title: str | None = None,
-               summary: str | None = None, body: str | None = None,
-               pinned: bool | None = None, expected_updated_at: str | None = None,
+               body: str | None = None, pinned: bool | None = None,
+               expected_updated_at: str | None = None,
                audit_message=None) -> Any:
         """Update a guideline.
 
@@ -1314,7 +1312,6 @@ class GuidelinesResource(_Resource):
         Args:
             guideline_id: The guideline to change
             title: The new handle
-            summary: The new one-line summary
             body: The new Markdown text
             pinned: Whether the assistant always gets it in full
             expected_updated_at: Write only if this is still the stored updated_at
@@ -1323,7 +1320,6 @@ class GuidelinesResource(_Resource):
         return self._request('PATCH', f'/api/v1/guidelines/{guideline_id}',
                              query_params={'updated-at': expected_updated_at},
                              body=_body_of(title=_UNSET if title is None else title,
-                                           summary=_UNSET if summary is None else summary,
                                            body=_UNSET if body is None else body,
                                            pinned=_UNSET if pinned is None else pinned),
                              audit_message=audit_message)

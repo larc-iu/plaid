@@ -41,25 +41,24 @@ def _recording_client():
 
 def test_create_sends_only_the_fields_it_was_given():
     client = _recording_client()
-    client.guidelines.create('p1', 'Glossing', 'How this project glosses.')
+    client.guidelines.create('p1', 'Glossing')
 
     call = client.calls[0]
     assert call['method'] == 'POST'
     assert call['path'] == '/api/v1/projects/p1/guidelines'
     # An omitted body or pinned flag is absent, not None.
-    assert call['body'] == {'title': 'Glossing', 'summary': 'How this project glosses.'}
+    assert call['body'] == {'title': 'Glossing'}
 
 
 def test_create_passes_body_pinned_and_the_audit_message_through():
     client = _recording_client()
-    client.guidelines.create('p1', 'Glossing', 'How this project glosses.',
+    client.guidelines.create('p1', 'Glossing',
                              body='Loanwords are **not** segmented.', pinned=True,
                              audit_message='seeding the manual')
 
     call = client.calls[0]
     assert call['body'] == {
         'title': 'Glossing',
-        'summary': 'How this project glosses.',
         'body': 'Loanwords are **not** segmented.',
         'pinned': True,
     }
@@ -160,7 +159,7 @@ def test_a_write_queues_on_a_batch_and_a_read_still_goes_over_the_wire():
     try:
         batch = client.batch()
         # A guideline write is ordinary project data, so it queues with no flag.
-        queued = batch.guidelines.create('p1', 'T', 'S')
+        queued = batch.guidelines.create('p1', 'T')
         assert queued == {'batched': True}
         assert len(batch.operations) == 1
         assert batch.operations[0]['path'] == '/api/v1/projects/p1/guidelines'

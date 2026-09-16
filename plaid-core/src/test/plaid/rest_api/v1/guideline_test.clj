@@ -98,7 +98,7 @@
 (deftest a-writer-may-author-and-a-reader-may-only-read
   (let [proj (setup-project "ACL")
         gid (made (create-guideline (partial user1-request) proj
-                                    {:title "Glossing" :summary "How this project glosses."
+                                    {:title "Glossing"
                                      :body "Loanwords are **not** segmented."}))]
     (testing "a writer creates"
       (is (some? gid)))
@@ -115,20 +115,21 @@
 
     (testing "a reader is refused on EVERY write verb, not just one"
       (is (= 403 (:status (create-guideline (partial user2-request) proj
-                                            {:title "T" :summary "S"}))))
-      (is (= 403 (:status (patch-guideline (partial user2-request) gid {:summary "changed"}))))
+                                            {:title "T"}))))
+      (is (= 403 (:status (patch-guideline (partial user2-request) gid {:body "changed"}))))
       (is (= 403 (:status (delete-guideline (partial user2-request) gid)))))
 
     (testing "the reader's refusals changed nothing"
-      (is (= "How this project glosses." (-> (get-guideline (partial user1-request) gid) :body :guideline/summary))))))
+      (is (= "Loanwords are **not** segmented."
+             (-> (get-guideline (partial user1-request) gid) :body :guideline/body))))))
 
 (deftest a-non-member-cannot-see-that-a-guideline-exists
   (let [proj (create-test-project admin-request "Closed")
-        gid (made (create-guideline admin-request proj {:title "Secret" :summary "Not yours."}))]
+        gid (made (create-guideline admin-request proj {:title "Secret"}))]
     (testing "a non-member gets 403 on read and on write, never a 404 that confirms the id"
       (is (= 403 (:status (list-guidelines (partial user1-request) proj))))
       (is (= 403 (:status (get-guideline (partial user1-request) gid))))
-      (is (= 403 (:status (patch-guideline (partial user1-request) gid {:summary "x"})))))
+      (is (= 403 (:status (patch-guideline (partial user1-request) gid {:body "x"})))))
     (testing "an id that does not exist is also 403 for a non-member, by the same fail-closed rule"
       (is (= 403 (:status (get-guideline (partial user1-request) (psc/new-uuid))))))))
 
@@ -151,31 +152,34 @@
   ;; before a word is typed and `read_guideline` can absorb by answering with
   ;; both. If a unique index ever comes back, this is the test it breaks.
   (let [proj (setup-project "Titles")
-        _ (made (create-guideline admin-request proj {:title "Glossing" :summary "First."}))
-        dup (create-guideline admin-request proj {:title "Glossing" :summary "Second."})]
+        _ (made (create-guideline admin-request proj {:title "Glossing" :body "First."}))
+        dup (create-guideline admin-request proj {:title "Glossing" :body "Second."})]
     (testing "the second create is written like any other"
       (is (= 201 (:status dup))))
     (testing "both rows are there, and both are listed"
-      (let [entries (-> (list-guidelines admin-request proj) :body :entries)]
+      (let [entries (-> (list-guidelines admin-request proj :include-bodies true)
+                        :body :entries)]
         (is (= 2 (count entries)))
         (is (= ["Glossing" "Glossing"] (mapv :guideline/title entries)))
-        (is (= #{"First." "Second."} (set (mapv :guideline/summary entries))))))))
+        ;; Two rows sharing a name are told apart by what is IN them, which is
+        ;; what read_guideline answers with when it finds both.
+        (is (= #{"First." "Second."} (set (mapv :guideline/body entries))))))))
 
 (deftest the-same-title-in-a-different-project-is-fine
   (let [p1 (setup-project "P1")
         p2 (setup-project "P2")]
-    (is (some? (made (create-guideline admin-request p1 {:title "Glossing" :summary "A."}))))
-    (is (some? (made (create-guideline admin-request p2 {:title "Glossing" :summary "B."}))))))
+    (is (some? (made (create-guideline admin-request p1 {:title "Glossing"}))))
+    (is (some? (made (create-guideline admin-request p2 {:title "Glossing"}))))))
 
 (deftest renaming-onto-a-taken-title-is-accepted-too
   (let [proj (setup-project "Rename")
-        a (made (create-guideline admin-request proj {:title "Alpha" :summary "A."}))
-        _ (made (create-guideline admin-request proj {:title "Beta" :summary "B."}))]
+        a (made (create-guideline admin-request proj {:title "Alpha" :body "A."}))
+        _ (made (create-guideline admin-request proj {:title "Beta" :body "B."}))]
     (assert-status 200 (patch-guideline admin-request a {:title "Beta"}))
     (is (= "Beta" (-> (get-guideline admin-request a) :body :guideline/title)))
     (testing "and renaming to the title it already has is an ordinary no-op patch"
-      (assert-status 200 (patch-guideline admin-request a {:title "Beta" :summary "A2."}))
-      (is (= "A2." (-> (get-guideline admin-request a) :body :guideline/summary))))))
+      (assert-status 200 (patch-guideline admin-request a {:title "Beta" :body "A2."}))
+      (is (= "A2." (-> (get-guideline admin-request a) :body :guideline/body))))))
 
 ;; ============================================================
 ;; 3. The list is the agent's read
@@ -183,9 +187,9 @@
 
 (deftest the-list-is-ordered-by-title-and-reports-body-size-without-the-body
   (let [proj (setup-project "Listing")]
-    (made (create-guideline admin-request proj {:title "Zeta" :summary "Z." :body "xxxxx"}))
-    (made (create-guideline admin-request proj {:title "Alpha" :summary "A." :body "xx"}))
-    (made (create-guideline admin-request proj {:title "Mu" :summary "M."}))
+    (made (create-guideline admin-request proj {:title "Zeta" :body "xxxxx"}))
+    (made (create-guideline admin-request proj {:title "Alpha" :body "xx"}))
+    (made (create-guideline admin-request proj {:title "Mu"}))
     (let [entries (-> (list-guidelines admin-request proj) :body :entries)]
       (testing "ordered by title"
         (is (= ["Alpha" "Mu" "Zeta"] (mapv :guideline/title entries))))
@@ -202,7 +206,7 @@
 (deftest the-list-pages-with-the-uniform-envelope
   (let [proj (setup-project "Paging")]
     (doseq [t ["A" "B" "C" "D" "E"]]
-      (made (create-guideline admin-request proj {:title t :summary (str t ".")})))
+      (made (create-guideline admin-request proj {:title t})))
     (let [page1 (-> (list-guidelines admin-request proj :limit 2) :body)
           cursor (:next-cursor page1)
           page2 (-> (list-guidelines admin-request proj :limit 2 :cursor cursor) :body)]
@@ -218,8 +222,8 @@
 (deftest the-list-is-scoped-to-its-own-project
   (let [p1 (setup-project "Scoped1")
         p2 (setup-project "Scoped2")]
-    (made (create-guideline admin-request p1 {:title "Mine" :summary "."}))
-    (made (create-guideline admin-request p2 {:title "Theirs" :summary "."}))
+    (made (create-guideline admin-request p1 {:title "Mine"}))
+    (made (create-guideline admin-request p2 {:title "Theirs"}))
     (is (= ["Mine"] (mapv :guideline/title (-> (list-guidelines admin-request p1) :body :entries))))))
 
 ;; ============================================================
@@ -229,16 +233,21 @@
 (deftest a-patch-leaves-out-what-it-does-not-name
   (let [proj (setup-project "Patch")
         gid (made (create-guideline admin-request proj
-                                    {:title "Glossing" :summary "Original." :body "Body."}))]
-    (assert-status 200 (patch-guideline admin-request gid {:body "New body."}))
-    (let [g (-> (get-guideline admin-request gid) :body)]
-      (is (= "Glossing" (:guideline/title g)))
-      (is (= "Original." (:guideline/summary g)))
-      (is (= "New body." (:guideline/body g))))))
+                                    {:title "Glossing" :body "Original."}))]
+    (testing "a body edit does not have to restate the title"
+      (assert-status 200 (patch-guideline admin-request gid {:body "New body."}))
+      (let [g (-> (get-guideline admin-request gid) :body)]
+        (is (= "Glossing" (:guideline/title g)))
+        (is (= "New body." (:guideline/body g)))))
+    (testing "and a rename does not have to restate the body"
+      (assert-status 200 (patch-guideline admin-request gid {:title "Glossing 2"}))
+      (let [g (-> (get-guideline admin-request gid) :body)]
+        (is (= "Glossing 2" (:guideline/title g)))
+        (is (= "New body." (:guideline/body g)))))))
 
 (deftest pinned-round-trips-as-a-boolean
   (let [proj (setup-project "Pinned")
-        gid (made (create-guideline admin-request proj {:title "T" :summary "S" :pinned true}))]
+        gid (made (create-guideline admin-request proj {:title "T" :pinned true}))]
     (is (true? (-> (get-guideline admin-request gid) :body :guideline/pinned)))
     (assert-status 200 (patch-guideline admin-request gid {:pinned false}))
     (is (false? (-> (get-guideline admin-request gid) :body :guideline/pinned)))))
@@ -247,27 +256,24 @@
   (let [proj (setup-project "Caps")]
     (testing "title"
       (is (= 400 (:status (create-guideline admin-request proj
-                                            {:title (apply str (repeat 101 "x")) :summary "S"})))))
-    (testing "summary"
-      (is (= 400 (:status (create-guideline admin-request proj
-                                            {:title "T" :summary (apply str (repeat 201 "x"))})))))
+                                            {:title (apply str (repeat 101 "x"))})))))
+
     (testing "body"
       (is (= 400 (:status (create-guideline admin-request proj
-                                            {:title "T" :summary "S"
+                                            {:title "T"
                                              :body (apply str (repeat 20001 "x"))})))))
-    (testing "a blank title or summary, which is a UI slip rather than a value"
-      (is (= 400 (:status (create-guideline admin-request proj {:title "  " :summary "S"}))))
-      (is (= 400 (:status (create-guideline admin-request proj {:title "T" :summary " "})))))
+    (testing "a blank title, which is a UI slip rather than a value"
+      (is (= 400 (:status (create-guideline admin-request proj {:title "  "})))))
     (testing "nothing was stored by any of those"
       (is (empty? (-> (list-guidelines admin-request proj) :body :entries))))
     (testing "an empty body IS allowed: a guideline can be titled now and written later"
-      (is (some? (made (create-guideline admin-request proj {:title "T" :summary "S" :body ""})))))))
+      (is (some? (made (create-guideline admin-request proj {:title "T" :body ""})))))))
 
 (deftest a-missing-required-field-is-refused-at-coercion
   (let [proj (setup-project "Coercion")]
     (is (= 400 (status-of (partial admin-request) :post
                           (str "/api/v1/projects/" proj "/guidelines")
-                          {:summary "No title."})))))
+                          {:body "No title."})))))
 
 ;; ============================================================
 ;; A conditional write, so two people cannot silently overwrite each other
@@ -279,7 +285,7 @@
   ;; exactly the thing two people edit after the same meeting.
   (let [proj (setup-project "Conflict")
         gid (made (create-guideline admin-request proj
-                                    {:title "Glossing" :summary "S" :body "Both opened this."}))
+                                    {:title "Glossing" :body "Both opened this."}))
         loaded (-> (get-guideline admin-request gid) :body :guideline/updated-at)]
     (testing "the first writer saves against what they read"
       (assert-status 200 (patch-guideline admin-request gid {:body "Writer A wrote this."} loaded)))
@@ -300,7 +306,7 @@
   ;; What a pin toggle and a script want: they are not editing prose and have
   ;; nothing to lose to someone else's paragraph.
   (let [proj (setup-project "Unconditional")
-        gid (made (create-guideline admin-request proj {:title "T" :summary "S" :body "one"}))]
+        gid (made (create-guideline admin-request proj {:title "T" :body "one"}))]
     (assert-status 200 (patch-guideline admin-request gid {:body "two"}))
     (assert-status 200 (patch-guideline admin-request gid {:pinned true}))
     (is (= "two" (-> (get-guideline admin-request gid) :body :guideline/body)))))
@@ -309,9 +315,9 @@
   ;; `updated_at` moves only when something else does, so a no-op save by one
   ;; person does not make everybody else's editor refuse to save.
   (let [proj (setup-project "NoOpToken")
-        gid (made (create-guideline admin-request proj {:title "T" :summary "S" :body "one"}))
+        gid (made (create-guideline admin-request proj {:title "T" :body "one"}))
         loaded (-> (get-guideline admin-request gid) :body :guideline/updated-at)]
-    (assert-status 200 (patch-guideline admin-request gid {:title "T" :summary "S" :body "one"}))
+    (assert-status 200 (patch-guideline admin-request gid {:title "T" :body "one"}))
     (assert-status 200 (patch-guideline admin-request gid {:body "two"} loaded))))
 
 ;; ============================================================
@@ -327,9 +333,9 @@
 
 (deftest every-write-lands-in-the-audit-log-with-a-post-image
   (let [proj (setup-project "Audit")
-        gid (made (create-guideline admin-request proj {:title "Glossing" :summary "S."}))]
+        gid (made (create-guideline admin-request proj {:title "Glossing"}))]
     (is (= 1 (ops-of "guideline/create")))
-    (assert-status 200 (patch-guideline admin-request gid {:summary "S2."}))
+    (assert-status 200 (patch-guideline admin-request gid {:body "S2."}))
     (is (= 1 (ops-of "guideline/update")))
     (testing "the post-image carries what was written"
       (let [rows (audit-rows)]
@@ -341,15 +347,15 @@
 
 (deftest restating-a-guideline-writes-no-audit-row
   (let [proj (setup-project "NoOp")
-        gid (made (create-guideline admin-request proj {:title "T" :summary "S"}))
+        gid (made (create-guideline admin-request proj {:title "T"}))
         before (count (audit-rows))]
-    (assert-status 200 (patch-guideline admin-request gid {:title "T" :summary "S"}))
+    (assert-status 200 (patch-guideline admin-request gid {:title "T"}))
     (testing "a PATCH that changes nothing leaves the log alone, so updated-at cannot drift either"
       (is (= before (count (audit-rows)))))))
 
 (deftest as-of-is-refused-rather-than-answered-with-todays-data
   (let [proj (setup-project "AsOf")
-        gid (made (create-guideline admin-request proj {:title "T" :summary "S"}))
+        gid (made (create-guideline admin-request proj {:title "T"}))
         ts (:ts (psc/q1 db {:select [:ts] :from [:operations] :order-by [[:ts :desc]] :limit 1}))]
     (is (= 400 (:status (api-call admin-request
                                   {:method :get
@@ -360,7 +366,7 @@
 
 (deftest deleting-the-project-takes-its-guidelines-with-it
   (let [proj (setup-project "Cascade")]
-    (made (create-guideline admin-request proj {:title "T" :summary "S"}))
+    (made (create-guideline admin-request proj {:title "T"}))
     (is (= 1 (:n (psc/q1 db {:select [[[:count :*] :n]] :from [:guidelines]}))))
     (assert-status 204 (api-call admin-request {:method :delete :path (str "/api/v1/projects/" proj)}))
     (testing "gone by FK cascade, asked in SQL because there is no endpoint left to ask"

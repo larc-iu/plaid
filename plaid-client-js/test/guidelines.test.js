@@ -31,14 +31,14 @@ function recordingClient() {
 
 test("create sends only the fields it was given", async () => {
   const client = recordingClient();
-  await client.guidelines.create("p1", "Glossing", "How this project glosses.");
+  await client.guidelines.create("p1", "Glossing");
 
   const [call] = client.calls;
   assert.equal(call.method, "POST");
   assert.equal(call.path, "/api/v1/projects/p1/guidelines");
   assert.deepEqual(
     call.body,
-    { title: "Glossing", summary: "How this project glosses." },
+    { title: "Glossing" },
     "an omitted body or pinned flag is absent, not null",
   );
 });
@@ -48,7 +48,6 @@ test("create passes body, pinned and the audit message through", async () => {
   await client.guidelines.create(
     "p1",
     "Glossing",
-    "How this project glosses.",
     { body: "Loanwords are **not** segmented.", pinned: true },
     "seeding the manual",
   );
@@ -56,7 +55,6 @@ test("create passes body, pinned and the audit message through", async () => {
   const [call] = client.calls;
   assert.deepEqual(call.body, {
     title: "Glossing",
-    summary: "How this project glosses.",
     body: "Loanwords are **not** segmented.",
     pinned: true,
   });

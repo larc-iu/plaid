@@ -44,16 +44,13 @@ The project's guidelines:
 --- the project's guidelines begin ---
 
 GUIDELINE: Glossing
-Leipzig, with this project's own exceptions.
 
 Loanwords are **not** segmented. Gloss them whole.
 
 GUIDELINE: Orthography
-Nothing decided yet.
 (nothing written under this heading yet)
 
 GUIDELINE: Translations
-What a free translation should look like here.
 
 Idiomatic English, not a word-by-word rendering.
 
@@ -641,7 +638,7 @@ Run a read-only query in Plaid's query language over this project (structure acr
 
 ### read_guideline
 
-Read one of this project's guidelines in full, by its title. The titles and one-line summaries of every guideline are already in your instructions; this is for the full text of one whose summary was not enough. A guideline records a convention this project follows about interlinear text: how this project glosses, segments and translates, written by the people working on it.
+Read one of this project's guidelines in full, by its title. Every guideline's title is already in your instructions, and most of their text is too; this is for one whose text was held back, shown there as its opening line only. A guideline records a convention this project follows about interlinear text: how this project glosses, segments and translates, written by the people working on it.
 
 - `title` (string, required): The guideline's title, exactly as your instructions list it.
 
@@ -649,9 +646,8 @@ Read one of this project's guidelines in full, by its title. The titles and one-
 
 PLAN: write down one of this project's conventions as a new guideline, so it is recorded for everyone and for later. Propose one when the user states a convention that holds across the project and is not already in the guidelines, even if they did not ask you to write it down. Not for a one-off decision about a single word or sentence, and not for something you inferred from the data: a guideline is what the PEOPLE on the project have decided. Say in your reply that you have drafted it.
 
-- `title` (string, required): A short handle, e.g. "Hard cases" or "Abbreviations".
-- `summary` (string, required): One line saying what it covers. This is what decides whether the guideline gets opened later.
-- `body` (string, required): The convention itself, in Markdown. State it plainly and briefly, in the user's own terms where they gave them.
+- `title` (string, required): A short handle, e.g. "Hard cases" or "Abbreviations". It is how the guideline is asked for later, so name the subject rather than the rule.
+- `body` (string, required): The convention itself, in Markdown. State it plainly and briefly, in the user's own terms where they gave them. Open with the rule itself: the first line stands in for the guideline wherever there is no room for all of it.
 
 ### revise_guideline
 
@@ -666,8 +662,7 @@ PLAN: change ONE PASSAGE of a guideline, leaving the rest exactly as it is. This
 PLAN: replace a guideline's text wholesale. Only where most of it is changing: this throws away the previous wording, which somebody wrote, and the user approving it cannot see what was there. For anything smaller use revise_guideline, which shows them the change.
 
 - `title` (string, required): The guideline's title, as your instructions list it.
-- `summary` (string): The replacement one-line summary, if it changes.
-- `body` (string): The replacement Markdown text, if it changes.
+- `body` (string, required): The replacement Markdown text.
 
 ### web_search
 

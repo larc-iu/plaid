@@ -35,12 +35,10 @@ export const guidelinesTests = ({
   const created = [];
 
   const seed = async (attrs) => {
-    const { id } = await client().guidelines.create(
-      projectId(),
-      titled(attrs.title),
-      attrs.summary,
-      { body: attrs.body, pinned: attrs.pinned },
-    );
+    const { id } = await client().guidelines.create(projectId(), titled(attrs.title), {
+      body: attrs.body,
+      pinned: attrs.pinned,
+    });
     created.push(id);
     return id;
   };
@@ -59,8 +57,8 @@ export const guidelinesTests = ({
   });
 
   test('a seeded guideline is listed, and a pinned one is listed first', async ({ page }) => {
-    await seed({ title: 'Zeta', summary: 'Last by title.', body: 'z' });
-    await seed({ title: 'Alpha', summary: 'Pinned, so first of all.', body: 'a', pinned: true });
+    await seed({ title: 'Zeta', body: 'z' });
+    await seed({ title: 'Alpha', body: 'a', pinned: true });
     await open(page);
 
     const titles = page.locator('button[class*="border-b"] span.font-medium');
@@ -72,7 +70,6 @@ export const guidelinesTests = ({
   test('opening one fetches its body and renders it as Markdown', async ({ page }) => {
     await seed({
       title: 'Rendered',
-      summary: 'Markdown, not its source.',
       body: '## A heading\n\nLoanwords are **not** segmented.\n\n- one\n- two',
     });
     await open(page);
@@ -87,7 +84,7 @@ export const guidelinesTests = ({
   });
 
   test('the open guideline is in the address, so the view can be linked', async ({ page }) => {
-    const id = await seed({ title: 'Linkable', summary: 'In the URL.', body: 'x' });
+    const id = await seed({ title: 'Linkable', body: 'x' });
     await open(page);
     await rowFor(page, titled('Linkable')).click();
     await expect(page).toHaveURL(new RegExp(`guideline=${id}`));
@@ -101,8 +98,6 @@ export const guidelinesTests = ({
 
     const title = titled('Written here');
     await page.locator('#guideline-title').fill(title);
-    await page.locator('#guideline-summary').fill('Typed in the browser.');
-
     // The rich-text editor is lazy, so it arrives after the form does.
     const doc = page.locator('.guideline-editor__doc');
     await expect(doc).toBeVisible({ timeout: EDITOR_TIMEOUT });
@@ -125,7 +120,7 @@ export const guidelinesTests = ({
     // opening a guideline and saving it is what every edit does first.
     const body =
       '## Glossing\n\nLoanwords are **not** segmented.\n\n- Keep the speaker punctuation.\n- Gloss `3SG`, never `3sg`.\n\n> Ruled 2026-03-01.';
-    const id = await seed({ title: 'Untouched', summary: 'Saved without typing.', body });
+    const id = await seed({ title: 'Untouched', body });
     await open(page);
     await rowFor(page, titled('Untouched')).click();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -138,7 +133,7 @@ export const guidelinesTests = ({
   });
 
   test('pinning shows on the row without restating the guideline', async ({ page }) => {
-    const id = await seed({ title: 'Pin me', summary: 'Not pinned yet.', body: 'p' });
+    const id = await seed({ title: 'Pin me', body: 'p' });
     await open(page);
     await rowFor(page, titled('Pin me')).click();
     await page.getByRole('button', { name: 'Pin', exact: true }).click();
@@ -146,7 +141,7 @@ export const guidelinesTests = ({
     await expect(page.getByRole('button', { name: 'Unpin', exact: true })).toBeVisible();
     const after = await client().guidelines.get(id);
     expect(after.pinned).toBe(true);
-    expect(after.summary).toBe('Not pinned yet.');
+    expect(after.body).toBe('p');
   });
 
   test('a save is refused when someone else saved first, and keeps every word', async ({
@@ -155,7 +150,7 @@ export const guidelinesTests = ({
     // The real two-writer case: open it in the browser, have somebody else save
     // through the API, then save. Without the conditional write both return 200
     // and the first person's paragraph is gone with nothing said to anyone.
-    const id = await seed({ title: 'Contested', summary: 'Two writers.', body: 'As opened.' });
+    const id = await seed({ title: 'Contested', body: 'As opened.' });
     await open(page);
     await rowFor(page, titled('Contested')).click();
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -184,7 +179,7 @@ export const guidelinesTests = ({
     // Deliberately not enforced. The note appears before a word of the body has
     // been written, and the save goes through: refusing here would throw away a
     // document someone had just typed to prevent two rows sharing a name.
-    await seed({ title: 'Taken', summary: 'The first one.', body: 't' });
+    await seed({ title: 'Taken', body: 't' });
     await open(page);
     await page.getByRole('button', { name: 'New', exact: true }).click();
     await page.locator('#guideline-title').fill(titled('Taken'));
@@ -192,7 +187,6 @@ export const guidelinesTests = ({
       'Another guideline has this title.',
     );
 
-    await page.locator('#guideline-summary').fill('The second one.');
     await expect(page.locator('.guideline-editor__doc')).toBeVisible({ timeout: EDITOR_TIMEOUT });
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.locator('[data-sonner-toast]')).toContainText('Guideline created.');

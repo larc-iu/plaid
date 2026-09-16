@@ -5,12 +5,17 @@ convention it follows: how it annotates a case its editors kept disagreeing
 about, what a field is for, which things it leaves alone. There is nothing
 app-shaped about one, which is why this lives here rather than once per app.
 
-THE INDEX IS ALWAYS IN THE PROMPT. Every guideline's title and one-line
-summary goes in on every turn, so the model always knows what the project has
-decided, even about things it was not asked. The BODIES go in too whenever
-they fit :data:`~.limits.GUIDELINES_INLINE_CHARS`, and a PINNED guideline goes
-in whole whatever the budget says. What is left over is behind
-``read_guideline``.
+THE INDEX IS ALWAYS IN THE PROMPT. Every guideline's title goes in on every
+turn, so the model always knows what the project has decided, even about
+things it was not asked. The BODIES go in too whenever they fit
+:data:`~.limits.GUIDELINES_INLINE_CHARS`, and a PINNED guideline goes in whole
+whatever the budget says. What is left over is behind ``read_guideline``, with
+its opening line beside the title so there is something to choose on.
+
+A guideline has no summary field. It had one, and it was a field nobody had a
+reason to revisit restated in this prompt on every turn, beside the body it had
+stopped agreeing with. The opening line below is derived instead, so it cannot
+say something the guideline does not.
 
 That order matters and is the whole design. A rule the model has to decide to
 open is a rule it will sometimes not open, and the failure is silent: the
@@ -25,6 +30,7 @@ a reader of the transcript can see where the words came from, and a guideline
 cannot end the manual and start giving instructions in the harness's voice.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence
 
@@ -48,7 +54,6 @@ class Guideline:
 
     id: str
     title: str
-    summary: str
     pinned: bool = False
     body: str = ''
 
@@ -77,13 +82,39 @@ def load(client, project_id: str) -> List[Guideline]:
         Guideline(
             id=row.get('id'),
             title=row.get('title') or '',
-            summary=row.get('summary') or '',
             pinned=bool(row.get('pinned')),
             body=row.get('body') or '',
         )
         for row in (rows or [])
     ]
     return in_reading_order(out)
+
+
+# A Markdown heading line, which is a label rather than a sentence.
+_HEADING = re.compile(r'^\s{0,3}#{1,6}\s+')
+
+
+def opening_line(body: str, limit: int = 140) -> str:
+    """The guideline's first line of prose, for an index that has to fit.
+
+    This is what stands in for the summary field a guideline used to carry, and
+    the reason it is derived rather than stored: it cannot describe the
+    guideline wrongly, because it IS the guideline. Nobody maintains it and it
+    never falls out of date.
+
+    Headings are skipped. A body often opens with `## Loanwords` under a
+    guideline already titled "Loanwords", and repeating the title says nothing
+    about what the rule is. A body that is nothing but a heading falls back to
+    the heading's own words, having nothing else to offer.
+    """
+    lines = [ln.strip() for ln in str(body or '').splitlines()]
+    prose = [ln for ln in lines if ln and not _HEADING.match(ln)]
+    if not prose:
+        prose = [_HEADING.sub('', ln) for ln in lines if ln]
+    if not prose:
+        return ''
+    first = prose[0]
+    return first if len(first) <= limit else first[:limit - 1].rstrip() + '\u2026'
 
 
 def in_reading_order(guidelines: Sequence[Guideline]) -> List[Guideline]:
@@ -182,11 +213,15 @@ def section(guidelines: Sequence[Guideline], budget: int = GUIDELINES_INLINE_CHA
         # another guideline: the model would take a SECTION of one guideline
         # for a guideline of its own and ask to read one by that name.
         lines.append(f'{TITLE_MARK} {g.title}')
-        lines.append(g.summary)
         if g.id in inline and g.body:
             lines.append('')
             lines.append(_fenced(g.body))
         elif g.body:
+            # The opening line goes in ONLY here. An inlined guideline has its
+            # whole body two lines down, so a preview of it would be the same
+            # words twice; this is the one case where the model has to choose
+            # what to open without being able to see it.
+            lines.append(opening_line(g.body))
             lines.append(f'(full text not shown here: read_guideline("{g.title}"))')
         else:
             lines.append('(nothing written under this heading yet)')
@@ -208,8 +243,8 @@ def in_context(guidelines: Sequence[Guideline],
     if not guidelines:
         return ''
     inline = {g.id for g in _to_inline(guidelines, budget)}
-    # An empty guideline counts as in context: its title and summary are in the
-    # prompt and there is nothing else it could show.
+    # An empty guideline counts as in context: its title is in the prompt and
+    # there is nothing else it could show.
     held_back = [g for g in guidelines if g.body and g.id not in inline]
     total = len(guidelines)
     if not held_back:
@@ -230,10 +265,11 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
     return [
         {'type': 'function', 'function': {
             'name': 'read_guideline',
-            'description': ('Read one of this project\'s guidelines in full, by its title. The '
-                            'titles and one-line summaries of every guideline are already in your '
-                            'instructions; this is for the full text of one whose summary was not '
-                            'enough. A guideline records a convention this project follows about '
+            'description': ('Read one of this project\'s guidelines in full, by its title. Every '
+                            'guideline\'s title is already in your instructions, and most of their '
+                            'text is too; this is for one whose text was held back, shown there as '
+                            'its opening line only. A guideline records a convention this project '
+                            'follows about '
                             f'{subject}, written by the people working on it.'),
             'parameters': {'type': 'object', 'properties': {
                 'title': {'type': 'string',
@@ -243,10 +279,10 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
 
 
 def _one(g: Guideline) -> str:
-    opening = f'{TITLE_MARK} {g.title}\n{g.summary}'
+    named = f'{TITLE_MARK} {g.title}'
     if not g.body:
-        return f'{opening}\n\n(nothing written under this heading yet)'
-    return f'{opening}\n\n{FENCE_TOP}\n{_fenced(g.body)}\n{FENCE_END}'
+        return f'{named}\n\n(nothing written under this heading yet)'
+    return f'{named}\n\n{FENCE_TOP}\n{_fenced(g.body)}\n{FENCE_END}'
 
 
 def t_read_guideline(ws, title: str) -> str:
@@ -318,27 +354,29 @@ def _resolve_one(ws, title: str):
     return found[0]
 
 
-def _check_draft(title: str, summary: str, body: str) -> None:
-    for what, v, ceiling in (('title', title, 100), ('summary', summary, 200)):
-        if v is not None and not str(v).strip():
-            raise ToolError(f'A guideline needs a {what}.')
-        if v is not None and len(str(v)) > ceiling:
-            raise ToolError(f'A guideline {what} is at most {ceiling} characters.')
+def _check_draft(title: str, body: str) -> None:
+    if title is not None and not str(title).strip():
+        raise ToolError('A guideline needs a title.')
+    if title is not None and len(str(title)) > 100:
+        raise ToolError('A guideline title is at most 100 characters.')
     if body is not None and len(str(body)) > DRAFT_BODY_CHARS:
         raise ToolError(f'Keep a guideline under {DRAFT_BODY_CHARS} characters. A guideline states one '
                         f'convention; anything longer is several, and belongs in several guidelines.')
 
 
-def t_add_guideline(ws, title: str, summary: str, body: str) -> str:
+def t_add_guideline(ws, title: str, body: str) -> str:
     """PLAN: write down a convention as a new guideline."""
-    _check_draft(title, summary, body)
+    _check_draft(title, body)
     existing = [g for g in (getattr(ws.project, 'guidelines', None) or [])
                 if g.title.casefold() == str(title).strip().casefold()]
     note = (f' (this project already has a guideline titled "{title}"; say so in your reply)'
             if existing else '')
     ws.add_ops([{'kind': 'add_guideline', 'title': str(title).strip(),
-                 'summary': str(summary).strip(), 'body': str(body or ''),
-                 'label': f'New guideline "{str(title).strip()}": {str(summary).strip()}'}])
+                 'body': str(body or ''),
+                 # The card shows what the guideline will SAY, not a
+                 # description of it: it is what the person is approving.
+                 'label': f'New guideline "{str(title).strip()}": '
+                          f'{_shown(opening_line(body))}'}])
     return ws.planned_note(1) + note
 
 
@@ -375,7 +413,7 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
                         f'change. Quote more around it until it is unique.')
     if find == replace:
         return 'That guideline already says this. Nothing planned.'
-    _check_draft(None, None, body.replace(find, replace))
+    _check_draft(None, body.replace(find, replace))
     ws.add_ops([{'kind': 'revise_guideline', **_staged_against(g),
                  # The RESULT, worked out here rather than at approval, so the
                  # write is the same one a rewrite makes and the plan cannot
@@ -385,26 +423,15 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
     return ws.planned_note(1)
 
 
-def t_rewrite_guideline(ws, title: str, summary: str = None, body: str = None) -> str:
+def t_rewrite_guideline(ws, title: str, body: str) -> str:
     """PLAN: replace a guideline's text wholesale."""
     g = _resolve_one(ws, title)
-    if summary is None and body is None:
-        raise ToolError('Say what to change: a new summary, a new body, or both.')
-    _check_draft(None, summary, body)
-    changed = []
-    if summary is not None and str(summary).strip() != g.summary:
-        changed.append('summary')
-    if body is not None and str(body) != g.body:
-        changed.append('text')
-    if not changed:
+    _check_draft(None, body)
+    if str(body) == g.body:
         return 'That guideline already says this. Nothing planned.'
-    op = {'kind': 'rewrite_guideline', **_staged_against(g),
-          'label': f'Guideline "{g.title}": new ' + ' and '.join(changed)}
-    if summary is not None:
-        op['summary'] = str(summary).strip()
-    if body is not None:
-        op['body'] = str(body)
-    ws.add_ops([op])
+    ws.add_ops([{'kind': 'rewrite_guideline', **_staged_against(g),
+                 'body': str(body),
+                 'label': f'Guideline "{g.title}": new text'}])
     return ws.planned_note(1)
 
 
@@ -423,14 +450,15 @@ def write_schemas() -> List[Dict[str, Any]]:
                             'have decided. Say in your reply that you have drafted it.'),
             'parameters': {'type': 'object', 'properties': {
                 'title': {'type': 'string',
-                          'description': 'A short handle, e.g. "Hard cases" or "Abbreviations".'},
-                'summary': {'type': 'string',
-                            'description': 'One line saying what it covers. This is what decides '
-                                           'whether the guideline gets opened later.'},
+                          'description': 'A short handle, e.g. "Hard cases" or "Abbreviations". It '
+                                         'is how the guideline is asked for later, so name the '
+                                         'subject rather than the rule.'},
                 'body': {'type': 'string',
                          'description': 'The convention itself, in Markdown. State it plainly and '
-                                        'briefly, in the user\'s own terms where they gave them.'}},
-                'required': ['title', 'summary', 'body']}}},
+                                        'briefly, in the user\'s own terms where they gave them. '
+                                        'Open with the rule itself: the first line stands in for '
+                                        'the guideline wherever there is no room for all of it.'}},
+                'required': ['title', 'body']}}},
         {'type': 'function', 'function': {
             'name': 'revise_guideline',
             'description': ('PLAN: change ONE PASSAGE of a guideline, leaving the rest exactly as it '
@@ -455,20 +483,19 @@ def write_schemas() -> List[Dict[str, Any]]:
                             'smaller use revise_guideline, which shows them the change.'),
             'parameters': {'type': 'object', 'properties': {
                 'title': {'type': 'string', 'description': 'The guideline\'s title, as your instructions list it.'},
-                'summary': {'type': 'string', 'description': 'The replacement one-line summary, if it changes.'},
-                'body': {'type': 'string', 'description': 'The replacement Markdown text, if it changes.'}},
-                'required': ['title']}}},
+                'body': {'type': 'string', 'description': 'The replacement Markdown text.'}},
+                'required': ['title', 'body']}}},
     ]
 
 
 def _apply_add(ctx, op) -> int:
     ctx.b.add(lambda batch: batch.guidelines.create(
-        ctx.project.id, op['title'], op['summary'], body=op.get('body') or ''))
+        ctx.project.id, op['title'], body=op.get('body') or ''))
     return 1
 
 
 def _apply_revise(ctx, op) -> int:
-    changes = {k: op[k] for k in ('summary', 'body') if k in op}
+    changes = {'body': op['body']}
     # `expected_updated_at` is what the plan was staged against. A person who
     # edited this guideline between the plan being made and approved would
     # otherwise have their words replaced by a draft written without them.
@@ -484,7 +511,7 @@ def kinds(OpKind):
     free of the plan machinery, which imports from here."""
     return [
         OpKind('add_guideline', ('guideline', 'guidelines'),
-               required=('title', 'summary'), apply=_apply_add,
+               required=('title', 'body'), apply=_apply_add,
                # Two drafts of the same title in one turn: the second is what
                # the model meant, the way a second edit of one field is.
                target=lambda op: ('guideline-new', (op.get('title') or '').casefold())),

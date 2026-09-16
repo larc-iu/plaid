@@ -110,16 +110,21 @@ runs as that user. Readers get a read-only assistant; writers can apply plans.
 ### The project's guidelines (always on)
 
 A project can write down the conventions it follows (the **Guidelines** tab in
-either app: a flat list of short Markdown documents, each with a title, a
-one-line summary and a body). `core/guidelines.py` gives them to the model.
+either app: a flat list of short Markdown documents, each with a title and a
+body). `core/guidelines.py` gives them to the model.
 
-Every title and summary is in the system prompt on **every** turn, so the model
-always knows what the project has decided, even about something it was not
-asked. The bodies go in too whenever the whole manual fits
+Every title is in the system prompt on **every** turn, so the model always
+knows what the project has decided, even about something it was not asked. The bodies go in too whenever the whole manual fits
 `GUIDELINES_INLINE_CHARS`, and a **pinned** guideline goes in whole whatever
 the budget says. What is left over is behind `read_guideline`, which asks by
 title and is answered from memory (the bodies arrive with the index, in one
-request, when the project is loaded).
+request, when the project is loaded). A guideline held back is shown with its
+opening line, derived from the body, so there is something to choose on.
+
+A guideline has no summary field. It had one, and it was a field nobody had a
+reason to revisit restated in the prompt on every turn, beside the body it had
+stopped agreeing with. The opening line replaced it because it cannot go
+stale: it IS the guideline.
 
 That order is the point. A rule the model has to *decide* to open is a rule it
 will sometimes not open, and the failure is silent. Most manuals fit, so most

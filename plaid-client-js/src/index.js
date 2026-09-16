@@ -3027,29 +3027,20 @@ class PlaidClient {
     this.guidelines = {
       /**
        * Create a guideline in a project. `title` is the handle an assistant
-       * asks for one by. It is NOT required to be unique, so a title already
-       * in use is written like any other: warn about it, do not refuse it.
-       * `summary` is
-       * the one line saying what the guideline covers - it is what the
-       * assistant reads to decide whether to open the body. A `pinned`
-       * guideline is one the assistant is given in full on every turn.
+       * asks for one by, and the only thing a person has to keep current. It is
+       * NOT required to be unique, so a title already in use is written like
+       * any other: warn about it, do not refuse it. A `pinned` guideline is one
+       * the assistant is given in full on every turn.
        * @param {string} projectId - The project the guideline belongs to
        * @param {string} title - The handle an assistant asks for one by (1..100 characters)
-       * @param {string} summary - What it covers, in one line (1..200 characters)
        * @param {object} [opts]
        * @param {string} [opts.body] - The Markdown text (up to 20000 characters; may be empty)
        * @param {boolean} [opts.pinned] - Send this one to the assistant in full on every turn
        */
-      create: (
-        projectId,
-        title,
-        summary,
-        { body, pinned } = {},
-        auditMessage,
-      ) =>
+      create: (projectId, title, { body, pinned } = {}, auditMessage) =>
         this._request("POST", `/api/v1/projects/${projectId}/guidelines`, {
           auditMessage,
-          body: bodyOf({ title, summary, body, pinned }),
+          body: bodyOf({ title, body, pinned }),
         }),
       /**
        * Read one guideline, Markdown body included.
@@ -3067,20 +3058,19 @@ class PlaidClient {
        * @param {string} id - The guideline id
        * @param {object} [changes]
        * @param {string} [changes.title] - The new handle
-       * @param {string} [changes.summary] - The new one-line summary
        * @param {string} [changes.body] - The new Markdown text
        * @param {boolean} [changes.pinned] - Whether the assistant always gets it in full
        * @param {string} [changes.expectedUpdatedAt] - Write only if this is still the stored updatedAt
        */
       update: (
         id,
-        { title, summary, body, pinned, expectedUpdatedAt } = {},
+        { title, body, pinned, expectedUpdatedAt } = {},
         auditMessage,
       ) =>
         this._request("PATCH", `/api/v1/guidelines/${id}`, {
           auditMessage,
           queryParams: { "updated-at": expectedUpdatedAt },
-          body: bodyOf({ title, summary, body, pinned }),
+          body: bodyOf({ title, body, pinned }),
         }),
       /**
        * Delete a guideline.

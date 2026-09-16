@@ -8,7 +8,7 @@ import { ListCount, ListPager, SearchInput } from '../shared/list-search.jsx';
 import { Suspended } from '../shared/Suspended.jsx';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
-import { pageKey, TALL_LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
+import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
 import { humanizeError, statusOf } from '../../lib/errors.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
@@ -32,7 +32,7 @@ const GuidelineEditor = lazyNamed(() => import('./GuidelineEditor.jsx'), 'Guidel
 const inReadingOrder = (entries) =>
   [...entries].sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareText(a.title, b.title));
 
-const blankDraft = () => ({ id: null, title: '', summary: '', body: '', pinned: false });
+const blankDraft = () => ({ id: null, title: '', body: '', pinned: false });
 
 /** One row in the list. */
 const GuidelineRow = ({ entry, selected, onSelect }) => (
@@ -41,7 +41,7 @@ const GuidelineRow = ({ entry, selected, onSelect }) => (
     onClick={() => onSelect(entry.id)}
     aria-current={selected ? 'true' : undefined}
     className={cn(
-      'flex w-full flex-col gap-0.5 border-b px-3 py-2 text-left transition-colors last:border-b-0',
+      'flex w-full flex-col border-b px-3 py-2 text-left transition-colors last:border-b-0',
       selected ? 'bg-accent' : 'hover:bg-accent/50',
     )}
   >
@@ -51,7 +51,6 @@ const GuidelineRow = ({ entry, selected, onSelect }) => (
       )}
       <span className="truncate text-sm font-medium">{entry.title}</span>
     </span>
-    <span className="line-clamp-2 text-xs text-muted-foreground">{entry.summary}</span>
   </button>
 );
 
@@ -138,12 +137,13 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   const matched = useMemo(
     () =>
       query
-        ? ordered.filter((g) => textIncludes(g.title, query) || textIncludes(g.summary, query))
+        ? ordered.filter((g) => textIncludes(g.title, query) || textIncludes(g.body, query))
         : ordered,
     [ordered, query],
   );
   const paged = usePagedList(matched, {
-    pageSize: TALL_LIST_PAGE_SIZE,
+    // A row is one line now that a guideline has no summary under its title.
+    pageSize: LIST_PAGE_SIZE,
     resetKey: query,
     storageKey: pageKey('guidelines', projectId),
   });
@@ -162,9 +162,8 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
 
   const save = async () => {
     const title = draft.title.trim();
-    const summary = draft.summary.trim();
-    if (!title || !summary) {
-      notifyError('A guideline needs a title and a summary.');
+    if (!title) {
+      notifyError('A guideline needs a title.');
       return;
     }
     setSaving(true);
@@ -172,7 +171,6 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       if (draft.id) {
         await client.guidelines.update(draft.id, {
           title,
-          summary,
           body: draft.body,
           pinned: draft.pinned,
           // What this draft was opened against. Leaving it off is what makes
@@ -180,7 +178,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           expectedUpdatedAt: overwrite ? undefined : draft.updatedAt,
         });
       } else {
-        const { id } = await client.guidelines.create(projectId, title, summary, {
+        const { id } = await client.guidelines.create(projectId, title, {
           body: draft.body,
           pinned: draft.pinned,
         });
@@ -331,18 +329,6 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                 </p>
               )}
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium" htmlFor="guideline-summary">
-                Summary
-              </label>
-              <Input
-                id="guideline-summary"
-                value={draft.summary}
-                maxLength={200}
-                placeholder="What this guideline covers, in one line."
-                onChange={(e) => setDraft({ ...draft, summary: e.target.value })}
-              />
-            </div>
             <Suspended>
               <GuidelineEditor
                 value={draft.body}
@@ -368,14 +354,13 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
             </div>
           </div>
         ) : opened ? (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="flex items-center gap-1.5 text-lg font-semibold">
                   {opened.pinned && <Pin className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   {opened.title}
                 </h2>
-                <p className="text-sm text-muted-foreground">{opened.summary}</p>
               </div>
               {canWrite && (
                 <div className="flex shrink-0 items-center gap-1">
@@ -411,10 +396,10 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
               <p className="text-sm text-muted-foreground">Nothing written yet.</p>
             )}
           </div>
-        ) : (
-          <p className="px-3 py-6 text-sm text-muted-foreground">
-            {entries.length === 0 ? '' : 'Open a guideline to read it.'}
-          </p>
+        ) : entries.length === 0 ? null : (
+          <div className="rounded-lg border bg-card p-4">
+            <p className="text-sm text-muted-foreground">Open a guideline to read it.</p>
+          </div>
         )}
       </div>
     </div>

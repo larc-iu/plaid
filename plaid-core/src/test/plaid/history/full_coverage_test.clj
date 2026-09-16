@@ -297,7 +297,7 @@
             gl (created-id (api-call admin-request
                                      {:method :post
                                       :path (str "/api/v1/projects/" proj "/guidelines")
-                                      :body {:title "Glossing" :summary "How this project glosses."
+                                      :body {:title "Glossing"
                                              :body "Loanwords are **not** segmented."}}))  ; guideline/create
             _ (assert-ok (api-call admin-request
                                    {:method :patch
@@ -306,7 +306,7 @@
             gl-throw (created-id (api-call admin-request
                                            {:method :post
                                             :path (str "/api/v1/projects/" proj "/guidelines")
-                                            :body {:title "Throwaway" :summary "Deleted below."}}))
+                                            :body {:title "Throwaway"}}))
             _ (assert-no-content (api-call admin-request
                                            {:method :delete
                                             :path (str "/api/v1/guidelines/" gl-throw)}))  ; guideline/delete

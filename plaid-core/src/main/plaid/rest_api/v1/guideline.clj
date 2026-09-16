@@ -87,27 +87,24 @@
                                                             (:include-bodies query))))))}
 
       :post {:summary (str "Create a guideline. <body>title</body> is the handle an assistant asks "
-                           "for one by. It is NOT required to be unique: a client that cares warns "
-                           "about a title already in use rather than refusing the write. "
-                           "<body>summary</body> is the one line that says what the guideline "
-                           "covers. <body>body</body> is Markdown and may be empty. A "
-                           "<body>pinned</body> guideline is one the assistant is given in full "
-                           "on every turn.")
+                           "for one by, and the only thing a person has to keep current. It is "
+                           "NOT required to be unique: a client that cares warns about a title "
+                           "already in use rather than refusing the write. <body>body</body> is "
+                           "Markdown and may be empty. A <body>pinned</body> guideline is one the "
+                           "assistant is given in full on every turn.")
              :middleware [[pra/wrap-writer-required get-project-id]]
              :parameters {:body [:map
                                  [:title :string]
-                                 [:summary :string]
                                  [:body {:optional true} :string]
                                  [:pinned {:optional true} boolean?]]}
              :handler (fn [{{{:keys [id]} :path
-                             {:keys [title summary body pinned]} :body} :parameters
+                             {:keys [title body pinned]} :body} :parameters
                             db :db user-id :user/id}]
                         (from-result
                          (pgl/create db id
-                                     {:guideline/title   title
-                                      :guideline/summary summary
-                                      :guideline/body    body
-                                      :guideline/pinned  pinned}
+                                     {:guideline/title  title
+                                      :guideline/body   body
+                                      :guideline/pinned pinned}
                                      user-id)
                          (fn [result] {:status 201 :body {:id (:extra result)}})))}}]]
 
@@ -134,17 +131,15 @@
                :parameters {:query [:map [:updated-at {:optional true} :string]]
                             :body [:map
                                    [:title {:optional true} :string]
-                                   [:summary {:optional true} :string]
                                    [:body {:optional true} :string]
                                    [:pinned {:optional true} boolean?]]}
                :handler (fn [{{{:keys [guideline-id]} :path body :body
                                {:keys [updated-at]} :query} :parameters
                               db :db user-id :user/id}]
                           (let [m (cond-> {}
-                                    (contains? body :title)   (assoc :guideline/title (:title body))
-                                    (contains? body :summary) (assoc :guideline/summary (:summary body))
-                                    (contains? body :body)    (assoc :guideline/body (:body body))
-                                    (contains? body :pinned)  (assoc :guideline/pinned (:pinned body)))]
+                                    (contains? body :title)  (assoc :guideline/title (:title body))
+                                    (contains? body :body)   (assoc :guideline/body (:body body))
+                                    (contains? body :pinned) (assoc :guideline/pinned (:pinned body)))]
                             (from-result
                              (pgl/merge db guideline-id m user-id updated-at)
                              (fn [_] {:status 200 :body (pgl/get db guideline-id)}))))}

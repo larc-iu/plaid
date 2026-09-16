@@ -1,0 +1,22 @@
+-- Drop guidelines.summary.
+--
+-- A guideline was a title, a one-line summary and a body. The summary's only
+-- real job was letting an assistant decide WHICH guideline to open without
+-- reading it: the index of titles and summaries goes into the system prompt on
+-- every turn, and the bodies follow only when they fit the budget.
+--
+-- It almost never did that job. The inline budget is 24,000 characters and one
+-- body caps at 20,000, so a project whose whole manual fits under 24k gets
+-- every body inlined and the summary is never read for its purpose. That is
+-- nearly every project.
+--
+-- What it did do was rot. A field nobody has a reason to revisit, restated in
+-- the model's context on every single turn, sitting beside the body it has
+-- stopped agreeing with. A stale comment in code is read by someone who can
+-- see the code disagrees; this one was read by something that took both as
+-- true. One field to keep current (the title) is a rule people can follow.
+--
+-- Where a hint is genuinely needed, past the budget, the assistant now derives
+-- the guideline's opening line from the body. That cannot go stale, because it
+-- IS the body.
+ALTER TABLE guidelines DROP COLUMN summary;

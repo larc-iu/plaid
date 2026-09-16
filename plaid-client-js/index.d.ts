@@ -367,8 +367,6 @@ interface Guideline {
   projectId: string;
   /** The handle the assistant asks for a guideline by. Not required to be unique. */
   title: string;
-  /** What it covers, in one line. */
-  summary: string;
   /** The Markdown text. Present on a single read and on a list made with `includeBodies`. */
   body?: string;
   /** The body's length in characters. Present on a list made WITHOUT `includeBodies`. */
@@ -383,7 +381,6 @@ interface GuidelinesBundle {
   create(
     projectId: string,
     title: string,
-    summary: string,
     opts?: { body?: string; pinned?: boolean },
     auditMessage?: string,
   ): Promise<{ id: string }>;
@@ -392,7 +389,6 @@ interface GuidelinesBundle {
     id: string,
     changes?: {
       title?: string;
-      summary?: string;
       body?: string;
       pinned?: boolean;
       /** Write only if this is still the stored updatedAt; 409 otherwise. */

@@ -19,16 +19,16 @@ sys.path.insert(0, 'tests')
 
 from plaid_agent.core.guidelines import (  # noqa: E402
     t_add_guideline, t_revise_guideline, t_rewrite_guideline,
-    FENCE_END, FENCE_TOP, Guideline, in_context, in_reading_order, load, section,
-    t_read_guideline)
+    FENCE_END, FENCE_TOP, Guideline, in_context, in_reading_order, load, opening_line,
+    section, t_read_guideline)
 from plaid_agent.core.limits import GUIDELINES_INLINE_CHARS  # noqa: E402
 from plaid_agent.core.tools import ToolError  # noqa: E402
 
 from fixtures import FakeClient, PID, scan_ws  # noqa: E402
 
 
-def g(title, *, summary='A summary.', body='A body.', pinned=False, gid=None):
-    return Guideline(id=gid or title.lower(), title=title, summary=summary, body=body, pinned=pinned)
+def g(title, *, body='A body.', pinned=False, gid=None):
+    return Guideline(id=gid or title.lower(), title=title, body=body, pinned=pinned)
 
 
 def body_of(chars, fill='x'):
@@ -55,11 +55,9 @@ def test_a_project_with_no_guidelines_is_still_told_it_may_start_one():
     assert in_context([]) == ''
 
 
-def test_every_title_and_summary_is_always_there():
-    out = section([g('Glossing', summary='Leipzig, with exceptions.'),
-                   g('Translations', summary='Idiomatic, not literal.')])
-    assert 'Glossing' in out and 'Leipzig, with exceptions.' in out
-    assert 'Translations' in out and 'Idiomatic, not literal.' in out
+def test_every_title_is_always_there():
+    out = section([g('Glossing'), g('Translations')])
+    assert 'Glossing' in out and 'Translations' in out
 
 
 def test_the_whole_manual_is_inlined_when_it_fits():
@@ -83,12 +81,48 @@ def test_past_the_budget_only_the_pinned_body_is_inlined():
 def test_it_is_all_or_none_and_never_half_the_manual():
     # Half in the prompt and half behind the tool is the case the model reads
     # wrong: it sees several bodies and concludes it has seen them all.
-    over = [g('A', body=body_of(10, 'a')), g('B', body=body_of(GUIDELINES_INLINE_CHARS, 'b'))]
+    over = [g('A', body='Loanwords are not segmented.\n' + body_of(400, 'a')),
+            g('B', body=body_of(GUIDELINES_INLINE_CHARS, 'b'))]
     out = section(over)
-    assert 'a' * 10 not in out, 'the small one must not be inlined once the big one does not fit'
-    assert 'b' * 100 not in out
+    assert 'a' * 400 not in out, 'the small one must not be inlined once the big one does not fit'
+    # Longer than the opening line is allowed to be: what went in is a preview
+    # and not the body.
+    assert 'b' * 200 not in out
+    # What the small one DOES get is its opening line, which is the whole point
+    # of it: the model has to choose what to open without being able to see it.
+    assert 'Loanwords are not segmented.' in out
     assert 'read_guideline("A")' in out and 'read_guideline("B")' in out
     assert in_context(over) == 'Guidelines: none of 2 in context'
+
+
+# --- the opening line, which stands in for a guideline nobody can see --------
+
+def test_the_opening_line_is_the_first_prose_line_not_the_heading():
+    # A body under a guideline titled "Loanwords" routinely opens with
+    # `## Loanwords`, and repeating the title says nothing about the rule.
+    assert opening_line('## Loanwords\n\nThey are not segmented.') == 'They are not segmented.'
+
+
+def test_a_body_that_is_only_a_heading_falls_back_to_its_words():
+    assert opening_line('# Still to write') == 'Still to write'
+
+
+def test_the_opening_line_is_bounded_so_an_index_row_stays_a_row():
+    line = opening_line('x' * 500)
+    assert len(line) <= 140
+    assert line.endswith('\u2026')
+
+
+def test_an_empty_body_has_no_opening_line():
+    assert opening_line('') == ''
+    assert opening_line(None) == ''
+
+
+def test_an_inlined_guideline_is_not_previewed_as_well_as_shown():
+    # Its whole body is two lines down, so a preview would be the same words
+    # twice in a prompt that is paying for every character.
+    out = section([g('A', body='Only line.')])
+    assert out.count('Only line.') == 1
 
 
 def test_exactly_at_the_budget_still_fits():
@@ -188,8 +222,8 @@ def test_two_guidelines_with_one_title_are_both_returned(ws):
     # Titles are not unique, so picking the first would silently show half of
     # what the project said on a subject with no sign the other half existed.
     ws.project.guidelines = [
-        g('Glossing', summary='The first.', body='Loanwords are not segmented.', gid='a'),
-        g('Glossing', summary='The second.', body='Proper nouns are not glossed.', gid='b'),
+        g('Glossing', body='Loanwords are not segmented.', gid='a'),
+        g('Glossing', body='Proper nouns are not glossed.', gid='b'),
     ]
     out = t_read_guideline(ws, 'Glossing')
     assert 'Loanwords are not segmented.' in out
@@ -231,14 +265,14 @@ def test_a_server_that_cannot_answer_leaves_the_project_without_a_manual():
 # about that line: what reaches the plan, and what is refused before it does.
 
 def test_a_draft_is_a_plan_op_and_writes_nothing(ws):
-    out = t_add_guideline(ws, 'Loanwords', 'What we do with borrowings.',
-                          'Loanwords are not segmented.')
+    out = t_add_guideline(ws, 'Loanwords', 'Loanwords are not segmented.')
     assert 'Planned 1 change' in out
     assert 'nothing is written until the user approves' in out
     op = ws.ops[-1]
     assert op['kind'] == 'add_guideline'
     assert op['title'] == 'Loanwords'
     assert 'Loanwords' in op['label'], 'the approval line names what is being added'
+    assert 'not segmented' in op['label'], 'and shows what it will SAY, not a description of it'
     # Nothing reached the server.
     assert not [c for c in ws.client.log if c[0] == 'guidelines']
 
@@ -300,12 +334,6 @@ def test_a_rewrite_of_nothing_is_not_planned(ws):
     assert not ws.ops
 
 
-def test_a_rewrite_needs_something_to_change(ws):
-    with pytest.raises(ToolError) as e:
-        t_rewrite_guideline(ws, 'Translations')
-    assert 'Say what to change' in str(e.value)
-
-
 def test_revising_a_title_that_names_two_is_refused_rather_than_guessed(ws):
     ws.project.guidelines = [g('Glossing', gid='a'), g('Glossing', gid='b')]
     with pytest.raises(ToolError) as e:
@@ -355,20 +383,19 @@ def test_only_a_wholesale_rewrite_is_marked_on_the_card():
 def test_a_draft_that_repeats_a_title_is_planned_and_flagged(ws):
     # Titles are not unique, so this is not refused. The model is told, so it
     # can say so rather than quietly leaving the project with two.
-    out = t_add_guideline(ws, 'Glossing', 'A second one.', 'Body.')
+    out = t_add_guideline(ws, 'Glossing', 'Body.')
     assert 'already has a guideline titled' in out
     assert ws.ops[-1]['kind'] == 'add_guideline'
 
 
 def test_an_essay_is_refused_before_it_reaches_the_plan(ws):
     with pytest.raises(ToolError) as e:
-        t_add_guideline(ws, 'Long', 'Too much.', 'x' * 5000)
+        t_add_guideline(ws, 'Long', 'x' * 5000)
     assert 'one convention' in str(e.value)
     assert not ws.ops
 
 
-def test_a_draft_needs_a_title_and_a_summary(ws):
-    for kwargs in ({'title': '  ', 'summary': 'S'}, {'title': 'T', 'summary': ' '}):
-        with pytest.raises(ToolError):
-            t_add_guideline(ws, body='B', **kwargs)
+def test_a_draft_needs_a_title(ws):
+    with pytest.raises(ToolError):
+        t_add_guideline(ws, title='  ', body='B')
     assert not ws.ops

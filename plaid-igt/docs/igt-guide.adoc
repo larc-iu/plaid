@@ -662,13 +662,15 @@ Guidelines are for what a list of values cannot say: that loanwords are not segm
 
 Everyone who can open the project can read them, and anyone who can annotate can write them.
 
-Each guideline has a title, a one-line summary, and a body written in a rich-text editor (bold, headings, lists, tables, links).
-The title is how a guideline is referred to, including by the Assistant, so two with the same title are worth avoiding.
-The editor says so while you are typing one that is already in use, and saves it anyway.
-The summary says what the guideline covers.
-It is worth keeping short and worth getting right: it is the line shown under the title in the list, and it is what the Assistant reads to decide whether to open a guideline before answering.
-If you cannot say in one line what a guideline covers, it is two guidelines.
+Each guideline has a title and a body written in a rich-text editor (bold, headings, lists, tables, links).
+The title is the only thing to keep current, and it is how a guideline is referred to, including by the Assistant.
+Name the subject rather than the rule, so that the title still fits after the rule is refined.
+Two guidelines with the same title are worth avoiding; the editor says so while you are typing one that is already in use, and saves it anyway.
+If a title cannot name what a guideline covers, it is two guidelines.
 One topic each is what makes them findable, by a person and by the Assistant.
+
+Open the body with the rule itself.
+When the manual grows too large to send to the Assistant whole, that first line is what it sees beside the title and chooses on.
 
 The editor writes Markdown, and **Markdown** switches to the source if you would rather type it.
 
