@@ -4,7 +4,7 @@
 // runBuiltinAnalysis exactly as the Auto-link dialog does. Every assertion
 // reads a fresh IgtDocument from the server. Project + lexicon are deleted at
 // the end.
-//   cd plaid-igt && node e2e/live/auto-analysis.mjs
+//   cd plaid-igt && node --import ./e2e/live/aliases.mjs e2e/live/auto-analysis.mjs
 import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { runBuiltinAnalysis } from '../../src/domain/autoPass.js';

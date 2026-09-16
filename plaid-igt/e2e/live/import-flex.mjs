@@ -3,7 +3,7 @@
 // Lezgi sample, exercising cancel/resume, then verifies the imported data via
 // IgtDocument (the exact read path the editor uses).
 //
-//   node e2e/live/import-flex.mjs [--keep] [--small]
+//   node --import ./e2e/live/aliases.mjs e2e/live/import-flex.mjs [--keep] [--small]
 //
 // --small imports only the 3 smallest texts (quick smoke run).
 // The project is deleted at the end unless --keep is given.

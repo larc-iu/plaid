@@ -10,7 +10,7 @@
 //      both sides are normalized to id-free shapes; the importer's bookkeeping
 //      stamps — nativeImportId, nativeImported — are stripped)
 //
-//   node e2e/live/native-roundtrip.mjs [--keep]
+//   node --import ./e2e/live/aliases.mjs e2e/live/native-roundtrip.mjs [--keep]
 //
 // Projects are deleted at the end unless --keep is given.
 //
@@ -28,7 +28,7 @@
 // virtual address space than it resides in (38 GB vs 19.5 GB in the OOM
 // record), so a -v limit strangles it at startup instead of bounding it.
 //   systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 \
-//     node e2e/live/native-roundtrip.mjs
+//     node --import ./e2e/live/aliases.mjs e2e/live/native-roundtrip.mjs
 
 import { readFileSync } from 'node:fs';
 import { File } from 'node:buffer';
@@ -132,7 +132,19 @@ function normalize(archive) {
       fields: v.data.fields,
       items: (v.data.items || []).map((it) => ({
         form: it.form,
-        metadata: omit(it.metadata, ['nativeImportId']),
+        // `parent` is a reference to another entry, remapped by the importer
+        // onto B's ids, so the raw values can never match. Compared by the
+        // parent's FORM instead, which checks that the reference survived
+        // rather than skipping it.
+        metadata: omit(
+          {
+            ...omit(it.metadata, ['nativeImportId', 'parent']),
+            ...(typeof it.metadata?.parent === 'string'
+              ? { parentForm: itemFormById.get(it.metadata.parent) ?? 'unknown' }
+              : {}),
+          },
+          [],
+        ),
       })),
       // The entry a comment hangs off, by form, plus the words a person typed
       // (see the document comments below for why author and dates are not here).
@@ -198,7 +210,10 @@ function normalize(archive) {
 
       return {
         name: d.name,
-        metadata: omit(data.metadata, ['nativeImported']),
+        // `importSource` is the resume bookkeeping the importer that MADE the
+        // document stamps on it, so A's names a FLEx file and B's names A.
+        // Bookkeeping, like nativeImported, not a fact about the corpus.
+        metadata: omit(data.metadata, ['nativeImported', 'importSource']),
         body: data.baseline?.body,
         hasMedia: !!d.mediaBytes,
         sentences: (data.sentences || []).map((s) => ({
@@ -273,7 +288,15 @@ function normalize(archive) {
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return { schema: archive.manifest.schema, vocabularies, documents };
+  return {
+    schema: archive.manifest.schema,
+    // The project's annotation manual. Ordered, because the list is ordered by
+    // title on the way out and a round trip that shuffled it would still be
+    // wrong for a person reading it.
+    guidelines: archive.manifest.guidelines || [],
+    vocabularies,
+    documents,
+  };
 }
 
 try {
@@ -428,6 +451,16 @@ try {
     object: { name: 'Lezgi', glottocode: 'lezg1247', iso639P3: 'lez' },
     meta: { name: 'English', glottocode: 'stan1293', iso639P3: 'eng' },
   });
+  // The annotation manual, seeded for the same reason as the tagsets above: it
+  // was dropped by the archive until now, so without writing one here the
+  // comparison compares two empty lists and proves nothing.
+  for (const [title, body, pinned] of [
+    ['Loanwords', 'Russian loanwords are **not** segmented.\n\nGloss them whole.', true],
+    ['Free translation', 'Idiomatic, not literal.', false],
+    ['Later', '', false],
+  ]) {
+    await client.guidelines.create(setupA.projectId, title, { body, pinned });
+  }
   await client.projects.setConfig(setupA.projectId, 'igt', 'speakers', ['Speaker 1', 'Speaker 2']);
   await client.projects.setConfig(setupA.projectId, 'igt', 'serviceDefaults', {
     analyze: { impl: 'polygloss' },
@@ -565,6 +598,12 @@ try {
     check(false, label, describeMismatch(a, b));
   };
   compare('schema round-trips', normA.schema, normB.schema);
+  check(normA.guidelines.length === 3, 'project A has an annotation manual to carry');
+  compare(
+    'guidelines round-trip (titles, bodies, pinned, ORDER)',
+    normA.guidelines,
+    normB.guidelines,
+  );
   compare(
     'vocabularies round-trip (forms, fields, metadata, ORDER)',
     normA.vocabularies,

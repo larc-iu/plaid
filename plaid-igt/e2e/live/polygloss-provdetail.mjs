@@ -3,7 +3,7 @@
 // (plus provDetail.boundaries on the first morpheme). Needs the dev core on
 // :8085 and the service running, serving all projects:
 //   python services/igt_analyze_polygloss.py --url http://localhost:8085
-//   node e2e/live/polygloss-provdetail.mjs
+//   node --import ./e2e/live/aliases.mjs e2e/live/polygloss-provdetail.mjs
 // Net-neutral: creates one throwaway project and deletes it at the end.
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';

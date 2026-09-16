@@ -1,7 +1,7 @@
 // Sets up a throwaway document for exercising a real service run in the
 // browser: the write lock, rejoin-after-reload, and Cancel.
 //
-//   node e2e/live/run-resume.mjs [sourceDocumentId]
+//   node --import ./e2e/live/aliases.mjs e2e/live/run-resume.mjs [sourceDocumentId]
 //
 // With a source document, its media is copied over, so the run is long enough
 // to reload or cancel in the middle of. Without one, a short synthetic tone is

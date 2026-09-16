@@ -293,6 +293,10 @@ const EXEMPT_NAMES = {
   'plaid-ud/src/utils/feedback.jsx:notifyInfo': 'one import site for every toast form',
   'plaid-ud/src/utils/feedback.jsx:notifyPromise': 'one import site for every toast form',
   'plaid-ud/src/utils/feedback.jsx:notifyWithAction': 'one import site for every toast form',
+  // A node module-resolution hook. Node calls it on the loader thread, by name,
+  // from a file it was handed at `register()`: there is no importer anywhere and
+  // there cannot be one.
+  'plaid-igt/e2e/live/aliasHooks.mjs:resolve': 'a node loader hook, called by the runtime',
 };
 
 // ---------------------------------------------------------------------------

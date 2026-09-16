@@ -287,6 +287,20 @@ export async function runExport({
     }
   }
   const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
+
+  // The project's annotation manual, on the same terms as comments: the native
+  // archive only, and never a historical one. Guidelines ARE audited, unlike
+  // comments, but `?as-of=` is document-scoped, so there is no state at `asOf`
+  // to read and today's manual in a time-travelled archive would be a claim
+  // about the past that nobody made.
+  let guidelines = [];
+  if (isNative && !asOf) {
+    try {
+      guidelines = await client.guidelines.list(project.id, { includeBodies: true });
+    } catch (err) {
+      warnings.push(`Guidelines could not be fetched: ${err?.message ?? err}`);
+    }
+  }
   checkStop();
 
   // The lexicon's promoted examples are references into documents, so the
@@ -573,6 +587,7 @@ export async function runExport({
             name: v.name,
             file: `vocabularies/${vocabNames[i]}`,
           })),
+          guidelines,
           asOf,
           exportedAt,
         }),

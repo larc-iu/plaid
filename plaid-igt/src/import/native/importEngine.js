@@ -697,6 +697,23 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     if (value != null) await client.projects.setConfig(projectId, IGT_NAMESPACE, key, value);
   }
 
+  // The project's annotation manual. Created rather than reconciled: an import
+  // builds a NEW project, so there is nothing to merge with, and a guideline is
+  // addressed by title rather than by id, so nothing in the archive points at
+  // one. A failure here warns instead of stopping the import: an annotation
+  // manual is worth having and is not worth losing a corpus over.
+  for (const g of archive.manifest.guidelines || []) {
+    if (!g?.title) continue;
+    try {
+      await client.guidelines.create(projectId, g.title, {
+        body: g.body || '',
+        pinned: !!g.pinned,
+      });
+    } catch (err) {
+      warnings.push(`Guideline "${g.title}" could not be created: ${err?.message ?? err}`);
+    }
+  }
+
   // Point each field back at its tagset. Setup created the fields; the
   // reference lives on the span layer, which the wizard knows nothing about.
   const spanLayerByScopeName = new Map();

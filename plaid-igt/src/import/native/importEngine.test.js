@@ -119,6 +119,9 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     spanLayers: {
       setConfig: async (...a) => record('spanLayers.setConfig', a),
     },
+    guidelines: {
+      create: async (...a) => record('guidelines.create', a, { id: fresh('gl') }),
+    },
     vocabItems: {
       bulkCreate: async (body) =>
         record('vocabItems.bulkCreate', [body], { ids: body.map(() => fresh('item')) }),
@@ -625,6 +628,41 @@ describe('runNativeImport (full archive)', () => {
     expect(written.compose).toEqual({ codes: [{ code: "b'", char: 'ɓ' }] });
     // documentMetadata is rewritten so a metadata field's tagset comes back.
     expect(written.documentMetadata).toEqual([{ name: 'Source' }]);
+  });
+
+  it("brings back the project's annotation manual", async () => {
+    const archive = buildArchive();
+    archive.manifest.guidelines = [
+      { title: 'Loanwords', body: 'Not segmented.', pinned: true },
+      { title: 'Later', body: '', pinned: false },
+    ];
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    expect(callsOf(client, 'guidelines.create').map((c) => c.slice(1))).toEqual([
+      ['newp', 'Loanwords', { body: 'Not segmented.', pinned: true }],
+      ['newp', 'Later', { body: '', pinned: false }],
+    ]);
+  });
+
+  it('warns rather than losing the corpus when a guideline cannot be written', async () => {
+    // An annotation manual is worth having and is not worth failing an import
+    // of a thousand documents over.
+    const archive = buildArchive();
+    archive.manifest.guidelines = [{ title: 'Doomed', body: 'x', pinned: false }];
+    const client = stubClient();
+    client.guidelines.create = async () => {
+      throw new Error('nope');
+    };
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    expect(result.warnings.some((w) => w.includes('Doomed'))).toBe(true);
+  });
+
+  it('is unbothered by an archive written before guidelines existed', async () => {
+    const archive = buildArchive();
+    delete archive.manifest.guidelines;
+    const client = stubClient();
+    await runNativeImport({ client, projectId: 'newp', archive });
+    expect(callsOf(client, 'guidelines.create')).toEqual([]);
   });
 
   it("points each field back at its tagset, on the field's own span layer", async () => {

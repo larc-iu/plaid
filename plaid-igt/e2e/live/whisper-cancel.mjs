@@ -1,7 +1,7 @@
 // Live check that Cancel bites on the real Whisper transcriber, and that a
 // stop lands BEFORE anything is written.
 //
-//   node e2e/live/whisper-cancel.mjs <documentId>
+//   node --import ./e2e/live/aliases.mjs e2e/live/whisper-cancel.mjs <documentId>
 //
 // Whisper's transcription is one blocking call into the model, so the stop
 // takes effect when that call returns — at the checkpoint just before the

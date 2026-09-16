@@ -1,7 +1,7 @@
 // Live e2e (TEST_PLAN C8-04): native import whose media upload FAILS once.
 // The document must be left unmarked (metadata.importDone absent) so a
 // re-import redoes it and recovers the media. Runs against the dev core.
-//   cd plaid-igt && node e2e/live/native-media-resume.mjs
+//   cd plaid-igt && node --import ./e2e/live/aliases.mjs e2e/live/native-media-resume.mjs
 import { File } from 'node:buffer';
 import { makeClient } from '../bugbash/harness.mjs';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';

@@ -70,10 +70,19 @@ function stubClient({
   users = {},
   commentsFail = false,
   vocabCommentsFail = false,
+  guidelines = [],
+  guidelinesFail = false,
 }) {
   const calls = [];
   return {
     calls,
+    guidelines: {
+      list: async (projectId, opts) => {
+        calls.push(['guidelines.list', projectId, opts]);
+        if (guidelinesFail) throw new Error('guideline boom');
+        return guidelines;
+      },
+    },
     comments: {
       list: async (projectId, { documentId } = {}) => {
         calls.push(['comments.list', projectId, documentId]);
@@ -639,6 +648,68 @@ describe('runExport — native plaid-igt-json', () => {
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
     expect(doc).not.toHaveProperty('comments');
     expect(client.calls.some((c) => c[0].startsWith('comments.'))).toBe(false);
+  });
+
+  it("carries the project's annotation manual", async () => {
+    // Everything else a project says about itself was already in the archive.
+    // The manual was the one piece the lossless archive silently dropped.
+    const client = stubClient({
+      docs: [rawDoc('d1', 'A', 'hi')],
+      guidelines: [{ id: 'g1', title: 'Loanwords', body: 'Not segmented.', pinned: true }],
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'document', id: 'd1' },
+    });
+    const entries = await unzipBlob(result.blob);
+    const manifest = JSON.parse(new TextDecoder().decode(entries['project.json']));
+    expect(manifest.guidelines).toEqual([
+      { title: 'Loanwords', body: 'Not segmented.', pinned: true },
+    ]);
+    // Bodies, not lengths: an archive that carried only the index would round
+    // trip into a manual of empty headings.
+    expect(client.calls.find((c) => c[0] === 'guidelines.list')[2]).toEqual({
+      includeBodies: true,
+    });
+  });
+
+  it('omits the manual from a historical export, which has no state to read', async () => {
+    // Guidelines ARE audited, unlike comments, but `?as-of=` is
+    // document-scoped, so there is no view of the manual as it was. Today's in
+    // a time-travelled archive would be a claim about the past nobody made.
+    const client = stubClient({
+      docs: [rawDoc('d1', 'A', 'hi')],
+      guidelines: [{ id: 'g1', title: 'Loanwords', body: 'Not segmented.', pinned: true }],
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'document', id: 'd1' },
+      asOf: '2026-01-01T00:00:00Z',
+    });
+    const entries = await unzipBlob(result.blob);
+    const manifest = JSON.parse(new TextDecoder().decode(entries['project.json']));
+    expect(manifest.guidelines).toEqual([]);
+    expect(client.calls.some((c) => c[0] === 'guidelines.list')).toBe(false);
+  });
+
+  it('degrades a failed guideline fetch to a warning, the corpus still exported', async () => {
+    const client = stubClient({
+      docs: [rawDoc('d1', 'A', 'hi')],
+      guidelinesFail: true,
+    });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.warnings.some((w) => w.includes('Guidelines'))).toBe(true);
+    const entries = await unzipBlob(result.blob);
+    expect(entries['documents/A.json']).toBeTruthy();
   });
 
   it("carries a document's comments, with author display names resolved", async () => {

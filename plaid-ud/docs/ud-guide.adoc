@@ -288,6 +288,9 @@ Under each of its replies is a line saying how much of the manual that answer ha
 If somebody else saves a guideline while you have it open, your save is refused rather than overwriting theirs.
 Nothing you have typed is lost: the editor keeps it, and saving a second time overwrites theirs deliberately.
 
+Guidelines are not part of a project export here, which is a ZIP of CoNLL-U files and has nowhere to put them.
+A project shared with plaid-igt, whose archive does carry them, keeps them that way.
+
 The Assistant can draft a guideline as well as read one.
 If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
 It will not do this for a decision about a single word, or for something it worked out from the data on its own.

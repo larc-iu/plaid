@@ -448,6 +448,30 @@ describe('buildProjectFile', () => {
     );
     expect(out.documents).toHaveLength(1);
     expect(out.vocabularies).toHaveLength(1);
+    expect(out.guidelines).toEqual([]);
+  });
+
+  it("carries the project's annotation manual, which is the one thing it said in prose", () => {
+    // Every other thing a project says about itself was already in `schema`.
+    // The manual was the piece the lossless archive silently dropped.
+    const out = buildProjectFile({
+      project: buildProject(),
+      documents: [],
+      vocabularies: [],
+      guidelines: [
+        { id: 'g1', title: 'Loanwords', body: 'Not segmented.', pinned: true },
+        { id: 'g2', title: 'Later', body: '', pinned: false },
+      ],
+      exportedAt: 'x',
+    });
+    expect(out.guidelines).toEqual([
+      { title: 'Loanwords', body: 'Not segmented.', pinned: true },
+      // An empty one is still a heading somebody made, and comes back as one.
+      { title: 'Later', body: '', pinned: false },
+    ]);
+    // No id: nothing in the archive points at a guideline, and carrying one the
+    // importer ignores would say it meant something.
+    expect(out.guidelines.every((g) => !('id' in g))).toBe(true);
   });
 
   it('carries the project config the wizard cannot rebuild', () => {

@@ -2,7 +2,7 @@
 // shape this app now sends (a minted requestId plus an onProgress callback), or
 // the service/server itself?
 //
-//   node e2e/live/transcribe.mjs <documentId>
+//   node --import ./e2e/live/aliases.mjs e2e/live/transcribe.mjs <documentId>
 import { makeClient, getFixtureProjectId } from '../bugbash/harness.mjs';
 
 const client = makeClient();

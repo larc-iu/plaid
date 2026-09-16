@@ -2,7 +2,7 @@
 // disposable). Everything else in the CLDF work is stub-tested, so this is the
 // only thing that exercises the actual writes against a running core.
 //
-//   node e2e/live/cldf.mjs <a-cldf-dataset.zip> [--keep]
+//   node --import ./e2e/live/aliases.mjs e2e/live/cldf.mjs <a-cldf-dataset.zip> [--keep]
 //
 // 1. read the dataset, take a slice of it, and import it into a fresh project
 //    through the real setup executor + import engine

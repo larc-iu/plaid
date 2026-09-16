@@ -681,6 +681,9 @@ Under each of its replies is a line saying how much of the manual that answer ha
 If somebody else saves a guideline while you have it open, your save is refused rather than overwriting theirs.
 Nothing you have typed is lost: the editor keeps it, and saving a second time overwrites theirs deliberately.
 
+Guidelines travel in the Plaid IGT archive and come back on import, so a project handed to somebody else arrives with the conventions it was annotated under.
+They are left out of a historical export, which has no view of what the manual said at the time.
+
 The Assistant can draft a guideline as well as read one.
 If you tell it a convention while asking about something else, it will propose writing it down, and you approve or discard it like any other change it proposes.
 It will not do this for a decision about a single word, or for something it worked out from the data on its own.
@@ -832,7 +835,7 @@ Four formats are supported:
 * **FieldWorks (FLEx)**: a project backup (`.fwbackup`), bringing in its texts, words, morphemes, glosses, translations, and the full lexicon. The backup's writing systems become the project's languages and each field's language, so a later FLEx export is tagged the way FLEx expects without any typing. Every lexicon field that carries values comes along as an entry field unless you untick it. What a text's Info tab holds comes with it as document metadata: its title in each writing system, its abbreviation, source, comment and genres, and, for a text given a notebook record, that record's researchers, sources, participants, locations and anthropology categories. Words that cannot be aligned to their baseline are listed before the import and skipped, and some FLEx detail that Plaid does not model is dropped.
 * **CLDF** (`.zip`): a Cross-Linguistic Data Formats dataset. Its examples become interlinear texts, its lexicon a vocabulary, and its language the project's identity.
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
-* **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, and comments.
+* **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, and guidelines.
 
 An ELAN import also runs into a project you already have: **New Document → Import from ELAN**, on the project's Documents tab.
 Each tier is written into a field the project already has, chosen from a list, and a tier can be given a field of its own instead.

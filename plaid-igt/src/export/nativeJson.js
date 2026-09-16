@@ -69,8 +69,19 @@ const igtLayers = (project) => {
 /**
  * The archive manifest + IGT schema. `documents` / `vocabularies` are the
  * caller-assembled manifest rows ({id, name, file, mediaFile?}).
+ *
+ * `guidelines` is the project's annotation manual, inline rather than in files
+ * of its own: there are a handful, each capped at 20000 characters, and
+ * nothing in the archive refers to one by id.
  */
-export function buildProjectFile({ project, documents, vocabularies, asOf = null, exportedAt }) {
+export function buildProjectFile({
+  project,
+  documents,
+  vocabularies,
+  guidelines = [],
+  asOf = null,
+  exportedAt,
+}) {
   const { textLayer, wordLayer, sentenceLayer, morphemeLayer, alignmentLayer } = igtLayers(project);
   const fields = discoverExportLayers(project);
   const allSpanLayers = [wordLayer, sentenceLayer, morphemeLayer, alignmentLayer].flatMap(
@@ -135,6 +146,14 @@ export function buildProjectFile({ project, documents, vocabularies, asOf = null
     },
     documents,
     vocabularies,
+    // What the project has decided, in its own words. Every other thing a
+    // project says about itself is in `schema` above; this is the one that is
+    // prose rather than configuration, so it stands beside the content.
+    guidelines: (guidelines || []).map((g) => ({
+      title: g.title ?? '',
+      body: g.body ?? '',
+      pinned: !!g.pinned,
+    })),
   };
 }
 

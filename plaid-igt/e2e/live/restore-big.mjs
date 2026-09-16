@@ -7,7 +7,7 @@
 // documents.restore and compares the live read with the as-of read, ids
 // included. Prints the timings. Disposable, like the rest of e2e/.
 //
-//   node e2e/live/restore-big.mjs [sentences] [wordsPerSentence]
+//   node --import ./e2e/live/aliases.mjs e2e/live/restore-big.mjs [sentences] [wordsPerSentence]
 
 import {
   makeClient,

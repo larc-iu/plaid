@@ -1,6 +1,6 @@
 // Live check that a BUILT-IN Auto-analyze step stops when it is asked to.
 //
-//   node e2e/live/builtin-stop.mjs [projectId] [documentId]
+//   node --import ./e2e/live/aliases.mjs e2e/live/builtin-stop.mjs [projectId] [documentId]
 //
 // Two of Auto-analyze's four steps have no service behind them, and the copy
 // step is the slowest thing in the run: precedent means fetching up to

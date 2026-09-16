@@ -4,7 +4,7 @@
 // translated by a person (must be left alone, twice).
 // Needs the dev core on :8085 and the service running for all projects:
 //   python services/igt_translate_llm.py --url http://localhost:8085 --model openai/<id>
-//   node e2e/live/translate.mjs
+//   node --import ./e2e/live/aliases.mjs e2e/live/translate.mjs
 import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';

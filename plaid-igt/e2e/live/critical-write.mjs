@@ -1,6 +1,6 @@
 // Live check that a service's `critical()` write phase is never left half done.
 //
-//   node e2e/live/critical-write.mjs <serviceId> [runs]
+//   node --import ./e2e/live/aliases.mjs e2e/live/critical-write.mjs <serviceId> [runs]
 //
 // All five bundled services wrap their write phase in
 // `with response_helper.critical(), self.client.operation(...)`, so a stop

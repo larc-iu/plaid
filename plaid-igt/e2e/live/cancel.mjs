@@ -3,7 +3,7 @@
 // a loop, asks it to stop mid-run, and asserts the request comes back STOPPED
 // rather than failed — and that a `critical` stretch still finishes.
 //
-//   node e2e/live/cancel.mjs
+//   node --import ./e2e/live/aliases.mjs e2e/live/cancel.mjs
 //
 // The service side here is JavaScript; the Python framework is covered by the
 // same shape in plaid-client-py's tests plus its own probe.

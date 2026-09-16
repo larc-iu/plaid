@@ -5,7 +5,7 @@
 // verifies the archives: zip entries, XML well-formedness (saxes), spot-checked
 // content, vocab TSV row count vs the lexicon.
 //
-//   node e2e/live/export.mjs [--keep]
+//   node --import ./e2e/live/aliases.mjs e2e/live/export.mjs [--keep]
 //
 // The project is deleted at the end unless --keep is given.
 

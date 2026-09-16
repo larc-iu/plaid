@@ -6,7 +6,7 @@
 // patch. Net-neutral: the document (and with it its links and spans) is
 // deleted at the end. The UI-only parts of those rows (dialog counts, focus,
 // styling) live in the Playwright specs.
-//   cd plaid-igt && node e2e/live/provenance-structural.mjs
+//   cd plaid-igt && node --import ./e2e/live/aliases.mjs e2e/live/provenance-structural.mjs
 import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { readToken } from '../fixtures.js';

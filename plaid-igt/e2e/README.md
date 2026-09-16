@@ -38,7 +38,10 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   failure there names the shared file, which is where the fix goes.
 - `live/`: engine-level checks that drive the importers, exporters, services,
   and the domain model through node with no browser, each with a usage line at
-  the top. They are run by hand when the code they cover changes.
+  the top. They are run by hand when the code they cover changes. Run them with
+  `node --import ./e2e/live/aliases.mjs <script>`: app code is written against
+  Vite's `@/` and `@ui/` aliases, and node resolves neither, so without it a
+  script dies at import the moment it reaches a module using one.
 - `scripts/`: seeders, demos, and screenshots. `uxseed.mjs` and `uxshot.mjs` seed
   and screenshot the grid headlessly. `reset-fixture.mjs` reports and removes
   anything the shared fixture document carries that `fixtureProject.js` did not

@@ -3,7 +3,7 @@
 // service:
 //
 //   python services/probes/idle_deadline_probe.py --serve-only probe:idle-js &
-//   node e2e/live/idle-deadline.mjs probe:idle-js
+//   node --import ./e2e/live/aliases.mjs e2e/live/idle-deadline.mjs probe:idle-js
 //
 // A service that is reporting its progress is not hung, so every event it
 // sends starts the clock again. As a deadline on the whole run, the
