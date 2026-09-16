@@ -18,7 +18,15 @@ import { arcHeight, arcPath, assignLevels } from '../../utils/arcLayout.js';
 import { RTL, detectDirection } from '@ui/domain/textDirection.js';
 
 const WORD_GAP = 16; // space between words
-const CHAR = 7.2; // monospace advance at the card's font size
+// A per-character advance, for SPACING only. The card's words are not drawn in
+// a monospaced font (they are the language being documented, and a monospace
+// family resolves to a small pool of fonts that drop complex scripts first), so
+// this over- or under-estimates a word's real width by a little. Nothing lands
+// wrong because of it: each word is centred at its own `x` with
+// `textAnchor="middle"` and every arc terminates at that same `x`, so the
+// estimate decides the GAPS between words and never the alignment of an arc to
+// the word it points at.
+const CHAR = 7.2;
 const PAD = 10;
 const BASELINE = 18; // words sit this far above the bottom
 const LABEL_H = 11;

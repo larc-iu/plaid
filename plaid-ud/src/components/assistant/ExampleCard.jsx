@@ -36,7 +36,6 @@ const DepTree = ({ c, tree }) => {
       width={tree.width}
       height={tree.height}
       viewBox={`0 0 ${tree.width} ${tree.height}`}
-      className="font-mono"
       role="img"
       aria-label={`Dependency tree for sentence ${c.sentence}`}
     >
@@ -90,7 +89,7 @@ const DepTree = ({ c, tree }) => {
 
 const Table = ({ c, columns, scroller }) => (
   <div ref={scroller} className="mt-1.5 overflow-x-auto">
-    <table className="border-separate border-spacing-0 whitespace-nowrap font-mono text-xs">
+    <table className="border-separate border-spacing-0 whitespace-nowrap text-xs">
       <thead>
         <tr>
           {columns.map((col) => (

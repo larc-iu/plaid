@@ -225,11 +225,15 @@
   color: #6b7280;
 }
 
-/* Token form (baseline) */
+/* Token form (baseline).
+   NOT monospace, deliberately. It holds the language being documented, and the
+   grid aligns by COLUMN (each token is its own flex column, measured), so a
+   monospaced cell bought no alignment and cost coverage: a monospace family
+   resolves to a far smaller pool of fonts, and complex scripts are the first
+   thing those pools drop. A Saraiki text went to tofu on U+0658 here. */
 .token-form {
   text-align: center;
   font-size: 14px;
-  font-family: monospace;
   font-weight: bold;
   padding: 4px 2px;
   min-height: 24px;

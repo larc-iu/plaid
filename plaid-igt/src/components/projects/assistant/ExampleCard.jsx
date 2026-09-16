@@ -90,7 +90,7 @@ export const ExampleCard = ({ c, projectId }) => {
                       className={cn(
                         'px-1.5 align-top leading-5',
                         r.kind === 'surface' && 'font-medium',
-                        r.kind === 'morphemes' && 'font-mono text-xs',
+                        r.kind === 'morphemes' && 'text-xs',
                         r.kind !== 'surface' && r.kind !== 'morphemes' && 'text-xs',
                         // A word cited whole is filled; one cited for its
                         // morphemes is tinted, with the morphemes filled.
