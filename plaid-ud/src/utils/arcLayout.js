@@ -93,6 +93,32 @@ export const arcPath = (fromX, toX, baselineY, height, corner = ARC_CORNER) => {
   return `M ${fromX} ${baselineY} Q ${fromX} ${apexY} ${riseEnd} ${apexY} L ${fallStart} ${apexY} Q ${toX} ${apexY} ${toX} ${baselineY}`;
 };
 
+// An arc still in the hand: the same rise and flat run as `arcPath`, ending at
+// the pointer and not at a word. It climbs to the innermost level, or to the
+// pointer when that is further out, so it is already the shape it will be when
+// it lands and only its last stretch follows the hand. `down` is the band
+// under the words, where an arc drops out of its word instead of rising.
+export const handArcPath = (
+  fromX,
+  baselineY,
+  toX,
+  toY,
+  { corner = ARC_CORNER, down = false } = {},
+) => {
+  const apexY = down ? Math.max(baselineY + ARC_BASE, toY) : Math.min(baselineY - ARC_BASE, toY);
+  const direction = toX >= fromX ? 1 : -1;
+  const turn = Math.min(corner, Math.abs(toX - fromX) / 2);
+  return `M ${fromX} ${baselineY} Q ${fromX} ${apexY} ${fromX + direction * turn} ${apexY} L ${toX - direction * turn} ${apexY} Q ${toX} ${apexY} ${toX} ${toY}`;
+};
+
+// The level an arc would be drawn at if it were added to these: the stacking
+// run with the candidate in it, so the preview of an arc over a word sits
+// exactly where the arc will. `spans` are `{ id, left, right }` in word order.
+export const levelAmong = (spans, left, right) => {
+  const id = Symbol('candidate');
+  return assignLevels([...spans, { id, left, right }]).levels.get(id);
+};
+
 // The column each relation endpoint names. Relations point at lemma spans, and
 // a token stands in for its own span, which is the same pair of ids the
 // annotation editor's tree resolves a position by.

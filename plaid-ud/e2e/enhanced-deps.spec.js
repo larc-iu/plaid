@@ -61,17 +61,20 @@ async function openGrid(page, labels) {
 const label = (page, value) =>
   page.locator('.tree-deprel-text', { hasText: new RegExp(`^${value}(?![:a-z])`) });
 
-// Ctrl+drag from one word's grab area in the tree to another's.
-async function enhancedDrag(page, from, to) {
+// Ctrl+drag from one word's grab area in the tree to another's. The modifier
+// is read as the drag BEGINS, so it goes down first and may be let go after.
+// `under` lets go beneath the target word instead of on it, which is where the
+// hand goes for an arc that is drawn under the words.
+async function enhancedDrag(page, from, to, { under = 0 } = {}) {
   const areas = page.locator('.tree-token-area');
   const a = await areas.nth(from).boundingBox();
   const b = await areas.nth(to).boundingBox();
+  await page.keyboard.down('Control');
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
-  await page.keyboard.down('Control');
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
-  await page.mouse.up();
   await page.keyboard.up('Control');
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 + under, { steps: 8 });
+  await page.mouse.up();
 }
 
 test('a new project has the layer, and an older one is given it on open', async ({ page }) => {
@@ -93,7 +96,9 @@ test('a new project has the layer, and an older one is given it on open', async 
 
 test('Ctrl+drag gives a word a second head without touching its tree', async ({ page }) => {
   await openGrid(page, 4);
-  await enhancedDrag(page, 3, 0); // left -> she
+  // Let go well under "she", outside the tree's own box: the drag is followed
+  // across the window and lands on the word whose column it is in.
+  await enhancedDrag(page, 3, 0, { under: 70 }); // left -> she
 
   // A fifth label, and the one arc under the words.
   await expect(page.locator('.tree-deprel-text')).toHaveCount(5);
@@ -241,4 +246,33 @@ test('the bin beside an open label deletes the relation', async ({ page }) => {
   await expect(page.locator('foreignObject input')).toHaveValue(/^cc/);
   await expect(bin).toHaveCount(0);
   await page.keyboard.press('Escape');
+});
+
+// Which graph an arc is for is settled as the drag begins. A modifier pressed
+// part-way is too late, and draws (and writes) a plain relation of the tree.
+test('the modifier counts at the start of a drag and not at its end', async ({ page }) => {
+  await openGrid(page, 5);
+  const before = (await enhancedRows()).length;
+  const areas = page.locator('.tree-token-area');
+  const a = await areas.nth(1).boundingBox();
+  const b = await areas.nth(0).boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2 + 40, b.y - 30, { steps: 5 });
+  // The arc in the hand is above the words, and stays there under Control.
+  await page.keyboard.down('Control');
+  await page.mouse.move(b.x + b.width / 2 + 30, b.y - 30, { steps: 3 });
+  const inHand = await page.locator('.tree-drag-arc').boundingBox();
+  const word = await page.locator('.token-form').first().boundingBox();
+  expect(inHand.y + inHand.height).toBeLessThanOrEqual(word.y + 4);
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+
+  // came -> she already is the tree's nsubj, so its label opened for a plain
+  // edit. Nothing went to the enhanced graph.
+  await expect(page.locator('foreignObject input')).toHaveValue('nsubj');
+  await expect(page.locator('.deprel-edit-delete')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  expect((await enhancedRows()).length).toBe(before);
 });

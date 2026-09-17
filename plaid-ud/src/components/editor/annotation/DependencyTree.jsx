@@ -4,7 +4,14 @@ import { resolveColor, baseRel } from '../../../utils/udVocab.js';
 import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
 import { DeprelEditor } from './DeprelEditor.jsx';
 import { useEditorSession } from './editorSession.js';
-import { ARC_BASE, arcHeight, arcPath } from '../../../utils/arcLayout.js';
+import {
+  ARC_BASE,
+  LOWER_BAND_TOP,
+  arcHeight,
+  arcPath,
+  handArcPath,
+  levelAmong,
+} from '../../../utils/arcLayout.js';
 import { extraEdges, suppressedBasicIds } from '../../../domain/enhancedGraph.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
@@ -21,7 +28,10 @@ const relationMark = (relation) => provMark(relation?.metadata);
 
 // The modifier that turns a tree gesture into an enhanced-graph one. Cmd as
 // well as Ctrl, by the app's convention, and here by necessity too: Ctrl+click
-// on a Mac is a right click.
+// on a Mac is a right click. For an arc it is read ONCE, when the drag (or the
+// first of two clicks) begins, and that decides both where the arc in the hand
+// is drawn and which graph it is written to. Read at the drop as well, the two
+// could disagree, and an arc that changes sides mid-drag is a bug to look at.
 const isEnhancedGesture = (event) => Boolean(event?.ctrlKey || event?.metaKey);
 
 export const DependencyTree = forwardRef(
@@ -80,9 +90,8 @@ export const DependencyTree = forwardRef(
     const [dragOrigin, setDragOrigin] = useState(null);
     const [dragCurrent, setDragCurrent] = useState(null);
     const [dragSourceId, setDragSourceId] = useState(null);
-    // Whether the arc in the hand would land in the enhanced graph: the
-    // modifier as of the last pointer move, for the drag arc's look alone. What
-    // is written is decided by the modifier at the drop.
+    // Whether the arc in the hand belongs to the enhanced graph: the modifier
+    // as the drag BEGAN, fixed for the whole of it (see isEnhancedGesture).
     const [dragEnhanced, setDragEnhanced] = useState(false);
     // A basic relation whose label editor is open to RELABEL it in the enhanced
     // graph. Nothing is written until a different label is committed.
@@ -102,6 +111,9 @@ export const DependencyTree = forwardRef(
     };
     const [positionsInitialized, setPositionsInitialized] = useState(false);
     const svgRef = useRef(null);
+    // True from the mousedown that starts a drag until something ends it, so a
+    // release is acted on once however many listeners hear it.
+    const dragLiveRef = useRef(false);
     const labelRefs = useRef(new Map());
 
     // Constants for layout (back to original working version)
@@ -213,21 +225,63 @@ export const DependencyTree = forwardRef(
         return;
       }
 
+      dragLiveRef.current = true;
       setDragOrigin({ x: position.x, y: position.y });
       setDragCurrent({ x: position.x, y: position.y });
       setDragSourceId(getEffectiveSpanId(position));
       setDragEnhanced(canEnhance && isEnhancedGesture(e));
     };
 
-    // Handle mouse move on SVG (update drag)
-    const handleSvgMouseMove = (e) => {
-      if (dragOrigin && svgRef.current) {
-        setDragEnhanced(canEnhance && isEnhancedGesture(e));
-        const rect = svgRef.current.getBoundingClientRect();
-        setDragCurrent({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
+    const endDrag = () => {
+      dragLiveRef.current = false;
+      setDragOrigin(null);
+      setDragCurrent(null);
+      setDragSourceId(null);
+    };
+
+    // The arc in the hand lands on a word (or, from the ROOT bar, makes it a
+    // root). Which graph takes it was settled when the drag began.
+    const completeDrop = (position) => {
+      if (isReadOnly || !dragOrigin || !dragSourceId) return;
+      const sourceId = dragSourceId;
+      const targetId = getEffectiveSpanId(position);
+      const sourcePosition = adjustedTokenPositions.find((p) => positionMatchesSpanId(p, sourceId));
+      const targetPosition = position;
+
+      if (dragEnhanced && targetId && (sourceId === 'ROOT' || sourceId !== targetId)) {
+        if (sourceId === 'ROOT') drawEnhanced(targetPosition, targetPosition, targetId, targetId);
+        else drawEnhanced(sourcePosition, targetPosition, sourceId, targetId);
+      }
+      // Handle drag FROM ROOT to token
+      else if (sourceId === 'ROOT' && targetId) {
+        // Look for existing ROOT relation (self-pointing relation)
+        const existingRelation = relations.find(
+          (rel) =>
+            positionMatchesSpanId(targetPosition, rel.source) &&
+            positionMatchesSpanId(targetPosition, rel.target),
+        );
+
+        if (existingRelation) {
+          openEditor(existingRelation);
+        } else {
+          onRelationCreate(targetId, targetId, 'root'); // Self-pointing relation
+        }
+      }
+      // Handle drag FROM token to token
+      else if (sourceId !== targetId && sourceId !== 'ROOT' && targetId) {
+        const existingRelation = relations.find(
+          (rel) =>
+            positionMatchesSpanId(sourcePosition, rel.source) &&
+            positionMatchesSpanId(targetPosition, rel.target),
+        );
+
+        if (existingRelation) {
+          openEditor(existingRelation);
+        } else {
+          if (sourceId && targetId) {
+            onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
+          }
+        }
       }
     };
 
@@ -235,56 +289,8 @@ export const DependencyTree = forwardRef(
     const handleTokenMouseUp = (e, position) => {
       e.stopPropagation();
       if (isReadOnly) return;
-      if (dragOrigin && dragSourceId) {
-        const sourceId = dragSourceId;
-        const targetId = getEffectiveSpanId(position);
-        const sourcePosition = adjustedTokenPositions.find((p) =>
-          positionMatchesSpanId(p, sourceId),
-        );
-        const targetPosition = position;
-        const enhanced = canEnhance && isEnhancedGesture(e);
-
-        if (enhanced && targetId && (sourceId === 'ROOT' || sourceId !== targetId)) {
-          if (sourceId === 'ROOT') drawEnhanced(targetPosition, targetPosition, targetId, targetId);
-          else drawEnhanced(sourcePosition, targetPosition, sourceId, targetId);
-        }
-        // Handle drag FROM ROOT to token
-        else if (sourceId === 'ROOT' && targetId) {
-          // Look for existing ROOT relation (self-pointing relation)
-          const existingRelation = relations.find(
-            (rel) =>
-              positionMatchesSpanId(targetPosition, rel.source) &&
-              positionMatchesSpanId(targetPosition, rel.target),
-          );
-
-          if (existingRelation) {
-            openEditor(existingRelation);
-          } else {
-            onRelationCreate(targetId, targetId, 'root'); // Self-pointing relation
-          }
-        }
-        // Handle drag FROM token to token
-        else if (sourceId !== targetId && sourceId !== 'ROOT' && targetId) {
-          const existingRelation = relations.find(
-            (rel) =>
-              positionMatchesSpanId(sourcePosition, rel.source) &&
-              positionMatchesSpanId(targetPosition, rel.target),
-          );
-
-          if (existingRelation) {
-            openEditor(existingRelation);
-          } else {
-            if (sourceId && targetId) {
-              onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
-            }
-          }
-        }
-      }
-
-      // Reset drag state
-      setDragOrigin(null);
-      setDragCurrent(null);
-      setDragSourceId(null);
+      completeDrop(position);
+      endDrag();
     };
 
     // Handle mouse down on ROOT (start drag from ROOT)
@@ -301,6 +307,7 @@ export const DependencyTree = forwardRef(
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
 
+      dragLiveRef.current = true;
       setDragOrigin({ x: clickX, y: clickY });
       setDragCurrent({ x: clickX, y: clickY });
       setDragSourceId('ROOT');
@@ -324,7 +331,7 @@ export const DependencyTree = forwardRef(
             positionMatchesSpanId(sourcePosition, rel.target),
         );
 
-        if (canEnhance && isEnhancedGesture(e)) {
+        if (dragEnhanced) {
           drawEnhanced(sourcePosition, sourcePosition, sourceId, sourceId);
         } else if (existingRelation) {
           openEditor(existingRelation);
@@ -333,19 +340,58 @@ export const DependencyTree = forwardRef(
         }
       }
 
-      // Reset drag state
-      setDragOrigin(null);
-      setDragCurrent(null);
-      setDragSourceId(null);
+      endDrag();
     };
 
-    // Handle mouse up on SVG (cancel drag)
-    const handleSvgMouseUp = () => {
-      // Reset drag state if not dropped on a valid target
-      setDragOrigin(null);
-      setDragCurrent(null);
-      setDragSourceId(null);
+    // The word an ENHANCED arc in the hand is over when the pointer is at or
+    // under the row of words: its column, however far down. That arc is drawn
+    // under the words, so under them is where the hand goes, and the tree's
+    // own grab areas stop at the words. A plain arc lands on a grab area, as
+    // it always has.
+    const wordUnder = (point) => {
+      if (!point || point.y < TOKEN_Y - 12) return null;
+      return (
+        adjustedTokenPositions.find(
+          (p) => Math.abs(point.x - p.x) <= Math.max((p.width || 60) * 0.6, 24),
+        ) || null
+      );
     };
+
+    // While an arc is in the hand the WINDOW is listened to, not this SVG: the
+    // SVG ends at the words, and a pointer followed only inside it leaves an
+    // enhanced arc frozen the moment the hand goes where that arc is drawn.
+    // The handlers are read off a ref so the listeners, bound once per drag,
+    // always run this render's.
+    const dragHandlersRef = useRef(null);
+    dragHandlersRef.current = {
+      move: (e) => {
+        if (!svgRef.current) return;
+        const rect = svgRef.current.getBoundingClientRect();
+        setDragCurrent({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      },
+      // A release that no word or ROOT bar took (those stop it reaching here).
+      up: (e) => {
+        if (!dragLiveRef.current) return;
+        if (dragEnhanced && svgRef.current) {
+          const rect = svgRef.current.getBoundingClientRect();
+          const word = wordUnder({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          if (word) completeDrop(word);
+        }
+        endDrag();
+      },
+    };
+    const dragging = Boolean(dragOrigin);
+    useEffect(() => {
+      if (!dragging) return undefined;
+      const move = (e) => dragHandlersRef.current.move(e);
+      const up = (e) => dragHandlersRef.current.up(e);
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+      return () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+    }, [dragging]);
 
     // Handle token click for relation creation (fallback to click-click)
     const handleTokenClick = (event, position) => {
@@ -369,7 +415,11 @@ export const DependencyTree = forwardRef(
       const spanId = getEffectiveSpanId(position);
 
       if (!selectedSource) {
-        setSelectedSource({ ...position, spanId });
+        setSelectedSource({
+          ...position,
+          spanId,
+          enhanced: canEnhance && isEnhancedGesture(event),
+        });
       } else if (
         selectedSource.spanId === spanId ||
         selectedSource.token?.id === position.token?.id
@@ -390,7 +440,7 @@ export const DependencyTree = forwardRef(
             positionMatchesSpanId(targetPosition, rel.target),
         );
 
-        if (canEnhance && isEnhancedGesture(event) && sourceId && targetId) {
+        if (selectedSource.enhanced && sourceId && targetId) {
           drawEnhanced(sourcePosition, targetPosition, sourceId, targetId);
         } else if (existingRelation) {
           openEditor(existingRelation);
@@ -405,7 +455,7 @@ export const DependencyTree = forwardRef(
     };
 
     // Handle ROOT click
-    const handleRootClick = (event) => {
+    const handleRootClick = () => {
       if (isReadOnly) return;
       if (selectedSource && selectedSource.spanId !== 'ROOT') {
         const sourceId = selectedSource.spanId;
@@ -419,7 +469,7 @@ export const DependencyTree = forwardRef(
             positionMatchesSpanId(sourcePosition, rel.target),
         );
 
-        if (canEnhance && isEnhancedGesture(event)) {
+        if (selectedSource.enhanced) {
           drawEnhanced(sourcePosition, sourcePosition, sourceId, sourceId);
         } else if (existingRelation) {
           openEditor(existingRelation);
@@ -833,62 +883,141 @@ export const DependencyTree = forwardRef(
     };
 
     // Render drag arrow during mouse drag
+    // The arc in the hand, drawn as close to the arc it will become as can be
+    // known, and on ONE side of the words for the whole drag: above for the
+    // tree, below for the enhanced graph, as the drag began. Over a word it IS
+    // the arc to come: at the level the stacking will give it, in the colour
+    // of the label it will take, with that label and an arrowhead. Between
+    // words it is the same shape ending at the pointer.
     const renderDragArc = () => {
-      if (!dragOrigin || !dragCurrent || !dragSourceId) {
-        return null;
-      }
+      if (!dragOrigin || !dragCurrent || !dragSourceId) return null;
 
-      let originX, originY;
+      const fromRoot = dragSourceId === 'ROOT';
+      const sourcePos = fromRoot
+        ? null
+        : adjustedTokenPositions.find((p) => positionMatchesSpanId(p, dragSourceId));
+      if (!fromRoot && !sourcePos) return null;
 
-      // Handle dragging FROM ROOT
-      if (dragSourceId === 'ROOT') {
-        originX = dragOrigin.x; // Use exact click position
-        originY = dragOrigin.y;
-      } else {
-        // Handle dragging FROM token
-        const sourcePos = adjustedTokenPositions.find((p) =>
-          positionMatchesSpanId(p, dragSourceId),
+      const below = dragEnhanced;
+      const y = TOKEN_Y - 10;
+      // The band's baseline under a word, off the measured word.
+      const baseUnder = (position) => {
+        const measured = tokenPositions.find((p) => p.token?.id === position?.token?.id);
+        return measured ? measured.y + (measured.height || 0) / 2 + LOWER_BAND_TOP : TREE_HEIGHT;
+      };
+      const cls = below ? 'tree-drag-arc tree-drag-arc--enhanced' : 'tree-drag-arc';
+      const downArrow = (x, tipY) => `${x - 3},${tipY - 5} ${x + 3},${tipY - 5} ${x},${tipY}`;
+      const upArrow = (x, tipY) => `${x - 3},${tipY + 5} ${x + 3},${tipY + 5} ${x},${tipY}`;
+      const preview = (d, color, arrow, label) => (
+        <g className={cls} style={{ color }}>
+          <path d={d} />
+          {arrow && <polygon points={arrow} />}
+          {label && (
+            <text x={label.x} y={label.y} className="tree-drag-label">
+              {label.text}
+            </text>
+          )}
+        </g>
+      );
+      const colorOf = (deprel) => resolveColor(baseRel(deprel), deprelColors);
+      const GREY = '#6b7280';
+
+      // The word this arc would land on if let go now.
+      const hovered = hoveredToken?.token
+        ? adjustedTokenPositions.find((p) => p.token?.id === hoveredToken.token.id)
+        : null;
+      const over = hovered || (below ? wordUnder(dragCurrent) : null);
+      const target = over && (fromRoot || over !== sourcePos) ? over : null;
+      const toRoot =
+        !fromRoot && (hoveredToken?.lemmaSpanId === 'ROOT' || dragCurrent.y < ROOT_Y + 15);
+
+      // A root. In the tree, the straight drop from the ROOT bar onto its word.
+      // In the enhanced graph, the stub under it.
+      if ((fromRoot && target) || toRoot) {
+        const word = fromRoot ? target : sourcePos;
+        if (below) {
+          const base = baseUnder(word);
+          return preview(
+            `M ${word.x} ${base} l 0 ${ARC_BASE}`,
+            colorOf('root'),
+            upArrow(word.x, base - 5),
+            { x: word.x, y: base + ARC_BASE + 11, text: 'root' },
+          );
+        }
+        return preview(
+          `M ${word.x} ${ROOT_Y + 10} L ${word.x} ${y}`,
+          colorOf('root'),
+          downArrow(word.x, y + 2),
+          { x: word.x, y: (TOKEN_Y + ROOT_Y) / 2, text: 'root' },
         );
-        if (!sourcePos) return null;
-        originX = sourcePos.x;
-        originY = TOKEN_Y - 10;
+      }
+      // Out of the ROOT bar and over no word yet. The bar is above the words
+      // whichever graph this is for, so this one stretch is drawn from it.
+      if (fromRoot) {
+        const tipY = Math.max(dragCurrent.y, ROOT_Y + 15);
+        return preview(
+          `M ${dragCurrent.x} ${ROOT_Y + 10} L ${dragCurrent.x} ${tipY}`,
+          GREY,
+          downArrow(dragCurrent.x, tipY),
+        );
       }
 
-      const dx = dragCurrent.x - originX;
-      const dy = dragCurrent.y - originY;
-
-      // Generate path using the same logic as static arcs
-      let pathData;
-
-      // For ROOT drags, use a simple line initially, then curve as we approach tokens
-      if (dragSourceId === 'ROOT') {
-        const isTowardToken = dragCurrent.y > ROOT_Y + 30;
-        if (isTowardToken) {
-          // Create a curved path from ROOT downward
-          const maxHeight = Math.abs(dy) * 0.3;
-          pathData = `M ${originX} ${originY} 
-             c 0 ${maxHeight}, ${dx} ${maxHeight}, ${dx} ${dy}`;
-        } else {
-          // Simple line for short drags
-          pathData = `M ${originX} ${originY} l ${dx} ${dy}`;
+      // Between words. The end follows the hand, but never across the row of
+      // words: an arc for the tree stays above it and one for the enhanced
+      // graph below it, wherever the pointer goes.
+      if (!target) {
+        if (below) {
+          const base = baseUnder(sourcePos);
+          const tipY = Math.max(dragCurrent.y, base);
+          return preview(
+            handArcPath(sourcePos.x, base, dragCurrent.x, tipY, { down: true }),
+            GREY,
+            upArrow(dragCurrent.x, tipY - 5),
+          );
         }
-      } else {
-        // Existing logic for token-to-token drags
-        const isToRoot = dragCurrent.y < ROOT_Y + 15;
-        if (isToRoot) {
-          pathData = `M ${originX} ${originY} l ${dx} ${dy}`;
-        } else {
-          // An arc in the hand ends at the pointer, not at a level: what it
-          // will enclose isn't known until it lands on a word.
-          pathData = `M ${originX} ${originY} c 0 ${-ARC_BASE}, ${dx} ${-ARC_BASE}, ${dx} ${dy}`;
-        }
+        const tipY = Math.min(dragCurrent.y, y);
+        return preview(
+          handArcPath(sourcePos.x, y, dragCurrent.x, tipY),
+          GREY,
+          downArrow(dragCurrent.x, tipY + 2),
+        );
       }
 
-      return (
-        <path
-          d={pathData}
-          className={dragEnhanced ? 'tree-drag-arc tree-drag-arc--enhanced' : 'tree-drag-arc'}
-        />
+      // Over a word. The level comes from the real stacking: every arc that
+      // will still be there, plus this one.
+      const columnOf = (spanId) =>
+        adjustedTokenPositions.find((p) => positionMatchesSpanId(p, spanId))?.index;
+      const spansOf = (rels) =>
+        rels
+          .filter((rel) => rel.source !== rel.target)
+          .map((rel) => [columnOf(rel.source), columnOf(rel.target)])
+          .filter(([a, b]) => a !== undefined && b !== undefined)
+          .map(([a, b], i) => ({ id: i, left: Math.min(a, b), right: Math.max(a, b) }));
+      const left = Math.min(sourcePos.index, target.index);
+      const right = Math.max(sourcePos.index, target.index);
+      const deprel = incomingDeprel(target);
+      const offset = target.x > sourcePos.x ? 5 : -5;
+
+      if (below) {
+        const base = baseUnder(target);
+        const height = arcHeight(levelAmong(spansOf(extras), left, right));
+        return preview(
+          arcPath(sourcePos.x + offset, target.x, base, -height),
+          colorOf(deprel),
+          upArrow(target.x, base - 5),
+          { x: (sourcePos.x + target.x) / 2, y: base + height + 11, text: deprel },
+        );
+      }
+
+      // A re-pointed head replaces the word's present one, which is not among
+      // the arcs this one will share the tree with.
+      const staying = relations.filter((rel) => !positionMatchesSpanId(target, rel.target));
+      const height = arcHeight(levelAmong(spansOf(staying), left, right));
+      return preview(
+        arcPath(sourcePos.x + offset, target.x, y, height),
+        colorOf(deprel),
+        downArrow(target.x, y + 2),
+        { x: (sourcePos.x + target.x) / 2, y: y - height - 5, text: deprel },
       );
     };
 
@@ -906,8 +1035,6 @@ export const DependencyTree = forwardRef(
           height={TREE_HEIGHT}
           className="tree-svg"
           style={{ minWidth: `${minSvgWidth}px` }}
-          onMouseMove={handleSvgMouseMove}
-          onMouseUp={handleSvgMouseUp}
         >
           {/* ROOT bar - positioned above the arcs */}
           <rect
@@ -917,7 +1044,7 @@ export const DependencyTree = forwardRef(
             height="20"
             fill={hoveredToken?.lemmaSpanId === 'ROOT' ? '#e5e7eb' : '#fafafa'}
             className={selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}
-            onClick={(e) => handleRootClick(e)}
+            onClick={() => handleRootClick()}
             onMouseDown={handleRootMouseDown}
             onMouseUp={handleRootMouseUp}
             onMouseEnter={() => setHoveredToken({ lemmaSpanId: 'ROOT' })}

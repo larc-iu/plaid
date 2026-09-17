@@ -198,8 +198,8 @@ Every sentence has an enhanced dependency graph beside its tree.
 The enhanced graph starts out equal to the tree, and you record only where it differs.
 A project that never does so exports a DEPS column that restates the tree.
 
-* **Add a relation**: hold **Ctrl** or **Cmd** while you draw an arc. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The tree is drawn above the words and these relations below them. A label there is edited and deleted like any other.
-* **Give a relation a different label in the enhanced graph**: hold **Ctrl** or **Cmd** and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded.
+* **Add a relation**: hold **Ctrl** or **Cmd** as you start to draw an arc. It is drawn under the words as you go, and you can let go of it on a word or anywhere beneath one. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The tree is drawn above the words and these relations below them. A label there is edited and deleted like any other.
+* **Give a relation a different label in the enhanced graph**: start with **Ctrl** or **Cmd** held and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded.
 * **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
 A change to the tree carries over to the enhanced graph by itself, because only the differences are stored.

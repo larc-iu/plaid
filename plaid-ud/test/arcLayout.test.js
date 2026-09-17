@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {
   computeArcLayout,
   computeLowerBand,
+  handArcPath,
+  levelAmong,
   buildIndexById,
   assignLevels,
   arcHeight,
@@ -266,4 +268,38 @@ test('an enhanced root is a stub one level deep and takes no level of its own', 
   const oneArc = computeLowerBand(arcs([[0, 1]]), indexById);
   assert.equal(rootOnly.levels.size, 0);
   assert.equal(rootOnly.bandHeight, oneArc.bandHeight);
+});
+
+// The arc in the hand, which is drawn as the arc it is about to become.
+test('an arc in the hand rises like a landed one and ends at the pointer', () => {
+  // Pointer below the innermost level: the full rise, a flat run, a fall to it.
+  const low = handArcPath(100, 200, 300, 190);
+  assert.ok(
+    low.startsWith(`M 100 200 Q 100 ${200 - ARC_BASE} ${100 + ARC_CORNER} ${200 - ARC_BASE}`),
+  );
+  assert.ok(low.endsWith(`Q 300 ${200 - ARC_BASE} 300 190`));
+  // Pointer above it: the arc climbs to the pointer, and leftward mirrors.
+  const high = handArcPath(300, 200, 100, 120);
+  assert.ok(high.startsWith(`M 300 200 Q 300 120 ${300 - ARC_CORNER} 120`));
+  assert.ok(high.endsWith('Q 100 120 100 120'));
+});
+
+test('the preview of an arc sits at the level the stacking will give it', () => {
+  const spans = [
+    { id: 'a', left: 1, right: 2 },
+    { id: 'b', left: 0, right: 3 },
+  ];
+  assert.equal(levelAmong([], 0, 4), 1);
+  assert.equal(levelAmong(spans, 3, 4), 1); // beside both
+  assert.equal(levelAmong(spans, 0, 2), 2); // over a, under b
+  assert.equal(levelAmong(spans, 0, 4), 3); // over both
+});
+
+test('under the words an arc in the hand drops where one above would rise', () => {
+  const d = handArcPath(100, 200, 300, 260, { down: true });
+  assert.ok(d.startsWith(`M 100 200 Q 100 260 ${100 + ARC_CORNER} 260`));
+  // A pointer still near the words: out to the innermost level and back to it.
+  const near = handArcPath(100, 200, 300, 205, { down: true });
+  assert.ok(near.includes(`L ${300 - ARC_CORNER} ${200 + ARC_BASE}`));
+  assert.ok(near.endsWith(`Q 300 ${200 + ARC_BASE} 300 205`));
 });

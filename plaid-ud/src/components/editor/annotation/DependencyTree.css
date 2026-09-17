@@ -20,6 +20,8 @@
   border: none; /* Remove border for overlay */
   border-radius: 4px;
   pointer-events: auto; /* Re-enable pointer events for SVG interactions */
+  /* The preview of an enhanced edge is drawn under the words, below this box. */
+  overflow: visible;
 }
 
 .tree-root-rect {
@@ -161,19 +163,36 @@
   opacity: 0.45;
 }
 
+/* The arc in the hand: a real arc's line, arrowhead and label, a little
+   heavier and not quite opaque so it reads as not yet there. `color` is set
+   inline (the label's colour over a word, grey between words) and everything
+   inside takes it. Never in the way of the pointer it follows. */
 .tree-drag-arc {
-  fill: none;
-  stroke: #000;
-  stroke-width: 2;
   pointer-events: none;
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
-/* Ctrl/Cmd is down: the arc in the hand will land in the enhanced graph, under
-   the words, and is drawn wide and faint to say it is not the tree's. */
+.tree-drag-arc path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.tree-drag-arc polygon {
+  fill: currentColor;
+}
+
+.tree-drag-label {
+  font-size: 11px;
+  font-family: sans-serif;
+  text-anchor: middle;
+  fill: currentColor;
+}
+
+/* An arc for the enhanced graph, drawn under the words from the start of the
+   drag to its end. It looks as a plain one does: where it is says what it is. */
 .tree-drag-arc--enhanced {
-  stroke-width: 4;
-  opacity: 0.35;
+  opacity: 0.75;
 }
 
 .tree-temp-arc {
