@@ -76,6 +76,11 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
     straight through.
   - `vocabTsv.mjs` — a vocabulary TSV bulk-added back into an empty vocabulary
     that declares the same fields.
+  - `flexAccount.mjs` — the FLEx import, which cannot be round-tripped because
+    Plaid writes no .fwbackup, counted instead: every unit the parser found in
+    the file, the plan the importer made of it, and what the server holds
+    afterwards, side by side (`flexImport.mjs` drives the import for this and
+    for `realFiles.mjs`).
 
   The per-format loss lists and the guards that keep the catalog in step with
   core are in `src/test/fidelity/` and run with `npm test`.
