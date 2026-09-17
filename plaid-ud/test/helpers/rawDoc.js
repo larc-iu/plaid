@@ -15,7 +15,13 @@ export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } 
   const parsed = parseCoNLLU(conlluText);
   const hierarchy = buildConlluHierarchy(parsed);
   const enhancedPlans = parsed.sentences.map((s) =>
-    s.tokens.map((t) => planEnhancedRow(t, t.deps)),
+    s.tokens.map((t) =>
+      planEnhancedRow(
+        t,
+        t.deps,
+        s.tokens.some((x) => x.deps),
+      ),
+    ),
   );
 
   // Rows a relation touches need a Lemma span to hang off even where LEMMA is

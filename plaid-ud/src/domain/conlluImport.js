@@ -103,9 +103,12 @@ export async function importConlluDocument(
 
     // What each row's DEPS adds to the enhanced layer: nothing at all for the
     // usual file, whose DEPS is `_` or restates the tree.
-    const enhancedPlans = parsedData.sentences.map((s) =>
-      s.tokens.map((t) => planEnhancedRow(t, t.deps)),
-    );
+    const enhancedPlans = parsedData.sentences.map((s) => {
+      // Whether this sentence is annotated for the enhanced graph at all,
+      // which is what a bare `_` on one of its words means (enhancedGraph.js).
+      const hasDeps = s.tokens.some((t) => t.deps);
+      return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps));
+    });
     if (!enhancedRelationLayer) {
       const lost = enhancedPlans
         .flat()

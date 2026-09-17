@@ -115,6 +115,7 @@ If you need those preserved, Plaid UD is not the right tool for that file.
 The DEPS column is read into the enhanced dependency graph (see <<_enhanced_dependencies>>).
 An enhanced dependency whose head is an empty node is dropped along with the node.
 A word whose only enhanced heads were empty nodes keeps the relation its tree gives it, which for a gapped clause is `orphan`.
+A word whose DEPS is empty, in a sentence where other words have one, has no head in the enhanced graph: its tree relation is one the graph leaves out. In a sentence with no DEPS at all, the file simply says nothing about the enhanced graph and every word follows its tree.
 
 = Tokenizing Text (Text Editor)
 

@@ -306,11 +306,13 @@ export function diffGraphs(before, after, layerInfo) {
     });
   }
 
-  // --- what Grew allows and UD does not: heads among words, as the editor counts ---
+  // --- what Grew allows and UD does not: one head a word, as the editor has it ---
+  // Being the root counts. A word the rule leaves rooted AND headed carries two
+  // relations into a HEAD column that holds one, and the export drops whichever
+  // it reads second, so it is worth saying before the rule is applied.
   const heads = new Map();
   for (const e of after.edges.values())
-    if (e.src !== ANCHOR && !isEnhancedLabel(e.label))
-      heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
+    if (!isEnhancedLabel(e.label)) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
   for (const [id, n] of heads) if (n > 1) warnings.push(`${formOf(after, id)} has ${n} heads.`);
 
   return { changes, writes, warnings };

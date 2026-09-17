@@ -236,16 +236,20 @@ test('an enhanced graph comes back out of DEPS as it went in', () => {
   assert.ok(out.includes('\t0\troot\t0:root\t'), out);
   // The relabel: the tree keeps `conj`, the graph has `conj:and` alone.
   assert.ok(out.includes('\t2\tconj\t2:conj:and\t'), out);
-  // A row that said nothing about the graph follows its tree.
-  assert.ok(out.includes('\t4\tobj\t4:obj\t'), out);
+  // A row with no DEPS, in a sentence that has them, says this word has no
+  // enhanced head: its tree relation is one the graph leaves out, and the
+  // column says so again on the way out. Reading it as "follows the tree"
+  // wrote `4:obj` into a file that never said it.
+  assert.ok(out.includes('\t4\tobj\t_\t'), out);
 });
 
 test('a project with no enhanced relation layer yet says what it dropped', async () => {
   const info = getUdLayerInfo(rawDocFromConllu(ENHANCED, 'm'));
   const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', ENHANCED, info);
-  // One extra head, and a relabel that is a suppressor and an extra.
+  // One extra head, a relabel that is a suppressor and an extra, and one row
+  // whose `_` leaves its tree relation out.
   assert.deepEqual(out.importWarnings, [
-    '3 enhanced dependencies dropped: this project has no enhanced dependency layer yet. ' +
+    '4 enhanced dependencies dropped: this project has no enhanced dependency layer yet. ' +
       'One is added the first time a maintainer opens a document in it.',
   ]);
 });

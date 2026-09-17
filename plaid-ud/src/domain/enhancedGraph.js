@@ -92,7 +92,18 @@ export const enhancedEdges = (basic, rows) => {
       origin: 'enhanced',
     });
   }
-  return edges;
+  // One edge, once. The same edge can be held twice, as a basic relation
+  // nothing suppresses AND as a row of the enhanced layer saying the same
+  // thing: drawing the arc the tree already has leaves that, and so does a
+  // rule that re-points a basic edge onto a pair an extra already covers. The
+  // basic one is kept, being the one the tree names.
+  const seen = new Set();
+  return edges.filter((e) => {
+    const key = `${e.source}\u0000${e.target}\u0000${e.value}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 /** The extra edges alone, which is what the tree draws over the basic arcs. */
@@ -168,8 +179,16 @@ export const parseDeps = (column) => {
  * So does a row whose every enhanced head was an empty node: with the empty
  * node gone, the basic `orphan` analysis is the one that still stands.
  */
-export const planEnhancedRow = ({ head, deprel }, deps) => {
-  if (!deps || deps.edges.length === 0) return { extras: [], suppress: false };
+export const planEnhancedRow = ({ head, deprel }, deps, sentenceHasDeps = false) => {
+  // `_` in a sentence that carries enhanced annotation says this word has no
+  // enhanced head, so a basic one is a relation the graph leaves out. In a
+  // sentence with no DEPS at all it says only that the file is not annotated
+  // for the enhanced graph, and the row follows its tree. Without the
+  // distinction a suppression could not survive its own export.
+  if (!deps) return { extras: [], suppress: sentenceHasDeps && deprel != null };
+  // Every head was an empty node: with the node gone the basic analysis is
+  // the one that still stands.
+  if (deps.edges.length === 0) return { extras: [], suppress: false };
   const isBasic = (e) => deprel != null && e.head === head && e.deprel === deprel;
   return {
     extras: deps.edges.filter((e) => !isBasic(e)),
