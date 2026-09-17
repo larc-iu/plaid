@@ -117,6 +117,7 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
       deleteConfig: async (...a) => record('vocabLayers.deleteConfig', a),
     },
     spanLayers: {
+      create: async (...a) => record('spanLayers.create', a, { id: fresh('sl') }),
       setConfig: async (...a) => record('spanLayers.setConfig', a),
     },
     guidelines: {
@@ -557,7 +558,7 @@ describe('runNativeImport (full archive)', () => {
     expect(allSpans.filter((s) => ['The dogs run.', 'dup'].includes(s.value))).toHaveLength(2);
   });
 
-  it('skips extra spans whose layer the target project lacks, with a warning', async () => {
+  it('makes an unscoped span layer the project lacks, where its annotations point', async () => {
     const archive = buildArchive();
     const client = stubClient();
     const project = targetProject();
@@ -565,9 +566,13 @@ describe('runNativeImport (full archive)', () => {
     wordLayer.spanLayers = wordLayer.spanLayers.filter((sl) => sl.name !== 'Mystery');
     client.projects.get = async () => project;
     const result = await runNativeImport({ client, projectId: 'newp', archive });
-    expect(result.warnings.filter((w) => /Mystery/.test(w))).toHaveLength(1);
+    expect(result.warnings.filter((w) => /Mystery/.test(w))).toEqual([]);
+    // Made once, on the word layer, since that is where its tokens are.
+    expect(callsOf(client, 'spanLayers.create').map((c) => [c[1], c[2]])).toEqual([
+      [wordLayer.id, 'Mystery'],
+    ]);
     const allSpans = callsOf(client, 'spans.bulkCreate').flatMap((c) => c[1]);
-    expect(allSpans).toHaveLength(5);
+    expect(allSpans).toHaveLength(6);
   });
 
   it('recreates vocab links (inline + extras) with mapped item and token ids', async () => {

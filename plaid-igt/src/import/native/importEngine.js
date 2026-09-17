@@ -126,6 +126,8 @@ export function resolveNativeTargets(project, manifest) {
     morphemeLayerId: morphemeLayer.id,
     alignmentLayerId: alignmentLayer?.id ?? null,
     spanLayerByScopeName,
+    // Span layers with no scope, made as the documents that need them arrive.
+    unscopedSpanLayers: new Map(),
   };
 }
 
@@ -377,6 +379,7 @@ async function importNativeDocument({
   const tokenIdMap = new Map(); // archive token id → new token id
   if (docMaps && docData.id != null) docMaps.set(docData.id, { docId, tokenIdMap });
   const spanIdMap = new Map(); // archive span id → new span id
+  const tokenLayerOf = new Map(); // new token id → the token layer it is in
   let baselineTextId = null; // for comments anchored to the text itself
 
   if (body.length > 0) {
@@ -395,6 +398,11 @@ async function importNativeDocument({
       const { ids } = await client.tokens.bulkCreate(specs);
       oldIds.forEach((oldId, i) => {
         if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
+      });
+      // Which layer each new token is in, so a span layer the archive names
+      // but setup did not make can be created where its tokens are.
+      specs.forEach((spec, i) => {
+        if (ids[i]) tokenLayerOf.set(ids[i], spec.tokenLayerId);
       });
     };
 
@@ -498,6 +506,8 @@ async function importNativeDocument({
       if (!agg) {
         agg = {
           id: entry.id ?? null,
+          scope,
+          fieldName,
           layerKey: `${scope}:${fieldName}`,
           tokens: [],
           value: entry.value ?? null,
@@ -523,9 +533,27 @@ async function importNativeDocument({
     // a span can be reattached after the bulk create returns its new ids. It is
     // null for a tree entry that had no id of its own.
     const spanSpecs = [];
-    const resolveSpan = (layerKey, tokens, value, metadata, label, archiveId = null) => {
-      const spanLayerId = targets.spanLayerByScopeName.get(layerKey);
+    // A span layer with no IGT scope: another app's, or one a service put on
+    // the segments. Setup never makes one, since it builds fields from the
+    // archive's scoped field schema, so it is made here on the token layer its
+    // annotations point into, under the name it had. Kept across documents, so
+    // a corpus does not end up with one layer of that name per document.
+    const ensureSpanLayer = async (scope, name, tokenIds) => {
+      const known = targets.spanLayerByScopeName.get(`${scope}:${name}`);
+      if (known) return known;
+      const tokenLayerId = tokenLayerOf.get(tokenIds[0]);
+      if (scope || !name || !tokenLayerId) return null;
+      const cacheKey = `${tokenLayerId}:${name}`;
+      if (!targets.unscopedSpanLayers.has(cacheKey)) {
+        const made = await client.spanLayers.create(tokenLayerId, name);
+        targets.unscopedSpanLayers.set(cacheKey, made.id ?? made);
+      }
+      return targets.unscopedSpanLayers.get(cacheKey);
+    };
+    const resolveSpan = async (scope, name, tokens, value, metadata, label, archiveId = null) => {
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
+      const spanLayerId =
+        tokenIds.length === tokens.length ? await ensureSpanLayer(scope, name, tokenIds) : null;
       if (!spanLayerId || tokenIds.length !== tokens.length) {
         warnings.push(
           `"${docData.name}": annotation ${label} skipped (unresolvable ${!spanLayerId ? 'layer' : 'tokens'})`,
@@ -543,11 +571,13 @@ async function importNativeDocument({
     for (const agg of spansById.values()) {
       // A tree entry that carried its own span id correlates back; one keyed
       // by scope:field:token was synthesized here and has no archive id.
-      resolveSpan(agg.layerKey, agg.tokens, agg.value, agg.metadata, agg.layerKey, agg.id);
+      const [scope, name] = [agg.scope, agg.fieldName];
+      await resolveSpan(scope, name, agg.tokens, agg.value, agg.metadata, agg.layerKey, agg.id);
     }
     for (const extra of docData.extraSpans || []) {
-      resolveSpan(
-        `${extra.layer?.scope}:${extra.layer?.name}`,
+      await resolveSpan(
+        extra.layer?.scope ?? null,
+        extra.layer?.name,
         extra.tokens || [],
         extra.value ?? null,
         extra.metadata,
