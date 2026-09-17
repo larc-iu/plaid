@@ -420,6 +420,7 @@ A relation of the tree that the enhanced graph leaves out or relabels is still a
 `is_tree`, `is_projective` and an unlabelled `X ->> Y` are about the tree and ignore the added relations.
 
 A rewriting rule writes with the same labels: `add_edge V2 -[E:nsubj]-> S` adds a relation to the enhanced graph, and `e.enhanced = yes` on a named edge moves it there.
+Added between two words the tree already joins, it replaces the tree's relation in the enhanced graph, exactly as drawing it in the editor does, and the preview says which relation is left out.
 
 === Looking for a word
 

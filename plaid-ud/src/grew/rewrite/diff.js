@@ -21,6 +21,7 @@
 import { liveNodes, ANCHOR } from './graph.js';
 import { GrewRuntimeError } from '../errors.js';
 import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
+import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -107,6 +108,7 @@ export function diffGraphs(before, after, layerInfo) {
         'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
       );
     }
+    if (enhanced) suppressUnder(a, layerId);
     writes.main.push({
       op: 'createRelation',
       layer: layerId,
@@ -116,6 +118,39 @@ export function diffGraphs(before, after, layerInfo) {
     });
     needsLemma.add(serverSrc(a));
     needsLemma.add(a.tgt);
+  };
+
+  // An extra edge over a pair the tree already joins is a RELABEL, as it is
+  // when drawn in the editor (ConlluDocument.createEnhancedRelation): the
+  // enhanced graph gets the new edge in place of the tree's, so a suppressor
+  // goes in with it. Only where the enhanced layer had nothing over the pair,
+  // which is the editor's condition too. Grew would keep both edges, and an
+  // annotator who wants both can put the tree's back with Ctrl/Cmd+click.
+  const pairOf = (e) => `${e.src}>${e.tgt}`;
+  const enhancedPairsBefore = new Set((before.suppressors || []).map(pairOf));
+  for (const e of before.edges.values())
+    if (isEnhancedLabel(e.label)) enhancedPairsBefore.add(pairOf(e));
+  const suppressed = new Set();
+  const suppressUnder = (a, layerId) => {
+    const pair = pairOf(a);
+    if (enhancedPairsBefore.has(pair) || suppressed.has(pair)) return;
+    const basic = [...after.edges.values()].find(
+      (e) => !isEnhancedLabel(e.label) && pairOf(e) === pair,
+    );
+    if (!basic) return;
+    suppressed.add(pair);
+    changes.push({
+      kind: 'edge',
+      text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${basic.label} left out of the enhanced graph`,
+    });
+    writes.main.push({
+      op: 'createRelation',
+      layer: layerId,
+      src: serverSrc(a),
+      tgt: a.tgt,
+      value: null,
+      metadata: { [SUPPRESS_KEY]: true },
+    });
   };
   for (const [id, b] of before.edges) {
     const a = after.edges.get(id);

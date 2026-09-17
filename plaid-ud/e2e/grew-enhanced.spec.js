@@ -152,11 +152,37 @@ test('a rule shares the subject, in the enhanced layer', async ({ page }) => {
   expect(basic.map((r) => r.value)).toEqual(['nsubj']);
 });
 
+test('a rule that relabels in the enhanced graph suppresses the tree edge, and DEPS says so', async ({
+  page,
+}) => {
+  const box = await openSearch(page);
+  await box.fill(
+    'pattern { V [lemma="fall"]; V -[cc]-> C } without { V -[E:cc:and]-> C } commands { add_edge V -[E:cc:and]-> C }',
+  );
+  await page.getByRole('button', { name: 'Preview changes' }).click();
+  await expect(page.getByText('fell → and: cc left out of the enhanced graph')).toBeVisible();
+  await page.getByRole('button', { name: 'Apply 1 change' }).click();
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
+
+  const doc = await ConlluDocument.load(S.client, S.projectId, S.docId);
+  // Both sentences have an "and" row. The rule named the second one's verb.
+  const row = doc
+    .toConllu()
+    .split('\n')
+    .filter((l) => l.startsWith('3\tand\t'))
+    .at(-1);
+  expect(row.split('\t').slice(6, 8)).toEqual(['4', 'cc']);
+  // The tree keeps cc, and the enhanced graph has cc:and in its place.
+  expect(row.split('\t')[8]).toBe('4:cc:and');
+});
+
 test('a rule that removes a suppressed basic edge takes the suppressor with it', async ({
   page,
 }) => {
   const before = await fetchLayers();
-  expect(before.enhancedRelationLayer.relations.filter(isSuppressor)).toHaveLength(1);
+  // One from the import (conj relabelled conj:and) and one from the rule above.
+  expect(before.enhancedRelationLayer.relations.filter(isSuppressor)).toHaveLength(2);
 
   const box = await openSearch(page);
   await box.fill('pattern { V [lemma="sing"]; e: V -[conj]-> W } commands { del_edge e }');
@@ -167,11 +193,8 @@ test('a rule that removes a suppressed basic edge takes the suppressor with it',
   await expect(page.getByText('Changed 1 sentence in 1 document.')).toBeVisible();
 
   const li = await fetchLayers();
-  expect(li.enhancedRelationLayer.relations.filter(isSuppressor)).toHaveLength(0);
+  expect(li.enhancedRelationLayer.relations.filter(isSuppressor)).toHaveLength(1);
   // The extra conj:and is the graph's own edge and stays.
-  expect(li.enhancedRelationLayer.relations.map((r) => r.value).sort()).toEqual([
-    'conj:and',
-    'nsubj',
-    'nsubj',
-  ]);
+  const extras = li.enhancedRelationLayer.relations.filter((r) => !isSuppressor(r));
+  expect(extras.map((r) => r.value).sort()).toEqual(['cc:and', 'conj:and', 'nsubj', 'nsubj']);
 });

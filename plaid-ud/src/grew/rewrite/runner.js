@@ -312,7 +312,9 @@ async function applyToDocument(client, doc, rows) {
               lemmaOf.get(w.src),
               lemmaOf.get(w.tgt),
               w.value,
-              createStamp,
+              // A suppressor is a statement about the graph and carries its
+              // own metadata, never a provenance stamp.
+              'metadata' in w ? w.metadata : createStamp,
             );
             break;
           default:

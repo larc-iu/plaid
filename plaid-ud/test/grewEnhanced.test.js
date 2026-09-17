@@ -350,6 +350,48 @@ test('a suppressor goes with the basic edge a rule removes or moves', () => {
   assert.ok(!kept.writes.main.some((w) => w.id === suppressor.id));
 });
 
+test('an extra edge over a pair the tree joins is a relabel, as in the editor', () => {
+  const r = run(
+    CONLLU,
+    'pattern { X -[cc]-> Y } without { X -[E:cc:and]-> Y } commands { add_edge X -[E:cc:and]-> Y }',
+  );
+  assert.deepEqual(
+    r.changes.map((c) => c.text),
+    ['danced → and: E:cc:and added', 'danced → and: cc left out of the enhanced graph'],
+  );
+  const eid = r.li.enhancedRelationLayer.id;
+  assert.deepEqual(
+    r.writes.main.map((w) => [w.op, w.layer, w.value, w.metadata]),
+    [
+      ['createRelation', eid, null, { suppress: true }],
+      ['createRelation', eid, 'cc:and', undefined],
+    ],
+  );
+
+  // Where the enhanced layer already says something over the pair, nothing
+  // more is suppressed: ENHANCED has conj relabelled conj:and already.
+  const second = run(
+    ENHANCED,
+    'pattern { X -[conj]-> Y } without { X -[E:conj:x]-> Y } commands { add_edge X -[E:conj:x]-> Y }',
+  );
+  assert.deepEqual(
+    second.writes.main.map((w) => w.value),
+    ['conj:x'],
+  );
+});
+
+test('an E: edge the tree already gives the enhanced graph is ineffective', () => {
+  const { before } = setup(CONLLU);
+  assert.throws(
+    () =>
+      rewriteSentence(
+        parseGrs('pattern { X -[cc]-> Y } commands { add_edge X -[E:cc]-> Y }'),
+        before,
+      ),
+    GrewRuntimeError,
+  );
+});
+
 test('an E: edge in a project with no enhanced layer refuses the row', () => {
   const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU) });
   const before = graphFromSentence(doc.sentences[0]);
