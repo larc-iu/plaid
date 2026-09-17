@@ -21,6 +21,11 @@
 //   span      `span:word/Gloss|word:0-5,word:6-9`, plus `#2` for a second span
 //             in the same field on the same tokens
 //
+// A span also carries `order`, its place in its layer as the server lists
+// spans. It is not an identity and no comparison reads it: it is what "the
+// first annotation on a token" means to the editor and every exporter, which an
+// expectation needs to say what comes back where a format keeps only one.
+//
 // Ids INSIDE metadata are rewritten too, where the app defines them: an
 // entry's `parent`, every `type: "item"` field, and each `{document, token}`
 // example. Any other id-shaped value is left alone and will differ after an
@@ -190,15 +195,16 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
       for (const tkl of tl.tokenLayers || []) {
         for (const sl of tkl.spanLayers || []) {
           const layerKey = layerKeyById.get(sl.id) ?? `span:${layerLabel(tkl)}/${sl.name}`;
-          for (const s of sl.spans || []) {
+          (sl.spans || []).forEach((s, order) => {
             spans.push({
               id: s.id,
+              order,
               layer: layerKey,
               tokens: (s.tokens || []).map(tokenRef).sort(byString),
               value: s.value ?? null,
               metadata: s.metadata || {},
             });
-          }
+          });
           for (const rl of sl.relationLayers || []) {
             for (const r of rl.relations || []) {
               relations.push({ layer: layerKeyById.get(rl.id), raw: r });
@@ -236,6 +242,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
         spanRefById.set(sp.id, key);
         snapSpans.push({
           key,
+          order: sp.order,
           layer: sp.layer,
           tokens: sp.tokens,
           value: sp.value,

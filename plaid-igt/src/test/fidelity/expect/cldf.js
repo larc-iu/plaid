@@ -14,15 +14,13 @@
 // Export presets screen does. The preset is an input to the round trip, not
 // behavior under test, so `bindings` asks the preset code for it.
 //
-// A snapshot keeps no server order for annotations, and three entries of the
-// list turn on it (span.duplicate, span.overlapSameField and the annotation
-// span.reachesOrphanToken leaves behind): a cell holds the first annotation
-// on a token in the order the server lists them. This module takes the order
-// the snapshot numbers annotations on the same tokens in, by value and then
-// metadata, which is also what the shared span.duplicate strip keeps.
+// Three entries of the list turn on server order (span.duplicate,
+// span.overlapSameField and the annotation span.reachesOrphanToken leaves
+// behind): a cell holds the first annotation on a token in the order the server
+// lists them. The snapshot records that order on each span (`order`), and so
+// does every row split off one here.
 
 import { defaultCldfOptions } from '../../../export/cldf.js';
-import { stableStringify } from '../stable.js';
 import {
   baselineOf,
   byBegin,
@@ -42,11 +40,10 @@ import {
   tokensIn,
   wordsWithMorphemes,
 } from './snap.js';
-import { coveredBy, isIgnored } from './strips.js';
+import { byOrder, coveredBy, isIgnored } from './strips.js';
 
 // ---- reading ---------------------------------------------------------------------
 
-const byString = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const WHITESPACE = /\s/u;
 // What a whitespace run's edges are trimmed of. The catalog's word-edge
 // punctuation (token.wordEdgePunctuation) counts symbols as punctuation too.
@@ -178,6 +175,7 @@ function splitAnnotations(s, d, pred) {
     for (const token of sp.tokens) {
       d.spans.push({
         key: newKey('span'),
+        order: sp.order,
         layer: sp.layer,
         tokens: [token],
         value: sp.value,
@@ -188,8 +186,8 @@ function splitAnnotations(s, d, pred) {
 }
 
 /**
- * Keep one single-token annotation per field on each of `tokens`, the one the
- * snapshot numbers first (see the header).
+ * Keep one single-token annotation per field on each of `tokens`, the first in
+ * server order (see the header).
  */
 function oneValuePerToken(s, d, tokens) {
   const groups = new Map();
@@ -200,10 +198,7 @@ function oneValuePerToken(s, d, tokens) {
   }
   const drop = new Set();
   for (const group of groups.values()) {
-    const ordered = group
-      .map((sp) => [stableStringify([sp.value, sp.metadata]), sp])
-      .sort((a, b) => byString(a[0], b[0]));
-    for (const [, sp] of ordered.slice(1)) drop.add(sp);
+    for (const sp of [...group].sort(byOrder).slice(1)) drop.add(sp);
   }
   removeSpans(s, d, (sp) => drop.has(sp));
 }

@@ -63,6 +63,12 @@ export function expectRoundTrip({ list, source, actual, bare = null }) {
     if (entry.kind === 'undecided') strip(got, ctx);
   }
   for (const step of module.steps || []) step.apply(expected, got, ctx);
+  // A span's `order` is what steps read to find the first annotation on a
+  // token. It is not compared: an import's own order is checked by the second
+  // export, where it shows.
+  for (const d of [...(expected.documents || []), ...(got.documents || [])]) {
+    for (const sp of d.spans) delete sp.order;
+  }
   return { expected: finalize(expected), actual: finalize(got) };
 }
 

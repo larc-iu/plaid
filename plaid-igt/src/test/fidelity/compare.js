@@ -90,7 +90,11 @@ export function diffSnapshots(expected, actual, { limit = 500 } = {}) {
       if (stableStringify(a) !== stableStringify(b)) push(path, a, b);
       return;
     }
-    // Unkeyed rows: a multiset. What is on one side only is the difference.
+    // Unkeyed rows: what is on one side only is the difference, and when both
+    // hold the same rows, their order is. Order is data in these lists (the
+    // document metadata fields, the orthographies, a tagset's values), and the
+    // snapshot already puts the ones whose order is not (links, comments) in a
+    // canonical one.
     const count = new Map();
     for (const r of b) {
       const s = stableStringify(r);
@@ -110,6 +114,9 @@ export function diffSnapshots(expected, actual, { limit = 500 } = {}) {
         push(`${path}[+]`, undefined, r);
         extraStrings.delete(s);
       }
+    }
+    if (!missing.length && stableStringify(a) !== stableStringify(b)) {
+      push(`${path} (order)`, a.map(stableStringify), b.map(stableStringify));
     }
   };
 
