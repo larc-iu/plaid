@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 // Compare two measured-position arrays for arc-geometry equivalence. Token
 // objects get fresh identities on every doc rebuild, so compare the fields that
-// actually drive arc rendering (token id + x/y/width/index/lemmaSpanId).
+// actually drive arc rendering (token id + x/y/width/height/index/lemmaSpanId).
 const samePositions = (a, b) => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -12,6 +12,7 @@ const samePositions = (a, b) => {
       p.x !== q.x ||
       p.y !== q.y ||
       p.width !== q.width ||
+      p.height !== q.height ||
       p.index !== q.index ||
       p.lemmaSpanId !== q.lemmaSpanId ||
       p.token?.id !== q.token?.id
@@ -54,6 +55,8 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
           x: centerX,
           y: centerY,
           width: tokenRect.width,
+          // What the band under the words hangs from: see SentenceRow.
+          height: tokenRect.height,
           form: data.tokenForm,
           lemmaSpanId: matchingLemmaSpan?.id,
           index: index,

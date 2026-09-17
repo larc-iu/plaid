@@ -99,19 +99,23 @@
   cursor: pointer;
 }
 
-/* An edge the enhanced graph has and the tree lacks: a double line and an open
-   arrowhead. The core is the page's own colour laid along the middle of a wide
-   stroke, so the mark survives the dash an unreviewed relation also wears. */
-.tree-arc-core {
-  fill: none;
-  stroke: hsl(var(--background));
-  stroke-width: 1;
+/* The band of enhanced edges under the words (EnhancedArcs). Laid over the
+   spacer every token column reserves for it, and click-through but for its own
+   arcs and labels, so the row of words above it stays as easy to hit. */
+.enhanced-arcs {
+  position: absolute;
+  left: 0;
+  z-index: 10;
+  direction: ltr;
+  overflow: visible;
   pointer-events: none;
 }
 
-.tree-arc-arrow--enhanced {
-  fill: hsl(var(--background));
-  stroke-width: 1;
+.enhanced-arcs .tree-arc-path,
+.enhanced-arcs .tree-arc-arrow,
+.enhanced-arcs .tree-deprel-text,
+.enhanced-arcs foreignObject {
+  pointer-events: auto;
 }
 
 .tree-deprel-edit {
@@ -165,8 +169,8 @@
   opacity: 0.7;
 }
 
-/* Ctrl/Cmd is down: the arc in the hand will land in the enhanced graph. Wide
-   and hollow-looking, as the arc it becomes is. */
+/* Ctrl/Cmd is down: the arc in the hand will land in the enhanced graph, under
+   the words, and is drawn wide and faint to say it is not the tree's. */
 .tree-drag-arc--enhanced {
   stroke-width: 4;
   opacity: 0.35;

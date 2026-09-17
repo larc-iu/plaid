@@ -95,9 +95,16 @@ test('Ctrl+drag gives a word a second head without touching its tree', async ({ 
   await openGrid(page, 4);
   await enhancedDrag(page, 3, 0); // left -> she
 
-  // A fifth label, and the one double arc.
+  // A fifth label, and the one arc under the words.
   await expect(page.locator('.tree-deprel-text')).toHaveCount(5);
-  await expect(page.locator('.tree-arc-core')).toHaveCount(1);
+  await expect(page.locator('.enhanced-arc-path')).toHaveCount(1);
+  // It hangs under the words, in room the grid has made for it: below the word
+  // row, and above the LEMMA row.
+  const band = await page.locator('.enhanced-arcs').boundingBox();
+  const word = await page.locator('.token-form').first().boundingBox();
+  const lemma = await page.locator('.row-label', { hasText: 'LEMMA' }).first().boundingBox();
+  expect(band.y).toBeGreaterThanOrEqual(word.y + word.height - 1);
+  expect(band.y + band.height).toBeLessThanOrEqual(lemma.y + 1);
   // It took the label she already has as a dependent, which is what a shared
   // subject wants.
   await expect(label(page, 'nsubj')).toHaveCount(2);
@@ -122,7 +129,7 @@ test('Ctrl+drag over a relation of the tree relabels it in the graph', async ({ 
 
   await expect(label(page, 'conj:and')).toHaveCount(1);
   await expect(label(page, 'conj')).toHaveClass(/tree-deprel-text--suppressed/);
-  await expect(page.locator('.tree-arc-core')).toHaveCount(2);
+  await expect(page.locator('.enhanced-arc-path')).toHaveCount(2);
   await expect
     .poll(async () => (await enhancedRows()).map((r) => r.value ?? 'SUPPRESS').sort())
     .toEqual(['SUPPRESS', 'conj:and', 'nsubj']);
@@ -175,7 +182,7 @@ test('an abandoned relabel does not capture the next plain edit', async ({ page 
   // The tree took it. Nothing was added to the enhanced graph.
   await expect(label(page, 'cc:preconj')).toHaveCount(1);
   await expect(label(page, 'cc:preconj')).not.toHaveClass(/tree-deprel-text--suppressed/);
-  await expect(page.locator('.tree-arc-core')).toHaveCount(2);
+  await expect(page.locator('.enhanced-arc-path')).toHaveCount(2);
   const doc = await S.client.documents.get(S.documentId, true);
   const info = getUdLayerInfo(doc);
   expect(info.relationLayer.relations.map((r) => r.value)).toContain('cc:preconj');

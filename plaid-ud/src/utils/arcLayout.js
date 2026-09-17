@@ -132,3 +132,38 @@ export const computeArcLayout = (relations, indexById) => {
   const treeHeight = Math.max(MIN_TREE_HEIGHT, bandHeight + BAND_MARGIN);
   return { levels, maxLevel, treeHeight, gridPaddingTop: treeHeight - GRID_INSET };
 };
+
+// The band BELOW the words, where the enhanced graph's extra edges hang. The
+// same stacking as above, turned over: an arc drops out of its head, runs
+// flat, and comes back up into the word it points at, and its label sits under
+// its own run. `arcPath` draws it given a NEGATIVE height.
+//
+// A sentence with no extra edges has no band, so the words sit on their
+// annotation rows exactly as they do in a project that never draws one.
+export const LOWER_BAND_TOP = 6; // the arrowheads, between the word and its arcs
+const LOWER_LABEL = 14; // the deepest run's label, under it
+const LOWER_MARGIN = 6;
+
+export const computeLowerBand = (relations, indexById) => {
+  if (!relations || relations.length === 0) return { levels: new Map(), bandHeight: 0 };
+  const spans = [];
+  let hasRoot = false;
+  for (const relation of relations) {
+    // A root of the enhanced graph alone is a stub under its word, one level
+    // deep, and takes no room in the stack.
+    if (relation.source === relation.target) {
+      hasRoot = true;
+      continue;
+    }
+    const a = indexById.get(relation.source);
+    const b = indexById.get(relation.target);
+    if (a === undefined || b === undefined) continue;
+    spans.push({ id: relation.id, left: Math.min(a, b), right: Math.max(a, b) });
+  }
+  const { levels, maxLevel } = assignLevels(spans);
+  const deepest = Math.max(maxLevel > 0 ? arcHeight(maxLevel) : 0, hasRoot ? ARC_BASE : 0);
+  // Every relation here may be one whose words are not on screen yet (a
+  // rebuild in flight): the band still holds a level for it to be drawn at.
+  const depth = deepest || ARC_BASE;
+  return { levels, bandHeight: LOWER_BAND_TOP + depth + LOWER_LABEL + LOWER_MARGIN };
+};

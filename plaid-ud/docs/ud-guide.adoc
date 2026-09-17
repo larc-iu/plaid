@@ -197,7 +197,7 @@ Every sentence has an enhanced dependency graph beside its tree.
 The enhanced graph starts out equal to the tree, and you record only where it differs.
 A project that never does so exports a DEPS column that restates the tree.
 
-* **Add a relation**: hold **Ctrl** or **Cmd** while you draw an arc. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The arc is drawn as a double line with an open arrowhead, and its label is edited and deleted like any other.
+* **Add a relation**: hold **Ctrl** or **Cmd** while you draw an arc. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The tree is drawn above the words and these relations below them. A label there is edited and deleted like any other.
 * **Give a relation a different label in the enhanced graph**: hold **Ctrl** or **Cmd** and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded.
 * **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
@@ -596,7 +596,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **Ctrl/Cmd+drag** from one word to another | Add a relation to the enhanced graph. Over a relation of the tree, give it a different label there.
 | **Click** a label | Edit it.
 | **Ctrl/Cmd+click** a relation of the tree, or **Ctrl/Cmd+E** on its label | Leave it out of the enhanced graph, or put it back.
-| **Ctrl/Cmd+D** | Jump from the grid into the relation labels.
+| **Ctrl/Cmd+D** | Jump from the grid into the relation labels. From the tree's labels, move to the enhanced relations under the words, and from there back.
 | **←** / **→**, or **Tab** / **Shift+Tab** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
 | **Tab** / **Shift+Tab** in an open label | Commit it and open the next or previous label.
 | **Esc** | Leave the labels, or cancel an edit.

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import {
   computeArcLayout,
+  computeLowerBand,
   buildIndexById,
   assignLevels,
   arcHeight,
@@ -235,4 +236,34 @@ test('every arc turns through the same width, which is what stops them crossing'
 
 test('an arc narrower than two turns meets in the middle', () => {
   assert.equal(turnWidth(arcPath(0, 20, 100, 30), 0), 10);
+});
+
+// The band under the words, for the enhanced graph's extra edges.
+test('a sentence with no extra edge has no band under its words', () => {
+  const { indexById } = sentence(4);
+  assert.equal(computeLowerBand([], indexById).bandHeight, 0);
+  assert.equal(computeLowerBand(undefined, indexById).bandHeight, 0);
+});
+
+test('the band stacks as the tree does and grows with its deepest arc', () => {
+  const { indexById } = sentence(5);
+  const one = computeLowerBand(arcs([[0, 1]]), indexById);
+  const nested = computeLowerBand(
+    arcs([
+      [0, 3],
+      [1, 2],
+    ]),
+    indexById,
+  );
+  assert.equal(nested.levels.get('r1'), 1);
+  assert.equal(nested.levels.get('r0'), 2);
+  assert.equal(nested.bandHeight - one.bandHeight, ARC_STEP);
+});
+
+test('an enhanced root is a stub one level deep and takes no level of its own', () => {
+  const { indexById } = sentence(3);
+  const rootOnly = computeLowerBand([{ id: 'x', source: 's1', target: 's1' }], indexById);
+  const oneArc = computeLowerBand(arcs([[0, 1]]), indexById);
+  assert.equal(rootOnly.levels.size, 0);
+  assert.equal(rootOnly.bandHeight, oneArc.bandHeight);
 });

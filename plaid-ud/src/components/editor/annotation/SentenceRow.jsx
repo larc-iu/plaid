@@ -1,8 +1,9 @@
 import React, { useMemo, useCallback, useRef } from 'react';
 import { isMachine } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
-import { computeArcLayout, buildIndexById } from '../../../utils/arcLayout.js';
-import { sentenceArcs } from '../../../domain/enhancedGraph.js';
+import { EnhancedArcs } from './EnhancedArcs.jsx';
+import { computeArcLayout, computeLowerBand, buildIndexById } from '../../../utils/arcLayout.js';
+import { sentenceArcs, extraEdges } from '../../../domain/enhancedGraph.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';
@@ -72,10 +73,12 @@ export const SentenceRow = React.memo(
     // Relations are already pre-processed in sentenceData
     const relations = sentenceData.relations;
     // The enhanced layer's rows, and the ones among them that are arcs of their
-    // own. They stack with the tree's arcs and are reviewed with them, so both
-    // read `arcs`. `relations` stays the tree, for what asks about a word's one
-    // head.
+    // own (`extras`). Those hang in a band of their own UNDER the words, so the
+    // tree above stacks the tree alone. What is reviewed is every arc on screen,
+    // above or below, which is `arcs`. `relations` stays the tree, for what
+    // asks about a word's one head.
     const enhancedRelations = sentenceData.enhancedRelations;
+    const extras = useMemo(() => extraEdges(enhancedRelations), [enhancedRelations]);
     const arcs = useMemo(
       () => sentenceArcs({ relations, enhancedRelations }),
       [relations, enhancedRelations],
@@ -88,17 +91,20 @@ export const SentenceRow = React.memo(
     // the tree because the grid has to reserve exactly the height the tree
     // draws into, and it is computed from token order alone — no measurement —
     // so a sentence scrolling into view lays out at its final height at once.
-    const arcLayout = useMemo(
+    const indexById = useMemo(
       () =>
-        computeArcLayout(
-          arcs,
-          buildIndexById(
-            tokenData.map((d) => d.token),
-            lemmaSpans,
-          ),
+        buildIndexById(
+          tokenData.map((d) => d.token),
+          lemmaSpans,
         ),
-      [arcs, tokenData, lemmaSpans],
+      [tokenData, lemmaSpans],
     );
+    const arcLayout = useMemo(() => computeArcLayout(relations, indexById), [relations, indexById]);
+    // The band under the words. Its height is reserved by a spacer in every
+    // token column (and the labels column), between the word and its LEMMA, so
+    // like the tree's it is known from token order alone, before anything is
+    // measured. Zero, and no band, in a sentence with no extra edge.
+    const lowerBand = useMemo(() => computeLowerBand(extras, indexById), [extras, indexById]);
 
     // Create a text content object that can handle token extraction for DependencyTree
     const textContentProvider = {
@@ -115,6 +121,7 @@ export const SentenceRow = React.memo(
     // Imperative handle into this sentence's dependency tree, for the arrow
     // handoff between the grid and the deprel labels.
     const treeRef = useRef(null);
+    const lowerRef = useRef(null);
 
     // Calculate tab indices for row-wise navigation across all sentences
     const getTabIndex = useCallback(
@@ -264,7 +271,27 @@ export const SentenceRow = React.memo(
             onExitDown={focusGridCell}
             onEditText={handleEditText}
             arcLayout={arcLayout}
+            onEditExtra={(id) => lowerRef.current?.edit(id)}
+            onEnterLowerBand={() => lowerRef.current?.focusFirst() || false}
           />
+
+          {/* The enhanced graph's extra edges, under the words. Hung from the
+          measured bottom of the word row: `y` is a word's centre in the tree's
+          coordinates, which start 50px above this block. */}
+          {extras.length > 0 && tokenPositions.length > 0 && (
+            <EnhancedArcs
+              ref={lowerRef}
+              relations={extras}
+              tokenPositions={tokenPositions}
+              layout={lowerBand}
+              top={tokenPositions[0].y - 50 + (tokenPositions[0].height || 0) / 2}
+              minWidth={Math.max(...tokenPositions.map((p) => p.x)) + 50}
+              onExitDown={focusGridCell}
+              onExitUp={(tokenId) =>
+                treeRef.current?.focusRelationForToken(tokenId) || treeRef.current?.focusFirst()
+              }
+            />
+          )}
 
           {/* Main container with labels and columns */}
           <div
@@ -276,6 +303,9 @@ export const SentenceRow = React.memo(
             <div className="labels-column">
               {/* Empty space for token form row */}
               <div className="label-spacer"></div>
+              {lowerBand.bandHeight > 0 && (
+                <div className="lower-band-spacer" style={{ height: lowerBand.bandHeight }} />
+              )}
 
               {/* Row headers — always visible, click to expand/collapse */}
               <RowLabelHeader
@@ -324,6 +354,7 @@ export const SentenceRow = React.memo(
                 getTabIndex={getTabIndex}
                 onNavigate={onNavigate}
                 tokenRefs={tokenRefs}
+                lowerBandHeight={lowerBand.bandHeight}
                 relationInferred={inferredRelTokenIds.has(data.token.id)}
               />
             ))}

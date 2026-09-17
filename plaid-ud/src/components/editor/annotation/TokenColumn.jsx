@@ -17,6 +17,7 @@ export const TokenColumn = React.memo(
     getTabIndex,
     onNavigate,
     tokenRefs,
+    lowerBandHeight = 0,
     relationInferred,
   }) => {
     const session = useEditorSession();
@@ -111,6 +112,12 @@ export const TokenColumn = React.memo(
         >
           {data.tokenForm}
         </div>
+
+        {/* Room for the enhanced edges that hang under the words (EnhancedArcs,
+            drawn over these spacers by the sentence row). */}
+        {lowerBandHeight > 0 && (
+          <div className="lower-band-spacer" style={{ height: lowerBandHeight }} aria-hidden />
+        )}
 
         {/* LEMMA */}
         {visibleFields.lemma ? (

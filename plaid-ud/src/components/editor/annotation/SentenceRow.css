@@ -206,6 +206,13 @@
 }
 
 /* Label styles */
+/* The height of the band of enhanced edges under the words, held open in
+   every column. `flex: none` because a column is a flex box and would
+   otherwise let it give. */
+.lower-band-spacer {
+  flex: none;
+}
+
 .label-spacer {
   min-height: 29px;
   padding: 4px 2px;

@@ -6,6 +6,7 @@ import { DeprelEditor } from './DeprelEditor.jsx';
 import { useEditorSession } from './editorSession.js';
 import { ARC_BASE, arcHeight, arcPath } from '../../../utils/arcLayout.js';
 import { extraEdges, suppressedBasicIds } from '../../../domain/enhancedGraph.js';
+import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
 // Machine-made or contributed, not yet human-verified (provenance convention).
@@ -37,6 +38,10 @@ export const DependencyTree = forwardRef(
       onExitDown,
       onEditText,
       arcLayout,
+      // The band of enhanced edges under the words (EnhancedArcs), which this
+      // tree hands over to: open one of its labels, or move the keyboard there.
+      onEditExtra,
+      onEnterLowerBand,
     },
     ref,
   ) => {
@@ -57,17 +62,16 @@ export const DependencyTree = forwardRef(
     const deprelColors = colors?.deprel;
 
     // What the enhanced graph has beside the tree, and which of the tree's
-    // relations it leaves out. An extra is drawn as an arc of its own, doubled.
-    // A suppressor is not drawn: it shows as a DIMMED arc and label on the basic
-    // relation it lies over.
+    // relations it leaves out. The extras are NOT drawn here: they hang below
+    // the words (EnhancedArcs), and this tree only needs to know where one
+    // already is, so that drawing over it opens it. A suppressor is not drawn
+    // either: it shows as a DIMMED arc and label on the basic relation it
+    // lies over.
     const extras = useMemo(() => extraEdges(enhancedRelations), [enhancedRelations]);
-    const extraIds = useMemo(() => new Set(extras.map((r) => r.id)), [extras]);
     const suppressedIds = useMemo(
       () => suppressedBasicIds(relations, enhancedRelations),
       [relations, enhancedRelations],
     );
-    // Every arc on screen, which is what the labels' tab order walks.
-    const allArcs = useMemo(() => [...relations, ...extras], [relations, extras]);
     const [selectedSource, setSelectedSource] = useState(null);
     const [hoveredToken, setHoveredToken] = useState(null);
     const [editingRelation, setEditingRelation] = useState(null);
@@ -113,19 +117,6 @@ export const DependencyTree = forwardRef(
     // How high above the words this relation's arc runs. An arc encloses
     // everything nested under it, one step per level.
     const heightOf = (relation) => arcHeight(arcLayout.levels.get(relation.id) || 1);
-
-    const getEffectiveSpanId = (position) => {
-      if (!position) return null;
-      return position.lemmaSpanId || position.token?.id || null;
-    };
-
-    const positionMatchesSpanId = (position, spanId) => {
-      if (!position || !spanId) return false;
-      if (position.lemmaSpanId && position.lemmaSpanId === spanId) {
-        return true;
-      }
-      return position.token?.id === spanId;
-    };
 
     // When re-pointing a token's head (it already has an incoming arc), keep its
     // existing deprel instead of resetting to 'dep'. A root self-loop is excluded
@@ -197,7 +188,7 @@ export const DependencyTree = forwardRef(
         positionMatchesSpanId(targetPosition, rel.target);
       const existingExtra = extras.find(over);
       if (existingExtra) {
-        openEditor(existingExtra);
+        onEditExtra?.(existingExtra.id);
         return;
       }
       const basic = relations.find(over);
@@ -441,7 +432,7 @@ export const DependencyTree = forwardRef(
     };
 
     // Sort relations by label X position for logical tab order
-    const sortedRelations = [...allArcs].sort((a, b) => {
+    const sortedRelations = [...relations].sort((a, b) => {
       // Calculate label positions for both relations
       const getLabelX = (relation) => {
         const isSelfPointing = relation.source === relation.target;
@@ -475,6 +466,13 @@ export const DependencyTree = forwardRef(
         focusFirstRelation();
         return;
       }
+      // The same chord from INSIDE this tree's labels goes on down to the
+      // enhanced edges under the words, when the sentence has any.
+      if (e.key === 'd' && (e.ctrlKey || e.metaKey) && focusedRelation && !editingRelation) {
+        e.preventDefault();
+        if (onEnterLowerBand?.()) setFocusedRelation(null);
+        return;
+      }
       if (e.key === 'Escape') {
         setSelectedSource(null);
         closeEditor();
@@ -491,7 +489,7 @@ export const DependencyTree = forwardRef(
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [focusedRelation, editingRelation, sortedRelations, allArcs]);
+    }, [focusedRelation, editingRelation, sortedRelations, relations]);
 
     // Selecting (not editing) a label keeps focus on its <text> so arrows/Tab can
     // move on. When editing ends (Enter/Escape commit), the <foreignObject> editor
@@ -541,6 +539,13 @@ export const DependencyTree = forwardRef(
         selectRelation(rel.id);
         return true;
       },
+      // Back up from the band under the words, which knows no particular label
+      // of this tree to land on when the word it left has no head here.
+      focusFirst: () => {
+        if (sortedRelations.length === 0) return false;
+        selectRelation(sortedRelations[0].id);
+        return true;
+      },
     }));
 
     // Track when token positions are initialized
@@ -587,9 +592,9 @@ export const DependencyTree = forwardRef(
 
     // Whether the enhanced graph has this basic relation. Ctrl/Cmd+click on it,
     // or Ctrl/Cmd+E on its focused label, says it does not, and again that it
-    // does. An extra edge has no such state: it is deleted instead.
+    // does.
     const toggleSuppressed = (relation) => {
-      if (!canEnhance || !onRelationSuppress || extraIds.has(relation.id)) return false;
+      if (!canEnhance || !onRelationSuppress) return false;
       onRelationSuppress(relation.id, !suppressedIds.has(relation.id));
       return true;
     };
@@ -617,7 +622,6 @@ export const DependencyTree = forwardRef(
         return null;
       }
 
-      const isExtra = extraIds.has(relation.id);
       const isSuppressed = suppressedIds.has(relation.id);
       const isSelected = editingRelation?.id === relation.id;
       const isHovered = hoveredRelation === relation.id;
@@ -636,9 +640,7 @@ export const DependencyTree = forwardRef(
       let labelX, labelY;
       if (isToRoot) {
         labelX = sourcePos.x;
-        // A root relabelled in the enhanced graph is a second drop onto the
-        // same word. Its label sits a line lower so both can be read and hit.
-        labelY = (TOKEN_Y + ROOT_Y) / 2 + (isExtra ? 13 : 0);
+        labelY = (TOKEN_Y + ROOT_Y) / 2;
       } else {
         labelX = (sourcePos.x + targetPos.x) / 2;
         labelY = TOKEN_Y - 10 - height - 5;
@@ -659,8 +661,8 @@ export const DependencyTree = forwardRef(
       const color = active ? '#2563eb' : restColor;
       const strokeWidth = active ? 2 : 1;
       // A relation the enhanced graph leaves out is faded, arc and label both:
-      // single is in both, double is the graph's alone, faint is the tree's
-      // alone. Not italic, which is the unreviewed mark, and not struck out,
+      // what the graph has instead, if anything, hangs under the words. Not
+      // italic, which is the unreviewed mark, and not struck out,
       // which reads as deleted when the relation is as much in the tree as
       // ever. At full strength while hovered or focused, so it is no harder to
       // read or to hit than any other.
@@ -669,11 +671,6 @@ export const DependencyTree = forwardRef(
       // Split into `body` (arc + arrowhead) and `label` so the caller can paint
       // ALL bodies first and ALL labels after — in SVG, later = on top, so every
       // deprel label sits above every arc (no arc overdrawing a label).
-      //
-      // An edge of the enhanced graph alone is a DOUBLE line with an open
-      // arrowhead. The dash already says "unreviewed", so an extra edge needs a
-      // mark of its own that can be worn together with it: the line is drawn
-      // wide, and a background-coloured core is laid along its middle.
       const body = (
         <>
           {/* Arc path */}
@@ -681,7 +678,7 @@ export const DependencyTree = forwardRef(
             id={pathId}
             d={pathData}
             stroke={color}
-            strokeWidth={isExtra ? strokeWidth + 2 : strokeWidth}
+            strokeWidth={strokeWidth}
             strokeDasharray={inferred ? '5,4' : undefined}
             opacity={dimmed ? 0.35 : undefined}
             className="tree-arc-path"
@@ -689,15 +686,13 @@ export const DependencyTree = forwardRef(
             onMouseLeave={() => setHoveredRelation(null)}
             onClick={(e) => handleArcClick(e, relation)}
           />
-          {isExtra && <path d={pathData} className="tree-arc-core" />}
 
           {/* Arrow polygon */}
           <polygon
             points={`${arrowX - 3},${arrowY - 3} ${arrowX + 3},${arrowY - 3} ${arrowX},${arrowY + 2}`}
-            fill={isExtra ? undefined : color}
-            stroke={isExtra ? color : undefined}
+            fill={color}
             opacity={dimmed ? 0.35 : undefined}
-            className={isExtra ? 'tree-arc-arrow tree-arc-arrow--enhanced' : 'tree-arc-arrow'}
+            className="tree-arc-arrow"
             onClick={(e) => handleArcClick(e, relation)}
           />
         </>
@@ -929,7 +924,7 @@ export const DependencyTree = forwardRef(
             sits above every arc (SVG paint order = document order). */}
           {positionsInitialized &&
             (() => {
-              const arcs = allArcs
+              const arcs = relations
                 .map((relation, index) => renderArc(relation, index))
                 .filter(Boolean);
               return (
