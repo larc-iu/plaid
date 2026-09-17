@@ -100,19 +100,27 @@ def span_layer_by_ud_config(layers, key, fallback_name=None):
     return None
 
 
-def relation_layer_by_ud_config(span_layer, key, fallback_index=0):
+def relation_layer_by_ud_config(span_layer, key):
+    """The relation layer carrying this `ud` flag, or None. By flag ONLY: Lemma
+    holds two relation layers (the tree's, and the enhanced graph's), so a
+    guess by position could hand the parser the enhanced layer and have it
+    write a whole tree into it."""
     if not span_layer:
         return None
-    relation_layers = span_layer.get("relation_layers") or []
-    for relation_layer in relation_layers:
+    for relation_layer in span_layer.get("relation_layers") or []:
         if relation_layer.get("config", {}).get("ud", {}).get(key) is True:
             return relation_layer
-    if relation_layers:
-        try:
-            return relation_layers[fallback_index]
-        except IndexError:
-            return relation_layers[0]
     return None
+
+
+def is_suppressor(relation):
+    """An enhanced-layer row saying the enhanced graph leaves out the basic
+    relation it lies over (plaid-ud src/domain/enhancedGraph.js). It carries no
+    provenance, which reads as a person's work, but it is a note about a
+    relation and not an annotation of these words: it protects nothing. One
+    left over a relation this parse replaces is cleared by the editor's
+    reconcile-on-open."""
+    return (relation.get("metadata") or {}).get("suppress") is True
 
 
 def make_bulk_token(token_layer_id, text, begin, end, metadata=None):
@@ -166,6 +174,8 @@ def count_protected_annotations(token_layers):
             for relation_layer in span_layer.get("relation_layers", []) or []:
                 rlabel = f"{label}/{relation_layer.get('name', '?')}"
                 for relation in relation_layer.get("relations", []) or []:
+                    if is_suppressor(relation):
+                        continue
                     if is_protected(relation.get("metadata")):
                         bump(rlabel)
         for vocab in token_layer.get("vocabs", []) or []:
@@ -278,7 +288,7 @@ def protected_sentence_indexes(morpheme_layer, lemma_layer, morph_to_sent):
     for span_layer in morpheme_layer.get("span_layers", []) or []:
         for relation_layer in span_layer.get("relation_layers", []) or []:
             for rel in relation_layer.get("relations", []) or []:
-                if not is_protected(rel.get("metadata")):
+                if is_suppressor(rel) or not is_protected(rel.get("metadata")):
                     continue
                 for endpoint in (rel.get("source"), rel.get("target")):
                     sidx = lemma_span_to_sent.get(endpoint)

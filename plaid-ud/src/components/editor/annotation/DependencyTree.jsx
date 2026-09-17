@@ -48,7 +48,7 @@ export const DependencyTree = forwardRef(
       onRelationCreate,
       onRelationUpdate,
       onRelationDelete,
-      // Both null unless the project annotates enhanced dependencies and the
+      // Both null unless the project has its enhanced relation layer and the
       // document can be written, which is what `canEnhance` below asks.
       onEnhancedRelationCreate,
       onRelationSuppress,
@@ -83,6 +83,19 @@ export const DependencyTree = forwardRef(
     // A basic relation whose label editor is open to RELABEL it in the enhanced
     // graph. Nothing is written until a different label is committed.
     const [relabeling, setRelabeling] = useState(null);
+    // The ONLY two ways the label editor opens or closes. Relabel mode is a
+    // property of one opening of the editor, so it is set and cleared with it:
+    // were any path to open or close the editor on its own, a relabel
+    // abandoned by a click elsewhere would stay armed, and the next plain edit
+    // of that label would be written to the enhanced graph instead of the tree.
+    const openEditor = (relation, { relabel = false } = {}) => {
+      setRelabeling(relabel && relation ? relation.id : null);
+      setEditingRelation(relation);
+    };
+    const closeEditor = () => {
+      setRelabeling(null);
+      setEditingRelation(null);
+    };
     const [positionsInitialized, setPositionsInitialized] = useState(false);
     const svgRef = useRef(null);
     const labelRefs = useRef(new Map());
@@ -184,13 +197,12 @@ export const DependencyTree = forwardRef(
         positionMatchesSpanId(targetPosition, rel.target);
       const existingExtra = extras.find(over);
       if (existingExtra) {
-        setEditingRelation(existingExtra);
+        openEditor(existingExtra);
         return;
       }
       const basic = relations.find(over);
       if (basic) {
-        setRelabeling(basic.id);
-        setEditingRelation(basic);
+        openEditor(basic, { relabel: true });
         return;
       }
       const isRoot = sourceId === targetId;
@@ -206,7 +218,7 @@ export const DependencyTree = forwardRef(
       e.preventDefault();
       if (isReadOnly) return;
       if (editingRelation) {
-        setEditingRelation(null);
+        closeEditor();
         return;
       }
 
@@ -255,7 +267,7 @@ export const DependencyTree = forwardRef(
           );
 
           if (existingRelation) {
-            setEditingRelation(existingRelation);
+            openEditor(existingRelation);
           } else {
             onRelationCreate(targetId, targetId, 'root'); // Self-pointing relation
           }
@@ -269,7 +281,7 @@ export const DependencyTree = forwardRef(
           );
 
           if (existingRelation) {
-            setEditingRelation(existingRelation);
+            openEditor(existingRelation);
           } else {
             if (sourceId && targetId) {
               onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
@@ -289,7 +301,7 @@ export const DependencyTree = forwardRef(
       e.preventDefault();
       if (isReadOnly) return;
       if (editingRelation) {
-        setEditingRelation(null);
+        closeEditor();
         return;
       }
 
@@ -324,7 +336,7 @@ export const DependencyTree = forwardRef(
         if (canEnhance && isEnhancedGesture(e)) {
           drawEnhanced(sourcePosition, sourcePosition, sourceId, sourceId);
         } else if (existingRelation) {
-          setEditingRelation(existingRelation);
+          openEditor(existingRelation);
         } else {
           onRelationCreate(sourceId, sourceId, 'root'); // Self-pointing relation
         }
@@ -359,7 +371,7 @@ export const DependencyTree = forwardRef(
       }
       if (isReadOnly) return;
       if (editingRelation) {
-        setEditingRelation(null);
+        closeEditor();
         return;
       }
 
@@ -390,7 +402,7 @@ export const DependencyTree = forwardRef(
         if (canEnhance && isEnhancedGesture(event) && sourceId && targetId) {
           drawEnhanced(sourcePosition, targetPosition, sourceId, targetId);
         } else if (existingRelation) {
-          setEditingRelation(existingRelation);
+          openEditor(existingRelation);
         } else {
           if (sourceId && targetId) {
             onRelationCreate(sourceId, targetId, incomingDeprel(targetPosition));
@@ -419,7 +431,7 @@ export const DependencyTree = forwardRef(
         if (canEnhance && isEnhancedGesture(event)) {
           drawEnhanced(sourcePosition, sourcePosition, sourceId, sourceId);
         } else if (existingRelation) {
-          setEditingRelation(existingRelation);
+          openEditor(existingRelation);
         } else {
           onRelationCreate(sourceId, sourceId, 'root'); // Self-pointing relation
         }
@@ -465,8 +477,7 @@ export const DependencyTree = forwardRef(
       }
       if (e.key === 'Escape') {
         setSelectedSource(null);
-        setEditingRelation(null);
-        setRelabeling(null);
+        closeEditor();
         setFocusedRelation(null);
         setDragOrigin(null);
         setDragCurrent(null);
@@ -587,8 +598,7 @@ export const DependencyTree = forwardRef(
     const handleArcClick = (event, relation) => {
       if (isReadOnly) return;
       if (isEnhancedGesture(event) && toggleSuppressed(relation)) return;
-      setRelabeling(null);
-      setEditingRelation(relation);
+      openEditor(relation);
       setFocusedRelation(relation.id);
     };
 
@@ -626,7 +636,9 @@ export const DependencyTree = forwardRef(
       let labelX, labelY;
       if (isToRoot) {
         labelX = sourcePos.x;
-        labelY = (TOKEN_Y + ROOT_Y) / 2;
+        // A root relabelled in the enhanced graph is a second drop onto the
+        // same word. Its label sits a line lower so both can be read and hit.
+        labelY = (TOKEN_Y + ROOT_Y) / 2 + (isExtra ? 13 : 0);
       } else {
         labelX = (sourcePos.x + targetPos.x) / 2;
         labelY = TOKEN_Y - 10 - height - 5;
@@ -699,13 +711,11 @@ export const DependencyTree = forwardRef(
                   commitLabel(relation, v, typed);
                   // Stay on this label (selected, not editing) so arrow/Tab nav
                   // continues; the refocus effect returns focus to its <text>.
-                  setRelabeling(null);
-                  setEditingRelation(null);
+                  closeEditor();
                   setFocusedRelation(relation.id);
                 }}
                 onCancel={() => {
-                  setRelabeling(null);
-                  setEditingRelation(null);
+                  closeEditor();
                   setFocusedRelation(relation.id);
                 }}
                 onDelete={() => {
@@ -713,13 +723,11 @@ export const DependencyTree = forwardRef(
                   // delete yet, and the tree's relation is not what was asked
                   // about, so this only leaves the editor.
                   if (relabeling !== relation.id) onRelationDelete(relation.id);
-                  setRelabeling(null);
-                  setEditingRelation(null);
+                  closeEditor();
                   setFocusedRelation(null);
                 }}
                 onTab={(v, shiftKey, typed) => {
                   commitLabel(relation, v, typed);
-                  setRelabeling(null);
                   const idx = sortedRelations.findIndex((r) => r.id === relation.id);
                   const nextIdx = shiftKey
                     ? idx > 0
@@ -729,7 +737,7 @@ export const DependencyTree = forwardRef(
                       ? idx + 1
                       : 0;
                   const next = sortedRelations[nextIdx];
-                  setEditingRelation(next || null);
+                  openEditor(next || null);
                   setFocusedRelation(next?.id || null);
                 }}
               />
@@ -761,8 +769,7 @@ export const DependencyTree = forwardRef(
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   if (!isReadOnly) {
-                    setRelabeling(null);
-                    setEditingRelation(relation);
+                    openEditor(relation);
                   }
                 } else if ((e.key === 'e' || e.key === 'E') && isEnhancedGesture(e)) {
                   // Taken whether or not it applies here, so the browser's own

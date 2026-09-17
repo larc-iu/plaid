@@ -99,6 +99,17 @@ export const enhancedEdges = (basic, rows) => {
 export const extraEdges = (rows) => (rows || []).filter((row) => !isSuppressor(row));
 
 /**
+ * Every arc drawn over a sentence row: the tree's relations and the extras.
+ * What is drawn is what is reviewed, so the tree, the per-word marks and the
+ * review sweep all read this one list. A suppressor is no arc and carries no
+ * provenance, so it is in none of them.
+ */
+export const sentenceArcs = (sentence) => [
+  ...(sentence?.relations || []),
+  ...extraEdges(sentence?.enhancedRelations),
+];
+
+/**
  * Suppressors that suppress nothing: the basic relation they lay over has
  * been deleted or re-pointed since. Reconcile deletes these.
  */
@@ -119,13 +130,19 @@ export const danglingSuppressorIds = (basic, rows) => {
  * which Plaid UD does not store: such an edge is left out and counted. A
  * relation may itself contain colons (`conj:and`, `obl:in:loc`), so only the
  * first one divides head from relation.
+ *
+ * A `|` divides two edges only where a head follows it. The vocabulary is
+ * open, so a label can hold one (`obl|x`), and CoNLL-U has no escape to write
+ * it with. `serializeDeps` writes such a label as it stands, and reading it
+ * back this way is what keeps that one label from costing its row every
+ * enhanced edge it has.
  */
 export const parseDeps = (column) => {
   const text = (column || '').trim();
   if (!text || text === '_') return null;
   const edges = [];
   let emptyHeads = 0;
-  for (const part of text.split('|')) {
+  for (const part of text.split(/\|(?=\d+(?:\.\d+)?:)/)) {
     const cut = part.indexOf(':');
     if (cut <= 0) throw new Error(`Invalid DEPS value: ${part}`);
     const headText = part.slice(0, cut);

@@ -2,7 +2,7 @@ import React, { useMemo, useCallback, useRef } from 'react';
 import { isMachine } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { computeArcLayout, buildIndexById } from '../../../utils/arcLayout.js';
-import { extraEdges } from '../../../domain/enhancedGraph.js';
+import { sentenceArcs } from '../../../domain/enhancedGraph.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';
@@ -77,7 +77,7 @@ export const SentenceRow = React.memo(
     // head.
     const enhancedRelations = sentenceData.enhancedRelations;
     const arcs = useMemo(
-      () => [...(relations || []), ...extraEdges(enhancedRelations)],
+      () => sentenceArcs({ relations, enhancedRelations }),
       [relations, enhancedRelations],
     );
 

@@ -102,7 +102,7 @@ def _layer(layer_id, name, role=None, **extra):
 
 
 def _document(*, body=BODY, sentences=(), words=(), morphemes=(),
-              spans=None, relations=(), links=()):
+              spans=None, relations=(), enhanced_relations=(), links=()):
     """A UD document: a baseline text layer with the three role-tagged token
     layers, and the five UD annotation span layers on the syntactic words."""
     spans = spans or {}
@@ -117,7 +117,10 @@ def _document(*, body=BODY, sentences=(), words=(), morphemes=(),
             layer['relation_layers'] = [
                 {'id': 'depL', 'name': 'Dependencies',
                  'config': {'ud': {'dependency': True}},
-                 'relations': list(relations)}]
+                 'relations': list(relations)},
+                {'id': 'edepL', 'name': 'Enhanced Dependencies',
+                 'config': {'ud': {'enhancedDependency': True}},
+                 'relations': list(enhanced_relations)}]
         span_layers.append(layer)
     return {
         'id': DOC,
@@ -327,6 +330,39 @@ def test_human_work_a_full_reparse_would_destroy_refuses_the_run_once():
     assert 'Overwrite human-edited annotations' in text
     assert service.client.writes == []
     assert service.client.kinds[-1] == 'unlock'
+
+
+def test_a_suppressor_protects_nothing_but_an_enhanced_edge_does():
+    """The enhanced layer's rows sit beside the tree's. A suppressor is a note
+    about a basic relation and carries no provenance, which would read as a
+    person's work. It is not one: a parse goes ahead over it. A hand-drawn
+    enhanced edge is one, and is in the way like any other."""
+    machine = {'prov': 'inferred', 'provSource': SOURCE}
+    lemmas = [{'id': 'l0', 'tokens': ['m0'], 'value': 'the', 'metadata': machine},
+              {'id': 'l1', 'tokens': ['m1'], 'value': 'dog', 'metadata': machine}]
+    suppressor = {'id': 'x1', 'source': 'l1', 'target': 'l0', 'value': None,
+                  'metadata': {'suppress': True}}
+    edge = {'id': 'e1', 'source': 'l1', 'target': 'l0', 'value': 'det', 'metadata': {}}
+
+    def run(rows):
+        doc = _document(morphemes=[('m0', 0, 3), ('m1', 4, 7)],
+                        spans={'lemmaL': lemmas}, enhanced_relations=rows)
+        return servicetest.run(_service(documents=[doc]), REQUEST)
+
+    assert run([suppressor]).errors == []
+    [refusal] = run([suppressor, edge]).errors
+    assert '1 human-made or human-verified annotation(s)' in refusal
+    assert 'Lemma/Enhanced Dependencies: 1' in refusal
+
+
+def test_the_tree_is_found_by_its_flag_and_never_by_position():
+    """Lemma holds two relation layers. With the flag gone from the tree's, a
+    lookup by position would hand back the enhanced layer."""
+    enhanced = {'id': 'edepL', 'config': {'ud': {'enhancedDependency': True}}}
+    tree = {'id': 'depL', 'config': {'ud': {'dependency': True}}}
+    lookup = ud.relation_layer_by_ud_config
+    assert lookup({'relation_layers': [enhanced, tree]}, 'dependency') is tree
+    assert lookup({'relation_layers': [enhanced]}, 'dependency') is None
 
 
 def test_overwrite_lets_a_full_reparse_through():

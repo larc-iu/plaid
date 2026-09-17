@@ -15,7 +15,8 @@
  *      └─ Tokens              token layer, role `word`,            non-overlapping
  *         └─ Words            token layer, role `syntactic-word`,  any
  *            ├─ Form / Lemma / UPOS / XPOS / Features   span layers, `ud` flags
- *            └─ Dependency Relations (on Lemma)         relation layer, `ud` flag
+ *            ├─ Dependency Relations (on Lemma)         relation layer, `ud` flag
+ *            └─ Enhanced Dependencies (on Lemma)        relation layer, `ud` flag
  *
  * Substrate layers (text + token) carry a shared ROLE so another Plaid app on
  * the same project resolves them identically. Annotation layers stay private
@@ -124,18 +125,26 @@ const bootstrap = async (client, projectName) => {
     const lemmaIdx = SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma);
     const lemmaLayerId = spanLayerIds[lemmaIdx];
 
-    // B7: 5x spanLayer.setConfig + relationLayer.create (uses lemmaLayerId)
+    // B7: 5x spanLayer.setConfig + both relationLayer creates (use lemmaLayerId)
     const b7 = await client.batched(async (b) => {
       SPAN_LAYER_SPECS.forEach(([, configKey], i) => {
         b.spanLayers.setConfig(spanLayerIds[i], UD_NAMESPACE, configKey, true);
       });
       b.relationLayers.create(lemmaLayerId, 'Dependency Relations');
+      b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies');
     });
-    const relationLayerId = b7.at(-1).body.id;
+    // The two creates are the LAST two results (see the note on B2 above).
+    const [relationLayerId, enhancedLayerId] = b7.slice(-2).map((r) => r.body.id);
 
-    // B8: relationLayer.setConfig
+    // B8: both relationLayer.setConfig
     await client.batched(async (b) => {
       b.relationLayers.setConfig(relationLayerId, UD_NAMESPACE, UD_RELATION_CONFIG_KEY, true);
+      b.relationLayers.setConfig(
+        enhancedLayerId,
+        UD_NAMESPACE,
+        UD_ENHANCED_RELATION_CONFIG_KEY,
+        true,
+      );
     });
 
     return project;
@@ -175,22 +184,30 @@ export const createUdProject = (client, projectName) =>
   );
 
 /**
- * Give a UD project its enhanced relation layer: a second relation layer on
- * Lemma, beside the tree's (see domain/enhancedGraph.js). Optional, so it is
- * not part of the bootstrap, and a relation layer can be added to a project at
- * any time, so an existing project takes it as readily as a new one. Two
- * writes, since the flag needs the layer's id.
+ * The project's enhanced relation layer, made if it has none: a second
+ * relation layer on Lemma, beside the tree's (see domain/enhancedGraph.js).
  *
- * There is no turning it off again: deleting the layer would delete every
- * enhanced relation in the project, and a layer nobody draws on costs nothing.
+ * Every new project is given one by the bootstrap above. This is for the
+ * projects that were not: one made before the layer existed, or one another
+ * app set up and UD adopted. A relation layer can be added to a project at any
+ * time, so they take it as readily. It needs a maintainer, being a layer, so
+ * the callers are the three places a maintainer is known to be standing: the
+ * layer setup page, reconcile-on-open, and the bulk import. Two writes, since
+ * the flag needs the layer's id.
  *
  * @param {object} client - PlaidClient instance
- * @param {string} lemmaLayerId - the project's Lemma span layer
- * @returns {Promise<string>} the new relation layer's id
+ * @param {object} lemmaLayer - the project's Lemma span layer, as read
+ * @returns {Promise<string|null>} the id of a layer this call CREATED, or null
+ *   when the project already had one
  */
-export const enableEnhancedDependencies = (client, lemmaLayerId) =>
-  client.withOperation('Enable enhanced dependencies', async () => {
-    const created = await client.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies');
+export const ensureEnhancedRelationLayer = async (client, lemmaLayer) => {
+  if (!lemmaLayer?.id) return null;
+  const existing = (lemmaLayer.relationLayers || []).find(
+    (layer) => layer.config?.[UD_NAMESPACE]?.[UD_ENHANCED_RELATION_CONFIG_KEY] === true,
+  );
+  if (existing) return null;
+  return client.withOperation('Add the enhanced dependency layer', async () => {
+    const created = await client.relationLayers.create(lemmaLayer.id, 'Enhanced Dependencies');
     const layerId = created?.id || created;
     await client.relationLayers.setConfig(
       layerId,
@@ -200,3 +217,4 @@ export const enableEnhancedDependencies = (client, lemmaLayerId) =>
     );
     return layerId;
   });
+};

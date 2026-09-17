@@ -35,6 +35,7 @@ import { validateConlluDocument } from './validate.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
 import { buildConllu } from './conlluSerialize.js';
+import { ensureEnhancedRelationLayer } from './udProjectSetup.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
 
@@ -458,6 +459,18 @@ export class ConlluDocument extends DocumentModel {
     }
   }
 
+  // The same back-fill for the enhanced relation layer, which a project from
+  // before it existed lacks. True when a layer was made, so the caller re-reads.
+  async _backfillEnhancedLayer(info) {
+    if (info.enhancedRelationLayer || !canManageProject(this._project, this._user)) return false;
+    try {
+      return Boolean(await ensureEnhancedRelationLayer(this._client, info.lemmaLayer));
+    } catch (err) {
+      console.error('Could not add the enhanced dependency layer:', err);
+      return false;
+    }
+  }
+
   async _reconcile() {
     const ZERO = {
       deletedRelations: 0,
@@ -475,6 +488,7 @@ export class ConlluDocument extends DocumentModel {
       // split leaves nothing for a later pass to find, so the declaration has
       // to be in place before the split, not repaired after it.
       await this._backfillPreserveOnSplit(info);
+      const addedEnhancedLayer = await this._backfillEnhancedLayer(info);
       const crossingIds = interSententialRelationIds(info);
       // A suppressor can be both stale and crossing, and a second delete of
       // one id is a 404 that takes the batch with it.
@@ -533,9 +547,13 @@ export class ConlluDocument extends DocumentModel {
         } catch (err) {
           if (err?.status !== 404) throw err;
         }
-        // Reported as what the annotator lost. A stale suppressor was saying
-        // nothing, so clearing one is housekeeping and is not counted.
-        deletedRelations = crossingIds.length;
+        // Reported as what the annotator lost. A suppressor is housekeeping,
+        // stale or crossing: one that crossed went with the relation it lay
+        // over, which is the loss and is counted once.
+        const suppressorIds = new Set(
+          (info.enhancedRelationLayer?.relations || []).filter(isSuppressor).map((r) => r.id),
+        );
+        deletedRelations = crossingIds.filter((id) => !suppressorIds.has(id)).length;
       }
 
       // Re-read only when a heal actually wrote. The batches above land
@@ -544,7 +562,9 @@ export class ConlluDocument extends DocumentModel {
       // state IS the server state. This runs behind a blocking spinner on every
       // Annotate open now, so an unconditional reload would make the ordinary
       // case (nothing to repair) pay a full document fetch for the rare one.
-      const healed = createdSyntacticWords + deletedOrphans + dedupedSpans + relIds.length > 0;
+      const healed =
+        addedEnhancedLayer ||
+        createdSyntacticWords + deletedOrphans + dedupedSpans + relIds.length > 0;
       if (healed) await this._reload();
       // Validate the true server state — even when nothing healed.
       const findings = validateConlluDocument(this.layerInfo);
@@ -1151,7 +1171,7 @@ export class ConlluDocument extends DocumentModel {
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError('This project does not annotate enhanced dependencies.');
+      this.setError('Enhanced relation layer not found.');
       return false;
     }
     if (!info.lemmaLayer) {
@@ -1222,7 +1242,7 @@ export class ConlluDocument extends DocumentModel {
   async setRelationSuppressed(relationId, suppressed) {
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError('This project does not annotate enhanced dependencies.');
+      this.setError('Enhanced relation layer not found.');
       return false;
     }
     const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);

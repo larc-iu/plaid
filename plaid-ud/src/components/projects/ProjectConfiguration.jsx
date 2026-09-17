@@ -10,6 +10,7 @@ import {
 } from '../../utils/udLayerUtils.js';
 import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
@@ -255,6 +256,11 @@ export const ProjectConfiguration = () => {
           true,
         );
       }
+
+      // 5. The enhanced relation layer beside it. `spanLayers.lemma` is the
+      // project's own layer where it had one, relation layers and all, and a
+      // bare create result where it did not, which has none to find.
+      await ensureEnhancedRelationLayer(client, spanLayers.lemma);
 
       notifySuccess('Layers saved');
       // Setup/repair done — head back to the project's document view.

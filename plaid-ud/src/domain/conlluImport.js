@@ -113,7 +113,8 @@ export async function importConlluDocument(
       if (lost > 0) {
         importWarnings.push(
           `${count(lost, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
-            'this project does not annotate enhanced dependencies.',
+            'this project has no enhanced dependency layer yet. ' +
+            'One is added the first time a maintainer opens a document in it.',
         );
       }
     }
@@ -352,6 +353,7 @@ export async function importConlluDocument(
       // The enhanced layer's rows, in the same batch as the tree they differ
       // from. A suppressor lies over its row's own basic relation, so it is
       // written only where that relation was.
+      let headlessDeps = 0;
       if (enhancedRelationLayer) {
         const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
         parsedData.sentences.forEach((sentence, sentIdx) => {
@@ -373,7 +375,10 @@ export async function importConlluDocument(
             }
             plan.extras.forEach((e) => {
               const sourceId = spanOf(e.head);
-              if (!sourceId) return;
+              if (!sourceId) {
+                headlessDeps += 1;
+                return;
+              }
               relationOps.push({
                 relationLayerId: enhancedRelationLayer.id,
                 source: sourceId,
@@ -383,6 +388,12 @@ export async function importConlluDocument(
             });
           });
         });
+      }
+      if (headlessDeps > 0) {
+        importWarnings.push(
+          `${count(headlessDeps, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
+            'the head is not a row of the sentence.',
+        );
       }
       if (relationOps.length > 0) {
         await client.batched(async (b) => {

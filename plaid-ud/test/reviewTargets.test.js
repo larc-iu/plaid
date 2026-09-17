@@ -152,3 +152,26 @@ test("wordHasMaterial and the discard gesture spare a contributor's work", () =>
   assert.equal(wordHasMaterial(theirs, 'a', needsReview), true);
   assert.equal(wordHasMaterial(theirs, 'a', isMachine), false);
 });
+
+// An extra edge of the enhanced graph is drawn, so it is reviewed: the mark on
+// screen and the sweep's stops are read off one list (sentenceArcs). A
+// suppressor is no arc and is nobody's annotation of the word.
+test('an enhanced edge is a stop and is material, a suppressor is neither', () => {
+  const enhanced = [
+    {
+      id: 's1',
+      tokens: [word('w1', { lemma: {} }), word('w2', { lemma: {} }), word('w3', { lemma: {} })],
+      relations: [{ id: 'r1', source: 'w1-lem', target: 'w2-lem', metadata: {} }],
+      enhancedRelations: [
+        { id: 'e1', source: 'w3-lem', target: 'w2-lem', value: 'nsubj', metadata: contributed },
+        { id: 'x1', source: 'w1-lem', target: 'w3-lem', value: null, metadata: { suppress: true } },
+      ],
+    },
+  ];
+  assert.deepEqual(
+    reviewWords(enhanced, needsReview).map((w) => w.tokenId),
+    ['w2'],
+  );
+  assert.equal(wordHasMaterial(enhanced, 'w2', needsReview), true);
+  assert.equal(wordHasMaterial(enhanced, 'w3', needsReview), false);
+});

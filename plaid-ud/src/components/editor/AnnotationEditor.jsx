@@ -324,8 +324,9 @@ export const AnnotationEditor = () => {
       onRelationCreate: readOnly ? null : handleRelationCreate,
       onRelationUpdate: readOnly ? null : handleRelationUpdate,
       onRelationDelete: readOnly ? null : handleRelationDelete,
-      // Both null in a project that does not annotate enhanced dependencies,
-      // which is how the tree knows not to offer the gesture.
+      // Both null in a project with no enhanced relation layer yet (one from
+      // before it existed, until a maintainer opens a document in it), which
+      // is how the tree knows not to offer the gesture.
       onEnhancedRelationCreate:
         readOnly || !layerInfo?.enhancedRelationLayer ? null : handleEnhancedRelationCreate,
       onRelationSuppress:

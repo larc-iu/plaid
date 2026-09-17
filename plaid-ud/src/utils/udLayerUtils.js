@@ -104,10 +104,12 @@ export const foreignAnnotationLossForWord = (layerInfo, word) => {
 
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
-// The OPTIONAL second relation layer on Lemma, holding what the enhanced graph
-// has that the basic tree does not (see domain/enhancedGraph.js). A project
-// without one is a project that does not annotate enhanced dependencies, so it
-// is never among the missing layers. It carries its own flag and not the
+// The second relation layer on Lemma, holding what the enhanced graph has that
+// the basic tree does not (see domain/enhancedGraph.js). Every new project has
+// one, and an older project is given one the first time a maintainer opens a
+// document in it (`ensureEnhancedRelationLayer`). Until then it is absent, so
+// it is never among the missing layers, and everything that reads it takes
+// null for an answer. It carries its own flag and not the
 // `dependency` one, so everything that finds the tree by that flag, in this app
 // and outside it, goes on finding the tree alone.
 export const UD_ENHANCED_RELATION_CONFIG_KEY = 'enhancedDependency';

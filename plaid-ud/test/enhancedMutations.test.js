@@ -220,3 +220,62 @@ test('reconcile deletes a suppressor whose basic relation another writer removed
   assert.equal(result.deletedRelations, 0);
   assert.equal(doc.describeReconcile(result), null);
 });
+
+// A project from before the enhanced layer existed is given one the first time
+// a maintainer opens a document in it, as it was given `preserveOnSplit`.
+const backfillClient = (raw, calls) =>
+  withOps({
+    relationLayers: {
+      create: async (spanLayerId, name) => {
+        calls.push(['create', spanLayerId, name]);
+        return { id: 'enhanced-new' };
+      },
+      setConfig: async (...args) => calls.push(['setConfig', ...args]),
+    },
+    tokenLayers: { setConfig: async () => {} },
+    documents: { get: async () => rawDocFromConllu(INPUT, 'e', { enhanced: true }) },
+  });
+
+test('reconcile adds the enhanced layer to a project that has none, for a maintainer', async () => {
+  const raw = rawDocFromConllu(INPUT, 'e');
+  const calls = [];
+  const doc = new ConlluDocument({
+    raw,
+    client: backfillClient(raw, calls),
+    project: { maintainers: ['m@x.org'] },
+    user: { id: 'm@x.org' },
+  });
+  assert.equal(doc.layerInfo.enhancedRelationLayer, null);
+
+  await doc._reconcile();
+
+  assert.deepEqual(calls, [
+    ['create', 'lemma-layer', 'Enhanced Dependencies'],
+    ['setConfig', 'enhanced-new', 'ud', 'enhancedDependency', true],
+  ]);
+  // Re-read, so the tree offers the gesture in the same sitting.
+  assert.ok(doc.layerInfo.enhancedRelationLayer);
+});
+
+test('reconcile leaves the layers alone for anyone else, and where the layer exists', async () => {
+  const calls = [];
+  const bare = rawDocFromConllu(INPUT, 'e');
+  const writer = new ConlluDocument({
+    raw: bare,
+    client: backfillClient(bare, calls),
+    project: { maintainers: ['m@x.org'], writers: ['w@x.org'] },
+    user: { id: 'w@x.org' },
+  });
+  await writer._reconcile();
+
+  const full = rawDocFromConllu(INPUT, 'e', { enhanced: true });
+  const maintainer = new ConlluDocument({
+    raw: full,
+    client: backfillClient(full, calls),
+    project: { maintainers: ['m@x.org'] },
+    user: { id: 'm@x.org' },
+  });
+  await maintainer._reconcile();
+
+  assert.deepEqual(calls, []);
+});

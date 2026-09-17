@@ -142,3 +142,16 @@ test('serializeDeps orders by head, then by relation', () => {
   );
   assert.equal(serializeDeps([{ head: 0, deprel: 'root' }]), '0:root');
 });
+
+test('a label holding a | survives the DEPS round trip with its neighbours', () => {
+  const edges = [
+    { head: 3, deprel: 'obl|x' },
+    { head: 5, deprel: 'nsubj' },
+  ];
+  assert.equal(serializeDeps(edges), '3:obl|x|5:nsubj');
+  assert.deepEqual(parseDeps('3:obl|x|5:nsubj').edges, edges);
+  assert.deepEqual(parseDeps('3:obl|x|8.1:nsubj'), {
+    edges: [{ head: 3, deprel: 'obl|x' }],
+    emptyHeads: 1,
+  });
+});

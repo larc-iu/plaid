@@ -11,7 +11,8 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { splitConlluByNewdoc } from '../../utils/conlluParser.js';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
-import { canEditProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -202,7 +203,20 @@ export const ProjectImportExport = () => {
     // Layer config is the same for every document, so read it once and pass it
     // in — otherwise importFromConllu re-fetches it (a full includeBody read) per
     // document, which roughly doubles import time on a big set.
-    const layerInfo = getUdLayerInfo(project);
+    let layerInfo = getUdLayerInfo(project);
+    // A project from before the enhanced relation layer has none, and an
+    // import is where its absence costs something: DEPS would be dropped. A
+    // maintainer's import adds it first. Anyone else's goes ahead without, and
+    // says what it dropped.
+    if (!layerInfo.enhancedRelationLayer && canManageProject(project, user)) {
+      try {
+        if (await ensureEnhancedRelationLayer(client, layerInfo.lemmaLayer)) {
+          layerInfo = getUdLayerInfo(await client.projects.get(projectId));
+        }
+      } catch (err) {
+        console.error('Could not add the enhanced dependency layer:', err);
+      }
+    }
     const acc = [];
     const push = (row) => {
       acc.push(row);

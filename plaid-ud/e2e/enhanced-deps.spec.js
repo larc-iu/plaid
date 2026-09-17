@@ -1,5 +1,6 @@
 // Enhanced dependencies, end to end against the live core:
-//   - A maintainer enables them on the UD Customization page.
+//   - A new project has the enhanced relation layer, and one without it is
+//     given it when a maintainer opens a document.
 //   - Ctrl+drag adds an edge to the enhanced graph and leaves the tree alone.
 //   - Ctrl+drag over a relation of the tree relabels it there.
 //   - Ctrl+click leaves a relation of the tree out of the graph, and back.
@@ -40,8 +41,7 @@ test.afterAll(async () => {
   }
 });
 
-// The tests build on one another: the project is enabled once and the graph
-// grows from there.
+// The tests build on one another: the graph grows from one to the next.
 test.describe.configure({ mode: 'serial' });
 
 const enhancedRows = async () => {
@@ -73,18 +73,21 @@ async function enhancedDrag(page, from, to) {
   await page.keyboard.up('Control');
 }
 
-test('a maintainer enables enhanced dependencies for the project', async ({ page }) => {
-  await seedAuth(page);
-  await page.goto(`/#/projects/${S.projectId}/customization`);
-  const enable = page.getByRole('button', { name: 'Enable', exact: true });
-  await enable.click();
-  await expect(page.getByText('Enabled', { exact: true })).toBeVisible({ timeout: 15000 });
-  await expect(enable).toHaveCount(0);
-
-  const project = await S.client.projects.get(S.projectId);
-  expect(getUdLayerInfo(project).enhancedRelationLayer).toBeTruthy();
+test('a new project has the layer, and an older one is given it on open', async ({ page }) => {
+  const made = getUdLayerInfo(await S.client.projects.get(S.projectId));
+  expect(made.enhancedRelationLayer).toBeTruthy();
   // The tree's own layer is still the only one that answers to `dependency`.
-  expect(getUdLayerInfo(project).relationLayer.id).toBe(S.layers.relation);
+  expect(made.relationLayer.id).toBe(S.layers.relation);
+
+  // A project from before the layer existed: take it away, and a maintainer
+  // opening a document puts it back.
+  await S.client.relationLayers.delete(made.enhancedRelationLayer.id);
+  await openGrid(page, 4);
+  await expect
+    .poll(async () =>
+      Boolean(getUdLayerInfo(await S.client.projects.get(S.projectId)).enhancedRelationLayer),
+    )
+    .toBe(true);
 });
 
 test('Ctrl+drag gives a word a second head without touching its tree', async ({ page }) => {
@@ -146,4 +149,34 @@ test('the export states the enhanced graph in DEPS', async ({ page }) => {
   await expect(out).toContainText('2:nsubj|4:nsubj', { timeout: 15000 });
   await expect(out).toContainText('2:conj:and');
   await expect(out).toContainText('4:cc');
+});
+
+// A relabel abandoned by clicking elsewhere must not stay armed: the next plain
+// edit of that label belongs to the tree.
+test('an abandoned relabel does not capture the next plain edit', async ({ page }) => {
+  await openGrid(page, 6);
+  await enhancedDrag(page, 3, 2); // left -> and, which the tree joins as cc
+  const editor = page.locator('foreignObject input');
+  await expect(editor).toHaveValue('cc');
+
+  // Walk away from it by pressing on another word, then clear the selection
+  // that press began.
+  const she = await page.locator('.tree-token-area').nth(0).boundingBox();
+  await page.mouse.click(she.x + she.width / 2, she.y + she.height / 2);
+  await page.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
+
+  await label(page, 'cc').click();
+  await expect(editor).toHaveValue('cc');
+  await editor.fill('cc:preconj');
+  await page.keyboard.press('Enter');
+
+  // The tree took it. Nothing was added to the enhanced graph.
+  await expect(label(page, 'cc:preconj')).toHaveCount(1);
+  await expect(label(page, 'cc:preconj')).not.toHaveClass(/tree-deprel-text--suppressed/);
+  await expect(page.locator('.tree-arc-core')).toHaveCount(2);
+  const doc = await S.client.documents.get(S.documentId, true);
+  const info = getUdLayerInfo(doc);
+  expect(info.relationLayer.relations.map((r) => r.value)).toContain('cc:preconj');
+  expect(info.enhancedRelationLayer.relations).toHaveLength(3);
 });

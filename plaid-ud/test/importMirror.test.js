@@ -108,8 +108,8 @@ const ENHANCED = conllu([
 
 const ALL_CASES = [
   ...Object.entries(CASES).map(([what, input]) => [what, input, undefined]),
-  ['an enhanced graph, into a project that annotates one', ENHANCED, { enhanced: true }],
-  ['an enhanced graph, into a project that does not', ENHANCED, undefined],
+  ['an enhanced graph', ENHANCED, { enhanced: true }],
+  ['an enhanced graph, into a project with no layer for one yet', ENHANCED, undefined],
 ];
 
 for (const [what, input, options] of ALL_CASES) {
@@ -230,12 +230,13 @@ test('an enhanced graph comes back out of DEPS as it went in', () => {
   assert.ok(out.includes('\t4\tobj\t4:obj\t'), out);
 });
 
-test('a project that does not annotate the enhanced graph says what it dropped', async () => {
+test('a project with no enhanced relation layer yet says what it dropped', async () => {
   const info = getUdLayerInfo(rawDocFromConllu(ENHANCED, 'm'));
   const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', ENHANCED, info);
   // One extra head, and a relabel that is a suppressor and an extra.
   assert.deepEqual(out.importWarnings, [
-    '3 enhanced dependencies dropped: this project does not annotate enhanced dependencies.',
+    '3 enhanced dependencies dropped: this project has no enhanced dependency layer yet. ' +
+      'One is added the first time a maintainer opens a document in it.',
   ]);
 });
 
@@ -261,4 +262,17 @@ test('an enhanced dependency from an empty node is dropped with the node', async
     .flat()
     .filter((op) => op.relationLayerId === info.enhancedRelationLayer.id);
   assert.deepEqual(enhancedOps, []);
+});
+
+test('an enhanced dependency whose head is no row of the sentence is dropped aloud', async () => {
+  const input = conllu([
+    '# text = a b',
+    '1\ta\t_\tX\t_\t_\t0\troot\t0:root\t_',
+    '2\tb\t_\tX\t_\t_\t1\tdep\t1:dep|9:nsubj\t_',
+  ]);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm', { enhanced: true }));
+  const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', input, info);
+  assert.deepEqual(out.importWarnings, [
+    '1 enhanced dependency dropped: the head is not a row of the sentence.',
+  ]);
 });

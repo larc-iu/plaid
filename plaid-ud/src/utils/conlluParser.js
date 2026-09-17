@@ -47,7 +47,7 @@ export function parseCoNLLU(text) {
   let droppedMiscTokens = 0;
   // Enhanced dependencies that hung from an empty node, and DEPS values that
   // could not be read at all. Neither stops an import: the column is optional,
-  // and a project that does not annotate the enhanced graph never reads it.
+  // and a project with no enhanced relation layer yet never reads it.
   let droppedEmptyNodeDeps = 0;
   let unreadableDeps = 0;
 

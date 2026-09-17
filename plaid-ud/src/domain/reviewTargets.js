@@ -9,6 +9,8 @@
 // A "word" here is a morpheme token, the unit the annotation grid gives a
 // column to and the unit confirmTokens / discardTokens act on.
 
+import { sentenceArcs } from './enhancedGraph.js';
+
 const spansOf = (entry) => [
   entry.form,
   entry.lemma,
@@ -47,7 +49,7 @@ export function reviewWords(sentences, reviewable) {
       if (entry.lemma?.id) tokenByLemma.set(entry.lemma.id, entry.token.id);
     }
     const byRelation = new Set();
-    for (const relation of sentence.relations || []) {
+    for (const relation of sentenceArcs(sentence)) {
       if (!reviewable(relation.metadata)) continue;
       const tokenId = tokenByLemma.get(relation.target);
       if (tokenId) byRelation.add(tokenId);
@@ -135,7 +137,7 @@ export function wordHasMaterial(sentences, tokenId, predicate) {
     if (spansOf(entry).some((s) => s && predicate(s.metadata))) return true;
     const lemmaId = entry.lemma?.id;
     if (!lemmaId) return false;
-    return (sentence.relations || []).some((r) => r.target === lemmaId && predicate(r.metadata));
+    return sentenceArcs(sentence).some((r) => r.target === lemmaId && predicate(r.metadata));
   }
   return false;
 }
