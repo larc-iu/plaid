@@ -878,7 +878,11 @@ Its **Word line** setting prints the words as written, segmented into morphemes,
 Both is the four-line hand-in a field methods course asks for: the words as written, the words segmented, the morpheme glosses, the free translation.
 Printing a morpheme gloss line over words as written leaves the hyphens on the two lines with nothing to correspond to, and the preset says so.
 Three more settings shape the page: **Number sentences** puts a running number before each one, **Document header** prints the document's name and metadata above its text, and **Include vocabularies as TSV files** adds the project's lexicons to the `.zip` that a project-wide or multi-document export produces.
-* **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped with a note on the order to import them in. Leave the lexicon out to get the `.flextext` on its own.
+* **FieldWorks (FLEx)**: the texts as FieldWorks' interlinear XML (`.flextext`) together with the project's vocabularies as a LIFT lexicon (`.lift`), zipped together. Leave the lexicon out to get the `.flextext` on its own.
+In FieldWorks, import the lexicon first, from the Lexicon area (**File > Import > LIFT Lexicon**), keeping the `.lift-ranges` file beside the `.lift`.
+Then import the texts from the Texts & Words area (**File > Import > FLExText Interlinear**).
+Each import only appears in the menu from its own area, and the order matters because the texts link to entries that must already be there.
+The export screen and a README in the `.zip` repeat these steps.
 * **CLDF TextCorpus** (`.zip`): a Cross-Linguistic Data Formats dataset, one CSV per component table with a `cldf-metadata.json` describing them.
 CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.
 Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and the difference between a word left unanalyzed and a word analyzed as a single morpheme.

@@ -77,13 +77,15 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
       : []),
     `  ${stem}.flextext: ${docCount} interlinear text${docCount === 1 ? '' : 's'}`,
     '',
-    "Import them in this order, from FLEx's File > Import menu:",
+    'Import them in this order. Each import only appears in the File > Import',
+    'menu while FLEx is showing the area named here.',
     '',
-    `  1. the LIFT lexicon (${stem}.lift)`,
+    `  1. In the Lexicon area: File > Import > LIFT Lexicon, and choose ${stem}.lift`,
     ...(lexicon.ranges
       ? [`     Keep ${stem}.lift-ranges in the same folder, where FLEx reads it from.`]
       : []),
-    `  2. the interlinear texts (${stem}.flextext)`,
+    `  2. In the Texts & Words area: File > Import > FLExText Interlinear, and choose`,
+    `     ${stem}.flextext`,
     '',
     'The order matters. The texts name their lexical entries by citation form,',
     'so the entries have to be in place before the texts are imported for FLEx',

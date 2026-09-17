@@ -8,6 +8,7 @@ import { readExportPresets, EXPORT_FORMATS } from '@/export/presets';
 import { runExport, ExportCancelled } from '@/export/runExport';
 import { downloadBlob } from '@/export/files';
 import { ScopeStep } from './ScopeStep.jsx';
+import { FlexImportSteps } from './FlexImportSteps.jsx';
 
 const formatLabel = (id) => EXPORT_FORMATS.find((f) => f.id === id)?.label ?? id;
 
@@ -228,6 +229,10 @@ export const ExportRunner = ({
             </div>
           )}
         </>
+      )}
+
+      {preset?.format === 'flextext' && (
+        <FlexImportSteps lexicon={preset.options?.lexicon !== false} />
       )}
 
       <div className="flex items-center justify-end gap-2">

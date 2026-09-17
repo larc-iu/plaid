@@ -215,8 +215,7 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
         ) : draft.format === 'flextext' ? (
           <p className="border-t pt-3 text-xs text-muted-foreground">
             One .flextext holding every document in the run. With the lexicon included it becomes a
-            .zip: the .flextext, the .lift and its .lift-ranges, and a README giving the order FLEx
-            needs them imported in.
+            .zip: the .flextext, the .lift and its .lift-ranges.
           </p>
         ) : (
           hasVocabularies && (
