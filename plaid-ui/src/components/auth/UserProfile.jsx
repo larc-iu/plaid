@@ -25,9 +25,10 @@ const EMPTY = (displayName = '') => ({
  * The account screen: display name, password, profile picture, API tokens.
  *
  * `className` is the outer wrapper's, because the two shells differ: plaid-ud's
- * Outlet is already padded and plaid-igt's is not.
+ * Outlet is already padded and plaid-igt's is not. `children` are further cards
+ * of the app's own (its keyboard shortcuts), drawn after the shared ones.
  */
-export const UserProfile = ({ className }) => {
+export const UserProfile = ({ className, children }) => {
   useDocumentTitle('Profile');
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -458,6 +459,7 @@ export const UserProfile = ({ className }) => {
           </div>
         </CardContent>
       </Card>
+      {children}
     </div>
   );
 };

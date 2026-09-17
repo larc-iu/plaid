@@ -12,6 +12,7 @@ import { AppLayout } from './components/layout/AppLayout';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider';
 import { Suspended } from '@ui/components/shared/Suspended';
 import { lazyNamed } from '@ui/lib/lazyNamed';
+import { keys, KEY_GROUPS } from './lib/keymap.js';
 
 // Screens most visits never open ride in their own chunks: the import wizards
 // (and the parsers behind them), the lexicon area, the admin area, the setup
@@ -38,6 +39,10 @@ const ImportElanDocuments = lazyNamed(
   'ImportElanDocuments',
 );
 const UserProfile = lazyNamed(() => import('@ui/components/auth/UserProfile.jsx'), 'UserProfile');
+const KeyboardSettings = lazyNamed(
+  () => import('@ui/components/shared/KeyboardSettings.jsx'),
+  'KeyboardSettings',
+);
 const AdminView = lazyNamed(() => import('./components/admin/AdminView'), 'AdminView');
 const VocabularyList = lazyNamed(
   () => import('./components/vocabularies/VocabularyList'),
@@ -126,7 +131,14 @@ function App() {
                 <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
 
                 <Route path="/admin" element={<AdminView />} />
-                <Route path="/profile" element={<UserProfile className="px-4 py-8" />} />
+                <Route
+                  path="/profile"
+                  element={
+                    <UserProfile className="px-4 py-8">
+                      <KeyboardSettings keymap={keys} groups={KEY_GROUPS} />
+                    </UserProfile>
+                  }
+                />
                 {/* Catch all. INSIDE the protected layout on purpose: a route
                   the router does not know is usually a typo, a stale bookmark
                   or a guess at a scheme the app does not use

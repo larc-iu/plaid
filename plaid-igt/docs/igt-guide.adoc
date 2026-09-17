@@ -1054,6 +1054,14 @@ TIP: If you type a lot of one language, a system keyboard such as SIL Keyman is 
 
 Every shortcut that takes Ctrl also takes Cmd on a Mac, and Alt is the Option key there.
 
+The tables below give the shortcuts as they come.
+You can change most of them under **Profile**, in **Keyboard shortcuts**: choose **Change** beside an action and press the keys you want.
+A change takes effect at once, follows your account to any computer you sign in on, and shows in the `?` legends in place of the original.
+**Reset** puts one shortcut back and **Reset all** puts back every one.
+
+A few keys cannot be reassigned, because what they do depends on where you are: Enter, Tab, the arrow keys, Escape, Backspace, and `-` and `=` in a morpheme form.
+A shortcut is also refused when the browser already uses it, when it would type a character into the cell you are in (add Ctrl or Alt), or when another action on the same screen already has it, and the screen says which.
+
 == Anywhere
 
 [cols="1,3"]

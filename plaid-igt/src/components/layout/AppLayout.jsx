@@ -9,6 +9,7 @@ import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubj
 import { useAskAssistant, useAssistantScope } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { keys } from '@/lib/keymap.js';
+import { useUserKeymap } from '@ui/hooks/useUserKeymap.js';
 
 // shadcn shell frame, and the one place the assistant panel is mounted.
 // Preflight is global now, and the two islands own their CSS and must not
@@ -25,6 +26,8 @@ import { keys } from '@/lib/keymap.js';
 
 const Shell = () => {
   const { user, client, logout } = useAuth();
+  // The signed-in person's own shortcuts, laid over the defaults.
+  useUserKeymap(keys);
   const location = useLocation();
   const subject = useAssistantScope();
 
