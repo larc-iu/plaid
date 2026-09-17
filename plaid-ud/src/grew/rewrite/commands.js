@@ -23,6 +23,7 @@ import {
   columnOf,
 } from './graph.js';
 import { labelMatches } from './match.js';
+import { isEnhancedLabel, bareLabel, compactLabel } from '../edgeLabel.js';
 
 export function applyCommands(rule, match, graph) {
   const ctx = {
@@ -55,14 +56,21 @@ function edgeOf(ctx, cmd, v) {
   return ctx.graph.edges.get(ctx.edges.get(v)) || null; // null: already deleted
 }
 
-// The one label a command names: `-[obj]->` or `-[1=obj, 2=lvc]->`.
+// The one label a command names: `-[obj]->`, `-[E:nsubj]->`, or the same
+// spelled out as `-[1=obj, 2=lvc]->` and `-[1=nsubj, enhanced=yes]->`.
 function literalLabel(ctx, cmd, label) {
   if (label.type === 'list' && !label.negated && label.labels.length === 1) return label.labels[0];
-  if (label.type === 'features' && label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
-    return [...label.feats]
-      .sort((a, b) => Number(a.key) - Number(b.key))
-      .map((f) => f.val)
-      .join(':');
+  if (label.type === 'features') {
+    const mark = label.feats.filter((f) => f.key === 'enhanced');
+    const parts = label.feats.filter((f) => f.key !== 'enhanced');
+    const plain = parts.length && parts.every((f) => /^[0-9]+$/.test(f.key) && !f.neg);
+    if (plain && mark.every((f) => !f.neg && f.val === 'yes')) {
+      const value = [...parts]
+        .sort((a, b) => Number(a.key) - Number(b.key))
+        .map((f) => f.val)
+        .join(':');
+      return compactLabel(value, mark.length > 0);
+    }
   }
   throw new GrewUnsupportedError(
     'command-label',
@@ -193,14 +201,23 @@ function applyCommand(ctx, cmd) {
   }
 }
 
-// `e.label` is the whole deprel; `e.1`, `e.2`, … are its ':'-separated parts.
+// `e.label` is the whole label as Grew writes it, `E:` and all. `e.1`, `e.2`, …
+// are the deprel's ':'-separated parts, and `e.enhanced` is which graph the
+// edge is in: `e.enhanced = yes` moves a basic edge to the enhanced graph, and
+// `del_feat e.enhanced` brings one back.
 function setLabelPart(label, feat, value) {
   if (feat === 'label') return value ?? '';
+  if (feat === 'enhanced') {
+    if (value != null && value !== 'yes') {
+      throw new GrewUnsupportedError('edge-feature', "`enhanced` takes one value: 'yes'.");
+    }
+    return compactLabel(bareLabel(label), value != null);
+  }
   const i = Number(feat);
   if (!Number.isInteger(i) || i < 1) {
     throw new GrewUnsupportedError(
       'edge-feature',
-      `Edge feature '${feat}' is not supported. Use e.label, e.1, e.2.`,
+      `Edge feature '${feat}' is not supported. Use e.label, e.1, e.2, e.enhanced.`,
     );
   }
   const parts = labelParts(label);
@@ -209,7 +226,14 @@ function setLabelPart(label, feat, value) {
     while (parts.length < i - 1) parts.push('');
     parts[i - 1] = value;
   }
-  return joinLabel(parts);
+  return compactLabel(joinLabel(parts), isEnhancedLabel(label));
+}
+
+// What a command reads off an edge, by the same names.
+function labelPart(label, feat) {
+  if (feat === 'label') return label;
+  if (feat === 'enhanced') return isEnhancedLabel(label) ? 'yes' : undefined;
+  return labelParts(label)[Number(feat) - 1];
 }
 
 function evalExpr(ctx, cmd, atoms) {
@@ -225,7 +249,7 @@ function evalExpr(ctx, cmd, atoms) {
       else {
         const e = edgeOf(ctx, cmd, a.node);
         if (!e) fail(ctx, cmd, `Edge '${a.node}' was deleted.`);
-        v = a.feat === 'label' ? e.label : labelParts(e.label)[Number(a.feat) - 1];
+        v = labelPart(e.label, a.feat);
       }
       if (v === undefined) fail(ctx, cmd, `${a.node}.${a.feat} is undefined.`);
       if (!a.slice) return String(v);

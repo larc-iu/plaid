@@ -15,6 +15,7 @@ import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
 import { graphFromSentence } from './graph.js';
 import { rewriteSentence } from './engine.js';
 import { diffGraphs } from './diff.js';
+import { bareLabel } from '../edgeLabel.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 
 // Ops per atomic batch. A batch is one server transaction holding the single
@@ -167,7 +168,7 @@ function offVocabulary(before, after, validators) {
   // `edges` is a Map keyed by relation id.
   for (const [id, edge] of after.edges?.entries() || []) {
     if (edge.label == null || before.edges?.get(id)?.label === edge.label) continue;
-    const refusal = validators.deprel(edge.label);
+    const refusal = validators.deprel(bareLabel(edge.label));
     if (refusal) return refusal;
   }
   return null;

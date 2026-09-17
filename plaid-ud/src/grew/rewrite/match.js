@@ -12,6 +12,7 @@
 
 import { GrewUnsupportedError } from '../errors.js';
 import { getFeat, liveNodes, liveWords, structureEdges, sortedEdges } from './graph.js';
+import { splitLabel, isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 
 const analysed = new WeakMap();
 
@@ -398,9 +399,16 @@ function toRegExp(v) {
 }
 
 // Does an edge label satisfy a Label AST? `-[nsubj]->` is the exact label;
-// `-[1=nsubj]->` is the main type, any subtype.
+// `-[1=nsubj]->` is the main type, any subtype. An edge of the enhanced graph
+// carries Grew's `E:` on its label here, and the label is asked of the side the
+// edge belongs to (edgeLabel.js, the reading the search compiler shares).
 export function labelMatches(label, actual) {
-  if (!label || label.type === 'any') return true;
+  const side = splitLabel(label)[isEnhancedLabel(actual) ? 'enhanced' : 'basic'];
+  return side ? bareLabelMatches(side, bareLabel(actual)) : false;
+}
+
+function bareLabelMatches(label, actual) {
+  if (label.type === 'any') return true;
   if (label.type === 'list') {
     const hit = label.labels.includes(actual);
     return label.negated ? !hit : hit;
@@ -410,7 +418,7 @@ export function labelMatches(label, actual) {
     if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
       throw new GrewUnsupportedError(
         'edge-feature',
-        'Only positive numbered edge features (1=, 2=, …) are supported.',
+        'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
       );
     }
     const joined = [...label.feats]
@@ -431,28 +439,37 @@ function checkDominates(g, item, nodes) {
       'Transitive dominance (->>) requires named endpoints.',
     );
   }
-  let allowed = null;
-  if (item.label && item.label.type !== 'any') {
-    if (item.label.type === 'list' && !item.label.negated) allowed = new Set(item.label.labels);
-    else
-      throw new GrewUnsupportedError(
-        'dominates-label',
-        'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
-      );
+  // A path runs through one graph, as the search compiler has it: the tree
+  // when unlabelled, the extras when every label is an `E:` one.
+  const labelled = item.label && item.label.type !== 'any';
+  if (labelled && !(item.label.type === 'list' && !item.label.negated)) {
+    throw new GrewUnsupportedError(
+      'dominates-label',
+      'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+    );
   }
+  const enhanced = labelled && item.label.labels.some(isEnhancedLabel);
+  if (enhanced && !item.label.labels.every(isEnhancedLabel)) {
+    throw new GrewUnsupportedError(
+      'dominates-mixed',
+      'A transitive edge (->>) follows basic labels or E: labels, not both at once.',
+    );
+  }
+  const allowed = labelled ? new Set(item.label.labels) : null;
   const start = nodes.get(item.left.id);
   const goal = nodes.get(item.right.id);
-  return descendants(g, start, allowed).has(goal);
+  return descendants(g, start, allowed, enhanced).has(goal);
 }
 
 // Nodes strictly below `start` (self-loops ignored).
-function descendants(g, start, allowed = null) {
+function descendants(g, start, allowed = null, enhanced = false) {
   const seen = new Set();
   const queue = [start];
   while (queue.length) {
     const cur = queue.shift();
     for (const e of g.edges.values()) {
       if (e.src !== cur || e.tgt === e.src || seen.has(e.tgt)) continue;
+      if (isEnhancedLabel(e.label) !== enhanced) continue;
       if (allowed && !allowed.has(e.label)) continue;
       seen.add(e.tgt);
       queue.push(e.tgt);

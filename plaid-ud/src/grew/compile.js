@@ -25,6 +25,7 @@ import {
   notExactlyRegex,
   featuresLabelRegex,
 } from './regex.js';
+import { splitLabel } from './edgeLabel.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
 
@@ -515,18 +516,50 @@ class Compiler {
     ctx.list.push(['covers', av, tv]);
   }
 
+  // The relation layers a label reads, each with the label's test on that side
+  // (see edgeLabel.js). The enhanced layer always carries a value test, because
+  // a suppressor is a row there with no value and is not an edge.
+  edgeSides(label, ctx) {
+    const split = splitLabel(label);
+    const sides = [];
+    if (split.basic) {
+      const cm = { layer: this.layerId('relationLayer', 'Dependency') };
+      const v = this.edgeValueConstraint(split.basic, ctx);
+      if (v !== undefined) cm.value = v;
+      sides.push(cm);
+    }
+    if (split.enhanced) {
+      const layer = this.li.enhancedRelationLayer?.id;
+      // A label that reads both graphs reads the tree alone in a project with
+      // no enhanced layer. One that reads only the extras has nothing to read.
+      if (layer) {
+        sides.push({ layer, value: this.edgeValueConstraint(split.enhanced, ctx) ?? ANY_VALUE });
+      } else if (!split.basic) {
+        this.layerId('enhancedRelationLayer', 'enhanced dependency');
+      }
+    }
+    if (!sides.length) {
+      throw new GrewUnsupportedError('edge-label', 'This edge label can match no edge.');
+    }
+    return sides;
+  }
+
   emitEdge(item, ctx) {
-    const REL = this.layerId('relationLayer', 'Dependency');
     const rv = item.id ? `?e_${item.id}` : this.fresh('r');
     // A named edge is returnable only when bound at top level (a find variable
     // can't live inside a `without`/`not`).
     if (item.id && ctx.scope === 'top' && !this.find.includes(rv)) this.find.push(rv);
-    const cm = { layer: REL };
-    const v = this.edgeValueConstraint(item.label, ctx);
-    if (v !== undefined) cm.value = v;
-    if (!item.src.wild) cm.source = this.lemmaSpan(item.src.id, ctx);
-    if (!item.tgt.wild) cm.target = this.lemmaSpan(item.tgt.id, ctx);
-    ctx.list.push(['relation', rv, cm]);
+    const ends = {};
+    if (!item.src.wild) ends.source = this.lemmaSpan(item.src.id, ctx);
+    if (!item.tgt.wild) ends.target = this.lemmaSpan(item.tgt.id, ctx);
+    const sides = this.edgeSides(item.label, ctx).map((cm) => ({ ...cm, ...ends }));
+    if (sides.length === 1) {
+      ctx.list.push(['relation', rv, sides[0]]);
+      return;
+    }
+    this.branches *= sides.length;
+    this.checkDepth(ctx.depth + 1);
+    ctx.list.push(['or', ...sides.map((cm) => [['relation', rv, cm]])]);
   }
 
   emitDominates(item, ctx) {
@@ -536,20 +569,29 @@ class Compiler {
         'Transitive dominance (->>) requires named endpoints.',
       );
     }
-    const REL = this.layerId('relationLayer', 'Dependency');
     const a = this.lemmaSpan(item.left.id, ctx);
     const b = this.lemmaSpan(item.right.id, ctx);
-    const m = { layer: REL };
-    if (item.label && item.label.type !== 'any') {
-      if (item.label.type === 'list' && !item.label.negated) {
-        m.value = item.label.labels.length === 1 ? item.label.labels[0] : item.label.labels;
-      } else {
-        throw new GrewUnsupportedError(
-          'dominates-label',
-          'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
-        );
-      }
+    // A path runs through ONE layer. Unlabelled, that is the tree, which is
+    // what dominance means in UD. A list of `E:` labels follows the extras.
+    const labelled = item.label && item.label.type !== 'any';
+    if (labelled && !(item.label.type === 'list' && !item.label.negated)) {
+      throw new GrewUnsupportedError(
+        'dominates-label',
+        'A transitive edge (->>) may only carry a plain label or label list, not a regex/negation/subtype.',
+      );
     }
+    const split = labelled ? splitLabel(item.label) : { basic: null, enhanced: null };
+    if (split.basic && split.enhanced) {
+      throw new GrewUnsupportedError(
+        'dominates-mixed',
+        'A transitive edge (->>) follows basic labels or E: labels, not both at once.',
+      );
+    }
+    const m = split.enhanced
+      ? { layer: this.layerId('enhancedRelationLayer', 'enhanced dependency') }
+      : { layer: this.layerId('relationLayer', 'Dependency') };
+    const labels = (split.enhanced || split.basic)?.labels;
+    if (labels) m.value = labels.length === 1 ? labels[0] : labels;
     ctx.list.push(['related*', a, b, m]);
   }
 
@@ -951,7 +993,7 @@ class Compiler {
       if (!label.feats.every((f) => /^[0-9]+$/.test(f.key) && !f.neg)) {
         throw new GrewUnsupportedError(
           'edge-feature',
-          'Only positive numbered edge features (1=, 2=, …) are supported.',
+          'Only numbered edge features (1=, 2=, …) and `enhanced` are supported.',
         );
       }
       return { regex: featuresLabelRegex(label.feats) };

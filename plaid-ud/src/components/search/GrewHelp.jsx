@@ -67,6 +67,10 @@ const REWRITE_EXAMPLES = [
     'pattern { H -[obj]-> N; e: N -[nmod]-> M; M [Case=Ins] } commands { del_edge e; add_edge H -[obl]-> M }',
   ],
   [
+    'Share a subject in the enhanced graph',
+    'pattern { V1 -[conj]-> V2; V1 -[nsubj]-> S } without { V2 -[E:nsubj]-> S } commands { add_edge V2 -[E:nsubj]-> S }',
+  ],
+  [
     'Gender from a lexicon',
     'pattern { X [upos=NOUN, lemma=lex.noun, !Gender] } commands { X.Gender = lex.Gender }\n#BEGIN lex\nnoun\tGender\ndog\tMasc\ncat\tFem\n#END',
   ],
@@ -125,6 +129,10 @@ export const GrewHelp = ({ onPick }) => (
             <C>del_edge e</C>, <C>del_edge X -[obj]-&gt; Y</C>
           </li>
           <li>
+            <C>add_edge X -[E:nsubj]-&gt; Y</C> adds to the enhanced graph, and{' '}
+            <C>e.enhanced = yes</C> moves an edge there
+          </li>
+          <li>
             <C>shift X ==&gt; Y</C>, <C>shift_in X =[nsubj|obj]=&gt; Y</C>,{' '}
             <C>shift_out X =[^det]=&gt; Y</C>: move X's edges to Y, and the root moves with its
             incoming edges
@@ -178,6 +186,10 @@ export const GrewHelp = ({ onPick }) => (
             <C>-[re"…"]-&gt;</C>, <C>X -&gt; Y</C> any)
           </li>
           <li>
+            <C>X -[E:nsubj]-&gt; Y</C>: an edge the enhanced graph adds to the tree. A plain label
+            reads the tree, and <C>X -&gt; Y</C> and <C>-[1=nsubj]-&gt;</C> read both
+          </li>
+          <li>
             <C>X &lt; Y</C> / <C>X &lt;&lt; Y</C>: immediate / any precedence (<C>&gt;</C> /{' '}
             <C>&gt;&gt;</C> reversed)
           </li>
@@ -204,8 +216,8 @@ export const GrewHelp = ({ onPick }) => (
           </li>
         </Bullets>
         <p className="text-sm text-muted-foreground">
-          Not supported: grew lexicons and cluster-by, enhanced dependencies, and very large linear
-          distances. <C>is_tree</C> / <C>is_cyclic</C> assume well-formed UD trees.
+          Not supported: grew lexicons and cluster-by, and very large linear distances.{' '}
+          <C>is_tree</C> / <C>is_cyclic</C> assume well-formed UD trees.
         </p>
       </div>
     </Panel>

@@ -15,6 +15,8 @@
 // `X []` matches the anchor (as in Grew), `X [upos]` does not, and `shift`
 // needs no special case for the root.
 import { normalizeFeature } from '../../utils/feats.js';
+import { isSuppressor } from '../../domain/enhancedGraph.js';
+import { isEnhancedLabel, bareLabel, compactLabel } from '../edgeLabel.js';
 
 const COLUMNS = { form: 'form', lemma: 'lemma', upos: 'upos', xpos: 'xpos' };
 
@@ -78,19 +80,34 @@ export function graphFromSentence(row) {
   const nodeByLemmaSpan = new Map();
   for (const n of nodes.values()) if (n.spanIds.lemma) nodeByLemmaSpan.set(n.spanIds.lemma, n.id);
   const edges = new Map();
-  for (const rel of row.relations) {
+  const suppressors = [];
+  const resolve = (rel) => {
     const src = nodeByLemmaSpan.get(rel.source);
     const tgt = nodeByLemmaSpan.get(rel.target);
-    if (!src || !tgt) continue; // an inter-sentential or dangling relation
-    edges.set(rel.id, {
-      id: rel.id,
-      src: src === tgt ? ANCHOR : src,
-      tgt,
-      label: rel.value ?? '',
-      metadata: rel.metadata || null,
-    });
+    if (!src || !tgt) return null; // an inter-sentential or dangling relation
+    return { id: rel.id, src: src === tgt ? ANCHOR : src, tgt };
+  };
+  for (const rel of row.relations) {
+    const ends = resolve(rel);
+    if (ends)
+      edges.set(rel.id, { ...ends, label: rel.value ?? '', metadata: rel.metadata || null });
   }
-
+  // The enhanced layer's extra edges, labelled as Grew labels them. A
+  // suppressor is not an edge: Grew has no word for a basic edge the enhanced
+  // graph leaves out, so no rule sees one. They are kept beside the edges
+  // only so the diff can take away one whose basic edge a rule removed.
+  for (const rel of row.enhancedRelations || []) {
+    const ends = resolve(rel);
+    if (!ends) continue;
+    if (isSuppressor(rel)) suppressors.push(ends);
+    else {
+      edges.set(rel.id, {
+        ...ends,
+        label: compactLabel(rel.value ?? '', true),
+        metadata: rel.metadata || null,
+      });
+    }
+  }
   return {
     sentence: {
       id: row.id,
@@ -100,6 +117,7 @@ export function graphFromSentence(row) {
     nodes,
     order,
     edges,
+    suppressors,
     nextId: 1,
   };
 }
@@ -117,7 +135,14 @@ export function cloneGraph(g) {
   }
   const edges = new Map();
   for (const e of g.edges.values()) edges.set(e.id, { ...e });
-  return { sentence: g.sentence, nodes, order: [...g.order], edges, nextId: g.nextId };
+  return {
+    sentence: g.sentence,
+    nodes,
+    order: [...g.order],
+    edges,
+    suppressors: g.suppressors,
+    nextId: g.nextId,
+  };
 }
 
 // Live nodes in linear order, the anchor first.
@@ -126,9 +151,13 @@ export const liveNodes = (g) => g.order.map((id) => g.nodes.get(id)).filter((n) 
 // Live words: the nodes that are tokens.
 export const liveWords = (g) => liveNodes(g).filter((n) => !n.anchor);
 
-// Edges between words: the dependency structure without the anchor's root edge.
+// Edges between words: the dependency TREE, without the anchor's root edge and
+// without the enhanced graph's extra edges. The tree flags and projectivity
+// are questions about the tree.
 export const structureEdges = (g) =>
-  [...g.edges.values()].filter((e) => e.src !== ANCHOR && e.src !== e.tgt);
+  [...g.edges.values()].filter(
+    (e) => e.src !== ANCHOR && e.src !== e.tgt && !isEnhancedLabel(e.label),
+  );
 
 export function getFeat(node, name) {
   const col = columnOf(name);
@@ -165,6 +194,10 @@ export function freshEdgeId(g) {
 }
 
 // The UD deprel split the way Grew sees an edge label: `nsubj:pass` is
-// `1=nsubj, 2=pass`. Returns ['nsubj', 'pass'].
-export const labelParts = (label) => (label === '' ? [] : String(label).split(':'));
+// `1=nsubj, 2=pass`. Returns ['nsubj', 'pass']. The `E:` of an enhanced edge
+// is no part of the deprel (it is `enhanced=yes`), so it is left out.
+export const labelParts = (label) => {
+  const bare = bareLabel(label);
+  return bare === '' ? [] : bare.split(':');
+};
 export const joinLabel = (parts) => parts.filter((p) => p != null && p !== '').join(':');

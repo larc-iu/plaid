@@ -19,6 +19,8 @@
 //                 word to its lemma span (existing or just created)
 
 import { liveNodes, ANCHOR } from './graph.js';
+import { GrewRuntimeError } from '../errors.js';
+import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -93,8 +95,28 @@ export function diffGraphs(before, after, layerInfo) {
   }
 
   // --- edges ---
+  // An edge labelled `E:` lives in the enhanced layer and any other in the
+  // tree's, under the bare deprel either way (edgeLabel.js).
   const touchesDeleted = (e) => deleted.has(e.src) || deleted.has(e.tgt);
   const needsLemma = new Set();
+  const create = (a) => {
+    const enhanced = isEnhancedLabel(a.label);
+    const layerId = layer(enhanced ? 'enhancedRelationLayer' : 'relationLayer');
+    if (!layerId) {
+      throw new GrewRuntimeError(
+        'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
+      );
+    }
+    writes.main.push({
+      op: 'createRelation',
+      layer: layerId,
+      src: serverSrc(a),
+      tgt: a.tgt,
+      value: bareLabel(a.label),
+    });
+    needsLemma.add(serverSrc(a));
+    needsLemma.add(a.tgt);
+  };
   for (const [id, b] of before.edges) {
     const a = after.edges.get(id);
     if (!a) {
@@ -111,7 +133,6 @@ export function diffGraphs(before, after, layerInfo) {
         kind: 'edge',
         text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`,
       });
-      writes.main.push({ op: 'updateRelation', id, value: a.label, metadata: b.metadata });
     }
     if (a.src !== b.src) {
       changes.push({
@@ -124,6 +145,23 @@ export function diffGraphs(before, after, layerInfo) {
         kind: 'edge',
         text: `${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
       });
+    }
+    // A relation never changes layers, so an edge that changed graphs
+    // (`e.enhanced = yes`) is deleted from one and created in the other.
+    if (isEnhancedLabel(a.label) !== isEnhancedLabel(b.label)) {
+      writes.main.push({ op: 'deleteRelation', id });
+      create(a);
+      continue;
+    }
+    if (a.label !== b.label) {
+      writes.main.push({
+        op: 'updateRelation',
+        id,
+        value: bareLabel(a.label),
+        metadata: b.metadata,
+      });
+    }
+    if (a.tgt !== b.tgt) {
       writes.main.push({ op: 'setTarget', id, node: a.tgt });
       needsLemma.add(a.tgt);
     }
@@ -138,15 +176,18 @@ export function diffGraphs(before, after, layerInfo) {
       kind: 'edge',
       text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`,
     });
-    writes.main.push({
-      op: 'createRelation',
-      layer: layer('relationLayer'),
-      src: serverSrc(a),
-      tgt: a.tgt,
-      value: a.label,
-    });
-    needsLemma.add(serverSrc(a));
-    needsLemma.add(a.tgt);
+    create(a);
+  }
+
+  // A suppressor says the enhanced graph leaves out the basic edge it lies
+  // over. Once a rule has removed or moved that edge it says nothing, so it
+  // goes in the same write (the editor's own deletes do the same).
+  const basicPairs = new Set();
+  for (const e of after.edges.values())
+    if (!isEnhancedLabel(e.label)) basicPairs.add(`${e.src}>${e.tgt}`);
+  for (const s of before.suppressors || []) {
+    if (touchesDeleted(s) || basicPairs.has(`${s.src}>${s.tgt}`)) continue;
+    writes.main.push({ op: 'deleteRelation', id: s.id });
   }
 
   // --- lemma spans that must exist first ---
@@ -170,7 +211,8 @@ export function diffGraphs(before, after, layerInfo) {
   // --- what Grew allows and UD does not: heads among words, as the editor counts ---
   const heads = new Map();
   for (const e of after.edges.values())
-    if (e.src !== ANCHOR) heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
+    if (e.src !== ANCHOR && !isEnhancedLabel(e.label))
+      heads.set(e.tgt, (heads.get(e.tgt) || 0) + 1);
   for (const [id, n] of heads) if (n > 1) warnings.push(`${formOf(after, id)} has ${n} heads.`);
 
   return { changes, writes, warnings };
