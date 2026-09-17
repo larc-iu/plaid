@@ -208,3 +208,21 @@
                        "return" {"group" ["?b"] "aggregates" [["count"]]}})]
         (is (= #{1} (set (map last (:results r)))))
         (is (= 2 (count (:results r))))))))
+
+(deftest layer-of-an-outer-entity-inside-not
+  (let [{:keys [feat pos-noun]} (build!)]
+    (testing "a :not that re-states an entity bound OUTSIDE it keeps its layer:
+             the NOUN spans that are not on feat. The layer used to be dropped
+             from the subquery, leaving NOT EXISTS (SELECT 1 WHERE TRUE) and no rows"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"value" "NOUN"}]
+                                ["not" ["span" "?s" {"layer" feat}]]]})]
+        (is (= [[(str pos-noun)]] (tuples r)))))
+    (testing "and the same through a layer variable named inside the :not"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?s"]
+                       "where" [["span" "?s" {"value" "NOUN"}]
+                                ["not" ["span" "?s" {"layer" "?L"}]
+                                 ["span-layer" "?L" {"name" "feat"}]]]})]
+        (is (= [[(str pos-noun)]] (tuples r)))))))

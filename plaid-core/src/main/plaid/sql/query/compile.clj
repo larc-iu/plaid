@@ -696,6 +696,8 @@
         ;; vars re-stated inside the body are correlated, so their predicates are
         ;; emitted against the outer alias INSIDE this subquery (see below).
         inner-cons (collect-entity-constraints inner)
+        ;; the entity vars bound OUTSIDE this :not (correlated when re-stated in it)
+        outer-vars (set (keys (:var->alias @outer-st)))
         sub-st (atom (assoc @outer-st :from [] :where [] :scoped #{}))]
     ;; existential (inner-only) vars get a table + scope here; correlated (outer)
     ;; vars are already in var->alias, so ensure-var! no-ops for them. (A nested
@@ -716,6 +718,19 @@
           ;; emit this clause's attribute filters INSIDE the subquery — for a
           ;; correlated outer var this is the negated predicate's correct home.
           (emit-entity-filters! sub-st (first c) (get-in @sub-st [:var->alias v]) (or cmap {}))
+          ;; ...and its :layer. For an inner-only var ensure-var! emitted the layer
+          ;; with the scope predicate, but for a CORRELATED var it no-ops (the var
+          ;; has its alias already), and the layer is not one of the attribute
+          ;; filters. Left out, `[:not [:span ?s {:layer L}]]` negated nothing at
+          ;; all: NOT EXISTS (SELECT 1 WHERE TRUE), and no rows.
+          (when (contains? outer-vars v)
+            (let [a    (get-in @sub-st [:var->alias v])
+                  kind (get-in @sub-st [:kinds v])]
+              (when-let [ids (::qr/layer-ids cmap)]
+                (add-where! sub-st [:in (col a (layer-fk kind)) (vec ids)]))
+              (when (symbol? (:layer cmap))
+                (add-where! sub-st [:= (col a (layer-fk kind))
+                                    (col (ensure-var! sub-st (:layer cmap) inner-cons) :id)]))))
           (compile-relation-inline! sub-st inner-cons c))
         :else (compile-rel! sub-st constraints c)))
     (anchor-relations! sub-st inner)
