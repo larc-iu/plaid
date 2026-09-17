@@ -260,8 +260,7 @@ class Compiler {
       // and not into the tree's (the enhanced layer stores the bare deprel).
       // `readCounts` puts the prefix back.
       // An edge already bound through a layer variable is grouped by THAT
-      // one: the server does not join a second layer variable on one entity
-      // to the first, and every label would come back once per layer.
+      // one. A second variable for the same layer would say nothing new.
       const bound = this.edgeLayerVar.get(node);
       const layer = bound || '?groupLayer';
       const cm = bound ? { value: { var: variable } } : { layer, value: { var: variable } };

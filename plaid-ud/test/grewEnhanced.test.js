@@ -172,7 +172,7 @@ test('a mixed list asks each atom of its own layer', () => {
 
 test('a count by label is grouped by the layer the edge was bound with', () => {
   const by = (src) => compile(src, LI, { countBy: { node: 'e', field: 'label' } }).query;
-  // One layer variable per entity: the server does not join a second to the first.
+  // The edge's own layer variable, not a second one for the same layer.
   const both = by('pattern { e: X -> Y }');
   assert.deepEqual(both.return.group, ['?groupValue', '?rl1']);
   assert.deepEqual(both.where.at(-1), ['relation', '?e_e', { value: { var: '?groupValue' } }]);
