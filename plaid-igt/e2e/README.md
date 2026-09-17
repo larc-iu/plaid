@@ -56,7 +56,26 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   `roundTrip.mjs` exports the kitchen sink through native, CLDF and ELAN
   (`drivers.mjs`, the screens' own calls), imports each export, and compares the
   new project with what the format's loss list says should come back
-  (`src/test/fidelity/expect/`), then exports it again and compares that with
-  the first export (`fixedPoint.mjs`). The per-format loss lists and the guards
-  that keep the catalog in step with core are in `src/test/fidelity/` and run
-  with `npm test`.
+  (`src/test/fidelity/expect/`), then round-trips it once more and checks that
+  the second pass changed nothing (`fixedPoint.mjs`). Four more runs share that
+  machinery:
+
+  - `realFiles.mjs` — the same trip on real corpora: every `.fwbackup` in a
+    directory (`--dir`, `--file`), a directory of `.eaf` files as one batch
+    (`--eaf`), or one CLDF dataset (`--cldf`). Only the archive has to match a
+    list there; what CLDF and ELAN lose on someone's real data is printed as
+    known. `--docs N` caps each corpus at its N smallest texts, `--validate`
+    adds the validators below.
+  - `validate.mjs` + `validators.mjs` — every export through the format's OWN
+    validator: xmllint against the EAF 2.8 schema, FieldWorks'
+    FlexInterlinear.xsd and the LIFT 0.13 RelaxNG, and `pycldf validate`. The
+    schemas are third-party and live outside the repo, in `~/local/schemas`
+    (`PLAID_SCHEMA_DIR`); a missing one is reported as skipped, never as a pass.
+  - `resume.mjs` — stops an import after the Nth write, resumes it the way the
+    unfinished-import screen does, and compares the project with one imported
+    straight through.
+  - `vocabTsv.mjs` — a vocabulary TSV bulk-added back into an empty vocabulary
+    that declares the same fields.
+
+  The per-format loss lists and the guards that keep the catalog in step with
+  core are in `src/test/fidelity/` and run with `npm test`.
