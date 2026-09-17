@@ -105,11 +105,18 @@ function textRuns(body, begin, end) {
   return runs;
 }
 
-/** A run with its edge punctuation dropped, never trimmed away to nothing. */
-function trimEdges(body, run) {
+/**
+ * A run with its edge punctuation dropped, never trimmed away to nothing, and
+ * never inside `keep`, the characters the analysis says are the word's own: a
+ * word written "parar∅" or "'n" keeps the mark it covers, which is what the
+ * project it came from had.
+ */
+function trimEdges(body, run, keep = null) {
   let { beginU16: b, endU16: e } = run;
-  while (b < e && isPunct(body[b])) b += 1;
-  while (e > b && isPunct(body[e - 1])) e -= 1;
+  const floor = keep ? keep.beginU16 : run.endU16;
+  const ceiling = keep ? keep.endU16 : run.beginU16;
+  while (b < e && b < floor && isPunct(body[b])) b += 1;
+  while (e > b && e > ceiling && isPunct(body[e - 1])) e -= 1;
   return b < e ? { beginU16: b, endU16: e } : run;
 }
 
@@ -136,6 +143,23 @@ function occursIn(body, run, form) {
 }
 
 /**
+ * Where `form` first occurs in a run at or after `start`, verbatim or
+ * joint-stripped, as a UTF-16 span. Null when it does not occur there. Unlike
+ * `occursIn` this one SELECTS an extent, which only a run holding several words
+ * asks for: there the text between two matches is what separates them.
+ */
+function findIn(body, run, form, start) {
+  const candidates = [...new Set([form, surfaceOf(form)])].filter((c) => c !== '');
+  for (const c of candidates) {
+    for (let at = Math.max(start, run.beginU16); at < run.endU16; at += 1) {
+      const hit = matchesAt(body, at, c);
+      if (hit !== false && hit <= run.endU16) return { beginU16: at, endU16: hit };
+    }
+  }
+  return null;
+}
+
+/**
  * Align an ordered list of analyzed words against body[begin, end).
  *
  * CLDF calls Analyzed_Word "the sequence of words of the primary text to be
@@ -149,13 +173,21 @@ function occursIn(body, run, form) {
  * surface).
  *
  * So: walk the text's whitespace-delimited runs and the analyzed words in
- * lockstep. A word is always one run, minus edge punctuation, because the text
- * is what says where words end. A character match only picks WHICH run a form
- * belongs to, and only when there are spare runs to skip: looking ahead is
+ * lockstep. A word is normally one run, minus edge punctuation, because the
+ * text is what says where words end. A character match only picks WHICH run a
+ * form belongs to, and only when there are spare runs to skip: looking ahead is
  * allowed by the number of runs the analysis can afford to give up (extra runs
  * are punctuation the analysis left out), which keeps the two sequences in step
- * and cannot drift. When the counts agree, the slack is zero and the alignment
- * is purely positional.
+ * and cannot drift.
+ *
+ * One run holds SEVERAL words when there are more words left than runs left and
+ * the characters are there: "medio-día" is one run and two words wherever a
+ * tokenizer splits inside a run (a hyphen, an apostrophe, a clitic), and our
+ * own exports write such words. Each of those takes only its own characters,
+ * and what lies between them belongs to no word, which is where it was before
+ * the export. Without this the extra words took later runs by position, so
+ * every annotation after them landed on the wrong word and the last word of the
+ * sentence lost its own.
  *
  * Returns {spans: [{beginU16, endU16} | null], warnings}.
  */
@@ -163,9 +195,29 @@ export function alignWords(body, begin, end, forms) {
   const runs = textRuns(body, begin, end);
   const spans = [];
   const warnings = [];
+  // The run being consumed, and where the next word may start inside it once an
+  // earlier word has taken part of it.
   let ri = 0;
+  let from = null;
+  // Whether any word was placed with no character match, and which runs a word
+  // took: what the warning at the end is about.
+  let guessed = false;
+  const claimed = new Set();
 
   forms.forEach((form, fi) => {
+    // Still inside a run an earlier word took only part of.
+    if (from != null) {
+      const found = findIn(body, runs[ri], form, from);
+      if (found) {
+        spans.push(found);
+        from = found.endU16;
+        claimed.add(ri);
+        return;
+      }
+      ri += 1;
+      from = null;
+    }
+
     // How many runs we may skip without starving the forms still to come.
     const slack = Math.max(0, runs.length - ri - (forms.length - fi));
     let hit = -1;
@@ -175,31 +227,48 @@ export function alignWords(body, begin, end, forms) {
         break;
       }
     }
-    if (hit >= 0) {
-      // Cover the whole run, not just the matched part. A run is consumed by
-      // at most one form, so whatever the analysis does not account for
-      // belongs to no other token: Tsez writes "yegirxo" but analyzes it as
-      // "y-egir-x", and matching alone left that final "o" outside every
-      // word, where it could not be annotated and would not tile on export.
-      // Edge punctuation still stays out, so "zown." keeps its full stop
-      // separate. The morpheme forms are unaffected, since they live in token
-      // metadata rather than in the text extent.
-      spans.push(trimEdges(body, runs[hit]));
-      ri = hit + 1;
+    if (hit < 0 && ri >= runs.length) {
+      warnings.push(`no text left to align "${form}" to`);
+      spans.push(null);
       return;
     }
-    if (ri < runs.length) {
-      // No character match. The positional correspondence is what the format
-      // actually asserts, so trust it and take the whole word.
-      spans.push(trimEdges(body, runs[ri]));
-      ri += 1;
+    const j = hit >= 0 ? hit : ri;
+    const run = runs[j];
+    // Where this form's own characters are in that run, when they are there.
+    const own = hit >= 0 ? findIn(body, run, form, run.beginU16) : null;
+    // More words left than runs left: this run may hold several of them, each
+    // taking only its own characters.
+    const shared = forms.length - fi > runs.length - j ? own : null;
+    if (shared && shared.endU16 < run.endU16) {
+      spans.push(shared);
+      ri = j;
+      from = shared.endU16;
+      claimed.add(j);
       return;
     }
-    warnings.push(`no text left to align "${form}" to`);
-    spans.push(null);
+    // Cover the whole run, not just the matched part. A run this word does not
+    // share is consumed by it alone, so whatever the analysis does not account
+    // for belongs to no other token: Tsez writes "yegirxo" but analyzes it as
+    // "y-egir-x", and matching alone left that final "o" outside every word,
+    // where it could not be annotated and would not tile on export. Edge
+    // punctuation still stays out, so "zown." keeps its full stop separate. The
+    // morpheme forms are unaffected, since they live in token metadata rather
+    // than in the text extent.
+    if (hit < 0) guessed = true;
+    spans.push(trimEdges(body, run, own));
+    claimed.add(j);
+    ri = j + 1;
+    from = null;
   });
 
-  if (runs.length !== forms.length && forms.length) {
+  // Worth saying when a word was placed by position alone, or when a run with
+  // letters in it went to no word at all. A run of punctuation the analysis
+  // leaves out is neither, and counting words alone called that a mismatch.
+  const leftOver = runs.filter(
+    (run, j) =>
+      !claimed.has(j) && [...body.slice(run.beginU16, run.endU16)].some((c) => !isPunct(c)),
+  );
+  if (forms.length && runs.length !== forms.length && (guessed || leftOver.length)) {
     warnings.push(
       `${forms.length} analyzed words for ${runs.length} words of text; aligned by position`,
     );

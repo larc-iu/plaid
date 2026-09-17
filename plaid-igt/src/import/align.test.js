@@ -201,6 +201,42 @@ describe('alignWords', () => {
     expect(warnings.join(' ')).toMatch(/no text left to align "ladran"/);
   });
 
+  it('gives one run to several words when the words outnumber the runs', () => {
+    const { spans, warnings } = align('El gato medio-día, fin', [
+      'El',
+      'gato',
+      'medio',
+      'día',
+      'fin',
+    ]);
+    expect(spans.map((s) => 'El gato medio-día, fin'.slice(s.beginU16, s.endU16))).toEqual([
+      'El',
+      'gato',
+      'medio',
+      'día',
+      'fin',
+    ]);
+    // Every word is where its own characters are, so nothing is guessed.
+    expect(warnings).toEqual([]);
+  });
+
+  it('keeps a whole run for one word whose analysis spells only part of it', () => {
+    // Tsez: the text says yegirxo and the analysis says y-egir-x.
+    const { spans } = align('yegirxo zown', ['y-egir-x', 'zown']);
+    expect('yegirxo zown'.slice(spans[0].beginU16, spans[0].endU16)).toBe('yegirxo');
+  });
+
+  it('keeps an edge mark the word itself spells', () => {
+    const body = "Dio parar∅ 'n. Fin";
+    const { spans } = alignWords(body, 0, body.length, ['Dio', 'parar∅', "'n", 'Fin']);
+    expect(spans.map((s) => body.slice(s.beginU16, s.endU16))).toEqual([
+      'Dio',
+      'parar∅',
+      "'n",
+      'Fin',
+    ]);
+  });
+
   it('warns when the two sequences are not the same length', () => {
     const { warnings } = align('uno dos tres', ['uno', 'dos']);
     expect(warnings.join(' ')).toMatch(/2 analyzed words for 3 words of text/);
