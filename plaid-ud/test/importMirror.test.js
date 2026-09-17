@@ -44,7 +44,17 @@ function recordingClient() {
       const batch = {
         tokens: { bulkCreate: (ops) => queue('tokens', ops) },
         spans: { bulkCreate: (ops) => queue('spans', ops) },
-        relations: { bulkCreate: (ops) => queue('relations', ops) },
+        relations: {
+          // As the server does: one layer's relations to a call. The first
+          // cut of the enhanced import put both layers' rows in one, which
+          // every offline test passed and the live core refused with a 400.
+          bulkCreate: (ops) => {
+            if (new Set(ops.map((op) => op.relationLayerId)).size > 1) {
+              throw new Error('Relations must all belong to the same layer');
+            }
+            queue('relations', ops);
+          },
+        },
       };
       await fn(batch);
       return queued.map(({ kind, ops }) => ({ body: { ids: ops.map(() => `${kind}-${n++}`) } }));

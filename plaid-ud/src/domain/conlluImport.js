@@ -351,8 +351,10 @@ export async function importConlluDocument(
         });
       });
       // The enhanced layer's rows, in the same batch as the tree they differ
-      // from. A suppressor lies over its row's own basic relation, so it is
-      // written only where that relation was.
+      // from but in a bulk create of their own: the server takes one layer's
+      // relations to a call. A suppressor lies over its row's own basic
+      // relation, so it is written only where that relation was.
+      const enhancedOps = [];
       let headlessDeps = 0;
       if (enhancedRelationLayer) {
         const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
@@ -365,7 +367,7 @@ export async function importConlluDocument(
             const spanOf = (head) => (head === 0 ? targetId : ids[head - 1]);
             const basicSource = token.deprel ? spanOf(token.head) : null;
             if (plan.suppress && basicSource && basicPairs.has(`${basicSource} ${targetId}`)) {
-              relationOps.push({
+              enhancedOps.push({
                 relationLayerId: enhancedRelationLayer.id,
                 source: basicSource,
                 target: targetId,
@@ -379,7 +381,7 @@ export async function importConlluDocument(
                 headlessDeps += 1;
                 return;
               }
-              relationOps.push({
+              enhancedOps.push({
                 relationLayerId: enhancedRelationLayer.id,
                 source: sourceId,
                 target: targetId,
@@ -395,9 +397,10 @@ export async function importConlluDocument(
             'the head is not a row of the sentence.',
         );
       }
-      if (relationOps.length > 0) {
+      if (relationOps.length > 0 || enhancedOps.length > 0) {
         await client.batched(async (b) => {
-          b.relations.bulkCreate(relationOps);
+          if (relationOps.length > 0) b.relations.bulkCreate(relationOps);
+          if (enhancedOps.length > 0) b.relations.bulkCreate(enhancedOps);
         });
       }
     }

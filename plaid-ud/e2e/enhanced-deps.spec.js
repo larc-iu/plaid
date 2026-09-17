@@ -10,6 +10,7 @@
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
+import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 
 const S = {};
 const BODY = 'she came and left';
@@ -179,4 +180,32 @@ test('an abandoned relabel does not capture the next plain edit', async ({ page 
   const info = getUdLayerInfo(doc);
   expect(info.relationLayer.relations.map((r) => r.value)).toContain('cc:preconj');
   expect(info.enhancedRelationLayer.relations).toHaveLength(3);
+});
+
+// Against the real server, because the offline import tests once passed a
+// write it refuses: both layers' relations in one bulk create is a 400.
+test('an import reads DEPS into the enhanced layer', async () => {
+  const row = (...cols) => cols.join('\t');
+  const conllu = [
+    '# text = Mary wants to go',
+    row(1, 'Mary', 'Mary', 'PROPN', '_', '_', 2, 'nsubj', '2:nsubj|4:nsubj:xsubj', '_'),
+    row(2, 'wants', 'want', 'VERB', '_', '_', 0, 'root', '0:root', '_'),
+    row(3, 'to', 'to', 'PART', '_', '_', 4, 'mark', '4:mark', '_'),
+    row(4, 'go', 'go', 'VERB', '_', '_', 2, 'xcomp', '2:xcomp:to', '_'),
+  ].join('\n');
+  const out = await ConlluDocument.importFromConllu(S.client, S.projectId, 'Imported', conllu);
+  expect(out.importWarnings).toEqual([]);
+
+  const info = getUdLayerInfo(await S.client.documents.get(out.documentId, true));
+  expect(info.relationLayer.relations).toHaveLength(4);
+  expect(info.enhancedRelationLayer.relations.map((r) => r.value ?? 'SUPPRESS').sort()).toEqual([
+    'SUPPRESS',
+    'nsubj:xsubj',
+    'xcomp:to',
+  ]);
+  const text = new ConlluDocument({
+    raw: await S.client.documents.get(out.documentId, true),
+  }).toConllu();
+  expect(text).toContain('2:nsubj|4:nsubj:xsubj');
+  expect(text).toContain('\t2\txcomp\t2:xcomp:to\t');
 });
