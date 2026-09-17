@@ -506,6 +506,7 @@ async function importNativeDocument({
       if (!agg) {
         agg = {
           id: entry.id ?? null,
+          order: entry.order ?? null,
           scope,
           fieldName,
           layerKey: `${scope}:${fieldName}`,
@@ -550,7 +551,16 @@ async function importNativeDocument({
       }
       return targets.unscopedSpanLayers.get(cacheKey);
     };
-    const resolveSpan = async (scope, name, tokens, value, metadata, label, archiveId = null) => {
+    const resolveSpan = async (
+      scope,
+      name,
+      tokens,
+      value,
+      metadata,
+      label,
+      archiveId = null,
+      order = null,
+    ) => {
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       const spanLayerId =
         tokenIds.length === tokens.length ? await ensureSpanLayer(scope, name, tokenIds) : null;
@@ -566,13 +576,23 @@ async function importNativeDocument({
         value,
         ...(metadata ? { metadata } : {}),
         archiveId,
+        order,
       });
     };
     for (const agg of spansById.values()) {
       // A tree entry that carried its own span id correlates back; one keyed
       // by scope:field:token was synthesized here and has no archive id.
       const [scope, name] = [agg.scope, agg.fieldName];
-      await resolveSpan(scope, name, agg.tokens, agg.value, agg.metadata, agg.layerKey, agg.id);
+      await resolveSpan(
+        scope,
+        name,
+        agg.tokens,
+        agg.value,
+        agg.metadata,
+        agg.layerKey,
+        agg.id,
+        agg.order,
+      );
     }
     for (const extra of docData.extraSpans || []) {
       await resolveSpan(
@@ -583,8 +603,13 @@ async function importNativeDocument({
         extra.metadata,
         `${extra.layer?.name} (extra)`,
         extra.id ?? null,
+        extra.order ?? null,
       );
     }
+    // Created in the order the archive says the project held them, so the one
+    // the editor shows among several on a token is the one it showed there.
+    // Server order is insertion order, which is the order of these calls.
+    spanSpecs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
     // The bulk endpoint requires all spans in one call to share a layer.
     const byLayer = new Map();
     for (const s of spanSpecs) {
@@ -610,6 +635,7 @@ async function importNativeDocument({
     const linkSpecs = [];
     const addLink = (ref, oldTokenIds, label) => {
       if (!ref) return;
+      const order = ref.order ?? null;
       const itemId = itemIdMap.get(ref.itemId);
       const tokenIds = oldTokenIds.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!itemId || tokenIds.length !== oldTokenIds.length) {
@@ -618,7 +644,7 @@ async function importNativeDocument({
         );
         return;
       }
-      linkSpecs.push({ itemId, tokenIds, metadata: ref.metadata });
+      linkSpecs.push({ itemId, tokenIds, metadata: ref.metadata, order });
     };
     for (const s of sentences) {
       for (const w of s.words || []) {
@@ -629,6 +655,9 @@ async function importNativeDocument({
     for (const extra of docData.extraVocabLinks || []) {
       addLink(extra, extra.tokens || [], extra.id);
     }
+    // Same as the spans: among two links on one token the editor shows the
+    // last, so the order they are made in is what a person sees.
+    linkSpecs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
     for (let i = 0; i < linkSpecs.length; i += CHUNK) {
       check();
       await client.vocabLinks.bulkCreate(

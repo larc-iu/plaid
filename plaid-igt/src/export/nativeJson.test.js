@@ -30,9 +30,9 @@ describe('serializeDocumentNative', () => {
     expect(out.sentences).toHaveLength(1);
     const s = out.sentences[0];
     expect(s).toMatchObject({ id: 's1', begin: 0, end: 14, metadata: { speaker: 'A' } });
-    expect(s.fields.Translation).toEqual({ id: 'sp4', value: 'The dogs run.' });
+    expect(s.fields.Translation).toMatchObject({ id: 'sp4', value: 'The dogs run.' });
     const w1 = s.words[0];
-    expect(w1.fields.POS).toEqual({
+    expect(w1.fields.POS).toMatchObject({
       id: 'sp1',
       value: 'NOUN',
       metadata: { prov: 'inferred', provConfirmed: true },
@@ -56,7 +56,7 @@ describe('serializeDocumentNative', () => {
     const morphemes = out.sentences[0].words[0].morphemes;
     expect(morphemes.map((m) => m.precedence)).toEqual([1, 2]);
     expect(morphemes[0]).toMatchObject({ id: 'm1', form: 'perro', morphType: 'stem' });
-    expect(morphemes[0].fields.Gloss).toEqual({ id: 'sp6', value: 'dog' });
+    expect(morphemes[0].fields.Gloss).toMatchObject({ id: 'sp6', value: 'dog' });
     expect(morphemes[1].form).toBe(''); // present but empty
     const m3 = out.sentences[0].words[1].morphemes[0];
     expect('form' in m3).toBe(false); // key absent entirely
@@ -85,8 +85,8 @@ describe('serializeDocumentNative', () => {
 
   it('inlines the LAST single-token vocab link (what the editor shows); rest go to extras', () => {
     const m1 = out.sentences[0].words[0].morphemes[0];
-    expect(m1.vocab).toEqual({ linkId: 'l2', vocabId: 'vocab1', itemId: 'item2' });
-    expect(out.extraVocabLinks).toEqual([
+    expect(m1.vocab).toMatchObject({ linkId: 'l2', vocabId: 'vocab1', itemId: 'item2' });
+    expect(out.extraVocabLinks).toMatchObject([
       {
         id: 'l1',
         vocabId: 'vocab1',
@@ -102,6 +102,9 @@ describe('serializeDocumentNative', () => {
         metadata: { note: 'multi' },
       },
     ]);
+    // Each carries where the server listed it, so an import can put them back
+    // in that order and show what this project showed.
+    expect(out.extraVocabLinks.map((l) => typeof l.order)).toEqual(['number', 'number']);
   });
 
   it('archives links on tokens outside the tree instead of dropping them', () => {
@@ -133,18 +136,18 @@ describe('serializeDocumentNative', () => {
     ]);
     expect(out.extraSpans).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           id: 'sp3',
           layer: { id: 'slMystery', name: 'Mystery', scope: null },
           tokens: ['w1'],
           value: '?',
-        },
-        {
+        }),
+        expect.objectContaining({
           id: 'sp5',
           layer: { id: 'slTr', name: 'Translation', scope: 'Sentence' },
           tokens: ['s1'],
           value: 'dup',
-        },
+        }),
       ]),
     );
     expect(out.extraSpans).toHaveLength(2);
@@ -174,7 +177,7 @@ describe('serializeDocumentNative', () => {
       },
     ];
     const o = serializeDocumentNative(makeDoc(raw));
-    expect(o.extraSpans.find((s) => s.id === 'spAl')).toEqual({
+    expect(o.extraSpans.find((s) => s.id === 'spAl')).toMatchObject({
       id: 'spAl',
       layer: { id: 'slAl', name: 'AlignNote', scope: null },
       tokens: ['a1'],

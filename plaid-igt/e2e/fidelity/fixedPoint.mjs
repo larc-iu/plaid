@@ -20,7 +20,18 @@ import { unzipSync } from 'fflate';
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const TEXT = /\.(json|csv|eaf|xml|txt|flextext|lift|tsv)$/i;
-const VOLATILE_KEYS = new Set(['exportedAt', 'createdAt', 'updatedAt', 'dc:created', 'version']);
+// `order` is where a row sat among the project's rows, which an import
+// renumbers from zero as it recreates them: what it says is the RELATIVE order,
+// and that shows in which annotation is written as the tree's and which as an
+// extra.
+const VOLATILE_KEYS = new Set([
+  'exportedAt',
+  'createdAt',
+  'updatedAt',
+  'dc:created',
+  'version',
+  'order',
+]);
 const STAMP_KEYS = new Set(['importDone', 'importSource', 'nativeImportId', 'cldfEntry']);
 const NOTE =
   /^> Imported from an archive\. Originally posted by (.+?)(?: on (\d{4}-\d{2}-\d{2}))?\.(?:\n\n|$)/;

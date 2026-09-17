@@ -227,14 +227,44 @@ export function serializeVocabularyNative(vocab, { comments = [], onWarning = nu
 
 // {id, value, metadata?} — the span id makes provenance round-trippable and
 // lets entries sharing an id across tokens be recognized as one span.
-const fieldEntry = (span) =>
-  withMetadata({ id: span.id, value: span.value ?? null }, span.metadata);
+// Where each annotation and vocab link sits in the order the project holds
+// them. Which of two on one token the editor shows is decided by that order,
+// so it is data: an archive that did not record it brought a project back
+// showing the other one, since the tree's annotations were created before the
+// extras whatever their order had been.
+//
+// Ranked by id, which core mints in order (plaid.sql.common/new-uuid), rather
+// than by the order this walk meets them: the walk goes layer by layer, so its
+// numbering would differ between a project and its re-import even when both
+// hold the same order.
+function serverOrder(raw) {
+  const ids = [];
+  for (const tl of raw?.textLayers || []) {
+    for (const tkl of tl.tokenLayers || []) {
+      for (const sl of tkl.spanLayers || []) for (const s of sl.spans || []) ids.push(s.id);
+      for (const v of tkl.vocabs || []) for (const l of v.vocabLinks || []) ids.push(l.id);
+    }
+  }
+  ids.sort();
+  return new Map(ids.map((id, i) => [id, i]));
+}
 
-const fieldEntries = (annotations, emittedSpanIds) => {
+const fieldEntry = (span, order) =>
+  withMetadata(
+    { id: span.id, value: span.value ?? null, ...orderOf(order, span.id) },
+    span.metadata,
+  );
+
+const orderOf = (order, id) => {
+  const at = order?.get(id);
+  return at == null ? {} : { order: at };
+};
+
+const fieldEntries = (annotations, emittedSpanIds, order) => {
   const out = {};
   for (const [name, span] of Object.entries(annotations || {})) {
     if (!span) continue;
-    out[name] = fieldEntry(span);
+    out[name] = fieldEntry(span, order);
     if (span.id != null) emittedSpanIds.add(span.id);
   }
   return out;
@@ -251,11 +281,17 @@ const fieldEntries = (annotations, emittedSpanIds) => {
 // silently dropped.
 const extraLinkOf = (entry) =>
   withMetadata(
-    { id: entry.id, vocabId: entry.vocabId, itemId: entry.itemId, tokens: entry.tokens },
+    {
+      id: entry.id,
+      vocabId: entry.vocabId,
+      itemId: entry.itemId,
+      tokens: entry.tokens,
+      order: entry.order,
+    },
     entry.metadata,
   );
 
-const linkIndexFromRaw = (raw) => {
+const linkIndexFromRaw = (raw, order) => {
   const byToken = new Map();
   const extras = [];
   (raw?.textLayers || []).forEach((tl) => {
@@ -269,6 +305,9 @@ const linkIndexFromRaw = (raw) => {
             itemId,
             tokens: link.tokens || [],
             metadata: link.metadata,
+            // The same rank a span carries, and for the same reason: among two
+            // links on one token the editor shows the last.
+            order: order?.get(link.id),
           };
           if (entry.tokens.length === 1 && itemId != null) {
             const displaced = byToken.get(entry.tokens[0]);
@@ -288,7 +327,7 @@ const linkIndexFromRaw = (raw) => {
       if (!link) return null;
       byToken.delete(tokenId);
       return withMetadata(
-        { linkId: link.id, vocabId: link.vocabId, itemId: link.itemId },
+        { linkId: link.id, vocabId: link.vocabId, itemId: link.itemId, order: link.order },
         link.metadata,
       );
     },
@@ -336,7 +375,7 @@ function morphemeNode(m, linkIndex, ctx) {
     delete metadata.morphType;
   }
   const out = withMetadata(node, metadata);
-  out.fields = fieldEntries(m.annotations, ctx.emittedSpanIds);
+  out.fields = fieldEntries(m.annotations, ctx.emittedSpanIds, ctx.order);
   const vocab = linkIndex.consume(m.id);
   if (vocab) out.vocab = vocab;
   return out;
@@ -349,7 +388,7 @@ function wordNode(token, orthographyNames, linkIndex, ctx) {
     { id: token.id, begin: token.begin, end: token.end, text: token.content ?? '', orthographies },
     rest,
   );
-  node.fields = fieldEntries(token.annotations, ctx.emittedSpanIds);
+  node.fields = fieldEntries(token.annotations, ctx.emittedSpanIds, ctx.order);
   const vocab = linkIndex.consume(token.id);
   if (vocab) node.vocab = vocab;
   // The archive records what is STORED. A word nobody has segmented shows a
@@ -403,6 +442,7 @@ function completenessSweep(layerInfo, ctx) {
         extraSpans.push(
           withMetadata(
             {
+              ...orderOf(ctx.order, s.id),
               id: s.id,
               layer: { id: sl.id, name: sl.name, scope },
               tokens,
@@ -485,13 +525,14 @@ export function serializeDocumentNative(
   const orthographyNames = (readOrthographies(layerInfo.primaryTokenLayer?.config) || [])
     .map((o) => o?.name)
     .filter((n) => typeof n === 'string' && n !== '');
-  const linkIndex = linkIndexFromRaw(raw);
-  const ctx = { emittedTokenIds: new Set(), emittedSpanIds: new Set() };
+  const order = serverOrder(raw);
+  const linkIndex = linkIndexFromRaw(raw, order);
+  const ctx = { emittedTokenIds: new Set(), emittedSpanIds: new Set(), order };
 
   const sentences = (igtDoc.sortedSentences || []).map((s) => {
     ctx.emittedTokenIds.add(s.id);
     const node = withMetadata({ id: s.id, begin: s.begin, end: s.end }, s.sentenceToken?.metadata);
-    node.fields = fieldEntries(s.annotations, ctx.emittedSpanIds);
+    node.fields = fieldEntries(s.annotations, ctx.emittedSpanIds, ctx.order);
     node.words = (s.tokens || []).map((t) => wordNode(t, orthographyNames, linkIndex, ctx));
     return node;
   });
@@ -504,6 +545,16 @@ export function serializeDocumentNative(
   linkIndex.consumeRemaining();
 
   const { orphanTokens, extraSpans } = completenessSweep(layerInfo, ctx);
+  // The extras in the order the project holds them, so the file says the same
+  // thing whichever way they were met, and an import that recreates them in
+  // this order gives back the project it came from. Annotations go by layer
+  // first: an import creates them a layer at a time (the bulk endpoint takes
+  // one layer per call), so only the order WITHIN a layer survives, which is
+  // also the only order that decides anything on screen.
+  const byOrder = (a, b) => (a.order ?? Infinity) - (b.order ?? Infinity);
+  const layerKey = (sp) => `${sp.layer?.scope}:${sp.layer?.name}`;
+  extraSpans.sort((a, b) => layerKey(a).localeCompare(layerKey(b)) || byOrder(a, b));
+  linkIndex.extras.sort(byOrder);
   const text = layerInfo.primaryTextLayer?.text;
 
   // What this file has a node for: the tree, the alignment, and the sweep's
