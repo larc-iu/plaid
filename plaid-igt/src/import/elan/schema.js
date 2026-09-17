@@ -225,7 +225,28 @@ export function compareSchemas(files, canonical = null) {
     const nodes = tierSchema(eaf, canonical);
     const signature = signatureOf(nodes);
     if (!groups.has(signature)) groups.set(signature, { signature, nodes, files: [] });
-    groups.get(signature).files.push(eaf);
+    const group = groups.get(signature);
+    group.files.push(eaf);
+    // A node holds the tiers of EVERY file that shares this schema, not just
+    // the first one's. Two files with the same tiers under different speakers
+    // (`Sentence@Ada`, `Sentence@Bo`) have the same schema, since a
+    // participant is normalized out of a tier's name, but not the same tier
+    // ids, and the import finds a file's tiers by those ids. Reading them off
+    // one file left every other file in the batch importing as an empty
+    // document. The counts add up for the same reason: what the mapping table
+    // shows is what the batch holds.
+    if (group.nodes !== nodes) {
+      const byKey = new Map(group.nodes.map((n) => [n.key, n]));
+      for (const node of nodes) {
+        const kept = byKey.get(node.key);
+        if (!kept) continue;
+        for (const id of node.tierIds) if (!kept.tierIds.includes(id)) kept.tierIds.push(id);
+        for (const p of node.participants) {
+          if (!kept.participants.includes(p)) kept.participants.push(p);
+        }
+        kept.annotationCount += node.annotationCount;
+      }
+    }
   }
   const list = [...groups.values()].sort((a, b) => b.files.length - a.files.length);
   // Across every group, not just the largest: a name misspelled in one file is

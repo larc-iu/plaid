@@ -350,8 +350,12 @@ const refAnnotation = (indent, annId, parentId, value, previousId = null) => [
   `${indent}</ANNOTATION>`,
 ];
 
+// A tier is written even when it holds nothing. Every document of one export
+// then has the same tier structure, which is what an ELAN import needs to read
+// a corpus as one batch: the import refuses files whose structures differ,
+// since one mapping has to fit all of them, and a field no sentence in THIS
+// document fills is still a field of the project.
 const tier = (id, typeRef, { parent = null, participant = null, annotations = [] }) => {
-  if (!annotations.length) return [];
   return [
     `  <TIER TIER_ID="${xmlEscape(id)}" LINGUISTIC_TYPE_REF="${xmlEscape(typeRef)}"` +
       `${attr('PARENT_REF', parent)}${attr('PARTICIPANT', participant)}>`,
@@ -426,20 +430,21 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
   );
   const sentFieldNames = new Map((options.sentFields || []).map((n) => [n, alloc(n, 'SentField')]));
   const sentenceName = alloc(names.sentence, 'Sentence');
-  const segmentName = model.wantSegmentTier ? alloc(names.segment, 'Segment') : null;
+  // Written whether or not this document has segments, for the same reason an
+  // empty field tier is: every document of one export has one structure.
+  const segmentName = alloc(names.segment, 'Segment');
   const wordName = alloc(names.word, 'Word');
   const morphName = wantMorphTier ? alloc(names.morph, 'Morph') : null;
 
   const lines = [];
-  for (const speaker of model.speakers) {
+  // A document with no sentences still gets the tier set, under no speaker.
+  for (const speaker of model.speakers.length ? model.speakers : ['']) {
     const suffix = speaker ? `@${speaker}` : '';
     const t = (base) => `${base}${suffix}`;
     const sentences =
       model.speakers.length === 1
         ? model.sentences
         : model.sentences.filter((s) => s.speaker === speaker);
-    if (!sentences.length) continue;
-
     const words = sentences.flatMap((s) => s.words);
     const morphs = words.flatMap((w) => w.morphs);
 

@@ -246,6 +246,22 @@ describe('tier schema', () => {
     expect(compareSchemas([readEaf(ANA, 'a.eaf'), readEaf(bo, 'b.eaf')]).consistent).toBe(true);
   });
 
+  it('reads every file of a batch, not only the first with that shape', () => {
+    // Two speakers, two files, one schema. The nodes must hold both files'
+    // tiers, or the second file imports as an empty document.
+    const bo = toolboxFile('Bo', [
+      { id: 'b1', text: 'tres gatos', begin: 0, end: 900, words: [{ id: 'v1', form: 'tres' }] },
+    ]);
+    const parsed = [readEaf(ANA, 'a.eaf'), readEaf(bo, 'b.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const utterance = nodes.find((n) => !n.parentKey);
+    expect(utterance.participants.sort()).toEqual(['Ana', 'Bo']);
+    expect(utterance.tierIds.length).toBe(2);
+    const roles = suggestRoles(nodes);
+    const build = buildElanDocuments(parsed, nodes, roles, {});
+    expect(build.documents.map((d) => d.sentences.length)).toEqual([1, 1]);
+  });
+
   it('refuses a batch whose files disagree, naming the difference', () => {
     const noGloss = eafXml({
       types: { utterance: null, wd: 'Symbolic_Subdivision' },

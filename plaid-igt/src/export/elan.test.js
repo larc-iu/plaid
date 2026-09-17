@@ -147,11 +147,12 @@ describe('buildEafDocument', () => {
     expect(refs.map((r) => r.getAttribute('ANNOTATION_REF'))).toEqual([sentenceId, sentenceId]);
   });
 
-  it('omits an association annotation where the value is empty', () => {
+  it('omits an association annotation where the value is empty, and keeps its tier', () => {
     const dom = build(makeFixtureDoc());
-    // "corren" has an empty Translit and the sentence has an empty Note.
+    // "corren" has an empty Translit and the sentence has an empty Note. The
+    // Note tier is still written, so every document of an export has one shape.
     expect(valuesOf(tierNamed(dom, 'Translit'))).toEqual(['perros-translit']);
-    expect(tierNamed(dom, 'Note')).toBeNull();
+    expect(valuesOf(tierNamed(dom, 'Note'))).toEqual([]);
     expect(valuesOf(tierNamed(dom, 'Translation'))).toEqual(['The dogs run.']);
   });
 
@@ -209,9 +210,9 @@ describe('time alignment', () => {
     ]);
   });
 
-  it('omits the Segment tier when it would only duplicate its parent', () => {
+  it('writes no segment where one would only duplicate its parent', () => {
     const dom = build(twoSentenceDoc([makeAlignmentToken('a1', 0, 7, 0.5, 2.0)]));
-    expect(tierNamed(dom, 'Segment')).toBeNull();
+    expect(valuesOf(tierNamed(dom, 'Segment'))).toEqual([]);
   });
 
   it('leaves a sentence unaligned rather than inventing a time', () => {
@@ -602,8 +603,12 @@ describe('degenerate input', () => {
       sortedSentences: [],
       alignmentTokens: [],
     });
-    expect(all(dom, 'TIER')).toHaveLength(0);
+    // The tier structure is there, holding nothing: a document with no
+    // sentences is still one document of a corpus an import reads as a batch.
+    expect(all(dom, 'ANNOTATION')).toHaveLength(0);
     expect(all(dom, 'TIME_SLOT')).toHaveLength(0);
+    expect(tierNamed(dom, 'Sentence')).toBeTruthy();
+    expect(tierNamed(dom, 'Word')).toBeTruthy();
     expect(all(dom, 'LINGUISTIC_TYPE')).toHaveLength(5);
   });
 
