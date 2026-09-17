@@ -15,6 +15,7 @@ import {
 } from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
+import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
@@ -50,13 +51,6 @@ const splitEntries = (text) =>
     .filter((e) => e.length > 0);
 const sameChars = (a, b) => a.length === b.length && a.every((c, i) => c === b[i]);
 
-// Default ignored tokens configuration
-const DEFAULT_IGNORED_TOKENS = {
-  mode: 'unicode-punctuation',
-  unicodePunctuationExceptions: [],
-  explicitIgnoredTokens: [],
-};
-
 export const FieldsManager = ({
   initialData,
   onLoadData,
@@ -85,7 +79,7 @@ export const FieldsManager = ({
   showTitle = true,
 }) => {
   const [fields, setFields] = useState([]);
-  const [ignoredTokens, setIgnoredTokens] = useState(DEFAULT_IGNORED_TOKENS);
+  const [ignoredTokens, setIgnoredTokens] = useState(defaultIgnoredTokensSetup);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldScope, setNewFieldScope] = useState('Word');
   const [isInitialized, setIsInitialized] = useState(false);
@@ -126,11 +120,11 @@ export const FieldsManager = ({
         if (!fieldsData?.fields) {
           fieldsData = {
             fields: DEFAULT_FIELDS,
-            ignoredTokens: DEFAULT_IGNORED_TOKENS,
+            ignoredTokens: defaultIgnoredTokensSetup(),
           };
         }
 
-        const loadedIgnored = fieldsData.ignoredTokens || DEFAULT_IGNORED_TOKENS;
+        const loadedIgnored = fieldsData.ignoredTokens || defaultIgnoredTokensSetup();
         setFields(fieldsData.fields);
         setIgnoredTokens(loadedIgnored);
         // This effect re-runs on every save, because the parent hands down a
@@ -148,7 +142,7 @@ export const FieldsManager = ({
         console.error('Failed to load fields configuration:', error);
         // Still set as initialized even on error, so we show the default fields
         setFields(DEFAULT_FIELDS);
-        setIgnoredTokens(DEFAULT_IGNORED_TOKENS);
+        setIgnoredTokens(defaultIgnoredTokensSetup());
         writeExceptionsText('');
         setIsInitialized(true);
 

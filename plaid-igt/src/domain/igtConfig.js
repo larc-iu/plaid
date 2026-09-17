@@ -87,6 +87,23 @@ const isLetterLike = (c, cfg) =>
 const isIgnorableChar = (c, cfg) => isPunctChar(c) && !isLetterLike(c, cfg);
 
 /**
+ * The ignored-tokens rule a new project starts with: a word made only of
+ * punctuation is skipped. `DEFAULT_IGNORED_TOKENS` is the stored shape, the
+ * word layer's `config.igt.ignoredTokens`. `defaultIgnoredTokensSetup()` is the
+ * setup wizard's form of it, which project setup turns into the stored one; a
+ * fresh object each time, since the wizard edits what it is given.
+ */
+export const DEFAULT_IGNORED_TOKENS = Object.freeze({
+  type: 'unicodePunctuation',
+  whitelist: Object.freeze([]),
+});
+export const defaultIgnoredTokensSetup = () => ({
+  mode: 'unicode-punctuation',
+  unicodePunctuationExceptions: [],
+  explicitIgnoredTokens: [],
+});
+
+/**
  * Is a token excluded from word-level annotation under an ignored-tokens config
  * (`readIgnoredTokens` shape)? `content` is the token's surface text. Shared by
  * the editor render and reconcile so "ignored" means the same in both: ignored

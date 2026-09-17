@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Badge } from '@ui/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
+import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 
 export const FieldsStep = ({ data, onDataChange }) => {
   // Seed defaults once, in an effect (NOT during render — calling the parent's
@@ -24,11 +25,7 @@ export const FieldsStep = ({ data, onDataChange }) => {
         { name: 'Literal Translation', scope: 'Sentence', isCustom: false },
         { name: 'Note', scope: 'Sentence', isCustom: false },
       ],
-      ignoredTokens: {
-        mode: 'unicode-punctuation',
-        unicodePunctuationExceptions: [],
-        explicitIgnoredTokens: [],
-      },
+      ignoredTokens: defaultIgnoredTokensSetup(),
     });
   }, [data, onDataChange]);
 

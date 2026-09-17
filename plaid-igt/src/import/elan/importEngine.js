@@ -30,6 +30,7 @@ import {
   findMorphemeTokenLayer,
   findAlignmentTokenLayer,
   readScope,
+  defaultIgnoredTokensSetup,
 } from '../../domain/igtConfig.js';
 
 export { ImportCancelled };
@@ -51,6 +52,9 @@ export function deriveSetupData(build, projectName) {
         lang: f.lang ?? null,
         isCustom: true,
       })),
+      // An .eaf says nothing about which words to skip, so the project gets the
+      // rule every new project starts with.
+      ignoredTokens: defaultIgnoredTokensSetup(),
     },
     vocabulary: { vocabularies: [] },
     documentMetadata: {

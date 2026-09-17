@@ -21,7 +21,7 @@ import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
-import { readImportState } from '../../domain/igtConfig';
+import { defaultIgnoredTokensSetup, readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
@@ -184,11 +184,7 @@ export const ImportFlexProject = () => {
             lang: f.ws ?? null,
             isCustom: true,
           })),
-          ignoredTokens: {
-            mode: 'unicode-punctuation',
-            unicodePunctuationExceptions: [],
-            explicitIgnoredTokens: [],
-          },
+          ignoredTokens: defaultIgnoredTokensSetup(),
         },
         vocabulary: {
           vocabularies: [

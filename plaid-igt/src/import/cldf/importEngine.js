@@ -23,6 +23,7 @@ import {
   findWordTokenLayer,
   findMorphemeTokenLayer,
   readScope,
+  defaultIgnoredTokensSetup,
 } from '../../domain/igtConfig.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
@@ -65,6 +66,9 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
         lang: META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null,
         isCustom: true,
       })),
+      // A dataset says nothing about which words to skip, so the project gets
+      // the rule every new project starts with, the one the build assumed.
+      ignoredTokens: defaultIgnoredTokensSetup(),
     },
     vocabulary: {
       // One vocabulary per name the dataset gives its entries (our own export

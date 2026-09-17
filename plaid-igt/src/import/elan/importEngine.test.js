@@ -6,6 +6,7 @@ import {
   runElanImport,
   ImportCancelled,
 } from './importEngine.js';
+import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
 
 const role = (r) => ({ plaid: { role: r } });
 const scoped = (name, scope) => ({ id: `sl-${name}`, name, config: { igt: { scope } } });
@@ -128,6 +129,7 @@ describe('deriveSetupData', () => {
       { name: 'POS', scope: 'Word', lang: null, isCustom: true },
       { name: 'Gloss', scope: 'Morpheme', lang: null, isCustom: true },
     ]);
+    expect(setup.fields.ignoredTokens).toEqual(defaultIgnoredTokensSetup());
     // ELAN carries no lexicon, so no vocabulary is proposed.
     expect(setup.vocabulary.vocabularies).toEqual([]);
     expect(setup.documentMetadata.enabledFields).toEqual([

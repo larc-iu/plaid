@@ -3,6 +3,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { readCldfDataset } from './readDataset.js';
 import { buildCldfDocuments } from './buildDocuments.js';
 import { deriveSetupData, importLexicon, resolveTargets, runCldfImport } from './importEngine.js';
+import { defaultIgnoredTokensSetup } from '../../domain/igtConfig.js';
 import { documentFraction } from '../progress.js';
 import { buildCldfDataset } from '../../export/cldf.js';
 import { makeFixtureDoc } from '../../export/testFixtures.js';
@@ -137,6 +138,7 @@ describe('deriveSetupData', () => {
   it('turns the derived schema into setup-wizard input', () => {
     const setup = deriveSetupData(fixtureBuild(), 'My Corpus');
     expect(setup.basicInfo.projectName).toBe('My Corpus');
+    expect(setup.fields.ignoredTokens).toEqual(defaultIgnoredTokensSetup());
     expect(setup.orthographies.orthographies).toEqual([
       { name: 'Baseline', isBaseline: true },
       { name: 'Translit' },

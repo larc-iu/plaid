@@ -26,6 +26,7 @@
 import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords } from '../align.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
+import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -564,9 +565,17 @@ export function buildCldfDocuments(dataset, options = {}) {
       analyzed.forEach((word, wi) => {
         const span = spans[wi];
         if (!span) return;
-        const pieces = splitAnalyzed(word);
+        // A word the new project will skip as punctuation (it starts with the
+        // default rule) is not analyzed, as it was not where it came from: "--"
+        // read as Analyzed_Word would otherwise be three empty morphemes.
+        const skipped = isTokenIgnored(
+          body.slice(span.beginU16, span.endU16),
+          DEFAULT_IGNORED_TOKENS,
+        );
+        const pieces = skipped ? [] : splitAnalyzed(word);
         const glossPieces = splitAnalyzed(glosses[wi] ?? '');
-        const aligned = o.glossScope === 'Morpheme' && glossPieces.length === pieces.length;
+        const aligned =
+          o.glossScope === 'Morpheme' && !skipped && glossPieces.length === pieces.length;
         const wordFields = {};
         const morphemeLists = new Map();
 

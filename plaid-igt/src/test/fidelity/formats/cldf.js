@@ -134,19 +134,19 @@ export default {
     },
     'layers.ignoredTokensPunctuation': {
       carried: 'changed',
-      how: "The import writes the default rule the setup wizard and the FLEx import write, {type: 'unicodePunctuation', whitelist: []}, whatever rule the exported project had. Letter-like characters and a blacklist are lost (see the next two keys). Today the import writes no rule at all, which is the bug.",
+      how: "The import writes the default rule the setup wizard and the FLEx import write, {type: 'unicodePunctuation', whitelist: []}, whatever rule the exported project had. Letter-like characters and a blacklist are lost (see the next two keys).",
       ruling:
         'user, 2026-09-17: the CLDF and ELAN imports give a new project the same default ignored-tokens rule as the setup wizard',
     },
     'layers.ignoredTokensLetterLike': {
       carried: false,
       kind: 'inherent',
-      why: 'Ignored-token settings have no place in CLDF, and the import writes none.',
+      why: 'Ignored-token settings have no place in CLDF. The import writes the default rule, which has no letter-like characters.',
     },
     'layers.ignoredTokensBlacklist': {
       carried: false,
       kind: 'inherent',
-      why: 'Ignored-token settings have no place in CLDF, and the import writes none.',
+      why: 'Ignored-token settings have no place in CLDF. The import writes the default punctuation rule in place of a blacklist.',
     },
     'layers.fieldSentence': {
       carried: 'changed',
@@ -387,7 +387,9 @@ export default {
     },
     'token.ignoredWord': {
       carried: 'changed',
-      how: 'Comes back with a stored morpheme whose form is its own text, since the import gives every analyzed word at least one morpheme. It is placed like any other word, as token.word describes.',
+      how: 'A word the imported project skips comes back unanalyzed, with no morpheme, as it was. That project has the default rule (layers.ignoredTokensPunctuation), so this holds for a word made only of punctuation. A word only the exported project skipped, by a blacklist or a letter-like character, comes back analyzed as token.unanalyzedWord describes. It is placed like any other word, as token.word describes.',
+      ruling:
+        'user, 2026-09-17: a word made only of punctuation comes back from CLDF unanalyzed, as it was, rather than as one morpheme or split at its hyphens',
     },
     'token.untokenizedText': {
       carried: 'changed',
@@ -411,7 +413,7 @@ export default {
     'token.unanalyzedWord': {
       carried: false,
       kind: 'inherent',
-      why: 'Analyzed_Word cannot tell an unanalyzed word from one analyzed as a single morpheme, so it comes back with one stored morpheme whose form is the word’s text. A word whose text holds - or = comes back split into morphemes at them. The preset panel lists this loss (INHERENT_LOSSES).',
+      why: 'Analyzed_Word cannot tell an unanalyzed word from one analyzed as a single morpheme, so it comes back with one stored morpheme whose form is the word’s text. A word whose text holds - or = comes back split into morphemes at them. A word the imported project skips as punctuation comes back unanalyzed instead (token.ignoredWord). The preset panel lists this loss (INHERENT_LOSSES).',
     },
     'token.morphemeForm': carried,
     'token.morphemeFormEmpty': {

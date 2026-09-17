@@ -91,6 +91,19 @@ describe('buildCldfDocuments', () => {
     expect(affixed.morphemes.map((m) => m.morphType)).toEqual([null, null, null]);
   });
 
+  it('leaves a word made only of punctuation unanalyzed', () => {
+    const { documents } = buildCldfDocuments(
+      dataset(
+        'ID,Primary_Text,Analyzed_Word,Gloss\r\n1,uno -- dos,uno\t--\tdos,one\t\ttwo\r\n',
+        BASIC_COLUMNS,
+      ),
+    );
+    const [uno, dashes, dos] = documents[0].words;
+    expect([dashes.begin, dashes.end]).toEqual([4, 6]);
+    expect(dashes.morphemes).toEqual([]);
+    expect([uno, dos].map((w) => w.morphemes.length)).toEqual([1, 1]);
+  });
+
   it('puts the translation on the sentence', () => {
     const { documents } = buildCldfDocuments(dataset(csv, BASIC_COLUMNS));
     expect(documents[0].sentences[0].fields).toEqual({ Translation: 'The dogs run.' });

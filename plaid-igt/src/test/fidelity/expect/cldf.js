@@ -40,7 +40,8 @@ import {
   tokensIn,
   wordsWithMorphemes,
 } from './snap.js';
-import { byOrder, coveredBy, isIgnored } from './strips.js';
+import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../../domain/igtConfig.js';
+import { byOrder, coveredBy } from './strips.js';
 
 // ---- reading ---------------------------------------------------------------------
 
@@ -296,15 +297,15 @@ export default {
       }),
 
     // Nothing is dropped: the word gains the stored morpheme Analyzed_Word
-    // implies, split at - and = when its text holds them. Whether a word is
-    // ignored is read off the source's rule, since the list takes the rule
-    // itself away before this runs. Precedence starts at 1, as the editor's.
-    'token.unanalyzedWord': (s, ctx) => {
+    // implies, split at - and = when its text holds them. A word the imported
+    // project skips, by the default rule it is given, stays unanalyzed
+    // (token.ignoredWord). Precedence starts at 1, as the editor's.
+    'token.unanalyzedWord': (s) => {
       for (const d of docs(s)) {
         for (const { word, morphemes } of wordsWithMorphemes(d)) {
           if (morphemes.length) continue;
           const text = surface(d, word);
-          if (isIgnored(ctx.source, text)) continue;
+          if (isTokenIgnored(text, DEFAULT_IGNORED_TOKENS)) continue;
           text.split(/[-=]/).forEach((form, i) => d.tokens.push(newMorpheme(word, i + 1, form)));
         }
       }
@@ -606,18 +607,16 @@ export default {
     },
     {
       keys: ['token.ignoredWord', 'token.morphemeFormEmpty', 'token.morphemeFormAbsent'],
-      // Every word comes back analyzed. An ignored word with no morpheme gains
-      // one holding its text. A morpheme with no form takes its word's text. A
-      // word whose morphemes are all empty keeps only its first, holding the
-      // word's text. The text is still the source's at this point.
-      apply(expected, actual, ctx) {
+      // A word with no morpheme was settled by the token.unanalyzedWord strip:
+      // skipped under the imported project's rule it stays unanalyzed, and
+      // otherwise it is analyzed. A morpheme with no form takes its word's
+      // text. A word whose morphemes are all empty keeps only its first,
+      // holding the word's text. The text is still the source's at this point.
+      apply(expected) {
         for (const d of docs(expected)) {
           for (const { word, morphemes } of wordsWithMorphemes(d)) {
             const text = surface(d, word);
-            if (!morphemes.length) {
-              if (isIgnored(ctx.source, text)) d.tokens.push(newMorpheme(word, 1, text));
-              continue;
-            }
+            if (!morphemes.length) continue;
             if (morphemes.every((m) => m.metadata.form === '')) {
               const [head, ...rest] = morphemes;
               head.metadata.form = text;
