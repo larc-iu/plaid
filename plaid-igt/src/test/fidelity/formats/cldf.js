@@ -163,11 +163,10 @@ export default {
       carried: 'changed',
       how: 'Comes back when both fields come back, by the rules under layers.fieldWord and layers.fieldMorpheme.',
     },
-    'layers.fieldOrder': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The export writes the columns of unbound fields in project order, but the import creates fields in the order it first meets a value, with the bound Translation, Note and Gloss ahead of the rest, so the order within a scope is not kept.',
-    },
+    // Ruled by the user, 2026-09-17: imports keep field order. The export writes the columns of
+    // unbound fields in project order, but the import creates fields in the order it first meets a
+    // value, with the bound Translation, Note and Gloss ahead of the rest, so this is a bug today.
+    'layers.fieldOrder': carried,
     'layers.fieldLang': {
       carried: false,
       kind: 'undecided',
@@ -307,8 +306,9 @@ export default {
     'item.unlinked': carried,
     'item.extraMetadata': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'The export writes only the fields the vocabulary declares, so entry metadata no field declares is not written.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'item.markupChars': carried,
     'item.surroundingWhitespace': carried,
@@ -331,8 +331,9 @@ export default {
     },
     'document.metadataUnconfigured': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'The export reads document metadata from the derived document, which holds switched-on fields only, so a value under a name no field is switched on for is not written.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'document.textDirection': {
       carried: false,
@@ -394,13 +395,15 @@ export default {
     'token.orthographyValue': carried,
     'token.orthographyUnconfigured': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'The export writes only the orthographies the word layer configures.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'token.wordExtraMetadata': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'Word metadata other than orthography values is not written.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'token.segmentedWord': carried,
     'token.singleStoredMorpheme': carried,
@@ -433,8 +436,9 @@ export default {
     'token.wordEdgePunctuation': carried,
     'token.sentenceExtraMetadata': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'Sentence metadata other than provenance is not written.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'token.morphemeProvenance': PROVENANCE_RULED,
     'token.procliticBeforeMorpheme': {
@@ -491,8 +495,9 @@ export default {
     'span.provDetail': PROVENANCE_RULED,
     'span.extraMetadata': {
       carried: false,
-      kind: 'undecided',
+      kind: 'ruled',
       why: 'Annotation metadata other than provenance is not written. A cell holds the value alone.',
+      ruling: 'user, 2026-09-17: metadata no field declares is exported by the native archive only',
     },
     'span.offTagset': carried,
     'span.delimitedValue': carried,

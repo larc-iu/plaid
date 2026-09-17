@@ -5,6 +5,21 @@
 // the files hold the information where FLEx reads it back from, which a later check
 // confirms by parsing them and validating against FlexInterlinear.xsd and the LIFT schema.
 
+const TAGSET_RULING =
+  'user, 2026-09-17: tagsets go to FLEx as lists where they can reasonably be seen as FLEx lists, and not where that takes a lot of coercion';
+
+// Unreviewed work goes to FLEx as a guess. guessByStatisticalAnalysis names a
+// guess a program made, which is what machine provenance records. A
+// contributor's unreviewed work was made by a person and derived from nothing
+// anyone approved, so guessByHumanApproved would misstate it, and the plain
+// "guess" is the value that fits. FLEx's importer treats every value other
+// than humanApproved the same way.
+const GUESS_RULING =
+  'user, 2026-09-17: unreviewed analyses go to FLEx as guesses, accepting that FLEx does not link their morphs to the lexicon';
+
+const UNDECLARED_RULING =
+  'user, 2026-09-17: metadata no field declares is exported by no format except the native archive';
+
 const COMMENTS_RULED = {
   carried: false,
   kind: 'ruled',
@@ -23,7 +38,7 @@ const GUIDELINES_RULED = {
 const NO_LIST_MODE = {
   carried: false,
   kind: 'inherent',
-  why: 'A LIFT range has no open, closed or mixed mode, and a .flextext declares no value lists.',
+  why: 'A LIFT range carries no open or closed setting (FLEx neither writes nor reads one for a list in LIFT), and FLEx adds any value an import brings to the list.',
 };
 
 const PLAID_SETTING = {
@@ -47,30 +62,31 @@ export default {
     'project.documentMetadataTagset': {
       carried: false,
       kind: 'inherent',
-      why: 'A .flextext text item names no value list.',
+      why: "FLEx keeps genres in a list, but a .flextext in FLEx 9.0 has no genre item and FLEx's LIFT range import skips the genres range, so no list for a text metadata field reaches FLEx.",
     },
     'project.tagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'A .lift-ranges file can hold a value list, but the export writes only the grammatical-info range, built from the categories entries use, and the .flextext declares no lists.',
+      carried: 'changed',
+      how: "A tagset that governs a word field mapped to pos, or a morpheme field mapped to msa, and splits no value into tags goes into the grammatical-info range of .lift-ranges: one <range-element id> per value, with <label> and <abbrev> in the field's writing system. That range is FLEx's part-of-speech list, which FLEx matches pos and msa items against. It travels with the lexicon, since .lift-ranges sits beside the .lift. No other project tagset is written: a gloss tagset would need its composite values broken into FLEx inflection features, and FLEx reads no list for a sentence field or text metadata.",
+      ruling: TAGSET_RULING,
     },
     'project.tagsetModeSuggest': NO_LIST_MODE,
     'project.tagsetModeClosed': NO_LIST_MODE,
     'project.tagsetModeMixed': NO_LIST_MODE,
     'project.tagsetDelimiters': {
       carried: false,
-      kind: 'inherent',
-      why: 'Neither format splits a value into several tags.',
+      kind: 'ruled',
+      why: 'A FLEx list item is one whole value. Carrying a delimited tagset would mean breaking every value into its tags and dropping the delimiters, so it is not written.',
+      ruling: TAGSET_RULING,
     },
     'project.tagsetValueDescription': {
-      carried: false,
-      kind: 'undecided',
-      why: 'A LIFT range element can hold a <description>, but no tagset is written (see project.tagset).',
+      carried: 'changed',
+      how: "Written as <range-element><description><form lang><text> for a tagset that goes out as a FLEx list, which FLEx reads into the list item's description. A description in a tagset that is not written goes nowhere.",
+      ruling: TAGSET_RULING,
     },
     'project.tagsetOrdered': {
-      carried: false,
-      kind: 'inherent',
-      why: 'FLEx orders a possibility list itself, and a .flextext declares no lists.',
+      carried: 'changed',
+      how: "A tagset that goes out as a list writes its <range-element>s in its own order, which FLEx keeps as the order of the list's items. Whether FLEx shows a list sorted is a setting of its own that LIFT does not carry.",
+      ruling: TAGSET_RULING,
     },
     'project.languageObject': {
       carried: 'changed',
@@ -161,9 +177,9 @@ export default {
         "flextext lang attribute on each of the field's <item> elements, declared in <languages><language lang>",
     },
     'layers.fieldTagset': {
-      carried: false,
-      kind: 'inherent',
-      why: 'A .flextext item names no value list.',
+      carried: 'changed',
+      how: "FLEx itself ties a word field mapped to pos, or a morpheme field mapped to msa, to its part-of-speech list, and the field's tagset fills that list (project.tagset). A tagset on any other annotation field is not written, since a .flextext item names no list.",
+      ruling: TAGSET_RULING,
     },
     'layers.foreignTokenLayer': {
       carried: false,
@@ -206,9 +222,9 @@ export default {
       why: 'A display setting. LIFT has no place for where a field is shown.',
     },
     'vocab.fieldTagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The header <field tag> declaration names no value list, and no vocabulary tagset is written as a range.',
+      carried: 'changed',
+      how: 'FLEx keeps part of speech and sense status as lists of its own, so a tagset on pos fills the grammatical-info range, and one on status fills the status range, with each entry\'s value as <sense><trait name="status" value>. On any other field, a closed tagset that splits no value into tags makes the field a FLEx custom list field: a <header><fields><field tag> whose qaa-x-spec form names Class LexSense (LexEntry for a headword-only field), Type ReferenceAtomic, DstCls CmPossibility and range <tagset name>, each value as <trait name="<field>" value>, and the list as <range id="<tagset name>" guid> in .lift-ranges. A field whose tagset is suggest or mixed stays a text <field> and its tagset is not written: its values are free text, and a list field would make every one of them a list item.',
+      ruling: TAGSET_RULING,
     },
     'vocab.fieldLang': {
       carried: true,
@@ -235,9 +251,9 @@ export default {
         'lift the <entry> element rather than a <sense>: <entry><relation> for a reference field, <entry><field> for a text field',
     },
     'vocab.customTagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'A .lift-ranges file can hold a value list, but only the grammatical-info and lexical-relation ranges are written.',
+      carried: 'changed',
+      how: 'A tagset on pos or status fills the FLEx list for that field. Any other tagset goes out as a custom list, a <range id="<tagset name>" guid> of <range-element>s in .lift-ranges behind a custom list field (vocab.fieldTagset), when it is closed and splits no value into tags. A suggest or mixed tagset on another field is not written.',
+      ruling: TAGSET_RULING,
     },
     'vocab.foreignConfig': {
       carried: false,
@@ -265,7 +281,9 @@ export default {
     'item.definition': { carried: true, where: 'lift <sense><definition><form lang>' },
     'item.status': {
       carried: true,
-      where: 'lift <sense><field type="status">, declared in <header><fields>',
+      where:
+        'lift <sense><trait name="status" value>, the value listed in the status range of .lift-ranges',
+      ruling: TAGSET_RULING,
     },
     'item.lexemeForm': {
       carried: true,
@@ -320,8 +338,9 @@ export default {
     },
     'item.provenance': {
       carried: false,
-      kind: 'undecided',
-      why: 'FLEx has no provenance on entries, and LIFT could hold it as a <trait> or an <annotation>. The code writes the prov keys as custom <field>s named prov, provSource and provConfirmed, which nothing decided.',
+      kind: 'ruled',
+      why: 'Entry provenance is metadata no field declares, which no format carries but the native archive.',
+      ruling: UNDECLARED_RULING,
     },
     'item.zeroMorph': { carried: true, where: 'lift <lexical-unit><form><text> holding ∅' },
     'item.unlinked': {
@@ -329,8 +348,10 @@ export default {
       where: 'lift <entry>, since the whole lexicon is written whatever the texts link to',
     },
     'item.extraMetadata': {
-      carried: true,
-      where: 'lift <sense><field type="<key>">, declared in <header><fields>',
+      carried: false,
+      kind: 'ruled',
+      why: 'Metadata no field declares goes into no format but the native archive.',
+      ruling: UNDECLARED_RULING,
     },
     'item.markupChars': {
       carried: true,
@@ -342,9 +363,9 @@ export default {
       where: 'lift <text> content and attribute values, spaces as stored',
     },
     'item.offTagset': {
-      carried: true,
-      where:
-        "the field's LIFT element (<grammatical-info value>, <field><form><text>), the value as stored",
+      carried: 'changed',
+      how: 'The value goes out as it stands, and FLEx adds it to the list as a new item on import (a new category for pos), so in FLEx it is no longer outside the list.',
+      ruling: TAGSET_RULING,
     },
     'item.formNormalization': {
       carried: true,
@@ -369,8 +390,9 @@ export default {
     },
     'document.metadataUnconfigured': {
       carried: false,
-      kind: 'undecided',
-      why: 'The export reads only the switched-on fields, so a value under any other name is not written. The comment item could hold it as a "Name: value" line like any other field FLEx has no place for.',
+      kind: 'ruled',
+      why: 'A value under a name no field is switched on for goes into no format but the native archive.',
+      ruling: UNDECLARED_RULING,
     },
     'document.textDirection': {
       carried: false,
@@ -451,8 +473,9 @@ export default {
     },
     'token.orthographyUnconfigured': {
       carried: false,
-      kind: 'undecided',
-      why: 'Only a configured orthography has a tag in the preset, so a value under any other name is not written. It could go out as another txt item if it had a tag.',
+      kind: 'ruled',
+      why: 'A spelling under an orthography that is not configured goes into no format but the native archive.',
+      ruling: UNDECLARED_RULING,
     },
     'token.wordExtraMetadata': {
       carried: false,
@@ -512,9 +535,9 @@ export default {
       why: 'A .flextext phrase holds items, words, times, a speaker and a media reference, nothing else.',
     },
     'token.morphemeProvenance': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The FLEx importer stamps the morphemes of an analysis no person approved, and <morphemes analysisStatus> is the same fact in a .flextext. The export writes none, so FLEx reads every analysis as human-approved.',
+      carried: 'changed',
+      how: 'A morpheme a machine made and nobody confirmed marks its word\'s <morphemes analysisStatus="guessByStatisticalAnalysis">, one a contributor made and nobody reviewed marks it analysisStatus="guess", and a confirmed one leaves no mark. FLEx imports no morph breakdown from a word marked as a guess.',
+      ruling: GUESS_RULING,
     },
     'token.procliticBeforeMorpheme': {
       carried: true,
@@ -593,17 +616,17 @@ export default {
     'span.provHuman': {
       carried: true,
       where:
-        'flextext no analysisStatus on <morphemes> or <item>, which FLEx reads as humanApproved',
+        'flextext no analysisStatus on <morphemes> or <item>, which FLEx reads as humanApproved, as long as nothing else in the same word is unreviewed',
     },
     'span.provMachine': {
-      carried: false,
-      kind: 'undecided',
-      why: 'FlexInterlinear.xsd allows analysisStatus="guess" or "guessByStatisticalAnalysis" on <morphemes> and <item>. The export writes none, so FLEx reads machine output as human-approved.',
+      carried: 'changed',
+      how: 'An annotation a machine made and nobody confirmed is marked analysisStatus="guessByStatisticalAnalysis": on its word\'s <morphemes> for a morpheme annotation, and on the <word><item type="gls"> or <item type="pos"> itself for a word annotation. A sentence annotation carries no status, since FLEx reads none on a phrase. A word holding both machine and contributed work takes the machine value. FLEx imports no morph breakdown, word gloss or category from a word marked as a guess.',
+      ruling: GUESS_RULING,
     },
     'span.provContributed': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The same analysisStatus slot as span.provMachine. None is written, so FLEx reads a contributor’s unreviewed work as human-approved.',
+      carried: 'changed',
+      how: 'An annotation a contributor made and nobody reviewed is marked analysisStatus="guess": on its word\'s <morphemes> for a morpheme annotation, and on the <word><item type="gls"> or <item type="pos"> itself for a word annotation. A sentence annotation carries no status, since FLEx reads none on a phrase. FLEx imports no morph breakdown, word gloss or category from a word marked as a guess.',
+      ruling: GUESS_RULING,
     },
     'span.provVerified': {
       carried: 'changed',
@@ -630,8 +653,9 @@ export default {
       why: 'A .flextext item holds a value, a type, a lang and an analysisStatus, nothing else.',
     },
     'span.offTagset': {
-      carried: true,
-      where: "the field's flextext <item>, the value as stored",
+      carried: 'changed',
+      how: 'The value is written as it stands. For a word pos item FLEx creates a category when none matches, so in FLEx the value is no longer outside the list. A value in any other field has no list in FLEx to be outside of.',
+      ruling: TAGSET_RULING,
     },
     'span.delimitedValue': {
       carried: true,
@@ -708,17 +732,17 @@ export default {
     'link.provHuman': {
       carried: true,
       where:
-        'flextext cf on a morph with no analysisStatus, which FLEx reads as humanApproved and links',
+        'flextext cf on a morph whose <morphemes> has no analysisStatus, which FLEx reads as humanApproved and links',
     },
     'link.provMachine': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The same analysisStatus slot as span.provMachine. None is written, so FLEx links a machine proposal as approved.',
+      carried: 'changed',
+      how: 'A morpheme link a machine made and nobody confirmed marks its word\'s <morphemes analysisStatus="guessByStatisticalAnalysis">. The cf is still written, and FLEx makes no link from it.',
+      ruling: GUESS_RULING,
     },
     'link.provContributed': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The same analysisStatus slot as span.provMachine. None is written, so FLEx links a contributor’s unreviewed link as approved.',
+      carried: 'changed',
+      how: 'A morpheme link a contributor made and nobody reviewed marks its word\'s <morphemes analysisStatus="guess">. The cf is still written, and FLEx makes no link from it.',
+      ruling: GUESS_RULING,
     },
     'link.provVerified': {
       carried: 'changed',

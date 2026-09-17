@@ -45,11 +45,16 @@ const TOKEN_PROV_LOST = {
   why: 'An EAF annotation holds no metadata, so provenance on a token is not written and the token comes back unmarked.',
 };
 
-const NO_LIST_MODE = {
-  carried: false,
-  kind: 'inherent',
-  why: 'An ELAN controlled vocabulary is a plain list of entries, with no suggest, closed or mixed mode.',
-};
+// Tagsets go out as EAF CONTROLLED_VOCABULARY elements where the shape is one. Evidence: the EAF
+// 2.8 schema (a CV is CV_ID plus a sequence of CV_ENTRY_ML, each with CVE_VALUE text, a required
+// LANG_REF and an optional DESCRIPTION, and a LINGUISTIC_TYPE names at most one CV through
+// CONTROLLED_VOCABULARY_REF, while ANNOTATION_VALUE stays a free string with an optional CVE_REF)
+// and the ELAN 6.3 manual. In 2.6.1 a CV is the predefined values an annotation is chosen from,
+// each with a description, in an order the user moves entries up and down in. In 2.9.3 an entry
+// is committed as the whole annotation value. In 2.6.8 the constraint is bypassed by Shift and
+// double click. In 1.9.2.11 an annotation whose value is no longer in its CV keeps its value.
+const TAGSET_RULING =
+  'user, 2026-09-17: a tagset goes out as an ELAN controlled vocabulary where it can reasonably be seen as one, and not where that takes a lot of coercion';
 
 const COMMENTS_RULED = {
   carried: false,
@@ -99,27 +104,33 @@ export default {
       why: 'A HEADER PROPERTY is a bare name and value with no vocabulary behind it, and the import writes each field as {name} alone.',
     },
     'project.tagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'EAF has CONTROLLED_VOCABULARY elements, which a LINGUISTIC_TYPE can point at, and they are ELAN’s own form of a tagset. The export writes none and the import reads none.',
+      carried: 'changed',
+      how: 'Every tagset in closed mode with no delimiters is written as a CONTROLLED_VOCABULARY whose CV_ID is the tagset’s name, with one CV_ENTRY_ML per value in stored order and the value’s description as that entry’s DESCRIPTION, whether a field, only document metadata, or nothing uses it. It comes back as a tagset of the same name in closed mode, with its values in the same order as {value} or {value, description}, no delimiters and no ordered flag. A value’s color and any other key it carries are not written. A tagset in suggest or mixed mode, or with delimiters, is not written, as those keys say.',
     },
-    'project.tagsetModeSuggest': NO_LIST_MODE,
-    'project.tagsetModeClosed': NO_LIST_MODE,
-    'project.tagsetModeMixed': NO_LIST_MODE,
+    'project.tagsetModeSuggest': {
+      carried: false,
+      kind: 'ruled',
+      why: 'EAF has no mode, and ELAN treats a CV as the list an annotation is chosen from (manual 6.3, 2.6.1 and 2.9.3), bypassed only by Shift and double click (2.6.8). A suggest tagset written as a CV would come back closed and start refusing values the project accepts, so it is not written.',
+      ruling: TAGSET_RULING,
+    },
+    'project.tagsetModeClosed': carried,
+    'project.tagsetModeMixed': {
+      carried: false,
+      kind: 'ruled',
+      why: 'Mixed mode accepts any part with a lowercase letter besides the listed values, which a CV cannot express. Written as a CV it would come back closed and refuse every stem, so it is not written.',
+      ruling: TAGSET_RULING,
+    },
     'project.tagsetDelimiters': {
       carried: false,
-      kind: 'inherent',
-      why: 'An ELAN controlled vocabulary lists whole values and has no notion of splitting a value on delimiters.',
+      kind: 'ruled',
+      why: 'An ELAN CV entry is committed as the whole annotation value (manual 6.3, 2.9.3). A tagset with delimiters lists parts, so a value like 3-PL.PRS is several entries at once, which ELAN can neither offer nor check. A tagset with delimiters is not written.',
+      ruling: TAGSET_RULING,
     },
-    'project.tagsetValueDescription': {
-      carried: false,
-      kind: 'undecided',
-      why: 'A controlled vocabulary entry has a DESCRIPTION, so a value’s description has a place once tagsets are carried (see project.tagset). Nothing writes it.',
-    },
+    'project.tagsetValueDescription': carried,
     'project.tagsetOrdered': {
       carried: false,
       kind: 'inherent',
-      why: 'A controlled vocabulary is a list, with no flag saying whether its written order is meant to be kept.',
+      why: 'CV entries keep their written order (CV_ENTRY_ML is a sequence, and ELAN lets a user move entries, manual 6.3, 2.6.1), so the values come back in order, as project.tagset says. EAF has no flag saying whether that order is meant to be shown as it stands.',
     },
     'project.languageObject': {
       carried: false,
@@ -157,10 +168,7 @@ export default {
     },
 
     // Layers
-    'layers.orthography': {
-      carried: 'changed',
-      how: 'Each orthography is written as a tier under Word and comes back in the word layer’s list as {name} alone, in alphabetical order of name (String.prototype.localeCompare, the order the import sorts tiers in) rather than the project’s order.',
-    },
+    'layers.orthography': carried,
     'layers.ignoredTokensPunctuation': {
       carried: false,
       kind: 'undecided',
@@ -180,16 +188,11 @@ export default {
     'layers.fieldWord': carried,
     'layers.fieldMorpheme': carried,
     'layers.fieldSameNameTwoScopes': carried,
-    'layers.fieldOrder': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The export writes field tiers in the project’s order, but the import sorts the tier schema by path (schema.js tierSchema) and creates fields in that order, so the fields at one scope come back alphabetical by name.',
-    },
+    'layers.fieldOrder': carried,
     'layers.fieldLang': carried,
     'layers.fieldTagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'A LINGUISTIC_TYPE can point at a CONTROLLED_VOCABULARY, which would tie a field tier to its tagset. Every field tier is written with the one shared type Annotation and no vocabulary.',
+      carried: 'changed',
+      how: 'A field governed by a tagset that is written (closed, no delimiters, see project.tagset) is written with a LINGUISTIC_TYPE whose CONTROLLED_VOCABULARY_REF names that tagset, and comes back governed by it. A field governed by any other tagset comes back with no tagset.',
     },
     'layers.foreignTokenLayer': {
       carried: false,
@@ -268,7 +271,7 @@ export default {
       kind: 'ruled',
       why: 'Only the document metadata the project has switched on is written as HEADER properties.',
       ruling:
-        'src/export/elan.js HEADER comment (commit 55334458): the document name and configured metadata ride along as HEADER properties',
+        'user, 2026-09-17: metadata no field declares is exported by no format except the native archive',
     },
     'document.textDirection': {
       carried: false,
@@ -337,8 +340,10 @@ export default {
     },
     'token.orthographyUnconfigured': {
       carried: false,
-      kind: 'undecided',
-      why: 'The export writes a tier only for an orthography the word layer lists, so a value under any other name stays behind. EAF could hold it as one more tier under Word.',
+      kind: 'ruled',
+      why: 'The export writes a tier only for an orthography the word layer lists, so a value under any other name stays behind.',
+      ruling:
+        'user, 2026-09-17: metadata no field declares is exported by no format except the native archive',
     },
     'token.wordExtraMetadata': NO_ANNOTATION_METADATA,
     'token.segmentedWord': carried,
@@ -443,14 +448,14 @@ export default {
     'span.provDetail': NO_ANNOTATION_METADATA,
     'span.extraMetadata': NO_ANNOTATION_METADATA,
     'span.offTagset': {
-      carried: false,
-      kind: 'undecided',
-      why: 'The value itself comes back, but not the tagset it is outside of (see layers.fieldTagset).',
+      carried: 'changed',
+      how: 'In a field governed by a tagset that is written (see project.tagset), the value comes back unchanged and still outside the list: ANNOTATION_VALUE is a free string whose CVE_REF is optional, and ELAN keeps such a value (manual 6.3, 1.9.2.11 and 2.6.8). Under a tagset that is not written, the value comes back and the tagset does not, as project.tagsetModeSuggest and project.tagsetModeMixed say.',
     },
     'span.delimitedValue': {
       carried: false,
-      kind: 'inherent',
-      why: 'The value comes back verbatim, but it is only delimited through its tagset’s delimiters, which an ELAN controlled vocabulary has no place for (see project.tagsetDelimiters).',
+      kind: 'ruled',
+      why: 'The value comes back verbatim, but a tagset with delimiters is not written (project.tagsetDelimiters), so nothing splits it into tags.',
+      ruling: TAGSET_RULING,
     },
     'span.markupChars': carried,
     'span.multilineValue': carried,
