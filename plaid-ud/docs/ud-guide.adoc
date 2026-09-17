@@ -189,6 +189,7 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
+* **Delete a relation**: click its label, then the bin to the left of the box that opens, or press **Shift+Delete**.
 * **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
 
 == Enhanced Dependencies

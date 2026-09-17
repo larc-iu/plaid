@@ -216,3 +216,29 @@ test('an import reads DEPS into the enhanced layer', async () => {
   expect(text).toContain('2:nsubj|4:nsubj:xsubj');
   expect(text).toContain('\t2\txcomp\t2:xcomp:to\t');
 });
+
+// The bin beside an open label deletes the relation, for whoever has not
+// learned Shift+Delete, and its tooltip is where they learn it.
+test('the bin beside an open label deletes the relation', async ({ page }) => {
+  await openGrid(page, 6);
+  await page.locator('.enhanced-arcs .tree-deprel-text', { hasText: /^nsubj/ }).click();
+  const bin = page.locator('.deprel-edit-delete');
+  await expect(bin).toHaveAttribute('title', 'Delete (Shift+Delete)');
+  // To the LEFT of the input, which keeps the label's place over its arc.
+  const binBox = await bin.boundingBox();
+  const inputBox = await page.locator('foreignObject input').boundingBox();
+  expect(binBox.x + binBox.width).toBeLessThanOrEqual(inputBox.x);
+
+  await bin.click();
+  await expect(page.locator('foreignObject input')).toHaveCount(0);
+  await expect(page.locator('.enhanced-arc-path')).toHaveCount(1);
+  await expect
+    .poll(async () => (await enhancedRows()).map((r) => r.value ?? 'SUPPRESS').sort())
+    .toEqual(['SUPPRESS', 'conj:and']);
+
+  // A relabel in progress has nothing to delete, so it offers no bin.
+  await enhancedDrag(page, 3, 2); // left -> and, which the tree joins as cc
+  await expect(page.locator('foreignObject input')).toHaveValue(/^cc/);
+  await expect(bin).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});

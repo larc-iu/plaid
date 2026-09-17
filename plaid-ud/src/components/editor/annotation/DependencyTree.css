@@ -201,3 +201,33 @@
   border-radius: 4px;
   outline: none;
 }
+
+/* The editor and its bin. The bin hangs off the input's left edge, outside the
+   foreignObject's 100px (which is `overflow: visible`), so the input keeps the
+   label's place over its arc. */
+.deprel-edit {
+  position: relative;
+  width: 100%;
+}
+
+.deprel-edit-delete {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  margin-right: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: #6b7280;
+  background-color: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.deprel-edit-delete:hover {
+  color: #dc2626;
+  border-color: #dc2626;
+}

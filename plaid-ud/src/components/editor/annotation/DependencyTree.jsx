@@ -722,14 +722,19 @@ export const DependencyTree = forwardRef(
                   closeEditor();
                   setFocusedRelation(relation.id);
                 }}
-                onDelete={() => {
-                  // Mid-relabel there is nothing of the enhanced graph's to
-                  // delete yet, and the tree's relation is not what was asked
-                  // about, so this only leaves the editor.
-                  if (relabeling !== relation.id) onRelationDelete(relation.id);
-                  closeEditor();
-                  setFocusedRelation(null);
-                }}
+                // Mid-relabel there is nothing of the enhanced graph's to
+                // delete yet, and the tree's relation is not what was asked
+                // about. Withheld, the editor offers no bin and reads the
+                // chord as a cancel.
+                onDelete={
+                  relabeling === relation.id
+                    ? undefined
+                    : () => {
+                        onRelationDelete(relation.id);
+                        closeEditor();
+                        setFocusedRelation(null);
+                      }
+                }
                 onTab={(v, shiftKey, typed) => {
                   commitLabel(relation, v, typed);
                   const idx = sortedRelations.findIndex((r) => r.id === relation.id);

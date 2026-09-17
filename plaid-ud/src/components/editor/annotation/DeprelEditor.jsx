@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { readFieldProbs, groupSuggestions, probLabel } from '../../../utils/provenanceUi.js';
 import { notifyWarning } from '../../../utils/feedback.jsx';
@@ -23,7 +24,8 @@ import { textIncludes } from '@ui/domain/collation.js';
 // Keyboard contract (preserved from the old contentEditable editor):
 //   Enter / blur     → commit + close (Enter commits the highlighted match)
 //   Escape           → cancel + close
-//   Shift+Delete     → delete the relation
+//   Shift+Delete     → delete the relation (also the bin to the input's left,
+//                      whose tooltip is where the chord is learned)
 //   Tab / Shift+Tab  → commit + move to the next/previous relation
 // A `done` ref guards against the blur firing a second commit after an
 // explicit Enter/Tab/Escape/Delete already closed the editor.
@@ -144,89 +146,118 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
   };
 
   return (
-    <Combobox
-      options={data}
-      spellCheck={false}
-      renderOption={({ option }) => {
-        if (literalValue && option.value === literalValue) {
+    <div className="deprel-edit">
+      {/* The bin sits outside the input, to its left, so the label being typed
+          stays centred on its arc. `onDelete` is withheld where there is nothing
+          to delete (a relabel in progress), and the bin goes with it.
+          preventDefault on mousedown keeps focus in the input: a blur there
+          commits and closes the editor before the click could land. */}
+      {onDelete && (
+        <button
+          type="button"
+          className="deprel-edit-delete"
+          tabIndex={-1}
+          title="Delete (Shift+Delete)"
+          aria-label="Delete relation"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            once(onDelete);
+          }}
+        >
+          <Trash2 width={12} height={12} />
+        </button>
+      )}
+      <Combobox
+        options={data}
+        spellCheck={false}
+        renderOption={({ option }) => {
+          if (literalValue && option.value === literalValue) {
+            return (
+              <span style={{ fontStyle: 'italic', opacity: 0.8 }}>
+                Use “{option.value}” as typed
+              </span>
+            );
+          }
+          const pct = deprelProbs ? probLabel(deprelProbs, option.value) : null;
+          const gloss = descriptions?.[option.value];
           return (
-            <span style={{ fontStyle: 'italic', opacity: 0.8 }}>Use “{option.value}” as typed</span>
+            <span>
+              {option.value}
+              {pct && (
+                <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>{pct}</span>
+              )}
+              {gloss && (
+                <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>{gloss}</span>
+              )}
+            </span>
           );
-        }
-        const pct = deprelProbs ? probLabel(deprelProbs, option.value) : null;
-        const gloss = descriptions?.[option.value];
-        return (
-          <span>
-            {option.value}
-            {pct && <span style={{ opacity: 0.55, marginLeft: 6, fontSize: '0.85em' }}>{pct}</span>}
-            {gloss && (
-              <span style={{ opacity: 0.6, marginLeft: 8, fontSize: '0.85em' }}>{gloss}</span>
-            )}
-          </span>
-        );
-      }}
-      value={value}
-      onChange={(v) => {
-        setValue(v);
-        setPristine(false);
-        typedRef.current = true;
-      }}
-      onFocus={(e) => {
-        setPristine(true);
-        setTimeout(() => e.target.select?.(), 0);
-      }}
-      // The second argument tells the caller whether the human actually typed /
-      // picked (vs. just opened and left): re-entering the machine's own label
-      // is a confirmation, but merely passing through the editor is not.
-      onBlur={() => once(() => commitOr(value, typedRef.current))}
-      // Clicking an option commits it, and a click is always a deliberate pick.
-      onSubmit={(v) => once(() => commitOr(v, true))}
-      onKeyDown={(e, combo) => {
-        // stopPropagation so the dependency tree's global document keydown
-        // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
-        // editor owns these keys — keeps Enter/Escape returning focus to the
-        // selected label instead of clearing it.
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          e.stopPropagation();
-          // Arrow keys highlight an option without touching `value`, so the
-          // highlighted one wins when there is one. It is read straight off the
-          // list rather than inferred from a later event, which is the whole
-          // point of the combobox handing its state to the key handler.
-          const picked = combo.activeValue;
-          once(() => (picked != null ? commitOr(picked, true) : commitOr(value, typedRef.current)));
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          once(onCancel);
-        } else if (e.key === 'Delete' && e.shiftKey) {
-          e.preventDefault();
-          e.stopPropagation();
-          once(onDelete);
-        } else if (e.key === 'Tab') {
-          e.preventDefault();
-          e.stopPropagation();
-          once(() => {
-            if (isCommitting(value, typedRef.current)) {
-              const refusal = validate?.(value);
-              if (refusal) {
-                notifyWarning(refusal, 'Not in the list');
-                onCancel();
-                return;
+        }}
+        value={value}
+        onChange={(v) => {
+          setValue(v);
+          setPristine(false);
+          typedRef.current = true;
+        }}
+        onFocus={(e) => {
+          setPristine(true);
+          setTimeout(() => e.target.select?.(), 0);
+        }}
+        // The second argument tells the caller whether the human actually typed /
+        // picked (vs. just opened and left): re-entering the machine's own label
+        // is a confirmation, but merely passing through the editor is not.
+        onBlur={() => once(() => commitOr(value, typedRef.current))}
+        // Clicking an option commits it, and a click is always a deliberate pick.
+        onSubmit={(v) => once(() => commitOr(v, true))}
+        onKeyDown={(e, combo) => {
+          // stopPropagation so the dependency tree's global document keydown
+          // listener (Escape = bail, Ctrl+D = enter) doesn't also fire while the
+          // editor owns these keys — keeps Enter/Escape returning focus to the
+          // selected label instead of clearing it.
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            // Arrow keys highlight an option without touching `value`, so the
+            // highlighted one wins when there is one. It is read straight off the
+            // list rather than inferred from a later event, which is the whole
+            // point of the combobox handing its state to the key handler.
+            const picked = combo.activeValue;
+            once(() =>
+              picked != null ? commitOr(picked, true) : commitOr(value, typedRef.current),
+            );
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            once(onCancel);
+          } else if (e.key === 'Delete' && e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            once(onDelete || onCancel);
+          } else if (e.key === 'Tab') {
+            e.preventDefault();
+            e.stopPropagation();
+            once(() => {
+              if (isCommitting(value, typedRef.current)) {
+                const refusal = validate?.(value);
+                if (refusal) {
+                  notifyWarning(refusal, 'Not in the list');
+                  onCancel();
+                  return;
+                }
               }
-            }
-            onTab(value, e.shiftKey, typedRef.current);
-          });
-        }
-      }}
-      filter={optionsFilter}
-      // Auto-highlight the best match for Enter — but only once typing has
-      // started. While pristine (just opened, showing the full list) nothing is
-      // pre-selected, so Enter keeps the current value.
-      autoHighlight={!pristine}
-      autoFocus
-      className="deprel-edit-input"
-      optionClassName="px-2 py-0.5 text-[11px]"
-    />
+              onTab(value, e.shiftKey, typedRef.current);
+            });
+          }
+        }}
+        filter={optionsFilter}
+        // Auto-highlight the best match for Enter — but only once typing has
+        // started. While pristine (just opened, showing the full list) nothing is
+        // pre-selected, so Enter keeps the current value.
+        autoHighlight={!pristine}
+        autoFocus
+        className="deprel-edit-input"
+        optionClassName="px-2 py-0.5 text-[11px]"
+      />
+    </div>
   );
 }
