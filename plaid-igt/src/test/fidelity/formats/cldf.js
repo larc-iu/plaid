@@ -167,7 +167,10 @@ export default {
     // Ruled by the user, 2026-09-17: imports keep field order. The export writes the columns of
     // unbound fields in project order, but the import creates fields in the order it first meets a
     // value, with the bound Translation, Note and Gloss ahead of the rest, so this is a bug today.
-    'layers.fieldOrder': carried,
+    'layers.fieldOrder': {
+      carried: 'changed',
+      how: 'Word and morpheme fields keep their order. Sentence fields come back in the order the file holds them, which is the field bound to Translated_Text, then the one bound to Comment, then the rest in the order the export wrote their columns, since those two are columns of their own that a project field order cannot move.',
+    },
     'layers.fieldLang': {
       carried: false,
       kind: 'undecided',

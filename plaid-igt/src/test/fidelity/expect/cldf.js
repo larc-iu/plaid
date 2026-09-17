@@ -727,6 +727,7 @@ export default {
         'layers.fieldWord',
         'layers.fieldMorpheme',
         'layers.fieldSameNameTwoScopes',
+        'layers.fieldOrder',
       ],
       // A field with no non-empty value left does not come back, and the rest
       // keep their order with config { scope }. The Translated_Text field is
@@ -760,6 +761,17 @@ export default {
         const gloss =
           bound.glossScope === 'morpheme' && layer(expected, `span:morpheme/${bound.gloss}`);
         if (gloss) renameSpanLayer(expected, gloss.key, 'Gloss');
+
+        // The sentence fields sit in the file's column order: the one bound to
+        // Translated_Text, the one bound to Comment, then the rest as they were.
+        const first = [translation, comment].filter(Boolean);
+        const rank = (l) => (first.includes(l) ? first.indexOf(l) : first.length + l.position);
+        spanLayers(expected)
+          .filter((l) => l.key.startsWith('span:sentence/'))
+          .sort((x, y) => rank(x) - rank(y))
+          .forEach((l, i) => {
+            l.position = i;
+          });
       },
     },
   ],

@@ -341,6 +341,10 @@ export function buildCldfDocuments(dataset, options = {}) {
   }
 
   // --- languages ---
+  const decimalOrNull = (value) => {
+    const n = Number(String(value ?? '').trim());
+    return String(value ?? '').trim() !== '' && Number.isFinite(n) ? n : null;
+  };
   const languageTable = dataset.components?.LanguageTable;
   const languageById = new Map();
   for (const row of languageTable?.rows || []) {
@@ -348,8 +352,10 @@ export function buildCldfDocuments(dataset, options = {}) {
       name: cell(languageTable, row, 'name'),
       glottocode: cell(languageTable, row, 'glottocode'),
       iso639P3: cell(languageTable, row, 'iso639P3code'),
-      latitude: cell(languageTable, row, 'latitude') || null,
-      longitude: cell(languageTable, row, 'longitude') || null,
+      // Numbers, as the project stores them and the CLDF column declares
+      // (decimal). Read as text they came back as "40.4" and the map lost them.
+      latitude: decimalOrNull(cell(languageTable, row, 'latitude')),
+      longitude: decimalOrNull(cell(languageTable, row, 'longitude')),
     });
   }
 
