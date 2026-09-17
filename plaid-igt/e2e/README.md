@@ -48,3 +48,10 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   seed, and takes `--dry-run`.
 - `bugbash/`: the headless integrity fuzzer and its harness (`harness.mjs` is
   also the client and fixture lookup the live scripts use).
+- `fidelity/`: the import/export fidelity campaign. Unlike everything above it
+  runs on a PRIVATE core it boots from source (`core.mjs`), never on :8085.
+  `kitchenSink.mjs` builds projects holding every feature in
+  `src/test/fidelity/catalog.js`, `snapshot.mjs` reads a project back as one
+  id-free value, and `coverage.mjs` checks the one against the other. The
+  per-format loss lists and the guards that keep the catalog in step with core
+  are in `src/test/fidelity/` and run with `npm test`.
