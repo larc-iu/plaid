@@ -25,6 +25,9 @@ const FIELD_CONFIG = inherent(
 const NOT_A_FIELD = inherent(
   "The columns are the form, the number and the vocabulary's declared fields. A key no field declares has no column, and Bulk Add writes declared fields only.",
 );
+// Also fixed on 2026-09-17: a vocabulary with a field of its own called Number had two columns
+// of that name, and the entry's number, being the first, landed in the field. The number column
+// is now headed "Entry number" where a field would claim it.
 const NUMBER_COLUMN = undecided(
   "The Number column writes each entry's dotted number (\"a 1.2\"), which names its headword and its place, but Bulk Add ignores that column and creates every row as a headword of its own. A sense whose values differ from its headword's comes back as a second headword spelled the same, and one under a headword with no values of its own fills that headword's blanks instead.",
 );
@@ -117,9 +120,10 @@ export default {
     'item.definition': carried,
     // The target declares the Status field and its closed tagset, whose values Bulk Add accepts.
     'item.status': carried,
-    // SUSPECTED BUG: the header "lexemeForm" (zip) and "Lexeme Form" (Entries screen) both
-    // normalize to "lexemeform", which vocabBulk.js lists as a spelling of the FORM column. The
-    // column is guessed to be a second form and left out, so the values never import.
+    // Confirmed by the round trip on 2026-09-17 and fixed: the header "lexemeForm" (zip) and
+    // "Lexeme Form" (Entries screen) both normalize to "lexemeform", which vocabBulk.js also
+    // lists as a spelling of the FORM column, so the column was read as a second form and left
+    // out. A field the vocabulary declares now beats that spelling.
     'item.lexemeForm': carried,
     // SUSPECTED BUGS: the Entries screen's header for a field with a language ("Source (en)")
     // matches no field, and a custom field named like a core field's alias ("Translation",
@@ -153,9 +157,10 @@ export default {
     'item.zeroMorph': carried,
     'item.unlinked': carried,
     'item.extraMetadata': NOT_A_FIELD,
-    // SUSPECTED BUG for the leading quote: the export writes it bare and Bulk Add reads a cell
-    // that starts with " as a quoted cell, so the quotes are lost, and an unbalanced one swallows
-    // the cells and rows after it.
+    // Confirmed by the round trip on 2026-09-17 and fixed in the export: a cell beginning with a
+    // double quote was written bare, and every reader of delimited text takes that as RFC 4180
+    // quoting, so the quotes were eaten and an unbalanced one swallowed the cells after it. Such
+    // a cell is now written quoted, with its own quotes doubled.
     'item.markupChars': {
       carried: 'changed',
       how: 'A tab or line break, or a run of them, becomes one space (vocabTsv.js tsvCell: cells cannot contain them). A leading double quote comes back as it was.',

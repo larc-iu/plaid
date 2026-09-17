@@ -87,7 +87,7 @@ const isOwnExport = (component) => (component?.columns || []).some((c) => c.name
  * translation". Only our own datasets are decoded — in someone else's, a "%"
  * is as likely to be theirs as ours.
  */
-export const decodeColumnName = (name, own) => {
+const decodeColumnName = (name, own) => {
   if (!own || !name.includes('%')) return name;
   try {
     return decodeURIComponent(name);

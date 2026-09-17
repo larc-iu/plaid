@@ -41,7 +41,7 @@ async function tool(program, args) {
 }
 
 /** Every file of an export, unzipped when it is a zip, as { path, bytes }. */
-export function filesOf(bytes, filename) {
+function filesOf(bytes, filename) {
   const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
   if (!isZip) return [{ path: filename, bytes }];
   return Object.entries(unzipSync(bytes))

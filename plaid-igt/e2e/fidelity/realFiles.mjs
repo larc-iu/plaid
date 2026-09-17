@@ -8,8 +8,9 @@
 //     [--validate] [--docs N] [--keep] [--out <dir>]
 //
 // --eaf imports a directory of .eaf files the way the ELAN import screen does,
-// as one batch, instead of reading .fwbackup files. Someone's real recordings
-// are their own: point it at a directory, never copy the files into the repo.
+// as one batch, instead of reading .fwbackup files, and --cldf imports one
+// CLDF dataset, ours or somebody else's. Someone's real recordings are their
+// own: point the run at a directory, never copy the files into the repo.
 //
 // The kitchen sink is what we thought to write down. A real FieldWorks project
 // is what people actually have: writing systems we did not think of, texts
@@ -62,19 +63,21 @@ const outDir = arg('--out');
 const keep = process.argv.includes('--keep');
 const alsoValidate = process.argv.includes('--validate');
 const eafDir = arg('--eaf');
+const cldfFile = arg('--cldf');
 for (const f of formats) if (!LISTS[f]) throw new Error(`unknown format ${f}`);
 
 const one = arg('--file');
 const dir = arg('--dir', DEFAULT_DIR);
-const backups = eafDir
-  ? []
-  : one
-    ? [one]
-    : readdirSync(dir)
-        .filter((f) => f.toLowerCase().endsWith('.fwbackup'))
-        .map((f) => join(dir, f))
-        .sort((a, b) => statSync(a).size - statSync(b).size);
-if (!eafDir && !backups.length) throw new Error(`no .fwbackup files in ${dir}`);
+const backups =
+  eafDir || cldfFile
+    ? []
+    : one
+      ? [one]
+      : readdirSync(dir)
+          .filter((f) => f.toLowerCase().endsWith('.fwbackup'))
+          .map((f) => join(dir, f))
+          .sort((a, b) => statSync(a).size - statSync(b).size);
+if (!eafDir && !cldfFile && !backups.length) throw new Error(`no .fwbackup files in ${dir}`);
 
 const t0 = Date.now();
 const secs = () => `${((Date.now() - t0) / 1000).toFixed(0)}s`;
@@ -193,17 +196,27 @@ try {
   const bareId = await bareProject(client, `Bare ${Date.now() % 1e6}`);
   const bare = await snapshotProject(client, bareId);
 
-  for (const path of eafDir ? [eafDir] : backups) {
+  for (const path of eafDir ? [eafDir] : cldfFile ? [cldfFile] : backups) {
     const label = path
       .split('/')
       .filter(Boolean)
       .pop()
-      .replace(/\.fwbackup$/i, '');
+      .replace(/\.(fwbackup|zip)$/i, '');
     const name = `${label} ${Date.now() % 1e6}`;
     let source;
     let projectId;
     try {
-      if (eafDir) {
+      if (cldfFile) {
+        // Somebody else's dataset, read by our own CLDF import: the project it
+        // makes is the source the round trips start from.
+        const done = await importProject(client, 'cldf', new Uint8Array(readFileSync(path)), name);
+        projectId = done.projectId;
+        console.log(`\n${label} (${secs()})`);
+        for (const w of done.warnings.slice(0, 5)) console.log(`       import warning: ${w}`);
+        if (done.warnings.length > 5) {
+          console.log(`       ... ${done.warnings.length - 5} more import warnings`);
+        }
+      } else if (eafDir) {
         const batch = eafBatch(path);
         const done = await importProject(client, 'elan', batch.bytes, name);
         projectId = done.projectId;

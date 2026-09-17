@@ -2,8 +2,16 @@ import { itemLabel } from '../domain/vocabDictionary.js';
 
 // Vocabulary → TSV. Cells can't contain tabs or newlines, so those collapse
 // to a single space (no quoting layer — that's the point of TSV).
+//
+// The one exception is a cell that BEGINS with a double quote: every reader of
+// delimited text, ours (vocabBulk.js parseDelimited) and Excel alike, takes
+// that as RFC 4180 quoting and eats the quotes. Such a cell is written quoted,
+// with its own quotes doubled, so it comes back as it was.
 
-export const tsvCell = (v) => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
+export const tsvCell = (v) => {
+  const flat = String(v ?? '').replace(/[\t\r\n]+/g, ' ');
+  return flat.startsWith('"') ? `"${flat.replace(/"/g, '""')}"` : flat;
+};
 
 /**
  * items: [{ id, form, metadata }]; fieldNames: metadata keys to emit as
@@ -34,7 +42,12 @@ export function serializeVocabTsv({
   // The Number column earns its place only when something carries a number: a
   // vocabulary with no senses and no two entries spelled alike numbers nothing.
   const numbered = !!numbers && (items || []).some((it) => numbers.get(it.id));
-  const header = ['Form', ...(numbered ? ['Number'] : []), ...(fieldLabels ?? fieldNames)];
+  // A vocabulary may have a field of its own called Number, and two columns of
+  // one name make a reader pick one: the entry's number stands aside, since
+  // the field's values are the data and the number is bookkeeping.
+  const names = (fieldLabels ?? fieldNames).map((n) => String(n ?? '').toLowerCase());
+  const numberHeader = names.includes('number') ? 'Entry number' : 'Number';
+  const header = ['Form', ...(numbered ? [numberHeader] : []), ...(fieldLabels ?? fieldNames)];
   if (usageCounts) header.push('Uses');
   const lines = [header.map(tsvCell).join('\t')];
   for (const it of items || []) {

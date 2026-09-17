@@ -18,8 +18,9 @@ import { STRIPS } from './strips.js';
 import cldf from './cldf.js';
 import elan from './elan.js';
 import native from './native.js';
+import vocabTsv from './vocabTsv.js';
 
-export const MODULES = { native, cldf, elan };
+export const MODULES = { native, cldf, elan, vocabTsv };
 
 function stripStamps(s, stamps = {}) {
   delete s.name;

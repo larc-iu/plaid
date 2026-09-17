@@ -54,14 +54,17 @@ import { readNativeArchive } from '../../src/import/native/readArchive.js';
  */
 const EXPORT_FORMAT = { native: 'plaid-igt-json', cldf: 'cldf', elan: 'elan' };
 
-async function exportScope(client, projectId, formatId, scope) {
+async function exportScope(client, projectId, formatId, scope, over = null) {
   const project = await client.projects.get(projectId);
-  const preset = newPreset(
-    EXPORT_FORMAT[formatId] ?? formatId,
-    discoverExportLayers(project),
-    'Fidelity',
-    readLanguages(project.config),
-  );
+  const preset = {
+    ...newPreset(
+      EXPORT_FORMAT[formatId] ?? formatId,
+      discoverExportLayers(project),
+      'Fidelity',
+      readLanguages(project.config),
+    ),
+    ...(over || {}),
+  };
   const result = await runExport({ client, project, preset, scope });
   return {
     bytes: new Uint8Array(await result.blob.arrayBuffer()),
@@ -70,8 +73,8 @@ async function exportScope(client, projectId, formatId, scope) {
   };
 }
 
-export const exportProject = (client, projectId, formatId) =>
-  exportScope(client, projectId, formatId, { type: 'project' });
+export const exportProject = (client, projectId, formatId, over = null) =>
+  exportScope(client, projectId, formatId, { type: 'project' }, over);
 
 export const exportDocument = (client, projectId, documentId, formatId) =>
   exportScope(client, projectId, formatId, { type: 'document', id: documentId });

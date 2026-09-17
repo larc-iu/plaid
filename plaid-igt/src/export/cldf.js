@@ -101,7 +101,7 @@ const percentEncode = (ch) =>
   [...utf8.encode(ch)].map((b) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`).join('');
 
 /** A column name CSVW accepts, reversible with `decodeColumnName` on the way in. */
-export const columnName = (name) => {
+const columnName = (name) => {
   const out = [...String(name ?? '')]
     .map((ch) => (CSVW_NAME_CHAR.test(ch) ? ch : percentEncode(ch)))
     .join('');

@@ -225,10 +225,15 @@ const EXPORT_ONLY = new Set(['uses', 'id'].map(normalizeHeader));
 export const matchHeader = (cell, fieldNames, humanize = (n) => n) => {
   const n = normalizeHeader(cell);
   if (!n) return null;
-  if (FORM_ALIASES.has(n)) return FORM;
   if (EXPORT_ONLY.has(n)) return IGNORE;
+  // A field the vocabulary actually declares comes first: "lexemeForm" is a
+  // field here AND a spelling of "this column holds the entry's form", and the
+  // column our own export writes under that name is the field's.
   for (const field of fieldNames) {
     if (n === normalizeHeader(field) || n === normalizeHeader(humanize(field))) return field;
+  }
+  if (FORM_ALIASES.has(n)) return FORM;
+  for (const field of fieldNames) {
     if ((FIELD_ALIASES[field] || []).some((a) => normalizeHeader(a) === n)) return field;
   }
   return null;
