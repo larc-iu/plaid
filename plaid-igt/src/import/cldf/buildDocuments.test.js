@@ -91,6 +91,24 @@ describe('buildCldfDocuments', () => {
     expect(affixed.morphemes.map((m) => m.morphType)).toEqual([null, null, null]);
   });
 
+  it("keeps a word's own gloss when a morpheme gloss cannot be split onto it", () => {
+    const columns = [...BASIC_COLUMNS, col('Word_Gloss', null, { separator: '\t', null: [] })];
+    const { documents, warnings } = buildCldfDocuments(
+      dataset(
+        'ID,Language_ID,Primary_Text,Analyzed_Word,Gloss,Translated_Text,Word_Gloss\r\n' +
+          '1,spa,perros,perro--s,dog-PL,The dogs.,the dogs\r\n',
+        columns,
+      ),
+      {
+        glossField: 'Gloss',
+        glossScope: 'Morpheme',
+        customColumns: { Word_Gloss: { scope: 'Word', name: 'Gloss', enabled: true } },
+      },
+    );
+    expect(documents[0].words[0].fields.Gloss).toBe('the dogs');
+    expect(warnings.concat(documents[0].warnings).join(' ')).toMatch(/keeps its own gloss/);
+  });
+
   it('leaves a word made only of punctuation unanalyzed', () => {
     const { documents } = buildCldfDocuments(
       dataset(

@@ -341,6 +341,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   }
 
   // --- languages ---
+  const hasValue = (v) => v != null && v !== '';
   const decimalOrNull = (value) => {
     const n = Number(String(value ?? '').trim());
     return String(value ?? '').trim() !== '' && Number.isFinite(n) ? n : null;
@@ -597,14 +598,20 @@ export function buildCldfDocuments(dataset, options = {}) {
         }
 
         // A gloss the morphemes cannot absorb still has to land somewhere, so
-        // it goes on the word (or the single morpheme in word-scope mode).
+        // it goes on the word (or the single morpheme in word-scope mode),
+        // unless the word's own gloss is already there: a column of its own
+        // wrote that, and overwriting it lost what the word actually said.
         const wholeGloss = glosses[wi] ?? '';
         if (o.glossScope === 'Word' || !aligned) {
-          if (wholeGloss) wordFields[o.glossField] = wholeGloss;
+          const taken = hasValue(wordFields[o.glossField]);
+          if (wholeGloss && !taken) wordFields[o.glossField] = wholeGloss;
           if (o.glossScope === 'Morpheme' && wholeGloss && pieces.length > 1) {
             docWarnings.push(
               `Example ${cell(examples, row, 'id') || si + 1}: gloss "${wholeGloss}" does not ` +
-                `segment like "${word}"; kept on the word`,
+                `segment like "${word}", so it is ` +
+                (taken
+                  ? `not imported. The word keeps its own gloss "${wordFields[o.glossField]}"`
+                  : 'kept on the word'),
             );
           }
         }
