@@ -424,7 +424,10 @@ export default {
       kind: 'inherent',
       why: 'Analyzed_Word cannot tell an unanalyzed word from one analyzed as a single morpheme, so it comes back with one stored morpheme whose form is the word’s text. A word whose text holds - or = comes back split into morphemes at them. A word the imported project skips as punctuation comes back unanalyzed instead (token.ignoredWord). The preset panel lists this loss (INHERENT_LOSSES).',
     },
-    'token.morphemeForm': carried,
+    'token.morphemeForm': {
+      carried: 'changed',
+      how: 'Comes back as it was, unless the form spells a "-" or a "=". Those are the joints BETWEEN morphemes in Analyzed_Word, so a form spelling one is read back as a joint: "perro" and "-s" go out as "perro--s" and come back as three morphemes, the middle one with an empty form.',
+    },
     'token.morphemeFormEmpty': {
       carried: 'changed',
       how: 'In a word where another morpheme has a non-empty form, an empty form comes back as "". In a word where every morpheme’s form is empty, the word comes back with one morpheme whose form is the word’s text.',
@@ -478,7 +481,10 @@ export default {
       how: 'Comes back on the same sentence. A value in a field carried as a custom column, which is every sentence field but the ones bound to Translated_Text and Comment, comes back trimmed of leading and trailing whitespace.',
     },
     'span.wordValue': carried,
-    'span.morphemeValue': carried,
+    'span.morphemeValue': {
+      carried: 'changed',
+      how: 'Comes back as it was, unless the value spells a "-" or a "=" (the joints in the gloss line) or the word it is on has a morpheme that does. A gloss line that does not segment into as many pieces as the word line is not imported at all, and the word keeps only its own gloss.',
+    },
     'span.multiToken': {
       carried: 'changed',
       how: 'Comes back as one single-token annotation in the same field on each token it covered, all with the same value.',

@@ -774,5 +774,49 @@ export default {
           });
       },
     },
+    {
+      keys: ['token.morphemeForm', 'span.morphemeValue'],
+      // The one place the interlinear line is ambiguous: "-" and "=" are the
+      // joints BETWEEN morphemes in Analyzed_Word, so a form or a value that
+      // spells one of them is read back as a joint. "perro" + "-s" is written
+      // "perro--s" and comes back as three morphemes, the middle one empty,
+      // and a gloss line that no longer segments like it is dropped whole (the
+      // import says so in a warning).
+      //
+      // Ruled a tolerated wart (user, 2026-09-17: "CLDF round trip doesn't
+      // matter ... we can tolerate warts there"), so rather than model what
+      // the two sides make of such a word, the comparison drops its morphemes
+      // from both. Every word whose morphemes spell no joint is still compared
+      // in full, so a regression anywhere else still shows.
+      apply(expected, actual) {
+        const joint = /[-=]/u;
+        const marked = new Set();
+        for (const d of docs(expected)) {
+          const valuesOn = new Map();
+          for (const sp of d.spans) {
+            if (scopeOfLayer(expected, sp.layer) !== 'Morpheme') continue;
+            for (const t of sp.tokens) valuesOn.set(t, [...(valuesOn.get(t) || []), sp.value]);
+          }
+          for (const { word, morphemes } of wordsWithMorphemes(d)) {
+            const spelled = morphemes.some(
+              (m) =>
+                joint.test(m.metadata.form ?? '') ||
+                (valuesOn.get(m.key) || []).some((v) => joint.test(String(v ?? ''))),
+            );
+            if (spelled) marked.add(`${d.key}|${word.begin}-${word.end}`);
+          }
+        }
+        if (!marked.size) return;
+        for (const side of [expected, actual]) {
+          for (const d of docs(side)) {
+            removeTokens(
+              side,
+              d,
+              (t) => t.layer === 'token:morpheme' && marked.has(`${d.key}|${t.begin}-${t.end}`),
+            );
+          }
+        }
+      },
+    },
   ],
 };
