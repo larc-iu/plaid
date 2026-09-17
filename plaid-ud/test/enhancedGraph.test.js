@@ -155,3 +155,16 @@ test('a label holding a | survives the DEPS round trip with its neighbours', () 
     emptyHeads: 1,
   });
 });
+
+test('serializeDeps names a head and relation once', () => {
+  // One edge of the graph held two ways: a basic relation nothing suppresses,
+  // and a row of the enhanced layer saying the same thing.
+  assert.equal(
+    serializeDeps([
+      { head: 2, deprel: 'nsubj' },
+      { head: 2, deprel: 'nsubj' },
+      { head: 4, deprel: 'nsubj' },
+    ]),
+    '2:nsubj|4:nsubj',
+  );
+});

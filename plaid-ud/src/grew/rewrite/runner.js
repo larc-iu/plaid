@@ -106,9 +106,16 @@ export async function planRewrite(client, { project, user, layerInfo, grs }, onP
           return;
         }
         const { changes, writes, warnings } = diffGraphs(before, after, doc.layerInfo);
-        // A rule can apply and leave nothing to write: an `E:` edge the tree
-        // already gives the enhanced graph is one. That is not a change.
-        if (!changes.length) return;
+        // A rule can apply and leave nothing to do: an `E:` edge the tree
+        // already gives the enhanced graph is one. That is not a change. A
+        // write with no line of its own (a stale suppressor swept up) still
+        // makes a row, since dropping the row would drop the write.
+        const idle =
+          !changes.length &&
+          !writes.main.length &&
+          !writes.tokens.length &&
+          !writes.lemmaCreates.length;
+        if (idle) return;
         rows.push({
           ...base,
           applications: applications.length,

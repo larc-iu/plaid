@@ -100,25 +100,20 @@ export function diffGraphs(before, after, layerInfo) {
   // tree's, under the bare deprel either way (edgeLabel.js).
   const touchesDeleted = (e) => deleted.has(e.src) || deleted.has(e.tgt);
   const needsLemma = new Set();
-  // `line` is the change line to show if the edge is written (null when the
-  // caller has already said what happened to it).
+  // An enhanced edge says something only against the tree as the rule LEFT it,
+  // so every extra a rule creates, relabels or moves is settled once every
+  // edge has been read (below). An entry carries the lines and writes for the
+  // edge standing as an edge of the enhanced graph, and the ones for the tree
+  // turning out to give that relation already.
   const pendingExtras = [];
-  const create = (a, line = null) => {
-    const enhanced = isEnhancedLabel(a.label);
-    const layerId = layer(enhanced ? 'enhancedRelationLayer' : 'relationLayer');
-    if (!layerId) {
+  const enhancedLayerId = () => {
+    const id = layer('enhancedRelationLayer');
+    if (!id) {
       throw new GrewRuntimeError(
         'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
       );
     }
-    // What an extra edge means depends on the tree under it as the rule LEFT
-    // it, so extras are settled once every edge has been read (below).
-    if (enhanced) {
-      pendingExtras.push({ a, line, layerId });
-      return;
-    }
-    if (line) changes.push({ kind: 'edge', text: line });
-    writeCreate(a, layerId);
+    return id;
   };
   const writeCreate = (a, layerId, extra = {}) => {
     writes.main.push({
@@ -132,6 +127,11 @@ export function diffGraphs(before, after, layerInfo) {
     needsLemma.add(serverSrc(a));
     needsLemma.add(a.tgt);
   };
+  const emit = (lines, ops, needs = []) => {
+    for (const text of lines) changes.push({ kind: 'edge', text });
+    writes.main.push(...ops);
+    for (const n of needs) needsLemma.add(n);
+  };
   const pairOf = (e) => `${e.src}>${e.tgt}`;
   for (const [id, b] of before.edges) {
     const a = after.edges.get(id);
@@ -144,58 +144,92 @@ export function diffGraphs(before, after, layerInfo) {
       writes.main.push({ op: 'deleteRelation', id });
       continue;
     }
+    const lines = [];
     if (a.label !== b.label) {
-      changes.push({
-        kind: 'edge',
-        text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`,
-      });
+      lines.push(`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`);
     }
     if (a.src !== b.src) {
-      changes.push({
-        kind: 'edge',
-        text: `${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
-      });
+      lines.push(
+        `${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
+      );
     }
     if (a.tgt !== b.tgt) {
-      changes.push({
-        kind: 'edge',
-        text: `${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
-      });
+      lines.push(
+        `${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
+      );
     }
+    // Deleting the row is what the enhanced graph deriving the relation from
+    // the tree comes to, for an edge that is already stored.
+    const dropped = {
+      lines: [
+        `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} removed, the tree gives it`,
+      ],
+      ops: [{ op: 'deleteRelation', id }],
+    };
     // A relation never changes layers, so an edge that changed graphs
     // (`e.enhanced = yes`) is deleted from one and created in the other.
     if (isEnhancedLabel(a.label) !== isEnhancedLabel(b.label)) {
-      writes.main.push({ op: 'deleteRelation', id });
-      create(a);
+      const del = { op: 'deleteRelation', id };
+      if (isEnhancedLabel(a.label)) {
+        pendingExtras.push({
+          a,
+          lines,
+          layerId: enhancedLayerId(),
+          before: [del],
+          create: true,
+          dropped: { lines: [], ops: [del] },
+        });
+      } else {
+        emit(lines, [del]);
+        writeCreate(a, layer('relationLayer'));
+      }
       continue;
     }
+    const ops = [];
+    const needs = [];
     if (a.label !== b.label) {
-      writes.main.push({
-        op: 'updateRelation',
-        id,
-        value: bareLabel(a.label),
-        metadata: b.metadata,
-      });
+      ops.push({ op: 'updateRelation', id, value: bareLabel(a.label), metadata: b.metadata });
     }
     if (a.tgt !== b.tgt) {
-      writes.main.push({ op: 'setTarget', id, node: a.tgt });
-      needsLemma.add(a.tgt);
+      ops.push({ op: 'setTarget', id, node: a.tgt });
+      needs.push(a.tgt);
     }
     if (serverSrc(a) !== serverSrc(b)) {
-      writes.main.push({ op: 'setSource', id, node: serverSrc(a) });
-      needsLemma.add(serverSrc(a));
+      ops.push({ op: 'setSource', id, node: serverSrc(a) });
+      needs.push(serverSrc(a));
     }
+    // An extra the rule left alone is left alone: only what it touched is
+    // settled against the tree.
+    if (isEnhancedLabel(a.label) && ops.length) {
+      pendingExtras.push({ a, lines, layerId: enhancedLayerId(), ops, needs, dropped });
+      continue;
+    }
+    emit(lines, ops, needs);
   }
   for (const [id, a] of after.edges) {
     if (before.edges.has(id)) continue;
-    create(a, `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`);
+    const line = `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`;
+    if (isEnhancedLabel(a.label)) {
+      pendingExtras.push({
+        a,
+        lines: [line],
+        layerId: enhancedLayerId(),
+        create: true,
+        dropped: { lines: [], ops: [] },
+      });
+      continue;
+    }
+    emit([line], []);
+    writeCreate(a, layer('relationLayer'));
   }
 
-  // --- the extra edges a rule created, pair by pair ---
+  // --- the extra edges a rule touched, pair by pair ---
   // Over a pair the tree joins (as the rule left it), an extra edge is what
   // it is when drawn in the editor (ConlluDocument.createEnhancedRelation):
-  //   the tree's own label   nothing to write. The enhanced graph has that
-  //                          edge from the tree, unless the pair is suppressed.
+  //   the tree's own label   nothing to store. The enhanced graph has that
+  //                          edge from the tree, unless the pair is suppressed,
+  //                          and a stored copy would be a second copy of one
+  //                          edge (DEPS names each head once).
   //   another label          a RELABEL. The new edge stands in place of the
   //                          tree's, so a suppressor goes in with it, but only
   //                          where the enhanced layer had nothing over the
@@ -226,9 +260,12 @@ export function diffGraphs(before, after, layerInfo) {
     const treeGivesIt = (p) =>
       basics?.has(bareLabel(p.a.label)) && !suppress && !suppressedBefore.has(pair);
     for (const p of extras) {
-      if (treeGivesIt(p)) continue;
-      if (p.line) changes.push({ kind: 'edge', text: p.line });
-      writeCreate(p.a, p.layerId);
+      if (treeGivesIt(p)) {
+        emit(p.dropped.lines, p.dropped.ops);
+        continue;
+      }
+      emit(p.lines, [...(p.before || []), ...(p.ops || [])], p.needs);
+      if (p.create) writeCreate(p.a, p.layerId);
     }
     if (suppress) {
       const { a, layerId } = extras[0];

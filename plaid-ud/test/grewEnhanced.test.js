@@ -450,6 +450,55 @@ test('the same label beside a relabel is written, since the tree edge is then le
   );
 });
 
+test('an extra moved onto a pair the tree already joins is dropped, not duplicated', () => {
+  // ENHANCED has the extra E:nsubj danced→she beside the tree's nsubj sang→she.
+  // Moving it onto sang→she would store a second copy of one edge, and DEPS
+  // names each head once.
+  const r = run(
+    ENHANCED,
+    'pattern { V [lemma="dance"]; W [lemma="sing"]; V -[E:nsubj]-> S } commands { shift_out V =[E:nsubj]=> W }',
+  );
+  assert.deepEqual(
+    r.changes.map((c) => c.text),
+    ['sang → she: E:nsubj removed, the tree gives it'],
+  );
+  assert.deepEqual(
+    r.writes.main.map((w) => w.op),
+    ['deleteRelation'],
+  );
+});
+
+test('an extra moved onto a pair the tree joins with ANOTHER label is a relabel', () => {
+  const r = run(
+    ENHANCED,
+    `pattern { V [lemma="dance"]; W [lemma="sing"]; e: V -[E:nsubj]-> S }
+     commands { e.2 = xsubj; shift_out V =[1=nsubj, enhanced=yes]=> W }`,
+  );
+  const eid = r.li.enhancedRelationLayer.id;
+  assert.deepEqual(
+    r.writes.main.map((w) => [w.op, w.layer, w.value]),
+    [
+      ['updateRelation', undefined, 'nsubj:xsubj'],
+      ['setSource', undefined, undefined],
+      ['createRelation', eid, null],
+    ],
+  );
+  assert.ok(r.changes.some((c) => c.text === 'sang → she: nsubj left out of the enhanced graph'));
+});
+
+test('an extra the rule did not touch is left alone', () => {
+  // The rule changes a feature, not an edge. Nothing about the stored extras
+  // is rewritten.
+  const r = run(
+    ENHANCED,
+    'pattern { X [upos=PRON] } without { X [Seen] } commands { X.Seen = Yes }',
+  );
+  assert.deepEqual(
+    r.writes.main.map((w) => w.op),
+    ['createSpan'],
+  );
+});
+
 test('an E: edge in a project with no enhanced layer refuses the row', () => {
   const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU) });
   const before = graphFromSentence(doc.sentences[0]);

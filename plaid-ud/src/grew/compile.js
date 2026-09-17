@@ -586,7 +586,7 @@ class Compiler {
     ) {
       throw new GrewUnsupportedError(
         'root-source',
-        `The head of a root relation is not a word. Write * -[${l.labels.filter((x) => bareLabel(x) === 'root').join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id} for it.`,
+        `The head of a root relation is not a word. Write * -[${l.labels.filter((x) => bareLabel(x) === 'root').join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id} in a clause of its own.`,
       );
     }
     const rv = item.id ? `?e_${item.id}` : this.fresh('r');

@@ -177,11 +177,20 @@ export const planEnhancedRow = ({ head, deprel }, deps) => {
   };
 };
 
-/** `[{ head, deprel }]` as a DEPS value: by head, then by relation. */
+/**
+ * `[{ head, deprel }]` as a DEPS value: by head, then by relation.
+ *
+ * DEPS names a head and relation once. The same edge can be held twice, as a
+ * basic relation nothing suppresses AND as a row of the enhanced layer, which
+ * is one edge of the graph written down two ways: drawing the arc the tree
+ * already has leaves that, and so does a rule. The column says it once.
+ */
 export const serializeDeps = (edges) => {
   if (!edges || edges.length === 0) return '_';
+  const seen = new Set();
   return [...edges]
     .sort((a, b) => a.head - b.head || (a.deprel < b.deprel ? -1 : a.deprel > b.deprel ? 1 : 0))
     .map((e) => `${e.head}:${e.deprel}`)
+    .filter((s) => !seen.has(s) && seen.add(s))
     .join('|');
 };
