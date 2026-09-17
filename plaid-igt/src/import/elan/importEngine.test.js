@@ -262,6 +262,31 @@ describe('importDocument', () => {
     expect(warnings[0]).toMatch(/no time-alignment layer/);
     expect(tokenCalls(client)).toHaveLength(3); // sentences, words, morphemes
   });
+  it('writes no form for a morpheme that has none, so it reads as its word', async () => {
+    const client = stubClient();
+    const doc = {
+      ...BUILD.documents[0],
+      words: [
+        {
+          begin: 0,
+          end: 3,
+          sentenceIndex: 0,
+          fields: {},
+          morphemes: [{ form: null, morphType: null, fields: { Gloss: 'DET' } }],
+        },
+      ],
+    };
+    await importDocument({
+      client,
+      projectId: 'p1',
+      targets: resolveTargets(PROJECT, BUILD),
+      doc,
+      warnings: [],
+    });
+    expect(tokenCalls(client)[3]).toEqual([
+      { tokenLayerId: 'ml', text: 'text1', begin: 0, end: 3, precedence: 1, metadata: {} },
+    ]);
+  });
 });
 
 describe('runElanImport', () => {

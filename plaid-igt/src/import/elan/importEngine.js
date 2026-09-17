@@ -208,7 +208,7 @@ export async function importDocument({
     const morphSpecs = [];
     for (const w of doc.words) {
       (w.morphemes || []).forEach((m, mi) => {
-        const metadata = { form: m.form ?? '' };
+        const metadata = m.form != null ? { form: m.form } : {};
         if (m.morphType) metadata.morphType = m.morphType;
         morphSpecs.push({
           morpheme: m,

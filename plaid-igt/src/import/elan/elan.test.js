@@ -492,6 +492,41 @@ describe('buildElanDocuments', () => {
     expect(doc.sentences[0].fields).toEqual({ ft: 'no words here' });
   });
 
+  it('drops a morph annotation that says nothing, so the word reads as unanalyzed', () => {
+    // FieldWorks writes a morph annotation under every word, blank until
+    // someone segments it. A blank one stored as a morpheme showed an empty
+    // cell where the word belongs.
+    const xml = toolboxFile('Ana', [
+      {
+        id: 'a1',
+        text: 'again again again',
+        begin: 0,
+        end: 900,
+        words: [
+          {
+            id: 'w1',
+            form: 'again',
+            morphs: [
+              { id: 'm1', form: 'a', gloss: '3' },
+              { id: 'm2', form: '-gain', gloss: 'take', previous: 'm1' },
+            ],
+          },
+          { id: 'w2', form: 'again', previous: 'w1', morphs: [{ id: 'm3', form: '' }] },
+          {
+            id: 'w3',
+            form: 'again',
+            previous: 'w2',
+            morphs: [{ id: 'm4', form: '', gloss: 'take' }],
+          },
+        ],
+      },
+    ]);
+    const [, blank, glossOnly] = buildFrom([[xml, 'x.eaf']]).build.documents[0].words;
+    expect(blank.morphemes).toEqual([]);
+    // A gloss with no form is kept, and a null form falls back to the word.
+    expect(glossOnly.morphemes).toEqual([{ form: null, morphType: null, fields: { ge: 'take' } }]);
+  });
+
   it('renames fields and reports the project schema', () => {
     const parsed = [readEaf(ANA, 'ana.eaf')];
     const { nodes } = compareSchemas(parsed);

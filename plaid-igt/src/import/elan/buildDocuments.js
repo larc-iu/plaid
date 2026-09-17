@@ -487,7 +487,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
           }
         }
         const morphAnns = ann ? childrenOn(ann, annTier, morphNodes) : [];
-        const morphemes = morphAnns.map((mAnn) => {
+        const read = morphAnns.map((mAnn) => {
           const { form, morphType } = readMorphForm(mAnn.value);
           const mFields = {};
           const mTier = tierOfAnnotation.get(mAnn.id) ?? annTier;
@@ -497,6 +497,15 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
           }
           return { form, morphType, fields: mFields };
         });
+        // A template-made corpus (FieldWorks writes one) carries a morph
+        // annotation under every word whether or not anyone has segmented it.
+        // One that says nothing at all is dropped, so the word reads as
+        // unanalyzed and shows its own text where its morpheme goes. A word's
+        // only morpheme with a gloss and no form keeps the gloss, and its null
+        // form falls back to the word. Among several, a blank form stays
+        // blank: the word's text would be wrong there.
+        const kept = read.filter((m) => m.form || m.morphType || Object.keys(m.fields).length);
+        const morphemes = kept.length === 1 && !kept[0].form ? [{ ...kept[0], form: null }] : kept;
         words.push({
           begin: toCp(span.beginU16),
           end: toCp(span.endU16),
