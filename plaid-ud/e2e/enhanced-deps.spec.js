@@ -276,3 +276,31 @@ test('the modifier counts at the start of a drag and not at its end', async ({ p
   await page.keyboard.press('Escape');
   expect((await enhancedRows()).length).toBe(before);
 });
+
+// An arc snaps to a word by its COLUMN on both sides of the words. Above, that
+// is anywhere between the ROOT bar and the word, not only the word's own box.
+test('a plain arc lands from high in a word’s column, as one below does from low', async ({
+  page,
+}) => {
+  await openGrid(page, 5);
+  const areas = page.locator('.tree-token-area');
+  const a = await areas.nth(3).boundingBox(); // left
+  const b = await areas.nth(0).boundingBox(); // she
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  // Well above the word's box, in its column.
+  await page.mouse.move(b.x + b.width / 2, b.y - 45, { steps: 8 });
+  // Shown snapped: the arc in the hand carries the label it will take.
+  await expect(page.locator('.tree-drag-label')).toHaveText('nsubj');
+  await page.mouse.up();
+
+  // she's head in the TREE is now "left".
+  await expect
+    .poll(async () => {
+      const info = getUdLayerInfo(await S.client.documents.get(S.documentId, true));
+      const lemma = (id) => info.lemmaLayer.spans.find((s) => s.id === id)?.value;
+      const rel = info.relationLayer.relations.find((r) => lemma(r.target) === 'she');
+      return rel && lemma(rel.source);
+    })
+    .toBe('leave');
+});

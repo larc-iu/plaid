@@ -289,7 +289,15 @@ export const DependencyTree = forwardRef(
     const handleTokenMouseUp = (e, position) => {
       e.stopPropagation();
       if (isReadOnly) return;
-      completeDrop(position);
+      // The word the arc in the hand is SHOWN landing on, which where two
+      // short words' reach overlaps is the nearer and not always the one whose
+      // grab box is on top.
+      let shown = null;
+      if (dragOrigin && svgRef.current) {
+        const rect = svgRef.current.getBoundingClientRect();
+        shown = wordInColumn({ x: e.clientX - rect.left, y: e.clientY - rect.top }, dragEnhanced);
+      }
+      completeDrop(shown || position);
       endDrag();
     };
 
@@ -343,18 +351,27 @@ export const DependencyTree = forwardRef(
       endDrag();
     };
 
-    // The word an ENHANCED arc in the hand is over when the pointer is at or
-    // under the row of words: its column, however far down. That arc is drawn
-    // under the words, so under them is where the hand goes, and the tree's
-    // own grab areas stop at the words. A plain arc lands on a grab area, as
-    // it always has.
-    const wordUnder = (point) => {
-      if (!point || point.y < TOKEN_Y - 12) return null;
-      return (
-        adjustedTokenPositions.find(
-          (p) => Math.abs(point.x - p.x) <= Math.max((p.width || 60) * 0.6, 24),
-        ) || null
-      );
+    // The word an arc in the hand would land on: the one whose COLUMN the
+    // pointer is in, on the arc's own side of the words. For the tree that is
+    // from under the ROOT bar down to the word, for the enhanced graph from the
+    // word down as far as the hand goes. One rule for both, so an arc snaps to a
+    // word as readily above it as below: when the tree asked for the word's
+    // small grab box while the band below took the whole column, drawing above
+    // was noticeably the fussier of the two. The nearest word wins where the
+    // reach of two short ones overlaps.
+    const wordInColumn = (point, below) => {
+      if (!point) return null;
+      const inBand = below
+        ? point.y >= TOKEN_Y - 12
+        : point.y >= ROOT_Y + 20 && point.y <= TOKEN_Y + 28;
+      if (!inBand) return null;
+      let best = null;
+      for (const p of adjustedTokenPositions) {
+        const dx = Math.abs(point.x - p.x);
+        if (dx > Math.max((p.width || 60) * 0.6, 24)) continue;
+        if (!best || dx < best.dx) best = { p, dx };
+      }
+      return best?.p || null;
     };
 
     // While an arc is in the hand the WINDOW is listened to, not this SVG: the
@@ -372,9 +389,10 @@ export const DependencyTree = forwardRef(
       // A release that no word or ROOT bar took (those stop it reaching here).
       up: (e) => {
         if (!dragLiveRef.current) return;
-        if (dragEnhanced && svgRef.current) {
+        if (svgRef.current) {
           const rect = svgRef.current.getBoundingClientRect();
-          const word = wordUnder({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+          const word = wordInColumn(point, dragEnhanced);
           if (word) completeDrop(word);
         }
         endDrag();
@@ -923,10 +941,7 @@ export const DependencyTree = forwardRef(
       const GREY = '#6b7280';
 
       // The word this arc would land on if let go now.
-      const hovered = hoveredToken?.token
-        ? adjustedTokenPositions.find((p) => p.token?.id === hoveredToken.token.id)
-        : null;
-      const over = hovered || (below ? wordUnder(dragCurrent) : null);
+      const over = wordInColumn(dragCurrent, below);
       const target = over && (fromRoot || over !== sourcePos) ? over : null;
       const toRoot =
         !fromRoot && (hoveredToken?.lemmaSpanId === 'ROOT' || dragCurrent.y < ROOT_Y + 15);
