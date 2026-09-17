@@ -756,20 +756,34 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     if (value != null) await client.projects.setConfig(projectId, IGT_NAMESPACE, key, value);
   }
 
-  // The project's annotation manual. Created rather than reconciled: an import
-  // builds a NEW project, so there is nothing to merge with, and a guideline is
-  // addressed by title rather than by id, so nothing in the archive points at
-  // one. A failure here warns instead of stopping the import: an annotation
-  // manual is worth having and is not worth losing a corpus over.
-  for (const g of archive.manifest.guidelines || []) {
-    if (!g?.title) continue;
+  // The project's annotation manual. Nothing in the archive points at a
+  // guideline (it is addressed by title, not by id), so there is no id map to
+  // keep and one already in the project is one this import wrote before it was
+  // interrupted: a resume asks what is there and writes the rest, rather than
+  // laying down a second copy of the manual. Title and body together say which
+  // is which, since a project may hold two guidelines of one title.
+  // A failure here warns instead of stopping the import: an annotation manual
+  // is worth having and is not worth losing a corpus over.
+  const wanted = (archive.manifest.guidelines || []).filter((g) => g?.title);
+  if (wanted.length) {
+    let present = new Set();
     try {
-      await client.guidelines.create(projectId, g.title, {
-        body: g.body || '',
-        pinned: !!g.pinned,
-      });
+      const existing = await client.guidelines.list(projectId, { includeBodies: true });
+      present = new Set(existing.map((g) => `${g.title}\u0000${g.body || ''}`));
     } catch (err) {
-      warnings.push(`Guideline "${g.title}" could not be created: ${err?.message ?? err}`);
+      warnings.push(`The project's guidelines could not be read: ${err?.message ?? err}`);
+    }
+    for (const g of wanted) {
+      if (present.has(`${g.title}\u0000${g.body || ''}`)) continue;
+      try {
+        await client.guidelines.create(projectId, g.title, {
+          body: g.body || '',
+          pinned: !!g.pinned,
+        });
+        present.add(`${g.title}\u0000${g.body || ''}`);
+      } catch (err) {
+        warnings.push(`Guideline "${g.title}" could not be created: ${err?.message ?? err}`);
+      }
     }
   }
 
@@ -901,24 +915,33 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
 /**
  * The archive-to-server token map for a document an earlier run finished, so a
  * resume can still rewrite the examples that point into it. Tokens are matched
- * on what they ARE rather than on the order they were created in: a word by
- * its extent, a morpheme by its extent and its place in the word. Only what an
- * example can point at is mapped.
+ * on what they ARE rather than on the order they were created in: a sentence
+ * or a word by its extent, a morpheme by its extent and its place in the word.
+ * Only what an example can point at is mapped.
  */
 export async function rebuildTokenMap({ client, docId, docData, targets }) {
   const raw = await client.documents.get(docId, true);
   const byKey = new Map();
+  const kindOf = (tl) => {
+    if (tl.id === targets.wordLayerId) return 'w';
+    if (tl.id === targets.morphemeLayerId) return 'm';
+    if (tl.id === targets.sentenceLayerId) return 's';
+    return null;
+  };
   for (const tl of (raw.textLayers || []).flatMap((t) => t.tokenLayers || [])) {
-    const word = tl.id === targets.wordLayerId;
-    const morpheme = tl.id === targets.morphemeLayerId;
-    if (!word && !morpheme) continue;
+    const kind = kindOf(tl);
+    if (!kind) continue;
     for (const t of tl.tokens || []) {
-      const key = morpheme ? `m:${t.begin}:${t.end}:${t.precedence ?? 1}` : `w:${t.begin}:${t.end}`;
+      const key =
+        kind === 'm' ? `m:${t.begin}:${t.end}:${t.precedence ?? 1}` : `${kind}:${t.begin}:${t.end}`;
       if (!byKey.has(key)) byKey.set(key, t.id);
     }
   }
   const map = new Map();
   for (const s of docData.sentences || []) {
+    // An example may cite a whole sentence, so sentence tokens are mapped too.
+    const sentenceId = byKey.get(`s:${s.begin}:${s.end}`);
+    if (sentenceId) map.set(s.id, sentenceId);
     for (const w of s.words || []) {
       const wordId = byKey.get(`w:${w.begin}:${w.end}`);
       if (wordId) map.set(w.id, wordId);

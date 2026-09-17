@@ -122,6 +122,9 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     },
     guidelines: {
       create: async (...a) => record('guidelines.create', a, { id: fresh('gl') }),
+      // A new project has none; a resume's project has what the first run
+      // wrote, which the tests below stand in for.
+      list: async () => [],
     },
     vocabItems: {
       bulkCreate: async (body) =>
@@ -662,6 +665,28 @@ describe('runNativeImport (full archive)', () => {
     expect(result.warnings.some((w) => w.includes('Doomed'))).toBe(true);
   });
 
+  it('writes no second copy of the manual when an import is resumed', async () => {
+    // A resume runs the same engine over the same archive on the project the
+    // first run left behind, where the guidelines it managed to write are.
+    const archive = buildArchive();
+    archive.manifest.guidelines = [
+      { title: 'Loanwords', body: 'Not segmented.', pinned: true },
+      { title: 'Loanwords', body: 'The older wording.', pinned: false },
+      { title: 'Later', body: '', pinned: false },
+    ];
+    const client = stubClient();
+    client.guidelines.list = async () => [
+      { id: 'g1', title: 'Loanwords', body: 'Not segmented.', pinned: true },
+    ];
+    await runNativeImport({ client, projectId: 'newp', archive });
+    // Title alone would have skipped the second Loanwords, which is its own
+    // guideline: what is already there is matched on title AND body.
+    expect(callsOf(client, 'guidelines.create').map((c) => c.slice(1))).toEqual([
+      ['newp', 'Loanwords', { body: 'The older wording.', pinned: false }],
+      ['newp', 'Later', { body: '', pinned: false }],
+    ]);
+  });
+
   it('is unbothered by an archive written before guidelines existed', async () => {
     const archive = buildArchive();
     delete archive.manifest.guidelines;
@@ -753,9 +778,12 @@ describe('rebuildTokenMap', () => {
       client: { documents: { get: async () => raw } },
       docId: 'new-doc',
       docData,
-      targets: { wordLayerId: 'W', morphemeLayerId: 'M' },
+      targets: { wordLayerId: 'W', morphemeLayerId: 'M', sentenceLayerId: 'S' },
     });
+    // The sentence too: an entry's example may cite a whole sentence, and
+    // without it a resume dropped that example as unresolvable.
     expect([...map]).toEqual([
+      ['s1', 'ns1'],
       ['w1', 'nw1'],
       ['m1', 'nm1'],
       ['m2', 'nm2'],

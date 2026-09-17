@@ -79,7 +79,10 @@ export const exportDocument = (client, projectId, documentId, formatId) =>
 // useProjectImportRun's `start`, without the React state: setup, the import
 // record written as soon as the project exists and again once the lexicon is
 // known, the engine, and the record cleared.
-async function runProjectImport(client, { kind, source, setupData, vocabId = null, run }) {
+async function runProjectImport(
+  client,
+  { kind, source, setupData, vocabId = null, run, shouldStop = () => false },
+) {
   const pending = [];
   const setup = await executeProjectSetup({
     client,
@@ -93,24 +96,43 @@ async function runProjectImport(client, { kind, source, setupData, vocabId = nul
   const projectId = setup.projectId;
   const vocab = typeof vocabId === 'function' ? await vocabId({ projectId, setup }) : vocabId;
   await markImportStarted(client, projectId, kind, source, vocab);
-  const res = await run({ projectId, vocabId: vocab, shouldStop: () => false });
-  if (!(await markImportFinished(client, projectId))) {
-    throw new Error('the import record could not be cleared');
+  const finish = async () => {
+    if (!(await markImportFinished(client, projectId))) {
+      throw new Error('the import record could not be cleared');
+    }
+  };
+  // `resume` is what the unfinished-import screen does: the same engine over
+  // the same file again, on the project that is already there. The engines
+  // skip what they find done, so a resume has to ask the data, not a tally.
+  const resume = async () => {
+    const again = await run({ projectId, vocabId: vocab, shouldStop: () => false });
+    await finish();
+    return { projectId, warnings: again?.warnings ?? [] };
+  };
+  let res;
+  try {
+    res = await run({ projectId, vocabId: vocab, shouldStop });
+  } catch (err) {
+    if (!/cancel/i.test(err.message)) throw err;
+    return { projectId, cancelled: true, warnings: [], resume };
   }
-  return { projectId, warnings: res?.warnings ?? [] };
+  await finish();
+  return { projectId, cancelled: false, warnings: res?.warnings ?? [], resume };
 }
 
-async function importNative(client, bytes, name) {
+async function importNative(client, bytes, name, shouldStop) {
   const archive = readNativeArchive(bytes);
   return runProjectImport(client, {
     kind: 'Plaid IGT archive',
     source: archive.manifest?.project?.name ?? null,
     setupData: nativeSetupData(archive.manifest, name),
-    run: ({ projectId, shouldStop }) => runNativeImport({ client, projectId, archive, shouldStop }),
+    shouldStop,
+    run: (ctx) =>
+      runNativeImport({ client, projectId: ctx.projectId, archive, shouldStop: ctx.shouldStop }),
   });
 }
 
-async function importCldf(client, bytes, name) {
+async function importCldf(client, bytes, name, shouldStop) {
   const dataset = readCldfDataset(bytes);
   const build = buildCldfDocuments(dataset, deriveImportOptions(dataset));
   const out = await runProjectImport(client, {
@@ -119,7 +141,9 @@ async function importCldf(client, bytes, name) {
     setupData: cldfSetupData(build, name),
     vocabId: async ({ projectId }) =>
       ((await client.projects.get(projectId)).vocabs || [])[0]?.id ?? null,
-    run: ({ projectId, shouldStop }) => runCldfImport({ client, projectId, build, shouldStop }),
+    shouldStop,
+    run: (ctx) =>
+      runCldfImport({ client, projectId: ctx.projectId, build, shouldStop: ctx.shouldStop }),
   });
   return { ...out, warnings: [...(dataset.warnings || []), ...out.warnings] };
 }
@@ -130,7 +154,7 @@ const EAF = /\.eaf$/i;
 // recording is not zipped).
 const isZip = (bytes) => bytes[0] === 0x50 && bytes[1] === 0x4b;
 
-async function importElan(client, bytes, name) {
+async function importElan(client, bytes, name, shouldStop) {
   const entries = isZip(bytes) ? unzipSync(bytes) : { [`${name}.eaf`]: bytes };
   const paths = Object.keys(entries).sort();
   const decoder = new TextDecoder();
@@ -176,14 +200,21 @@ async function importElan(client, bytes, name) {
     kind: 'ELAN',
     source: null,
     setupData: elanSetupData(build, name),
-    run: ({ projectId, shouldStop }) => runElanImport({ client, projectId, build, shouldStop }),
+    shouldStop,
+    run: (ctx) =>
+      runElanImport({ client, projectId: ctx.projectId, build, shouldStop: ctx.shouldStop }),
   });
   return { ...out, notes };
 }
 
-export async function importProject(client, formatId, bytes, name) {
+/**
+ * @param shouldStop  called by the engine as it writes; returning true stops
+ *                    the import where it stands, as the screen's Stop button
+ *                    does. The result then carries `cancelled` and `resume`.
+ */
+export async function importProject(client, formatId, bytes, name, shouldStop = () => false) {
   const run = { native: importNative, cldf: importCldf, elan: importElan }[formatId];
   if (!run) throw new Error(`no import driver for ${formatId}`);
-  const out = await run(client, bytes, name);
+  const out = await run(client, bytes, name, shouldStop);
   return { notes: [], ...out };
 }
