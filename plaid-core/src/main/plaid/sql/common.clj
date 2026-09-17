@@ -45,28 +45,54 @@
   `UUID/randomUUID` gave us."
   (SecureRandom.))
 
+(def ^:private mono
+  "The last millisecond an id was minted in, and how many were minted in it.
+  RFC 9562's monotonic counter: `rand_a`'s 12 bits count within the
+  millisecond, so ids minted in one millisecond still sort in the order they
+  were made."
+  (atom {:ts 0 :seq 0}))
+
+(def ^:private MAX-SEQ 0xFFF)
+
 (defn new-uuid
   "Generate a fresh time-ordered UUIDv7 (RFC 9562): a 48-bit big-endian
-  Unix-millisecond timestamp in the high bits, then 74 random bits. Same
-  128-bit `java.util.UUID` shape and TEXT storage as the previous v4
-  generator — the only behavioral change is that ids minted close in time
-  now sort close together, so inserts into the id / foreign-key B-tree
-  indexes stay local instead of scattering randomly. Still non-enumerable
-  (74 CSPRNG bits). Sub-millisecond ties are unordered (random low bits, no
-  monotonic counter) — callers that need a total commit order key on
-  `operations.ts`, not on the id (see the strict-monotonic ts logic above).
+  Unix-millisecond timestamp, a 12-bit counter within that millisecond, then
+  62 random bits. Same 128-bit `java.util.UUID` shape and TEXT storage as the
+  previous v4 generator - the only behavioral change is that ids minted close
+  in time now sort close together, so inserts into the id / foreign-key
+  B-tree indexes stay local instead of scattering randomly. Still
+  non-enumerable (62 CSPRNG bits).
+
+  The counter matters because every read is id-ordered: a bulk create mints
+  its ids inside one millisecond, and with random low bits those rows came
+  back shuffled, so which of two annotations on a token the editor showed was
+  a coin flip. Counting within the millisecond makes id order creation order.
+  A millisecond that mints more than 4096 ids borrows the next one, which
+  keeps the order rather than repeating it.
+
+  Ordering across PROCESSES is still only as good as their clocks, so a caller
+  that needs a total commit order keys on `operations.ts` (see the strict
+  monotonic ts logic above), not on the id.
 
   The SQL layer stores these as TEXT via the JDBC driver's UUID#toString
   rendering; reads coerce TEXT back to UUID in the q/q1 result builder (see
   `coerce-id-cols` below)."
   ^UUID []
-  (let [ts  (System/currentTimeMillis)        ; 48-bit Unix ms timestamp
-        hi  (.nextLong secure-random)         ; supplies rand_a (12 bits)
-        lo  (.nextLong secure-random)         ; supplies rand_b (62 bits)
-        ;; msb: ts(48) | version(4)=0x7 | rand_a(12)
+  (let [{ts :ts counter :seq} (swap! mono
+                                     (fn [{:keys [ts] n :seq}]
+                                       (let [now (System/currentTimeMillis)]
+                                         (cond
+                                           (> now ts) {:ts now :seq 0}
+                                           (< n MAX-SEQ) {:ts ts :seq (inc n)}
+                                           ;; This millisecond is full: take
+                                           ;; the next one rather than repeat
+                                           ;; an order.
+                                           :else {:ts (inc ts) :seq 0}))))
+        lo (.nextLong secure-random)         ; supplies rand_b (62 bits)
+        ;; msb: ts(48) | version(4)=0x7 | counter(12)
         msb (bit-or (bit-shift-left ts 16)
                     0x7000
-                    (bit-and hi 0x0FFF))
+                    (bit-and counter 0x0FFF))
         ;; lsb: variant(2)=0b10 | rand_b(62)
         lsb (bit-or (bit-shift-left 1 63)
                     (bit-and lo 0x3FFFFFFFFFFFFFFF))]
