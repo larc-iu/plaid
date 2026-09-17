@@ -286,6 +286,24 @@ export const normalizeVocabFields = (vocabFields) => {
 };
 
 /**
+ * The fields an export writes for a vocabulary: every field its entries show,
+ * in the vocabulary's own order, with the built-in ones it does not list
+ * (morphType, gloss) after them. A vocabulary made without field settings (by
+ * the API, or another app) still shows its entries' morph types, so an export
+ * that read only the listed fields left them out.
+ *
+ * @param {object} vocabFields - the raw `igt.fields` map (from readVocabFields)
+ */
+export const exportedVocabFields = (vocabFields) => {
+  const listed = Object.keys(vocabFields && typeof vocabFields === 'object' ? vocabFields : {});
+  const rank = (name) => {
+    const i = listed.indexOf(name);
+    return i < 0 ? listed.length : i;
+  };
+  return [...normalizeVocabFields(vocabFields)].sort((a, b) => rank(a.name) - rank(b.name));
+};
+
+/**
  * A field just added, shaped exactly as `normalizeVocabFields` would read it
  * back. Built here rather than at the call site so a new row shows what it
  * will show after a reload: written by hand it arrived with no `scope` and no

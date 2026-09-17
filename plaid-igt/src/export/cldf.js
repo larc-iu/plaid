@@ -38,7 +38,7 @@ import {
 } from '../domain/vocabDictionary.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 import { readVocabFields } from '../domain/igtConfig.js';
-import { FIELD_TYPES } from '../domain/vocabFields.js';
+import { FIELD_TYPES, exportedVocabFields } from '../domain/vocabFields.js';
 import { phraseSpeakerFor } from './flextext.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
@@ -528,8 +528,9 @@ export function buildCldfDataset({
     let entryN = 0;
     let senseN = 0;
     for (const vocab of vocabularies) {
-      const fieldSpecs = readVocabFields(vocab.config) || {};
-      const fields = Object.keys(fieldSpecs);
+      const specs = exportedVocabFields(readVocabFields(vocab.config));
+      const fieldSpecs = Object.fromEntries(specs.map((f) => [f.name, f]));
+      const fields = specs.map((f) => f.name);
       // A reference field holds another entry's id, which means nothing
       // outside this project, so it is written the way the vocabulary shows
       // it: the entry's form and its number.

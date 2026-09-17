@@ -15,6 +15,7 @@
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
 import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
+import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
 import { interlinearTextXml, flextextEnvelope } from './flextext.js';
@@ -600,14 +601,14 @@ export async function runExport({
     // would be misleading in a per-project archive).
     const names = dedupeFilenames(vocabs.map((v) => `${sanitizeFilename(v.name || v.id)}.tsv`));
     vocabs.forEach((vocab, i) => {
-      const fieldSpecs = readVocabFields(vocab.config) || {};
-      const fieldNames = Object.keys(fieldSpecs).filter((n) => n.toLowerCase() !== 'form');
+      const specs = exportedVocabFields(readVocabFields(vocab.config));
+      const fieldNames = specs.map((f) => f.name);
       entries.push({
         path: `vocabularies/${names[i]}`,
         data: serializeVocabTsv({
           items: vocab.items || [],
           fieldNames,
-          refFields: fieldNames.filter((n) => fieldSpecs[n]?.type === 'item'),
+          refFields: specs.filter((f) => f.type === 'item').map((f) => f.name),
           numbers: buildItemNumbers(vocab.items || []),
         }),
       });

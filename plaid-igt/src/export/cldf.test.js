@@ -365,6 +365,11 @@ describe('buildCldfDataset — dictionary', () => {
     expect(table(files, 'entries.csv')[1].Entry_morphType).toBe('stem');
   });
 
+  it('writes the morph type of a vocabulary made without field settings', () => {
+    const { files } = build({ vocabularies: [{ ...vocab, config: {} }] });
+    expect(table(files, 'entries.csv')[1].Entry_morphType).toBe('stem');
+  });
+
   it('points a sense at the example rows its promoted examples became', () => {
     const dict = {
       ...vocab,

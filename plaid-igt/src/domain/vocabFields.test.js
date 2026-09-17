@@ -14,6 +14,7 @@ import {
   newVocabField,
   normalizeVocabFields as normalizeFields2,
   groupFieldsForForm,
+  exportedVocabFields,
 } from './vocabFields.js';
 
 const POS = { delimiters: '', mode: 'closed', values: [{ value: 'n' }, { value: 'v' }] };
@@ -67,6 +68,19 @@ describe('normalizeVocabFields / fieldsToConfig', () => {
     const [, , pos] = normalizeVocabFields({ pos: { inline: true, tagset: '  ' } });
     expect(pos.tagset).toBeNull();
     expect(fieldsToConfig([pos])).toEqual({ pos: { inline: true } });
+  });
+});
+
+describe('exportedVocabFields', () => {
+  it('keeps the listed order and adds the built-in fields a vocabulary does not list', () => {
+    const names = (f) => exportedVocabFields(f).map((x) => x.name);
+    expect(names({ pos: {}, Register: {}, gloss: {} })).toEqual([
+      'pos',
+      'Register',
+      'gloss',
+      'morphType',
+    ]);
+    expect(names(null)).toEqual(['morphType', 'gloss']);
   });
 });
 

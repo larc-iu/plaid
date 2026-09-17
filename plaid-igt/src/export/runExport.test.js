@@ -495,7 +495,7 @@ describe('runExport', () => {
     expect(client.calls.filter(([m]) => m === 'documents.get')).toEqual([['documents.get', 'd1']]);
   });
 
-  it('includes vocabulary TSVs (fields from config, no Uses column)', async () => {
+  it('includes vocabulary TSVs (the fields entries show, no Uses column)', async () => {
     const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
     const client = stubClient({ docs });
     const preset = { ...plainPreset(), includeVocabularies: true };
@@ -511,8 +511,9 @@ describe('runExport', () => {
       'documents/B.txt',
       'vocabularies/Lexicon.tsv',
     ]);
+    // gloss is listed, and morphType is a built-in field every entry shows.
     expect(new TextDecoder().decode(entries['vocabularies/Lexicon.tsv'])).toBe(
-      'Form\tgloss\nperro\tdog\n',
+      'Form\tgloss\tmorphType\nperro\tdog\t\n',
     );
   });
 
