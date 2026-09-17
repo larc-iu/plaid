@@ -664,8 +664,12 @@ export function buildCldfDataset({
 
   // --- tables ---
   const built = [];
+  // A table with no rows is left out, except the one the module the dataset
+  // claims to be requires: a TextCorpus without an ExampleTable is not a
+  // TextCorpus, and pycldf says so. A corpus whose texts are not analyzed has
+  // no examples and is still a corpus.
   const add = (spec) => {
-    if (!spec.rows.length) return;
+    if (!spec.rows.length && !spec.keepEmpty) return;
     built.push(buildTable(spec));
   };
 
@@ -700,6 +704,7 @@ export function buildCldfDataset({
 
   add({
     url: 'examples.csv',
+    keepEmpty: true,
     conformsTo: 'ExampleTable',
     rows: exampleRows,
     foreignKeys: [
