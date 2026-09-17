@@ -133,9 +133,10 @@ export default {
       how: 'Comes back as a { name } entry, in the same order, for each orthography at least one exported word has a value in. An orthography no word fills is not written and does not come back.',
     },
     'layers.ignoredTokensPunctuation': {
-      carried: false,
-      kind: 'inherent',
-      why: 'Ignored-token settings have no place in CLDF. The CLDF import writes no ignoredTokens config at all, so the new word layer has none, not even the punctuation rule the setup wizard gives a new project.',
+      carried: 'changed',
+      how: "The import writes the default rule the setup wizard and the FLEx import write, {type: 'unicodePunctuation', whitelist: []}, whatever rule the exported project had. Letter-like characters and a blacklist are lost (see the next two keys). Today the import writes no rule at all, which is the bug.",
+      ruling:
+        'user, 2026-09-17: the CLDF and ELAN imports give a new project the same default ignored-tokens rule as the setup wizard',
     },
     'layers.ignoredTokensLetterLike': {
       carried: false,

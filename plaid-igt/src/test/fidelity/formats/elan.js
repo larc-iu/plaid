@@ -170,9 +170,10 @@ export default {
     // Layers
     'layers.orthography': carried,
     'layers.ignoredTokensPunctuation': {
-      carried: false,
-      kind: 'undecided',
-      why: 'An .eaf carries no project settings, and the ELAN import writes no ignored-tokens rule, while the setup wizard and the FLEx import both give a new project the punctuation rule.',
+      carried: 'changed',
+      how: "The import writes the default rule the setup wizard and the FLEx import write, {type: 'unicodePunctuation', whitelist: []}, whatever rule the exported project had. Letter-like characters and a blacklist are lost (see the next two keys). Today the import writes no rule at all, which is the bug.",
+      ruling:
+        'user, 2026-09-17: the CLDF and ELAN imports give a new project the same default ignored-tokens rule as the setup wizard',
     },
     'layers.ignoredTokensLetterLike': {
       carried: false,
