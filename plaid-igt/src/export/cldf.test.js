@@ -210,6 +210,32 @@ describe('buildCldfDataset — custom columns', () => {
     );
   });
 
+  it('writes a name CSVW accepts, with the field’s own name beside it', () => {
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].annotations['Free translation'] = { value: 'The dogs bark.' };
+    const { files } = build({
+      documents: [{ igtDoc: doc }],
+      options: { ...OPTIONS, extras: { ...OPTIONS.extras, sentence: ['Free translation'] } },
+    });
+    // A space is not in CSVW's `name` production, so it goes out
+    // percent-encoded and the name a person reads goes in `titles`.
+    const column = columnNamed(files, 'examples.csv', 'Sentence_Free%20translation');
+    expect(column).toBeDefined();
+    expect(column.titles).toBe('Sentence_Free translation');
+    const [row] = table(files, 'examples.csv');
+    expect(row['Sentence_Free%20translation']).toBe('The dogs bark.');
+    // Every column name in every table is one CSVW allows.
+    const allowed = /^([A-Za-z0-9!$&'()*+,;=:@_~]|%[0-9A-F]{2})+$/;
+    for (const file of files.filter((f) => f.path.endsWith('metadata.json'))) {
+      for (const t of JSON.parse(file.data).tables) {
+        for (const c of t.tableSchema.columns) {
+          expect(c.name, `${t.url} ${c.name}`).toMatch(allowed);
+          expect(c.name.startsWith('_')).toBe(false);
+        }
+      }
+    }
+  });
+
   it('drops tiers that are not selected as extras', () => {
     const { files } = build({
       options: { ...OPTIONS, extras: { sentence: [], word: [], morpheme: [], orthographies: [] } },

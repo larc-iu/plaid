@@ -80,11 +80,27 @@ const PREFIXES = [
  */
 const isOwnExport = (component) => (component?.columns || []).some((c) => c.name === 'Plaid_ID');
 
+/**
+ * The field name a column carries. CSVW only lets a column be called so much
+ * (see columnName in src/export/cldf.js), so our exporter percent-encodes what
+ * a name may not hold: "Sentence_Free%20translation" is the field "Free
+ * translation". Only our own datasets are decoded — in someone else's, a "%"
+ * is as likely to be theirs as ours.
+ */
+export const decodeColumnName = (name, own) => {
+  if (!own || !name.includes('%')) return name;
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+};
+
 const recognizePrefix = (name, own) => {
   if (!own) return null;
   for (const [prefix, scope] of PREFIXES) {
     if (name.startsWith(prefix) && name.length > prefix.length) {
-      return { scope, name: name.slice(prefix.length) };
+      return { scope, name: decodeColumnName(name.slice(prefix.length), own) };
     }
   }
   return null;
@@ -699,6 +715,7 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   // --- lexicon (EntryTable + SenseTable) ---
   const entries = dataset.components?.EntryTable;
+  const ownLexicon = isOwnExport(entries);
   const senses = dataset.components?.SenseTable;
   const sensesByEntry = new Map();
   // A sense row carries what the entry row cannot: its own part of speech,
@@ -755,7 +772,10 @@ export function buildCldfDocuments(dataset, options = {}) {
       if (name === 'Homograph' && ordinal) continue;
       const v = row[name] ?? '';
       if (!v) continue;
-      const key = name.startsWith('Entry_') ? name.slice('Entry_'.length) : name;
+      const key = decodeColumnName(
+        name.startsWith('Entry_') ? name.slice('Entry_'.length) : name,
+        ownLexicon,
+      );
       // As above: a reserved name never becomes a field, so it never reaches
       // an item's metadata from a data column either. That drops a foreign
       // Homograph column whose value is not an ordinal, which has nowhere to

@@ -89,10 +89,30 @@ export const languageId = (lang, fallback) =>
 // from the other. `propertyUrl` absent = a custom column (Plaid data with no
 // CLDF equivalent). `get(row)` pulls the value out of a prepared row object.
 
-const col = (name, opts = {}) => ({ name, ...opts });
+// What CSVW lets a column be called: ASCII letters and digits, a handful of
+// punctuation marks, or a percent-encoded octet, and never a leading "_"
+// (tabular-metadata §5.6, the `name` production). A Plaid field may be called
+// "Free translation", which is none of those, so anything else is written as
+// its percent-encoded UTF-8 bytes and the name a person reads goes in `titles`.
+// csvw's own validator warns "Invalid column name" otherwise.
+const CSVW_NAME_CHAR = /[A-Za-z0-9!$&'()*+,;=:@_~]/;
+const utf8 = new TextEncoder();
+const percentEncode = (ch) =>
+  [...utf8.encode(ch)].map((b) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`).join('');
+
+/** A column name CSVW accepts, reversible with `decodeColumnName` on the way in. */
+export const columnName = (name) => {
+  const out = [...String(name ?? '')]
+    .map((ch) => (CSVW_NAME_CHAR.test(ch) ? ch : percentEncode(ch)))
+    .join('');
+  return out.startsWith('_') ? `%5F${out.slice(1)}` : out;
+};
+
+const col = (name, opts = {}) => ({ name: columnName(name), title: String(name), ...opts });
 
 const columnSchema = (c) => {
   const out = { name: c.name };
+  if (c.title && c.title !== c.name) out.titles = c.title;
   if (c.required) out.required = true;
   if (c.propertyUrl) out.propertyUrl = term(c.propertyUrl);
   if (c.description) out['dc:description'] = c.description;
@@ -478,15 +498,15 @@ export function buildCldfDataset({
       };
       if (o.speakers) row.Speaker = phraseSpeakerFor(sentence, alignmentTokens) || '';
       for (const name of o.extras.sentence) {
-        row[`Sentence_${name}`] = sentence.annotations?.[name]?.value ?? '';
+        row[columnName(`Sentence_${name}`)] = sentence.annotations?.[name]?.value ?? '';
       }
       for (const name of o.extras.word) {
-        row[`Word_${name}`] = tokens
+        row[columnName(`Word_${name}`)] = tokens
           .map((t) => listItem(t.annotations?.[name]?.value ?? ''))
           .join('\t');
       }
       for (const name of o.extras.morpheme) {
-        row[`Morpheme_${name}`] = tokens
+        row[columnName(`Morpheme_${name}`)] = tokens
           .map((t) => {
             const morphemes = t.morphemes || [];
             return morphemes.length
@@ -501,7 +521,7 @@ export function buildCldfDataset({
           .join('\t');
       }
       for (const name of o.extras.orthographies) {
-        row[`Orthography_${name}`] = tokens
+        row[columnName(`Orthography_${name}`)] = tokens
           .map((t) => listItem(t.orthographies?.[name] ?? ''))
           .join('\t');
       }
@@ -569,7 +589,7 @@ export function buildCldfDataset({
               ? (Array.isArray(value) ? value : [value]).map(refLabel).filter(Boolean).join('; ')
               : String(value);
           if (written === '') continue;
-          const name = `Entry_${field}`;
+          const name = columnName(`Entry_${field}`);
           extraVocabColumns.set(name, field);
           entry[name] = written;
         }
@@ -740,8 +760,10 @@ export function buildCldfDataset({
       }),
       col('Vocabulary', { description: 'The Plaid vocabulary layer this entry came from.' }),
       col('Plaid_ID', { description: 'The vocabulary item id in the originating Plaid project.' }),
-      ...[...extraVocabColumns.entries()].map(([name, field]) =>
-        col(name, { description: `Lexicon field "${field}" from the originating Plaid project.` }),
+      ...[...extraVocabColumns.values()].map((field) =>
+        col(`Entry_${field}`, {
+          description: `Lexicon field "${field}" from the originating Plaid project.`,
+        }),
       ),
     ],
   });

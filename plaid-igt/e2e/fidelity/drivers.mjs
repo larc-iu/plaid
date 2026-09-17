@@ -47,13 +47,17 @@ import {
 } from '../../src/import/native/importEngine.js';
 import { readNativeArchive } from '../../src/import/native/readArchive.js';
 
-/** The export format id each round-trip format is written with. */
+/**
+ * The export format id each round-trip format is written with. An id that is
+ * not a round-trip format (plaintext, flextext) is already an export format,
+ * which is how the validator run asks for the ones nothing reads back.
+ */
 const EXPORT_FORMAT = { native: 'plaid-igt-json', cldf: 'cldf', elan: 'elan' };
 
 async function exportScope(client, projectId, formatId, scope) {
   const project = await client.projects.get(projectId);
   const preset = newPreset(
-    EXPORT_FORMAT[formatId],
+    EXPORT_FORMAT[formatId] ?? formatId,
     discoverExportLayers(project),
     'Fidelity',
     readLanguages(project.config),
