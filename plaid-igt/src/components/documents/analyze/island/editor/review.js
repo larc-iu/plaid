@@ -1,4 +1,5 @@
 import { notifyInfo } from '@/utils/feedback';
+import { keys } from '@/lib/keymap.js';
 import { ADVANCE_BEAT_MS, PULSE_CLASS, PULSE_MS, reviewSelector, reviewStates } from './shared.js';
 
 // Reviewing proposals: the beat and pulse that say a confirmation landed,
@@ -82,7 +83,7 @@ export const review = {
   // exactly like a confirmation that never happened, which is how this was
   // first reported.
   _maybeConfirmWord(e) {
-    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return false;
+    if (!keys.is('analyze.accept', e)) return false;
     const wordId = e.target.dataset.confirmWord;
     if (!wordId || this.readOnly) return false;
     e.preventDefault();
@@ -175,7 +176,7 @@ export const review = {
   // The reload that follows re-renders the island; the hop target is
   // re-affirmed through _pendingFocus.
   _maybeDiscardWord(e) {
-    if ((e.key !== 'Backspace' && e.key !== 'Delete') || !(e.ctrlKey || e.metaKey)) return false;
+    if (!keys.is('analyze.discard', e)) return false;
     const wordId = e.target.dataset.confirmWord;
     if (!wordId || this.readOnly) return false;
     // Claimed only over an UNTOUCHED cell, as in a translation field: with
@@ -372,6 +373,22 @@ export const review = {
     return prev;
   },
 
+  // The four chords of the review sweep, which the container listener owns. A
+  // cell's own handler stands aside for them.
+  _isSweepChord(e) {
+    return (
+      keys.which(
+        [
+          'analyze.nextUnverified',
+          'analyze.prevUnverified',
+          'analyze.nextLink',
+          'analyze.prevLink',
+        ],
+        e,
+      ) != null
+    );
+  },
+
   _predictionKeydown(e) {
     // Escape closes the floating menus (rows, copy format) and the popover.
     // Handled at the container, above the read-only guard: the opener keeps
@@ -402,16 +419,19 @@ export const review = {
     // Ctrl/Cmd+Shift+Arrow: hop between WORDS with unverified material (a
     // model's proposals, copied analyses, auto-links) — the whole-word review
     // sweep that pairs with Ctrl+Enter (confirm) and Ctrl+Backspace (discard).
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-      if (this._jumpToUnverifiedWord(e.key === 'ArrowDown' ? 'next' : 'prev')) e.preventDefault();
+    const jump = keys.which(['analyze.nextUnverified', 'analyze.prevUnverified'], e);
+    if (jump) {
+      if (this._jumpToUnverifiedWord(jump === 'analyze.nextUnverified' ? 'next' : 'prev'))
+        e.preventDefault();
       return;
     }
     // Navigate between suggestions from anywhere in the grid. Only claim the
     // chord when suggestions exist (else leave Cmd+Arrow's default scroll alone).
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    const hop = keys.which(['analyze.nextLink', 'analyze.prevLink'], e);
+    if (hop) {
       if (!this._inferredChips().length) return;
       e.preventDefault();
-      const chip = this._adjacentChip(e.key === 'ArrowDown' ? 'next' : 'prev');
+      const chip = this._adjacentChip(hop === 'analyze.nextLink' ? 'next' : 'prev');
       if (chip) chip.focus();
       return;
     }
@@ -427,7 +447,7 @@ export const review = {
     const mweLinkId = isMweLabel ? tokenId.slice('mwe:'.length) : null;
     // Ctrl/Cmd+Backspace on a chip discards the WHOLE word's proposal, like
     // on a cell (cells handle it themselves and mark the event consumed).
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'Backspace' || e.key === 'Delete')) {
+    if (keys.is('analyze.discard', e)) {
       if (e.defaultPrevented) return;
       const wordId = el.closest('[data-word-col]')?.dataset.wordCol;
       if (!wordId) return;

@@ -13,6 +13,7 @@ import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 import { DETECT_SPEECH_BUILTIN } from './detectSpeechBuiltin.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
+import { keys } from '@/lib/keymap.js';
 
 // Hotkeys ignore key events from form fields, with one exception: the tab's
 // own boxes (transcript rows, time boxes, the alignment popover) sit under a
@@ -781,16 +782,10 @@ export const useMediaOperations = () => {
       // tab's own boxes pay that (see takesMediaKeys): this listener is on the
       // document, and a Shift+Arrow typed into a dialog or the assistant was
       // seeking the recording instead of selecting.
-      if (
-        e.shiftKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
-        (!isTextTarget(e.target) || takesMediaKeys(e.target))
-      ) {
+      const seek = keys.which(['media.seekBack', 'media.seekForward'], e);
+      if (seek && (!isTextTarget(e.target) || takesMediaKeys(e.target))) {
         e.preventDefault();
-        seekBy(e.key === 'ArrowLeft' ? -1 : 1);
+        seekBy(seek === 'media.seekBack' ? -1 : 1);
         return;
       }
       // Shift+Space pauses, or plays the selected stretch on from where it
@@ -798,15 +793,7 @@ export const useMediaOperations = () => {
       // (Inside one, the row handles it for its own segment.) Shift because
       // it is the one modifier every platform leaves alone: Ctrl+Space and
       // Cmd+Space belong to macOS, Alt+Space to Windows and GNOME.
-      if (
-        e.code === 'Space' &&
-        e.shiftKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.altKey &&
-        !isTextTarget(e.target) &&
-        !isActivatable(e.target)
-      ) {
+      if (keys.is('media.playSegment', e) && !isTextTarget(e.target) && !isActivatable(e.target)) {
         e.preventDefault();
         const el = mediaElementRef.current;
         if (!el) return;
@@ -816,17 +803,16 @@ export const useMediaOperations = () => {
         return;
       }
       if (isTextTarget(e.target) || isActivatable(e.target)) return;
-      // Bare keys from here on: a chord with a modifier is somebody else's
-      // (Ctrl+Space is input-source switching on a Mac, Alt+Space a window
-      // menu), and it must not toggle playback on the way through.
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      // Chords match their modifiers exactly, so one carrying a modifier that
+      // is somebody else's (Ctrl+Space is input-source switching on a Mac,
+      // Alt+Space a window menu) never toggles playback on the way through.
       // ESC key to clear selection
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !(e.ctrlKey || e.metaKey || e.altKey || e.shiftKey)) {
         if (selection) {
           setSelection(null);
           setPopoverOpened(false);
         }
-      } else if (e.code === 'Space') {
+      } else if (keys.is('media.playPause', e)) {
         // Space key to toggle playback
         e.preventDefault();
         if (mediaElementRef.current) {

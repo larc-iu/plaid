@@ -18,6 +18,7 @@ import {
 } from '@/domain/precedent';
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
 import { NO_PRECEDENT, numHtml } from './shared.js';
+import { keys } from '@/lib/keymap.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
 // ranks them, the entry detail, and the morph type row.
@@ -314,7 +315,7 @@ export const vocabPopover = {
     // "Link every…" row at the bottom. Never the default: see _linkEverywhere.
     const others = isMwe ? [] : sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
     const canTakeAll = others.length > 0 && !currentItem;
-    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+Enter`;
+    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · ${keys.words('popover.linkAll')}`;
     // The actions, routed by mode: a word's or morpheme's own link, or the
     // multi-word expression's. `all` takes the others along.
     const act = {
@@ -366,10 +367,10 @@ export const vocabPopover = {
     // to the search box, Tab stays trapped in the dialog.
     const onCreateEditKey = (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' || keys.is('popover.linkAll', e)) {
         e.preventDefault();
         const v = (e.target.value || '').trim();
-        if (v) act.create(v, true, e.shiftKey);
+        if (v) act.create(v, true, e.shiftKey || keys.is('popover.linkAll', e));
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this._cancelCreateEdit();
@@ -413,9 +414,14 @@ export const vocabPopover = {
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         this._movePopoverActive(-1, total);
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' || keys.which(['popover.linkAll', 'popover.createNow'], e)) {
         e.preventDefault();
-        selectActive(e.ctrlKey || e.metaKey, e.shiftKey);
+        // Ctrl/Cmd+Shift+Enter is both at once, and stays where it is.
+        const both = e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.shiftKey;
+        selectActive(
+          both || keys.is('popover.createNow', e),
+          both || keys.is('popover.linkAll', e),
+        );
       } else if (e.key === 'Tab') {
         e.preventDefault();
       } // trap focus in the search box

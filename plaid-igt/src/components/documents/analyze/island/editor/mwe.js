@@ -6,9 +6,18 @@ import { joinMweForm, mweMorphType } from '@/domain/mwe';
 import { notifyInfo } from '@/utils/feedback';
 import { EMPTY_SET, numHtml, provClass } from './shared.js';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
+import { keys } from '@/lib/keymap.js';
 
 // Multi-word expressions: gathering words into one link, the bracket and its
 // lanes, and the popover for the expression as a whole.
+// Gathering a neighbouring word, by which side and whether one is skipped.
+const GATHER_ACTIONS = [
+  'analyze.gatherLeft',
+  'analyze.gatherRight',
+  'analyze.gatherLeftSkip',
+  'analyze.gatherRightSkip',
+];
+
 export const mwe = {
   // A multi-word expression (MWE) is one lexicon entry linked from two or more
   // words at once; derive.js hands every word column its pieces of the
@@ -172,17 +181,16 @@ export const mwe = {
       e.stopPropagation();
       if (sel.tokenIds.size >= 2) this._openMwePopover();
       else
-        notifyInfo(
-          `Add another word first: Shift+click it, or Shift+${this._gatherKey()} from a cell`,
-        );
+        notifyInfo(`Add another word first: Shift+click it, or ${this._gatherKey()} from a cell`);
       return true;
     }
-    if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || !e.shiftKey || e.altKey) return false;
+    const gather = keys.which(GATHER_ACTIONS, e);
+    if (!gather) return false;
     const el = e.target;
     const wordId = el?.closest?.('[data-word-col]')?.dataset.wordCol ?? sel?.cursorId;
     if (!wordId) return false;
     const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
-    const visualRight = e.key === 'ArrowRight';
+    const visualRight = gather.includes('Right');
     if (isInput && !sel) {
       // Only from a collapsed caret at the value's edge, the way the plain
       // arrows leave a cell, and measured against the CELL's own direction:
@@ -198,7 +206,7 @@ export const mwe = {
     // The step is along the SENTENCE, so in an RTL grid it is Shift+← that
     // gathers the next word.
     this._mweStep(wordId, arrowStep(visualRight, this._gridRtl()), {
-      skip: e.ctrlKey || e.metaKey,
+      skip: gather.endsWith('Skip'),
     });
     return true;
   },
@@ -389,7 +397,7 @@ export const mwe = {
   // the screen, so in an RTL grid it is the LEFT one, and every string that
   // names it has to say so.
   _gatherKey() {
-    return this._gridRtl() ? '←' : '→';
+    return keys.words(this._gridRtl() ? 'analyze.gatherLeft' : 'analyze.gatherRight');
   },
 
   // The label on the first member: the MWE's opener (a real button, in the
@@ -413,7 +421,7 @@ export const mwe = {
       title =
         n >= 2
           ? 'Enter links these words to one entry · Shift+click adds or removes a word · Esc drops them'
-          : `Shift+click a word, or Shift+${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc drops it`;
+          : `Shift+click a word, or ${this._gatherKey()} from a cell, to gather it into the multi-word expression · Esc drops it`;
     }
     let popover = nothing;
     if (open) {

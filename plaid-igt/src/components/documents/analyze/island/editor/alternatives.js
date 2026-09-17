@@ -3,6 +3,7 @@ import { collationKey } from '@ui/domain/collation.js';
 import { TAGSET_SOURCE } from '@/domain/glossGuess';
 import { isValueAllowed, replacePartAtCaret } from '@/domain/tagsets';
 import { anchoredPos } from './shared.js';
+import { keys } from '@/lib/keymap.js';
 
 // The alternatives list: Alt+Down on a cell lists every value the project
 // has given that form, and a pick adopts one.
@@ -53,7 +54,7 @@ export const alternatives = {
   _altsKeydown(e) {
     const el = e.target;
     const open = !!this._alts && this._alts.cellKey === el.dataset.cellKey;
-    if (e.altKey && e.key === 'ArrowDown') {
+    if (keys.is('analyze.alternatives', e)) {
       e.preventDefault();
       if (!open) this._openAlts(el, { explicit: true });
       return true;
@@ -61,7 +62,7 @@ export const alternatives = {
     if (!open) return false;
     // Ctrl/Cmd+Enter is the whole-word accept wherever it is pressed; the list
     // never takes it, steered or not.
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (keys.is('analyze.accept', e)) {
       this._closeAlts();
       return false;
     }

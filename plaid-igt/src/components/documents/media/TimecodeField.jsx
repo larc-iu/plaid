@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { cn } from '@ui/lib/utils';
 import { formatTime, parseTime } from './formatTime.js';
+import { keys as keymap } from '@/lib/keymap.js';
 
 // A duration as a row of numbers, `m:ss.mmm` (with hours once a recording is
 // that long): one small box per number, digits only. Typing fills the number
@@ -198,7 +199,7 @@ export const TimecodeField = memo(function TimecodeField({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       revert();
-    } else if (e.code === 'Space' && e.shiftKey && plain) {
+    } else if (keymap.is('media.playSegment', e)) {
       e.preventDefault();
       onPlayToggle?.();
     } else if (e.key === 'Backspace' || e.key === 'Delete') {

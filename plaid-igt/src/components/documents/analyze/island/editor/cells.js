@@ -10,6 +10,7 @@ import {
 } from '@/domain/tagsets';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
+import { keys } from '@/lib/keymap.js';
 
 // An annotation cell's life: focus, typing, commit, the keyboard chords that
 // move between cells, and the sentence fields' own handlers.
@@ -136,9 +137,9 @@ export const cells = {
     if (this._altsKeydown(e)) return;
     if (this._maybeConfirmWord(e)) return;
     if (this._maybeDiscardWord(e)) return;
-    // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
-    // it alone so the chip hop wins over cell navigation.
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    // The review sweep's chords belong to the container listener: leave them
+    // alone so the hop wins over cell navigation.
+    if (this._isSweepChord(e)) return;
     if (this._maybeArrowOutOfCell(e)) return;
     // Plain Enter is the ONE key that adopts a guess (user decision
     // 2026-08-26, reaffirmed 2026-09-13). Shift+Enter is a step backwards, and
@@ -502,9 +503,9 @@ export const cells = {
   // Escape reverts.
   _sentenceKeydown(e) {
     if (this._composing(e)) return;
-    // Ctrl/Cmd+Arrow is the review sweep's chord (container listener): leave
-    // it alone so the chip hop wins over cell navigation.
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+    // The review sweep's chords belong to the container listener: leave them
+    // alone so the hop wins over cell navigation.
+    if (this._isSweepChord(e)) return;
     // An open picker gets first claim on ↑↓/↵/Esc, exactly as in a grid cell.
     // It is only ever open on a tagset-governed field, so a plain Translation
     // keeps every key it has today.
@@ -515,7 +516,7 @@ export const cells = {
     // Claimed ONLY over an untouched machine-made value: everywhere else this
     // is the browser's delete-previous-word, which matters in a field that
     // holds prose rather than a one-word gloss.
-    if ((e.key === 'Backspace' || e.key === 'Delete') && (e.ctrlKey || e.metaKey)) {
+    if (keys.is('analyze.discard', e)) {
       const el = e.target;
       const sid = el.dataset.confirmSentence;
       const field = el.dataset.fieldName;
@@ -530,7 +531,7 @@ export const cells = {
       if (!this._navMove(el, 'next')) el.blur();
       return;
     }
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (keys.is('analyze.accept', e)) {
       // Ctrl+Enter: accept a machine-made value as is (the sentence
       // counterpart of the word gesture) and hop to the same field of the
       // next sentence. An edited value commits instead, which verifies it.

@@ -3,16 +3,7 @@ import { composeAppend, composePending } from '@/domain/compose';
 import { ZERO_MORPH } from '@/domain/zeroMorph';
 import { activeComposeTable, composePendingOn } from '@/lib/composeInput';
 import { morphFormOf } from './shared.js';
-
-// The physical keys behind the three Alt chords, for when the character has
-// been rewritten by the OS (see the Alt+0 branch).
-const ALT_CODES = {
-  Digit0: '0',
-  Numpad0: '0',
-  Minus: '-',
-  NumpadSubtract: '-',
-  Equal: '=',
-};
+import { keys } from '@/lib/keymap.js';
 
 // The morpheme form field: split, merge, and delete from the keyboard, paste
 // that splits, and the commit of a form.
@@ -66,8 +57,8 @@ export const morphForm = {
       if (this._mweKeydown(e)) return;
       if (this._maybeConfirmWord(e)) return;
       if (this._maybeDiscardWord(e)) return;
-      // Ctrl/Cmd+Arrow belongs to the review sweep (container listener).
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) return;
+      // The review sweep's chords belong to the container listener.
+      if (this._isSweepChord(e)) return;
       if (this._maybeArrowOutOfCell(e)) return;
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -118,13 +109,9 @@ export const morphForm = {
       // read as a command), and it earns a chord of its own rather than only
       // the `\0/` code because a zero is roughly one morpheme in eight in real
       // data, common enough that a student meets it on their first text.
-      // Matched on the physical key as well as the character: macOS rewrites
-      // e.key under Option (Option+0 is º, Option+- is –, Option+= is ≠), so
-      // matching the character alone left all three chords dead on a Mac, and
-      // with `-` always a split there was no way to type a hyphen at all.
-      // e.key stays in the test for layouts where the character sits on
-      // another physical key.
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === '0' || ALT_CODES[e.code] === '0')) {
+      // The chord answers to the physical key as well as the character, since
+      // macOS rewrites the character under Option (see @ui/lib/chords.js).
+      if (keys.is('morph.zero', e)) {
         e.preventDefault();
         this._insertLiteral(el, ZERO_MORPH);
         return;
@@ -135,16 +122,16 @@ export const morphForm = {
       // A half-typed backslash code owns these keys first: 22 codes END in one
       // (`\i-` ɨ, `\l-` ɬ, `\u-` ʉ) and 18 BEGIN with one (the `\-5`..`\-1`
       // tone bars). Falling through lets beforeinput compose them.
-      const joiner =
-        e.key === '-' || e.key === '=' ? e.key : e.altKey ? (ALT_CODES[e.code] ?? null) : null;
-      if (joiner && !e.ctrlKey && !e.metaKey && !composePendingOn(el)) {
-        if (e.altKey) {
-          // Alt+- / Alt+= inserts the literal character (reduplication forms,
-          // forms that contain a hyphen) rather than splitting the morpheme.
-          e.preventDefault();
-          this._insertLiteral(el, joiner);
-          return;
-        }
+      // Alt+- / Alt+= inserts the literal character (reduplication forms, forms
+      // that contain a hyphen) rather than splitting the morpheme.
+      const literal = keys.which(['morph.literalHyphen', 'morph.literalEquals'], e);
+      if (literal && !composePendingOn(el)) {
+        e.preventDefault();
+        this._insertLiteral(el, literal === 'morph.literalHyphen' ? '-' : '=');
+        return;
+      }
+      const joiner = e.key === '-' || e.key === '=' ? e.key : null;
+      if (joiner && !e.altKey && !e.ctrlKey && !e.metaKey && !composePendingOn(el)) {
         e.preventDefault();
         const pos = el.selectionStart ?? el.value.length;
         const left = el.value.slice(0, pos);

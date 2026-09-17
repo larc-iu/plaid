@@ -6,9 +6,13 @@ import { PRECEDENT_SOURCE, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { bracketPieces } from '@/domain/mwe';
 import { humanizeError } from '@/utils/feedback';
 import { provTitle } from './shared.js';
+import { keys } from '@/lib/keymap.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
+// An action's chord as keycaps, in whatever the person has bound it to.
+const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap}</kbd>`);
+
 export const chrome = {
   _template() {
     const doc = this.doc;
@@ -270,11 +274,9 @@ export const chrome = {
             ${ctx.reviewsSomeone
               ? html`<span class="igt-legend__prov--contributed">contributed</span> · `
               : nothing}<span class="igt-legend__prov--verified">confirmed</span> · plain: a
-            person's · <kbd>Ctrl</kbd>+<kbd>↵</kbd> accepts a word's proposal, <kbd>Ctrl</kbd>+<kbd
-              >⌫</kbd
-            >
-            discards it, <kbd>Ctrl</kbd>+<kbd>⇧</kbd>+<kbd>↑</kbd><kbd>↓</kbd> jumps between
-            them</span
+            person's · ${kbd('analyze.accept')} accepts a word's proposal, ${kbd('analyze.discard')}
+            discards it, ${kbd('analyze.prevUnverified')} and ${kbd('analyze.nextUnverified')} jump
+            between them</span
           >
         </div>
         <div class="igt-legend__row">
@@ -282,7 +284,7 @@ export const chrome = {
           <span
             ><span class="igt-legend__guess">from this project</span> ·
             <span class="igt-legend__guess igt-legend__guess--entry">from the linked entry</span> ·
-            <kbd>↵</kbd> accepts one, <kbd>Alt</kbd>+<kbd>↓</kbd> lists the rest</span
+            <kbd>↵</kbd> accepts one, ${kbd('analyze.alternatives')} lists the rest</span
           >
         </div>
         ${ctx.hasMorphemes
@@ -316,8 +318,8 @@ export const chrome = {
               <span
                 >type <kbd>-</kbd> to split, <kbd>=</kbd> to split at a clitic (pasting
                 <em>a-b=c</em> splits too) · <kbd>⌫</kbd> at start merges with previous ·
-                <kbd>Alt</kbd>+<kbd>-</kbd> / <kbd>Alt</kbd>+<kbd>=</kbd> literal character ·
-                <kbd>Alt</kbd>+<kbd>0</kbd> types a zero morph <em>∅</em></span
+                ${kbd('morph.literalHyphen')} / ${kbd('morph.literalEquals')} literal character ·
+                ${kbd('morph.zero')} types a zero morph <em>∅</em></span
               >
             </div>`
           : nothing}

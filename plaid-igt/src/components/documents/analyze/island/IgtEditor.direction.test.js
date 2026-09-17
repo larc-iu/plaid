@@ -159,12 +159,12 @@ describe('the copy names the key that works', () => {
   // which key to press, and both would otherwise name the wrong one.
   it('says the left arrow in an RTL grid', () => {
     mount({ body: ARABIC, words: ARABIC_WORDS });
-    expect(editor._gatherKey()).toBe('←');
+    expect(editor._gatherKey()).toBe('Shift+←');
   });
 
   it('says the right arrow in a Latin one', () => {
     mount();
-    expect(editor._gatherKey()).toBe('→');
+    expect(editor._gatherKey()).toBe('Shift+→');
   });
 });
 

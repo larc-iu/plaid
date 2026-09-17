@@ -27,6 +27,7 @@ import { rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
+import { keys } from '@/lib/keymap.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -74,8 +75,7 @@ const MIN_SEGMENT = 0.01;
 const TIME_COLUMN =
   'flex w-[5.5rem] shrink-0 flex-col pt-1 font-mono text-[11px] leading-4 tabular-nums text-muted-foreground';
 
-const isPlayChord = (e) =>
-  e.code === 'Space' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+const isPlayChord = (e) => keys.is('media.playSegment', e);
 
 // Slower / faster, without the hand leaving the keyboard. Shift, because on
 // this tab Shift is the transport modifier (Shift+Space plays, Shift+Left/Right
@@ -83,23 +83,13 @@ const isPlayChord = (e) =>
 // textarea it costs select-to-start/end, the same price Shift+Left/Right
 // already pays. There is no chord for 1x on purpose: clicking the speed value
 // already does that, and the Media help says so.
-const rateStepOf = (e) => {
-  if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return 0;
-  if (e.key === 'ArrowUp') return 1;
-  if (e.key === 'ArrowDown') return -1;
-  return 0;
-};
+const rateStepOf = (e) => (keys.is('media.faster', e) ? 1 : keys.is('media.slower', e) ? -1 : 0);
 
 // The row above or below, from anywhere in the row: Alt+Up/Down, the key Praat
 // and ELAN both give to "the previous / next unit". The bare arrows do the same
 // only from the text's ends (leavingBy), where they are not the caret's.
 // -1 up, 1 down, 0 to leave the key alone.
-const unitStepOf = (e) => {
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return 0;
-  if (e.key === 'ArrowUp') return -1;
-  if (e.key === 'ArrowDown') return 1;
-  return 0;
-};
+const unitStepOf = (e) => (keys.is('media.prevRow', e) ? -1 : keys.is('media.nextRow', e) ? 1 : 0);
 
 // A textarea that grows with its content, so a long utterance is never a
 // one-line slot you scroll inside.

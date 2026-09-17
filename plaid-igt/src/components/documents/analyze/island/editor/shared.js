@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { directive, Directive, PartType } from 'lit-html/directive.js';
 import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { keys } from '@/lib/keymap.js';
 
 // The dotted number that tells an entry apart ("1.2"), drawn after its form as
 // a SUBSCRIPT — kai₁, as FieldWorks writes a homograph number. Never a
@@ -120,11 +121,13 @@ export const PULSE_CLASS = 'igt-confirmed';
 // the entity) tells a verified value's two origins apart; `contributor`
 // is whether the person looking is one, whose Ctrl+Enter takes machine
 // proposals only.
-const REVIEW_HINT = 'Edit to fix, Ctrl+Enter accepts the whole word';
+const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} accepts the whole word`;
 const provStateText = (state, origin, contributor) => {
-  if (state === PROV_STATES.MACHINE) return `machine-suggested, unverified. ${REVIEW_HINT}`;
+  if (state === PROV_STATES.MACHINE) return `machine-suggested, unverified. ${reviewHint()}`;
   if (state === PROV_STATES.CONTRIBUTED)
-    return contributor ? 'contributed, awaiting review' : `contributed, unverified. ${REVIEW_HINT}`;
+    return contributor
+      ? 'contributed, awaiting review'
+      : `contributed, unverified. ${reviewHint()}`;
   return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-suggested, confirmed';
 };
 export const provTitle = (value, state, origin, contributor) =>

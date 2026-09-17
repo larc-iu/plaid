@@ -8,6 +8,7 @@ import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
 import { useAskAssistant, useAssistantScope } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { keys } from '@/lib/keymap.js';
 
 // shadcn shell frame, and the one place the assistant panel is mounted.
 // Preflight is global now, and the two islands own their CSS and must not
@@ -46,7 +47,7 @@ const Shell = () => {
   // has none, and nothing while typing: a slash in a box is a slash.
   useEffect(() => {
     const onSlash = (e) => {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+      if (e.isComposing || !keys.is('global.search', e)) return;
       const t = e.target;
       if (t?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName)) return;
       const box = document.querySelector('input[data-search-box]');
