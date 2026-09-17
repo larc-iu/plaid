@@ -25,7 +25,7 @@ import {
   notExactlyRegex,
   featuresLabelRegex,
 } from './regex.js';
-import { splitLabel } from './edgeLabel.js';
+import { splitLabel, compactLabel, bareLabel } from './edgeLabel.js';
 
 const COLUMN_FEATS = { upos: 'uposLayer', xpos: 'xposLayer', lemma: 'lemmaLayer' };
 
@@ -38,6 +38,24 @@ const MAX_LEXICON_VALUES = 500;
 const MAX_LINEAR_DISTANCE = 50;
 const MAX_BRANCHES = 128;
 const MAX_DEPTH = 64;
+
+// A grouped count's rows as `{ value, count }`. Counting by an edge's label
+// brings the layer back beside the value, and a relation of the enhanced layer
+// is labelled the way a request names it, `E:nsubj`.
+export function readCounts(results, layerInfo) {
+  const enhancedId = layerInfo?.enhancedRelationLayer?.id;
+  const out = [];
+  for (const row of results || []) {
+    const value = row[0];
+    if (value == null || value === '') continue;
+    const layer = row.length > 2 ? (row[1]?.id ?? row[1]) : null;
+    out.push({
+      value: compactLabel(value, layer != null && layer === enhancedId),
+      count: Number(row[row.length - 1]) || 0,
+    });
+  }
+  return out;
+}
 
 export function compileGrew(ast, layerInfo, opts = {}) {
   const c = new Compiler(layerInfo, opts);
@@ -58,6 +76,7 @@ class Compiler {
     this.boundTop = new Set(); // node ids bound at top level
     this.topLemma = new Map(); // node id -> top-level lemma span var
     this.edgesById = new Map(); // named edge id -> {srcId, tgtId}
+    this.edgeLayerVar = new Map(); // named edge id -> the layer variable it was bound with
     this.topNodeIds = new Set(); // ids that appear in pattern/with
   }
 
@@ -132,7 +151,7 @@ class Compiler {
     const query = grouped
       ? {
           where: [...this.where, ...grouped.where],
-          return: { group: [grouped.variable], aggregates: [['count']] },
+          return: { group: [grouped.variable, ...(grouped.also || [])], aggregates: [['count']] },
         }
       : {
           find: this.find,
@@ -237,7 +256,16 @@ class Compiler {
       if (!this.edgesById.has(node)) {
         throw new GrewUnsupportedError('count-by', `The pattern has no edge named ${node}.`);
       }
-      return { variable, where: [['relation', `?e_${node}`, { value: { var: variable } }]] };
+      // Grouped by layer as well, so an extra `nsubj` is counted as `E:nsubj`
+      // and not into the tree's (the enhanced layer stores the bare deprel).
+      // `readCounts` puts the prefix back.
+      // An edge already bound through a layer variable is grouped by THAT
+      // one: the server does not join a second layer variable on one entity
+      // to the first, and every label would come back once per layer.
+      const bound = this.edgeLayerVar.get(node);
+      const layer = bound || '?groupLayer';
+      const cm = bound ? { value: { var: variable } } : { layer, value: { var: variable } };
+      return { variable, also: [layer], where: [['relation', `?e_${node}`, cm]] };
     }
 
     if (!this.topNodeIds.has(node)) {
@@ -545,6 +573,23 @@ class Compiler {
   }
 
   emitEdge(item, ctx) {
+    // The root's head is the anchor node, which is no word (graph.js), and a
+    // named source is bound to a word here. The server keeps a root as a loop
+    // on its own word, so this clause would find nothing while the local
+    // matcher finds every sentence. Refused, which sends a rewrite to read
+    // every document, and tells a search the spelling that works.
+    const l = item.label;
+    if (
+      !item.src.wild &&
+      l?.type === 'list' &&
+      !l.negated &&
+      l.labels.every((x) => bareLabel(x) === 'root')
+    ) {
+      throw new GrewUnsupportedError(
+        'root-source',
+        `The head of a root relation is not a word. Write * -[${l.labels.join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id}.`,
+      );
+    }
     const rv = item.id ? `?e_${item.id}` : this.fresh('r');
     // A named edge is returnable only when bound at top level (a find variable
     // can't live inside a `without`/`not`).
@@ -557,9 +602,32 @@ class Compiler {
       ctx.list.push(['relation', rv, sides[0]]);
       return;
     }
+    // Both graphs. Where the label asks the same of each (`X -> Y`, `1=nsubj`,
+    // a regex), that is ONE clause on "a relation layer of the Lemma layer",
+    // which costs no alternative. (It asks for a value, as the enhanced side
+    // must, so a basic relation with no label at all is not found. Nothing
+    // writes one.) An `or` doubles the query per edge, and four
+    // unlabelled edges beside `is_projective` would pass the branch limit.
+    const [basic, enhanced] = sides;
+    const sameTest = JSON.stringify(basic.value ?? ANY_VALUE) === JSON.stringify(enhanced.value);
+    if (sameTest && this.lemmaHoldsOnlyDependencies()) {
+      const lv = this.fresh('rl');
+      if (item.id && ctx.scope === 'top') this.edgeLayerVar.set(item.id, lv);
+      ctx.list.push(['relation', rv, { ...enhanced, layer: lv }]);
+      ctx.list.push(['relation-layer', lv, { 'span-layer': this.layerId('lemmaLayer', 'Lemma') }]);
+      return;
+    }
     this.branches *= sides.length;
     this.checkDepth(ctx.depth + 1);
     ctx.list.push(['or', ...sides.map((cm) => [['relation', rv, cm]])]);
+  }
+
+  // Whether every relation layer on the Lemma layer is one of the two this app
+  // keeps there. Another app's layer on it would make "a relation layer of the
+  // Lemma layer" say more than "the tree or the enhanced graph".
+  lemmaHoldsOnlyDependencies() {
+    const known = new Set([this.li.relationLayer?.id, this.li.enhancedRelationLayer?.id]);
+    return (this.li.lemmaLayer?.relationLayers || []).every((l) => known.has(l.id));
   }
 
   emitDominates(item, ctx) {

@@ -4,7 +4,7 @@ import { createUdProject } from '../src/domain/udProjectSetup.js';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 import { isSuppressor } from '../src/domain/enhancedGraph.js';
-import { parseAndCompile } from '../src/grew/index.js';
+import { parseAndCompile, readCounts } from '../src/grew/index.js';
 
 // Grew over the enhanced graph, against the live core: what an `E:` label
 // finds, what an unlabelled edge finds, and a rule that writes to the enhanced
@@ -95,8 +95,27 @@ test('an unlabelled edge reads both graphs, and no suppressor', async ({ page })
   const labels = hits.results.map((row) => row.find((e) => e?.source)?.value);
   expect(labels.sort()).toEqual(['conj', 'conj:and']);
 
+  // Counted by label, the extra edge is named as a request names it.
+  const counted = parseAndCompile('pattern { e: V -> W }', li, {
+    projectId: S.projectId,
+    countBy: { node: 'e', field: 'label' },
+  });
+  const counts = readCounts((await S.client.query(counted.query)).results, li);
+  const byLabel = Object.fromEntries(counts.map((c) => [c.value, c.count]));
+  expect(byLabel).toMatchObject({ conj: 2, 'E:conj:and': 1, nsubj: 2, 'E:nsubj': 1 });
+
   await search(page, box, 'pattern { V [lemma="sing"]; W [lemma="dance"]; e: V -> W }');
   await expect(page.getByText('1 matching sentence', { exact: false })).toBeVisible();
+
+  // An edge that reads both graphs, inside a `without`: "she" is a subject
+  // of "danced" only in the enhanced graph, and "he" of "fell" in neither.
+  await search(
+    page,
+    box,
+    'pattern { X [upos=PRON] } without { Y [lemma="dance"|"fall"]; Y -[1=nsubj]-> X }',
+  );
+  await expect(page.getByText('1 matching sentence', { exact: false })).toBeVisible();
+  await expect(page.locator('mark', { hasText: 'he' })).toBeVisible();
 
   // A `without` that names both graphs leaves the verb nobody is subject of.
   await search(page, box, 'pattern { V -[conj]-> W } without { W -[nsubj|E:nsubj]-> S }');

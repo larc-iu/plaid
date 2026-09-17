@@ -58,7 +58,7 @@ test('a quote in the text cannot break out of the literal', () => {
 });
 
 test('a relation search finds the DEPENDENT, which is the word to land on', () => {
-  assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj]-> W }');
+  assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj|E:nsubj]-> W }');
   // The label goes in the ARC. `e.label = re"subj"` on a named edge looks
   // right and is not: the compiler reads `e.something` as a feature of a NODE
   // called e, so it searches for a FEATS span reading `label=subj` on a word:
@@ -105,8 +105,11 @@ test('an exact deprel search stays exact when it takes the regex route', () => {
 });
 
 test('the common labels keep the bare form', () => {
-  assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj]-> W }');
-  assert.equal(quickPattern('deprel', 'exact', 'obl:tmod'), 'pattern { H -[obl:tmod]-> W }');
+  assert.equal(quickPattern('deprel', 'exact', 'nsubj'), 'pattern { H -[nsubj|E:nsubj]-> W }');
+  assert.equal(
+    quickPattern('deprel', 'exact', 'obl:tmod'),
+    'pattern { H -[obl:tmod|E:obl:tmod]-> W }',
+  );
 });
 
 test('a FEATS search looks in the whole Key=Value, as the spans store it', () => {

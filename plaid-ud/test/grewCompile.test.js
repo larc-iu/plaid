@@ -249,7 +249,14 @@ test('countBy over a named edge groups by its label', () => {
     projectId: 'p',
     countBy: { node: 'e', field: 'label' },
   });
-  assert.deepEqual(query.where.at(-1), ['relation', '?e_e', { value: { var: '?groupValue' } }]);
+  // By layer as well: the enhanced layer stores the bare deprel, and an extra
+  // `nsubj` is not the tree's.
+  assert.deepEqual(query.where.at(-1), [
+    'relation',
+    '?e_e',
+    { layer: '?groupLayer', value: { var: '?groupValue' } },
+  ]);
+  assert.deepEqual(query.return.group, ['?groupValue', '?groupLayer']);
 });
 
 test('countBy names what the pattern offers, and refuses what it does not', () => {

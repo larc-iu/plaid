@@ -61,7 +61,9 @@ export function quickPattern(field, match, text) {
     // `e.label = re"subj"` compiles to a search for a FEATS span reading
     // `label=subj` on a word: no error, no warning, no matches.
     if (match !== 'exact') return `pattern { H -[${value}]-> W }`;
-    if (BARE_LABEL.test(needle)) return `pattern { H -[${needle}]-> W }`;
+    // A relation is looked for in both graphs, as `contains` and `matches`
+    // look: `E:` names the same label among the enhanced graph's own edges.
+    if (BARE_LABEL.test(needle)) return `pattern { H -[${needle}|E:${needle}]-> W }`;
     return `pattern { H -[${exactRegex(needle)}]-> W }`;
   }
 

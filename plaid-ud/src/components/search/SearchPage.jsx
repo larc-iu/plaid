@@ -6,7 +6,13 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
-import { parseAndCompile, parseGrs, looksLikeGrs, GrewError } from '../../grew/index.js';
+import {
+  parseAndCompile,
+  readCounts,
+  parseGrs,
+  looksLikeGrs,
+  GrewError,
+} from '../../grew/index.js';
 import { planRewrite, applyRewrite } from '../../grew/rewrite/runner.js';
 import { groupResults } from './grewToHighlight.js';
 import { GrewQueryInput } from './GrewQueryInput.jsx';
@@ -146,11 +152,7 @@ export const SearchPage = () => {
           return;
         }
         const res = await getClient().query(query);
-        setCounts(
-          (res?.results || [])
-            .filter(([value]) => value != null && value !== '')
-            .map(([value, n]) => ({ value: String(value), count: Number(n) || 0 })),
-        );
+        setCounts(readCounts(res?.results, layerInfo));
       } catch (err) {
         reportError(err);
       } finally {

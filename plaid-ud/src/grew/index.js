@@ -12,6 +12,8 @@
 import { parse } from './parser.js';
 import { compileGrew } from './compile.js';
 
+export { readCounts } from './compile.js';
+
 export { GrewError } from './errors.js';
 export { parseGrs, looksLikeGrs } from './parser.js';
 

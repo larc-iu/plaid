@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
-import { parseAndCompile } from '../src/grew/index.js';
+import { parseAndCompile, readCounts } from '../src/grew/index.js';
 import { parseGrs } from '../src/grew/parser.js';
 import { splitLabel } from '../src/grew/edgeLabel.js';
 import { labelMatches } from '../src/grew/rewrite/match.js';
@@ -23,7 +23,7 @@ const LI = {
   relationLayer: { id: 'REL' },
   enhancedRelationLayer: { id: 'EREL' },
 };
-const compile = (src, li = LI) => parseAndCompile(src, li);
+const compile = (src, li = LI, opts) => parseAndCompile(src, li, opts);
 const flat = (where) => {
   const out = [];
   const walk = (cl) => {
@@ -106,33 +106,92 @@ test('an E: label reads the enhanced layer under the bare deprel', () => {
   );
 });
 
-test('an unlabelled edge reads both layers, and never a suppressor', () => {
+test('an unlabelled edge reads both layers in one clause, and never a suppressor', () => {
   const { query } = compile('pattern { e: X -> Y }');
-  const or = query.where.find((c) => c[0] === 'or');
-  assert.equal(or.length, 3);
-  const [basic, enhanced] = or.slice(1).map((g) => g[0]);
-  assert.deepEqual(basic, [
-    'relation',
-    '?e_e',
-    { layer: 'REL', source: '?lem_X', target: '?lem_Y' },
-  ]);
   // A suppressor is a row with no value, and "." asks for one.
-  assert.deepEqual(enhanced, [
-    'relation',
-    '?e_e',
-    { layer: 'EREL', value: { regex: '.' }, source: '?lem_X', target: '?lem_Y' },
-  ]);
+  const [rel] = relations(query.where);
+  assert.deepEqual(rel[2], {
+    layer: '?rl1',
+    value: { regex: '.' },
+    source: '?lem_X',
+    target: '?lem_Y',
+  });
+  assert.deepEqual(
+    query.where.find((c) => c[0] === 'relation-layer'),
+    ['relation-layer', '?rl1', { 'span-layer': 'LEMMA' }],
+  );
+  assert.equal(
+    query.where.some((c) => c[0] === 'or'),
+    false,
+  );
   assert.ok(query.find.includes('?e_e'));
 });
 
+test('many unlabelled edges beside is_projective stay under the branch limit', () => {
+  compile('pattern { A -> B; B -> C; C -> D; D -> E; E -> F } global { is_projective }');
+});
+
+test('another relation layer on Lemma, or a test that differs by side, is an or', () => {
+  const crowded = {
+    ...LI,
+    lemmaLayer: { id: 'LEMMA', relationLayers: [{ id: 'REL' }, { id: 'EREL' }, { id: 'OTHER' }] },
+  };
+  for (const [src, li] of [
+    ['pattern { X -> Y }', crowded],
+    ['pattern { X -[^det]-> Y }', LI],
+  ]) {
+    const or = compile(src, li).query.where.find((c) => c[0] === 'or');
+    assert.deepEqual(
+      or.slice(1).map((g) => g[0][2].layer),
+      ['REL', 'EREL'],
+    );
+  }
+});
+
 test('a mixed list asks each atom of its own layer', () => {
-  const { query } = compile('pattern { X [] } without { X -[nsubj|E:nsubj]-> Y }');
-  const not = query.where.find((c) => c[0] === 'not');
+  const inNot = (src) => relations([compile(src).query.where.find((c) => c[0] === 'not')]);
+  // The same label on both sides is the one clause again.
   assert.deepEqual(
-    relations([not]).map((c) => [c[2].layer, c[2].value]),
+    inNot('pattern { X [] } without { X -[nsubj|E:nsubj]-> Y }').map((c) => [
+      c[2].layer,
+      c[2].value,
+    ]),
+    [['?rl4', 'nsubj']],
+  );
+  assert.deepEqual(
+    inNot('pattern { X [] } without { X -[nsubj|E:nsubj:xsubj]-> Y }').map((c) => [
+      c[2].layer,
+      c[2].value,
+    ]),
     [
       ['REL', 'nsubj'],
-      ['EREL', 'nsubj'],
+      ['EREL', 'nsubj:xsubj'],
+    ],
+  );
+});
+
+test('a count by label is grouped by the layer the edge was bound with', () => {
+  const by = (src) => compile(src, LI, { countBy: { node: 'e', field: 'label' } }).query;
+  // One layer variable per entity: the server does not join a second to the first.
+  const both = by('pattern { e: X -> Y }');
+  assert.deepEqual(both.return.group, ['?groupValue', '?rl1']);
+  assert.deepEqual(both.where.at(-1), ['relation', '?e_e', { value: { var: '?groupValue' } }]);
+  assert.deepEqual(by('pattern { e: X -[^det]-> Y }').return.group, ['?groupValue', '?groupLayer']);
+
+  assert.deepEqual(
+    readCounts(
+      [
+        ['nsubj', 'REL', 2],
+        ['nsubj', { id: 'EREL' }, 1],
+        ['', 'REL', 4],
+        ['NOUN', 7],
+      ],
+      LI,
+    ),
+    [
+      { value: 'nsubj', count: 2 },
+      { value: 'E:nsubj', count: 1 },
+      { value: 'NOUN', count: 7 },
     ],
   );
 });
@@ -145,6 +204,13 @@ test('a project with no enhanced layer: both means the tree, E: is refused', () 
     ['REL'],
   );
   assert.throws(() => compile('pattern { X -[E:nsubj]-> Y }', bare), GrewUnsupportedError);
+});
+
+test('a root relation from a named head is refused with the spelling that works', () => {
+  assert.throws(() => compile('pattern { X -[root]-> Y }'), /Write \* -\[root\]-> Y/);
+  assert.throws(() => compile('pattern { X -[E:root]-> Y }'), GrewUnsupportedError);
+  const [rel] = relations(compile('pattern { * -[E:root]-> Y }').query.where);
+  assert.deepEqual(rel[2], { layer: 'EREL', value: 'root', target: '?lem_Y' });
 });
 
 test('->> follows one layer', () => {
