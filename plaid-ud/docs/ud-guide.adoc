@@ -198,8 +198,8 @@ The enhanced graph starts out equal to the tree, and you record only where it di
 A project that never does so exports a DEPS column that restates the tree.
 
 * **Add a relation**: hold **Ctrl** or **Cmd** while you draw an arc. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The arc is drawn as a double line with an open arrowhead, and its label is edited and deleted like any other.
-* **Give a relation a different label in the enhanced graph**: hold **Ctrl** or **Cmd** and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own label, which is shown struck through.
-* **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The label is shown struck through. Do the same again to put it back.
+* **Give a relation a different label in the enhanced graph**: hold **Ctrl** or **Cmd** and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own relation, which is shown faded.
+* **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The relation is shown faded. Do the same again to put it back.
 
 A change to the tree carries over to the enhanced graph by itself, because only the differences are stored.
 Splitting a sentence removes the enhanced relations that would cross the new boundary, as it does the tree's.

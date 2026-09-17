@@ -149,9 +149,12 @@
   opacity: 0.85;
 }
 
-/* A basic relation the enhanced graph leaves out. */
-.tree-deprel-text--suppressed {
-  text-decoration: line-through;
+/* A basic relation the enhanced graph leaves out is faded, with its arc, until
+   it is hovered or focused. `--suppressed` is the state and styles nothing (it
+   is what a test asks about), `--dimmed` is the look. After the marked rule on
+   purpose, so an unreviewed one fades as far as any other. */
+.tree-deprel-text--dimmed {
+  opacity: 0.45;
 }
 
 .tree-drag-arc {

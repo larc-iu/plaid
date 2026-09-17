@@ -97,7 +97,7 @@ export const EditorLegend = ({ project, annotatesEnhanced = false }) => {
             graph, shown as a double arc. Drawn over a relation of the tree, it gives that relation
             a different label there · <Key>Ctrl</Key>/<Key>Cmd</Key>+click a relation of the tree,
             or <Key>Ctrl</Key>/<Key>Cmd</Key>+<Key>E</Key> on its label, leaves it out of the
-            enhanced graph, shown struck through.
+            enhanced graph, shown faded.
           </Row>
         )}
       </div>

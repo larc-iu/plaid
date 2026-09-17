@@ -58,7 +58,7 @@ export const DependencyTree = forwardRef(
 
     // What the enhanced graph has beside the tree, and which of the tree's
     // relations it leaves out. An extra is drawn as an arc of its own, doubled.
-    // A suppressor is not drawn: it shows as a struck label on the basic
+    // A suppressor is not drawn: it shows as a DIMMED arc and label on the basic
     // relation it lies over.
     const extras = useMemo(() => extraEdges(enhancedRelations), [enhancedRelations]);
     const extraIds = useMemo(() => new Set(extras.map((r) => r.id)), [extras]);
@@ -658,6 +658,13 @@ export const DependencyTree = forwardRef(
         : resolveColor(baseRel(relation.value || 'dep'), deprelColors);
       const color = active ? '#2563eb' : restColor;
       const strokeWidth = active ? 2 : 1;
+      // A relation the enhanced graph leaves out is faded, arc and label both:
+      // single is in both, double is the graph's alone, faint is the tree's
+      // alone. Not italic, which is the unreviewed mark, and not struck out,
+      // which reads as deleted when the relation is as much in the tree as
+      // ever. At full strength while hovered or focused, so it is no harder to
+      // read or to hit than any other.
+      const dimmed = isSuppressed && !active;
 
       // Split into `body` (arc + arrowhead) and `label` so the caller can paint
       // ALL bodies first and ALL labels after — in SVG, later = on top, so every
@@ -676,6 +683,7 @@ export const DependencyTree = forwardRef(
             stroke={color}
             strokeWidth={isExtra ? strokeWidth + 2 : strokeWidth}
             strokeDasharray={inferred ? '5,4' : undefined}
+            opacity={dimmed ? 0.35 : undefined}
             className="tree-arc-path"
             onMouseEnter={() => setHoveredRelation(relation.id)}
             onMouseLeave={() => setHoveredRelation(null)}
@@ -688,6 +696,7 @@ export const DependencyTree = forwardRef(
             points={`${arrowX - 3},${arrowY - 3} ${arrowX + 3},${arrowY - 3} ${arrowX},${arrowY + 2}`}
             fill={isExtra ? undefined : color}
             stroke={isExtra ? color : undefined}
+            opacity={dimmed ? 0.35 : undefined}
             className={isExtra ? 'tree-arc-arrow tree-arc-arrow--enhanced' : 'tree-arc-arrow'}
             onClick={(e) => handleArcClick(e, relation)}
           />
@@ -747,7 +756,7 @@ export const DependencyTree = forwardRef(
               x={labelX}
               y={labelY}
               fill={color}
-              className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}${isSuppressed ? ' tree-deprel-text--suppressed' : ''}`}
+              className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
               tabIndex="-1"
               onMouseEnter={() => setHoveredRelation(relation.id)}
               onMouseLeave={() => setHoveredRelation(null)}
@@ -807,7 +816,7 @@ export const DependencyTree = forwardRef(
               {relation.value || 'dep'}
               {/* Hover record for machine-made relations (SVG-native tooltip).
                   One <title> to a label, and a suppressed relation's is the
-                  fact a reader cannot get from the struck label alone. */}
+                  fact a reader cannot get from the faded label alone. */}
               {isSuppressed ? (
                 <title>Not in the enhanced graph</title>
               ) : (
