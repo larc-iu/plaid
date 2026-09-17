@@ -19,6 +19,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FEATURES, FEATURE_KEYS } from './catalog.js';
 import { coreSchema, setConfigCalls } from './schema.js';
+import { MODULES, moduleGaps } from './expect/index.js';
+import { finalize, removeTokens } from './expect/snap.js';
 import { RESERVED_ITEM_KEYS } from '../../domain/vocabFields.js';
 
 // Built with path, not `new URL`: the test environment's URL is happy-dom's.
@@ -102,6 +104,121 @@ describe('format loss lists', () => {
       });
     });
   }
+});
+
+// ---- 2b. the round-trip expectations ------------------------------------------------------
+
+describe('round-trip expectations', () => {
+  // The formats e2e/fidelity/roundTrip.mjs runs. The vocabulary TSV round trip
+  // is not one of them yet.
+  for (const [id, module] of Object.entries(MODULES)) {
+    it(`${id} answers every entry of its list`, () => {
+      const format = formats.find((f) => f.id === id);
+      expect(format?.check).toBe('roundTrip');
+      if (module.incomplete) return;
+      expect(moduleGaps(format)).toEqual([]);
+    });
+  }
+
+  // A two-word document, keyed the way snapshot.mjs keys it.
+  const sample = () => ({
+    config: {},
+    layers: [],
+    vocabularies: [
+      {
+        key: 'Lex#1',
+        name: 'Lex',
+        config: {},
+        items: [
+          {
+            key: 'a#1',
+            form: 'a',
+            metadata: { examples: [{ document: 'D#1', token: 'word:2-3' }] },
+          },
+        ],
+        comments: [],
+      },
+    ],
+    documents: [
+      {
+        key: 'D#1',
+        name: 'D',
+        metadata: {},
+        media: null,
+        texts: [{ layer: 'text:baseline', body: 'x a', metadata: {} }],
+        tokens: [
+          {
+            key: 'word:0-1',
+            layer: 'token:word',
+            begin: 0,
+            end: 1,
+            precedence: null,
+            metadata: {},
+          },
+          {
+            key: 'word:2-3',
+            layer: 'token:word',
+            begin: 2,
+            end: 3,
+            precedence: null,
+            metadata: {},
+          },
+        ],
+        spans: [
+          {
+            key: 'span:word/Gloss|word:2-3',
+            layer: 'span:word/Gloss',
+            tokens: ['word:2-3'],
+            value: 'A',
+            metadata: {},
+          },
+        ],
+        relations: [],
+        links: [{ vocab: 'Lex#1', item: 'a#1', tokens: ['word:2-3'], metadata: {} }],
+        comments: [
+          {
+            anchor: { type: 'span', ref: 'span:word/Gloss|word:2-3' },
+            anchorLabel: null,
+            body: 'b',
+            author: 'u',
+            edited: false,
+          },
+        ],
+      },
+    ],
+    unplacedComments: [],
+    guidelines: [],
+  });
+
+  it('finalize leaves a snapshot as it was', () => {
+    expect(finalize(sample())).toEqual(sample());
+  });
+
+  it('finalize follows a moved token into every reference to it', () => {
+    const s = sample();
+    const moved = s.documents[0].tokens[1];
+    moved.begin = 3;
+    moved.end = 4;
+    s.documents[0].name = 'E';
+    const out = finalize(s);
+    const d = out.documents[0];
+    expect(d.key).toBe('E#1');
+    expect(d.tokens.map((t) => t.key)).toEqual(['word:0-1', 'word:3-4']);
+    expect(d.spans[0].key).toBe('span:word/Gloss|word:3-4');
+    expect(d.links[0].tokens).toEqual(['word:3-4']);
+    expect(d.comments[0].anchor.ref).toBe('span:word/Gloss|word:3-4');
+    expect(out.vocabularies[0].items[0].metadata.examples).toEqual([
+      { document: 'E#1', token: 'word:3-4' },
+    ]);
+  });
+
+  it('a strip takes a token with everything hanging off it', () => {
+    const s = sample();
+    removeTokens(s, s.documents[0], (t) => t.key === 'word:2-3');
+    const d = s.documents[0];
+    expect([d.spans, d.links, d.comments]).toEqual([[], [], []]);
+    expect(s.vocabularies[0].items[0].metadata.examples).toEqual([]);
+  });
 });
 
 // ---- 3. what core stores and what the app writes ----------------------------------------------

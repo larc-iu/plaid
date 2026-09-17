@@ -1,0 +1,127 @@
+// The fixed point: exporting what an import made should give back the export
+// it was made from.
+//
+// A round trip's snapshot comparison checks what the import wrote against the
+// loss list. This checks the other direction with no list at all: whatever the
+// first export wrote, the imported project has to be able to write again. It
+// catches what a snapshot cannot see, such as which of two glosses on a word
+// the grid shows first, or a word that fell out of an aligned cell.
+//
+// Two exports of the same content still differ in what identifies or dates
+// them, so both are put in a canonical form first: every UUID becomes `<id>`,
+// the export's own timestamps and the documents' version counters go, an
+// import's bookkeeping stamps go, and a native archive's re-posted comment is
+// read back to the author and body it was posted from (the same reading the
+// round trip uses, see src/test/fidelity/expect/native.js). What is left
+// different is a finding.
+
+import { createHash } from 'node:crypto';
+import { unzipSync } from 'fflate';
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const TEXT = /\.(json|csv|eaf|xml|txt|flextext|lift|tsv)$/i;
+const VOLATILE_KEYS = new Set(['exportedAt', 'createdAt', 'updatedAt', 'dc:created', 'version']);
+const STAMP_KEYS = new Set(['importDone', 'importSource', 'nativeImportId', 'cldfEntry']);
+const NOTE =
+  /^> Imported from an archive\. Originally posted by (.+?)(?: on (\d{4}-\d{2}-\d{2}))?\.(?:\n\n|$)/;
+
+const isZip = (bytes) => bytes[0] === 0x50 && bytes[1] === 0x4b;
+
+function canonicalJson(value) {
+  if (typeof value === 'string') return value.replace(UUID, '<id>');
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (VOLATILE_KEYS.has(k)) continue;
+    if (k === 'metadata' && v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = canonicalJson(
+        Object.fromEntries(Object.entries(v).filter(([m]) => !STAMP_KEYS.has(m))),
+      );
+      continue;
+    }
+    out[k] = canonicalJson(v);
+  }
+  // A native archive comment an import re-posted: its note names who wrote it.
+  if (typeof out.body === 'string' && out.author && typeof out.author === 'object') {
+    const m = out.body.match(NOTE);
+    if (m) {
+      const id = m[1].match(/<([^<>]+)>$/)?.[1] ?? m[1];
+      const name = m[1].match(/^(.*) <[^<>]+>$/)?.[1] ?? id;
+      out.author = { id, name };
+      out.body = out.body.slice(m[0].length);
+    }
+  }
+  return out;
+}
+
+/** The export as `Map<path, string>`, each file in canonical form. */
+export function canonicalExport(bytes, filename = 'export') {
+  const files = isZip(bytes) ? unzipSync(bytes) : { [filename]: bytes };
+  const out = new Map();
+  const decoder = new TextDecoder();
+  for (const [path, data] of Object.entries(files)) {
+    if (path.endsWith('/')) continue;
+    if (!TEXT.test(path)) {
+      out.set(path, `sha256 ${createHash('sha256').update(data).digest('hex')}`);
+      continue;
+    }
+    const text = decoder.decode(data);
+    if (/\.json$/i.test(path)) {
+      out.set(path, JSON.stringify(canonicalJson(JSON.parse(text)), null, 2));
+    } else {
+      out.set(path, text.replace(UUID, '<id>').replace(/ DATE="[^"]*"/, ' DATE=""'));
+    }
+  }
+  return out;
+}
+
+// The lines of `a` and `b` that are not in their longest common subsequence,
+// in order. Exports here are small enough for the quadratic table.
+function lineDiff(a, b) {
+  const x = a.split('\n');
+  const y = b.split('\n');
+  const n = x.length;
+  const m = y.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] = x[i] === y[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && x[i] === y[j]) {
+      i++;
+      j++;
+    } else if (j < m && (i === n || lcs[i][j + 1] >= lcs[i + 1][j])) {
+      out.push({ side: '+', line: j + 1, text: y[j++] });
+    } else {
+      out.push({ side: '-', line: i + 1, text: x[i++] });
+    }
+  }
+  return out;
+}
+
+const cut = (s, n = 160) => (s.length > n ? `${s.slice(0, n)}...` : s);
+
+/**
+ * Every difference between two canonical exports, as printable lines, at most
+ * `limit` per file.
+ */
+export function diffExports(first, second, { limit = 40 } = {}) {
+  const out = [];
+  for (const path of [...new Set([...first.keys(), ...second.keys()])].sort()) {
+    if (!second.has(path)) out.push(`${path}: only in the first export`);
+    else if (!first.has(path)) out.push(`${path}: only in the second export`);
+    else if (first.get(path) !== second.get(path)) {
+      const lines = lineDiff(first.get(path), second.get(path));
+      out.push(`${path}: ${lines.length} line(s) differ`);
+      for (const l of lines.slice(0, limit)) out.push(`    ${l.side}${l.line} ${cut(l.text)}`);
+      if (lines.length > limit) out.push('    ...');
+    }
+  }
+  return out;
+}

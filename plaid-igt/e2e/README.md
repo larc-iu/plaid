@@ -52,6 +52,11 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   runs on a PRIVATE core it boots from source (`core.mjs`), never on :8085.
   `kitchenSink.mjs` builds projects holding every feature in
   `src/test/fidelity/catalog.js`, `snapshot.mjs` reads a project back as one
-  id-free value, and `coverage.mjs` checks the one against the other. The
-  per-format loss lists and the guards that keep the catalog in step with core
-  are in `src/test/fidelity/` and run with `npm test`.
+  id-free value, and `coverage.mjs` checks the one against the other.
+  `roundTrip.mjs` exports the kitchen sink through native, CLDF and ELAN
+  (`drivers.mjs`, the screens' own calls), imports each export, and compares the
+  new project with what the format's loss list says should come back
+  (`src/test/fidelity/expect/`), then exports it again and compares that with
+  the first export (`fixedPoint.mjs`). The per-format loss lists and the guards
+  that keep the catalog in step with core are in `src/test/fidelity/` and run
+  with `npm test`.

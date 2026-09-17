@@ -32,19 +32,11 @@
 // the whole config of every layer and vocabulary.
 
 import { createHash } from 'node:crypto';
+import { stableStringify } from '../../src/test/fidelity/stable.js';
+
+export { stableStringify };
 
 const byString = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-
-/** JSON with object keys sorted, so equal values stringify equally. */
-export function stableStringify(v) {
-  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
-  return `{${Object.keys(v)
-    .sort()
-    .filter((k) => v[k] !== undefined)
-    .map((k) => `${JSON.stringify(k)}:${stableStringify(v[k])}`)
-    .join(',')}}`;
-}
 
 const sortByKey = (rows, keyOf) =>
   rows
