@@ -101,20 +101,27 @@ export function diffGraphs(before, after, layerInfo) {
   const touchesDeleted = (e) => deleted.has(e.src) || deleted.has(e.tgt);
   const needsLemma = new Set();
   // An enhanced edge says something only against the tree as the rule LEFT it,
-  // so every extra a rule creates, relabels or moves is settled once every
-  // edge has been read (below). An entry carries the lines and writes for the
-  // edge standing as an edge of the enhanced graph, and the ones for the tree
-  // turning out to give that relation already.
+  // and against the other extras landing beside it, so every extra a rule
+  // creates, relabels or moves is settled once every edge has been read
+  // (below). An entry carries what to write if the edge stands, and `row`, the
+  // stored relation behind it, which is what a drop deletes and what a line
+  // about a drop names: an edge that moved is not gone from where it lands,
+  // it is gone from where it was.
   const pendingExtras = [];
+  const layerIdOf = (key, what) => {
+    const id = layer(key);
+    if (!id) throw new GrewRuntimeError(`This project has no ${what} layer.`);
+    return id;
+  };
   const enhancedLayerId = () => {
-    const id = layer('enhancedRelationLayer');
-    if (!id) {
+    if (!layer('enhancedRelationLayer')) {
       throw new GrewRuntimeError(
         'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
       );
     }
-    return id;
+    return layer('enhancedRelationLayer');
   };
+  const basicLayerId = () => layerIdOf('relationLayer', 'dependency relation');
   const writeCreate = (a, layerId, extra = {}) => {
     writes.main.push({
       op: 'createRelation',
@@ -158,30 +165,23 @@ export function diffGraphs(before, after, layerInfo) {
         `${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
       );
     }
-    // Deleting the row is what the enhanced graph deriving the relation from
-    // the tree comes to, for an edge that is already stored.
-    const dropped = {
-      lines: [
-        `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} removed, the tree gives it`,
-      ],
-      ops: [{ op: 'deleteRelation', id }],
+    // The relation as it stands on the server now, which is where it is drawn
+    // and what a drop takes away.
+    const row = {
+      id,
+      label: b.label,
+      src: formOf(before, b.src),
+      tgt: formOf(before, b.tgt),
     };
     // A relation never changes layers, so an edge that changed graphs
     // (`e.enhanced = yes`) is deleted from one and created in the other.
     if (isEnhancedLabel(a.label) !== isEnhancedLabel(b.label)) {
-      const del = { op: 'deleteRelation', id };
+      const del = [{ op: 'deleteRelation', id }];
       if (isEnhancedLabel(a.label)) {
-        pendingExtras.push({
-          a,
-          lines,
-          layerId: enhancedLayerId(),
-          before: [del],
-          create: true,
-          dropped: { lines: [], ops: [del] },
-        });
+        pendingExtras.push({ a, lines, layerId: enhancedLayerId(), create: true, ops: del, row });
       } else {
-        emit(lines, [del]);
-        writeCreate(a, layer('relationLayer'));
+        emit(lines, del);
+        writeCreate(a, basicLayerId());
       }
       continue;
     }
@@ -201,7 +201,7 @@ export function diffGraphs(before, after, layerInfo) {
     // An extra the rule left alone is left alone: only what it touched is
     // settled against the tree.
     if (isEnhancedLabel(a.label) && ops.length) {
-      pendingExtras.push({ a, lines, layerId: enhancedLayerId(), ops, needs, dropped });
+      pendingExtras.push({ a, lines, layerId: enhancedLayerId(), ops, needs, row });
       continue;
     }
     emit(lines, ops, needs);
@@ -210,17 +210,11 @@ export function diffGraphs(before, after, layerInfo) {
     if (before.edges.has(id)) continue;
     const line = `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`;
     if (isEnhancedLabel(a.label)) {
-      pendingExtras.push({
-        a,
-        lines: [line],
-        layerId: enhancedLayerId(),
-        create: true,
-        dropped: { lines: [], ops: [] },
-      });
+      pendingExtras.push({ a, lines: [line], layerId: enhancedLayerId(), create: true, row: null });
       continue;
     }
     emit([line], []);
-    writeCreate(a, layer('relationLayer'));
+    writeCreate(a, basicLayerId());
   }
 
   // --- the extra edges a rule touched, pair by pair ---
@@ -253,22 +247,45 @@ export function diffGraphs(before, after, layerInfo) {
     if (!byPair.has(pairOf(p.a))) byPair.set(pairOf(p.a), []);
     byPair.get(pairOf(p.a)).push(p);
   }
+  // What a drop comes to: the stored row goes, and the line names that row,
+  // not where the edge was headed.
+  const drop = (p, why) => {
+    if (!p.row) return; // nothing was stored, so nothing is written
+    emit(
+      [`${p.row.src} → ${p.row.tgt}: ${p.row.label} removed${why}`],
+      [{ op: 'deleteRelation', id: p.row.id }],
+    );
+  };
   for (const [pair, extras] of byPair) {
+    // Two extras the rule leaves over one pair under one label are one edge.
+    // Keep a stored row over a new one, so an edge is moved rather than
+    // deleted and made again.
+    const kept = [];
+    for (const p of extras) {
+      const twin = kept.find((k) => bareLabel(k.a.label) === bareLabel(p.a.label));
+      if (!twin) kept.push(p);
+      else if (!twin.row && p.row) {
+        drop(twin, ', the graph already has it');
+        kept[kept.indexOf(twin)] = p;
+      } else drop(p, ', the graph already has it');
+    }
     const basics = basicLabels.get(pair);
-    const relabels = extras.some((p) => !basics?.has(bareLabel(p.a.label)));
+    const relabels = kept.some((p) => !basics?.has(bareLabel(p.a.label)));
     const suppress = Boolean(basics) && relabels && !enhancedPairsBefore.has(pair);
     const treeGivesIt = (p) =>
       basics?.has(bareLabel(p.a.label)) && !suppress && !suppressedBefore.has(pair);
-    for (const p of extras) {
+    for (const p of kept) {
       if (treeGivesIt(p)) {
-        emit(p.dropped.lines, p.dropped.ops);
+        // A row that is already an extra is dropped because the tree says the
+        // same thing. One on its way out of the tree is just deleted.
+        drop(p, isEnhancedLabel(p.row?.label) ? ', the tree gives it' : '');
         continue;
       }
-      emit(p.lines, [...(p.before || []), ...(p.ops || [])], p.needs);
+      emit(p.lines, p.ops || [], p.needs);
       if (p.create) writeCreate(p.a, p.layerId);
     }
     if (suppress) {
-      const { a, layerId } = extras[0];
+      const { a, layerId } = kept[0];
       changes.push({
         kind: 'edge',
         text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${[...basics].join(', ')} left out of the enhanced graph`,

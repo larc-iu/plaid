@@ -460,7 +460,8 @@ test('an extra moved onto a pair the tree already joins is dropped, not duplicat
   );
   assert.deepEqual(
     r.changes.map((c) => c.text),
-    ['sang → she: E:nsubj removed, the tree gives it'],
+    // The arc that goes is the one that was drawn, not the pair it was headed for.
+    ['danced → she: E:nsubj removed, the tree gives it'],
   );
   assert.deepEqual(
     r.writes.main.map((w) => w.op),
@@ -497,6 +498,71 @@ test('an extra the rule did not touch is left alone', () => {
     r.writes.main.map((w) => w.op),
     ['createSpan'],
   );
+});
+
+// "she saw a fish", where the enhanced graph gives fish a second relation.
+const TWO_HEADS = [
+  '# text = she saw a fish',
+  '1\tshe\tshe\tPRON\t_\t_\t2\tnsubj\t2:nsubj\t_',
+  '2\tsaw\tsee\tVERB\t_\t_\t0\troot\t0:root\t_',
+  '3\ta\ta\tDET\t_\t_\t4\tdet\t4:det\t_',
+  '4\tfish\tfish\tNOUN\t_\t_\t2\tobj\t2:obj|2:iobj\t_',
+].join('\n');
+
+test('two extras a rule leaves over one pair under one label are one edge', () => {
+  // The rule adds she→fish and moves the stored saw→fish onto the same pair.
+  const r = run(
+    TWO_HEADS,
+    `pattern { S [form="she"]; F [form="fish"]; V [form="saw"]; e: V -[E:iobj]-> F }
+     without { S -[E:iobj]-> F }
+     commands { add_edge S -[E:iobj]-> F; shift_out V =[1=iobj, enhanced=yes]=> S }`,
+  );
+  // The stored row is moved rather than deleted and made again, and the
+  // second copy is not written at all.
+  assert.deepEqual(
+    r.writes.main.map((w) => w.op),
+    ['setSource'],
+  );
+  assert.deepEqual(
+    r.changes.map((c) => c.text),
+    ['E:iobj of fish: head saw → she'],
+  );
+});
+
+test('a relation leaving the tree for the enhanced graph, then dropped, says so', () => {
+  const conllu = [
+    '# text = she sang loud',
+    '1\tshe\tshe\tPRON\t_\t_\t2\tnsubj\t_\t_',
+    '2\tsang\tsing\tVERB\t_\t_\t0\troot\t_\t_',
+    '3\tloud\t_\tADV\t_\t_\t2\tadvmod\t_\t_',
+  ].join('\n');
+  const r = run(
+    conllu,
+    `pattern { e: V -[advmod]-> L } without { V -[dep]-> L }
+     commands { e.1 = dep; e.enhanced = yes; add_edge V -[dep]-> L }`,
+  );
+  // The advmod row IS deleted, so the preview says that and not nothing.
+  assert.deepEqual(r.changes.map((c) => c.text).sort(), [
+    'sang → loud: advmod removed',
+    'sang → loud: dep added',
+  ]);
+  assert.deepEqual(r.writes.main.map((w) => [w.op, w.value]).sort(), [
+    ['createRelation', 'dep'],
+    ['deleteRelation', undefined],
+  ]);
+});
+
+test('a project with no dependency relation layer refuses the row', () => {
+  const doc = new ConlluDocument({ raw: rawDocFromConllu(CONLLU, 'd', { enhanced: true }) });
+  const before = graphFromSentence(doc.sentences[0]);
+  const { graph: after } = rewriteSentence(
+    parseGrs(
+      'pattern { V [lemma="dance"]; S [lemma="she"] } without { V -[dep]-> S } commands { add_edge V -[dep]-> S }',
+    ),
+    before,
+  );
+  const { relationLayer: _gone, ...bare } = doc.layerInfo;
+  assert.throws(() => diffGraphs(before, after, bare), GrewRuntimeError);
 });
 
 test('an E: edge in a project with no enhanced layer refuses the row', () => {
