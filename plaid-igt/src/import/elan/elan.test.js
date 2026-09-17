@@ -545,12 +545,12 @@ describe('buildElanDocuments', () => {
     expect(build.documents[0].words[1].morphemes[0].fields).toEqual({ Gloss: 'dog' });
   });
 
-  it('numbers documents whose names would collide', () => {
+  it('keeps a name two documents share, as a project may', () => {
     const { build } = buildFrom([
       [ANA, 'Story.eaf'],
       [ANA, 'other/Story.eaf'],
     ]);
-    expect(build.documents.map((d) => d.name)).toEqual(['Story (1)', 'Story (2)']);
+    expect(build.documents.map((d) => d.name)).toEqual(['Story', 'Story']);
   });
 
   it('carries an orthography into token metadata', () => {
@@ -578,6 +578,17 @@ describe('buildElanDocuments', () => {
     expect(build.documents[0].metadata['Media file']).toBe('rec.wav');
     expect(build.documents[0].mediaFile).toBeNull();
     expect(build.warnings[0]).toMatch(/without media/);
+  });
+
+  it('leaves the Media file field out when asked to', () => {
+    const xml = eafXml({
+      types: { u: null },
+      tiers: [{ id: 'T', type: 'u', anns: [['a1', 'hola', 0, 500]] }],
+      media: 'rec.wav',
+    });
+    const { build } = buildFrom([[xml, 'x.eaf']], {}, { recordMediaName: false });
+    expect(build.documents[0].metadata).toEqual({});
+    expect(build.schema.documentMetadata).toEqual([]);
   });
 
   it('carries a supplied recording on its document and drops the warning', () => {

@@ -31,6 +31,7 @@ import {
   surface,
   tokensIn,
 } from './snap.js';
+import { MEDIA_FILE_FIELD } from '../../../domain/igtConfig.js';
 import { byOrder, coveredBy, isIgnored } from './strips.js';
 
 // ---- reading a snapshot ------------------------------------------------------------
@@ -259,10 +260,9 @@ const documentSteps = [
   },
   {
     keys: ['project.documentMetadataFields'],
-    // The fields some document holds a value in, as {name} alone, plus `Media
-    // file` when a document has a recording. The comparison treats this list as
-    // a set, so the order here (documents in snapshot order, fields in the
-    // project's order, `Media file` last) is not checked.
+    // The fields some document holds a value in, as {name} alone, met document
+    // by document in snapshot order and each document's in the project's order,
+    // plus `Media file` last when a document has a recording.
     apply(expected) {
       const on = (expected.config?.igt?.documentMetadata || []).map((f) => f.name);
       const names = [];
@@ -273,29 +273,10 @@ const documentSteps = [
           if (v != null && v !== '') names.push(name);
         }
       }
-      if (docs(expected).some((d) => d.media) && !names.includes('Media file')) {
-        names.push('Media file');
+      if (docs(expected).some((d) => d.media) && !names.includes(MEDIA_FILE_FIELD)) {
+        names.push(MEDIA_FILE_FIELD);
       }
       igt(expected).documentMetadata = names.map((name) => ({ name }));
-    },
-  },
-  {
-    keys: ['document.duplicateName'],
-    // `<name> (n)` for every document sharing its name. The list numbers them in
-    // the order the .eaf files are read, which a snapshot does not hold, so they
-    // are numbered in snapshot order, the order the server lists the documents.
-    apply(expected) {
-      const groups = new Map();
-      for (const d of docs(expected)) {
-        if (!groups.has(d.name)) groups.set(d.name, []);
-        groups.get(d.name).push(d);
-      }
-      for (const [name, group] of groups) {
-        if (group.length < 2) continue;
-        group.forEach((d, i) => {
-          d.name = `${name} (${i + 1})`;
-        });
-      }
     },
   },
 ];

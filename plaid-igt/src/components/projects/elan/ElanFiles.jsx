@@ -73,6 +73,8 @@ const PRIOR_MODES = [
  * @param imported    Map<.eaf file name, the project's document> for files an
  *                    earlier run finished. Null where there is no project yet,
  *                    and then no row says "new" either.
+ * @param recordMediaName  whether each recording's file name goes in a Media
+ *                    file metadata field, and onRecordMediaName to change it
  */
 export const ElanFiles = ({
   step = 1,
@@ -92,6 +94,8 @@ export const ElanFiles = ({
   onRemoveEaf = null,
   onRemoveMedia = null,
   onConvert = null,
+  recordMediaName = true,
+  onRecordMediaName = null,
 }) => {
   const [showAll, setShowAll] = useState(false);
   if (!files?.length && !mediaFiles?.length) return null;
@@ -112,6 +116,7 @@ export const ElanFiles = ({
   const eafs = files || [];
   const listed = showAll ? eafs : eafs.slice(0, LIST_LIMIT);
   const importedCount = imported ? eafs.filter((f) => imported.has(f.fileName)).length : 0;
+  const namesRecording = eafs.some((f) => f.media?.length);
 
   const recordingRow = (eaf, file) => {
     const need = needOf(file);
@@ -228,6 +233,18 @@ export const ElanFiles = ({
         >
           {showAll ? `Show the first ${LIST_LIMIT}` : `Show all ${eafs.length}`}
         </button>
+      )}
+
+      {namesRecording && onRecordMediaName && (
+        <label className="flex cursor-pointer items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            disabled={!editable}
+            checked={recordMediaName}
+            onChange={(e) => onRecordMediaName(e.target.checked)}
+          />
+          Keep each recording’s file name in a Media file field
+        </label>
       )}
 
       {importedCount > 0 && onPriorMode && (

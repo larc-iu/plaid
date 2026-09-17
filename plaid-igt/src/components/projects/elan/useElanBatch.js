@@ -41,6 +41,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
   const [nearMissGroups, setNearMissGroups] = useState([]);
   const [roles, setRoles] = useState({});
   const [fieldNames, setFieldNames] = useState({});
+  const [recordMediaName, setRecordMediaName] = useState(true);
 
   const nodes = useMemo(() => comparison?.nodes ?? [], [comparison]);
   const problems = useMemo(
@@ -56,12 +57,16 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
   const build = useMemo(() => {
     if (!files || !comparison?.consistent || problems.length) return null;
     try {
-      return buildElanDocuments(files, nodes, roles, { fieldNames, mediaByFile: media.byFile });
+      return buildElanDocuments(files, nodes, roles, {
+        fieldNames,
+        mediaByFile: media.byFile,
+        recordMediaName,
+      });
     } catch (e) {
       console.error('ELAN build failed:', e);
       return null;
     }
-  }, [files, comparison, nodes, roles, fieldNames, problems, media]);
+  }, [files, comparison, nodes, roles, fieldNames, problems, media, recordMediaName]);
 
   // Adopt a schema: suggest the roles and field names for it, keeping whatever
   // the user has already chosen for nodes that survive. A merge changes node
@@ -157,6 +162,8 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
   };
 
   return {
+    recordMediaName,
+    setRecordMediaName,
     files,
     mediaFiles,
     setMediaFiles,

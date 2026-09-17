@@ -143,6 +143,12 @@ export const trimIgnoredEdges = (content, cfg) => {
   return chars.slice(start, end).join('');
 };
 
+/**
+ * The document metadata field an ELAN import records a recording's original
+ * file name in, and the ELAN export names the recording by.
+ */
+export const MEDIA_FILE_FIELD = 'Media file';
+
 /** A project's enabled document-metadata fields: [{name}], or null. */
 // Predefined metadata fields common in linguistic annotation: name -> enabled
 // by default. The settings screen shows the switched-off ones.

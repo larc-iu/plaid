@@ -87,7 +87,8 @@ export default {
     projectConfig: ['initialized', 'import'],
     // src/import/resume.js: the .eaf file name and the done marker written last. `Media file`
     // is the recording's file name as the .eaf's MEDIA_DESCRIPTOR gives it
-    // (buildDocuments.js), written on every document whose .eaf names a recording.
+    // (buildDocuments.js), written on every document whose .eaf names a recording unless the
+    // person clears that option, and read back by the export as the recording's name.
     documentMetadata: ['importSource', 'importDone', 'Media file'],
     tokenMetadata: [],
     itemMetadata: [],
@@ -96,7 +97,9 @@ export default {
     // Project configuration
     'project.documentMetadataFields': {
       carried: 'changed',
-      how: 'The list is rebuilt from the HEADER properties of the files: a field comes back only when at least one document has a non-empty value in it, as {name} alone, in the order the names first appear across the files. A field named documentName, lastUsedAnnotationId or URN does not come back. When any document has a recording, a field named `Media file` is added (see stamps).',
+      how: 'The list is rebuilt from the HEADER properties of the files: a field comes back only when at least one document has a non-empty value in it, as {name} alone, in the order the names first appear across the files. A field named documentName, lastUsedAnnotationId or URN does not come back. When any document has a recording, a field named `Media file` is added last (see stamps), unless the person clears that option on the import screen. The round trip keeps the option on.',
+      ruling:
+        'user, 2026-09-17: keep the Media file field, let the person opt out, and have the ELAN export name the recording by it instead of writing it as a header property',
     },
     'project.documentMetadataTagset': {
       carried: false,
@@ -290,10 +293,9 @@ export default {
     'document.media': carried,
     'document.noText': carried,
     'document.untokenized': carried,
-    'document.duplicateName': {
-      carried: 'changed',
-      how: 'Every document whose name another document in the import shares is renamed `<name> (n)`, with n counting from 1 in the order the .eaf files are read (buildDocuments.js).',
-    },
+    // Each document keeps the documentName its .eaf gives it, shared or not (user, 2026-09-17:
+    // "whatever's reasonable", after the import renamed them "<name> (n)" in file-read order).
+    'document.duplicateName': carried,
     'document.nameSpecialChars': carried,
     'document.metadataLang': {
       carried: 'changed',

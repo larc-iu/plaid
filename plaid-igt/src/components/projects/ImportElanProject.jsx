@@ -225,6 +225,8 @@ export const ImportElanProject = () => {
                   onRemoveEaf={batch.removeEaf}
                   onRemoveMedia={batch.removeMedia}
                   onConvert={conversion.convertRecordings}
+                  recordMediaName={batch.recordMediaName}
+                  onRecordMediaName={batch.setRecordMediaName}
                 />
 
                 <ElanTierReview batch={batch} editable={editable} />

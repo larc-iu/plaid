@@ -1157,6 +1157,27 @@ describe('runExport — elan .eaf', () => {
     expect(media.getAttribute('MIME_TYPE')).toBe('audio/vnd.wave');
   });
 
+  it('names the recording from its Media file field, with the stored extension', async () => {
+    const doc = {
+      ...rawDoc('d1', 'A', 'hi yo', '/media/d1'),
+      metadata: { 'Media file': 'oni-ah.mp4' },
+    };
+    const client = stubClient({ docs: [doc] });
+    const result = await runExport({
+      client,
+      project: { ...PROJECT, config: { igt: { documentMetadata: [{ name: 'Media file' }] } } },
+      preset: elanPreset(),
+      scope: { type: 'document', id: 'd1' },
+      fetchMedia: async () => ({ bytes: new Uint8Array([1]), ext: '.mp3', mime: 'audio/mpeg' }),
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual(['documents/A.eaf', 'media/oni-ah.mp3']);
+    const dom = parseXml(new TextDecoder().decode(entries['documents/A.eaf']));
+    expect(tagged(dom, 'MEDIA_DESCRIPTOR')[0].getAttribute('MEDIA_URL')).toBe('oni-ah.mp3');
+    // The field is the recording's name, which the descriptor already says.
+    expect(tagged(dom, 'PROPERTY').map((p) => p.getAttribute('NAME'))).toEqual(['documentName']);
+  });
+
   it('stays a bare file when media is switched off', async () => {
     const docs = [rawDoc('d1', 'A', 'hi', '/media/d1/song.wav')];
     const client = stubClient({ docs });

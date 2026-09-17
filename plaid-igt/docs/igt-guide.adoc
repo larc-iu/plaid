@@ -843,6 +843,8 @@ Four formats are supported:
 
 The review screen of an ELAN import has three parts, in the order you work.
 **Files** lists each `.eaf` with the document it becomes and its recording under it.
+Each document takes the name its file gives it, even when two files give the same one.
+When a file names a recording, the recording's file name is kept in a **Media file** metadata field on the document. Clear **Keep each recording's file name in a Media file field** to leave it out.
 **Tiers** is where each tier is given its role: sentences, words, morphemes, time alignment, an orthography, or a field.
 **Preview** draws a sentence of the first document as the interlinear lines the import would write, and redraws it as you change a role, so a gloss tier mapped onto words or a morpheme tier left off shows before anything is written. The arrows step through its sentences.
 Anything that needs a decision appears in an amber box, and the line beside **Import** counts what the run would add.
@@ -897,7 +899,7 @@ The export screen and a README in the `.zip` repeat these steps.
 CLDF aligns morphemes by their position in a tab-separated cell, and has no column for some of what a project holds.
 Whatever the preset is set to, a CLDF export leaves behind the vocabulary links between words and their entries, the provenance marks that tell machine work from a person's, morpheme types other than the clitics the joints still show, and the difference between a word left unanalyzed and a word analyzed as a single morpheme.
 The preset lists these under the columns it is dropping, so the loss is on screen before the export runs.
-* **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one.
+* **ELAN** (`.eaf`): one annotation file per document, bundled into a `.zip` with its recording when it has one. A recording is saved under the name in the document's **Media file** field when it has one, and under the document's name otherwise.
 **Segment words into morphemes** decides whether the tier tree reaches below the word, **Show affix markers on morphemes** writes them as `-ka` rather than `ka`, **One tier set per speaker** gives each speaker their own tiers, and **Include media files** puts the recording in the `.zip`.
 * **Plaid IGT JSON** (`.zip`): a lossless archive you can import again later.
 

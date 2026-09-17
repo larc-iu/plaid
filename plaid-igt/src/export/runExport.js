@@ -14,7 +14,7 @@
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
-import { readVocabFields, readLanguages } from '../domain/igtConfig.js';
+import { MEDIA_FILE_FIELD, readVocabFields, readLanguages } from '../domain/igtConfig.js';
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
@@ -379,7 +379,12 @@ export async function runExport({
     if (includeMedia && igtDoc.raw?.mediaUrl) {
       try {
         const { bytes, ext: mediaExt, mime } = await fetchMedia(client, igtDoc.raw.mediaUrl);
-        let candidate = `${sanitizeFilename(name)}${mediaExt}`;
+        // An .eaf names its recording, and an ELAN import keeps that name in a
+        // Media file field. Written back under it, with the extension of what
+        // is stored, since a recording may have been converted on the way in.
+        const kept = isElan ? String(igtDoc.document?.metadata?.[MEDIA_FILE_FIELD] ?? '') : '';
+        const stem = kept.replace(/\.[^./]*$/, '') || name;
+        let candidate = `${sanitizeFilename(stem)}${mediaExt}`;
         [candidate] = dedupeFilenames([...usedMediaNames, candidate]).slice(-1);
         usedMediaNames.add(candidate);
         mediaFile = `media/${candidate}`;

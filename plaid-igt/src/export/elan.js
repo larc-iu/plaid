@@ -49,6 +49,7 @@
 // Pure functions: no DOM, no client, no Date (timestamps passed in).
 
 import { morphFormOf } from '../domain/igtExport.js';
+import { MEDIA_FILE_FIELD } from '../domain/igtConfig.js';
 import { morphemeJoiner } from '../domain/affixMarkers.js';
 import { xmlEscape, phraseSpeakerFor } from './flextext.js';
 
@@ -208,6 +209,8 @@ const mimeFor = (mediaType, location) => {
 // extension we fall back to the document name, a placeholder to name the media
 // after when placing it beside the .eaf.
 const derivedMediaName = (docData) => {
+  const kept = docData.metadata?.[MEDIA_FILE_FIELD];
+  if (typeof kept === 'string' && kept.trim()) return kept.trim();
   const path = String(docData.mediaUrl).split(/[?#]/)[0];
   const base =
     path
@@ -571,10 +574,12 @@ export function buildEafDocument(igtDoc, options = {}, context = {}) {
     );
   }
   // Document name and configured metadata ride along as HEADER properties,
-  // the only general-purpose key/value slot EAF offers.
+  // the only general-purpose key/value slot EAF offers. The Media file field
+  // is the recording's name, which the MEDIA_DESCRIPTOR above already says.
   header.push(`    <PROPERTY NAME="documentName">${xmlEscape(docData.name ?? '')}</PROPERTY>`);
   for (const [key, value] of Object.entries(docData.metadata || {})) {
     if (value === null || value === undefined || value === '') continue;
+    if (key === MEDIA_FILE_FIELD && docData.mediaUrl) continue;
     header.push(`    <PROPERTY NAME="${xmlEscape(key)}">${xmlEscape(value)}</PROPERTY>`);
   }
   header.push('  </HEADER>');

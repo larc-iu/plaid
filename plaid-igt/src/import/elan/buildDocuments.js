@@ -32,6 +32,7 @@ import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
 import { ROLES, nodeLabel } from './schema.js';
 import { parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
+import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 
 /** EAF milliseconds → Plaid seconds. */
 const toSeconds = (ms) => Math.round(ms) / 1000;
@@ -182,12 +183,17 @@ const tiersOfNodes = (eaf, nodeList) => {
  * @param files  parsed .eaf objects (readEaf output)
  * @param nodes  the agreed schema (schema.js tierSchema, one shared shape)
  * @param roles  {nodeKey: ROLES.*}
- * @param options {fieldNames: {nodeKey: string}}
+ * @param options {fieldNames: {nodeKey: string}, mediaByFile, recordMediaName: boolean}
+ *   recordMediaName (default true) records each recording's file name in a
+ *   Media file metadata field.
  * @returns {{documents, schema, stats, warnings}}
  */
 export function buildElanDocuments(files, nodes, roles, options = {}) {
   const fieldNames = options.fieldNames || {};
   const mediaByFile = options.mediaByFile || null;
+  // The recording's original file name goes in a Media file metadata field
+  // unless the person turns that off.
+  const recordMediaName = options.recordMediaName !== false;
   const nameOf = (node) => (fieldNames[node.key] || defaultFieldName(node)).trim();
   const { byRole } = resolveMapping(nodes, roles);
   const warnings = [];
@@ -528,9 +534,9 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       if (key === 'documentName' || INTERNAL_PROPERTIES.has(key) || !value) continue;
       metadata[key] = value;
     }
-    if (eaf.media.length) {
+    if (recordMediaName && eaf.media.length) {
       const name = eaf.media[0].relativeUrl || eaf.media[0].url;
-      if (name) metadata['Media file'] = String(name).split('/').pop();
+      if (name) metadata[MEDIA_FILE_FIELD] = String(name).split('/').pop();
     }
 
     documents.push({
@@ -551,17 +557,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     });
   }
 
-  // Names collide when several files carry the same documentName; number them
-  // so the project does not end up with five texts called "Untitled".
-  const counts = new Map();
-  for (const d of documents) counts.set(d.name, (counts.get(d.name) ?? 0) + 1);
-  const seen = new Map();
-  for (const d of documents) {
-    if (counts.get(d.name) === 1) continue;
-    const n = (seen.get(d.name) ?? 0) + 1;
-    seen.set(d.name, n);
-    d.name = `${d.name} (${n})`;
-  }
+  // Two files naming the same document both keep that name, as Plaid allows.
 
   // ANNOTATOR is per-tier in EAF and Plaid has nowhere per-tier to put it, so it
   // is not imported. Saying so beats dropping a curation record in silence.
