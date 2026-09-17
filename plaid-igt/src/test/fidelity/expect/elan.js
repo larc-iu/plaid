@@ -27,7 +27,9 @@ import {
   newKey,
   removeSpans,
   removeTokens,
+  renameSpanLayer,
   spanLayers,
+  wordsWithMorphemes,
   surface,
   tokensIn,
 } from './snap.js';
@@ -109,6 +111,31 @@ function firstAnnotationPerToken(s) {
 }
 
 const strips = {
+  // A morpheme with no form has no annotation written for it, so its word comes
+  // back with one morpheme fewer. A word whose morphemes are ALL empty is a
+  // word with nothing written at all, which token.unanalyzedWord settles, so
+  // only a morpheme with a filled sibling goes here.
+  'token.morphemeFormEmpty': (s) => {
+    for (const d of docs(s)) {
+      const gone = new Set();
+      for (const { morphemes } of wordsWithMorphemes(d)) {
+        if (!morphemes.some((m) => trimmed(m.metadata.form) !== '')) continue;
+        for (const m of morphemes) if (trimmed(m.metadata.form) === '') gone.add(m);
+      }
+      removeTokens(s, d, (t) => gone.has(t));
+      // The word comes back with the morphemes it still has, numbered from the
+      // start: the import knows nothing of the one that was not written.
+      for (const { morphemes } of wordsWithMorphemes(d)) {
+        morphemes.forEach((m, i) => {
+          m.precedence = i + 1;
+        });
+      }
+    }
+  },
+  'span.offTagset': coveredBy(
+    'layers.fieldTagset',
+    'a value is only off-tagset while a tagset governs its field',
+  ),
   // The orphan morpheme goes, but an annotation reaching it from a real morpheme
   // stays on that morpheme (span.reachesOrphanToken), so the orphan is taken off
   // such an annotation first and span.multiToken decides what is written of the
@@ -176,52 +203,9 @@ const strips = {
 /** A value trimmed as the import trims it. Each caller drops one that is left empty. */
 const trimmed = (v) => (typeof v === 'string' ? v.trim() : v);
 
-// Only a closed tagset with no delimiters becomes a controlled vocabulary.
-const isWritten = (t) => t?.mode === 'closed' && !t.delimiters;
-
 const RESERVED_PROPERTIES = new Set(['documentName', 'lastUsedAnnotationId', 'URN']);
 
-const tagsetSteps = [
-  {
-    keys: ['project.tagset'],
-    // Every tagset left is closed with no delimiters (the mode and delimiter
-    // strips took the others), and any other one is not written either. What
-    // comes back is the name, closed mode, and each value as {value} or {value,
-    // description}. "No delimiters" is read as `delimiters: ''`, the shape
-    // src/domain/tagsets.js documents for a whole-cell tagset and the settings
-    // screen stores. "No ordered flag" is read as the key being absent.
-    apply(expected) {
-      const tagsets = expected.config?.igt?.tagsets;
-      if (!tagsets) return;
-      for (const [name, t] of Object.entries(tagsets)) {
-        if (!isWritten(t)) {
-          delete tagsets[name];
-          continue;
-        }
-        tagsets[name] = {
-          delimiters: '',
-          mode: 'closed',
-          values: (t.values || []).map((v) =>
-            v.description ? { value: v.value, description: v.description } : { value: v.value },
-          ),
-        };
-      }
-      if (!Object.keys(tagsets).length) delete expected.config.igt.tagsets;
-    },
-  },
-  {
-    keys: ['layers.fieldTagset', 'span.offTagset'],
-    // A field keeps its tagset when the tagset is written, and loses it
-    // otherwise. An off-tagset value comes back as it was in either case, so
-    // span.offTagset changes no value here.
-    apply(expected) {
-      const tagsets = expected.config?.igt?.tagsets || {};
-      for (const l of spanLayers(expected)) {
-        const name = l.config?.igt?.tagset;
-        if (name != null && !tagsets[name]) delete l.config.igt.tagset;
-      }
-    },
-  },
+const schemaSteps = [
   {
     keys: ['layers.ignoredTokensPunctuation'],
     // The setup wizard's default rule, whatever the project had. The letter-like
@@ -234,9 +218,98 @@ const tagsetSteps = [
       wl.config.igt.ignoredTokens = { type: 'unicodePunctuation', whitelist: [] };
     },
   },
+  {
+    keys: ['layers.orthography', 'token.orthographyValue'],
+    // An orthography goes out as a tier over the words and comes back as a
+    // word field: nothing in an .eaf says a tier is another spelling rather
+    // than an annotation. The expected side is moved to that shape, so the
+    // values themselves are still compared.
+    apply(expected) {
+      const wl = layer(expected, 'token:word');
+      if (!wl) return;
+      const names = (igt(wl).orthographies || []).map((o) => o.name);
+      igt(wl).orthographies = [];
+      for (const d of docs(expected)) {
+        for (const w of tokensIn(d, 'word')) {
+          for (const name of names) {
+            const key = `orthog:${name}`;
+            const value = trimmed(w.metadata[key]);
+            delete w.metadata[key];
+            if (value == null || value === '') continue;
+            d.spans.push({
+              key: newKey('span'),
+              order: Infinity,
+              layer: `span:word/${name}`,
+              tokens: [w.key],
+              value,
+              metadata: {},
+            });
+          }
+        }
+      }
+      for (const name of names) {
+        if (layer(expected, `span:word/${name}`)) continue;
+        expected.layers.push({
+          key: `span:word/${name}`,
+          name,
+          position: 0,
+          config: { igt: { scope: 'Word' } },
+        });
+      }
+    },
+  },
+  {
+    keys: ['layers.fieldSameNameTwoScopes'],
+    // Tier ids are unique within a file, so the second field of a shared name
+    // is written "<name>-2". The tiers go out word fields before morpheme
+    // fields, so the morpheme one is the one renamed.
+    apply(expected) {
+      const wordNames = new Set(
+        spanLayers(expected)
+          .filter((l) => l.key.startsWith('span:word/'))
+          .map((l) => l.name),
+      );
+      for (const l of spanLayers(expected)) {
+        if (!l.key.startsWith('span:morpheme/') || !wordNames.has(l.name)) continue;
+        renameSpanLayer(expected, l.key, `${l.name}-2`);
+      }
+    },
+  },
+  {
+    keys: ['layers.fieldOrder'],
+    // The fields come back in the order the import meets their tiers, which is
+    // not the order they sat in. Ruled a tolerated wart (user, 2026-09-17: ELAN
+    // round-trip nits do not matter), so rather than model that order the
+    // comparison stops looking at field order, on both sides.
+    apply(expected, actual) {
+      for (const side of [expected, actual]) {
+        for (const l of spanLayers(side)) l.position = 0;
+      }
+    },
+  },
 ];
 
 const documentSteps = [
+  {
+    keys: ['document.duplicateName'],
+    // A batch is imported in the order the files are listed in, and two
+    // documents of one name go out as "<name>.eaf" and "<name> (2).eaf", which
+    // sort the other way round: the documents come back in that order, so which
+    // of the two holds what can swap.
+    apply(expected) {
+      const list = docs(expected);
+      const used = new Set();
+      const fileOf = new Map();
+      for (const d of list) {
+        let candidate = `${d.name}.eaf`;
+        for (let n = 2; used.has(candidate); n++) candidate = `${d.name} (${n}).eaf`;
+        used.add(candidate);
+        fileOf.set(d, candidate);
+      }
+      list.sort((a, b) => (fileOf.get(a) < fileOf.get(b) ? -1 : 1));
+      expected.documents = list;
+    },
+  },
   {
     keys: ['document.metadataConfigured', 'document.metadataLang'],
     // A switched-on value, a writing-system-tagged name among them, comes back
@@ -298,6 +371,18 @@ const tokenSteps = [
     apply(expected, actual, ctx) {
       const firstMarker = /^[-=]/;
       for (const d of docs(expected)) {
+        // Which morpheme is the word's first is read off the SOURCE, since a
+        // morpheme with no form (token.morphemeFormEmpty) is written as an
+        // empty annotation and is first there even though it does not come
+        // back. A morpheme the step adds below is in no source word, and is
+        // the only morpheme of its own.
+        const firstInSource = new Map();
+        for (const m of tokensIn(sourceDoc(ctx, d) ?? { tokens: [] }, 'morpheme')) {
+          const k = `${m.begin}-${m.end}`;
+          const held = firstInSource.get(k);
+          if (!held || (m.precedence ?? 0) < (held.precedence ?? 0)) firstInSource.set(k, m);
+        }
+        const firstKeys = new Set([...firstInSource.values()].map((m) => m.key));
         const stored = new Map();
         for (const m of tokensIn(d, 'morpheme')) {
           const k = `${m.begin}-${m.end}`;
@@ -320,29 +405,14 @@ const tokenSteps = [
             continue;
           }
           morphemes.sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
-          morphemes.forEach((m, i) => {
+          morphemes.forEach((m) => {
             if (!('form' in m.metadata)) m.metadata.form = text;
             if (typeof m.metadata.form !== 'string') return;
             m.metadata.form = m.metadata.form.trim();
-            if (i === 0) m.metadata.form = m.metadata.form.replace(firstMarker, '');
+            if (!firstKeys.size || firstKeys.has(m.key)) {
+              m.metadata.form = m.metadata.form.replace(firstMarker, '');
+            }
           });
-        }
-      }
-    },
-  },
-  {
-    keys: ['token.orthographyValue'],
-    // Trimmed, and gone when nothing is left: the list's header note says an
-    // orthography value goes through the same normalization as an annotation.
-    apply(expected) {
-      for (const d of docs(expected)) {
-        for (const w of tokensIn(d, 'word')) {
-          for (const k of Object.keys(w.metadata)) {
-            if (!k.startsWith('orthog:')) continue;
-            const v = trimmed(w.metadata[k]);
-            if (v === '') delete w.metadata[k];
-            else w.metadata[k] = v;
-          }
         }
       }
     },
@@ -520,7 +590,7 @@ export default {
   id: 'elan',
   strips,
   steps: [
-    ...tagsetSteps,
+    ...schemaSteps,
     ...documentSteps,
     ...tokenSteps,
     ...spanSteps,

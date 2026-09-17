@@ -13,6 +13,11 @@
 // features whose counts moved. Any difference fails the run: either the format
 // does not do what its list says, or the list says it wrong.
 //
+// The export is then imported again and exported a third time: a project that
+// has been through the round trip should stop changing. A format whose list
+// says it does not settle (`settles: false`) has what changed printed without
+// failing the run.
+//
 // When an ELAN import refuses the project's own export (the files differ in
 // tier structure), that refusal is reported as a failure and each document is
 // then round-tripped on its own, so the rest of what ELAN carries is still
@@ -121,8 +126,13 @@ async function refusal(client, p, format, expected) {
   return 1;
 }
 
-/** Compare a third export with the second. Returns the failure count. */
-function fixedPoint(label, second, third) {
+/**
+ * Compare a third export with the second. Returns the failure count, which is
+ * zero for a format whose list says it does not settle (`settles: false`): the
+ * run still prints what changed, so a new difference is visible, but the list
+ * has already said this one does not come out even.
+ */
+function fixedPoint(label, list, second, third) {
   const diffs = diffExports(
     canonicalExport(second.bytes, second.filename),
     canonicalExport(third.bytes, second.filename),
@@ -131,9 +141,14 @@ function fixedPoint(label, second, third) {
     console.log(`  ok   ${label}, round-tripped twice`);
     return 0;
   }
-  console.log(`  FAIL ${label}, round-tripped twice: the second pass changed it again`);
+  const known = list.settles === false;
+  console.log(
+    known
+      ? `  known ${label}, round-tripped twice: the second pass changes it again, as ${list.name}'s list says`
+      : `  FAIL ${label}, round-tripped twice: the second pass changed it again`,
+  );
   for (const line of diffs) console.log(`       ${line}`);
-  return 1;
+  return known ? 0 : 1;
 }
 
 const core = await coreForRun({ keep });
@@ -186,7 +201,7 @@ try {
       const twice = await importProject(client, format, again.bytes, p.name);
       const third = await exportProject(client, twice.projectId, format);
       await save(`${format}.${p.role}.export3`, third.bytes);
-      failures += fixedPoint(label, again, third);
+      failures += fixedPoint(label, list, again, third);
     }
     console.log(`(${secs()})`);
   }
@@ -239,7 +254,7 @@ async function perDocument(client, list, p, source, bare) {
       );
     const again = await onlyDocument(imported.projectId);
     const twice = await importProject(client, list.id, again.bytes, p.name);
-    failed += fixedPoint(label, again, await onlyDocument(twice.projectId));
+    failed += fixedPoint(label, list, again, await onlyDocument(twice.projectId));
   }
   return failed;
 }

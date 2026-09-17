@@ -81,6 +81,18 @@ export default {
   id: 'elan',
   name: 'ELAN',
   check: 'roundTrip',
+  // A round trip's other question: does a project that has been through one
+  // stop changing? ELAN's does not, for two reasons, both known and tolerated
+  // (user, 2026-09-17: ELAN round-trip nits do not matter):
+  //
+  //   Two documents of one name trade places every pass, as
+  //   document.duplicateName describes.
+  //
+  //   A morpheme form spelling a joint ("-en") survives the first pass, since
+  //   the marker the export adds beside it is the one the import takes off,
+  //   and loses it on the second, where the export adds none (there is no
+  //   morph type left to add one for).
+  settles: false,
   stamps: {
     // Project setup marks the project initialized, and the import record under `import` stays
     // until the run reports finishing.
@@ -107,8 +119,10 @@ export default {
       why: 'A HEADER PROPERTY is a bare name and value with no vocabulary behind it, and the import writes each field as {name} alone.',
     },
     'project.tagset': {
-      carried: 'changed',
-      how: 'Every tagset in closed mode with no delimiters is written as a CONTROLLED_VOCABULARY whose CV_ID is the tagset’s name, with one CV_ENTRY_ML per value in stored order and the value’s description as that entry’s DESCRIPTION, whether a field, only document metadata, or nothing uses it. It comes back as a tagset of the same name in closed mode, with its values in the same order as {value} or {value, description}, no delimiters and no ordered flag. A value’s color and any other key it carries are not written. A tagset in suggest or mixed mode, or with delimiters, is not written, as those keys say.',
+      carried: false,
+      kind: 'ruled',
+      why: 'Nothing writes one. EAF has controlled vocabularies and the ruling below says which tagsets could reasonably go out as one — closed mode with no delimiters, as a CONTROLLED_VOCABULARY whose CV_ID is the tagset’s name and one CV_ENTRY_ML per value — but neither the export nor the import handles a CONTROLLED_VOCABULARY, so a project imported from .eaf has no tagsets at all. The three keys below say why the other modes would not be written even then.',
+      ruling: TAGSET_RULING,
     },
     'project.tagsetModeSuggest': {
       carried: false,
@@ -116,7 +130,12 @@ export default {
       why: 'EAF has no mode, and ELAN treats a CV as the list an annotation is chosen from (manual 6.3, 2.6.1 and 2.9.3), bypassed only by Shift and double click (2.6.8). A suggest tagset written as a CV would come back closed and start refusing values the project accepts, so it is not written.',
       ruling: TAGSET_RULING,
     },
-    'project.tagsetModeClosed': carried,
+    'project.tagsetModeClosed': {
+      carried: false,
+      kind: 'ruled',
+      why: 'The one mode a CV could carry, and nothing writes one (project.tagset).',
+      ruling: TAGSET_RULING,
+    },
     'project.tagsetModeMixed': {
       carried: false,
       kind: 'ruled',
@@ -129,11 +148,16 @@ export default {
       why: 'An ELAN CV entry is committed as the whole annotation value (manual 6.3, 2.9.3). A tagset with delimiters lists parts, so a value like 3-PL.PRS is several entries at once, which ELAN can neither offer nor check. A tagset with delimiters is not written.',
       ruling: TAGSET_RULING,
     },
-    'project.tagsetValueDescription': carried,
+    'project.tagsetValueDescription': {
+      carried: false,
+      kind: 'ruled',
+      why: 'A CV_ENTRY_ML has a DESCRIPTION to hold it, and nothing writes one (project.tagset).',
+      ruling: TAGSET_RULING,
+    },
     'project.tagsetOrdered': {
       carried: false,
       kind: 'inherent',
-      why: 'CV entries keep their written order (CV_ENTRY_ML is a sequence, and ELAN lets a user move entries, manual 6.3, 2.6.1), so the values come back in order, as project.tagset says. EAF has no flag saying whether that order is meant to be shown as it stands.',
+      why: 'No tagset comes back at all (project.tagset), and EAF has no flag saying whether an order is meant to be shown as it stands: CV entries simply keep the order they are written in (CV_ENTRY_ML is a sequence, and ELAN lets a user move entries, manual 6.3, 2.6.1).',
     },
     'project.languageObject': {
       carried: false,
@@ -171,7 +195,10 @@ export default {
     },
 
     // Layers
-    'layers.orthography': carried,
+    'layers.orthography': {
+      carried: 'changed',
+      how: 'An orthography goes out as its own tier over the words, and comes back as a word-scope FIELD of the same name holding the same values: an .eaf says nothing about a tier being another spelling of the words, so the import cannot tell one from a field.',
+    },
     'layers.ignoredTokensPunctuation': {
       carried: 'changed',
       how: "The import writes the default rule the setup wizard and the FLEx import write, {type: 'unicodePunctuation', whitelist: []}, whatever rule the exported project had. Letter-like characters and a blacklist are lost (see the next two keys).",
@@ -191,12 +218,24 @@ export default {
     'layers.fieldSentence': carried,
     'layers.fieldWord': carried,
     'layers.fieldMorpheme': carried,
-    'layers.fieldSameNameTwoScopes': carried,
-    'layers.fieldOrder': carried,
-    'layers.fieldLang': carried,
-    'layers.fieldTagset': {
+    'layers.fieldSameNameTwoScopes': {
       carried: 'changed',
-      how: 'A field governed by a tagset that is written (closed, no delimiters, see project.tagset) is written with a LINGUISTIC_TYPE whose CONTROLLED_VOCABULARY_REF names that tagset, and comes back governed by it. A field governed by any other tagset comes back with no tagset.',
+      how: 'Tier ids are unique within a file, so the second of two fields sharing a name is written as "<name>-2" and comes back under that name. The tiers go out sentence, segment, word, orthographies, word fields, morphemes, morpheme fields, sentence fields, so the morpheme field is the one renamed when a word field shares its name.',
+    },
+    'layers.fieldOrder': {
+      carried: 'changed',
+      how: 'The fields come back in the order the import meets their tiers across the files of the batch, which is not the order they sat in.',
+    },
+    'layers.fieldLang': {
+      carried: false,
+      kind: 'undecided',
+      why: 'EAF 2.8 could name a tier’s language through LANGUAGE and LANG_REF, as project.languageObject and project.languageMeta say. The export declares none, so a field comes back with no language.',
+    },
+    'layers.fieldTagset': {
+      carried: false,
+      kind: 'ruled',
+      why: 'A LINGUISTIC_TYPE could name a tagset through CONTROLLED_VOCABULARY_REF, and no tagset is written for it to name (project.tagset), so a field comes back governed by none.',
+      ruling: TAGSET_RULING,
     },
     'layers.foreignTokenLayer': {
       carried: false,
@@ -295,7 +334,10 @@ export default {
     'document.untokenized': carried,
     // Each document keeps the documentName its .eaf gives it, shared or not (user, 2026-09-17:
     // "whatever's reasonable", after the import renamed them "<name> (n)" in file-read order).
-    'document.duplicateName': carried,
+    'document.duplicateName': {
+      carried: 'changed',
+      how: 'Both documents come back under the one name, but which of them holds what can swap: the export writes the second as "<name> (2).eaf", and a batch is imported in the order the files are listed in, where "<name> (2).eaf" sorts before "<name>.eaf".',
+    },
     'document.nameSpecialChars': carried,
     'document.metadataLang': {
       carried: 'changed',
@@ -359,7 +401,11 @@ export default {
       carried: 'changed',
       how: 'The form comes back trimmed of leading and trailing whitespace. The first morpheme of a word loses a leading - or =, which the import reads as an affix marker.',
     },
-    'token.morphemeFormEmpty': carried,
+    'token.morphemeFormEmpty': {
+      carried: false,
+      kind: 'inherent',
+      why: 'An annotation is written only for a morpheme with a form, so a morpheme whose form was set empty has no annotation to come back from and its word comes back with one morpheme fewer.',
+    },
     'token.morphemeFormAbsent': {
       carried: 'changed',
       how: 'The morpheme comes back with metadata.form set to its word’s text, which is what it showed.',
@@ -451,8 +497,10 @@ export default {
     'span.provDetail': NO_ANNOTATION_METADATA,
     'span.extraMetadata': NO_ANNOTATION_METADATA,
     'span.offTagset': {
-      carried: 'changed',
-      how: 'In a field governed by a tagset that is written (see project.tagset), the value comes back unchanged and still outside the list: ANNOTATION_VALUE is a free string whose CVE_REF is optional, and ELAN keeps such a value (manual 6.3, 1.9.2.11 and 2.6.8). Under a tagset that is not written, the value comes back and the tagset does not, as project.tagsetModeSuggest and project.tagsetModeMixed say.',
+      carried: false,
+      kind: 'ruled',
+      why: 'The value itself comes back as it was — ANNOTATION_VALUE is a free string whose CVE_REF is optional, and ELAN keeps a value its CV no longer lists (manual 6.3, 1.9.2.11 and 2.6.8) — but with no tagset on the field (layers.fieldTagset) nothing makes it off-tagset.',
+      ruling: TAGSET_RULING,
     },
     'span.delimitedValue': {
       carried: false,
