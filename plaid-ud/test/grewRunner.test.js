@@ -277,3 +277,27 @@ test('plan: an off-list value the rule DOES write still refuses the row', async 
   const [row] = plan.rows;
   assert.match(row.error, /GADGET/);
 });
+
+test('plan: a rule that applies and leaves nothing to write yields no row', async () => {
+  const raw = rawDocFromConllu(CONLLU, 'doc1', { enhanced: true });
+  const client = stubClient(raw);
+  const project = {
+    id: 'p1',
+    name: 'P',
+    maintainers: [],
+    writers: [],
+    readers: [],
+    textLayers: raw.textLayers,
+  };
+  // The tree gives the enhanced graph this edge already.
+  const grs = parseGrs(
+    'pattern { N -[det]-> D } without { N -[E:det]-> D } commands { add_edge N -[E:det]-> D }',
+  );
+  const plan = await planRewrite(client, {
+    project,
+    user: null,
+    layerInfo: getUdLayerInfo(raw),
+    grs,
+  });
+  assert.deepEqual(plan.rows, []);
+});

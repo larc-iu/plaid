@@ -209,6 +209,9 @@ test('a project with no enhanced layer: both means the tree, E: is refused', () 
 test('a root relation from a named head is refused with the spelling that works', () => {
   assert.throws(() => compile('pattern { X -[root]-> Y }'), /Write \* -\[root\]-> Y/);
   assert.throws(() => compile('pattern { X -[E:root]-> Y }'), GrewUnsupportedError);
+  // One root atom among others is enough: the list would find the others and
+  // never the root, while the local matcher finds both.
+  assert.throws(() => compile('pattern { X -[root|cc]-> Y }'), /Write \* -\[root\]-> Y/);
   const [rel] = relations(compile('pattern { * -[E:root]-> Y }').query.where);
   assert.deepEqual(rel[2], { layer: 'EREL', value: 'root', target: '?lem_Y' });
 });
@@ -363,8 +366,8 @@ test('an extra edge over a pair the tree joins is a relabel, as in the editor', 
   assert.deepEqual(
     r.writes.main.map((w) => [w.op, w.layer, w.value, w.metadata]),
     [
-      ['createRelation', eid, null, { suppress: true }],
       ['createRelation', eid, 'cc:and', undefined],
+      ['createRelation', eid, null, { suppress: true }],
     ],
   );
 
@@ -380,15 +383,70 @@ test('an extra edge over a pair the tree joins is a relabel, as in the editor', 
   );
 });
 
-test('an E: edge the tree already gives the enhanced graph is ineffective', () => {
-  const { before } = setup(CONLLU);
-  assert.throws(
-    () =>
-      rewriteSentence(
-        parseGrs('pattern { X -[cc]-> Y } commands { add_edge X -[E:cc]-> Y }'),
-        before,
-      ),
-    GrewRuntimeError,
+// What an extra edge means is settled against the tree as the rule LEFT it,
+// not as each command found it (both cases from the second review).
+test('an E: edge the tree already gives the enhanced graph writes nothing', () => {
+  const r = run(
+    CONLLU,
+    'pattern { V -[cc]-> C } without { V -[E:cc]-> C } commands { add_edge V -[E:cc]-> C }',
+  );
+  // The rule applies and stops, as its `without` says. It is not an error.
+  assert.equal(r.applications.length, 1);
+  assert.deepEqual(r.changes, []);
+  assert.deepEqual(r.writes.main, []);
+});
+
+test('an E: edge survives the same rule deleting the tree edge under it', () => {
+  for (const commands of [
+    'add_edge V -[E:cc]-> C; del_edge e',
+    'del_edge e; add_edge V -[E:cc]-> C',
+  ]) {
+    const r = run(CONLLU, `pattern { e: V -[cc]-> C } commands { ${commands} }`);
+    assert.deepEqual(
+      r.writes.main.map((w) => [w.op, w.value]).sort(),
+      [
+        ['createRelation', 'cc'],
+        ['deleteRelation', undefined],
+      ],
+      commands,
+    );
+    assert.equal(
+      r.writes.main.find((w) => w.op === 'createRelation').layer,
+      r.li.enhancedRelationLayer.id,
+    );
+  }
+});
+
+test('a rule that creates the tree edge and the same extra writes the tree edge alone', () => {
+  for (const commands of [
+    'add_edge V -[E:dep]-> S; add_edge V -[dep]-> S',
+    'add_edge V -[dep]-> S; add_edge V -[E:dep]-> S',
+  ]) {
+    const r = run(
+      CONLLU,
+      `pattern { V [lemma="dance"]; S [lemma="she"] } without { V -[dep]-> S } commands { ${commands} }`,
+    );
+    assert.deepEqual(
+      r.writes.main.map((w) => [w.layer, w.value]),
+      [[r.li.relationLayer.id, 'dep']],
+      commands,
+    );
+    assert.deepEqual(
+      r.changes.map((c) => c.text),
+      ['danced → she: dep added'],
+    );
+  }
+});
+
+test('the same label beside a relabel is written, since the tree edge is then left out', () => {
+  const r = run(
+    CONLLU,
+    `pattern { V -[cc]-> C } without { V -[E:cc]-> C }
+     commands { add_edge V -[E:cc]-> C; add_edge V -[E:cc:and]-> C }`,
+  );
+  assert.deepEqual(
+    r.writes.main.map((w) => w.value),
+    ['cc', 'cc:and', null],
   );
 });
 

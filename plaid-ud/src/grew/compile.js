@@ -582,11 +582,11 @@ class Compiler {
       !item.src.wild &&
       l?.type === 'list' &&
       !l.negated &&
-      l.labels.every((x) => bareLabel(x) === 'root')
+      l.labels.some((x) => bareLabel(x) === 'root')
     ) {
       throw new GrewUnsupportedError(
         'root-source',
-        `The head of a root relation is not a word. Write * -[${l.labels.join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id}.`,
+        `The head of a root relation is not a word. Write * -[${l.labels.filter((x) => bareLabel(x) === 'root').join('|')}]-> ${item.tgt.wild ? '*' : item.tgt.id} for it.`,
       );
     }
     const rv = item.id ? `?e_${item.id}` : this.fresh('r');

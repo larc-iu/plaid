@@ -111,15 +111,6 @@ function applyCommand(ctx, cmd) {
         label = e.label;
       }
       if (sameEdge(g, src.id, tgt.id, label)) return; // ineffective
-      // So is an `E:` edge the tree already gives the enhanced graph: the
-      // same label over the same pair, not suppressed.
-      if (
-        isEnhancedLabel(label) &&
-        sameEdge(g, src.id, tgt.id, bareLabel(label)) &&
-        !(g.suppressors || []).some((s) => s.src === src.id && s.tgt === tgt.id)
-      ) {
-        return;
-      }
       const id = freshEdgeId(g);
       g.edges.set(id, { id, src: src.id, tgt: tgt.id, label, metadata: null });
       if (cmd.id && cmd.label) ctx.edges.set(cmd.id, id);

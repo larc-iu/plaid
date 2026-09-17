@@ -100,7 +100,10 @@ export function diffGraphs(before, after, layerInfo) {
   // tree's, under the bare deprel either way (edgeLabel.js).
   const touchesDeleted = (e) => deleted.has(e.src) || deleted.has(e.tgt);
   const needsLemma = new Set();
-  const create = (a) => {
+  // `line` is the change line to show if the edge is written (null when the
+  // caller has already said what happened to it).
+  const pendingExtras = [];
+  const create = (a, line = null) => {
     const enhanced = isEnhancedLabel(a.label);
     const layerId = layer(enhanced ? 'enhancedRelationLayer' : 'relationLayer');
     if (!layerId) {
@@ -108,50 +111,28 @@ export function diffGraphs(before, after, layerInfo) {
         'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
       );
     }
-    if (enhanced) suppressUnder(a, layerId);
+    // What an extra edge means depends on the tree under it as the rule LEFT
+    // it, so extras are settled once every edge has been read (below).
+    if (enhanced) {
+      pendingExtras.push({ a, line, layerId });
+      return;
+    }
+    if (line) changes.push({ kind: 'edge', text: line });
+    writeCreate(a, layerId);
+  };
+  const writeCreate = (a, layerId, extra = {}) => {
     writes.main.push({
       op: 'createRelation',
       layer: layerId,
       src: serverSrc(a),
       tgt: a.tgt,
       value: bareLabel(a.label),
+      ...extra,
     });
     needsLemma.add(serverSrc(a));
     needsLemma.add(a.tgt);
   };
-
-  // An extra edge over a pair the tree already joins is a RELABEL, as it is
-  // when drawn in the editor (ConlluDocument.createEnhancedRelation): the
-  // enhanced graph gets the new edge in place of the tree's, so a suppressor
-  // goes in with it. Only where the enhanced layer had nothing over the pair,
-  // which is the editor's condition too. Grew would keep both edges, and an
-  // annotator who wants both can put the tree's back with Ctrl/Cmd+click.
   const pairOf = (e) => `${e.src}>${e.tgt}`;
-  const enhancedPairsBefore = new Set((before.suppressors || []).map(pairOf));
-  for (const e of before.edges.values())
-    if (isEnhancedLabel(e.label)) enhancedPairsBefore.add(pairOf(e));
-  const suppressed = new Set();
-  const suppressUnder = (a, layerId) => {
-    const pair = pairOf(a);
-    if (enhancedPairsBefore.has(pair) || suppressed.has(pair)) return;
-    const basic = [...after.edges.values()].find(
-      (e) => !isEnhancedLabel(e.label) && pairOf(e) === pair,
-    );
-    if (!basic) return;
-    suppressed.add(pair);
-    changes.push({
-      kind: 'edge',
-      text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${basic.label} left out of the enhanced graph`,
-    });
-    writes.main.push({
-      op: 'createRelation',
-      layer: layerId,
-      src: serverSrc(a),
-      tgt: a.tgt,
-      value: null,
-      metadata: { [SUPPRESS_KEY]: true },
-    });
-  };
   for (const [id, b] of before.edges) {
     const a = after.edges.get(id);
     if (!a) {
@@ -207,11 +188,56 @@ export function diffGraphs(before, after, layerInfo) {
   }
   for (const [id, a] of after.edges) {
     if (before.edges.has(id)) continue;
-    changes.push({
-      kind: 'edge',
-      text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`,
-    });
-    create(a);
+    create(a, `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`);
+  }
+
+  // --- the extra edges a rule created, pair by pair ---
+  // Over a pair the tree joins (as the rule left it), an extra edge is what
+  // it is when drawn in the editor (ConlluDocument.createEnhancedRelation):
+  //   the tree's own label   nothing to write. The enhanced graph has that
+  //                          edge from the tree, unless the pair is suppressed.
+  //   another label          a RELABEL. The new edge stands in place of the
+  //                          tree's, so a suppressor goes in with it, but only
+  //                          where the enhanced layer had nothing over the
+  //                          pair, which is the editor's condition too.
+  // Grew would keep both edges, and an annotator who wants both can put the
+  // tree's back with Ctrl/Cmd+click. Settled here and not as each command
+  // runs, because a later command may delete or move the tree edge: a rule
+  // that adds `E:cc` and then deletes `cc` must keep its `E:cc`.
+  const basicLabels = new Map();
+  for (const e of after.edges.values()) {
+    if (isEnhancedLabel(e.label)) continue;
+    if (!basicLabels.has(pairOf(e))) basicLabels.set(pairOf(e), new Set());
+    basicLabels.get(pairOf(e)).add(e.label);
+  }
+  const suppressedBefore = new Set((before.suppressors || []).map(pairOf));
+  const enhancedPairsBefore = new Set(suppressedBefore);
+  for (const e of before.edges.values())
+    if (isEnhancedLabel(e.label)) enhancedPairsBefore.add(pairOf(e));
+  const byPair = new Map();
+  for (const p of pendingExtras) {
+    if (!byPair.has(pairOf(p.a))) byPair.set(pairOf(p.a), []);
+    byPair.get(pairOf(p.a)).push(p);
+  }
+  for (const [pair, extras] of byPair) {
+    const basics = basicLabels.get(pair);
+    const relabels = extras.some((p) => !basics?.has(bareLabel(p.a.label)));
+    const suppress = Boolean(basics) && relabels && !enhancedPairsBefore.has(pair);
+    const treeGivesIt = (p) =>
+      basics?.has(bareLabel(p.a.label)) && !suppress && !suppressedBefore.has(pair);
+    for (const p of extras) {
+      if (treeGivesIt(p)) continue;
+      if (p.line) changes.push({ kind: 'edge', text: p.line });
+      writeCreate(p.a, p.layerId);
+    }
+    if (suppress) {
+      const { a, layerId } = extras[0];
+      changes.push({
+        kind: 'edge',
+        text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${[...basics].join(', ')} left out of the enhanced graph`,
+      });
+      writeCreate(a, layerId, { value: null, metadata: { [SUPPRESS_KEY]: true } });
+    }
   }
 
   // A suppressor says the enhanced graph leaves out the basic edge it lies
