@@ -218,12 +218,12 @@ test('an import reads DEPS into the enhanced layer', async () => {
 });
 
 // The bin beside an open label deletes the relation, for whoever has not
-// learned Shift+Delete, and its tooltip is where they learn it.
+// learned Shift+Backspace, and its tooltip is where they learn it.
 test('the bin beside an open label deletes the relation', async ({ page }) => {
   await openGrid(page, 6);
   await page.locator('.enhanced-arcs .tree-deprel-text', { hasText: /^nsubj/ }).click();
   const bin = page.locator('.deprel-edit-delete');
-  await expect(bin).toHaveAttribute('title', 'Delete (Shift+Delete)');
+  await expect(bin).toHaveAttribute('title', 'Delete (Shift+Backspace)');
   // To the LEFT of the input, which keeps the label's place over its arc.
   const binBox = await bin.boundingBox();
   const inputBox = await page.locator('foreignObject input').boundingBox();

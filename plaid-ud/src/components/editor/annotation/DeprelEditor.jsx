@@ -24,8 +24,13 @@ import { textIncludes } from '@ui/domain/collation.js';
 // Keyboard contract (preserved from the old contentEditable editor):
 //   Enter / blur     → commit + close (Enter commits the highlighted match)
 //   Escape           → cancel + close
-//   Shift+Delete     → delete the relation (also the bin to the input's left,
-//                      whose tooltip is where the chord is learned)
+//   Shift+Backspace  → delete the relation, while the label is still as it
+//                      opened (also the bin to the input's left, whose tooltip
+//                      is where the chord is learned). A deprel subtype has a
+//                      `:` in it, which is a shifted key, so once anything has
+//                      been typed the chord is an ordinary Backspace again: a
+//                      correction made with Shift still down must not take the
+//                      whole relation with it.
 //   Tab / Shift+Tab  → commit + move to the next/previous relation
 // A `done` ref guards against the blur firing a second commit after an
 // explicit Enter/Tab/Escape/Delete already closed the editor.
@@ -157,7 +162,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
           type="button"
           className="deprel-edit-delete"
           tabIndex={-1}
-          title="Delete (Shift+Delete)"
+          title="Delete (Shift+Backspace)"
           aria-label="Delete relation"
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
@@ -229,7 +234,7 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
             e.preventDefault();
             e.stopPropagation();
             once(onCancel);
-          } else if (e.key === 'Delete' && e.shiftKey) {
+          } else if (e.key === 'Backspace' && e.shiftKey && !typedRef.current) {
             e.preventDefault();
             e.stopPropagation();
             once(onDelete || onCancel);

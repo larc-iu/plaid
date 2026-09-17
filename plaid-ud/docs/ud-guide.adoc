@@ -189,7 +189,7 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Draw an arc**: press and drag from one word to another. The word you start on becomes the **head**, and the word you release on becomes its **dependent**.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
-* **Delete a relation**: click its label, then the bin to the left of the box that opens, or press **Shift+Delete**.
+* **Delete a relation**: click its label, then the bin to the left of the box that opens, or press **Shift+Backspace** before typing anything.
 * **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
 
 == Enhanced Dependencies
@@ -601,7 +601,7 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | **←** / **→**, or **Tab** / **Shift+Tab** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
 | **Tab** / **Shift+Tab** in an open label | Commit it and open the next or previous label.
 | **Esc** | Leave the labels, or cancel an edit.
-| **Shift+Delete** | Delete the relation whose label you are editing.
+| **Shift+Backspace** in a label you have just opened | Delete the relation. Once you have typed, it is an ordinary Backspace.
 |===
 
 == Text Editor

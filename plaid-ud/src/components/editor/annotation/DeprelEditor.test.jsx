@@ -109,4 +109,32 @@ describe('DeprelEditor', () => {
     expect(onCancel).not.toHaveBeenCalled();
     await unmount();
   });
+
+  // A deprel subtype is typed with Shift down for its colon, so the delete
+  // chord is live only until something has been typed.
+  it('deletes on Shift+Backspace while the label is as it opened', async () => {
+    const onDelete = vi.fn();
+    const { container, step, unmount } = await mount({ onDelete });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => press(input, 'Backspace', { shiftKey: true }));
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('reads Shift+Backspace as a Backspace once something has been typed', async () => {
+    const onDelete = vi.fn();
+    const { container, step, unmount } = await mount({ onDelete });
+    const input = all(container, 'input')[0];
+
+    await step(async () => focus(input));
+    await step(async () => type(input, 'nmod:'));
+    await step(async () => press(input, 'Backspace', { shiftKey: true }));
+    await step(async () => press(input, 'Delete', { shiftKey: true }));
+
+    expect(onDelete).not.toHaveBeenCalled();
+    await unmount();
+  });
 });
