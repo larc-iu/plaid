@@ -1,5 +1,6 @@
 import { isProvKey } from '../utils/provenanceUi.js';
 import { missingUdLayerLabels } from '../utils/udLayerUtils.js';
+import { enhancedEdges, serializeDeps } from './enhancedGraph.js';
 
 // CoNLL-U export: the sentence rows and the layer info in, the file out.
 //
@@ -55,6 +56,17 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     });
     const incomingByTarget = new Map();
     (sentence.relations || []).forEach((rel) => incomingByTarget.set(rel.target, rel));
+    // DEPS states the whole enhanced graph: the tree, less what the enhanced
+    // layer suppresses, plus its extra edges. With no enhanced rows that is
+    // the tree again, which is what this column has always said.
+    const enhancedByTarget = new Map();
+    enhancedEdges(sentence.relations, sentence.enhancedRelations).forEach((edge) => {
+      if (!edge.value) return;
+      const head = edge.source === edge.target ? 0 : idByLemmaSpanId.get(edge.source);
+      if (head == null) return;
+      if (!enhancedByTarget.has(edge.target)) enhancedByTarget.set(edge.target, []);
+      enhancedByTarget.get(edge.target).push({ head, deprel: flat(edge.value) });
+    });
 
     // Prefer a `sent_id` carried on the sentence token's metadata (round-
     // tripped from import); otherwise synthesize one from doc name + index.
@@ -145,8 +157,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
             }
           }
         }
-        const deps =
-          head === UNDERSCORE || deprel === UNDERSCORE ? UNDERSCORE : `${head}:${deprel}`;
+        const deps = serializeDeps(m.spanIds?.lemma ? enhancedByTarget.get(m.spanIds.lemma) : null);
         output.push(
           [id, form, lemma, upos, xpos, feats, head, deprel, deps, UNDERSCORE].join('\t'),
         );

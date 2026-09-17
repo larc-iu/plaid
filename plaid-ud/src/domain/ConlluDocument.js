@@ -14,10 +14,17 @@ import {
 // resolves to, and it imports nothing itself, which is what lets node load it.
 import { canManageProject } from '../../../plaid-ui/src/domain/permissions.js';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
-import { getUdLayerInfo, containsToken, readProjectLanguage } from '../utils/udLayerUtils.js';
+import {
+  getUdLayerInfo,
+  containsToken,
+  readProjectLanguage,
+  dependencyRelationLayers,
+} from '../utils/udLayerUtils.js';
+import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
 import {
   interSententialRelationIds,
   relationsCrossing,
+  staleSuppressorIds,
   wordsNeedingSyntacticWord,
   orphanSyntacticWords,
   planSpanDedup,
@@ -392,10 +399,11 @@ export class ConlluDocument extends DocumentModel {
             });
           }
         }
-        if (info.relationLayer?.relations && removedRelIds.size) {
-          info.relationLayer.relations = info.relationLayer.relations.filter(
-            (r) => !removedRelIds.has(r.id),
-          );
+        if (removedRelIds.size) {
+          for (const layer of dependencyRelationLayers(info)) {
+            if (!Array.isArray(layer.relations)) continue;
+            layer.relations = layer.relations.filter((r) => !removedRelIds.has(r.id));
+          }
         }
       });
     });
@@ -415,7 +423,9 @@ export class ConlluDocument extends DocumentModel {
   //   3. Losslessly dedup duplicate single-valued spans (Form/Lemma/UPOS/XPOS)
   //      on a morpheme (only the first is visible in the grid).
   //   4. Delete dependency relations that now cross a sentence boundary (e.g.
-  //      after another app split a sentence).
+  //      after another app split a sentence), in the tree and in the enhanced
+  //      layer alike, and enhanced-layer suppressors whose basic relation has
+  //      gone (see enhancedGraph.js).
   // Then run validateConlluDocument over the reloaded state: residual heal
   // failures and un-healable contracts (e.g. a node with >1 head) come back as
   // `findings` for the caller to log + toast.
@@ -465,7 +475,12 @@ export class ConlluDocument extends DocumentModel {
       // split leaves nothing for a later pass to find, so the declaration has
       // to be in place before the split, not repaired after it.
       await this._backfillPreserveOnSplit(info);
-      const relIds = interSententialRelationIds(info);
+      const crossingIds = interSententialRelationIds(info);
+      // A suppressor can be both stale and crossing, and a second delete of
+      // one id is a 404 that takes the batch with it.
+      const crossingSet = new Set(crossingIds);
+      const staleIds = staleSuppressorIds(info).filter((id) => !crossingSet.has(id));
+      const relIds = [...crossingIds, ...staleIds];
       const { morphemeTokenLayer, textLayer } = info;
       const textId = textLayer?.text?.id;
       const canHeal = Boolean(morphemeTokenLayer?.id && textId);
@@ -518,7 +533,9 @@ export class ConlluDocument extends DocumentModel {
         } catch (err) {
           if (err?.status !== 404) throw err;
         }
-        deletedRelations = relIds.length;
+        // Reported as what the annotator lost. A stale suppressor was saying
+        // nothing, so clearing one is housekeeping and is not counted.
+        deletedRelations = crossingIds.length;
       }
 
       // Re-read only when a heal actually wrote. The batches above land
@@ -527,7 +544,7 @@ export class ConlluDocument extends DocumentModel {
       // state IS the server state. This runs behind a blocking spinner on every
       // Annotate open now, so an unconditional reload would make the ordinary
       // case (nothing to repair) pay a full document fetch for the rare one.
-      const healed = createdSyntacticWords + deletedOrphans + dedupedSpans + deletedRelations > 0;
+      const healed = createdSyntacticWords + deletedOrphans + dedupedSpans + relIds.length > 0;
       if (healed) await this._reload();
       // Validate the true server state — even when nothing healed.
       const findings = validateConlluDocument(this.layerInfo);
@@ -668,8 +685,9 @@ export class ConlluDocument extends DocumentModel {
             );
           }
         });
-        if (info.relationLayer?.relations) {
-          info.relationLayer.relations = info.relationLayer.relations.filter(
+        for (const layer of dependencyRelationLayers(info)) {
+          if (!Array.isArray(layer.relations)) continue;
+          layer.relations = layer.relations.filter(
             (r) => !removedLemmaSpanIds.has(r.source) && !removedLemmaSpanIds.has(r.target),
           );
         }
@@ -978,6 +996,68 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
+  // The lemma span a relation endpoint names, made if the word has none yet.
+  // `candidateId` may be a span id OR a morpheme token id (the latter is the
+  // common case when called from the annotation grid).
+  async _ensureLemmaSpan(info, candidateId) {
+    if (!candidateId || candidateId === 'ROOT') return null;
+
+    const lemmaLayer = info.lemmaLayer;
+    const lemmaSpans = lemmaLayer.spans || [];
+
+    const existingById = lemmaSpans.find((span) => span.id === candidateId);
+    if (existingById) return existingById.id;
+
+    // Span `tokens` is a flat array of token ids.
+    const tokenId = candidateId;
+    const existingByToken = lemmaSpans.find(
+      (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
+    );
+    if (existingByToken) return existingByToken.id;
+
+    const textBody = info.textLayer?.text?.body || '';
+    const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
+    const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
+
+    // Made on the writer's behalf to hang the relation on: their stamp.
+    const stamp = this.writer.createStamp;
+    const apiResponse = await this._client.spans.create(
+      lemmaLayer.id,
+      [tokenId],
+      lemmaValue,
+      stamp || undefined,
+    );
+    const createdSpanId = apiResponse.id || apiResponse;
+
+    this._applyRawPatch((next, infoNext) => {
+      const lemmaLayerDoc = infoNext.lemmaLayer;
+      if (lemmaLayerDoc) {
+        if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
+        if (lemmaLayerDoc.spans.findIndex((s) => s.id === createdSpanId) === -1) {
+          lemmaLayerDoc.spans.push({
+            id: createdSpanId,
+            tokens: [tokenId],
+            value: lemmaValue,
+            ...(stamp ? { metadata: stamp } : {}),
+          });
+        }
+      }
+    });
+
+    return createdSpanId;
+  }
+
+  // Suppressors lying over these basic relations. A suppressor says the
+  // enhanced graph leaves out the basic relation over its pair, so it goes
+  // when that relation goes. Left behind it would suppress nothing, and would
+  // quietly suppress the next relation drawn over the same pair. Reconcile
+  // clears the ones another writer leaves, this clears our own at the source.
+  _suppressorIdsOver(info, basicRelations) {
+    const rows = info.enhancedRelationLayer?.relations || [];
+    if (rows.length === 0) return [];
+    return basicRelations.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean);
+  }
+
   // Create (or replace) a dependency relation between two lemma spans.
   // Source/target may be span ids OR morpheme token ids (the latter is the
   // common case when called from the annotation grid). Special value
@@ -1001,56 +1081,8 @@ export class ConlluDocument extends DocumentModel {
       // re-mount arcs twice, which visibly janks the drag-to-draw interaction —
       // worse than just waiting one round trip. Creates show a brief absence,
       // never a wrong value, so post-server is the right trade here.
-      const ensureLemmaSpan = async (candidateId) => {
-        if (!candidateId || candidateId === 'ROOT') return null;
-
-        const lemmaLayer = info.lemmaLayer;
-        const lemmaSpans = lemmaLayer.spans || [];
-
-        const existingById = lemmaSpans.find((span) => span.id === candidateId);
-        if (existingById) return existingById.id;
-
-        // Span `tokens` is a flat array of token ids.
-        const tokenId = candidateId;
-        const existingByToken = lemmaSpans.find(
-          (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
-        );
-        if (existingByToken) return existingByToken.id;
-
-        const textBody = info.textLayer?.text?.body || '';
-        const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
-        const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
-
-        // Made on the writer's behalf to hang the relation on: their stamp.
-        const stamp = this.writer.createStamp;
-        const apiResponse = await this._client.spans.create(
-          lemmaLayer.id,
-          [tokenId],
-          lemmaValue,
-          stamp || undefined,
-        );
-        const createdSpanId = apiResponse.id || apiResponse;
-
-        this._applyRawPatch((next, infoNext) => {
-          const lemmaLayerDoc = infoNext.lemmaLayer;
-          if (lemmaLayerDoc) {
-            if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
-            if (lemmaLayerDoc.spans.findIndex((s) => s.id === createdSpanId) === -1) {
-              lemmaLayerDoc.spans.push({
-                id: createdSpanId,
-                tokens: [tokenId],
-                value: lemmaValue,
-                ...(stamp ? { metadata: stamp } : {}),
-              });
-            }
-          }
-        });
-
-        return createdSpanId;
-      };
-
-      const resolvedSourceId = await ensureLemmaSpan(sourceSpanId);
-      const resolvedTargetId = await ensureLemmaSpan(targetSpanId);
+      const resolvedSourceId = await this._ensureLemmaSpan(info, sourceSpanId);
+      const resolvedTargetId = await this._ensureLemmaSpan(info, targetSpanId);
 
       if (!resolvedSourceId || !resolvedTargetId) {
         console.warn('Unable to create relation because lemma spans could not be resolved:', {
@@ -1067,12 +1099,14 @@ export class ConlluDocument extends DocumentModel {
       const incomingRelations = (info.relationLayer.relations || []).filter(
         (rel) => rel.target === resolvedTargetId,
       );
+      const staleSuppressors = this._suppressorIdsOver(info, incomingRelations);
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
       // A re-pointed head is a person's relation: it carries the writer's
       // create stamp (null for a verifier, so a verifier's stays plain).
       const relStamp = this.writer.createStamp;
       const batchResults = await this._client.batched(async (b) => {
         incomingRelations.forEach((rel) => b.relations.delete(rel.id));
+        staleSuppressors.forEach((id) => b.relations.delete(id));
         b.relations.create(
           info.relationLayer.id,
           resolvedSourceId,
@@ -1094,34 +1128,161 @@ export class ConlluDocument extends DocumentModel {
           value: finalDeprel,
           ...(relStamp ? { metadata: relStamp } : {}),
         });
+        const enhanced = infoNext.enhancedRelationLayer;
+        if (staleSuppressors.length && Array.isArray(enhanced?.relations)) {
+          enhanced.relations = enhanced.relations.filter((r) => !staleSuppressors.includes(r.id));
+        }
       });
     });
   }
 
+  // Add an edge to the ENHANCED graph: one the basic tree does not have. Same
+  // endpoints as createRelation takes, a self-loop for a root included. Unlike
+  // the tree, the graph lets a word have any number of heads, so nothing is
+  // replaced.
+  //
+  // Drawn over the very pair a basic relation already joins, the edge is a
+  // RELABEL (`nmod` in the tree, `nmod:of` in the graph), so the basic relation
+  // is suppressed in the same batch. The rare graph that wants both labels over
+  // one pair gets there by lifting the suppression afterwards.
+  //
+  // Resolves to the new relation's id (so the tree can open its label), to null
+  // when that exact edge already exists, and to false on failure.
+  async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
+    const info = this.layerInfo;
+    if (!info.enhancedRelationLayer) {
+      this.setError('This project does not annotate enhanced dependencies.');
+      return false;
+    }
+    if (!info.lemmaLayer) {
+      this.setError('Lemma layer not found.');
+      return false;
+    }
+
+    let createdId = null;
+    const ok = await this._withSaving('Failed to create enhanced relation', async () => {
+      // Post-server, for createRelation's reason.
+      const source = await this._ensureLemmaSpan(info, sourceSpanId);
+      const target = await this._ensureLemmaSpan(info, targetSpanId);
+      if (!source || !target) return;
+
+      const rows = info.enhancedRelationLayer.relations || [];
+      const basicOverPair = (info.relationLayer?.relations || []).find(
+        (rel) => rel.source === source && rel.target === target,
+      );
+      const value = deprel || basicOverPair?.value || (source === target ? 'root' : 'dep');
+      const sameEdge = (r) => r.source === source && r.target === target;
+      if (rows.some((r) => sameEdge(r) && !isSuppressor(r) && r.value === value)) return;
+
+      const suppress = Boolean(basicOverPair) && !rows.some(sameEdge);
+      const stamp = this.writer.createStamp;
+      const results = await this._client.batched(async (b) => {
+        if (suppress) {
+          b.relations.create(info.enhancedRelationLayer.id, source, target, null, {
+            [SUPPRESS_KEY]: true,
+          });
+        }
+        b.relations.create(
+          info.enhancedRelationLayer.id,
+          source,
+          target,
+          value,
+          stamp || undefined,
+        );
+      });
+      createdId = results[results.length - 1]?.body?.id || null;
+      const suppressorId = suppress ? results[0]?.body?.id : null;
+      this._applyRawPatch((next, infoNext) => {
+        const layer = infoNext.enhancedRelationLayer;
+        if (!layer) return;
+        if (!Array.isArray(layer.relations)) layer.relations = [];
+        if (suppressorId) {
+          layer.relations.push({
+            id: suppressorId,
+            source,
+            target,
+            value: null,
+            metadata: { [SUPPRESS_KEY]: true },
+          });
+        }
+        layer.relations.push({
+          id: createdId,
+          source,
+          target,
+          value,
+          ...(stamp ? { metadata: stamp } : {}),
+        });
+      });
+    });
+    return ok ? createdId : false;
+  }
+
+  // Say whether the enhanced graph has this BASIC relation. It does unless a
+  // suppressor lies over it, so this creates or deletes that one row.
+  async setRelationSuppressed(relationId, suppressed) {
+    const info = this.layerInfo;
+    if (!info.enhancedRelationLayer) {
+      this.setError('This project does not annotate enhanced dependencies.');
+      return false;
+    }
+    const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);
+    if (!basic) return false;
+    const existing = suppressorFor(basic, info.enhancedRelationLayer.relations);
+    if (Boolean(existing) === Boolean(suppressed)) return true;
+
+    return this._withSaving('Failed to update the enhanced graph', async () => {
+      if (existing) {
+        // Optimistic, as every delete is.
+        this._applyRawPatch((next, infoNext) => {
+          const layer = infoNext.enhancedRelationLayer;
+          if (!Array.isArray(layer?.relations)) return;
+          layer.relations = layer.relations.filter((r) => r.id !== existing.id);
+        });
+        await this._client.relations.delete(existing.id);
+        return;
+      }
+      const created = await this._client.relations.create(
+        info.enhancedRelationLayer.id,
+        basic.source,
+        basic.target,
+        null,
+        { [SUPPRESS_KEY]: true },
+      );
+      const id = created?.id || created;
+      this._applyRawPatch((next, infoNext) => {
+        const layer = infoNext.enhancedRelationLayer;
+        if (!layer) return;
+        if (!Array.isArray(layer.relations)) layer.relations = [];
+        layer.relations.push({
+          id,
+          source: basic.source,
+          target: basic.target,
+          value: null,
+          metadata: { [SUPPRESS_KEY]: true },
+        });
+      });
+    });
+  }
+
+  // A relation's label, in the tree or in the enhanced layer: the id says which.
   async updateRelation(relationId, deprel) {
     return this._withSaving('Failed to update relation', async () => {
       // Human edit of a machine relation verifies it (provenance write
       // contract) — same shape as updateAnnotation: one optimistic patch,
       // one atomic batch.
-      const existing = (this.layerInfo.relationLayer?.relations || []).find(
-        (r) => r.id === relationId,
-      );
+      const existing = dependencyRelationLayers(this.layerInfo)
+        .flatMap((layer) => layer.relations || [])
+        .find((r) => r.id === relationId);
       const verify = this.writer.editStamp(existing?.metadata);
       // Optimistic: reflect the new value immediately, BEFORE the round trip,
       // so the label doesn't flash the previous value while the save is in
       // flight. On failure, _withSaving reloads from the server and reverts.
       this._applyRawPatch((next, infoNext) => {
-        const relLayer = infoNext.relationLayer;
-        if (!relLayer || !Array.isArray(relLayer.relations)) return;
-        const idx = relLayer.relations.findIndex((r) => r.id === relationId);
-        if (idx !== -1) {
-          relLayer.relations[idx].value = deprel;
-          if (verify) {
-            relLayer.relations[idx].metadata = mergeMetadata(
-              relLayer.relations[idx].metadata,
-              verify,
-            );
-          }
+        for (const relLayer of dependencyRelationLayers(infoNext)) {
+          const found = (relLayer.relations || []).find((r) => r.id === relationId);
+          if (!found) continue;
+          found.value = deprel;
+          if (verify) found.metadata = mergeMetadata(found.metadata, verify);
         }
       });
       if (verify) {
@@ -1135,15 +1296,30 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
+  // Delete a relation from the tree or from the enhanced layer. A basic
+  // relation takes the suppressor lying over it along (see _suppressorIdsOver).
   async deleteRelation(relationId) {
     return this._withSaving('Failed to delete relation', async () => {
+      const info = this.layerInfo;
+      const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);
+      const doomed = new Set([
+        relationId,
+        ...(basic ? this._suppressorIdsOver(info, [basic]) : []),
+      ]);
       // Optimistic: drop the arc locally before the round trip.
       this._applyRawPatch((next, infoNext) => {
-        const relLayer = infoNext.relationLayer;
-        if (!relLayer || !Array.isArray(relLayer.relations)) return;
-        relLayer.relations = relLayer.relations.filter((r) => r.id !== relationId);
+        for (const relLayer of dependencyRelationLayers(infoNext)) {
+          if (!Array.isArray(relLayer.relations)) continue;
+          relLayer.relations = relLayer.relations.filter((r) => !doomed.has(r.id));
+        }
       });
-      await this._client.relations.delete(relationId);
+      if (doomed.size === 1) {
+        await this._client.relations.delete(relationId);
+      } else {
+        await this._client.batched(async (b) => {
+          for (const id of doomed) b.relations.delete(id);
+        });
+      }
     });
   }
 
@@ -1188,7 +1364,8 @@ export class ConlluDocument extends DocumentModel {
           (info.lemmaLayer?.spans || []).map((s) => [s.id, s.tokens || []]),
         );
         const relPatchById = new Map();
-        for (const rel of info.relationLayer?.relations || []) {
+        const allRelations = dependencyRelationLayers(info).flatMap((l) => l.relations || []);
+        for (const rel of allRelations) {
           const targetTokens = lemmaTokensBySpan.get(rel.target) || [];
           if (targetTokens.some((t) => idSet.has(t))) {
             const verify = this.writer.confirmStamp(rel.metadata);
@@ -1212,9 +1389,11 @@ export class ConlluDocument extends DocumentModel {
               if (patch) span.metadata = mergeMetadata(span.metadata, patch);
             }
           }
-          for (const rel of infoNext.relationLayer?.relations || []) {
-            const patch = relPatchById.get(rel.id);
-            if (patch) rel.metadata = mergeMetadata(rel.metadata, patch);
+          for (const layer of dependencyRelationLayers(infoNext)) {
+            for (const rel of layer.relations || []) {
+              const patch = relPatchById.get(rel.id);
+              if (patch) rel.metadata = mergeMetadata(rel.metadata, patch);
+            }
           }
         });
 
@@ -1261,7 +1440,12 @@ export class ConlluDocument extends DocumentModel {
         );
         const relIds = new Set();
         const keptRelSpanIds = new Set();
-        for (const rel of info.relationLayer?.relations || []) {
+        const allRelations = dependencyRelationLayers(info).flatMap((l) => l.relations || []);
+        for (const rel of allRelations) {
+          // A suppressor is a note about a basic relation, not anybody's
+          // annotation of these words: it keeps nothing alive, and it goes
+          // with the relation it lies over (below).
+          if (isSuppressor(rel)) continue;
           if (!isMachine(rel.metadata)) {
             // Somebody vouched for this one. Both its anchors have to survive.
             keptRelSpanIds.add(rel.source);
@@ -1296,6 +1480,11 @@ export class ConlluDocument extends DocumentModel {
 
         if (spanIds.size === 0 && relIds.size === 0) return; // nothing to discard
 
+        const discardedBasic = (info.relationLayer?.relations || []).filter((rel) =>
+          relIds.has(rel.id),
+        );
+        for (const id of this._suppressorIdsOver(info, discardedBasic)) relIds.add(id);
+
         // Optimistic: a delete, so the grid empties now and _withSaving
         // reloads on failure.
         this._applyRawPatch((next, infoNext) => {
@@ -1310,8 +1499,8 @@ export class ConlluDocument extends DocumentModel {
               layer.spans = layer.spans.filter((span) => !spanIds.has(span.id));
             }
           }
-          const relLayer = infoNext.relationLayer;
-          if (relLayer && Array.isArray(relLayer.relations)) {
+          for (const relLayer of dependencyRelationLayers(infoNext)) {
+            if (!Array.isArray(relLayer.relations)) continue;
             relLayer.relations = relLayer.relations.filter(
               (rel) => !relIds.has(rel.id) && !spanIds.has(rel.source) && !spanIds.has(rel.target),
             );

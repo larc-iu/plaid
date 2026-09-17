@@ -104,6 +104,14 @@ export const foreignAnnotationLossForWord = (layerInfo, word) => {
 
 export const UD_RELATION_CONFIG_KEY = 'dependency';
 
+// The OPTIONAL second relation layer on Lemma, holding what the enhanced graph
+// has that the basic tree does not (see domain/enhancedGraph.js). A project
+// without one is a project that does not annotate enhanced dependencies, so it
+// is never among the missing layers. It carries its own flag and not the
+// `dependency` one, so everything that finds the tree by that flag, in this app
+// and outside it, goes on finding the tree alone.
+export const UD_ENHANCED_RELATION_CONFIG_KEY = 'enhancedDependency';
+
 // The three token layers of the UD hierarchy, bound by their shared role:
 // - sentences:  role `sentence`, overlap-mode "partitioning" (root) — tiles the text
 // - words:      role `word`, overlap-mode "non-overlapping", parent = sentences — surface tokens
@@ -183,6 +191,7 @@ export const getUdLayerInfo = (document) => {
       xposLayer: null,
       featuresLayer: null,
       relationLayer: null,
+      enhancedRelationLayer: null,
       vocab: {
         upos: UPOS_TAGS,
         xpos: [],
@@ -236,6 +245,10 @@ export const getUdLayerInfo = (document) => {
   const relationLayer = lemmaLayer ? findUdRelationLayer(lemmaLayer) : null;
   if (!relationLayer) missingLayers.push('dependency');
 
+  const enhancedRelationLayer = lemmaLayer
+    ? findUdRelationLayer(lemmaLayer, UD_ENHANCED_RELATION_CONFIG_KEY)
+    : null;
+
   const normalizedMissing = Array.from(new Set(missingLayers));
 
   return {
@@ -253,6 +266,7 @@ export const getUdLayerInfo = (document) => {
     xposLayer,
     featuresLayer,
     relationLayer,
+    enhancedRelationLayer,
     // Controlled vocabularies + color maps, parsed from each layer's `.config`.
     // UPOS is the fixed universal set; DEPREL falls back to the universal 37.
     // Rides the per-version layerInfo cache, so identity is stable across renders.
@@ -288,6 +302,12 @@ export const getUdLayerInfo = (document) => {
     isConfigured: normalizedMissing.length === 0,
   };
 };
+
+// Every layer a dependency relation can live in. A rule about relations as
+// such (none may cross a sentence boundary, all die with their word) is asked
+// of each of these, not of the tree alone.
+export const dependencyRelationLayers = (layerInfo) =>
+  [layerInfo?.relationLayer, layerInfo?.enhancedRelationLayer].filter(Boolean);
 
 export const missingUdLayerLabels = (missingKeys) => {
   if (!Array.isArray(missingKeys)) return [];

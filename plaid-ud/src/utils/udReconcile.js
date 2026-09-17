@@ -11,6 +11,9 @@
 // and `relationsCrossing` is the single-boundary form a split asks before it
 // makes one. Both live here so the rule is written once.
 
+import { dependencyRelationLayers } from './udLayerUtils.js';
+import { danglingSuppressorIds } from '../domain/enhancedGraph.js';
+
 /**
  * IDs of dependency relations whose two endpoints lie in different sentences
  * (i.e. they cross a sentence boundary). Root self-loops are ignored, and an
@@ -53,11 +56,18 @@ export const describeReconcile = ({
   return `Reconcile: ${parts.join(', ')}`;
 };
 
+// The rule is about dependency relations as such, so it is asked of the
+// enhanced layer's rows as well as the tree's. A suppressor lies over the same
+// pair as the basic relation it suppresses and so crosses exactly when that
+// one does.
+const allDependencyRelations = (layerInfo) =>
+  dependencyRelationLayers(layerInfo).flatMap((layer) => layer.relations || []);
+
 export const interSententialRelationIds = (layerInfo) => {
   const sentenceTokens = layerInfo?.sentenceTokenLayer?.tokens || [];
   const morphemeTokens = layerInfo?.morphemeTokenLayer?.tokens || [];
   const lemmaSpans = layerInfo?.lemmaLayer?.spans || [];
-  const relations = layerInfo?.relationLayer?.relations || [];
+  const relations = allDependencyRelations(layerInfo);
   if (!relations.length || !sentenceTokens.length) return [];
 
   // A begin offset falls in exactly one sentence (the sentence layer is
@@ -121,7 +131,7 @@ export const relationsCrossing = (layerInfo, charPos) => {
     if (tid != null && beginByMorpheme.has(tid))
       beginByLemmaSpan.set(span.id, beginByMorpheme.get(tid));
   });
-  return (layerInfo?.relationLayer?.relations || [])
+  return allDependencyRelations(layerInfo)
     .filter((rel) => {
       if (rel.source === rel.target) return false;
       const s = beginByLemmaSpan.get(rel.source);
@@ -131,6 +141,23 @@ export const relationsCrossing = (layerInfo, charPos) => {
     })
     .map((rel) => rel.id);
 };
+
+/**
+ * Enhanced-layer suppressors that no longer suppress anything. A suppressor
+ * says the enhanced graph leaves out the basic relation over the same head and
+ * dependent, and nothing that writes a basic relation knows it is there: a
+ * re-pointed head, a re-parse and a rewrite rule all delete that relation and
+ * leave the suppressor lying over a pair with no relation on it. It means
+ * nothing in that state, so it is deleted (see domain/enhancedGraph.js).
+ *
+ * @param {object} layerInfo the result of getUdLayerInfo (bound layers)
+ * @returns {string[]} relation ids to delete
+ */
+export const staleSuppressorIds = (layerInfo) =>
+  danglingSuppressorIds(
+    layerInfo?.relationLayer?.relations,
+    layerInfo?.enhancedRelationLayer?.relations,
+  );
 
 /**
  * Extents of words that lack a full-width syntactic-word ("morpheme") token.

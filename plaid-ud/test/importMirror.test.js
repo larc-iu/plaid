@@ -55,8 +55,8 @@ function recordingClient() {
 /** The span layers in the order the importer creates them. */
 const SPAN_LAYERS = ['formLayer', 'lemmaLayer', 'uposLayer', 'xposLayer', 'featuresLayer'];
 
-async function imported(input) {
-  const mirror = rawDocFromConllu(input, 'm');
+async function imported(input, options) {
+  const mirror = rawDocFromConllu(input, 'm', options);
   const info = getUdLayerInfo(mirror);
   const client = recordingClient();
   const out = await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
@@ -94,9 +94,27 @@ const CASES = {
   'no syntax at all': conllu(['# text = solo', '1\tsolo\tsolo\tADV\t_\t_\t_\t_\t_\t_']),
 };
 
-for (const [what, input] of Object.entries(CASES)) {
+// An enhanced graph: a shared subject (a second head), a relabel (the basic
+// relation suppressed and the new label added), a row that restates its tree,
+// and an unlemmatized head that only an enhanced edge reaches.
+const ENHANCED = conllu([
+  '# text = she came and left home',
+  '1\tshe\t_\tPRON\t_\t_\t2\tnsubj\t2:nsubj|4:nsubj\t_',
+  '2\tcame\tcome\tVERB\t_\t_\t0\troot\t0:root\t_',
+  '3\tand\tand\tCCONJ\t_\t_\t4\tcc\t4:cc\t_',
+  '4\tleft\t_\tVERB\t_\t_\t2\tconj\t2:conj:and\t_',
+  '5\thome\thome\tNOUN\t_\t_\t4\tobj\t_\t_',
+]);
+
+const ALL_CASES = [
+  ...Object.entries(CASES).map(([what, input]) => [what, input, undefined]),
+  ['an enhanced graph, into a project that annotates one', ENHANCED, { enhanced: true }],
+  ['an enhanced graph, into a project that does not', ENHANCED, undefined],
+];
+
+for (const [what, input, options] of ALL_CASES) {
   test(`the importer writes what the mirror builds: ${what}`, async () => {
-    const { info, client } = await imported(input);
+    const { info, client } = await imported(input, options);
 
     // Tokens, in creation order: sentences, then words, then morphemes.
     const bare = (t) => ({
@@ -143,13 +161,27 @@ for (const [what, input] of Object.entries(CASES)) {
     const place = (id) => (mintedLemma.has(id) ? mintedLemma.get(id) : `unknown:${id}`);
     const mirrorLemmaPlace = new Map((info.lemmaLayer?.spans || []).map((s, i) => [s.id, i]));
     assert.deepEqual(
-      client.calls.relations.flat().map((op) => [place(op.source), place(op.target), op.value]),
-      (info.relationLayer?.relations || []).map((r) => [
-        mirrorLemmaPlace.get(r.source),
-        mirrorLemmaPlace.get(r.target),
-        r.value,
-      ]),
-      'the same relations, between the same lemma spans',
+      client.calls.relations
+        .flat()
+        .map((op) => [
+          op.relationLayerId,
+          place(op.source),
+          place(op.target),
+          op.value,
+          op.metadata ?? null,
+        ]),
+      [info.relationLayer, info.enhancedRelationLayer]
+        .filter(Boolean)
+        .flatMap((layer) =>
+          (layer.relations || []).map((r) => [
+            layer.id,
+            mirrorLemmaPlace.get(r.source),
+            mirrorLemmaPlace.get(r.target),
+            r.value,
+            r.metadata ?? null,
+          ]),
+        ),
+      'the same relations, in the same layers, between the same lemma spans',
     );
     assert.equal(lemmaIds.length, (info.lemmaLayer?.spans || []).length);
   });
@@ -184,4 +216,49 @@ test('an unlemmatized treebank keeps its dependency relations', () => {
   assert.ok(out.includes('\t3\tnsubj\t'), out);
   assert.ok(out.includes('\t0\troot\t'), out);
   assert.ok(out.includes('1\tel\t_\tDET'), out);
+});
+
+test('an enhanced graph comes back out of DEPS as it went in', () => {
+  const out = new ConlluDocument({
+    raw: rawDocFromConllu(ENHANCED, 'e', { enhanced: true }),
+  }).toConllu();
+  assert.ok(out.includes('\t2\tnsubj\t2:nsubj|4:nsubj\t'), out);
+  assert.ok(out.includes('\t0\troot\t0:root\t'), out);
+  // The relabel: the tree keeps `conj`, the graph has `conj:and` alone.
+  assert.ok(out.includes('\t2\tconj\t2:conj:and\t'), out);
+  // A row that said nothing about the graph follows its tree.
+  assert.ok(out.includes('\t4\tobj\t4:obj\t'), out);
+});
+
+test('a project that does not annotate the enhanced graph says what it dropped', async () => {
+  const info = getUdLayerInfo(rawDocFromConllu(ENHANCED, 'm'));
+  const out = await ConlluDocument.importFromConllu(recordingClient(), 'p1', 'm', ENHANCED, info);
+  // One extra head, and a relabel that is a suppressor and an extra.
+  assert.deepEqual(out.importWarnings, [
+    '3 enhanced dependencies dropped: this project does not annotate enhanced dependencies.',
+  ]);
+});
+
+test('an enhanced dependency from an empty node is dropped with the node', async () => {
+  const input = conllu([
+    '# text = Mary tea John coffee',
+    '1\tMary\t_\tPROPN\t_\t_\t0\troot\t0:root\t_',
+    '2\ttea\t_\tNOUN\t_\t_\t1\tobj\t1:obj\t_',
+    '3\tJohn\t_\tPROPN\t_\t_\t1\tconj\t3.1:nsubj\t_',
+    '3.1\tordered\t_\tVERB\t_\t_\t_\t_\t1:conj\t_',
+    '4\tcoffee\t_\tNOUN\t_\t_\t3\torphan\t3.1:obj\t_',
+  ]);
+  const info = getUdLayerInfo(rawDocFromConllu(input, 'm', { enhanced: true }));
+  const client = recordingClient();
+  const out = await ConlluDocument.importFromConllu(client, 'p1', 'm', input, info);
+  assert.deepEqual(out.importWarnings, [
+    '1 empty node (decimal-ID rows) and 2 enhanced dependencies from an empty node dropped: ' +
+      'Plaid UD does not store empty nodes.',
+  ]);
+  // With its empty node gone a row follows its tree, so nothing is written to
+  // the enhanced layer and the `orphan` analysis is what stands.
+  const enhancedOps = client.calls.relations
+    .flat()
+    .filter((op) => op.relationLayerId === info.enhancedRelationLayer.id);
+  assert.deepEqual(enhancedOps, []);
 });

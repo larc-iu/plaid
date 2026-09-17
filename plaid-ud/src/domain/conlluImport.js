@@ -5,6 +5,9 @@ import { normalizeFeature } from '../utils/feats.js';
 import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
+import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
+
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // CoNLL-U import: text in, a new document in the project out.
 //
@@ -35,11 +38,28 @@ export async function importConlluDocument(
   // Deliberately-unsupported data the parser dropped. Returned to the caller
   // (the import UI toasts these) — non-support must be loud, never silent.
   const importWarnings = [];
-  const { emptyNodes = 0, miscTokens = 0 } = parsedData.dropped || {};
-  if (emptyNodes > 0) {
+  const {
+    emptyNodes = 0,
+    miscTokens = 0,
+    emptyNodeDeps = 0,
+    unreadableDeps = 0,
+  } = parsedData.dropped || {};
+  if (emptyNodes > 0 || emptyNodeDeps > 0) {
+    // One line for both: an enhanced dependency that hangs from an empty node
+    // is lost to the same decision as the node.
+    const parts = [];
+    if (emptyNodes > 0)
+      parts.push(`${count(emptyNodes, 'empty node', 'empty nodes')} (decimal-ID rows)`);
+    if (emptyNodeDeps > 0) {
+      parts.push(
+        `${count(emptyNodeDeps, 'enhanced dependency', 'enhanced dependencies')} from an empty node`,
+      );
+    }
+    importWarnings.push(`${parts.join(' and ')} dropped: Plaid UD does not store empty nodes.`);
+  }
+  if (unreadableDeps > 0) {
     importWarnings.push(
-      `${emptyNodes} empty node${emptyNodes === 1 ? '' : 's'} (decimal-ID rows) ` +
-        'dropped: Plaid UD does not store empty nodes or enhanced dependencies.',
+      `DEPS values on ${count(unreadableDeps, 'token row', 'token rows')} could not be read and were dropped.`,
     );
   }
   if (miscTokens > 0) {
@@ -78,7 +98,25 @@ export async function importConlluDocument(
       xposLayer,
       featuresLayer,
       relationLayer,
+      enhancedRelationLayer,
     } = layerInfo;
+
+    // What each row's DEPS adds to the enhanced layer: nothing at all for the
+    // usual file, whose DEPS is `_` or restates the tree.
+    const enhancedPlans = parsedData.sentences.map((s) =>
+      s.tokens.map((t) => planEnhancedRow(t, t.deps)),
+    );
+    if (!enhancedRelationLayer) {
+      const lost = enhancedPlans
+        .flat()
+        .reduce((n, plan) => n + plan.extras.length + (plan.suppress ? 1 : 0), 0);
+      if (lost > 0) {
+        importWarnings.push(
+          `${count(lost, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
+            'this project does not annotate enhanced dependencies.',
+        );
+      }
+    }
 
     const hierarchy = buildConlluHierarchy(parsedData);
 
@@ -89,12 +127,19 @@ export async function importConlluDocument(
     // leaves behind when a lemma is cleared, for the same reason, and it
     // exports as `_` again. Without it an unlemmatized treebank imported
     // with every tree in it dropped, in silence.
-    const needsLemma = parsedData.sentences.map((s) => {
+    const needsLemma = parsedData.sentences.map((s, sentIdx) => {
       const rows = new Set();
-      s.tokens.forEach((t) => {
-        if (!t.deprel) return;
-        rows.add(t.id);
-        if (t.head > 0) rows.add(t.head);
+      s.tokens.forEach((t, tokIdx) => {
+        if (t.deprel) {
+          rows.add(t.id);
+          if (t.head > 0) rows.add(t.head);
+        }
+        if (!enhancedRelationLayer) return;
+        // An extra enhanced edge hangs off the same two kinds of row.
+        enhancedPlans[sentIdx][tokIdx].extras.forEach((e) => {
+          rows.add(t.id);
+          if (e.head > 0) rows.add(e.head);
+        });
       });
       return rows;
     });
@@ -304,6 +349,41 @@ export async function importConlluDocument(
           }
         });
       });
+      // The enhanced layer's rows, in the same batch as the tree they differ
+      // from. A suppressor lies over its row's own basic relation, so it is
+      // written only where that relation was.
+      if (enhancedRelationLayer) {
+        const basicPairs = new Set(relationOps.map((op) => `${op.source} ${op.target}`));
+        parsedData.sentences.forEach((sentence, sentIdx) => {
+          const ids = lemmaSpanIds[sentIdx];
+          sentence.tokens.forEach((token, tokIdx) => {
+            const targetId = ids[tokIdx];
+            if (!targetId) return;
+            const plan = enhancedPlans[sentIdx][tokIdx];
+            const spanOf = (head) => (head === 0 ? targetId : ids[head - 1]);
+            const basicSource = token.deprel ? spanOf(token.head) : null;
+            if (plan.suppress && basicSource && basicPairs.has(`${basicSource} ${targetId}`)) {
+              relationOps.push({
+                relationLayerId: enhancedRelationLayer.id,
+                source: basicSource,
+                target: targetId,
+                value: null,
+                metadata: { [SUPPRESS_KEY]: true },
+              });
+            }
+            plan.extras.forEach((e) => {
+              const sourceId = spanOf(e.head);
+              if (!sourceId) return;
+              relationOps.push({
+                relationLayerId: enhancedRelationLayer.id,
+                source: sourceId,
+                target: targetId,
+                value: e.deprel,
+              });
+            });
+          });
+        });
+      }
       if (relationOps.length > 0) {
         await client.batched(async (b) => {
           b.relations.bulkCreate(relationOps);

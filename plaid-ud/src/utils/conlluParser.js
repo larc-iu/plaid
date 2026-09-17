@@ -6,6 +6,7 @@
 // Token offsets are Unicode CODE POINTS, so locate/measure forms in code points
 // (cpIndexOf / cpLength), not the UTF-16 indexOf / .length.
 import { cpLength, cpIndexOf } from '@larc-iu/plaid-client';
+import { parseDeps } from '../domain/enhancedGraph.js';
 
 // Split a CoNLL-U file into one chunk per `# newdoc[ id = X]` block, so a single
 // uploaded file containing multiple documents becomes multiple Plaid documents.
@@ -44,6 +45,11 @@ export function parseCoNLLU(text) {
   // tell the user loudly (a toast) instead of mangling data in silence.
   let droppedEmptyNodes = 0;
   let droppedMiscTokens = 0;
+  // Enhanced dependencies that hung from an empty node, and DEPS values that
+  // could not be read at all. Neither stops an import: the column is optional,
+  // and a project that does not annotate the enhanced graph never reads it.
+  let droppedEmptyNodeDeps = 0;
+  let unreadableDeps = 0;
 
   for (const line of lines) {
     const trimmedLine = line.trim();
@@ -101,7 +107,7 @@ export function parseCoNLLU(text) {
       );
     }
 
-    const [id, form, lemma, upos, xpos, feats, head, deprel, _deps, misc] = columns;
+    const [id, form, lemma, upos, xpos, feats, head, deprel, depsColumn, misc] = columns;
 
     // Initialize sentence if needed
     if (!currentSentence) {
@@ -162,6 +168,15 @@ export function parseCoNLLU(text) {
       throw new Error(`Invalid HEAD value: ${head}`);
     }
 
+    // DEPS, the enhanced graph's incoming edges (see domain/enhancedGraph.js).
+    let deps = null;
+    try {
+      deps = parseDeps(depsColumn);
+    } catch {
+      unreadableDeps += 1;
+    }
+    if (deps) droppedEmptyNodeDeps += deps.emptyHeads;
+
     // Add token to current sentence.
     // FORM is required for a regular token, so a literal `_` is the surface form
     // (an underscore character — common in web text as an emphasis marker), NOT
@@ -177,6 +192,7 @@ export function parseCoNLLU(text) {
       feats: featuresArray,
       head: headNum,
       deprel: deprel === '_' ? null : deprel,
+      deps,
     });
   }
 
@@ -202,7 +218,15 @@ export function parseCoNLLU(text) {
     });
   }
 
-  return { sentences, dropped: { emptyNodes: droppedEmptyNodes, miscTokens: droppedMiscTokens } };
+  return {
+    sentences,
+    dropped: {
+      emptyNodes: droppedEmptyNodes,
+      miscTokens: droppedMiscTokens,
+      emptyNodeDeps: droppedEmptyNodeDeps,
+      unreadableDeps,
+    },
+  };
 }
 
 /**

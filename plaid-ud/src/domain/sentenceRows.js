@@ -39,6 +39,7 @@ export function buildSentenceRows(body, layerInfo) {
     xposLayer,
     featuresLayer,
     relationLayer,
+    enhancedRelationLayer,
   } = layerInfo;
 
   const sentenceTokens = [...(sentenceTokenLayer?.tokens || [])].sort(byPosition);
@@ -54,6 +55,9 @@ export function buildSentenceRows(body, layerInfo) {
   const featuresIndex = buildSpanIndex(featuresLayer);
 
   const relationList = relationLayer?.relations || [];
+  // The enhanced layer's rows, extras and suppressors alike, kept apart from
+  // the tree: everything that reads `relations` reads a tree, one head a word.
+  const enhancedList = enhancedRelationLayer?.relations || [];
 
   const buildMorphemeEntry = (morphemeToken, tokenIndex, word) => {
     const id = morphemeToken.id;
@@ -131,6 +135,7 @@ export function buildSentenceRows(body, layerInfo) {
     });
     const sentenceLemmaSpanIds = new Set(sentenceLemmaSpans.map((span) => span.id));
     const relations = relationList.filter((rel) => sentenceLemmaSpanIds.has(rel.source));
+    const enhancedRelations = enhancedList.filter((rel) => sentenceLemmaSpanIds.has(rel.source));
 
     rows.push({
       id: sentence.id ?? sentenceIdx,
@@ -138,6 +143,7 @@ export function buildSentenceRows(body, layerInfo) {
       sentenceToken: sentenceTokens.length > 0 ? sentence : null,
       tokens: morphemeEntries,
       relations,
+      enhancedRelations,
       lemmaSpans: sentenceLemmaSpans,
     });
   });

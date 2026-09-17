@@ -7,20 +7,32 @@
 // bound by config.plaid.role, annotation layers by config.ud.* flags.
 import { cpSlice } from '@larc-iu/plaid-client';
 import { parseCoNLLU, buildConlluHierarchy } from '../../src/utils/conlluParser.js';
+import { planEnhancedRow } from '../../src/domain/enhancedGraph.js';
 
-export function rawDocFromConllu(conlluText, name = 'doc') {
+// `enhanced: true` gives the project the optional enhanced relation layer, and
+// the rows the importer would write into it from DEPS.
+export function rawDocFromConllu(conlluText, name = 'doc', { enhanced = false } = {}) {
   const parsed = parseCoNLLU(conlluText);
   const hierarchy = buildConlluHierarchy(parsed);
+  const enhancedPlans = parsed.sentences.map((s) =>
+    s.tokens.map((t) => planEnhancedRow(t, t.deps)),
+  );
 
   // Rows a relation touches need a Lemma span to hang off even where LEMMA is
   // `_`. Mirrors importFromConllu; `importMirror.test.js` holds the two
   // together.
-  const needsLemma = parsed.sentences.map((s) => {
+  const needsLemma = parsed.sentences.map((s, sentIdx) => {
     const rows = new Set();
-    s.tokens.forEach((t) => {
-      if (!t.deprel) return;
-      rows.add(t.id);
-      if (t.head > 0) rows.add(t.head);
+    s.tokens.forEach((t, tokIdx) => {
+      if (t.deprel) {
+        rows.add(t.id);
+        if (t.head > 0) rows.add(t.head);
+      }
+      if (!enhanced) return;
+      enhancedPlans[sentIdx][tokIdx].extras.forEach((e) => {
+        rows.add(t.id);
+        if (e.head > 0) rows.add(e.head);
+      });
     });
     return rows;
   });
@@ -34,6 +46,7 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
   const xposSpans = [];
   const featSpans = [];
   const relations = [];
+  const enhancedRelations = [];
 
   let nextId = 0;
   const id = (prefix) => `${prefix}-${nextId++}`;
@@ -101,6 +114,40 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
         }
       }),
     );
+
+    // The enhanced layer's rows: a suppressor over a basic relation DEPS
+    // leaves out, and every edge DEPS has that the tree lacks.
+    if (enhanced) {
+      s.words.forEach((w) =>
+        w.morphemes.forEach((m) => {
+          const row = m.row;
+          const targetId = lemmaSpanIdByRow.get(row.id);
+          if (!targetId) return;
+          const plan = enhancedPlans[sentIdx][row.id - 1];
+          const spanOf = (head) => (head === 0 ? targetId : lemmaSpanIdByRow.get(head));
+          const basicSource = row.deprel ? spanOf(row.head) : null;
+          if (plan.suppress && basicSource) {
+            enhancedRelations.push({
+              id: id('erel'),
+              source: basicSource,
+              target: targetId,
+              value: null,
+              metadata: { suppress: true },
+            });
+          }
+          plan.extras.forEach((e) => {
+            const sourceId = spanOf(e.head);
+            if (!sourceId) return;
+            enhancedRelations.push({
+              id: id('erel'),
+              source: sourceId,
+              target: targetId,
+              value: e.deprel,
+            });
+          });
+        }),
+      );
+    }
   });
 
   return {
@@ -126,6 +173,15 @@ export function rawDocFromConllu(conlluText, name = 'doc') {
                 spans: lemmaSpans,
                 relationLayers: [
                   { id: 'relation-layer', config: { ud: { dependency: true } }, relations },
+                  ...(enhanced
+                    ? [
+                        {
+                          id: 'enhanced-relation-layer',
+                          config: { ud: { enhancedDependency: true } },
+                          relations: enhancedRelations,
+                        },
+                      ]
+                    : []),
                 ],
               },
               { id: 'upos-layer', config: { ud: { upos: true } }, spans: uposSpans },
