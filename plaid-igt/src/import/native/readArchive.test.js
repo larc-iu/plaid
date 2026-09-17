@@ -41,6 +41,23 @@ describe('readNativeArchive', () => {
     expect(readNativeArchive(bytes).documents[0].mediaBytes).toBeNull();
   });
 
+  it('refuses two vocabularies with one name', () => {
+    const manifest = {
+      ...MANIFEST,
+      vocabularies: [
+        { id: 'v1', name: 'Lex', file: 'vocabularies/Lex.json' },
+        { id: 'v2', name: 'Lex', file: 'vocabularies/Lex (2).json' },
+      ],
+    };
+    const bytes = zipOf({
+      'project.json': JSON.stringify(manifest),
+      'vocabularies/Lex.json': '{}',
+      'vocabularies/Lex (2).json': '{}',
+      'documents/A.json': '{}',
+    });
+    expect(() => readNativeArchive(bytes)).toThrow(/Two vocabularies are named "Lex"/);
+  });
+
   it('rejects non-zips, foreign zips, and unsupported versions', () => {
     expect(() => readNativeArchive(new Uint8Array([1, 2, 3]))).toThrow(ArchiveError);
     expect(() => readNativeArchive(zipOf({ 'x.txt': 'hi' }))).toThrow(

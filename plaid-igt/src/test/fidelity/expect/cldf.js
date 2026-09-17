@@ -286,6 +286,11 @@ function rebuildText(s, d) {
 export default {
   id: 'cldf',
   strips: {
+    // A project holding two vocabularies with one name is refused outright,
+    // which roundTrip.mjs checks on a project of its own (REFUSALS). No project
+    // that is compared holds it, so there is nothing to take out.
+    'vocab.duplicateName': () => {},
+
     // An empty document and one whose sentences hold no text alike give the
     // import no example row to build a document from.
     'document.noText': (s) =>

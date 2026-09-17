@@ -48,6 +48,19 @@ export function readNativeArchive(bytes) {
     );
   }
 
+  // An import finds each vocabulary's place in the new project by its name,
+  // so two sharing one would merge. The person gives them different names
+  // (ruled a user error, 2026-09-17).
+  const vocabNames = new Set();
+  for (const row of manifest.vocabularies || []) {
+    if (vocabNames.has(row.name)) {
+      throw new ArchiveError(
+        `Two vocabularies are named "${row.name}". Rename one in the project and export again.`,
+      );
+    }
+    vocabNames.add(row.name);
+  }
+
   const vocabularies = (manifest.vocabularies || []).map((row) => ({
     ...row,
     data: json(row.file),

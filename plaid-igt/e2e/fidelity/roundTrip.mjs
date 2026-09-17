@@ -37,6 +37,18 @@ import { snapshotProject } from './snapshot.mjs';
 
 const LISTS = { native: nativeList, cldf: cldfList, elan: elanList };
 
+// What a format refuses, by kitchen-sink project and by the half of the round
+// trip that refuses it. A project listed here is checked for the refusal and
+// nothing else, and skipped by a format it does not name.
+const REFUSALS = {
+  // Ruled a user error (2026-09-17): the archive import tells vocabularies
+  // apart by name, and a CLDF dataset names one by its name alone.
+  twins: {
+    native: { at: 'import', message: /Two vocabularies are named/ },
+    cldf: { at: 'export', message: /Two vocabularies are named/ },
+  },
+};
+
 const arg = (name) => {
   const i = process.argv.indexOf(name);
   return i === -1 ? null : process.argv[i + 1];
@@ -88,6 +100,27 @@ function report(label, list, source, actual, bare) {
   return { failures: 1, expected, actual: got };
 }
 
+/** Check that a format refuses a project where it should. Returns the failure count. */
+async function refusal(client, p, format, expected) {
+  const label = `${p.role} project refused at ${expected.at}`;
+  let stage = 'export';
+  try {
+    const exported = await exportProject(client, p.id, format);
+    stage = 'import';
+    await importProject(client, format, exported.bytes, p.name);
+    stage = 'done';
+  } catch (err) {
+    if (stage === expected.at && expected.message.test(err.message)) {
+      console.log(`  ok   ${label}: ${err.message}`);
+      return 0;
+    }
+    console.log(`  FAIL ${label}: refused at ${stage} instead: ${err.message}`);
+    return 1;
+  }
+  console.log(`  FAIL ${label}: the round trip went through`);
+  return 1;
+}
+
 /** Compare a second export with the first. Returns the failure count. */
 function fixedPoint(label, first, second) {
   const diffs = diffExports(
@@ -120,6 +153,11 @@ try {
     const list = LISTS[format];
     console.log(`\n${list.name}`);
     for (const p of sources) {
+      if (REFUSALS[p.role]) {
+        const expected = REFUSALS[p.role][format];
+        if (expected) failures += await refusal(client, p, format, expected);
+        continue;
+      }
       const source = sourceSnaps.get(p.role);
       const label = `${p.role} project`;
       const exported = await exportProject(client, p.id, format);

@@ -97,7 +97,10 @@ export default {
     'layers.fieldEmpty': carried,
 
     // Vocabularies: their schema
-    'vocab.linked': carried,
+    'vocab.linked': {
+      carried: 'changed',
+      how: 'Comes back as it was, except that a vocabulary whose settings list no fields at all comes back listing the two built-in ones, gloss as { inline: true } and morphType as { inline: false }, and no tagsets. The archive writes the fields an entry shows (normalizeVocabFields), and those two are shown whether listed or not, so nothing on screen changes.',
+    },
     'vocab.second': carried,
     'vocab.customField': carried,
     'vocab.fieldNotInline': carried,
@@ -111,7 +114,13 @@ export default {
     'vocab.foreignConfig': carried,
     // The importer finds each vocabulary's target by name, so the second of two same-named
     // vocabularies is written into the first. Suspected bug.
-    'vocab.duplicateName': carried,
+    'vocab.duplicateName': {
+      carried: false,
+      kind: 'ruled',
+      why: 'The import refuses an archive holding two vocabularies with one name, since it finds each one’s place in the new project by name.',
+      ruling:
+        'user, 2026-09-17: two vocabularies with one name are a user error, and the import is blocked',
+    },
     'vocab.fieldAliasName': carried,
 
     // Vocabularies: entries

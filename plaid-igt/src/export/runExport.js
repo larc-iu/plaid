@@ -290,6 +290,18 @@ export async function runExport({
     }
   }
   const vocabsById = Object.fromEntries(vocabs.map((v) => [v.id, v]));
+  // A CLDF dataset names an entry's vocabulary by name alone, so two sharing a
+  // name would come back as one. The person renames one first (ruled a user
+  // error, 2026-09-17).
+  if (wantCldfDictionary) {
+    const names = new Set();
+    for (const v of vocabs) {
+      if (names.has(v.name)) {
+        throw new Error(`Two vocabularies are named "${v.name}". Rename one to export as CLDF.`);
+      }
+      names.add(v.name);
+    }
+  }
 
   // The project's annotation manual, on the same terms as comments: the native
   // archive only, and never a historical one. Guidelines ARE audited, unlike

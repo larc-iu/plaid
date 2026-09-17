@@ -45,7 +45,7 @@ try {
   }
   console.log(`snapshots read (${secs()})`);
 
-  const inSink = detectFeatures([snaps.main, snaps.blacklist]);
+  const inSink = detectFeatures([snaps.main, snaps.blacklist, snaps.twins]);
   const inBare = detectFeatures([snaps.bare]);
 
   const missing = FEATURES.filter((f) => inSink.get(f.key) === 0);

@@ -250,7 +250,13 @@ export default {
       kind: 'foreign',
       why: 'Another app’s vocabulary config. CLDF has no place for it.',
     },
-    'vocab.duplicateName': carried,
+    'vocab.duplicateName': {
+      carried: false,
+      kind: 'ruled',
+      why: 'The export refuses a project with two vocabularies of one name, since the Vocabulary column names a vocabulary by its name alone and the import could not tell them apart.',
+      ruling:
+        'user, 2026-09-17: two vocabularies with one name are a user error, and the import is blocked',
+    },
     'vocab.fieldAliasName': {
       carried: 'changed',
       how: 'Comes back under the same name by the rule under vocab.customField. The CLDF import reads lexicon columns by their Entry_ and Sense_ prefixes, not by the bulk import’s header aliases.',

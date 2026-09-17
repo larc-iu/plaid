@@ -10,9 +10,12 @@
 // the unusual shapes a format still has to survive (a duplicate annotation, a
 // morpheme matching no word, overlapping speech).
 //
-// Three projects:
+// Four projects:
 //   Kitchen sink            everything that fits in one project
 //   Kitchen sink blacklist  the ignored-tokens rule a project can only have one of
+//   Kitchen sink twins      two vocabularies with one name, which the native
+//                           import and the CLDF export refuse (ruled a user
+//                           error), so it cannot share a project with the rest
 //   Bare                    setup and nothing else, the negative control
 //
 // `buildKitchenSink(client)` returns `{projects: [{role, id, name}], users}`.
@@ -793,6 +796,33 @@ async function buildBlacklist(client, name) {
   return setup.projectId;
 }
 
+async function buildTwins(client, name) {
+  const setup = await executeProjectSetup({
+    client,
+    isNewProject: true,
+    resumeProjectId: null,
+    setupData: {
+      basicInfo: { projectName: name },
+      orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }] },
+      fields: { fields: [{ name: 'Gloss', scope: 'Word' }] },
+      vocabulary: {
+        vocabularies: [
+          { id: 'new-lexicon', name: `${name} Lexicon`, enabled: true, isCustom: true },
+        ],
+      },
+      documentMetadata: { enabledFields: [] },
+    },
+  });
+  if (setup.failures.length) throw new Error(`setup of ${name}: ${setup.failures.join('; ')}`);
+  const twin = await client.vocabLayers.create(`${name} Lexicon`);
+  await client.projects.linkVocab(setup.projectId, twin.id);
+  await client.vocabItems.create(twin.id, 'uno', { gloss: 'one' });
+  const created = await client.documents.create(setup.projectId, 'Uno');
+  const doc = await reload(client, setup.projectId, created.id);
+  await must(doc, 'twins baseline', doc.saveBaselineText('uno'));
+  return setup.projectId;
+}
+
 async function buildBare(client, name) {
   const setup = await executeProjectSetup({
     client,
@@ -841,11 +871,11 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   const lexiconId = project.vocabs.find((v) => v.name === `${mainName} Lexicon`).id;
   const affixId = project.vocabs.find((v) => v.name === `${mainName} Affixes`).id;
   await configureLexicon(client, lexiconId);
-  // A second vocabulary under a name the project already has linked, made
-  // outside the wizard, so it has none of the seeded fields either.
-  const twin = await client.vocabLayers.create(`${mainName} Affixes`);
-  await client.projects.linkVocab(projectId, twin.id);
-  await client.vocabItems.create(twin.id, '-aba', { gloss: 'IPFV', morphType: 'suffix' });
+  // A vocabulary made outside the wizard, through the API, so it lists none of
+  // the fields setup seeds. Its entries still hold values in the built-in ones.
+  const bare = await client.vocabLayers.create(`${mainName} Borrowings`);
+  await client.projects.linkVocab(projectId, bare.id);
+  await client.vocabItems.create(bare.id, '-aba', { gloss: 'IPFV', morphType: 'suffix' });
   const entries = await makeEntries(client, lexiconId, affixId);
 
   const ctx = { client, contributor, projectId, entries, lexiconId, foreign };
@@ -854,12 +884,14 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   await addGuidelines(client, projectId);
 
   const blacklistId = await buildBlacklist(client, `Kitchen sink blacklist${suffix}`);
+  const twinsId = await buildTwins(client, `Kitchen sink twins${suffix}`);
   const bareId = await buildBare(client, `Bare${suffix}`);
 
   return {
     projects: [
       { role: 'main', id: projectId, name: mainName },
       { role: 'blacklist', id: blacklistId, name: `Kitchen sink blacklist${suffix}` },
+      { role: 'twins', id: twinsId, name: `Kitchen sink twins${suffix}` },
       { role: 'bare', id: bareId, name: `Bare${suffix}` },
     ],
     users: { admin: client, contributor },

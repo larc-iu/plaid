@@ -1000,6 +1000,20 @@ describe('runExport — CLDF', () => {
     expect(text(entries, 'contributions.csv')).toContain('Beta');
   });
 
+  it('refuses two vocabularies with one name, which a dataset cannot tell apart', async () => {
+    const docs = [rawDoc('d1', 'Solo', 'hi')];
+    const client = stubClient({ docs });
+    client.vocabLayers.get = async (id) => ({ ...VOCAB, id });
+    await expect(
+      runExport({
+        client,
+        project: { ...LANGUAGED_PROJECT, vocabs: [{ id: 'v1' }, { id: 'v2' }] },
+        preset: cldfPreset(),
+        scope: { type: 'project' },
+      }),
+    ).rejects.toThrow(/Two vocabularies are named "Lexicon"/);
+  });
+
   it('zips even at document scope, since a dataset is many files', async () => {
     const docs = [rawDoc('d1', 'Solo', 'hi')];
     const client = stubClient({ docs });

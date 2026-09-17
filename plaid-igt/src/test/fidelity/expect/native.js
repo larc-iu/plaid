@@ -24,8 +24,29 @@ function readNote(comment) {
 
 export default {
   id: 'native',
-  strips: {},
+  strips: {
+    // A project holding two vocabularies with one name is refused outright,
+    // which roundTrip.mjs checks on a project of its own (REFUSALS). No project
+    // that is compared holds it, so there is nothing to take out.
+    'vocab.duplicateName': () => {},
+  },
   steps: [
+    {
+      keys: ['vocab.linked'],
+      // A vocabulary listing no fields comes back listing the built-in two.
+      apply(expected) {
+        for (const v of expected.vocabularies || []) {
+          if (v.config?.igt?.fields) continue;
+          v.config = {
+            ...v.config,
+            igt: {
+              ...v.config?.igt,
+              fields: { gloss: { inline: true }, morphType: { inline: false } },
+            },
+          };
+        }
+      },
+    },
     {
       keys: [
         'comment.document',
