@@ -406,11 +406,14 @@
                                                    vec)))
                                      {} vl-rows)
             vl-by-id (into {} (map (juxt :id identity)) vl-rows)
-            links-by-token-layer (reduce (fn [acc [vl-id tlids]]
+            ;; Walks vl-rows, which are sorted by id above, rather than the
+            ;; hash map: same reason as the OLTP read (plaid.sql.document),
+            ;; where a hash order here made each layer's links arrive shuffled.
+            links-by-token-layer (reduce (fn [acc vl]
                                            (reduce (fn [a tlid]
-                                                     (update a tlid (fnil conj []) vl-id))
-                                                   acc tlids))
-                                         {} vl->token-layers)
+                                                     (update a tlid (fnil conj []) (:id vl)))
+                                                   acc (clojure.core/get vl->token-layers (:id vl) [])))
+                                         {} vl-rows)
             ;; --- builders (shape-identical to the OLTP deep read) ---
             build-token (fn [r]
                           (-> {:token/id (:id r)

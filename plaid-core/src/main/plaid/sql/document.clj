@@ -290,6 +290,10 @@
           ;; one query. Same Postgres-shape note as above. ---
           ;; Vocab links hang off the TOKEN layers their tokens live in, so with
           ;; no fetched tokens there is nothing for them to attach to.
+          ;; ORDER BY id like spans and relations above: ids are minted in
+          ;; order, a client decides which of two links on one token it shows
+          ;; from the order they arrive in, and the history read sorts them by
+          ;; id too (plaid.history.read), so parity needs it here as well.
           vl-rows (if (and named (empty? token-rows))
                     []
                     (psc/q db ["SELECT vl.id, vl.vocab_item_id, vl.document_id,
@@ -300,7 +304,8 @@
                                 LEFT JOIN vocab_link_tokens vlt
                                        ON vlt.vocab_link_id = vl.id
                                 WHERE vl.document_id = ?
-                                GROUP BY vl.id"
+                                GROUP BY vl.id
+                                ORDER BY vl.id"
                                id]))
           ;; --- 7. Vocab item / vocab layer / maintainers hydration. ---
           vi-ids (->> vl-rows (map :vocab_item_id) distinct vec)
@@ -365,11 +370,16 @@
           span-layers-by-token-layer (group-by :token_layer_id span-layer-rows)
           token-layers-by-text-layer (group-by :text_layer_id token-layer-rows)
           text-by-text-layer (into {} (map (juxt :text_layer_id identity)) text-rows)
-          links-by-token-layer (reduce (fn [acc [vl-id tlids]]
+          ;; Walks vl-rows, which came back in id order, rather than reducing
+          ;; over the maps above: those are hash maps keyed by uuid, so their
+          ;; iteration order is the hash's, which shuffles run to run. Each
+          ;; layer's list has to stay in id order — a client decides which of
+          ;; two links on one token it shows from the order they arrive in.
+          links-by-token-layer (reduce (fn [acc r]
                                          (reduce (fn [a tlid]
-                                                   (update a tlid (fnil conj []) vl-id))
-                                                 acc tlids))
-                                       {} vl->token-layers)
+                                                   (update a tlid (fnil conj []) (:id r)))
+                                                 acc (clojure.core/get vl->token-layers (:id r) [])))
+                                       {} vl-rows)
           vl-by-id (into {} (map (juxt :id identity)) vl-rows)
           ;; --- Builders (all pure functions over the maps above). ---
           build-token (fn [r]

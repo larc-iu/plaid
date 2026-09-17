@@ -3,7 +3,7 @@
   added alongside the existing token/span/relation bulk variants."
   (:require [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
-                                    admin-request assert-status assert-created assert-ok
+                                    admin-request api-call assert-status assert-created assert-ok
                                     assert-no-content assert-bad-request assert-forbidden
                                     with-admin with-test-users user1-request with-clean-db]]
             [plaid.test-helpers :refer :all]))
@@ -103,3 +103,31 @@
           ids (-> (bulk-create-vocab-links admin-request [{:vocab-item item-a :tokens [t1]}]) :body :ids)]
       (assert-forbidden (bulk-create-vocab-links user1-request [{:vocab-item item-a :tokens [t1]}]))
       (assert-forbidden (bulk-delete-vocab-links user1-request ids)))))
+
+(deftest document-lists-links-in-the-order-they-were-made
+  (testing "a document's vocab links come back in id order, whatever made them"
+    (let [{:keys [doc t1 t2 t3 item-a item-b]} (setup)
+          ;; More than eight links, because up to eight Clojure keeps a map in
+          ;; insertion order and the read groups links through maps keyed by
+          ;; link id: only past that does a wrong grouping shuffle them.
+          ;; Interleaved across calls, and several land on one token, which is
+          ;; where the order decides something: a client shows the last link
+          ;; on a token.
+          pairs (mapv (fn [i] {:vocab-item (if (even? i) item-a item-b)
+                               :tokens [(nth [t1 t2 t3] (mod i 3))]})
+                      (range 12))
+          made (concat (-> (bulk-create-vocab-links admin-request (subvec pairs 0 5)) :body :ids)
+                       [(-> (create-vocab-link admin-request item-a [t1]) :body :id)]
+                       (-> (bulk-create-vocab-links admin-request (subvec pairs 5 12)) :body :ids))
+          body (-> (api-call admin-request
+                             {:method :get
+                              :path (str "/api/v1/documents/" doc "?include-body=true")})
+                   :body)
+          listed (->> body
+                      :document/text-layers
+                      (mapcat :text-layer/token-layers)
+                      (mapcat :token-layer/vocabs)
+                      (mapcat :vocab-layer/vocab-links)
+                      (mapv :vocab-link/id))]
+      (is (= 13 (count listed)))
+      (is (= (vec made) listed) "the document lists the links in the order they were made"))))
