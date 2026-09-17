@@ -25,6 +25,8 @@
 // detector that is true of everything.
 
 import { provState } from '@larc-iu/plaid-client';
+import { fieldNameLang } from '../../domain/fieldNames.js';
+import { hasLanguageIdentity, isTokenIgnored } from '../../domain/igtConfig.js';
 import { CORE_VOCAB_FIELDS, RESERVED_ITEM_KEYS } from '../../domain/vocabFields.js';
 
 // ---- snapshot helpers ---------------------------------------------------------
@@ -35,6 +37,13 @@ const count = (arr, pred) => (arr || []).filter(pred).length;
 const layer = (s, key) => (s.layers || []).find((l) => l.key === key);
 const tokensIn = (d, role) => d.tokens.filter((t) => t.layer === `token:${role}`);
 const spanLayers = (s) => (s.layers || []).filter((l) => l.key.startsWith('span:'));
+// An IGT field is a scoped span layer on the token layer its scope names.
+const SCOPE_ROLE = { Sentence: 'sentence', Word: 'word', Morpheme: 'morpheme' };
+const fieldLayers = (s) =>
+  spanLayers(s).filter((l) => {
+    const role = SCOPE_ROLE[l.config?.igt?.scope];
+    return !!role && l.key.startsWith(`span:${role}/`);
+  });
 const scopeOf = (s, spanLayerKey) => layer(s, spanLayerKey)?.config?.igt?.scope ?? null;
 const igt = (s) => s.config?.igt || {};
 const nonEmptyObject = (v) => !!v && typeof v === 'object' && Object.keys(v).length > 0;
@@ -53,10 +62,14 @@ const orthographyNames = (s) =>
 const ignoredConfig = (s) => wordLayer(s)?.config?.igt?.ignoredTokens ?? null;
 const vocabFieldEntries = (s) =>
   vocabs(s).flatMap((v) => Object.entries(v.config?.igt?.fields || {}));
-// Status is seeded on every new vocabulary (statusFieldSeed), so it counts as core here.
-const CORE_ITEM_FIELDS = new Set([...CORE_VOCAB_FIELDS.map((f) => f.name), 'status']);
+// Status is seeded on every new vocabulary (statusFieldSeed) and lexemeForm is
+// built in (vocabFields.js), so both count as core here.
+const CORE_ITEM_FIELDS = new Set([...CORE_VOCAB_FIELDS.map((f) => f.name), 'status', 'lexemeForm']);
+// What an importer stamps to find its own work again (import/resume.js and
+// the entry keys in the CLDF and archive importers). Bookkeeping, not data.
+const DOCUMENT_STAMPS = new Set(['importSource', 'importDone']);
+const ITEM_STAMPS = new Set(['cldfEntry', 'nativeImportId']);
 const IGT_ROLES = new Set(['baseline', 'sentence', 'word', 'morpheme', 'time-alignment']);
-const PUNCT = /^[\p{P}\p{S}]+$/u;
 const spanOnRole = (sp, role) =>
   sp.tokens.length > 0 && sp.tokens.every((k) => k.startsWith(`${role}:`));
 const cps = (str) => [...(str ?? '')];
@@ -82,6 +95,49 @@ const morphemesByWord = (d) => {
 };
 const sentenceOfExtent = (d, begin, end) =>
   tokensIn(d, 'sentence').find((s) => s.begin <= begin && end <= s.end);
+
+// Header spellings the vocabulary bulk import reads as another column (vocabBulk.js).
+const COLUMN_ALIASES = new Set([
+  'form',
+  'lexeme',
+  'headword',
+  'entry',
+  'citation form',
+  'uses',
+  'id',
+  'number',
+  'glosses',
+  'meaning',
+  'translation',
+  'english',
+  'part of speech',
+  'grammatical category',
+  'category',
+  'grammatical info',
+  'word class',
+  'def',
+  'description',
+  'sense',
+  'morph type',
+  'morpheme type',
+  'type',
+]);
+const itemStrings = (it) => [
+  it.form,
+  ...Object.values(it.metadata || {}).filter((v) => typeof v === 'string'),
+];
+const surfaceOf = (d, t) => cps(baseline(d)).slice(t.begin, t.end).join('');
+const segmentsIn = (d, sentence) =>
+  tokensIn(d, 'time-alignment').filter((a) => sentence.begin <= a.begin && a.end <= sentence.end);
+const PUNCT_EDGE = /^[\p{P}\p{S}]|[\p{P}\p{S}]$/u;
+const ORPHAN_MORPHEMES = (d) => {
+  const words = wordExtents(d);
+  return new Set(
+    tokensIn(d, 'morpheme')
+      .filter((m) => !words.has(`${m.begin}-${m.end}`))
+      .map((m) => m.key),
+  );
+};
 
 // ---- the catalog ------------------------------------------------------------------
 
@@ -137,12 +193,12 @@ export const FEATURES = [
   {
     key: 'project.languageObject',
     what: 'the language being documented: name, Glottocode, ISO code, writing-system tag',
-    detect: (s) => (nonEmptyObject(igt(s).languages?.object) ? 1 : 0),
+    detect: (s) => (hasLanguageIdentity(igt(s).languages?.object) ? 1 : 0),
   },
   {
     key: 'project.languageMeta',
     what: 'the language glosses and translations are written in',
-    detect: (s) => (nonEmptyObject(igt(s).languages?.meta) ? 1 : 0),
+    detect: (s) => (hasLanguageIdentity(igt(s).languages?.meta) ? 1 : 0),
   },
   {
     key: 'project.languageCoordinates',
@@ -215,19 +271,19 @@ export const FEATURES = [
   {
     key: 'layers.fieldSentence',
     what: 'an annotation field at sentence scope',
-    detect: (s) => count(spanLayers(s), (l) => l.config?.igt?.scope === 'Sentence'),
+    detect: (s) => count(fieldLayers(s), (l) => l.config?.igt?.scope === 'Sentence'),
     bare: true,
   },
   {
     key: 'layers.fieldWord',
     what: 'an annotation field at word scope',
-    detect: (s) => count(spanLayers(s), (l) => l.config?.igt?.scope === 'Word'),
+    detect: (s) => count(fieldLayers(s), (l) => l.config?.igt?.scope === 'Word'),
     bare: true,
   },
   {
     key: 'layers.fieldMorpheme',
     what: 'an annotation field at morpheme scope',
-    detect: (s) => count(spanLayers(s), (l) => l.config?.igt?.scope === 'Morpheme'),
+    detect: (s) => count(fieldLayers(s), (l) => l.config?.igt?.scope === 'Morpheme'),
     bare: true,
   },
   {
@@ -246,6 +302,7 @@ export const FEATURES = [
   {
     key: 'layers.fieldOrder',
     what: 'annotation fields at one scope in an order other than alphabetical',
+    bare: true,
     detect: (s) => {
       const byParent = new Map();
       for (const l of spanLayers(s)) {
@@ -255,7 +312,8 @@ export const FEATURES = [
       }
       return count([...byParent.values()], (ls) => {
         const names = ls.sort((a, b) => a.position - b.position).map((l) => l.name);
-        return names.join('\n') !== [...names].sort().join('\n');
+        const sorted = [...names].sort((a, b) => a.localeCompare(b));
+        return names.join('\n') !== sorted.join('\n');
       });
     },
   },
@@ -290,6 +348,16 @@ export const FEATURES = [
     what: 'a relation layer (plaid-ud’s dependencies)',
     detect: (s) => count(s.layers, (l) => l.key.startsWith('relation:')),
     foreign: true,
+  },
+
+  {
+    key: 'layers.fieldEmpty',
+    what: 'an annotation field with no values anywhere in the project',
+    detect: (s) => {
+      const used = new Set(allSpans(s).map((sp) => sp.layer));
+      return count(fieldLayers(s), (l) => !used.has(l.key));
+    },
+    bare: true,
   },
 
   // Vocabularies: their schema
@@ -333,7 +401,7 @@ export const FEATURES = [
   {
     key: 'vocab.fieldMultilingual',
     what: 'a field in a second writing system, named with its suffix (“gloss (ru)”)',
-    detect: (s) => count(vocabFieldEntries(s), ([name]) => /\s\([^()]+\)$/.test(name)),
+    detect: (s) => count(vocabFieldEntries(s), ([name]) => !!fieldNameLang(name)),
   },
   {
     key: 'vocab.fieldItemRef',
@@ -364,6 +432,22 @@ export const FEATURES = [
     what: 'vocabulary config another app keeps (plaid-dict’s publication record)',
     detect: (s) =>
       vocabs(s).reduce((n, v) => n + count(Object.keys(v.config || {}), (ns) => ns !== 'igt'), 0),
+    foreign: true,
+  },
+
+  {
+    key: 'vocab.duplicateName',
+    what: 'two linked vocabularies with the same name',
+    detect: (s) => vocabs(s).length - new Set(vocabs(s).map((v) => v.name)).size,
+  },
+  {
+    key: 'vocab.fieldAliasName',
+    what: 'a vocabulary field named like a column the bulk import reads as something else (Translation, Type, Number)',
+    detect: (s) =>
+      count(
+        vocabFieldEntries(s),
+        ([name]) => COLUMN_ALIASES.has(name.toLowerCase()) && !CORE_ITEM_FIELDS.has(name),
+      ),
   },
 
   // Vocabularies: entries
@@ -382,7 +466,7 @@ export const FEATURES = [
             ([name, f]) =>
               f?.type !== 'item' && !CORE_ITEM_FIELDS.has(name) && name !== 'lexemeForm',
           )
-          .filter(([name]) => !/\s\([^()]+\)$/.test(name))
+          .filter(([name]) => !fieldNameLang(name))
           .map(([name]) => name),
       );
       return count(items(s), (it) => Object.keys(it.metadata || {}).some((k) => custom.has(k)));
@@ -392,7 +476,7 @@ export const FEATURES = [
     key: 'item.multilingualValue',
     what: 'a value in a second writing system (“gloss (ru)”)',
     detect: (s) =>
-      count(items(s), (it) => Object.keys(it.metadata || {}).some((k) => /\s\([^()]+\)$/.test(k))),
+      count(items(s), (it) => Object.keys(it.metadata || {}).some((k) => !!fieldNameLang(k))),
   },
   {
     key: 'item.itemRefValue',
@@ -494,7 +578,7 @@ export const FEATURES = [
     detect: (s) => {
       const linked = new Set(allLinks(s).map((l) => `${l.vocab}|${l.item}`));
       return vocabs(s).reduce(
-        (n, v) => n + count(v.items, (it) => !linked.has(`${v.name}|${it.key}`)),
+        (n, v) => n + count(v.items, (it) => !linked.has(`${v.key}|${it.key}`)),
         0,
       );
     },
@@ -509,11 +593,92 @@ export const FEATURES = [
           n +
           count(v.items, (it) =>
             Object.keys(it.metadata || {}).some(
-              (k) => !declared.has(k) && !RESERVED_ITEM_KEYS.has(k) && !k.startsWith('prov'),
+              (k) =>
+                !declared.has(k) &&
+                !RESERVED_ITEM_KEYS.has(k) &&
+                !ITEM_STAMPS.has(k) &&
+                !k.startsWith('prov'),
             ),
           )
         );
       }, 0),
+  },
+
+  {
+    key: 'item.markupChars',
+    what: 'an entry form or value with a tab, a line break, or a leading double quote',
+    detect: (s) =>
+      count(items(s), (it) => itemStrings(it).some((v) => /[\t\n]/.test(v) || v.startsWith('"'))),
+  },
+  {
+    key: 'item.surroundingWhitespace',
+    what: 'an entry form or value with leading or trailing spaces',
+    detect: (s) => count(items(s), (it) => itemStrings(it).some((v) => /^\s|\s$/.test(v))),
+  },
+  {
+    key: 'item.offTagset',
+    what: 'an entry value outside the closed tagset that governs its field',
+    detect: (s) =>
+      vocabs(s).reduce((n, v) => {
+        const lists = v.config?.igt?.tagsets || {};
+        const governed = Object.entries(v.config?.igt?.fields || {})
+          .map(([name, f]) => [name, lists[f?.tagset]])
+          .filter(([, ts]) => ts && ts.mode === 'closed' && !ts.delimiters);
+        return (
+          n +
+          count(v.items, (it) =>
+            governed.some(
+              ([name, ts]) =>
+                typeof it.metadata?.[name] === 'string' &&
+                it.metadata[name] !== '' &&
+                !(ts.values || []).some((x) => x.value === it.metadata[name]),
+            ),
+          )
+        );
+      }, 0),
+  },
+  {
+    key: 'item.formNormalization',
+    what: 'two entries whose forms differ only in Unicode normalization',
+    detect: (s) =>
+      vocabs(s).reduce((n, v) => {
+        const raw = new Set(v.items.map((it) => it.form));
+        const nfc = new Set([...raw].map((f) => f.normalize('NFC')));
+        return n + raw.size - nfc.size;
+      }, 0),
+  },
+  {
+    key: 'item.containerHeadword',
+    what: 'a headword over senses with no gloss, definition, part of speech or example of its own',
+    detect: (s) => {
+      const parents = new Set(
+        items(s)
+          .map((it) => it.metadata?.parent)
+          .filter(Boolean),
+      );
+      return count(
+        items(s),
+        (it) =>
+          it.metadata?.parent == null &&
+          parents.has(it.key) &&
+          !['gloss', 'definition', 'pos'].some((k) => it.metadata?.[k]) &&
+          !(it.metadata?.examples || []).length,
+      );
+    },
+  },
+  {
+    key: 'item.exampleStale',
+    what: 'a promoted example whose token no longer exists',
+    detect: (s) =>
+      items(s).reduce(
+        (n, it) =>
+          n +
+          count(
+            it.metadata?.examples,
+            (ex) => typeof ex?.token === 'string' && ex.token.startsWith('missing-token:'),
+          ),
+        0,
+      ),
   },
 
   // Documents
@@ -522,7 +687,10 @@ export const FEATURES = [
     what: 'a value in a switched-on document metadata field',
     detect: (s) => {
       const on = new Set((igt(s).documentMetadata || []).map((f) => f.name));
-      return sum(s, (d) => count(Object.keys(d.metadata), (k) => on.has(k)));
+      // A blank switched-on field is saved as '' by the Metadata tab: no value.
+      return sum(s, (d) =>
+        count(Object.entries(d.metadata), ([k, v]) => on.has(k) && v !== '' && v != null),
+      );
     },
   },
   {
@@ -533,7 +701,7 @@ export const FEATURES = [
       return sum(s, (d) =>
         count(
           Object.keys(d.metadata),
-          (k) => !on.has(k) && k !== 'plaid' && k !== 'speechDetection',
+          (k) => !on.has(k) && k !== 'plaid' && k !== 'speechDetection' && !DOCUMENT_STAMPS.has(k),
         ),
       );
     },
@@ -569,12 +737,40 @@ export const FEATURES = [
   {
     key: 'document.duplicateName',
     what: 'two documents with the same name',
-    detect: (s) => count(docs(s), (d) => /#\d+$/.test(d.name)),
+    detect: (s) => docs(s).length - new Set(docs(s).map((d) => d.name)).size,
   },
   {
     key: 'document.nameSpecialChars',
     what: 'a document name with characters a file name cannot hold as they are (/ : " ?)',
     detect: (s) => count(docs(s), (d) => /[/\\:"?*<>|]/.test(d.name)),
+  },
+
+  {
+    key: 'document.metadataLang',
+    what: 'a document metadata value under a name carrying a writing system (“Title (en)”)',
+    detect: (s) => sum(s, (d) => count(Object.keys(d.metadata), (k) => !!fieldNameLang(k))),
+  },
+  {
+    key: 'document.partlyAligned',
+    what: 'a document with both time-aligned and unaligned sentences',
+    detect: (s) =>
+      sum(s, (d) => {
+        const sentences = tokensIn(d, 'sentence');
+        const aligned = sentences.filter((sn) =>
+          tokensIn(d, 'time-alignment').some((a) => a.begin < sn.end && sn.begin < a.end),
+        );
+        return aligned.length > 0 && aligned.length < sentences.length ? 1 : 0;
+      }),
+  },
+  {
+    key: 'document.differentFilledFields',
+    what: 'two documents that differ in which fields hold values',
+    detect: (s) => {
+      const sets = docs(s)
+        .filter((d) => tokensIn(d, 'word').length > 0)
+        .map((d) => [...new Set(d.spans.map((sp) => sp.layer))].sort().join('|'));
+      return Math.max(0, new Set(sets).size - 1);
+    },
   },
 
   // What the text is made of
@@ -634,11 +830,13 @@ export const FEATURES = [
   },
   {
     key: 'token.ignoredWord',
-    what: 'a word token that is all punctuation',
+    what: 'a word token the project’s ignored-tokens rule skips',
     detect: (s) =>
       sum(s, (d) => {
         const body = cps(baseline(d));
-        return count(tokensIn(d, 'word'), (t) => PUNCT.test(body.slice(t.begin, t.end).join('')));
+        return count(tokensIn(d, 'word'), (t) =>
+          isTokenIgnored(body.slice(t.begin, t.end).join(''), ignoredConfig(s)),
+        );
       }),
   },
   {
@@ -660,9 +858,7 @@ export const FEATURES = [
     detect: (s) => {
       const names = orthographyNames(s);
       return sum(s, (d) =>
-        count(tokensIn(d, 'word'), (t) =>
-          [...names].some((n) => t.metadata[`orthog:${n}`] != null),
-        ),
+        count(tokensIn(d, 'word'), (t) => [...names].some((n) => !!t.metadata[`orthog:${n}`])),
       );
     },
   },
@@ -709,7 +905,7 @@ export const FEATURES = [
           tokensIn(d, 'word'),
           (t) =>
             !withMorphemes.has(`${t.begin}-${t.end}`) &&
-            !PUNCT.test(body.slice(t.begin, t.end).join('')),
+            !isTokenIgnored(body.slice(t.begin, t.end).join(''), ignoredConfig(s)),
         );
       }),
   },
@@ -764,6 +960,102 @@ export const FEATURES = [
       ),
   },
   {
+    key: 'token.wordsInOneRun',
+    what: 'two words inside one run of text with no space between them (medio + día)',
+    detect: (s) =>
+      sum(s, (d) => {
+        const body = cps(baseline(d));
+        const words = tokensIn(d, 'word').sort((a, b) => a.begin - b.begin);
+        return count(
+          words.slice(1),
+          (w, i) => !/\s/u.test(body.slice(words[i].end, w.begin).join('') || ' '),
+        );
+      }),
+  },
+  {
+    key: 'token.wordEdgePunctuation',
+    what: 'a word whose own text begins or ends with punctuation',
+    detect: (s) =>
+      sum(s, (d) =>
+        count(tokensIn(d, 'word'), (t) => {
+          const text = surfaceOf(d, t);
+          return PUNCT_EDGE.test(text) && !isTokenIgnored(text, ignoredConfig(s));
+        }),
+      ),
+  },
+  {
+    key: 'token.sentenceExtraMetadata',
+    what: 'sentence metadata beyond provenance',
+    detect: (s) =>
+      sum(s, (d) =>
+        count(tokensIn(d, 'sentence'), (t) =>
+          Object.keys(t.metadata).some((k) => !k.startsWith('prov')),
+        ),
+      ),
+  },
+  {
+    key: 'token.morphemeProvenance',
+    what: 'provenance on a morpheme (an analyzer made it)',
+    detect: (s) =>
+      sum(s, (d) => count(tokensIn(d, 'morpheme'), (m) => hasProv(m.metadata, 'prov'))),
+  },
+  {
+    key: 'token.procliticBeforeMorpheme',
+    what: 'a proclitic followed by another morpheme in its word',
+    detect: (s) =>
+      sum(s, (d) => {
+        const byWord = new Map();
+        for (const m of tokensIn(d, 'morpheme')) {
+          const k = `${m.begin}-${m.end}`;
+          if (!byWord.has(k)) byWord.set(k, []);
+          byWord.get(k).push(m);
+        }
+        return count([...byWord.values()], (ms) => {
+          const ordered = ms.sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
+          return ordered.slice(0, -1).some((m) => m.metadata.morphType === 'proclitic');
+        });
+      }),
+  },
+  {
+    key: 'alignment.provenance',
+    what: 'provenance on a segment (a transcription service made it)',
+    detect: (s) =>
+      sum(s, (d) => count(tokensIn(d, 'time-alignment'), (t) => hasProv(t.metadata, 'prov'))),
+  },
+  {
+    key: 'alignment.severalInSentence',
+    what: 'a sentence holding two or more segments',
+    detect: (s) =>
+      sum(s, (d) => count(tokensIn(d, 'sentence'), (sn) => segmentsIn(d, sn).length >= 2)),
+  },
+  {
+    key: 'alignment.straddlesSentences',
+    what: 'a segment crossing a sentence boundary',
+    detect: (s) =>
+      sum(s, (d) =>
+        count(tokensIn(d, 'time-alignment'), (a) =>
+          tokensIn(d, 'sentence').some((sn) => a.begin < sn.begin && sn.begin < a.end),
+        ),
+      ),
+  },
+  {
+    key: 'alignment.mixedSpeakersInSentence',
+    what: 'segments in one sentence with different speakers, or one with a speaker and one without',
+    detect: (s) =>
+      sum(s, (d) =>
+        count(tokensIn(d, 'sentence'), (sn) => {
+          const segs = segmentsIn(d, sn);
+          return segs.length >= 2 && new Set(segs.map((a) => a.metadata.speaker ?? '')).size > 1;
+        }),
+      ),
+  },
+  {
+    key: 'alignment.textAcrossLineBreak',
+    what: 'a segment whose text holds a line break or a run of spaces',
+    detect: (s) =>
+      sum(s, (d) => count(tokensIn(d, 'time-alignment'), (a) => /\n| {2,}/.test(surfaceOf(d, a)))),
+  },
+  {
     key: 'alignment.times',
     what: 'a time-aligned segment',
     detect: (s) =>
@@ -776,11 +1068,13 @@ export const FEATURES = [
   },
   {
     key: 'alignment.extraMetadata',
-    what: 'segment metadata beyond its times and speaker',
+    what: 'segment metadata beyond its times, speaker and provenance',
     detect: (s) =>
       sum(s, (d) =>
         count(tokensIn(d, 'time-alignment'), (t) =>
-          Object.keys(t.metadata).some((k) => !['timeBegin', 'timeEnd', 'speaker'].includes(k)),
+          Object.keys(t.metadata).some(
+            (k) => !['timeBegin', 'timeEnd', 'speaker'].includes(k) && !k.startsWith('prov'),
+          ),
         ),
       ),
   },
@@ -801,7 +1095,14 @@ export const FEATURES = [
         const segs = tokensIn(d, 'time-alignment')
           .filter((t) => t.metadata.timeBegin != null)
           .sort((a, b) => a.metadata.timeBegin - b.metadata.timeBegin);
-        return count(segs.slice(1), (t, i) => t.metadata.timeBegin < segs[i].metadata.timeEnd);
+        // Against the latest end so far, so a long segment overlapping a later,
+        // non-adjacent one still counts.
+        let latestEnd = -Infinity;
+        return count(segs, (t) => {
+          const overlaps = t.metadata.timeBegin < latestEnd;
+          latestEnd = Math.max(latestEnd, t.metadata.timeEnd ?? t.metadata.timeBegin);
+          return overlaps;
+        });
       }),
   },
 
@@ -893,6 +1194,40 @@ export const FEATURES = [
     detect: (s) => count(allSpans(s), (sp) => sp.value === ''),
   },
 
+  {
+    key: 'span.overlapSameField',
+    what: 'two annotations in one field sharing some of their tokens but not all',
+    detect: (s) =>
+      sum(s, (d) => {
+        let n = 0;
+        d.spans.forEach((a, i) => {
+          for (const b of d.spans.slice(i + 1)) {
+            if (a.layer !== b.layer) continue;
+            const shared = a.tokens.filter((k) => b.tokens.includes(k)).length;
+            if (shared > 0 && (shared < a.tokens.length || shared < b.tokens.length)) n++;
+          }
+        });
+        return n;
+      }),
+  },
+  {
+    key: 'span.reachesOrphanToken',
+    what: 'an annotation that also covers a morpheme matching no word',
+    detect: (s) =>
+      sum(s, (d) => {
+        const orphans = ORPHAN_MORPHEMES(d);
+        return count(
+          d.spans,
+          (sp) => sp.tokens.length > 1 && sp.tokens.some((k) => orphans.has(k)),
+        );
+      }),
+  },
+  {
+    key: 'span.valueWhitespace',
+    what: 'an annotation value with leading or trailing whitespace',
+    detect: (s) => count(allSpans(s), (sp) => /^\s|\s$/.test(sp.value ?? '')),
+  },
+
   // Vocabulary links
   {
     key: 'link.word',
@@ -952,7 +1287,11 @@ export const FEATURES = [
   {
     key: 'link.onSentence',
     what: 'an entry linked to a whole sentence',
-    detect: (s) => count(allLinks(s), (l) => l.tokens.some((k) => k.startsWith('sentence:'))),
+    detect: (s) =>
+      count(
+        allLinks(s),
+        (l) => l.tokens.length > 0 && l.tokens.every((k) => k.startsWith('sentence:')),
+      ),
   },
   {
     key: 'link.duplicateOnToken',
@@ -973,7 +1312,7 @@ export const FEATURES = [
     detect: (s) => {
       const senses = new Set(
         vocabs(s).flatMap((v) =>
-          v.items.filter((it) => it.metadata?.parent != null).map((it) => `${v.name}|${it.key}`),
+          v.items.filter((it) => it.metadata?.parent != null).map((it) => `${v.key}|${it.key}`),
         ),
       );
       return count(allLinks(s), (l) => senses.has(`${l.vocab}|${l.item}`));
@@ -994,6 +1333,43 @@ export const FEATURES = [
     what: `a link carrying ${k}`,
     detect: (s) => count(allLinks(s), (l) => hasProv(l.metadata, k)),
   })),
+
+  {
+    key: 'link.onSegment',
+    what: 'an entry linked to a time-aligned segment',
+    detect: (s) => count(allLinks(s), (l) => l.tokens.some((k) => k.startsWith('time-alignment:'))),
+  },
+  {
+    key: 'link.onOrphanToken',
+    what: 'an entry linked to a morpheme matching no word',
+    detect: (s) =>
+      sum(s, (d) => {
+        const orphans = ORPHAN_MORPHEMES(d);
+        return count(d.links, (l) => l.tokens.some((k) => orphans.has(k)));
+      }),
+  },
+  {
+    key: 'link.entryMorphType',
+    what: 'a linked morpheme whose morph type comes from its entry, not from the morpheme',
+    detect: (s) =>
+      vocabs(s).reduce((n, v) => {
+        const byKey = new Map(v.items.map((it) => [it.key, it]));
+        const typeOf = (it) =>
+          it?.metadata?.morphType || byKey.get(it?.metadata?.parent)?.metadata?.morphType;
+        return (
+          n +
+          sum(s, (d) => {
+            const tokens = new Map(tokensIn(d, 'morpheme').map((m) => [m.key, m]));
+            return count(d.links, (l) => {
+              if (l.vocab !== v.key || l.tokens.length !== 1 || !tokens.has(l.tokens[0]))
+                return false;
+              const entryType = typeOf(byKey.get(l.item));
+              return !!entryType && tokens.get(l.tokens[0]).metadata.morphType !== entryType;
+            });
+          })
+        );
+      }, 0),
+  },
 
   // Relations (plaid-ud)
   {

@@ -114,9 +114,14 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     (project.vocabs || []).map((v) => client.vocabLayers.get(v.id, true)),
   );
   const itemKeyById = new Map();
-  const vocabNameById = new Map();
+  // A vocabulary key carries its ordinal among the linked vocabularies of that
+  // name, as a document key does: core does not make names unique.
+  const vocabKeyById = new Map();
+  const vocabNameCounts = new Map();
   for (const v of vocabsRaw) {
-    vocabNameById.set(v.id, v.name);
+    const vn = (vocabNameCounts.get(v.name) ?? 0) + 1;
+    vocabNameCounts.set(v.name, vn);
+    vocabKeyById.set(v.id, `${v.name}#${vn}`);
     const seen = new Map();
     for (const it of v.items || []) {
       const n = (seen.get(it.form) ?? 0) + 1;
@@ -139,7 +144,9 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
   for (const ref of docRefs) {
     const n = (nameCounts.get(ref.name) ?? 0) + 1;
     nameCounts.set(ref.name, n);
-    docNameById.set(ref.id, n === 1 ? ref.name : `${ref.name}#${n}`);
+    // Every document key carries its ordinal, so a name that itself ends in
+    // '#2' cannot collide with the second of two documents sharing a name.
+    docNameById.set(ref.id, `${ref.name}#${n}`);
   }
 
   for (const ref of docRefs) {
@@ -210,7 +217,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
           for (const l of v.vocabLinks || []) {
             if (links.has(l.id)) continue;
             links.set(l.id, {
-              vocab: v.name,
+              vocab: vocabKeyById.get(v.id) ?? `missing-vocabulary:${v.id}`,
               item: itemRef(l.vocabItem?.id ?? l.vocabItem),
               tokens: (l.tokens || []).map(tokenRef).sort(byString),
               metadata: l.metadata || {},
@@ -258,7 +265,8 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     });
 
     documents.push({
-      name: docName,
+      key: docName,
+      name: ref.name,
       metadata: raw.metadata || {},
       media: raw.mediaUrl ? (media ? await readMedia(client, ref.id) : { present: true }) : null,
       texts: sortByKey(texts, (t) => t.layer),
@@ -296,11 +304,11 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     author: c.authorId,
     edited: !!c.edited,
   });
-  const docByName = new Map(documents.map((d) => [d.name, d]));
+  const docByKey = new Map(documents.map((d) => [d.key, d]));
   const projectComments = await client.comments.list(projectId);
   const unplaced = [];
   for (const c of projectComments) {
-    const doc = c.documentId ? docByName.get(docNameById.get(c.documentId)) : null;
+    const doc = c.documentId ? docByKey.get(docNameById.get(c.documentId)) : null;
     if (doc) doc.comments.push(snapComment(c));
     else unplaced.push(snapComment(c));
   }
@@ -333,6 +341,7 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     });
     const comments = (await client.comments.listInVocab(v.id)).map(snapComment);
     vocabularies.push({
+      key: vocabKeyById.get(v.id),
       name: v.name,
       config: v.config || {},
       items,
@@ -352,8 +361,8 @@ export async function snapshotProject(client, projectId, { media = true } = {}) 
     name: project.name,
     config: project.config || {},
     layers: sortByKey(layers, (l) => l.key),
-    vocabularies: sortByKey(vocabularies, (v) => v.name),
-    documents: sortByKey(documents, (d) => d.name),
+    vocabularies: sortByKey(vocabularies, (v) => v.key),
+    documents: sortByKey(documents, (d) => d.key),
     // Comments on a project with no document to hold them. Core anchors every
     // project comment to something inside a document today, so this stays
     // empty unless that changes.

@@ -111,7 +111,7 @@ const MAIN_BODY = [
   'El perro ladra, y los perros corren.',
   'Dio la vuelta "ra\u0301pido" & <sin> parar∅ ʼya.',
   '',
-  'El gato 𐌰 mira.\tFin',
+  "El gato 𐌰 mira medio-día 'n.\tFin",
 ].join('\n');
 
 const RTL_BODY = 'الكلب ينبح.';
@@ -131,13 +131,14 @@ async function setupMain(client, name) {
           { name: 'Translation', scope: 'Sentence' },
           { name: 'Free translation', scope: 'Sentence', lang: 'en' },
           { name: 'Notes', scope: 'Sentence' },
+          { name: 'Literal translation', scope: 'Sentence' },
           { name: 'Gloss', scope: 'Word' },
           { name: 'POS', scope: 'Word' },
           { name: 'Gloss', scope: 'Morpheme' },
         ],
         ignoredTokens: {
           mode: 'unicode-punctuation',
-          unicodePunctuationExceptions: ['ʼ'],
+          unicodePunctuationExceptions: ['ʼ', "'"],
           explicitIgnoredTokens: [],
         },
       },
@@ -259,6 +260,7 @@ async function configureLexicon(client, vocabId) {
     ...fields,
     lexemeForm: { inline: false },
     Plural: { inline: false },
+    Number: { inline: false },
     'gloss (fr)': { inline: true, lang: 'fr' },
     Source: { inline: false, lang: 'en' },
     Register: { inline: false, tagset: 'Register' },
@@ -287,6 +289,7 @@ async function makeEntries(client, lexiconId, affixId) {
     status: 'reviewed',
     lexemeForm: 'perr-',
     Plural: 'perros',
+    Number: 'sg',
     'gloss (fr)': 'chien',
     Source: 'notebook 3, p. 12',
     Register: 'colloquial',
@@ -307,13 +310,15 @@ async function makeEntries(client, lexiconId, affixId) {
   });
   e.gato = await create(lexiconId, 'gato', {
     gloss: 'cat',
+    definition: ' a cat ',
     pos: 'N',
     morphType: 'stem',
     flexEntry: '5f1c7e0a-8f7e-4b52-9d8e-3c2a1b0f9e11',
     flexSense: '0b9d3a2c-1e4f-4a6b-8c7d-9e0f1a2b3c4d',
   });
   e.gata = await create(lexiconId, 'gata', {
-    gloss: 'she-cat',
+    gloss: '"she" cat',
+    definition: 'female\tcat',
     variantOf: e.gato,
     seeAlso: [e.gato, e.perro],
   });
@@ -341,7 +346,14 @@ async function makeEntries(client, lexiconId, affixId) {
     morphType: 'stem',
     homograph: 2,
   });
-  e.unused = await create(lexiconId, 'nunca', { gloss: 'never', pos: 'ADV' });
+  e.unused = await create(lexiconId, 'nunca', { gloss: 'never', pos: 'ADV', status: 'retired' });
+  // One spelling in two normalizations: precomposed, then a combining acute.
+  e.rapidoNfc = await create(lexiconId, `r${String.fromCodePoint(0xe1)}pido`, { gloss: 'fast' });
+  e.rapidoNfd = await create(lexiconId, `ra${String.fromCodePoint(0x301)}pido`, { gloss: 'quick' });
+  // A headword that only holds its senses.
+  e.casa = await create(lexiconId, 'casa', { morphType: 'stem' });
+  e.casaHouse = await create(lexiconId, 'casa', { parent: e.casa, gloss: 'house' });
+  e.mir = await create(lexiconId, 'mir-', { gloss: 'look', morphType: 'stem' });
   e.past = await create(affixId, '-ó', { gloss: 'PST', morphType: 'suffix' });
   return e;
 }
@@ -353,6 +365,7 @@ async function buildStory(ctx) {
     Speakers: 'Ada, Bo',
     Genre: 'narrative',
     Source: 'fieldwork notebook 3',
+    'Title (en)': 'The dog',
   });
   const docId = created.id;
   let doc = await reload(client, projectId, docId);
@@ -402,6 +415,11 @@ async function buildStory(ctx) {
   await must(doc, 'empty form', doc.updateMorphemeForm(corrStem.id, ''));
   await must(doc, 'delimited gloss', doc.updateMorphemeSpan(corrSuffix.id, 'Gloss', '3-PL.PRS'));
   await must(doc, 'affix link', doc.linkVocab(corrSuffix.id, ctx.entries.past));
+
+  await must(doc, 'segment sin', doc.createMorphemes(word(doc, 'sin').id, ['s=', 'in']));
+  doc = await reload(client, projectId, docId);
+  await must(doc, 'proclitic', doc.setMorphemeType(word(doc, 'sin').morphemes[0].id, 'proclitic'));
+  await must(doc, 'spaced gloss', doc.updateTokenSpan(word(doc, 'sin').id, 'Gloss', ' without '));
 
   await must(doc, 'segment parar∅', doc.createMorphemes(word(doc, 'parar∅').id, ['parar', '∅']));
   doc = await reload(client, projectId, docId);
@@ -508,22 +526,60 @@ async function buildStory(ctx) {
     note: 'checked with Ada',
   });
 
-  // A morpheme whose extent matches no word.
-  const mira = rangeOf(body, 'mira');
+  // Two segments inside the third sentence: one a transcription service made,
+  // with a speaker, and one with no speaker.
+  const elGato = rangeOf(body, 'El gato');
+  const miraSeg = rangeOf(body, 'mira');
   await client.tokens.bulkCreate([
     {
-      tokenLayerId: byRole('morpheme').id,
+      tokenLayerId: byRole('time-alignment').id,
       text: textId,
-      begin: mira.begin,
-      end: mira.end - 1,
-      precedence: 1,
-      metadata: { form: 'mir' },
+      begin: elGato.begin,
+      end: elGato.end,
+      metadata: { timeBegin: 3.0, timeEnd: 3.4, speaker: 'Ada', ...stampInferred('transcribe') },
+    },
+    {
+      tokenLayerId: byRole('time-alignment').id,
+      text: textId,
+      begin: miraSeg.begin,
+      end: miraSeg.end,
+      metadata: { timeBegin: 3.4, timeEnd: 3.9 },
     },
   ]);
+
+  // A sentence carrying metadata of its own, and a morpheme an analyzer stamped.
+  await client.tokens.patchMetadata(sentenceAt(doc, 2).id, { source: 'recording 12, 03:10' });
+  await client.tokens.patchMetadata(
+    word(doc, 'corren').morphemes[1].id,
+    stampInferred('polygloss'),
+  );
+
+  // A morpheme whose extent matches no word.
+  const mira = rangeOf(body, 'mira');
+  const orphanMorpheme = await client.tokens
+    .bulkCreate([
+      {
+        tokenLayerId: byRole('morpheme').id,
+        text: textId,
+        begin: mira.begin,
+        end: mira.end - 1,
+        precedence: 1,
+        metadata: { form: 'mir' },
+      },
+    ])
+    .then(idOf);
 
   // Annotations: multi-token, duplicate, empty, provenance extras, extra metadata.
   const wordGloss = span('word', 'Gloss').id;
   await client.spans.create(wordGloss, [wordId('los'), wordId('perros')], 'the dogs');
+  // Sharing one token with the span above, but not all of them.
+  await client.spans.create(wordGloss, [wordId('los')], 'the');
+  // One annotation over a real morpheme and the one matching no word.
+  await client.spans.create(
+    span('morpheme', 'Gloss').id,
+    [word(doc, 'gato').morphemes[0].id, orphanMorpheme],
+    'cat-look',
+  );
   await client.spans.create(wordGloss, [wordId('ladra')], 'yelps', {
     prov: 'inferred',
     provSource: 'polygloss',
@@ -553,6 +609,10 @@ async function buildStory(ctx) {
     provDetail: { candidates: 3 },
   });
   await client.vocabLinks.create(e.ladrarAlt, [wordId('ladra')]);
+  // A link on a segment, and one on the morpheme matching no word. (Core refuses
+  // a link whose tokens are in two token layers.)
+  await client.vocabLinks.create(e.vuelta, [overlap]);
+  await client.vocabLinks.create(e.mir, [orphanMorpheme]);
 
   // The contributor's work: a word gloss and a link, stamped contributed.
   const asContributor = await reload(contributor.client, projectId, docId, { id: contributor.id });
@@ -665,8 +725,30 @@ async function buildOtherDocuments(ctx) {
   await must(
     doc,
     'untokenized baseline',
-    doc.saveBaselineText('Only sentences here.\nNo words yet.'),
+    doc.saveBaselineText('Only sentences here.\nNo words yet.\nNor any times.'),
   );
+  doc = await reload(client, projectId, untok.id);
+  const notesText = doc.layerInfo.primaryTextLayer.text.id;
+  const notesLayers = layerIds(await client.projects.get(projectId));
+  const across = rangeOf(doc.body, 'here.\nNo');
+  await client.tokens.bulkCreate([
+    {
+      tokenLayerId: notesLayers.byRole('time-alignment').id,
+      text: notesText,
+      begin: across.begin,
+      end: across.end,
+      metadata: { timeBegin: 0.5, timeEnd: 1.5 },
+    },
+  ]);
+  const doomedWord = await client.tokens
+    .bulkCreate([
+      { tokenLayerId: notesLayers.byRole('word').id, text: notesText, begin: 0, end: 4 },
+    ])
+    .then(idOf);
+  await client.vocabItems.patchMetadata(ctx.entries.unused, {
+    examples: [{ document: untok.id, token: doomedWord }],
+  });
+  await client.tokens.delete(doomedWord);
 }
 
 async function addGuidelines(client, projectId) {
@@ -721,9 +803,13 @@ async function buildBare(client, name) {
       orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }] },
       fields: {
         fields: [
-          { name: 'Translation', scope: 'Sentence' },
           { name: 'Gloss', scope: 'Word' },
+          { name: 'POS', scope: 'Word' },
           { name: 'Gloss', scope: 'Morpheme' },
+          { name: 'POS', scope: 'Morpheme' },
+          { name: 'Translation', scope: 'Sentence' },
+          { name: 'Literal Translation', scope: 'Sentence' },
+          { name: 'Note', scope: 'Sentence' },
         ],
         ignoredTokens: {
           mode: 'unicode-punctuation',
@@ -755,6 +841,11 @@ export async function buildKitchenSink(client, { suffix = '' } = {}) {
   const lexiconId = project.vocabs.find((v) => v.name === `${mainName} Lexicon`).id;
   const affixId = project.vocabs.find((v) => v.name === `${mainName} Affixes`).id;
   await configureLexicon(client, lexiconId);
+  // A second vocabulary under a name the project already has linked, made
+  // outside the wizard, so it has none of the seeded fields either.
+  const twin = await client.vocabLayers.create(`${mainName} Affixes`);
+  await client.projects.linkVocab(projectId, twin.id);
+  await client.vocabItems.create(twin.id, '-aba', { gloss: 'IPFV', morphType: 'suffix' });
   const entries = await makeEntries(client, lexiconId, affixId);
 
   const ctx = { client, contributor, projectId, entries, lexiconId, foreign };
