@@ -308,17 +308,34 @@ export const vocabPopover = {
     const best = limited.findIndex((r) => !r._context && r.id === first?.id);
     if (this._popoverActiveIndex == null) this._popoverActiveIndex = Math.max(0, best);
     const activeIdx = Math.min(this._popoverActiveIndex ?? 0, Math.max(0, total - 1));
-    // The three actions, routed by mode: a word's or morpheme's own link, or
-    // the multi-word expression's.
+    // The other tokens in this text that read the same and have no link. While
+    // THIS token has none either, a row can take them all along with it ("all
+    // ×3" on the highlighted row, Shift+Enter). Once it is linked they are the
+    // "Link every…" row at the bottom. Never the default: see _linkEverywhere.
+    const others = isMwe ? [] : sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
+    const canTakeAll = others.length > 0 && !currentItem;
+    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+Enter`;
+    // The actions, routed by mode: a word's or morpheme's own link, or the
+    // multi-word expression's. `all` takes the others along.
     const act = {
       confirm: (rf) =>
         isMwe ? this._confirmMwe(currentItem.linkId, rf) : this._confirmLink(tokenId, rf),
-      toggle: (it, linked, rf) =>
-        isMwe ? this._toggleMwe(it, linked, rf) : this._toggleVocab(tokenId, it, linked, rf),
-      create: (form, rf) =>
+      toggle: (it, linked, rf, all = false) =>
+        isMwe
+          ? this._toggleMwe(it, linked, rf)
+          : all && canTakeAll && !linked
+            ? this._linkAll(tokenId, formText, it, others, rf)
+            : this._toggleVocab(tokenId, it, linked, rf),
+      create: (form, rf, all = false) =>
         isMwe
           ? this._createMwe(activeVocab.id, form, rf)
-          : this._createVocab(tokenId, activeVocab.id, form, rf),
+          : this._createVocab(
+              tokenId,
+              activeVocab.id,
+              form,
+              rf,
+              all && canTakeAll ? { ids: others, formText } : null,
+            ),
     };
     const pos = this._popoverPos;
     const posStyle = pos
@@ -330,16 +347,16 @@ export const vocabPopover = {
     // unlinks (toggle), as before. The explicit "unlink" mini-action is always
     // available.
     const inferredCurrent = this.doc.reviewableState(currentItem?.prov);
-    const selectActive = (immediate = false) => {
+    const selectActive = (immediate = false, all = false) => {
       if (activeIdx < limited.length) {
         const it = limited[activeIdx];
         const linked = currentItem && it.id === currentItem.id;
         if (linked && inferredCurrent) act.confirm(true);
-        else act.toggle(it, linked, true);
+        else act.toggle(it, linked, true, all);
       } else if (canCreate && activeIdx === limited.length) {
         // Enter on the create row opens the inline editor (edit the form
         // first); Ctrl/Cmd+Enter creates as-is, like a double-click.
-        if (immediate) act.create(createForm, true);
+        if (immediate) act.create(createForm, true, all);
         else this._openCreateEdit(createForm);
       } else {
         extraRows[activeIdx - limited.length - (canCreate ? 1 : 0)]?.onSelect();
@@ -352,7 +369,7 @@ export const vocabPopover = {
       if (e.key === 'Enter') {
         e.preventDefault();
         const v = (e.target.value || '').trim();
-        if (v) act.create(v, true);
+        if (v) act.create(v, true, e.shiftKey);
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this._cancelCreateEdit();
@@ -398,7 +415,7 @@ export const vocabPopover = {
         this._movePopoverActive(-1, total);
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        selectActive(e.ctrlKey || e.metaKey);
+        selectActive(e.ctrlKey || e.metaKey, e.shiftKey);
       } else if (e.key === 'Tab') {
         e.preventDefault();
       } // trap focus in the search box
@@ -484,6 +501,19 @@ export const vocabPopover = {
                         >`
                       : nothing}
                     ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
+                    ${canTakeAll && i === activeIdx
+                      ? html`<span
+                          class="igt-vocab-pop__take-all"
+                          role="button"
+                          tabindex="-1"
+                          title=${allTitle}
+                          @click=${(e) => {
+                            e.stopPropagation();
+                            act.toggle(it, false, false, true);
+                          }}
+                          >all ×${others.length + 1}</span
+                        >`
+                      : nothing}
                     ${linked
                       ? html`<span
                           class="igt-vocab-pop__x"
@@ -540,6 +570,21 @@ export const vocabPopover = {
                       @keydown=${onCreateEditKey}
                     />${numHtml(newFormSub, 'igt-vocab-pop')}`
                 : html`+ Create "${createForm}${numHtml(newFormSub, 'igt-vocab-pop')}"`}
+              ${canTakeAll && activeIdx === limited.length
+                ? html`<span
+                    class="igt-vocab-pop__take-all"
+                    role="button"
+                    tabindex="-1"
+                    title=${allTitle}
+                    @click=${(e) => {
+                      e.stopPropagation();
+                      clearTimeout(this._createClickTimer);
+                      this._createClickTimer = null;
+                      if (effectiveForm) act.create(effectiveForm, false, true);
+                    }}
+                    >all ×${others.length + 1}</span
+                  >`
+                : nothing}
               ${newFormSub != null
                 ? html`<span class="igt-vocab-pop__note"
                     >“${effectiveForm}” already exists. This adds a separate entry</span
@@ -578,9 +623,7 @@ export const vocabPopover = {
         })}
         ${(() => {
           // Offered once the token is linked and there is anything to link.
-          if (!currentItem || isMwe) return nothing;
-          const others = sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
-          if (!others.length) return nothing;
+          if (!currentItem || !others.length) return nothing;
           return html`<button
             type="button"
             class="igt-vocab-pop__all"

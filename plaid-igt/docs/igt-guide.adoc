@@ -287,7 +287,10 @@ What you do here:
 * **Segment morphemes**. Break each word into morphemes and edit their forms. Type `-` in a morpheme to split it at the cursor, or `=` to split at a clitic boundary. Backspace at the start of a morpheme merges it into the previous one. A morpheme with a grammatical job and no sound is written ∅, which **Alt+0** types (see <<_typing_special_characters>>).
 * **Gloss and annotate**. Fill the gloss and any other word- or morpheme-scope fields your project defines. The editor offers faint **guesses**, for example a gloss it has seen before for the same form, which you accept with Enter or type over.
 * **Pick from what the project already uses**. On a cell, **Alt+↓** lists every value the project has given that form, with counts. When a field is held to a tagset, the list opens on its own as you enter the cell and narrows as you type, one part at a time for a composite gloss like `1SG.NOM`.
-* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>). Once one is linked, its popover offers to link every other unlinked occurrence of the same form in the text to the same entry, in one step and only when you ask.
+* **Link vocabulary**. Connect a word or morpheme to an entry in a shared lexicon, by hand or in bulk (see <<_vocabularies>>). When other unlinked occurrences of the same form are in the text, the popover can take them along: the highlighted entry, or **Create**, shows **all ×N**, and clicking that (or Shift+Enter) links every one of them to the entry in one step.
+Clicking the entry itself links only the one you are on.
+After it is linked, its popover still offers to link the rest.
+Nothing is linked this way unless you ask.
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.
@@ -1084,7 +1087,7 @@ Every shortcut that takes Ctrl also takes Cmd on a Mac, and Alt is the Option ke
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links or unlinks the highlighted one, **Ctrl/Cmd+Enter** creates the entry as typed, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links or unlinks the highlighted one, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 

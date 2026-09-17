@@ -838,6 +838,23 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(await doc.linkVocabMany(['w-1'], 'vi-1')).toBe(false);
   });
 
+  // "Create and link every ‹cat› in this text": the new entry, its own link and
+  // the others in ONE operation, and never a token that already has a link.
+  it('createAndLinkVocabItem links the other tokens to the new entry too', async () => {
+    const vocabs = vocabularies();
+    const doc = makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: vocabs,
+    });
+    expect(
+      await doc.createAndLinkVocabItem('w-1', 'v1', 'the', {}, { alsoLink: ['w-1', 'w-2'] }),
+    ).toBe(true);
+    expect(doc.sentences[0].tokens.map((t) => t.vocabItem?.form)).toEqual(['the', 'the']);
+    const created = doc.client.calls.filter((c) => c.kind === 'vocabLinks.create');
+    expect(created.map((c) => c.args[1])).toEqual([['w-1'], ['w-2']]);
+    expect(new Set(created.map((c) => c.args[0])).size).toBe(1);
+  });
+
   // The morph-type cache: a morpheme linked to a typed entry takes the entry's
   // type on the spot. It used to be left stale, and reconcile-on-open patched
   // it the next time anyone opened the document, which is how an audit entry

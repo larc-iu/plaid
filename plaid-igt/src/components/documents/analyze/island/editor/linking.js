@@ -49,6 +49,22 @@ export const linking = {
     });
   },
 
+  // The same, asked before this token has a link: it and the others go to the
+  // entry in one operation ("all ×4" on a popover row, Shift+Enter).
+  _linkAll(tokenId, formText, item, others, returnFocus = false) {
+    this._closePopover(returnFocus);
+    this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this.doc.linkVocabMany([tokenId, ...others], item.id),
+    ).then((ok) => {
+      if (ok) {
+        notifyInfo(
+          `Linked ${others.length + 1} “${formText}” to ${item.form}`,
+          'Linked in this text',
+        );
+      }
+    });
+  },
+
   _confirmLink(tokenId, returnFocus = false) {
     this._closePopover(returnFocus);
     this._pulseLink(tokenId);
@@ -95,12 +111,20 @@ export const linking = {
     }
   },
 
-  async _createVocab(tokenId, vocabId, form, returnFocus = false) {
+  // `all`: {ids, formText} for the other unlinked tokens reading the same, when
+  // the row's "all" was taken. One operation with the create.
+  async _createVocab(tokenId, vocabId, form, returnFocus = false, all = null) {
     this._closePopover(returnFocus);
     if (!form) return;
-    await this._runThenFocus({ vocabOpener: tokenId }, () =>
-      this.doc.createAndLinkVocabItem(tokenId, vocabId, form),
+    const ok = await this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this.doc.createAndLinkVocabItem(tokenId, vocabId, form, {}, { alsoLink: all?.ids ?? [] }),
     );
+    if (ok && all?.ids.length) {
+      notifyInfo(
+        `Linked ${all.ids.length + 1} “${all.formText}” to ${form}`,
+        'Linked in this text',
+      );
+    }
   },
 };
 

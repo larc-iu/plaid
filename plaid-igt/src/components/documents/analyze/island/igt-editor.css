@@ -1280,6 +1280,24 @@
   text-align: left;
   cursor: pointer;
 }
+/* The same, offered before the token is linked: a chip on the highlighted
+   row that takes the others along. */
+.igt-vocab-pop__take-all {
+  margin-left: 6px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  color: var(--igt-gray-700);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.igt-vocab-pop__take-all:hover {
+  background: #fff;
+  border-color: var(--igt-blue-300);
+  border-style: solid;
+}
 .igt-vocab-pop__all:hover {
   background: #f8fafc;
   border-color: var(--igt-blue-300);

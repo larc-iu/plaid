@@ -57,3 +57,67 @@ describe('the popover entry list', () => {
     expect(sense.style.marginLeft).toBe('14px');
   });
 });
+
+// "Link every…" on the first click: before the token has a link, the
+// highlighted row offers to take the other unlinked tokens reading the same.
+describe('taking every same-form token along with the first link', () => {
+  const open = (body) => {
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw: buildRawDoc({
+        body,
+        words: body.split(' ').map((w, i) => ({ id: `w-${i + 1}`, begin: i * 4, end: i * 4 + 3 })),
+      }),
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {}, igt: {} } },
+      vocabularies: { v1: structuredClone(VOCAB) },
+      client,
+      projectId: 'proj-1',
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    new IgtEditor(host, doc, {});
+    // The first WORD-level opener, on the first "kat".
+    host
+      .querySelector('.igt-vocab__opener')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return { doc, client };
+  };
+  const linkedForms = (doc) => doc.sentences[0].tokens.map((t) => t.vocabItem?.id ?? null);
+
+  it('offers the chip on the highlighted row, counting this token too', () => {
+    open('kat kat kat');
+    const chips = [...host.querySelectorAll('.igt-vocab-pop__item .igt-vocab-pop__take-all')];
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent.trim()).toBe('all ×3');
+  });
+
+  it('offers nothing when no other token reads the same', () => {
+    open('the kat');
+    expect(host.querySelector('.igt-vocab-pop__take-all')).toBeNull();
+  });
+
+  it('links them all from the chip, and only this one from the row', async () => {
+    const { doc } = open('kat kat kat');
+    host
+      .querySelector('.igt-vocab-pop__item .igt-vocab-pop__take-all')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(linkedForms(doc).filter(Boolean)).toHaveLength(3));
+    expect(new Set(linkedForms(doc)).size).toBe(1);
+  });
+
+  it('links them all on Shift+Enter, and one on Enter', async () => {
+    const { doc } = open('kat kat kat');
+    const key = (init) =>
+      host
+        .querySelector('.igt-vocab-pop__search')
+        .dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+    key({ key: 'Enter', shiftKey: true });
+    await vi.waitFor(() => expect(linkedForms(doc).filter(Boolean)).toHaveLength(3));
+
+    host.remove();
+    const second = open('kat kat kat');
+    key({ key: 'Enter' });
+    await vi.waitFor(() => expect(linkedForms(second.doc).filter(Boolean)).toHaveLength(1));
+  });
+});

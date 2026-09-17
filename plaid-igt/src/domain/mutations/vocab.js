@@ -283,46 +283,53 @@ export const vocabMutations = {
     }
     const ids = [...new Set(tokenIds)].filter((id) => !findPriorLink(this._vocabularies, id).link);
     if (!ids.length) return false;
+    return this._withSaving('Failed to link entries', () =>
+      this._linkManyImpl(ids, targetVocab, vocabItem),
+    );
+  },
+
+  // The write half of linkVocabMany, run INSIDE a caller's _withSaving so a
+  // create-and-link-all is one operation too. `ids` have no link of their own.
+  async _linkManyImpl(ids, targetVocab, vocabItem) {
+    const vocabItemId = vocabItem.id;
     const stamp = this.createStamp || undefined;
-    return this._withSaving('Failed to link entries', async () => {
-      // The matches can include unanalyzed words, whose morphemes read as the
-      // word: one bulk create brings those into being, outside the batch below
-      // so their ids come back. A word reading roa is a roa to link.
-      const targetIds = (await this.materializeMorphemeIds(ids)).filter(Boolean);
-      if (!targetIds.length) return;
-      // One entry, so one resolved type, but each token answers for its own
-      // cache: a word in the set takes none, and a morpheme that already agrees
-      // is left alone.
-      const typeFor = morphTypeCache(this);
-      const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
-      const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
-      const results = await this._client.batched(async (b) => {
-        for (const id of targetIds) b.vocabLinks.create(vocabItemId, [id], stamp);
-        // After the creates, so the link result indices below stay positional.
-        for (const id of cacheIds) b.tokens.patchMetadata(id, { morphType: cachedType });
-      });
-      const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
-      const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
-      this._applyRawPatch((next, info, vocabs) => {
-        const tv = vocabs[targetVocab.id];
-        if (tv) {
-          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-          targetIds.forEach((tokenId, i) => {
-            tv.vocabLinks.push({
-              id: newIds[i],
-              tokens: [tokenId],
-              vocabItem: itemSnapshot,
-              ...(stamp ? { metadata: stamp } : {}),
-            });
+    // The matches can include unanalyzed words, whose morphemes read as the
+    // word: one bulk create brings those into being, outside the batch below
+    // so their ids come back. A word reading roa is a roa to link.
+    const targetIds = (await this.materializeMorphemeIds(ids)).filter(Boolean);
+    if (!targetIds.length) return;
+    // One entry, so one resolved type, but each token answers for its own
+    // cache: a word in the set takes none, and a morpheme that already agrees
+    // is left alone.
+    const typeFor = morphTypeCache(this);
+    const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
+    const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
+    const results = await this._client.batched(async (b) => {
+      for (const id of targetIds) b.vocabLinks.create(vocabItemId, [id], stamp);
+      // After the creates, so the link result indices below stay positional.
+      for (const id of cacheIds) b.tokens.patchMetadata(id, { morphType: cachedType });
+    });
+    const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
+    const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
+    this._applyRawPatch((next, info, vocabs) => {
+      const tv = vocabs[targetVocab.id];
+      if (tv) {
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        targetIds.forEach((tokenId, i) => {
+          tv.vocabLinks.push({
+            id: newIds[i],
+            tokens: [tokenId],
+            vocabItem: itemSnapshot,
+            ...(stamp ? { metadata: stamp } : {}),
           });
-        }
-        if (cachedType) {
-          const cached = new Set(cacheIds);
-          (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-            if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-          });
-        }
-      });
+        });
+      }
+      if (cachedType) {
+        const cached = new Set(cacheIds);
+        (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+          if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+        });
+      }
     });
   },
 
@@ -641,7 +648,7 @@ export const vocabMutations = {
     return ok ? creates.length : false;
   },
 
-  async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}) {
+  async createAndLinkVocabItem(tokenId, vocabId, form, metadata = {}, { alsoLink = [] } = {}) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
@@ -718,6 +725,13 @@ export const vocabMutations = {
           if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
         }
       });
+
+      // "Create and link every ‹roa› in this text": the others that read the
+      // same and have no link, in the same operation as the create.
+      const others = [...new Set(alsoLink)].filter(
+        (id) => id !== tokenId && !findPriorLink(this._vocabularies, id).link,
+      );
+      if (others.length) await this._linkManyImpl(others, this._vocabularies[vocabId], newItem);
     });
   },
 };
