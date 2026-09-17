@@ -106,6 +106,21 @@ describe('taking every same-form token along with the first link', () => {
     expect(new Set(linkedForms(doc)).size).toBe(1);
   });
 
+  it('links them all on Shift+click of the row, and one on a plain click', async () => {
+    const click = (init) =>
+      host
+        .querySelector('.igt-vocab-pop__item')
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
+    const { doc } = open('kat kat kat');
+    click({ shiftKey: true });
+    await vi.waitFor(() => expect(linkedForms(doc).filter(Boolean)).toHaveLength(3));
+
+    host.remove();
+    const second = open('kat kat kat');
+    click({});
+    await vi.waitFor(() => expect(linkedForms(second.doc).filter(Boolean)).toHaveLength(1));
+  });
+
   it('links them all on Shift+Enter, and one on Enter', async () => {
     const { doc } = open('kat kat kat');
     const key = (init) =>

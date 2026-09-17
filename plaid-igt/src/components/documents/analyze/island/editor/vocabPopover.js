@@ -315,7 +315,7 @@ export const vocabPopover = {
     // "Link every…" row at the bottom. Never the default: see _linkEverywhere.
     const others = isMwe ? [] : sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
     const canTakeAll = others.length > 0 && !currentItem;
-    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · ${keys.words('popover.linkAll')}`;
+    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`;
     // The actions, routed by mode: a word's or morpheme's own link, or the
     // multi-word expression's. `all` takes the others along.
     const act = {
@@ -385,7 +385,14 @@ export const vocabPopover = {
       e.stopPropagation();
       if (editingCreate) {
         const v = effectiveForm;
-        if (v) act.create(v);
+        if (v) act.create(v, false, e.shiftKey);
+        return;
+      }
+      // Shift+click creates as typed and takes the others along, like the chip.
+      if (e.shiftKey && canTakeAll) {
+        clearTimeout(this._createClickTimer);
+        this._createClickTimer = null;
+        act.create(createForm, false, true);
         return;
       }
       if (this._createClickTimer) {
@@ -482,7 +489,9 @@ export const vocabPopover = {
                   @click=${(e) => {
                     e.stopPropagation();
                     if (confirmable) act.confirm();
-                    else act.toggle(it, linked);
+                    // Shift+click is the chip's gesture on the whole row, as
+                    // Shift+Enter is from the keyboard.
+                    else act.toggle(it, linked, false, e.shiftKey);
                   }}
                 >
                   <span class="igt-vocab-pop__main" dir="auto">
