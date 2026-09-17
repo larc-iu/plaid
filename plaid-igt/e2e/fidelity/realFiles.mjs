@@ -34,10 +34,7 @@ import cldfList from '../../src/test/fidelity/formats/cldf.js';
 import elanList from '../../src/test/fidelity/formats/elan.js';
 import nativeList from '../../src/test/fidelity/formats/native.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
-import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
-import { readFwbackup } from '../../src/import/flex/fwbackup.js';
-import { parseFwdata } from '../../src/import/flex/fwdataParser.js';
-import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
+import { importParsed, parseBackup } from './flexImport.mjs';
 import { coreForRun } from './core.mjs';
 import { exportProject, importProject } from './drivers.mjs';
 import { validateExport } from './validators.mjs';
@@ -118,74 +115,6 @@ async function bareProject(client, name) {
   return setup.projectId;
 }
 
-/**
- * One .fwbackup imported the way the import screen imports it: the config the
- * importer derives, a project set up from that config, then the real engine.
- */
-async function importBackup(client, path, name) {
-  const { xml } = readFwbackup(new Uint8Array(readFileSync(path)));
-  const ir = parseFwdata(xml);
-  const build = buildDocuments(ir);
-  const stats = { ...build.stats, documents: build.documents.length };
-  if (docCap > 0 && build.documents.length > docCap) {
-    build.documents = [...build.documents]
-      .sort((a, b) => a.words.length - b.words.length)
-      .slice(0, docCap);
-  }
-  const config = deriveImportConfig(ir, build, {});
-  const setup = await executeProjectSetup({
-    client,
-    isNewProject: true,
-    resumeProjectId: null,
-    setupData: {
-      basicInfo: { projectName: name },
-      orthographies: {
-        orthographies: [
-          { name: 'Baseline', isBaseline: true },
-          ...config.orthographies.map((o) => ({ name: o.name })),
-        ],
-      },
-      fields: {
-        fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, isCustom: true })),
-        ignoredTokens: {
-          mode: 'unicode-punctuation',
-          unicodePunctuationExceptions: [],
-          explicitIgnoredTokens: [],
-        },
-      },
-      vocabulary: {
-        vocabularies: [{ id: 'new-flex', name: `${name} Lexicon`, enabled: true, isCustom: true }],
-      },
-      documentMetadata: {
-        enabledFields: (config.documentMetadata || []).map((m) => ({
-          name: m.name,
-          enabled: true,
-          isCustom: true,
-        })),
-      },
-    },
-  });
-  if (setup.failures.length) throw new Error(`setup: ${setup.failures.join('; ')}`);
-  const result = await runImport({
-    client,
-    projectId: setup.projectId,
-    build,
-    lexicon: ir.lexicon,
-    config,
-    vocabId: setup.resources.vocabularies[0].id,
-  });
-  return { projectId: setup.projectId, stats, imported: result, warnings: build.warnings || [] };
-}
-
-/** A directory of .eaf files zipped the way an export writes them, for the batch import. */
-function eafBatch(path) {
-  const files = readdirSync(path).filter((f) => /\.(eaf|wav|mp3|m4a|mp4|wave)$/i.test(f));
-  if (!files.some((f) => /\.eaf$/i.test(f))) throw new Error(`no .eaf files in ${path}`);
-  const entries = {};
-  for (const f of files) entries[f] = new Uint8Array(readFileSync(join(path, f)));
-  return { bytes: zipSync(entries), count: files.filter((f) => /\.eaf$/i.test(f)).length };
-}
-
 const core = await coreForRun({ keep });
 const scratch = await mkdtemp(join(tmpdir(), 'plaid-real-'));
 let failures = 0;
@@ -224,14 +153,17 @@ try {
         for (const w of done.warnings.slice(0, 5)) console.log(`       import warning: ${w}`);
         for (const n of done.notes) console.log(`       note: ${n}`);
       } else {
-        const done = await importBackup(client, path, name);
+        const parsed = parseBackup(path, { docCap });
+        const done = { ...(await importParsed(client, parsed, name)), stats: parsed.stats };
         projectId = done.projectId;
         console.log(
-          `\n${label}: ${JSON.stringify(done.stats)}${docCap ? ` (${docCap} smallest imported)` : ''} (${secs()})`,
+          `\n${label}: ${JSON.stringify(done.stats)}` +
+            `${docCap ? ` (${docCap} smallest imported)` : ''} (${secs()})`,
         );
-        for (const w of done.warnings.slice(0, 5)) console.log(`       import warning: ${w}`);
-        if (done.warnings.length > 5) {
-          console.log(`       ... ${done.warnings.length - 5} more import warnings`);
+        const warnings = parsed.build.documents.flatMap((d) => d.warnings || []);
+        for (const w of warnings.slice(0, 5)) console.log(`       import warning: ${w}`);
+        if (warnings.length > 5) {
+          console.log(`       ... ${warnings.length - 5} more import warnings`);
         }
       }
       source = await snapshotProject(client, projectId);
