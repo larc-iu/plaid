@@ -121,17 +121,17 @@ async function refusal(client, p, format, expected) {
   return 1;
 }
 
-/** Compare a second export with the first. Returns the failure count. */
-function fixedPoint(label, first, second) {
+/** Compare a third export with the second. Returns the failure count. */
+function fixedPoint(label, second, third) {
   const diffs = diffExports(
-    canonicalExport(first.bytes, first.filename),
-    canonicalExport(second.bytes, first.filename),
+    canonicalExport(second.bytes, second.filename),
+    canonicalExport(third.bytes, second.filename),
   );
   if (!diffs.length) {
-    console.log(`  ok   ${label}, exported again`);
+    console.log(`  ok   ${label}, round-tripped twice`);
     return 0;
   }
-  console.log(`  FAIL ${label}, exported again: the second export differs from the first`);
+  console.log(`  FAIL ${label}, round-tripped twice: the second pass changed it again`);
   for (const line of diffs) console.log(`       ${line}`);
   return 1;
 }
@@ -183,7 +183,10 @@ try {
       await save(`${format}.${p.role}.actual.json`, out.actual);
       const again = await exportProject(client, imported.projectId, format);
       await save(`${format}.${p.role}.export2`, again.bytes);
-      failures += fixedPoint(label, exported, again);
+      const twice = await importProject(client, format, again.bytes, p.name);
+      const third = await exportProject(client, twice.projectId, format);
+      await save(`${format}.${p.role}.export3`, third.bytes);
+      failures += fixedPoint(label, again, third);
     }
     console.log(`(${secs()})`);
   }
@@ -227,13 +230,16 @@ async function perDocument(client, list, p, source, bare) {
     const narrowed = narrowTo(source, key);
     const actual = await snapshotProject(client, imported.projectId);
     failed += report(label, list, narrowed, actual, bare).failures;
-    const again = await exportDocument(
-      client,
-      imported.projectId,
-      (await client.projects.listDocuments(imported.projectId))[0].id,
-      list.id,
-    );
-    failed += fixedPoint(label, exported, again);
+    const onlyDocument = async (projectId) =>
+      exportDocument(
+        client,
+        projectId,
+        (await client.projects.listDocuments(projectId))[0].id,
+        list.id,
+      );
+    const again = await onlyDocument(imported.projectId);
+    const twice = await importProject(client, list.id, again.bytes, p.name);
+    failed += fixedPoint(label, again, await onlyDocument(twice.projectId));
   }
   return failed;
 }

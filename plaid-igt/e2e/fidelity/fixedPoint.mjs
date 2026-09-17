@@ -1,18 +1,23 @@
-// The fixed point: exporting what an import made should give back the export
-// it was made from.
+// The fixed point: once a project has been through the round trip, going
+// through it again should change nothing.
 //
 // A round trip's snapshot comparison checks what the import wrote against the
-// loss list. This checks the other direction with no list at all: whatever the
-// first export wrote, the imported project has to be able to write again. It
+// loss list. This checks the other direction with no list at all: whatever an
+// export wrote, the project its import made has to be able to write again. It
 // catches what a snapshot cannot see, such as which of two glosses on a word
 // the grid shows first, or a word that fell out of an aligned cell.
+//
+// The comparison is between the SECOND export and the third, not the first and
+// the second: a format is allowed to lose something on the way in, and what it
+// loses is gone from the first pass on. Anything that changes after that is a
+// finding whatever the list says, because the content stopped settling.
 //
 // Two exports of the same content still differ in what identifies or dates
 // them, so both are put in a canonical form first: every UUID becomes `<id>`,
 // the export's own timestamps and the documents' version counters go, an
-// import's bookkeeping stamps go, and a native archive's re-posted comment is
-// read back to the author and body it was posted from (the same reading the
-// round trip uses, see src/test/fidelity/expect/native.js). What is left
+// import's bookkeeping stamps go, and whoever a native archive's re-posted
+// comment names as its author becomes `<author>` (see the note where that is
+// done). What is left
 // different is a finding.
 
 import { createHash } from 'node:crypto';
@@ -53,14 +58,19 @@ function canonicalJson(value) {
     }
     out[k] = canonicalJson(v);
   }
-  // A native archive comment an import re-posted: its note names who wrote it.
+  // A native archive comment an import re-posted. Core lets nobody author a
+  // comment as someone else, so the importer owns it and a note in the body
+  // says who wrote it first. Each import rewrites that note to name the
+  // archive's author (src/import/native/commentAttribution.js), so after the
+  // second pass it names the first importer: whose name it carries is settled
+  // material, not drift. Both the author and the name in the note become
+  // `<author>`, which still shows a note that stopped being written, or a body
+  // that changed under it.
   if (typeof out.body === 'string' && out.author && typeof out.author === 'object') {
     const m = out.body.match(NOTE);
     if (m) {
-      const id = m[1].match(/<([^<>]+)>$/)?.[1] ?? m[1];
-      const name = m[1].match(/^(.*) <[^<>]+>$/)?.[1] ?? id;
-      out.author = { id, name };
-      out.body = out.body.slice(m[0].length);
+      out.author = '<author>';
+      out.body = `${m[0].replace(m[1], '<author>')}${out.body.slice(m[0].length)}`;
     }
   }
   return out;
