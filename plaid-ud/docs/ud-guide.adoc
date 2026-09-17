@@ -419,7 +419,7 @@ This is how Grew itself reads a CoNLL-U file: a DEPS entry that repeats the tree
 A relation of the tree that the enhanced graph leaves out or relabels is still a relation of the tree, so a pattern finds it under its plain label.
 `is_tree`, `is_projective` and an unlabelled `X ->> Y` are about the tree and ignore the added relations.
 
-A rewriting rule writes with the same labels: `add_edge V2 -[E:nsubj]-> S` adds a relation to the enhanced graph, and `e.enhanced = yes` on a named edge moves it there.
+A rule writes with the same labels (see <<_changing_many_sentences_at_once>>): `add_edge V2 -[E:nsubj]-> S` adds a relation to the enhanced graph, and `e.enhanced = yes` on a named edge moves it there.
 Added between two words the tree already joins, it replaces the tree's relation in the enhanced graph, exactly as drawing it in the editor does, and the preview says which relation is left out.
 
 === Looking for a word
@@ -435,6 +435,46 @@ After a search, **Count by** re-runs the same pattern as a tally: pick a pattern
 The matches themselves are never fetched for this, because the server does the counting, so it stays fast on a corpus too large to page through.
 
 Clicking a value narrows the search to it. The clause goes into the pattern in the box, where you can see it and edit it, and the search re-runs. A named edge's label is the exception: it belongs in the arc rather than on a node, so those rows are not clickable.
+
+=== Changing many sentences at once
+
+A pattern followed by a `commands` block is a rule, and the Search screen previews what it would change instead of listing matches.
+This one retags _that_ wherever it was tagged as a subordinator:
+
+----
+pattern { X [lemma="that", upos=SCONJ] }
+commands { X.upos = PRON }
+----
+
+With a rule in the box the button reads **Preview changes**. A preview writes nothing.
+It lists every sentence the rule would change, grouped by document, with one line per change such as `that: upos SCONJ → PRON`.
+A sentence the rule applied to more than once shows the number of times. Click a sentence to open it in the Annotate view.
+
+Tick the sentences or whole documents you want, or use **Select all**, then press **Apply**. Applying is for maintainers. Anyone who can search can preview.
+
+A rule is applied to a sentence again and again until it no longer matches, as in Grew.
+So a rule has to stop matching what it has just changed. The rule above does, because the word is no longer `SCONJ`. A rule that adds something usually needs a `without` block that names what it adds:
+
+----
+pattern { V1 -[conj]-> V2; V1 -[nsubj]-> S }
+without { V2 -[E:nsubj]-> S }
+commands { add_edge V2 -[E:nsubj]-> S }
+----
+
+A rule that matches and changes nothing, or that is still matching after 1000 applications in one sentence, stops with an error on that sentence. A sentence with an error cannot be selected, and the rest of the preview is unaffected.
+
+The commands cover features (`X.upos = VERB`, `X.Number = D.Number`, `del_feat X.Number`), relations (`add_edge`, `del_edge`, `e.label = "obj"`, `shift`), and deleting a word (`del_node`). Words cannot be added or reordered, since they come from the text.
+Several rules can be written as `rule name { ... }` blocks, which are tried in order unless a `strat main { ... }` says otherwise. The syntax reference on the Search screen lists every command with examples.
+
+Some things to know before applying:
+
+* The changes count as yours. A rule that changes a value a parser wrote confirms it, the same as editing it by hand.
+* Grew does not require a tree, and neither does a rule. A relation added to a word that already has a head gives it a second one, and the preview warns that the word has 2 heads.
+* Where a vocabulary is closed (see <<_suggestions_or_rules>>), a sentence in which the rule writes a value off the list is refused, and the preview shows which value.
+* Each document is changed in one step, recorded in its history as **Rewrite:** followed by the rule names. To undo a rewrite, restore the document to the entry before it (see <<_restoring_an_earlier_state>>).
+* If someone else changes a document between your preview and your apply, that document is left untouched and the run stops there. Documents already done stay changed. The preview then runs again, so you can apply the rest.
+
+After an apply the preview runs again by itself. **No sentences to change** means the rule has nothing left to do.
 
 == History
 
