@@ -33,9 +33,10 @@ import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
-import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
-import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
-import { ElanStagedFiles } from './elan/ElanStagedFiles.jsx';
+import { ElanProblems, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
+import { elanCounts } from '@/import/elan/preview.js';
+import { ElanFiles } from './elan/ElanFiles.jsx';
+import { ElanPreview } from './elan/ElanPreview.jsx';
 import { useMediaDurations } from './elan/useMediaDurations';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
@@ -211,9 +212,7 @@ export const ImportElanProject = () => {
                   )}
                 </div>
 
-                <ElanTierReview batch={batch} editable={editable} />
-
-                <ElanStagedFiles
+                <ElanFiles
                   files={batch.files}
                   mediaFiles={batch.mediaFiles}
                   media={batch.media}
@@ -221,15 +220,18 @@ export const ImportElanProject = () => {
                   maxBytes={limits?.mediaFileBytes ?? null}
                   editable={editable}
                   converting={conversion.converting}
+                  documents={batch.build?.documents ?? null}
                   onAddFiles={() => fileInputRef.current?.click()}
                   onRemoveEaf={batch.removeEaf}
                   onRemoveMedia={batch.removeMedia}
                   onConvert={conversion.convertRecordings}
                 />
 
-                <ElanDocumentsPanel build={batch.build} />
+                <ElanTierReview batch={batch} editable={editable} />
 
-                <ElanBuildSummary batch={batch} />
+                <ElanPreview build={batch.build} />
+
+                <ElanProblems batch={batch} />
 
                 {runError && (
                   <Panel tone="error" icon={AlertTriangle} title="Import failed">
@@ -269,6 +271,9 @@ export const ImportElanProject = () => {
                       <Square className="h-4 w-4" /> Stop
                     </Button>
                   )}
+                  <span className="ms-2 text-xs text-muted-foreground">
+                    {elanCounts(batch.build)}
+                  </span>
                 </div>
               </>
             )}

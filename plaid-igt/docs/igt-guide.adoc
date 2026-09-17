@@ -841,13 +841,19 @@ Four formats are supported:
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, and guidelines.
 
+The review screen of an ELAN import has three parts, in the order you work.
+**Files** lists each `.eaf` with the document it becomes and its recording under it.
+**Tiers** is where each tier is given its role: sentences, words, morphemes, time alignment, an orthography, or a field.
+**Preview** draws a sentence of the first document as the interlinear lines the import would write, and redraws it as you change a role, so a gloss tier mapped onto words or a morpheme tier left off shows before anything is written. The arrows step through its sentences.
+Anything that needs a decision appears in an amber box, and the line beside **Import** counts what the run would add.
+
 An ELAN import also runs into a project you already have: **New Document → Import from ELAN**, on the project's Documents tab.
-Each tier is written into a field the project already has, chosen from a list, and a tier can be given a field of its own instead.
+Each tier is written into a field the project already has, chosen from a list, and a tier can be given a field of its own instead, which its row then marks as a new field.
 A tier with no annotations is left out.
 Recordings are chosen in the same step as the `.eaf` files, and everything chosen is listed together with what will happen to it: which `.eaf` each recording belongs to, and which of them matches none.
 A recording is matched to the `.eaf` that names it, and a document whose recording you did not choose is imported without it.
 One too large for the server says so and says what converting would produce, and it can be converted to MP3 in the browser before the run (see <<_media>>), so the import does not finish without it.
-A file imported into this project before is named before the run, with a link to its document and a choice: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
+A file imported into this project before says so on its row, with a link to its document, and the screen asks once for all of them: keep that document, replace it (which deletes it and everything added to it since), or add a copy beside it, named with a number.
 A recording chosen beside a kept file is added to its document when that document has no recording yet.
 The rest of the project is untouched, and nothing is locked while the import runs.
 

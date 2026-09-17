@@ -6,7 +6,7 @@
 // fields when they already exist.
 
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CircleHelp } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@ui/components/ui/select';
 import { NAMED_ROLES, nodeLabel, ROLES } from '@/import/elan/schema';
 import { Panel } from '../ImportPanels.jsx';
+import { ElanSection } from './ElanSection.jsx';
 
 // What a tier can become, grouped the way the document is built: first the
 // text and the pieces it divides into, then the values that hang off those
@@ -130,13 +131,24 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
 );
 
 /**
+ * Step 2 of the review: what each tier becomes.
+ *
  * @param batch  the useElanBatch state
  * @param editable  false while a run is in flight
  * @param renderFieldControl  (node) => ReactNode for a tier in a named role
+ * @param rowNote  (node) => {text, tone?}|null, what choosing this row's name
+ *                 does to the project ("new field"), said on the row that does it
  */
-export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) => {
+export const ElanTierReview = ({
+  step = 2,
+  batch,
+  editable,
+  renderFieldControl = null,
+  rowNote = null,
+}) => {
   const { files, nodes, roles, fieldNames } = batch;
   const [showEmpty, setShowEmpty] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   // A corpus template carries tiers nobody has filled in, and a row with
   // nothing in it and nothing to decide is what makes the rest hard to read.
   // One that has been given a role stays in view whatever it holds.
@@ -155,30 +167,38 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
         />
       )}
 
-      <div className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">Tiers</h2>
-          <p className="text-sm text-muted-foreground">
-            {files.length === 1 ? (
-              <>
-                One file, {nodes.length} tier{nodes.length === 1 ? '' : 's'}.{' '}
-              </>
-            ) : (
-              <>
-                {files.length} files, all with the same {nodes.length} tier
-                {nodes.length === 1 ? '' : 's'}. Speaker suffixes are ignored when matching, so
-                files by different speakers count as the same structure.
-              </>
-            )}
-          </p>
-          <p className="text-sm text-muted-foreground">
+      <ElanSection
+        step={step}
+        title="Tiers"
+        note={
+          files.length === 1
+            ? `One file, ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
+            : `${files.length} files with the same ${nodes.length} tier${nodes.length === 1 ? '' : 's'}.`
+        }
+        aside={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label="About tier roles"
+            aria-expanded={showHelp}
+            onClick={() => setShowHelp((v) => !v)}
+          >
+            <CircleHelp className="h-4 w-4" />
+          </Button>
+        }
+      >
+        {showHelp && (
+          <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             The tier mapped to <span className="font-medium">Sentences</span> carries the
             transcription: each of its annotations becomes one sentence, and their text becomes the
             document&rsquo;s text. Words and morphemes divide that text further, time alignment
             gives the Media tab its segments, and a field holds one value per sentence, word or
             morpheme.
+            {files.length > 1 &&
+              ' Speaker suffixes are ignored when matching, so files by different speakers count as the same structure.'}
           </p>
-        </div>
+        )}
         <div className="flex flex-col gap-2">
           {shown.map((node) => (
             <div key={node.key} className="flex flex-col gap-1">
@@ -233,6 +253,20 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
                   </SelectContent>
                 </Select>
               </div>
+              {(() => {
+                const note = rowNote?.(node);
+                return note ? (
+                  <p
+                    className={`pe-[11.5rem] text-end text-xs ${
+                      note.tone === 'warn'
+                        ? 'text-amber-700 dark:text-amber-500'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {note.text}
+                  </p>
+                ) : null;
+              })()}
             </div>
           ))}
           {emptyCount > 0 && (
@@ -246,13 +280,13 @@ export const ElanTierReview = ({ batch, editable, renderFieldControl = null }) =
             </button>
           )}
         </div>
-      </div>
+      </ElanSection>
     </>
   );
 };
 
-/** What the mapping would produce, and what it leaves behind. */
-export const ElanBuildSummary = ({ batch }) => {
+/** What stands between the mapping and a good import. Nothing, usually. */
+export const ElanProblems = ({ batch }) => {
   const { build, problems } = batch;
   return (
     <>
@@ -266,21 +300,17 @@ export const ElanBuildSummary = ({ batch }) => {
         </Panel>
       )}
 
-      {build && (
-        <Panel title="What will be imported">
-          <p className="mt-1 text-xs">
-            {build.documents.length} document{build.documents.length === 1 ? '' : 's'} ·{' '}
-            {build.stats.sentences} sentences · {build.stats.words} words · {build.stats.morphemes}{' '}
-            morphemes · {build.stats.alignments} time-aligned segments
-            {build.stats.speakers.length > 0 && <> · speakers: {build.stats.speakers.join(', ')}</>}
-          </p>
-          {build.warnings.length > 0 && (
-            <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
-              {build.warnings.map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
-          )}
+      {build && build.warnings.length > 0 && (
+        <Panel
+          tone="warn"
+          icon={AlertTriangle}
+          title={`${build.warnings.length} warning${build.warnings.length === 1 ? '' : 's'}`}
+        >
+          <ul className="mt-1 list-inside list-disc text-xs">
+            {build.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
         </Panel>
       )}
 
@@ -294,13 +324,11 @@ export const ElanBuildSummary = ({ batch }) => {
             return `Not imported: ${values} annotation${values === 1 ? '' : 's'} on ${tiers} tier${tiers === 1 ? '' : 's'}`;
           })()}
         >
-          <p className="mt-1 text-xs">
-            These tiers are set to “Don’t import” above. Give one a role to keep it.
-          </p>
+          <p className="mt-1 text-xs">Set to “Don’t import” in Tiers.</p>
           <ul className="mt-2 list-inside list-disc text-xs text-muted-foreground">
             {build.stats.skipped.map((sk) => (
               <li key={sk.label}>
-                {sk.tiers.join(', ')} — {sk.values} annotation{sk.values === 1 ? '' : 's'}
+                {sk.tiers.join(', ')}: {sk.values} annotation{sk.values === 1 ? '' : 's'}
               </li>
             ))}
           </ul>

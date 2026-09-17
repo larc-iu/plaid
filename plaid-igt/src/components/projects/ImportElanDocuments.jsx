@@ -26,7 +26,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Upload, Check, RefreshCw, Square, AlertTriangle, Plus } from 'lucide-react';
+import { Upload, Check, RefreshCw, Square, AlertTriangle } from 'lucide-react';
 import { Panel, WarningLog } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -55,10 +55,11 @@ import { suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { partitionPicked, useElanBatch } from './elan/useElanBatch';
-import { ElanBuildSummary, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
-import { SCOPE_OF_ROLE } from '@/import/elan/schema';
-import { ElanDocumentsPanel } from './elan/ElanDocumentsPanel.jsx';
-import { ElanStagedFiles } from './elan/ElanStagedFiles.jsx';
+import { ElanProblems, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
+import { elanCounts } from '@/import/elan/preview.js';
+import { NAMED_ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
+import { ElanFiles } from './elan/ElanFiles.jsx';
+import { ElanPreview } from './elan/ElanPreview.jsx';
 import { useMediaDurations } from './elan/useMediaDurations';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
@@ -169,10 +170,16 @@ export const ImportElanDocuments = () => {
 
   // Files an earlier run finished. A file only half imported is redone without
   // asking, which is what resume has always meant.
-  const alreadyImported = (batch.build?.documents ?? []).flatMap((doc) => {
-    const existing = prior?.find(doc.id);
-    return existing && prior.done(existing) ? [{ doc, existing }] : [];
-  });
+  // Keyed by .eaf file name, which is what a document's resume stamp holds.
+  // Null until the listing is read, so no row claims "new" on a guess.
+  const imported = prior
+    ? new Map(
+        (batch.files ?? []).flatMap((eaf) => {
+          const existing = prior.find(eaf.fileName);
+          return existing && prior.done(existing) ? [[eaf.fileName, existing]] : [];
+        }),
+      )
+    : null;
 
   // What the run would add to the project, as opposed to write into it.
   const newFields = batch.build ? missingFields(project, batch.build.schema.fields) : [];
@@ -236,6 +243,23 @@ export const ImportElanDocuments = () => {
   const editable = stage === 'review';
   const canRun = editable && !!batch.build && batch.undecidedNearMisses.length === 0;
   const projectHref = `/projects/${projectId}`;
+
+  // What a row's name does to the project, said on the row: a field or an
+  // orthography the project does not have yet is ADDED by the run.
+  const rowNote = (node) => {
+    const role = batch.roles[node.key];
+    const name = (batch.fieldNames[node.key] ?? '').trim();
+    if (!name || !NAMED_ROLES.has(role)) return null;
+    const scope = SCOPE_OF_ROLE[role];
+    if (!scope) {
+      return newOrthographies.includes(name) ? { text: 'new orthography' } : null;
+    }
+    const added = newFields.find((f) => f.scope === scope && f.name === name);
+    if (!added) return null;
+    return added.similarTo
+      ? { tone: 'warn', text: `new field, and this project already has “${added.similarTo}”` }
+      : { text: 'new field' };
+  };
 
   // The field a tier writes to: one of the project's, or a new one by name.
   const renderFieldControl = (node) => {
@@ -338,8 +362,7 @@ export const ImportElanDocuments = () => {
             >
               ELAN
             </a>{' '}
-            annotation files into {project?.name ? `“${project.name}”` : 'this project'}. Every file
-            becomes one document, and its tiers are written into fields this project already has.
+            annotation files into {project?.name ? `“${project.name}”` : 'this project'}.
           </p>
         </div>
 
@@ -378,97 +401,7 @@ export const ImportElanDocuments = () => {
 
             {batch.comparison.consistent && (
               <>
-                <ElanTierReview
-                  batch={batch}
-                  editable={editable}
-                  renderFieldControl={renderFieldControl}
-                />
-
-                {newFields.length > 0 && (
-                  <Panel
-                    tone={newFields.some((f) => f.similarTo) ? 'warn' : 'muted'}
-                    icon={newFields.some((f) => f.similarTo) ? AlertTriangle : Plus}
-                    title={`${newFields.length} new field${newFields.length === 1 ? '' : 's'} will be added to this project`}
-                  >
-                    <ul className="mt-1 flex flex-col gap-0.5 text-xs">
-                      {newFields.map((f) => (
-                        <li key={`${f.scope}:${f.name}`}>
-                          <span className="font-medium">{f.name}</span> ({f.scope.toLowerCase()})
-                          {f.similarTo && (
-                            <span className="text-amber-700 dark:text-amber-500">
-                              {' '}
-                              — this project already has “{f.similarTo}”
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </Panel>
-                )}
-
-                {newOrthographies.length > 0 && (
-                  <Panel
-                    icon={Plus}
-                    title={`${newOrthographies.length} new orthograph${newOrthographies.length === 1 ? 'y' : 'ies'}: ${newOrthographies.join(', ')}`}
-                  />
-                )}
-
-                {alreadyImported.length > 0 && (
-                  <Panel
-                    tone="warn"
-                    icon={AlertTriangle}
-                    title={`${alreadyImported.length} of these ${alreadyImported.length === 1 ? 'file was' : 'files were'} imported before`}
-                  >
-                    <ul className="mt-1 flex flex-col gap-0.5 text-xs">
-                      {alreadyImported.map(({ doc, existing }) => (
-                        <li key={doc.id}>
-                          <span className="font-medium">{doc.id}</span> is in this project as{' '}
-                          <Link
-                            to={`/projects/${projectId}/documents/${existing.id}`}
-                            className="underline underline-offset-2"
-                          >
-                            {existing.name}
-                          </Link>
-                          {priorMode === 'skip' && doc.mediaFile && (
-                            <span className="text-muted-foreground">
-                              {existing.mediaUrl
-                                ? `. It already has a recording, so ${doc.mediaFile.name} is not used.`
-                                : `. ${doc.mediaFile.name} will be added to it.`}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                    <div role="radiogroup" className="mt-2 flex flex-col gap-1 text-xs">
-                      {[
-                        ['skip', 'Keep them', null],
-                        [
-                          'replace',
-                          'Replace them',
-                          'Deletes each document above and everything added to it since.',
-                        ],
-                        ['copy', 'Add copies', 'A new document beside each, named with a number.'],
-                      ].map(([mode, label, hint]) => (
-                        <label key={mode} className="flex cursor-pointer items-start gap-2">
-                          <input
-                            type="radio"
-                            name="prior-mode"
-                            className="mt-0.5"
-                            value={mode}
-                            checked={priorMode === mode}
-                            onChange={() => setPriorMode(mode)}
-                          />
-                          <span>
-                            {label}
-                            {hint && <span className="block text-muted-foreground">{hint}</span>}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </Panel>
-                )}
-
-                <ElanStagedFiles
+                <ElanFiles
                   files={batch.files}
                   mediaFiles={batch.mediaFiles}
                   media={batch.media}
@@ -476,15 +409,27 @@ export const ImportElanDocuments = () => {
                   maxBytes={limits?.mediaFileBytes ?? null}
                   editable={editable}
                   converting={conversion.converting}
+                  documents={batch.build?.documents ?? null}
+                  imported={imported}
+                  projectId={projectId}
+                  priorMode={priorMode}
+                  onPriorMode={setPriorMode}
                   onAddFiles={() => fileInputRef.current?.click()}
                   onRemoveEaf={batch.removeEaf}
                   onRemoveMedia={batch.removeMedia}
                   onConvert={conversion.convertRecordings}
                 />
 
-                <ElanDocumentsPanel build={batch.build} />
+                <ElanTierReview
+                  batch={batch}
+                  editable={editable}
+                  renderFieldControl={renderFieldControl}
+                  rowNote={rowNote}
+                />
 
-                <ElanBuildSummary batch={batch} />
+                <ElanPreview build={batch.build} />
+
+                <ElanProblems batch={batch} />
 
                 {runError && (
                   <Panel tone="error" icon={AlertTriangle} title="Import failed">
@@ -510,7 +455,7 @@ export const ImportElanDocuments = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button onClick={startImport} disabled={!canRun}>
                     {runError ? (
                       <>
@@ -528,6 +473,9 @@ export const ImportElanDocuments = () => {
                   <Button variant="outline" asChild>
                     <Link to={projectHref}>Cancel</Link>
                   </Button>
+                  <span className="ms-2 text-xs text-muted-foreground">
+                    {elanCounts(batch.build)}
+                  </span>
                 </div>
               </>
             )}
