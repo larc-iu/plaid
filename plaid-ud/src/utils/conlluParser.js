@@ -119,8 +119,9 @@ export function parseCoNLLU(text) {
     }
 
     // Skip ellipsis tokens (e.g., "4.1"). The UD format uses decimal IDs for
-    // empty nodes (enhanced dependencies) which we don't model — counted so
-    // the caller can surface the data loss to the user.
+    // the enhanced graph's empty nodes, which we don't model (the graph's
+    // edges between real words we do, see DEPS below). Counted so the caller
+    // can surface the data loss to the user.
     if (id.includes('.')) {
       droppedEmptyNodes += 1;
       continue;

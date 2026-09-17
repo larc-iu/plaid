@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useRef } from 'react';
 import { isMachine } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { computeArcLayout, buildIndexById } from '../../../utils/arcLayout.js';
+import { extraEdges } from '../../../domain/enhancedGraph.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';
@@ -70,6 +71,15 @@ export const SentenceRow = React.memo(
 
     // Relations are already pre-processed in sentenceData
     const relations = sentenceData.relations;
+    // The enhanced layer's rows, and the ones among them that are arcs of their
+    // own. They stack with the tree's arcs and are reviewed with them, so both
+    // read `arcs`. `relations` stays the tree, for what asks about a word's one
+    // head.
+    const enhancedRelations = sentenceData.enhancedRelations;
+    const arcs = useMemo(
+      () => [...(relations || []), ...extraEdges(enhancedRelations)],
+      [relations, enhancedRelations],
+    );
 
     // Lemma spans are already pre-processed in sentenceData
     const lemmaSpans = sentenceData.lemmaSpans;
@@ -81,13 +91,13 @@ export const SentenceRow = React.memo(
     const arcLayout = useMemo(
       () =>
         computeArcLayout(
-          relations,
+          arcs,
           buildIndexById(
             tokenData.map((d) => d.token),
             lemmaSpans,
           ),
         ),
-      [relations, tokenData, lemmaSpans],
+      [arcs, tokenData, lemmaSpans],
     );
 
     // Create a text content object that can handle token extraction for DependencyTree
@@ -197,9 +207,9 @@ export const SentenceRow = React.memo(
             (span) => !!span && predicate(span.metadata),
           ),
         );
-        return onSpans || (relations || []).some((r) => predicate(r.metadata));
+        return onSpans || arcs.some((r) => predicate(r.metadata));
       },
-      [tokenData, relations],
+      [tokenData, arcs],
     );
     const hasInferred = useMemo(() => holds(reviewable), [holds, reviewable]);
     const hasMachine = useMemo(() => holds(isMachine), [holds]);
@@ -210,13 +220,13 @@ export const SentenceRow = React.memo(
       const tokenByLemma = new Map();
       for (const d of tokenData) if (d.lemma?.id) tokenByLemma.set(d.lemma.id, d.token.id);
       const ids = new Set();
-      for (const r of relations || []) {
+      for (const r of arcs) {
         if (!reviewable(r.metadata)) continue;
         const tokenId = tokenByLemma.get(r.target);
         if (tokenId) ids.add(tokenId);
       }
       return ids;
-    }, [tokenData, relations, reviewable]);
+    }, [tokenData, arcs, reviewable]);
 
     // Hand over to the Text Editor at this sentence, the mirror of Alt+click on
     // a token there. Undefined when there is no sentence token to land on, so
@@ -247,6 +257,7 @@ export const SentenceRow = React.memo(
             ref={treeRef}
             tokens={sentenceData.tokens.map((t) => t.token)}
             relations={relations}
+            enhancedRelations={enhancedRelations}
             lemmaSpans={lemmaSpans}
             textContent={textContentProvider}
             tokenPositions={tokenPositions}

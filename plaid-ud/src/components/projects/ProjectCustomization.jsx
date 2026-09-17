@@ -17,6 +17,7 @@ import {
 } from '../../utils/udMetadata.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
+import { enableEnhancedDependencies } from '../../domain/udProjectSetup.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
 import { MetadataFieldList } from '../common/MetadataFieldList.jsx';
@@ -39,6 +40,7 @@ export const ProjectCustomization = () => {
   const { getClient } = useAuth();
 
   const [saving, setSaving] = useState(false);
+  const [enablingEnhanced, setEnablingEnhanced] = useState(false);
 
   const [uposVocab, setUposVocab] = useState([]);
   const [xposVocab, setXposVocab] = useState([]);
@@ -237,6 +239,24 @@ export const ProjectCustomization = () => {
     }
   };
 
+  // Its own write, not part of Save: it adds a layer to the project, which the
+  // rest of this page (all of it layer CONFIG) never does.
+  const handleEnableEnhanced = async () => {
+    const lemmaLayerId = getUdLayerInfo(project).lemmaLayer?.id;
+    if (!lemmaLayerId) return;
+    try {
+      setEnablingEnhanced(true);
+      await enableEnhancedDependencies(getClient(), lemmaLayerId);
+      await fetchProject();
+      notifySuccess('Enhanced dependencies enabled');
+    } catch (err) {
+      console.error('Failed to enable enhanced dependencies:', err);
+      notifyError(humanizeError(err, 'Failed to enable enhanced dependencies.'));
+    } finally {
+      setEnablingEnhanced(false);
+    }
+  };
+
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
   }
@@ -356,6 +376,26 @@ export const ProjectCustomization = () => {
             descriptions={descriptions.deprel}
             onChange={setDescription('deprel')}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-lg">Enhanced dependencies</CardTitle>
+          {info.enhancedRelationLayer ? (
+            <span className="text-sm text-muted-foreground">Enabled</span>
+          ) : (
+            <Button size="sm" onClick={handleEnableEnhanced} disabled={enablingEnhanced}>
+              Enable
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Relations beside the tree, such as a subject shared by two verbs. A word can have more
+            than one. Hold <kbd>Ctrl</kbd> or <kbd>Cmd</kbd> while drawing a relation to add one.
+            They use the relations and colors listed here, and are written to the DEPS column.
+          </p>
         </CardContent>
       </Card>
 

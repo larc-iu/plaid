@@ -99,6 +99,21 @@
   cursor: pointer;
 }
 
+/* An edge the enhanced graph has and the tree lacks: a double line and an open
+   arrowhead. The core is the page's own colour laid along the middle of a wide
+   stroke, so the mark survives the dash an unreviewed relation also wears. */
+.tree-arc-core {
+  fill: none;
+  stroke: hsl(var(--background));
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.tree-arc-arrow--enhanced {
+  fill: hsl(var(--background));
+  stroke-width: 1;
+}
+
 .tree-deprel-edit {
   font-size: 11px;
   color: #2563eb;
@@ -134,12 +149,24 @@
   opacity: 0.85;
 }
 
+/* A basic relation the enhanced graph leaves out. */
+.tree-deprel-text--suppressed {
+  text-decoration: line-through;
+}
+
 .tree-drag-arc {
   fill: none;
   stroke: #000;
   stroke-width: 2;
   pointer-events: none;
   opacity: 0.7;
+}
+
+/* Ctrl/Cmd is down: the arc in the hand will land in the enhanced graph. Wide
+   and hollow-looking, as the arc it becomes is. */
+.tree-drag-arc--enhanced {
+  stroke-width: 4;
+  opacity: 0.35;
 }
 
 .tree-temp-arc {

@@ -252,6 +252,14 @@ export const AnnotationEditor = () => {
   const handleRelationCreate = useCallback((s, t, dep) => doc?.createRelation(s, t, dep), [doc]);
   const handleRelationUpdate = useCallback((id, dep) => doc?.updateRelation(id, dep), [doc]);
   const handleRelationDelete = useCallback((id) => doc?.deleteRelation(id), [doc]);
+  const handleEnhancedRelationCreate = useCallback(
+    (s, t, dep) => doc?.createEnhancedRelation(s, t, dep),
+    [doc],
+  );
+  const handleRelationSuppress = useCallback(
+    (id, suppressed) => doc?.setRelationSuppressed(id, suppressed),
+    [doc],
+  );
   const handleConfirmTokens = useCallback((tokenIds) => doc?.confirmTokens(tokenIds), [doc]);
   const handleDiscardTokens = useCallback((tokenIds) => doc?.discardTokens(tokenIds), [doc]);
   const handleSentenceMetadata = useCallback(
@@ -316,6 +324,12 @@ export const AnnotationEditor = () => {
       onRelationCreate: readOnly ? null : handleRelationCreate,
       onRelationUpdate: readOnly ? null : handleRelationUpdate,
       onRelationDelete: readOnly ? null : handleRelationDelete,
+      // Both null in a project that does not annotate enhanced dependencies,
+      // which is how the tree knows not to offer the gesture.
+      onEnhancedRelationCreate:
+        readOnly || !layerInfo?.enhancedRelationLayer ? null : handleEnhancedRelationCreate,
+      onRelationSuppress:
+        readOnly || !layerInfo?.enhancedRelationLayer ? null : handleRelationSuppress,
       onConfirmTokens: readOnly ? null : handleConfirmTokens,
       onDiscardTokens: readOnly ? null : handleDiscardTokens,
       onSentenceMetadata: readOnly ? null : handleSentenceMetadata,
@@ -348,6 +362,8 @@ export const AnnotationEditor = () => {
       handleRelationCreate,
       handleRelationUpdate,
       handleRelationDelete,
+      handleEnhancedRelationCreate,
+      handleRelationSuppress,
       handleConfirmTokens,
       handleDiscardTokens,
       handleSentenceMetadata,
@@ -517,7 +533,12 @@ export const AnnotationEditor = () => {
             <div className="px-6 pb-4">
               {toolbar}
               {readOnlyBanner}
-              {processedSentences.length > 0 && !readOnly && <EditorLegend project={project} />}
+              {processedSentences.length > 0 && !readOnly && (
+                <EditorLegend
+                  project={project}
+                  annotatesEnhanced={Boolean(layerInfo?.enhancedRelationLayer)}
+                />
+              )}
               <ListPager
                 {...paged}
                 onPage={setPage}

@@ -39,7 +39,7 @@ You don't need to know anything about Plaid itself to use the editor, but if you
 [NOTE]
 ====
 Plaid UD is a *demonstration app*.
-It covers the core treebank-annotation workflow well, but it deliberately leaves some UD features out of scope (for example enhanced dependencies and empty nodes).
+It covers the core treebank-annotation workflow well, but it deliberately leaves some UD features out of scope (for example empty nodes and the MISC column).
 Those are noted where they come up.
 ====
 
@@ -108,9 +108,13 @@ The same tab exports the whole project as a ZIP of `.conllu` files.
 
 [WARNING]
 ====
-Import brings in tokens, sentence metadata, and the dependency tree, but a few CoNLL-U features are *not* stored and will be dropped on import: **empty nodes**, **enhanced dependencies**, and the **MISC** column.
+Import brings in tokens, sentence metadata, and the dependency tree, but two CoNLL-U features are *not* stored and will be dropped on import: **empty nodes** and the **MISC** column.
 If you need those preserved, Plaid UD is not the right tool for that file.
 ====
+
+The DEPS column is read when the project annotates enhanced dependencies (see <<_enhanced_dependencies>>), and dropped with a notice when it does not.
+An enhanced dependency whose head is an empty node is dropped along with the node.
+A word whose only enhanced heads were empty nodes keeps the relation its tree gives it, which for a gapped clause is `orphan`.
 
 = Tokenizing Text (Text Editor)
 
@@ -186,6 +190,24 @@ Below the grid, each sentence's dependency tree is drawn as arcs between words.
 * **Mark the root**: drag from the **ROOT** bar to a word.
 * **Rename a relation**: click an arc's label to edit its dependency relation (`nsubj`, `obj`, …), again with autocomplete.
 * **Keyboard**: from the grid, **Ctrl/Cmd+D** jumps focus into the tree's labels. **Tab** and **Shift+Tab** walk between them, and from inside an open label they commit it and open the next. See <<_keyboard_shortcuts>> for the rest.
+
+== Enhanced Dependencies
+
+A project can annotate the enhanced dependency graph beside the tree.
+A maintainer turns this on under **Project Settings > UD Customization > Enhanced dependencies**.
+Until then the editor has none of what follows, and DEPS is exported as a restatement of the tree.
+
+The enhanced graph starts out equal to the tree, and you record only where it differs.
+
+* **Add a relation**: hold **Ctrl** or **Cmd** while you draw an arc. The word you release on keeps its head in the tree and gains a second one in the enhanced graph. This is how a subject shared by two coordinated verbs, or the subject of a controlled verb, is recorded. The arc is drawn as a double line with an open arrowhead, and its label is edited and deleted like any other.
+* **Give a relation a different label in the enhanced graph**: hold **Ctrl** or **Cmd** and draw over a relation the tree already has. Its label opens, and what you type becomes the label in the enhanced graph, such as `nmod:of` for `nmod`. The tree keeps its own label, which is shown struck through.
+* **Leave a relation out of the enhanced graph**: **Ctrl/Cmd+click** a relation of the tree, or press **Ctrl/Cmd+E** on its label. The label is shown struck through. Do the same again to put it back.
+
+A change to the tree carries over to the enhanced graph by itself, because only the differences are stored.
+Splitting a sentence removes the enhanced relations that would cross the new boundary, as it does the tree's.
+
+On export, DEPS lists every relation of the enhanced graph for each word.
+Empty nodes are not supported, so an elided predicate cannot be added, and gapping stays as the tree's `orphan` relation.
 
 == Metadata
 
@@ -436,7 +458,7 @@ The mark is shared with every Plaid app on the project.
 
 A project's maintainers can tailor the annotation scheme from the project's settings tabs:
 
-* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
+* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced. **Enhanced dependencies** are turned on here as well (see <<_enhanced_dependencies>>), and once on they stay on.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
@@ -570,7 +592,9 @@ The editor carries a short version of this under **Gestures and marks**, above t
 | Shortcut | Action
 
 | **Drag** from one word to another | Draw a relation, or re-point an existing one.
+| **Ctrl/Cmd+drag** from one word to another | Add a relation to the enhanced graph. Over a relation of the tree, give it a different label there. (Projects with enhanced dependencies turned on.)
 | **Click** a label | Edit it.
+| **Ctrl/Cmd+click** a relation of the tree, or **Ctrl/Cmd+E** on its label | Leave it out of the enhanced graph, or put it back.
 | **Ctrl/Cmd+D** | Jump from the grid into the relation labels.
 | **←** / **→**, or **Tab** / **Shift+Tab** | Move between labels. **Enter** edits the one you are on, **↓** drops back into the grid.
 | **Tab** / **Shift+Tab** in an open label | Commit it and open the next or previous label.

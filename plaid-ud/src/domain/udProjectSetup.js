@@ -44,6 +44,7 @@ import {
   UD_NAMESPACE,
   UD_SPAN_CONFIG_KEYS,
   UD_RELATION_CONFIG_KEY,
+  UD_ENHANCED_RELATION_CONFIG_KEY,
 } from '../utils/udLayerUtils.js';
 
 export const SPAN_LAYER_SPECS = [
@@ -172,3 +173,30 @@ export const createUdProject = (client, projectName) =>
   client.withOperation(`Create UD project "${projectName.trim()}"`, () =>
     bootstrap(client, projectName),
   );
+
+/**
+ * Give a UD project its enhanced relation layer: a second relation layer on
+ * Lemma, beside the tree's (see domain/enhancedGraph.js). Optional, so it is
+ * not part of the bootstrap, and a relation layer can be added to a project at
+ * any time, so an existing project takes it as readily as a new one. Two
+ * writes, since the flag needs the layer's id.
+ *
+ * There is no turning it off again: deleting the layer would delete every
+ * enhanced relation in the project, and a layer nobody draws on costs nothing.
+ *
+ * @param {object} client - PlaidClient instance
+ * @param {string} lemmaLayerId - the project's Lemma span layer
+ * @returns {Promise<string>} the new relation layer's id
+ */
+export const enableEnhancedDependencies = (client, lemmaLayerId) =>
+  client.withOperation('Enable enhanced dependencies', async () => {
+    const created = await client.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies');
+    const layerId = created?.id || created;
+    await client.relationLayers.setConfig(
+      layerId,
+      UD_NAMESPACE,
+      UD_ENHANCED_RELATION_CONFIG_KEY,
+      true,
+    );
+    return layerId;
+  });
