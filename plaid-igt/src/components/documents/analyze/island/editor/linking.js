@@ -65,6 +65,24 @@ export const linking = {
     });
   },
 
+  // "Analyze every ‹again› in this text like this": the popover's row for the
+  // other words spelled the same that nobody has analyzed. `like` is
+  // sameFormUnanalyzed's answer, read when the row was drawn; the mutation
+  // checks each word again.
+  _analyzeEverywhere(tokenId, like, returnFocus = false) {
+    this._closePopover(returnFocus);
+    this._runThenFocus({ vocabOpener: tokenId }, () =>
+      this.doc.applyAnalysisToWords(like.ids, like.analysis),
+    ).then((count) => {
+      if (count) {
+        notifyInfo(
+          `Analyzed ${count} more “${like.word.content}” like this one`,
+          'Analyzed in this text',
+        );
+      }
+    });
+  },
+
   _confirmLink(tokenId, returnFocus = false) {
     this._closePopover(returnFocus);
     this._pulseLink(tokenId);

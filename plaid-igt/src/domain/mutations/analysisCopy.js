@@ -62,6 +62,24 @@ export const analysisCopyMutations = {
     return ok ? todo.length : false;
   },
 
+  // "Analyze every ‹again› in this text like this", from the popover: one
+  // word's analysis onto other words nobody has analyzed. A person pointed at
+  // the analysis and asked for it, so it lands as their work (the writer's
+  // create stamp: nothing for a verifier), as a re-analyze does. Words that
+  // stopped being unanalyzed since the row was drawn are skipped. Returns the
+  // number of words written (false on failure).
+  async applyAnalysisToWords(wordTokenIds, analysis) {
+    const todo = this._planAnalysisApply(
+      (wordTokenIds || []).map((wordTokenId) => ({ wordTokenId, analysis })),
+    );
+    if (todo === false) return false;
+    if (!todo.length) return 0;
+    const ok = await this._withSaving('Failed to analyze words', () =>
+      this._applyAnalysesImpl(todo, this.createStamp || {}),
+    );
+    return ok ? todo.length : false;
+  },
+
   // Bulk Edit's "re-analyze every occurrence": REPLACE each target word's
   // analysis with `analysis` (same shape as extractAnalysis), whatever it
   // carries now. Two phases under one operation: strip every link, span and

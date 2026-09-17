@@ -123,6 +123,25 @@ describe('bulkReplaceAnalyses', () => {
     expect(client.calls).toEqual([]);
   });
 
+  // "Analyze every ‹kat› in this text like this": a person asked for it, so
+  // it is their work, and a word somebody has since analyzed is left alone.
+  it('applyAnalysisToWords writes human work, and only onto unanalyzed words', async () => {
+    const client = clientFor({ reloadDoc: strippedRaw() });
+    const doc = docFor(strippedRaw(), client);
+    expect(await doc.applyAnalysisToWords(['w-2'], targetAnalysis)).toBe(1);
+    expect(client.calls[0]).toEqual({ kind: 'beginOperation', args: ['Analyze words'] });
+    expect(client.calls.find((c) => c.kind === 'vocabLinks.create').args).toEqual([
+      'i-kat',
+      ['m-2'],
+      {},
+    ]);
+
+    const busy = clientFor();
+    const analyzed = docFor(analyzedRaw(), busy);
+    expect(await analyzed.applyAnalysisToWords(['w-2'], targetAnalysis)).toBe(0);
+    expect(busy.calls).toEqual([]);
+  });
+
   it('bulkApplyAnalyses still stamps copies as inferred', async () => {
     const client = clientFor({ reloadDoc: strippedRaw() });
     const doc = docFor(strippedRaw(), client);

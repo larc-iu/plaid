@@ -291,6 +291,7 @@ What you do here:
 Clicking the entry itself links only the one you are on.
 After it is linked, its popover still offers to link the rest.
 Nothing is linked this way unless you ask.
+* **Reuse an analysis**. Once you have analyzed a word, its popover (and the popover of any of its morphemes) offers **Analyze every "…" in this text like this** when other words spelled the same have not been analyzed at all. It gives each of them the same morphemes, links and field values, as your own work. A word with any analysis of its own is left alone. For the whole document at once, or to draw on the rest of the project, use Auto-analyze's copy step (see <<_copying_previous_analyses>>).
 * **Auto-analyze**. Let the machine make a first pass over the whole document: translations, analyses copied onto words you have analyzed before, a model's segmentation and glosses, and lexicon links. Everything it produces shows in violet until you confirm it, and words you analyzed yourself are never touched (see <<_auto_analyze>>).
 * **Review machine work**. **Ctrl/Cmd+Enter** accepts everything proposed on a word and moves to the next. **Ctrl/Cmd+Backspace** discards a word's (or a translation's) unverified proposal. **Ctrl/Cmd+Shift+↑/↓** jumps between the words and translations that still have one.
 * **Fill sentence fields**. Record the free translation, the speaker, and other sentence-scope values on each sentence's row.

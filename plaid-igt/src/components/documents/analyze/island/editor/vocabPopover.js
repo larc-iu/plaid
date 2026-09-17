@@ -16,7 +16,7 @@ import {
   precedentCounts,
   precedentForm,
 } from '@/domain/precedent';
-import { sameFormUnlinked } from '@/domain/linkEverywhere.js';
+import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
 import { NO_PRECEDENT, numHtml } from './shared.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
@@ -635,6 +635,28 @@ export const vocabPopover = {
           >
             Link every “${formText}” in this text
             <span class="igt-vocab-pop__prec">×${others.length}</span>
+          </button>`;
+        })()}
+        ${(() => {
+          // The whole word's analysis onto the other words spelled the same
+          // that nobody has touched. Offered from the word and from any of
+          // its morphemes, once there is an analysis a person stands behind.
+          const like = isMwe
+            ? null
+            : sameFormUnanalyzed(this.doc.sentences, tokenId, this._ignoredCfg);
+          if (!like) return nothing;
+          const form = like.word.content;
+          return html`<button
+            type="button"
+            class="igt-vocab-pop__all"
+            title=${`Give the ${like.ids.length} unanalyzed “${form}” in this text this word’s morphemes, links and values`}
+            @click=${(e) => {
+              e.stopPropagation();
+              this._analyzeEverywhere(tokenId, like, true);
+            }}
+          >
+            Analyze every “${form}” in this text like this
+            <span class="igt-vocab-pop__prec">×${like.ids.length}</span>
           </button>`;
         })()}
         ${kind === 'morpheme'

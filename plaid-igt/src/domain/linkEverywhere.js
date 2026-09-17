@@ -5,6 +5,7 @@
 // left out, so nothing anyone decided is relinked.
 
 import { morphFormOf } from './igtExport.js';
+import { extractAnalysis, isUnanalyzedWord } from './analysisMemory.js';
 
 /**
  * @param {Array} sentences  the derived sentences (doc.sentences)
@@ -27,4 +28,41 @@ export function sameFormUnlinked(sentences, kind, form, exceptId) {
     }
   }
   return out;
+}
+
+/**
+ * "Analyze every ‹again› in this text like this": the word a popover was opened
+ * on (or the word its morpheme belongs to), what there is to copy from it, and
+ * the other words spelled the same that nobody has analyzed. Only those: a word
+ * with any segmentation, link or value of its own was somebody's decision.
+ *
+ * The analysis is `extractAnalysis`'s, so a word carrying nothing but machine
+ * output nobody confirmed offers nothing, as it offers nothing to Auto-analyze.
+ * A person asking for a copy makes it their work, and that must not be a way to
+ * launder a guess.
+ *
+ * @param {Array} sentences  the derived sentences (doc.sentences)
+ * @param {string} tokenId   a word id, or the id of one of a word's morphemes
+ * @param {object|null} ignoredCfg  the project's ignored-tokens rule
+ * @returns {{word: object, analysis: object, ids: string[]}|null}
+ */
+export function sameFormUnanalyzed(sentences, tokenId, ignoredCfg = null) {
+  let word = null;
+  for (const s of sentences || []) {
+    word = (s.tokens || []).find(
+      (t) => t.id === tokenId || (t.morphemes || []).some((m) => m.id === tokenId),
+    );
+    if (word) break;
+  }
+  const analysis = word && extractAnalysis(word);
+  if (!analysis) return null;
+  const ids = [];
+  for (const s of sentences || []) {
+    for (const t of s.tokens || []) {
+      if (t.id !== word.id && t.content === word.content && isUnanalyzedWord(t, ignoredCfg)) {
+        ids.push(t.id);
+      }
+    }
+  }
+  return ids.length ? { word, analysis, ids } : null;
 }
