@@ -12,7 +12,7 @@
 // compile), which is why `startCore` waits on the login endpoint rather than a
 // fixed delay.
 //
-//   const core = await startCore();   // { url, client, stop, dir }
+//   const core = await coreForRun();  // { url, client, stop, dir }
 //   ...
 //   await core.stop();
 //
@@ -79,7 +79,7 @@ async function waitForLogin(url, child, timeoutMs) {
  * `{url, client, stop, dir}`. `stop` kills the JVM and removes the directory
  * unless `keep` was given.
  */
-export async function startCore({ timeoutMs = 300_000, keep = false, log = false } = {}) {
+async function startCore({ timeoutMs = 300_000, keep = false, log = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'plaid-fidelity-'));
   const port = await freePort();
   const configPath = join(dir, 'config.toml');

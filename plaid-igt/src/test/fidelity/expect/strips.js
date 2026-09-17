@@ -25,9 +25,7 @@ import { provState } from '@larc-iu/plaid-client';
 import {
   baselineOf,
   byBegin,
-  cps,
   docs,
-  igt,
   isProvKey,
   layer,
   omitKeys,
@@ -641,7 +639,6 @@ export const STRIPS = {
   },
 };
 
-// Kept for a format module that needs to ask what the source's rule skips.
-export const ignoredRule = (s) => wordLayer(s)?.config?.igt?.ignoredTokens ?? null;
-export const isIgnored = (s, text) => isTokenIgnored(text, ignoredRule(s));
-export { cps, igt };
+/** Whether a project's own ignored-tokens rule skips a word. */
+export const isIgnored = (s, text) =>
+  isTokenIgnored(text, wordLayer(s)?.config?.igt?.ignoredTokens ?? null);

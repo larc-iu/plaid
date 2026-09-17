@@ -35,7 +35,6 @@ export const layer = (s, key) => (s.layers || []).find((l) => l.key === key);
 export const tokensIn = (d, role) => d.tokens.filter((t) => t.layer === `token:${role}`);
 export const baselineOf = (d) => d.texts.find((t) => t.layer === 'text:baseline') ?? null;
 export const byBegin = (a, b) => a.begin - b.begin || a.end - b.end;
-export const roleOfTokenKey = (key) => key.slice(0, key.indexOf(':'));
 export const cps = (str) => [...(str ?? '')];
 export const surface = (d, t) => cps(baselineOf(d)?.body).slice(t.begin, t.end).join('');
 export const spanLayers = (s) => (s.layers || []).filter((l) => l.key.startsWith('span:'));
@@ -186,7 +185,7 @@ const siblingPrefix = (key) => {
 };
 
 /** Close the gap in `position` among the siblings of a layer key. */
-export function renumberSiblings(s, key) {
+function renumberSiblings(s, key) {
   const prefix = siblingPrefix(key);
   const depth = key.split('/').length;
   s.layers

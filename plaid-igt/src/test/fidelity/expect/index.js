@@ -35,7 +35,7 @@ function stripStamps(s, stamps = {}) {
 }
 
 /** The strip a format uses for a key: its own override, else the shared one. */
-export const stripFor = (module, key) => module.strips?.[key] ?? STRIPS[key];
+const stripFor = (module, key) => module.strips?.[key] ?? STRIPS[key];
 
 /**
  * @param list    the format's loss list (./formats/<id>.js)

@@ -48,7 +48,7 @@ import {
 import { readNativeArchive } from '../../src/import/native/readArchive.js';
 
 /** The export format id each round-trip format is written with. */
-export const EXPORT_FORMAT = { native: 'plaid-igt-json', cldf: 'cldf', elan: 'elan' };
+const EXPORT_FORMAT = { native: 'plaid-igt-json', cldf: 'cldf', elan: 'elan' };
 
 async function exportScope(client, projectId, formatId, scope) {
   const project = await client.projects.get(projectId);

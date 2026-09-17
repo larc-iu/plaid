@@ -18,8 +18,6 @@
 import { stableStringify } from './stable.js';
 import { FEATURES } from './catalog.js';
 
-export { stableStringify };
-
 /** A deep copy of a snapshot, which is plain JSON. */
 export const clone = (v) => structuredClone(v);
 
