@@ -142,12 +142,34 @@ export function createKeymap(actionList) {
       return null;
     },
 
-    /** The overrides with `id` bound to `chord`, or back on its default for null. */
+    /**
+     * The overrides with `id` bound to `chord`, or back on its default for null.
+     *
+     * Going back to a default is not checked the way a new chord is, because it
+     * must always be possible. But the default may have been given away in the
+     * meantime (move A off Ctrl+Enter, bind B to it, reset A), which would leave
+     * two actions on one chord and the second of them dead. So whoever took it
+     * goes back to their own default too, and so on until nothing collides.
+     * Each round removes an override, so it ends.
+     */
     withBinding(id, chord, draft = overrides) {
-      const next = { ...draft };
-      if (chord == null) delete next[id];
-      else next[id] = [chord];
-      return clean(next);
+      const next = { ...clean(draft) };
+      if (chord != null) {
+        next[id] = [chord];
+        return clean(next);
+      }
+      const restore = [id];
+      while (restore.length) {
+        const action = byId.get(restore.pop());
+        if (!action) continue;
+        delete next[action.id];
+        for (const other of actions) {
+          if (other.id === action.id || !next[other.id]) continue;
+          if (!scopesOverlap(other.scope, action.scope)) continue;
+          if (next[other.id].some((c) => action.keys.includes(c))) restore.push(other.id);
+        }
+      }
+      return next;
     },
   };
   return keymap;

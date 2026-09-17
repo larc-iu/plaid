@@ -16,11 +16,18 @@ export function useUserKeymap(keymap) {
       return undefined;
     }
     let live = true;
+    // What was bound when the load began. A change made on the settings screen
+    // before a slow load lands is newer than what the load is carrying, and is
+    // already on the account.
+    const before = keymap.overrides();
     loadUserKeymap(client, userId)
-      .then((map) => live && keymap.setOverrides(map))
+      .then((map) => live && keymap.overrides() === before && keymap.setOverrides(map))
       .catch((e) => console.error('Could not load keyboard shortcuts:', e));
     return () => {
       live = false;
+      // The shell unmounts at sign-out, so this is where one person's bindings
+      // come off before the next person signs in on the same tab.
+      keymap.setOverrides({});
     };
   }, [keymap, userId, client]);
 }

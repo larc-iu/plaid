@@ -162,6 +162,8 @@ export const KEY_ACTIONS = [
     keys: ['Alt+='],
   },
 
+  ...fixed('analyze.morph', '-', '='),
+
   // ---- The lexicon popover. Its search box keeps every key to itself, so it
   // is a scope of its own and not part of the grid's.
   {

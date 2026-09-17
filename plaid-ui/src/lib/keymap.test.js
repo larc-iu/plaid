@@ -83,6 +83,21 @@ describe('createKeymap', () => {
     expect(km.withBinding('grid.accept', null, draft)).toEqual({});
   });
 
+  // Move A off its chord, give the chord to B, reset A: both would hold it, and
+  // whichever handler runs second would be dead with nothing on screen to say so.
+  it('takes a default back from whoever was given it meanwhile', () => {
+    const km = createKeymap(ACTIONS);
+    let draft = km.withBinding('grid.accept', 'Alt+a');
+    expect(km.check('grid.cell.zero', 'Mod+Enter', draft)).toBeNull();
+    draft = km.withBinding('grid.cell.zero', 'Mod+Enter', draft);
+    // And a third that took the second's default, to see the chain through.
+    draft = km.withBinding('grid.discard', 'Alt+0', draft);
+    expect(km.withBinding('grid.accept', null, draft)).toEqual({});
+    // Another scope's use of the same chord is no collision, and stays.
+    draft = km.withBinding('pop.create', 'Alt+a', km.withBinding('grid.accept', 'Alt+b'));
+    expect(km.withBinding('grid.accept', null, draft)).toEqual({ 'pop.create': ['Alt+a'] });
+  });
+
   it('rejects a table that misspells a chord or repeats an id', () => {
     expect(() => createKeymap([{ ...ACTIONS[0], keys: ['Hyper+x'] }])).toThrow(/not a chord/);
     expect(() => createKeymap([ACTIONS[0], ACTIONS[0]])).toThrow(/duplicate/);

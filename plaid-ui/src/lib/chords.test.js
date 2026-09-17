@@ -33,6 +33,9 @@ describe('canonicalChord', () => {
   it('refuses what is not a chord', () => {
     expect(canonicalChord('')).toBeNull();
     expect(canonicalChord('Hyper+x')).toBeNull();
+    expect(canonicalChord('Ctrl+Shift+')).toBeNull();
+    expect(canonicalChord('Mod+Process')).toBeNull();
+    expect(canonicalChord('Mod+not a key')).toBeNull();
     expect(canonicalChord(null)).toBeNull();
   });
 });
@@ -75,6 +78,22 @@ describe('chordsOf', () => {
     expect(chordsOf(ev('ArrowDown', { altKey: true, code: 'ArrowDown' }))).toEqual([
       'Alt+ArrowDown',
     ]);
+  });
+
+  // Windows reports AltGr as Ctrl AND Alt. The right Alt of a Dutch or German
+  // keyboard is one, so without this Right-Alt+↓ never opened a list.
+  it('reads AltGr as Alt, and as typing once it has made a character', () => {
+    const altGr = { ctrlKey: true, altKey: true, getModifierState: (m) => m === 'AltGraph' };
+    expect(chordsOf(ev('ArrowDown', { ...altGr, code: 'ArrowDown' }))).toEqual(['Alt+ArrowDown']);
+    expect(chordsOf(ev('@', { ...altGr, code: 'KeyQ' }))).toEqual([]);
+    // A real Ctrl+Alt, with no AltGr about it, is still both.
+    expect(chordsOf(ev('ArrowDown', { ctrlKey: true, altKey: true }))).toEqual([
+      'Mod+Alt+ArrowDown',
+    ]);
+  });
+
+  it('is nothing for the keys an input method sends', () => {
+    expect(chordsOf(ev('Process'))).toEqual([]);
   });
 
   it('is nothing for a bare modifier or a dead key', () => {

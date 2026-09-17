@@ -1,6 +1,6 @@
 import { Fragment, useState, useSyncExternalStore } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
-import { chordCaps, chordText, chordsOf } from '../../lib/chords.js';
+import { chordCaps, chordText, chordsOf, isModifierKeydown } from '../../lib/chords.js';
 import { saveUserKeymap } from '../../lib/userKeymap.js';
 import { notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
@@ -75,7 +75,12 @@ export const KeyboardSettings = ({ keymap, groups }) => {
     e.stopPropagation();
     if (e.key === 'Escape') return stop();
     const [chord] = chordsOf(e.nativeEvent);
-    if (!chord) return undefined; // a modifier on its way down
+    if (!chord) {
+      // A modifier on its way down is not an answer yet. Anything else that
+      // spells no chord (a character typed through AltGr, an IME's key) is.
+      if (!isModifierKeydown(e.nativeEvent)) setProblem('That key cannot be used.');
+      return undefined;
+    }
     const found = keymap.check(id, chord);
     if (found) return setProblem(problemText(found, chord));
     stop();

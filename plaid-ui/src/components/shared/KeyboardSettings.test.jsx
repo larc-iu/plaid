@@ -89,6 +89,17 @@ describe('KeyboardSettings', () => {
     expect(view.container.querySelector('[role="status"]')).toBeNull();
   });
 
+  it('says so when a key spells no chord, and waits through a bare modifier', async () => {
+    const { press, change } = await mount();
+    await change('Accept the word');
+    await press({ key: 'Control', ctrlKey: true });
+    expect(view.container.querySelector('[role="status"]').textContent).toBe('Esc cancels.');
+    await press({ key: 'Process' });
+    expect(view.container.querySelector('[role="status"]').textContent).toBe(
+      'That key cannot be used.',
+    );
+  });
+
   it('resets one shortcut, and stores nothing once none is changed', async () => {
     const { keymap, userData, button, press, change } = await mount();
     await change('Discard the word');

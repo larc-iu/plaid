@@ -190,3 +190,21 @@
                                  ["span-layer" "?SL" {"name" "feat"}]]]})]
         ;; t0 has a feat span -> excluded; t1 has none -> included
         (is (= #{(str t1)} (set (map (comp str first) (:results r)))))))))
+
+(deftest two-layer-vars-on-one-entity
+  (let [{:keys [pos]} (build!)]
+    (testing "every layer var an entity names is ITS layer, not only the first:
+             the second used to range over every span layer in scope, so the
+             VERB (on pos alone) came back once per layer"
+      (let [r (qe/run db "admin@example.com"
+                      {"find" ["?a" "?b"]
+                       "where" [["span" "?v" {"layer" "?a" "value" "VERB"}]
+                                ["span" "?v" {"layer" "?b"}]]})]
+        (is (= [[(str pos) (str pos)]] (tuples r)))))
+    (testing "and an aggregate grouped by the second one counts each match once"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["span" "?v" {"layer" "?a" "value" "NOUN"}]
+                                ["span" "?v" {"layer" "?b"}]]
+                       "return" {"group" ["?b"] "aggregates" [["count"]]}})]
+        (is (= #{1} (set (map last (:results r)))))
+        (is (= 2 (count (:results r))))))))

@@ -20,6 +20,10 @@
 // event producing one is read without it. Letters and named keys keep it
 // (`Shift+Enter`, `Mod+Shift+k`).
 //
+// ALTGR IS AN ALT. Windows reports it as Ctrl+Alt, which would make Right-Alt+↓
+// a different chord from Alt+↓ on every European layout. It counts as Alt, and
+// when it has typed a character it is not a chord at all.
+//
 // ALT REWRITES THE CHARACTER ON A MAC. Option+0 is º, Option+- is an en dash and
 // Option+= is ≠, so matching the character alone left every Alt chord dead
 // there. With Alt held an event therefore answers to TWO chords: the one its
@@ -62,6 +66,11 @@ const spell = ({ mod, alt, shift, key }) =>
   [mod && 'Mod', alt && 'Alt', shift && 'Shift', key].filter(Boolean).join('+');
 
 // A key token with the question of whether Shift counts beside it.
+// A named key as `KeyboardEvent.key` spells one: `Enter`, `ArrowUp`, `F2`.
+const NAMED_KEY = /^[A-Z][A-Za-z0-9]+$/;
+// Names that are a state of the keyboard, not a key a person can choose.
+const NOT_A_KEY = new Set(['Dead', 'Unidentified', 'Process', 'Compose']);
+
 const token = (key) => {
   if (key === ' ' || key === 'Space' || key === 'Spacebar') return { key: 'Space', shifts: true };
   if (key.length !== 1) return { key, shifts: true };
@@ -88,6 +97,7 @@ export function canonicalChord(chord) {
     else return null;
   }
   const t = token(keyPart.length === 1 ? keyPart : keyPart.trim());
+  if (t.key.length > 1 && (!NAMED_KEY.test(t.key) || NOT_A_KEY.has(t.key))) return null;
   return spell({ ...has, shift: has.shift && t.shifts, key: t.key });
 }
 
@@ -103,8 +113,23 @@ export function chordsOf(e) {
   const cached = chordCache.get(e);
   if (cached) return cached;
   let out = [];
-  if (!BARE_MODIFIERS.has(e.key) && e.key !== 'Dead' && e.key !== 'Unidentified') {
-    const mods = { mod: !!(e.ctrlKey || e.metaKey), alt: !!e.altKey };
+  if (!BARE_MODIFIERS.has(e.key) && !NOT_A_KEY.has(e.key)) {
+    // AltGr (the right Alt of most European layouts, and of US-International)
+    // reports itself on Windows as Ctrl AND Alt. It is an Alt, so Right-Alt+↓
+    // is Alt+↓. When it has produced a character it is typing (AltGr+q is @ on
+    // a German keyboard), and typing is never a chord.
+    // Its two signatures: Ctrl with Alt (Windows), or the AltGraph state with no
+    // Alt at all (Linux). A plain Alt is neither, whatever a DOM says of its
+    // AltGraph state (happy-dom answers true for any Alt).
+    const altGr = !!e.getModifierState?.('AltGraph') && ((!!e.ctrlKey && !!e.altKey) || !e.altKey);
+    if (altGr && e.key.length === 1) {
+      chordCache.set(e, out);
+      return out;
+    }
+    const mods = {
+      mod: altGr ? !!e.metaKey : !!(e.ctrlKey || e.metaKey),
+      alt: !!e.altKey || altGr,
+    };
     const of = (key) => {
       const t = token(key);
       return spell({ ...mods, shift: !!e.shiftKey && t.shifts, key: t.key });
@@ -120,9 +145,12 @@ export function chordsOf(e) {
       if (physical && of(physical) !== out[0]) out.push(of(physical));
     }
   }
-  if (typeof e === 'object') chordCache.set(e, out);
+  chordCache.set(e, out);
   return out;
 }
+
+/** Is this keydown only a modifier on its way down, with the chord still to come? */
+export const isModifierKeydown = (e) => BARE_MODIFIERS.has(e?.key);
 
 /** Is this keydown the chord? `chord` must already be canonical. */
 export const matchesChord = (chord, e) => chordsOf(e).includes(chord);

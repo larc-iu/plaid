@@ -62,7 +62,9 @@ export const alternatives = {
     if (!open) return false;
     // Ctrl/Cmd+Enter is the whole-word accept wherever it is pressed; the list
     // never takes it, steered or not.
-    if (keys.is('analyze.accept', e)) {
+    // Any Ctrl/Cmd+Enter as well, whatever it is bound to now: with a modifier
+    // held it is never "take the highlighted row".
+    if (keys.is('analyze.accept', e) || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
       this._closeAlts();
       return false;
     }

@@ -18,6 +18,14 @@ describe('the shortcut table', () => {
     expect(clashes).toEqual([]);
   });
 
+  // `-` and `=` in a morpheme form are the notation. An action that fires
+  // outside text boxes may be a bare character, so these need rows of their own.
+  it('keeps the split keys from being bound to anything', () => {
+    const km = createKeymap(KEY_ACTIONS);
+    expect(km.check('global.search', '-')?.problem).toBe('conflict');
+    expect(km.check('media.playPause', '=')).toBeNull(); // another screen entirely
+  });
+
   it('puts every rebindable action in a group the settings screen draws', () => {
     const groups = new Set(KEY_GROUPS.map((g) => g.id));
     const stray = KEY_ACTIONS.filter((a) => !a.fixed && !groups.has(a.group)).map((a) => a.id);

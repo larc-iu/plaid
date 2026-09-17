@@ -313,7 +313,10 @@
           ;; --- scope predicate (THE ACL invariant) ---
           (let [cmaps (get constraints v)                 ; vector of constraint maps (may be nil)
                 layer-id-sets (keep ::qr/layer-ids cmaps)  ; one per layer-named clause
-                layer-var (some #(let [l (:layer %)] (when (symbol? l) l)) cmaps)]
+                ;; EVERY layer var the entity names, not the first: each is this
+                ;; entity's layer. One left unjoined ranges over every layer of its
+                ;; kind in scope, and the match comes back once per layer.
+                layer-vars (distinct (keep #(let [l (:layer %)] (when (symbol? l) l)) cmaps))]
             ;; a layer-named clause pins scope AND filters the layer; emit one IN per
             ;; such clause UNCONDITIONALLY, so a literal layer still applies even when
             ;; the same var ALSO names a layer variable (the two are not exclusive —
@@ -322,8 +325,9 @@
               (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
             (cond
               ;; :layer is a VARIABLE -> also join to the (scoped) layer node it names
-              layer-var
-              (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st layer-var constraints) :id)])
+              (seq layer-vars)
+              (doseq [lv layer-vars]
+                (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st lv constraints) :id)]))
               ;; a layer-named clause already pinned scope via the IN(s) above
               (seq layer-id-sets) nil
               ;; vocab layers are global — scope via project_vocabs grants
