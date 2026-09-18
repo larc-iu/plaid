@@ -185,11 +185,12 @@
 (def ^:private bundled-spa-roots
   "URL prefix -> classpath resource root for each SPA bundled into the uberjar.
   The release workflow copies each app's Vite build (built with base `/ud/`,
-  `/igt/`, `/dict/`) into `resources/{ud,igt,dict}/`, landing them on the
-  classpath as `ud/**` / `igt/**` / `dict/**`."
+  `/igt/`, `/dict/`, `/umr/`) into `resources/{ud,igt,dict,umr}/`, landing
+  them on the classpath as `ud/**` / `igt/**` / `dict/**` / `umr/**`."
   {"/ud" "ud"
    "/igt" "igt"
-   "/dict" "dict"})
+   "/dict" "dict"
+   "/umr" "umr"})
 
 (defn- bundled-spa-resource-path
   "If `uri` targets a bundled SPA, return the classpath resource path to serve;
@@ -243,6 +244,7 @@
     <li><a href=\"/ud/\">UD Editor</a></li>
     <li><a href=\"/igt/\">IGT Editor</a></li>
     <li><a href=\"/dict/\">Dictionary</a></li>
+    <li><a href=\"/umr/\">UMR Editor</a></li>
     <li><a href=\"/api/v1/docs/\">API Docs</a></li>
   </ul>
 </body>

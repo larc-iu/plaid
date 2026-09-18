@@ -86,7 +86,7 @@
                  "Activate a newer Node (e.g. `nvm use 24.1.0`), then re-run.")))))
 
 ;; Apps whose own `npm test` is part of the gate, in the order they fail fastest.
-(def ^:private js-suites ["plaid-ud" "plaid-igt" "plaid-dict"])
+(def ^:private js-suites ["plaid-ud" "plaid-igt" "plaid-dict" "plaid-umr"])
 
 ;; The shared UI package. Source-only: the apps compile it, so it has no build
 ;; and no test run of its own — its component tests run under plaid-igt's
@@ -180,11 +180,11 @@
           ;; Every bundled SPA must answer from the classpath. /health alone
           ;; passes with an app missing from resources/ or from
           ;; bundled-spa-roots, which is how an app ships invisibly broken.
-          (doseq [path ["/ud/" "/igt/" "/dict/"]]
+          (doseq [path ["/ud/" "/igt/" "/dict/" "/umr/"]]
             (let [r (p/sh ["curl" "-sf" (str "http://localhost:8080" path)])]
               (when-not (and (zero? (:exit r)) (str/includes? (:out r) "<div id=\"root\""))
                 (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
-          (println "  bundled SPAs served at /ud/, /igt/, /dict/")
+          (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
           ;; First boot must also have extracted the bundled services next to data/.
           (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"]]
             (when-not (fs/exists? (fs/path tmp "services" f))
@@ -266,14 +266,19 @@
       (step "Build plaid-dict SPA")
       (p/shell {:dir "plaid-dict"} "npm" "ci")
       (p/shell {:dir "plaid-dict"} "npm" "run" "build")
+      (step "Build plaid-umr SPA")
+      (p/shell {:dir "plaid-umr"} "npm" "ci")
+      (p/shell {:dir "plaid-umr"} "npm" "run" "build")
 
       (step "Bundle SPAs + version.edn into plaid-core/resources")
       (rm-rf "plaid-core/resources/ud")
       (rm-rf "plaid-core/resources/igt")
       (rm-rf "plaid-core/resources/dict")
+      (rm-rf "plaid-core/resources/umr")
       (fs/copy-tree "plaid-ud/dist"   "plaid-core/resources/ud")
       (fs/copy-tree "plaid-igt/dist"  "plaid-core/resources/igt")
       (fs/copy-tree "plaid-dict/dist" "plaid-core/resources/dict")
+      (fs/copy-tree "plaid-umr/dist"  "plaid-core/resources/umr")
       ;; The mark, for the root landing page the jar serves at /. Same file the
       ;; three SPAs serve, copied rather than duplicated (see wrap-root-landing).
       (fs/copy "plaid-ui/public/plaid.svg" "plaid-core/resources/plaid.svg" {:replace-existing true})
@@ -388,12 +393,14 @@
                "plaid-core/resources/ud"
                "plaid-core/resources/igt"
                "plaid-core/resources/dict"
+               "plaid-core/resources/umr"
                "plaid-core/resources/services"
                "plaid-core/resources/version.edn"
                "plaid-core/resources/plaid.svg"
                "plaid-ud/dist"
                "plaid-igt/dist"
-               "plaid-dict/dist"]]
+               "plaid-dict/dist"
+               "plaid-umr/dist"]]
     (rm-rf pth))
   (doseq [j (fs/glob "plaid-core/target" "plaid-*.jar")]
     (fs/delete j))

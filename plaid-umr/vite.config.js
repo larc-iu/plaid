@@ -1,0 +1,96 @@
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
+import { PLAID_UI_PUBLIC, PLAID_UI_SRC, plaidUiDeps } from '../plaid-ui/vite.js';
+
+const PLAID_CLIENT_SRC = fileURLToPath(new URL('../plaid-client-js/src', import.meta.url));
+
+// The client alias below points OUTSIDE this app's root. Vite's watcher only
+// covers the root, so an edit over in ../plaid-client-js reaches no watcher:
+// the dev server keeps handing out the copy it transformed at boot, and the app
+// silently runs an old client (a renamed request field goes on being sent under
+// its old name, and the server ignores it). `server.watch.ignored` cannot fix
+// that — there is nothing to un-ignore, the path was never watched. Add it.
+const watchLocalPlaidClient = (srcDir) => ({
+  name: 'watch-local-plaid-client',
+  configureServer(server) {
+    server.watcher.add(srcDir);
+  },
+});
+
+// https://vitejs.dev/config/
+export default defineConfig(({ command }) => ({
+  // Bundled into the uberjar and served under /umr/ (see plaid.server.middleware
+  // wrap-bundled-spa), so the production build needs an absolute '/umr/' base for
+  // asset URLs. The dev server stays at '/'. Every app uses HashRouter, so client
+  // routes live in the URL fragment and don't depend on the base path.
+  base: command === 'build' ? '/umr/' : '/',
+  // The tab's mark, and anything else all three apps serve at their root,
+  // lives in plaid-ui rather than in a public/ of our own.
+  publicDir: PLAID_UI_PUBLIC,
+  plugins: [
+    react(),
+    plaidUiDeps(fileURLToPath(new URL('.', import.meta.url))),
+    watchLocalPlaidClient(PLAID_CLIENT_SRC),
+    watchLocalPlaidClient(PLAID_UI_SRC),
+  ],
+  resolve: {
+    preserveSymlinks: true,
+    alias: {
+      // `@/…` for first-party modules, matching plaid-igt and plaid-dict so a
+      // component can move between the apps and the shared package unedited.
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // The shared UI package, aliased to its REAL source path so it stays
+      // first-party: one module instance, watched, no immutable `?v=`. Its own
+      // bare imports are resolved from this app by the plaidUiDeps plugin; see
+      // the long note in ../plaid-ui/vite.js for what went wrong when this
+      // pointed through the node_modules symlink instead.
+      '@ui': PLAID_UI_SRC,
+      // `plaid-client` is a local source package (../plaid-client-js) that we
+      // edit constantly. Reaching it through the node_modules symlink makes
+      // Vite treat it as a DEPENDENCY: the import URL gets the dep optimizer's
+      // `?v=<browserHash>` stamped on it and is served back
+      // `Cache-Control: max-age=31536000, immutable`. That hash is derived from
+      // the lockfile, NOT from the symlink target's source, so once a browser
+      // has the module it never re-fetches it, no matter how the client
+      // changes. The symptom is a brand-new client method arriving as
+      // `undefined` in the app while curl against the same dev server shows it
+      // present, and neither restarting the dev server nor deleting
+      // node_modules/.vite changes the hash. `optimizeDeps.exclude` alone does
+      // NOT fix this: it skips pre-bundling but the `?v=` and the immutable
+      // header stay. Aliasing straight to the real source path takes it out of
+      // dependency-land entirely, so it is served as an ordinary first-party
+      // module (`no-cache`, watched, hot-reloaded).
+      '@larc-iu/plaid-client': fileURLToPath(
+        new URL('../plaid-client-js/src/index.js', import.meta.url),
+      ),
+    },
+  },
+  // Belt and braces alongside the resolve.alias above: keep the client out of
+  // dep pre-bundling so nothing re-introduces a cached bundle of it. The alias
+  // is what actually fixes the stale-module problem (see the comment there);
+  // exclusion alone was tried first and was NOT sufficient.
+  optimizeDeps: {
+    exclude: ['@larc-iu/plaid-client', '@larc-iu/plaid-ui'],
+  },
+  server: {
+    port: 5176,
+    fs: {
+      // The plaid-client alias above resolves outside this app's root.
+      allow: [fileURLToPath(new URL('..', import.meta.url))],
+    },
+    // node_modules is watcher-ignored by default, but `plaid-client` is a
+    // symlinked local source package we actively edit during the SQL port.
+    // Un-ignore it so saves there trigger HMR like first-party files.
+    watch: {
+      ignored: ['!**/node_modules/@larc-iu/plaid-client/**'],
+    },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8085',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
+}));
