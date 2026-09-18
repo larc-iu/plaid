@@ -1,0 +1,3189 @@
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	tsɨmɨntsarara           amutsu    TA
+Morphemes:           	ts- ɨmɨntsara -ra        amu -utsu  None
+
+# sentence level graph:
+(s1x / ɨmɨntsarara
+  :actor (s1p / person
+           :refer-person 1st
+           :refer-number singular)
+  :theme (s1t / thing
+           :mod (s1a / amutsu))
+  :aspect performance)
+
+
+# alignment:
+s1a :2-2
+s1p :0-0
+s1t :0-0
+s1x :1-1
+
+
+# document level annotation:
+(s1s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s1x)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	tsamɨmɨrakunia            karuaranu   muna    iyaratsuriay
+Morphemes:           	tsa- mɨmɨrakunia          karuara -nu   muna  iyara -tsuriay
+
+# sentence level graph:
+(s2m / muna
+  :actor (s2k / karuaranu
+           :refer-number plural)
+  :theme (s2p / person
+           :ARG0-of (s2h / have-rel-role-91
+                      :ARG1 (s2p2 / person
+                              :refer-person 1st
+                              :refer-number singular)
+                      :ARG2 (s2t / tsamɨmɨrakunia))
+           :refer-number singular)
+  :extent (s2i2 / iyaratsuriay)
+  :aspect performance)
+
+
+# alignment:
+s2i2 :4-4
+s2k :2-2
+s2k2 :0-0
+s2m :3-3
+s2p :0-0
+s2p2 :0-0
+s2t :1-1
+
+
+# document level annotation:
+(s2s0 / sentence
+  :temporal ((past-reference / past-reference :contained s2m))
+  :modal ((root :modal author)
+                    (author :full-negative s2m))
+  :coref ((s1p :same-entity s2p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8
+Words:               	peka,       petsui           yatuanu    tsapukiay              wɨwɨtakari                 yayutin       ukaka
+Morphemes:           	pe -ka     pe -tsui       ya -tua -nu  tsapuki -ay          wɨwɨta -ka -ri             ya- yuti -n     uka -ka
+
+# sentence level graph:
+(s3t / tsapuki
+  :actor (s3p / person
+           :refer-person 3rd
+           :refer-number plural
+           :mod (s3t2 / tua))
+  :recipient (s3p2 / person
+               :refer-person 3rd
+               :actor-of (s3y / yuti
+                           :place (s3u / ukaka)
+                           :aspect state))
+  :place (s3p3 / peka)
+  :source s3p3
+  :aspect perfective
+  :temporal (s3w / wɨwɨta
+              :aspect activity))
+
+
+# alignment:
+s3p :0-0
+s3p2 :0-0
+s3p3 :1-1
+s3t :4-4
+s3u :7-7
+s3w :5-5
+s3y :6-6
+
+
+# document level annotation:
+(s3s0 / sentence
+  :temporal ((s3t :overlap s3w)
+                    (s3w :overlap s3y)
+                    (s2m :contained s3t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s3y)
+                    (author :full-affirmative s3w)
+                    (author :full-affirmative s3t))
+  :coref ((s2m :subset-of s3t)
+                    (s2k :same-entity s3p)
+                    (s2p :same-entity s3p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6
+Words:               	tɨma  amutse  penukatsuriay,      amiyanan              None
+Morphemes:           	tɨma  amutse            penu  uka -tsuriay        amiya -nan
+
+# sentence level graph:
+(s4a / and
+  :op1 (s4h / have-location-91
+         :ARG0 (s4p / person
+                 :refer-person excl
+                 :refer-number plural)
+         :ARG1 (s4a2 / amutse
+                 :op1 (s4u2 / uka--tsuriay))
+         :aspect state)
+  :op2 (s4h2 / have-location-91
+         :ARG0 s4p
+         :ARG1 (s4a3 / amiyanan
+                 :op1 s4u2)
+         :aspect state))
+
+
+# alignment:
+s4a :0-0
+s4a2 :2-2
+s4a3 :4-4
+s4h :0-0
+s4h2 :0-0
+s4p :0-0
+s4u2 :4-4
+
+
+# document level annotation:
+(s4s0 / sentence
+  :temporal ((s4h :overlap s4h2)
+                    (s3y :overlap s4h))
+  :modal ((root :modal author)
+                    (author :full-negative s4h)
+                    (author :full-affirmative s4h2))
+  :coref ((s4p :subset-of s2p2)
+                    (s4u2 :same-entity s3u)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7
+Words:               	parana   tsɨmatsui,         peka           tuanu    tsapukita        yuti
+Morphemes:           	parana  tsɨma -tsui       pe -ka         tua -nu  tsapuki -ta        yuti
+
+# sentence level graph:
+(s5t / tsapuki
+  :actor (s5t2 / tuanu
+           :refer-number plural)
+  :source (s5t3 / tsɨmatsui
+            :part (s5r / river
+                       :name (s5n / name
+                               :op1 "parana")))
+  :place (s5p / peka)
+  :aspect activity)
+
+
+# alignment:
+s5n :1-1
+s5p :3-3
+s5r :1-1
+s5t :5-5
+s5t2 :4-4
+s5t3 :2-2
+
+
+# document level annotation:
+(s5s0 / sentence
+  :temporal ((s4h2 :overlap s5t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s5t))
+  :coref ((s3p :same-entity s5t2)
+                    (s3p3 :same-entity s5p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	yakuntuanu  tsapuki        yuti      puapu
+Morphemes:           	yakun -tua -nu  tsapuki        yuti    pua -pu
+
+# sentence level graph:
+(s6t / tsapuki
+  :actor (s6p / person
+           :mod (s6y / yakuntuanu)
+           :refer-number plural
+           :mod (s6t2/ tua))
+  :instrument (s6p2 / puapu
+                :part s6p)
+  :aspect activity)
+
+
+# alignment:
+s6p :0-0
+s6p2 :4-4
+s6t :2-2
+s6y :1-1
+
+
+# document level annotation:
+(s6s0 / sentence
+  :temporal ((s5t :overlap s6t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s6t))
+  :coref ((s5t2 :same-entity s6p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7
+Words:               	akarupe    mama    utsuy,         awatu  tsapuki        yuti
+Morphemes:           	aka -rupe    mama  utsu -uy       awa -tu  tsapuki        yuti
+
+# sentence level graph:
+(s7a / and
+  :op1 (s7u / utsu
+         :actor (s7p / person
+                  :ARG0-of (s7h / have-rel-role-91
+                             :ARG2 (s7m / mama))
+                  :refer-number singular)
+         :path (s7a2 / akarupe)
+         :aspect performance)
+  :op2 (s7t / tsapuki
+         :actor (s7p2 / person
+                  :mod (s7t2/ tu)
+                  :refer-number singular)
+         :aspect activity))
+
+
+# alignment:
+s7a :0-0
+s7a2 :1-1
+s7k :0-0
+s7m :2-2
+s7p :0-0
+s7p2 :0-0
+s7t :5-5
+s7u :3-3
+
+
+# document level annotation:
+(s7s0 / sentence
+  :temporal ((s4h2 :after s7u)
+                    (s7u :overlap s7t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s7u)
+                    (author :full-affirmative s7t))
+  :coref ((s6p :subset-of s7p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	tsamɨmɨrakuniapuranu               ɨtsɨkakanpuranu  tsapuki
+Morphemes:           	tsa- mɨmɨrakunia -pura -nu       ɨtsɨ -kaka -n -pura -nu  tsapuki
+
+# sentence level graph:
+(s8t / tsapuki
+  :actor (s8p / person
+           :ARG0-of (s8k / have-rel-role-91
+                      :ARG1 (s8p2 / person
+                              :refer-person 1st
+                              :refer-number singular)
+                      :ARG2 (s8t2 / tsamɨmɨrakuniapuranu))
+           :refer-number plural
+           :experiencer-of (s8x / ɨtsɨ
+                             :aspect performance))
+  :aspect process)
+
+
+# alignment:
+s8k :0-0
+s8p :0-0
+s8p2 :0-0
+s8t :3-3
+s8t2 :1-1
+s8x :2-2
+
+
+# document level annotation:
+(s8s0 / sentence
+  :temporal ((s7u :after s8t)
+                    (s8t :before s8x))
+  :modal ((root :modal author)
+                    (author :full-affirmative s8x)
+                    (author :full-affirmative s8t))
+  :coref ((s3p2 :subset-of s8p)
+                    (s2p2 :same-entity s8p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	mamaaa,  mamaaa
+Morphemes:           	mama    mama
+
+# sentence level graph:
+(s9e / event
+  :theme (s9p / person
+           :ARG0-of (s9h / have-rel-role-91
+                      :ARG1 (s9p2 / person)
+                      :ARG2 (s9m / mama))
+           :refer-number singular))
+
+
+# alignment:
+s9e :0-0
+s9m :1-1
+s9p :0-0
+s9h :0-0
+s9p2 :0-0
+
+
+# document level annotation:
+(s9s0 / sentence
+  :coref ((s8p :same-entity s9p2)
+                    (s8p2 :same-entity s9p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	yapuranu  tsapuki
+Morphemes:           	ya -pura -nu  tsapuki
+
+# sentence level graph:
+(s10t / tsapuki
+  :actor (s10p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :aspect performance)
+
+
+# alignment:
+s10p :0-0
+s10t :2-2
+
+
+# document level annotation:
+(s10s0 / sentence
+  :temporal ((s8t :overlap s10t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s10t))
+  :coref ((s9e :same-event s10t)
+                    (s9p2 :same-entity s10p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	etsepura         nitsenuay
+Morphemes:           	etse -pura    ni - tsenu -ay
+
+# sentence level graph:
+(s11t / tsenu
+  :experiencer (s11p / person
+                 :refer-person 1st
+                 :refer-number singular)
+  :stimulus (s11p2 / person
+              :refer-person 3rd
+              :refer-number singular)
+  :aspect state)
+
+
+# alignment:
+s11p :0-0
+s11p2 :0-0
+s11t :2-2
+
+
+# document level annotation:
+(s11s0 / sentence
+  :temporal ((s10t :overlap s11t))
+  :modal ((root :modal author)
+                    (author :full-negative s11t))
+  :coref ((s10p :subset-of s11p2)
+                    (s9p :same-entity s11p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	kawayati      penu            kuyara
+Morphemes:           	kawayati      penu          ku -yara
+
+# sentence level graph:
+(s12h / have-location-91
+  :ARG0 (s12k / kuyara
+          :poss (s12p / person
+                  :refer-person excl
+                  :refer-number plural))
+  :ARG1 (s12k2 / kawayati
+          :refer-number singular)
+  :aspect state)
+
+
+# alignment:
+s12h :0-0
+s12k :3-3
+s12k2 :1-1
+s12p :0-0
+
+
+# document level annotation:
+(s12s0 / sentence
+  :temporal ((present-reference :overlap s12h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s12h))
+  :coref ((s4p :same-entity s12p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	yaepe      penu  utsu      panakɨra       tatara
+Morphemes:           	yaepe      penu  utsu  panara -kɨra     ta -tara
+
+# sentence level graph:
+(s13u / utsu
+  :actor (s13p / person
+           :refer-person excl
+           :refer-number plural)
+  :purpose (s13t / ta
+             :actor s13p
+             :theme (s13p2 / panakɨra
+                      :mod (s13k / kɨra))
+             :aspect performance)
+  :place (s13y2 / yaepe)
+  :aspect performance)
+
+
+# alignment:
+s13k :4-4
+s13p :0-0
+s13p2 :4-4
+s13t :5-5
+s13u :3-3
+s13y2 :1-1
+
+
+# document level annotation:
+(s13s0 / sentence
+  :temporal ((s12h :overlap s13u)
+                    (s13u :after s13t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s13u)
+                    (author :full-affirmative s13p)
+                    (author :full-affirmative s13t))
+  :coref ((s12p :same-entity s13p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10
+Words:               	tsamɨmɨrakunianu   tsapukiari.    karuarapura      unikuaratsui        yatu         tsapukiyuti,  kumitsa.
+Morphemes:           	tsa- mɨmɨrakunia -nu  tsapuki -ari  karuara -pura  uni -kuara -tsui      ya -tu       tsapuki - yuti   kumitsa
+
+# sentence level graph:
+(s14a / and
+  :op1 (s14t / tsapuki
+         :actor (s14p / person
+                  :ARG0-of (s14h / have-rel-role-91
+                             :ARG1 (s14p2 / person
+                                     :refer-person 1st
+                                     :refer-number singular)
+                             :ARG2 (s14t2 / tsamɨmɨrakunianu))
+                  :refer-number plural)
+         :aspect activity)
+  :op3 (s14k3 / kumitsa
+         :actor s14p
+         :theme (s14t3 / tsapukiyuti
+                  :actor (s14k / karuarapura
+                           :refer-number plural
+                           :mod (s14y / yatu))
+                  :source (s14u / unikuaratsui)
+                  :aspect activity
+                  :quote s14k3)
+         :aspect activity))
+
+
+# alignment:
+s14a :0-0
+s14k :3-3
+s14k3 :0-0
+s14p :0-0
+s14p2 :0-0
+s14t :2-2
+s14t2 :1-1
+s14t3 :6-6
+s14u :4-4
+s14y :5-5
+
+
+# document level annotation:
+(s14s0 / sentence
+  :temporal ((s11t :overlap s14t)
+                    (s14k3 :overlap s14t3))
+  :modal ((author :full-affirmative s14t)
+                    (author :full-affirmative s14p)
+                    (author :full-affirmative s14k3)
+                    (s14p :full-affirmative s14t3))
+  :coref ((s14t :subset-of s14k3)
+                    (s10p :same-entity s14p)
+                    (s11p :same-entity s14p2)
+                    (s6p :same-entity s14k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	yatu    tsapukiay      puapu
+Morphemes:           	ya -tu  tsapuki -ay    pua -pu
+
+# sentence level graph:
+(s15t / tsapuki
+  :actor (s15p / person
+           :refer-person 3rd
+           :refer-number singular
+           :mod (s15t2 / tu))
+  :recipient (s15p2 / person
+               :refer-person 3rd
+               :refer-number singular)
+  :instrument (s15p3 / puapu
+                :part s15p
+                :refer-number singular)
+  :aspect performance)
+
+
+# alignment:
+s15p :0-0
+s15p2 :0-0
+s15p3 :3-3
+s15t :2-2
+s15t2 :1-1
+
+
+# document level annotation:
+(s15s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s15t))
+  :coref ((s6t :same-event s15t)
+                    (s14p :subset-of s15p2)
+                    (s14k :subset-of s15p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	yatu  tsapuki            kunyuti
+Morphemes:           	ya -tu  tsapuki         kun - yuti
+
+# sentence level graph:
+(s16t / tsapuki
+  :actor (s16p / person
+           :refer-person 3rd
+           :refer-number singular
+           :mod (s16t2 / tu))
+  :aspect activity)
+
+
+# alignment:
+s16p :0-0
+s16t :2-2
+s16t2 :1-1
+
+
+# document level annotation:
+(s16s0 / sentence
+  :temporal ((s15t :overlap s16t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s16t))
+  :coref ((s15p :same-entity s16p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6
+Words:               	ɨkɨratsenpuranu       ukaka                 yutinpuranu,        yatu  tsapuki
+Morphemes:           	ɨkɨratsen -pura -nu     uka -ka            yuti -n -pura -nu      ya -tu  tsapuki
+
+# sentence level graph:
+(s17t / tsapuki
+  :actor (s17p / person
+           :refer-person 3rd
+           :refer-number singular
+           :mod (s17t2 / tu))
+  :recipient (s17x / ɨkɨratsenpuranu
+               :refer-number plural
+               :actor-of (s17y / yuti
+                           :place (s17u / ukaka)
+                           :aspect state))
+  :aspect performance)
+
+
+# alignment:
+s17p :0-0
+s17t :5-5
+s17t2 :4-4
+s17u :2-2
+s17x :1-1
+s17y :3-3
+
+
+# document level annotation:
+(s17s0 / sentence
+  :temporal ((s17t :overlap s17y))
+  :modal ((root :modal author)
+                    (author :full-affirmative s17y)
+                    (author :full-affirmative s17t))
+  :coref ((s16t :subset-of s17t)
+                    (s16p :same-entity s17p)
+                    (s4u2 :same-entity s17u)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	tseta          munaminu
+Morphemes:           	tseta      muna -mi -nu
+
+# sentence level graph:
+(s18t / tseta
+  :experiencer (s18p / person)
+  :stimulus (s18p2 / person
+              :theme-of (s18m / munaminu
+                          :actor s18p)
+              :refer-number plural)
+  :aspect state)
+
+
+# alignment:
+s18m :2-2
+s18p :0-0
+s18p2 :0-0
+s18t :0-0
+
+
+# document level annotation:
+(s18s0 / sentence
+  :temporal ((s17t :overlap s18t)
+                    (s18t :after s18m))
+  :modal ((root :modal author)
+                    (author :full-affirmative s18p)
+                    (s18p :full-affirmative s18t)
+                    (s18t :unspecified s18m)
+                    (author :full-affirmative s18t))
+  :coref ((s17p :same-entity s18p)
+                    (s17x :same-entity s18p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	era         tsamɨmɨrakunia  tsapuki
+Morphemes:           	era       tsa- mɨmɨrakunia  tsapuki
+
+# sentence level graph:
+(s19t / tsapuki
+  :actor (s19p / person
+           :ARG0-of (s19h / have-rel-role-91
+                      :ARG1 (s19p2 / person
+                              :refer-person 1st
+                              :refer-number singular)
+                      :ARG2 (s19t2 / tsamɨmɨrakunia))
+           :refer-number singular)
+  :aspect performance
+  :degree intensifier)
+
+
+# alignment:
+s19p :0-0
+s19p2 :0-0
+s19t :3-3
+s19t2 :2-2
+
+
+# document level annotation:
+(s19s0 / sentence
+  :temporal ((s17t :after s19t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s19t))
+  :coref ((s15p2 :same-entity s19p)
+                    (s14p2 :same-entity s19p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	tsaputsapuki          yapuranu  yapana
+Morphemes:           	tsapuki - tsapuki      ya -pura -nu  yapana
+
+# sentence level graph:
+(s20y / yapana
+  :actor (s20p / person
+           :refer-number plural
+           :refer-person 3rd)
+  :temporal (s20t / tsapuki
+              :actor s20p
+              :aspect activity)
+  :aspect endeavor)
+
+
+# alignment:
+s20p :0-0
+s20t :1-1
+s20y :3-3
+
+
+# document level annotation:
+(s20s0 / sentence
+  :temporal ((s19t :after s20y)
+                    (s20y :overlap s20t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s20t)
+                    (author :full-affirmative s20y))
+  :coref ((s14p :same-entity s20p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6
+Words:               	mamaaa,  mamaaa,          yapuranu  tsapuki
+Morphemes:           	mama     mama      ya -pura -nu  tsapuki
+
+# sentence level graph:
+(s21t / tsapuki
+  :actor (s21p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :aspect performance
+  :theme (s21p2 / person
+           :ARG0-of (s21h / have-rel-role-91
+                      :ARG1 s21p
+                      :ARG2 (s21m / mama))
+           :refer-number singular))
+
+
+# alignment:
+s21p :0-0
+s21t :4-4
+s21p2 :0-0
+s21h :0-0
+s21m :1-1
+
+
+# document level annotation:
+(s21s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s21t))
+  :coref ((s20t :subset-of s21t)
+                    (s20p :same-entity s21p)
+                    (s19p2 :same-entity s21p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	yapuranu  utsu       kawarupe
+Morphemes:           	ya -pura -nu  utsu     kawa -rupe
+
+# sentence level graph:
+(s22u / utsu
+  :actor (s22p / person
+           :refer-number plural
+           :refer-person 3rd)
+  :direction (s22k / kawarupe)
+  :goal (s22p2 / place)
+  :aspect performance)
+
+
+# alignment:
+s22k :3-3
+s22p :0-0
+s22u :2-2
+s22p2 :0-0
+
+
+# document level annotation:
+(s22s0 / sentence
+  :temporal ((s20y :overlap s22u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s22u))
+  :coref ((s21p :same-entity s22p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	penu  utsu    tuparupe
+Morphemes:           	penu  utsu  tupa -rupe
+
+# sentence level graph:
+(s24u / utsu
+  :actor (s24p / person)
+  :goal (s23p / person
+          :refer-number plural
+          :refer-person excl)
+  :direction (s23e / event)
+  :aspect perfective)
+
+
+# alignment:
+s23p :0-0
+s24p :0-0
+s24u :2-2
+s23e :0-0
+
+
+# document level annotation:
+(s23s0 / sentence
+  :temporal ((s22u :overlap s24u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s24u))
+  :coref ((s22p :same-entity s23p)
+                    (s13p :same-entity s23p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	yapuranu  utsu
+Morphemes:           	ya -pura -nu  utsu
+
+# sentence level graph:
+(s24u2 / utsu
+  :actor (s24p2 / person
+           :refer-person 3rd
+           :refer-number plural)
+  :goal (s24p3 / place)
+  :aspect performance)
+
+
+# alignment:
+s24u2 :2-2
+s24p2 :0-0
+s24p3 :0-0
+
+
+# document level annotation:
+(s24s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s24u2))
+  :coref ((s24u :same-event s24u2)
+                    (s22p :same-entity s24p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7
+Words:               	penu    tsawiti         yapuranu,  uuuu,  uuuu
+Morphemes:           	penu    tsawiti      ya -pura -nu    ***   ***
+
+# sentence level graph:
+(s25t / tsawiti
+  :actor (s25p / person
+           :refer-person excl
+           :refer-number plural)
+  :recipient (s25p2 / person
+               :refer-person 3rd
+               :refer-number plural)
+  :aspect performance)
+
+
+# alignment:
+s25p :0-0
+s25p2 :0-0
+s25t :2-2
+
+
+# document level annotation:
+(s25s0 / sentence
+  :temporal ((s24u2 :after s25t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s25t))
+  :coref ((s24p2 :same-entity s25p2)
+                    (s23p :same-entity s25p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	penu    tsawiti
+Morphemes:           	penu    tsawiti
+
+# sentence level graph:
+(s26t / tsawiti
+  :actor (s26p / person
+           :refer-person excl
+           :refer-number plural)
+  :aspect performance
+  :theme (s26u / uuuu,-uuuu))
+
+
+# alignment:
+s26p :0-0
+s26t :2-2
+
+
+# document level annotation:
+(s26s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s26t))
+  :coref ((s25t :same-event s26t)
+                    (s25p :same-entity s26p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6
+Words:               	penu  utsu,   era        yapuranu    putseru
+Morphemes:           	penu   utsu   era    ya -pura -nu    putseru
+
+# sentence level graph:
+(s27a / and
+  :op1 (s27u / utsu
+         :actor (s27p / person
+                  :refer-number plural
+                  :refer-person excl)
+         :aspect performance)
+  :op2 (s27h / have-mod-91
+         :ARG1 (s27p2 / person
+                 :refer-person 3rd
+                 :refer-number plural)
+         :ARG2 (s27p3 / putseru
+                 :degree intensifier)
+         :aspect state))
+
+
+# alignment:
+s27a :0-0
+s27p :0-0
+s27p2 :0-0
+s27p3 :5-5
+s27u :2-2
+
+
+# document level annotation:
+(s27s0 / sentence
+  :temporal ((s26t :after s27u)
+                    (s27u :overlap s27h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s27u)
+                    (author :full-affirmative s27h))
+  :coref ((s26p :same-entity s27p)
+                    (s25p2 :same-entity s27p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	era                  itsikakanpuranu
+Morphemes:           	era          itsika -ka -n -pura -nu
+
+# sentence level graph:
+(s28p / person
+  :refer-number plural
+  :ARG0-of (s28h / identity-91
+         :ARG1 (s28i2 / itsikakanpuranu
+                  :degree intensifier)))
+
+
+# alignment:
+
+
+# document level annotation:
+(s28s0 / sentence
+  :coref ((s27p2 :same-entity s28p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	wakutakanan          yapuranu  utsu                 yiruapuranumuki
+Morphemes:           	wakuta -ka -nan      ya -pura -nu  utsu         y- irua -pura -nu -muki
+
+# sentence level graph:
+(s29u / utsu
+  :actor (s29p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :companion (s29p2 / person
+               :ARG0-of (s29h / have-rel-role-91
+                          :ARG1 s29p
+                          :ARG2 (s29y / yiruapuranumuki))
+               :refer-number plural)
+  :temporal (s29w / wakuta
+              :actor (s29p3 / person
+                       :refer-person 3rd
+                       :refer-number plural)
+              :undergoer s29p
+              :aspect activity)
+  :aspect performance)
+
+
+# alignment:
+s29p :0-0
+s29p2 :0-0
+s29u :3-3
+s29w :1-1
+s29y :4-4
+s29p3 :0-0
+
+
+# document level annotation:
+(s29s0 / sentence
+  :temporal ((s27u :after s29u)
+                    (s29u :overlap s29w))
+  :modal ((root :modal author)
+                    (author :full-affirmative s29w)
+                    (author :full-affirmative s29u))
+  :coref ((s28p :same-entity s29p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	maritipuy,        yaepenan      penu   piyata
+Morphemes:           	mari -tipa -uy      yaepe -nan      penu   piyata
+
+# sentence level graph:
+(s30p / piyata
+  :actor (s30p2 / person
+           :refer-person excl
+           :refer-number plural)
+  :theme (s30e / event
+           :ARG0 (s30u / umr-unknown)
+           :mode interrogative
+           :quote s30p)
+  :aspect performance
+  :temporal (s30y / yaepenan))
+
+
+# alignment:
+s30e :0-0
+s30p :0-0
+s30p2 :0-0
+s30y :2-2
+
+
+# document level annotation:
+(s30s0 / sentence
+  :temporal ((s29u :after s30p)
+                    (s30p :before s30e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s30p)
+                    (author :full-affirmative s30p2)
+                    (s30p :full-affirmative s30e))
+  :coref ((s27p :same-entity s30p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	karuaratuanuy                       ipamarapa         peka
+Morphemes:           	karuara -tu -nu -uy                   ipama -ra -pa       pe -ka
+
+# sentence level graph:
+(s31i2 / ipama
+  :actor (s31k / karuaratuanuy
+           :refer-number plural
+           :mod (s31t / tu))
+  :place (s31p / peka)
+  :aspect state
+  :degree intensifier)
+
+
+# alignment:
+s31i2 :2-2
+s31k :1-1
+s31p :3-3
+s31t :1-1
+
+
+# document level annotation:
+(s31s0 / sentence
+  :temporal ((s30p :overlap s31i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s31i2))
+  :coref ((s18p :same-entity s31k)
+                    (s5p :same-entity s31p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8
+Words:               	makatipa  karuara              warikakatuy  inipeka         utsu  penupura          upuka     None
+Morphemes:           	maka -tipa  karuara        warika -ka -t -uy      ini       pe -ka      utsu     penu -pura    upuka
+
+# sentence level graph:
+(s32a / and
+  :op1 (s32e / event
+         :actor (s32p / person)
+         :theme (s32w / warikakatuy
+                  :actor (s32k / karuara
+                           :refer-number plural)
+                  :place (s32u / umr-unknown)
+                  :mode interrogative
+                  :aspect performance
+                  :quote s32e))
+  :op2 (s32e2 / event
+         :actor (s32p2 / person)
+         :theme (s32h / have-location-91
+                  :ARG0 s32k
+                  :ARG1 (s32p3 / peka
+                          :poss (s32p4 / person
+                                  :refer-person incl
+                                  :refer-number plural)
+                          :place-of (s32u2 / utsu
+                                      :actor (s32p5 / person
+                                               :refer-person excl
+                                               :refer-number plural)
+                                      :direction (s32u3 / upuka)
+                                      :aspect habitual))
+                  :aspect state
+                  :quote s32e2)))
+
+
+# alignment:
+s32a :0-0
+s32e :0-0
+s32e2 :0-0
+s32h :0-0
+s32k :0-0
+s32p :0-0
+s32p2 :0-0
+s32p3 :4-4
+s32p4 :0-0
+s32p5 :0-0
+s32u :0-0
+s32u2 :5-5
+s32u3 :7-7
+s32w :3-3
+
+
+# document level annotation:
+(s32s0 / sentence
+  :temporal ((s31i2 :overlap s32e)
+                    (s32e :before s32w))
+  :modal ((root :modal author)
+                    (s32k :full-affirmative s32w)
+                    (author :full-affirmative s32u2)
+                    (author :full-affirmative s32k)
+                    (s32k :full-affirmative s32h))
+  :coref ((s31k :same-entity s32k)
+                    (s31p :same-entity s32p3)
+                    (s27p :same-entity s32p5)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	penu        upukauri
+Morphemes:           	penu     upuka - uri
+
+# sentence level graph:
+(s33u / upukauri
+  :actor (s33p / person
+           :refer-person excl
+           :refer-number plural)
+  :aspect performance)
+
+
+# alignment:
+s33p :0-0
+s33u :2-2
+
+
+# document level annotation:
+(s33s0 / sentence
+  :temporal ((s32e2 :after s33u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s33u))
+  :coref ((s32p5 :same-entity s33p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	penu  umi      ipirawirapuranu    ipu         peka
+Morphemes:           	penu  umi  ipirawira -pura -nu    ipu       pe -ka
+
+# sentence level graph:
+(s34u / umi
+  :experiencer (s34p / person
+                 :refer-person excl
+                 :refer-number plural)
+  :stimulus (s34i2 / ipu
+              :actor (s34i3 / ipirawirapuranu
+                       :refer-number plural)
+              :place (s34p2 / peka)
+              :aspect activity)
+  :aspect state)
+
+
+# alignment:
+s34i2 :4-4
+s34i3 :3-3
+s34p :0-0
+s34p2 :5-5
+s34u :0-0
+
+
+# document level annotation:
+(s34s0 / sentence
+  :temporal ((s33u :after s34u)
+                    (s34u :overlap s34i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s34p)
+                    (s34p :full-affirmative s34u)
+                    (s34u :unspecified s34i2))
+  :coref ((s33p :same-entity s34p)
+                    (s32p3 :same-entity s34p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8
+Words:               	weee,  weee,    ipirawirapura   era     ipu         peka
+Morphemes:           	***    ***  ipirawira -pura   era     ipu       pe -ka
+
+# sentence level graph:
+(s35i2 / ipu
+  :actor (s35i3 / ipirawirapura
+           :refer-number plural)
+  :theme (s35w / weee,-weee)
+  :place (s35p / peka)
+  :degree intensifier
+  :aspect endeavor)
+
+
+# alignment:
+s35i2 :5-5
+s35i3 :3-3
+
+
+# document level annotation:
+(s35s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s35i2))
+  :coref ((s34i2 :same-event s35i2)
+                    (s34i3 :same-entity s35i3)
+                    (s34p2 :same-entity s35p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	tsumi        piutsu
+Morphemes:           	ts- umi      pe -utsu
+
+# sentence level graph:
+(s36u / umi
+  :experiencer (s36p / person
+                 :refer-person 1st
+                 :refer-number singular)
+  :place (s36p2 / piutsu)
+  :aspect state)
+
+
+# alignment:
+s36p :0-0
+s36p2 :2-2
+s36u :1-1
+
+
+# document level annotation:
+(s36s0 / sentence
+  :temporal ((s35i2 :after s36u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s36u))
+  :coref ((s35p :same-entity s36p2)
+                    (s21p2 :same-entity s36p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	yaepe-ray       tsumi   karuaratu      pɨtachiru          None
+Morphemes:           	yaepe         ray     ts- umi    karuara -tu  pɨta - chiru
+
+# sentence level graph:
+(s37u / umi
+  :experiencer (s37p / person
+                 :refer-person 1st
+                 :refer-number singular)
+  :stimulus (s37p2 / pɨtachiru
+              :poss (s37k / karuaratu
+                      :mod (s37t / tu)
+                      :refer-number singular)
+              :refer-number singular)
+  :place (s37y2 / yaepe)
+  :aspect state)
+
+
+# alignment:
+s37k :3-3
+s37p :0-0
+s37p2 :4-4
+s37t :4-4
+s37u :2-2
+s37y2 :1-1
+
+
+# document level annotation:
+(s37s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s37u))
+  :coref ((s36u :subset-of s37u)
+                    (s36p :same-entity s37p)
+                    (s36p2 :same-entity s37y2)
+                    (s32k :subset-of s37k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	entera     tapira     pɨtachiru
+Morphemes:           	entera     tapira  pita - chiru
+
+# sentence level graph:
+(s38t / thing
+  :ARG1-of (s38r / resemble-91
+             :ARG2 (s38p / pɨtachiru
+                     :mod (s38t2 / tapira)
+                     :refer-number singular)
+             :aspect state
+             :modstr full-affirmative))
+
+
+# alignment:
+s38p :3-3
+s38r :0-0
+s38t :0-0
+s38t2 :2-2
+
+
+# document level annotation:
+(s38s0 / sentence
+  :temporal ((s37u :overlap s38t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s38r))
+  :coref ((s37p2 :same-entity s38t)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	yatu     pɨtachiru         peka        chirinkuara
+Morphemes:           	ya -tu  pɨta - chiru       pe -ka    chiri -n -kuara
+
+# sentence level graph:
+(s39h / have-location-91
+  :ARG0 (s39p / pɨtachiru
+          :poss (s39p2 / person
+                  :refer-person 3rd
+                  :refer-number singular
+                  :mod (s39t / tu))
+          :refer-number singular)
+  :ARG1 (s39c / chirinkuara
+          :part (s39p3 / peka))
+  :aspect state)
+
+
+# alignment:
+s39c :4-4
+s39h :0-0
+s39p :2-2
+s39p2 :0-0
+s39p3 :3-3
+s39t :1-1
+
+
+# document level annotation:
+(s39s0 / sentence
+  :temporal ((s37u :overlap s39h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s39h))
+  :coref ((s38t :same-entity s39p)
+                    (s37y2 :same-entity s39p3)
+                    (s37k :same-entity s39p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	karuara        pɨtachirutupa
+Morphemes:           	karuara   pɨta - chiru -tupa
+
+# sentence level graph:
+(s40p / place
+  :ARG1-of (s40h / have-location-91
+             :ARG0 (s40p2 / pɨtachirutupa
+                     :poss (s40k / karuara
+                             :refer-number singular)
+                     :refer-number singular)))
+
+
+# alignment:
+s40p :0-0
+s40h :0-0
+s40p2 :2-2
+s40k :1-1
+
+
+# document level annotation:
+(s40s0 / sentence
+  :coref ((s39p :same-entity s40p2)
+                    (s39p2 :same-entity s40k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9
+Words:               	ajanka        yatu      ipama            yutiuy   mama,         na      yapura  kumitsa
+Morphemes:           	ajan -ka      ya -tu      ipama          yuti -uy    mama         na    ya -pura  kumitsa
+
+# sentence level graph:
+(s41k / kumitsa
+  :actor (s41p / person
+           :refer-person 3rd
+           :refer-number singular)
+  :theme (s41i2 / ipama
+           :actor (s41p2 / person
+                    :refer-person 3rd
+                    :refer-number singular
+                    :mod (s41t / tu))
+           :place (s41a / ajanka)
+           :aspect state
+           :quote s41k)
+  :mod (s41m / mama)
+  :aspect performance)
+
+
+# alignment:
+s41a :1-1
+s41i2 :3-3
+s41k :0-0
+s41m :5-5
+s41p :0-0
+s41p2 :0-0
+s41t :2-2
+
+
+# document level annotation:
+(s41s0 / sentence
+  :temporal ((s41k :before s41i2)
+                    (s37u :overlap s41k))
+  :modal ((root :modal author)
+                    (author :full-affirmative s41k)
+                    (author :full-affirmative s41p)
+                    (s41p :full-affirmative s41i2))
+  :coref ((s19p :same-entity s41p)
+                    (s40k :same-entity s41p2)
+                    (s37p :same-entity s41m)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	amatsera        yatu       pɨtachirutu
+Morphemes:           	amatsera      ya -tu  pɨta - chiru -tu
+
+# sentence level graph:
+(s42e / event
+  :actor (s42p / person)
+  :recipient (s42p2 / person)
+  :theme (s42h / have-location-91
+           :ARG0 (s42p3 / pɨtachirutu
+                   :poss (s42p4 / person
+                           :refer-person 3rd
+                           :refer-number singular
+                           :mod (s42t / tu))
+                   :mod (s42t2 / tu)
+                   :refer-number singular)
+           :ARG1 (s42a / amatsera)
+           :aspect state
+           :quote s42e))
+
+
+# alignment:
+s42a :1-1
+s42h :0-0
+s42p :0-0
+s42p2 :0-0
+s42t :2-2
+s42t2 :3-3
+s42e :0-0
+s42p3 :3-3
+s42p4 :0-0
+
+
+# document level annotation:
+(s42s0 / sentence
+  :temporal ((s42e :overlap s42h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s42e)
+                    (author :full-affirmative s42p)
+                    (s42p :full-affirmative s42h)
+                    (s42p3 :full-affirmative s42h)
+                    (author :full-affirmative s42p3))
+  :coref ((s41k :same-event s42e)
+                    (s41p :same-entity s42p)
+                    (s41p2 :same-entity s42p4)
+                    (s40p2 :same-entity s42p3)
+                    (s41m :same-entity s42p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	yuwariaranan      pɨtapuratu   entera  animaru     pɨtachiru
+Morphemes:           	yuwaria -ra -nan  pɨta -pura -tu   entera  animaru  pɨta - chiru
+
+# sentence level graph:
+(s43r / resemble-91
+  :ARG1 (s43p / pɨtapuratu
+          :mod (s43y / yuwariaranan)
+          :mod (s43t / tu)
+          :refer-number singular)
+  :ARG2 (s43p2 / pɨtachiru
+          :mod (s43a / animaru))
+  :aspect state)
+
+
+# alignment:
+s43a :4-4
+s43p :2-2
+s43p2 :5-5
+s43r :0-0
+s43t :2-2
+s43y :1-1
+
+
+# document level annotation:
+(s43s0 / sentence
+  :temporal ((s42e :overlap s43r))
+  :modal ((root :modal author)
+                    (author :full-affirmative s43r))
+  :coref ((s42p3 :same-entity s43p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	karuara          pɨtachirutu
+Morphemes:           	karuara     pɨta - chiru -tu
+
+# sentence level graph:
+(s44p / pɨtachirutu
+  :mod (s44t / tu)
+  :poss (s44k / karuara
+          :refer-number singular)
+  :refer-number singular)
+
+
+# alignment:
+s44p :2-2
+s44t :2-2
+s44k :1-1
+
+
+# document level annotation:
+(s44s0 / sentence
+  :coref ((s43p :same-entity s44p)
+                    (s42p4 :same-entity s44k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	ɨtsɨkakanpura,  senior
+Morphemes:           	itsika -ka -n -pura  senior
+
+# sentence level graph:
+(s45h / have-mod-91
+  :ARG0 (s45p / person)
+  :ARG2 (s45x / ɨtsɨkakanpura)
+  :mod (s45s / senior
+                :mode expressive)
+  :aspect state)
+
+
+# alignment:
+s45h :0-0
+s45s :2-2
+s45x :1-1
+s45p :0-0
+
+
+# document level annotation:
+(s45s0 / sentence
+  :temporal ((s42e :overlap s45h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s45h))
+  :coref ((s42p2 :same-entity s45p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	era    ipirawirapura       ipu         peka
+Morphemes:           	era  ipirawira -pura       ipu       pe -ka
+
+# sentence level graph:
+(s46i2 / ipu
+  :actor (s46i3 / ipirawirapura
+           :refer-number plural)
+  :place (s46p / peka)
+  :degree intensifier
+  :aspect endeavor)
+
+
+# alignment:
+s46i2 :3-3
+s46i3 :2-2
+s46p :4-4
+
+
+# document level annotation:
+(s46s0 / sentence
+  :temporal ((s45h :overlap s46i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s46i2))
+  :coref ((s35i3 :same-entity s46i3)
+                    (s39p3 :same-entity s46p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	ay        tsamama    uri      penu     umitara
+Morphemes:           	ay      tsa- mama    uri      penu   umi -tara
+
+# sentence level graph:
+(s47u / uri
+  :actor (s47p / person
+           :ARG0-of (s47h / have-rel-role-91
+                      :ARG1 (s47p2 / person
+                              :refer-person 1st
+                              :refer-number singular)
+                      :ARG2 (s47t / tsamama)))
+  :purpose (s47u2 / umi
+             :experiencer s47p
+             :stimulus (s47p3 / person
+                         :refer-person excl
+                         :refer-number plural)
+             :aspect state)
+  :aspect performance)
+
+
+# alignment:
+s47p :0-0
+s47p2 :0-0
+s47p3 :0-0
+s47t :2-2
+s47u :3-3
+s47u2 :5-5
+
+
+# document level annotation:
+(s47s0 / sentence
+  :temporal ((s46i2 :after s47u)
+                    (s47u :after s47u2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s47u)
+                    (author :full-affirmative s47p)                    (author :full-affirmative s47u2))
+  :coref ((s45p :same-entity s47p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6
+Words:               	karuaratu   muna  maria  iyara,   maama
+Morphemes:           	karuara -tu   muna  maria   iyara    mama
+
+# sentence level graph:
+(s48e / event
+  :actor (s48p / person)
+  :theme (s48m / muna
+           :mod (s48i2 / iyara)
+           :actor (s48k / karuaratu
+                    :mod (s48t / tu)
+                    :refer-number singular)
+           :theme (s48p3 / person
+                    :name (s48n / name
+                            :op1 "maria")
+                    :refer-number singular)
+           :quote s48e)
+  :recipient (s48p2 / person)
+  :mod (s48m2 / maama))
+
+
+# alignment:
+s48i2 :4-4
+s48k :1-1
+s48m :2-2
+s48m2 :5-5
+s48n :0-0
+s48p :0-0
+s48t :1-1
+s48e :0-0
+s48p2 :0-0
+s48p3 :3-3
+
+
+# document level annotation:
+(s48s0 / sentence
+  :temporal ((s47u :after s48e)
+                    (s48e :before s48m))
+  :modal ((root :modal author)
+                    (author :full-affirmative s48e)
+                    (author :full-affirmative s48p)
+                    (s48p :full-negative s48m))
+  :coref ((s47p2 :same-entity s48p)
+                    (s47p :same-entity s48p2)
+                    (s44k :same-entity s48k)
+                    (s42p :same-entity s48p3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	na           chikuata        tsamama
+Morphemes:           	na       ts- ikua -ta      tsa- mama
+
+# sentence level graph:
+(s49i2 / ikuata
+  :actor (s49p / person
+           :refer-person 1st
+           :refer-number singular)
+  :theme (s49t / thing)
+  :recipient (s49p2 / person
+               :ARG0-of (s49h / have-rel-role-91
+                          :ARG1 s49p
+                          :ARG2 (s49t2 / tsamama)))
+  :aspect performance)
+
+
+# alignment:
+s49i2 :2-2
+s49p :0-0
+s49p2 :0-0
+s49t :0-0
+s49t2 :3-3
+
+
+# document level annotation:
+(s49s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s49i2)
+                    (author :full-affirmative s49p)
+                    (s49p :full-affirmative s49t))
+  :coref ((s48e :same-event s49i2)
+                    (s48p :same-entity s49p)
+                    (s48p2 :same-entity s49p2)
+                    (s48m :same-entity s49t)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	tsamamumi  karuara       pɨtachiru
+Morphemes:           	tsa- mama - umi  karuara    pɨta - chiru
+
+# sentence level graph:
+(s50u / umi
+  :experiencer (s50p / person
+                 :ARG0-of (s50h / have-rel-role-91
+                            :ARG1 (s50p2 / person
+                                    :refer-person 1st
+                                    :refer-number singular)
+                            :ARG2 (s50t / tsamamumi)))
+  :stimulus (s50p3 / pɨtachiru
+              :poss (s50k2 / karuara
+                      :refer-number singular)
+              :refer-number singular)
+  :aspect state)
+
+
+# alignment:
+s50k2 :2-2
+s50p :0-0
+s50p2 :0-0
+s50p3 :3-3
+s50t :1-1
+s50u :1-1
+
+
+# document level annotation:
+(s50s0 / sentence
+  :temporal ((s49i2 :after s50u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s50u))
+  :coref ((s49p2 :same-entity s50p)
+                    (s49p :same-entity s50p2)
+                    (s44p :same-entity s50p3)
+                    (s48k :same-entity s50k2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	amatseranan         na       pɨtachirutua
+Morphemes:           	amatsera -nan         na  pɨta - chiru -tua
+
+# sentence level graph:
+(s51e / event
+  :actor (s51p / person)
+  :theme (s51h / have-location-91
+           :ARG0 (s51p2 / pɨtachirutua
+                   :mod (s51t / tua)
+                   :refer-number singular)
+           :ARG1 (s51a / amatseranan)
+           :aspect state
+           :quote s51e)
+  :recipient (s51p3 / person))
+
+
+# alignment:
+s51a :1-1
+s51h :0-0
+s51p :0-0
+s51t :3-3
+s51e :0-0
+s51p2 :3-3
+s51p3 :0-0
+
+
+# document level annotation:
+(s51s0 / sentence
+  :temporal ((s50u :overlap s51e)
+                    (s51e :overlap s51h))
+  :modal ((root :modal author)
+                    (s51p :full-affirmative s51h)
+                    (author :full-affirmative s51e)
+                    (author :full-affirmative s51p)
+                    (s51p2 :full-affirmative s51h)
+                    (author :full-affirmative s51p2))
+  :coref ((s50p3 :same-entity s51p2)
+                    (s50p2 :same-entity s51p)
+                    (s50p :same-entity s51p3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	ajanka        yatu           yutiuy,    mama
+Morphemes:           	ajan -ka      ya -tu          yuti -uy    mama
+
+# sentence level graph:
+(s52e / event
+  :actor (s52p / person)
+  :theme (s52y / yutiuy
+           :actor (s52p2 / person
+                    :refer-person 3rd
+                    :refer-number singular
+                    :mod (s52t / tu))
+           :place (s52a / ajanka)
+           :aspect state
+           :quote s52e)
+  :recipient (s52p3 / person)
+  :mod (s52m / mama))
+
+
+# alignment:
+s52a :1-1
+s52m :4-4
+s52p :0-0
+s52t :2-2
+s52y :3-3
+s52e :0-0
+s52p2 :0-0
+s52p3 :0-0
+
+
+# document level annotation:
+(s52s0 / sentence
+  :temporal ((s51e :after s52e)
+                    (s52e :before s52y))
+  :modal ((root :modal author)
+                    (author :full-affirmative s52e)
+                    (author :full-affirmative s52p)
+                    (s52p :full-affirmative s52y))
+  :coref ((s51p :same-entity s52p)
+                    (s51p3 :same-entity s52p3)
+                    (s50k2 :same-entity s52p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	ipamawa        yatu           yutiuy,    mama
+Morphemes:           	ipama -wa      ya -tu          yuti -uy    mama
+
+# sentence level graph:
+(s53e / event
+  :actor (s53p / person)
+  :theme (s53y / yutiuy
+           :actor (s53p2 / person
+                    :refer-person 3rd
+                    :refer-number singular
+                    :mod (s53t / tu))
+           :manner (s53i2 / ipamawa)
+           :aspect state
+           :quote s53e)
+  :recipient (s53p3 / person)
+  :mod (s53m / mama))
+
+
+# alignment:
+s53i2 :1-1
+s53m :4-4
+s53p :0-0
+s53t :2-2
+s53e :0-0
+s53y :3-3
+s53p2 :0-0
+s53p3 :0-0
+
+
+# document level annotation:
+(s53s0 / sentence
+  :temporal ((s52e :after s53e)
+                    (s53e :before s53y))
+  :modal ((root :modal author)
+                    (author :full-affirmative s53e)
+                    (author :full-affirmative s53p)
+                    (s53p :full-affirmative s53y))
+  :coref ((s52p :same-entity s53p)
+                    (s52p3 :same-entity s53p3)
+                    (s52p2 :same-entity s53p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	amiya        yatu     tsapukiuy
+Morphemes:           	amiya      ya -tu   tsapuki -uy
+
+# sentence level graph:
+(s54e / event
+  :actor (s54p / person)
+  :recipient (s54p2 / person)
+  :theme (s54t / tsapukiuy
+           :actor (s54p3 / person
+                    :refer-person 3rd
+                    :refer-number singular
+                    :mod (s54t2 / tu))
+           :manner (s54a / amiya)
+           :aspect performance
+           :quote s54e))
+
+
+# alignment:
+s54a :1-1
+s54p :0-0
+s54t :3-3
+s54e :0-0
+s54p2 :0-0
+s54p3 :0-0
+s54t2 :2-2
+
+
+# document level annotation:
+(s54s0 / sentence
+  :temporal ((s53e :after s54e)
+                    (s54e :before s54t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s54e)
+                    (author :full-affirmative s54p)
+                    (s54p :full-affirmative s54t))
+  :coref ((s53p :same-entity s54p)
+                    (s53p3 :same-entity s54p2)
+                    (s53p2 :same-entity s54p3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	na      yapura  kumitsa
+Morphemes:           	na    ya -pura  kumitsa
+
+# sentence level graph:
+(s55e / event
+  :actor (s55p / person)
+  :recipient (s55p2 / person)
+  :theme (s55k / kumitsa
+           :actor (s55p3 / person
+                    :refer-person 3rd
+                    :refer-number singular)
+           :theme (s55e2 / event
+                    :quote s55k)
+           :aspect performance
+           :quote s55e))
+
+
+# alignment:
+s55k :0-0
+s55p :0-0
+s55e :0-0
+s55p2 :0-0
+s55p3 :0-0
+s55e2 :0-0
+
+
+# document level annotation:
+(s55s0 / sentence
+  :temporal ((s54e :after s55e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s55e)
+                    (author :full-affirmative s55p)
+                    (s55p :full-affirmative s55k)
+                    (s55p3 :full-affirmative s55e2))
+  :coref ((s54p :same-entity s55p)
+                    (s54p2 :same-entity s55p2)
+                    (s48p3 :same-entity s55p3)
+                    (s54t :same-event s55e2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	karuaratu   muna      penu        iyaruy
+Morphemes:           	karuara -tu   muna      penu     iyara -uy
+
+# sentence level graph:
+(s56e / event
+  :actor (s56p / person)
+  :recipient (s56p2 / person)
+  :theme (s56e2 / event
+           :theme (s56m / muna
+                    :actor (s56k / karuaratu
+                             :refer-number plural
+                             :mod (s56t / tu))
+                    :theme (s56p3 / person
+                             :refer-person excl
+                             :refer-number plural)
+                    :mod (s56i2 / iyaruy)
+                    :aspect performance
+                    :quote s56e2
+                    :modal-strength full-negative)
+           :actor s56p3
+           :recipient s56p
+           :quote s56e
+           :modal-strength full-affirmative)
+  :modal-strength full-affirmative)
+
+
+# alignment:
+s56i2 :4-4
+s56k :1-1
+s56m :2-2
+s56p :0-0
+s56t :1-1
+s56e :0-0
+s56p2 :0-0
+s56e2 :0-0
+s56p3 :0-0
+
+
+# document level annotation:
+(s56s0 / sentence
+  :temporal ((s56e :before s56m))
+  :coref ((s55e :same-event s56e)
+                    (s55e2 :same-event s56m)
+                    (s55p :same-entity s56p)
+                    (s55p2 :same-entity s56p2)
+                    (s29p :same-entity s56p3)
+                    (s32k :same-entity s56k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	era    ipirawirapura  ipu-peka         None
+Morphemes:           	era  ipirawira -pura       ipu       pe -ka
+
+# sentence level graph:
+(s57i2 / ipu
+  :actor (s57i3 / ipirawirapura
+           :refer-number plural)
+  :place (s57p / peka)
+  :degree intensifier
+  :aspect endeavor)
+
+
+# alignment:
+s57i2 :3-3
+s57i3 :2-2
+s57p :3-3
+
+
+# document level annotation:
+(s57s0 / sentence
+  :temporal ((s56e :overlap s57i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s57i2))
+  :coref ((s46i3 :same-entity s57i3)
+                    (s46p :same-entity s57p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	ipirawira       ipu  weee,  weee
+Morphemes:           	ipirawira       ipu    ***   ***
+
+# sentence level graph:
+(s58i2 / ipu
+  :actor (s58i3 / ipirawira
+           :refer-number plural)
+  :theme (s58w / weee,-weee)
+  :aspect endeavor)
+
+
+# alignment:
+s58i2 :2-2
+s58i3 :1-1
+
+
+# document level annotation:
+(s58s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s58i2))
+  :coref ((s57i2 :same-event s58i2)
+                    (s57i3 :same-entity s58i3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	era  ipirawira       ipu         peka
+Morphemes:           	era  ipirawira       ipu       pe -ka
+
+# sentence level graph:
+(s59i2 / ipu
+  :actor (s59i3 / ipirawira
+           :refer-number plural)
+  :place (s59p / peka)
+  :degree intensifier
+  :aspect endeavor)
+
+
+# alignment:
+s59i2 :3-3
+s59i3 :2-2
+s59p :4-4
+
+
+# document level annotation:
+(s59s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s59i2))
+  :coref ((s58i2 :same-event s59i2)
+                    (s58i3 :same-entity s59i3)
+                    (s57p :same-entity s59p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	kuntuanutaka    tseta            munanuy
+Morphemes:           	kun -tua -nu -taka    tseta      muna - na -uy
+
+# sentence level graph:
+(s60e / event
+  :actor (s60p / person)
+  :theme (s60t / tseta
+           :experiencer (s60p2 / person
+                          :refer-person 3rd
+                          :refer-number plural
+                          :mod (s60t2 / tua))
+           :stimulus (s60m / munanuy
+                       :actor s60p2
+                       :theme (s60p3 / person
+                                :refer-person 2nd
+                                :refer-number singular)
+                       :aspect performance
+                       :modpred s60t)
+           :quote s60e)
+  :recipient s60p3)
+
+
+# alignment:
+s60m :3-3
+s60p :0-0
+s60p2 :0-0
+s60t :0-0
+s60e :0-0
+s60t2 :1-1
+s60p3 :0-0
+
+
+# document level annotation:
+(s60s0 / sentence
+  :temporal ((s59i2 :overlap s60e)
+                    (s60e :before s60t)
+                    (s60t :after s60m))
+  :modal ((root :modal author)
+                    (author :full-affirmative s60e)
+                    (author :full-affirmative s60p)
+                    (s60p :neutral-affirmative s60p2)
+                    (s60p2 :full-affirmative s60t)
+                    (s60t :unspecified s60m)
+                    (s60p2 :neutral-affirmative s60t)
+                    (author :full-affirmative s60p2))
+  :coref ((s56p :same-entity s60p)
+                    (s56k :same-entity s60p2)
+                    (s55p3 :same-entity s60p3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	na  tsakumitsa  yapuratsui            None
+Morphemes:           	na         tsa     kumitsa  ya -pura -tsui
+
+# sentence level graph:
+(s61k / kumitsa
+  :actor (s61p / person
+           :refer-person 1st
+           :refer-number singular)
+  :recipient (s61p2 / person
+               :refer-person 3rd
+               :refer-number singular)
+  :aspect performance)
+
+
+# alignment:
+s61p :0-0
+s61p2 :0-0
+
+
+# document level annotation:
+(s61s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s61k))
+  :coref ((s60p3 :same-entity s61p2)
+                    (s60p :same-entity s61p)
+                    (s60e :same-event s61k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1
+Words:               	karuarapuratuanu
+Morphemes:           	karuara -pura -tua -nu
+
+# sentence level graph:
+(s62k / karuara
+  :mod (s62t / tua)
+  :refer-number plural)
+
+
+# alignment:
+s62k :1-1
+s62t :1-1
+
+
+# document level annotation:
+(s62s0 / sentence
+  :coref ((s60p2 :same-entity s62k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7
+Words:               	ni  mania      penu  yankata  karuara,            zutsu
+Morphemes:           	ni  mania      penu  yankata   karuara          y- utsu
+
+# sentence level graph:
+(s63y / yankata
+  :actor (s63p / person
+           :refer-person 1st
+           :refer-number plural)
+  :undergoer (s63k / karuara)
+  :manner (s63m / mania)
+  :aspect performance
+  :cause (s63u / utsu
+           :aspect performance
+           :actor s63k)
+  :polarity -)
+
+
+# alignment:
+s63k :0-0
+s63m :2-2
+s63p :0-0
+s63y :4-4
+
+
+# document level annotation:
+(s63s0 / sentence
+  :temporal ((s61k :after s63y)
+                    (s63y :before s63u))
+  :modal ((root :modal author)
+                    (author :full-negative s63y)
+                    (author :full-affirmative s63u))
+  :coref ((s61p :subset-of s63p)
+                    (s62k :subset-of s63k)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	karuara    yapana       unipu,        zutsu
+Morphemes:           	karuara    yapana      uni -pu      y- utsu
+
+# sentence level graph:
+(s64y / yapana
+  :actor (s64k / karuara)
+  :path (s64u / uni)
+  :aspect endeavor
+  :manner-of (s64u2 / utsu
+               :aspect performance
+               :actor s64k))
+
+
+# alignment:
+s64k :0-0
+s64u :3-3
+s64y :2-2
+
+
+# document level annotation:
+(s64s0 / sentence
+  :temporal ((s63u :overlap s64y))
+  :modal ((root :modal author)
+                    (author :full-affirmative s64y)
+                    (author :full-affirmative s64u2))
+  :coref ((s63k :same-entity s64k)
+                    (s63u :same-event s64u2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	yapuratuanu     utsuy    paranapu
+Morphemes:           	ya -pura -tua -nu  utsu -uy  parana -pu
+
+# sentence level graph:
+(s65u / utsu
+  :manner (s65p / parana
+            :refer-number singular)
+  :aspect performance
+  :actor (s65p2 / person
+           :refer-person 3rd
+           :refer-number plural
+           :mod (s65t / tua)))
+
+
+# alignment:
+s65p :3-3
+s65u :2-2
+s65p2 :0-0
+s65t :1-1
+
+
+# document level annotation:
+(s65s0 / sentence
+  :temporal ((s64u2 :overlap s65u))
+  :modal ((root :modal author)
+                    (author :full-affirmative s65u))
+  :coref ((s62k :same-entity s65p2)
+                    (s5r :same-entity s65p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	yatuanu     iriwa      inukakɨrɨ      tupaka    unikuara
+Morphemes:           	ya -tua -nu     iriwa   inu - kakɨrɨ    tupa -ka  uni -kuara
+
+# sentence level graph:
+(s66i2 / iriwa
+  :actor (s66p / person
+           :refer-person 3rd
+           :refer-number plural
+           :mod (s66t / tua))
+  :goal (s66t2 / tupa
+          :place-of (s66k / kakɨrɨ
+                      :place (s66u / uni)
+                      :actor s66p)
+          :refer-number singular)
+  :aspect performance)
+
+
+# alignment:
+s66i2 :2-2
+s66p :0-0
+s66t :1-1
+s66t2 :4-4
+s66u :5-5
+
+
+# document level annotation:
+(s66s0 / sentence
+  :temporal ((s65u :overlap s66i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s66i2))
+  :coref ((s65p2 :same-entity s66p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	na           yatuanu   iyara   muna        tsamɨmɨrakuniatsuriay
+Morphemes:           	na       ya -tua -nu   iyara   muna    tsa- mɨmɨrakunia -tsuriay
+
+# sentence level graph:
+(s67m / muna
+  :actor (s67p / person
+           :refer-person 3rd
+           :refer-number plural
+           :mod (s67t / tua))
+  :theme (s67p2 / person
+           :ARG0-of (s67h / have-rel-role-91
+                      :ARG1 (s67p3 / person
+                              :refer-person 1st
+                              :refer-number singular)
+                      :ARG2 (s67m2 / mɨmɨrakunia)))
+  :extent (s67i2 / iyara)
+  :aspect endeavor)
+
+
+# alignment:
+s67h :0-0
+s67i2 :3-3
+s67m :4-4
+s67p :0-0
+s67p2 :0-0
+s67p3 :0-0
+s67t :2-2
+
+
+# document level annotation:
+(s67s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-negative s67m))
+  :coref ((s66p :same-entity s67p)
+                    (s61p :same-entity s67p3)
+                    (s61p2 :same-entity s67p2)
+                    (s48m :same-event s67m)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	temente    kusitua
+Morphemes:           	temente   kusi -tu
+
+# sentence level graph:
+(s68e / exist-91
+  :ARG1 (s68p / person
+          :name (s68n / name
+                  :op1 "kusi")
+          :mod (s68t / tua))
+  :polarity -
+  :aspect state)
+
+
+# alignment:
+s68n :0-0
+s68p :2-2
+s68t :2-2
+s68e :0-0
+
+
+# document level annotation:
+(s68s0 / sentence
+  :temporal ((s67m :overlap s68e))
+  :modal ((root :modal author)
+                    (author :full-negative s68e)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10
+Words:               	aka                 tuannu  utsu                 inuayamiran        chikariari,            kusipuratukua,  tsapapamuki         None
+Morphemes:           	aka             tua -n -nu  utsu         inu -a -ya -mira -n     chikari -a -ri      kusi -pura -tu -ukua          tsa   papa -muki
+
+# sentence level graph:
+(s69u / utsu
+  :actor (s69t / tuannu
+           :refer-number plural)
+  :purpose (s69c / chikari
+             :actor s69t
+             :theme (s69d / dummy)
+             :aspect perfective)
+  :temporal (s69u2 / utsu
+              :actor (s69p / person
+                       :name (s69n / name
+                               :op1 "kusi"))
+              :companion (s69p2 / person
+                           :ARG0-of (s69h / have-rel-role-91
+                                      :ARG1 (s69p3 / person
+                                              :refer-person 1st
+                                              :refer-number singular)
+                                      :ARG2 (s69p4 / papa)))
+              :aspect performance)
+  :aspect performance)
+
+
+# alignment:
+s69c :5-5
+s69d :0-0
+s69h :0-0
+s69n :0-0
+s69p :6-6
+s69p2 :0-0
+s69p3 :0-0
+s69p4 :7-7
+s69t :0-0
+s69u :3-3
+s69u2 :0-0
+
+
+# document level annotation:
+(s69s0 / sentence
+  :temporal ((s67m :before s69u)
+                    (s69u :overlap s69u2)
+                    (s69u :after s69u2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s69c)
+                    (author :full-affirmative s69u2)
+                    (author :full-affirmative s69u))
+  :coref ((s67p :same-entity s69t)
+                    (s68p :same-entity s69p)
+                    (s67p3 :same-entity s69p3)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1
+Words:               	kunumiyanantu
+Morphemes:           	kunumi -ya -nan -tu
+
+# sentence level graph:
+(s70h / have-mod-91
+  :ARG1 (s70p / person)
+  :ARG2 (s70k / kunumi
+          :degree (s70t / tu))
+  :aspect state)
+
+
+# alignment:
+s70h :0-0
+s70k :1-1
+s70p :0-0
+s70t :1-1
+
+
+# document level annotation:
+(s70s0 / sentence
+  :temporal ((s69u2 :overlap s70h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s70h))
+  :coref ((s69p :same-entity s70p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	temente       yatutsuriay
+Morphemes:           	temente   ya -tu -tsuriay
+
+# sentence level graph:
+(s71e / exist-91
+  :ARG1 (s71p / person
+          :refer-person 3rd
+          :refer-number singular
+          :mod (s71t / tu))
+  :polarity -
+  :aspect state)
+
+
+# alignment:
+s71e :0-0
+s71p :0-0
+s71t :2-2
+
+
+# document level annotation:
+(s71s0 / sentence
+  :temporal ((s69u2 :after s71e))
+  :modal ((root :modal author)
+                    (author :full-negative s71e))
+  :coref ((s70p :same-entity s71p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	titinan   ray              chuti
+Morphemes:           	titi -nan   ray           ts- yuti
+
+# sentence level graph:
+(s72h / have-mod-91
+  :ARG1 (s72p / person
+          :refer-person 1st
+          :refer-number singular)
+  :ARG2 (s72t / titi)
+  :aspect state)
+
+
+# alignment:
+s72h :0-0
+s72p :0-0
+s72t :1-1
+
+
+# document level annotation:
+(s72s0 / sentence
+  :temporal ((s69u2 :after s72h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s72h))
+  :coref ((s69p3 :same-entity s72p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1
+Words:               	tsamɨmɨrakuniapuranumukinan
+Morphemes:           	tsa - mimirakunia -pura -nu -muki -nan
+
+# sentence level graph:
+(s73e / event
+  :companion (s73p / person
+               :ARG1 (s73p2 / person
+                       :refer-person 1st
+                       :refer-number singular)
+               :ARG2 (s73m / mɨmɨrakunia)
+               :ARG0-of (s73h / have-rel-role-91)
+               :refer-number plural))
+
+
+# alignment:
+s73e :0-0
+s73h :0-0
+s73p :0-0
+s73p2 :0-0
+
+
+# document level annotation:
+(s73s0 / sentence
+  :coref ((s72p :same-entity s73p2)
+                    (s56p3 :same-entity s73p)
+                    (s72h :same-event s73e)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	yaepeka      karuaratu    tseta   muna         yapuranutsuriay
+Morphemes:           	yaepe -ka    karuara -tu    tseta   muna   ya -pura -nu -tsuriay
+
+# sentence level graph:
+(s74t / tseta
+  :experiencer (s74k / karuara
+                 :refer-number plural
+                 :mod (s74t2 / tu))
+  :stimulus (s74m / muna
+              :actor s74k
+              :theme (s74p / person
+                       :refer-person 3rd
+                       :refer-number singular)
+              :place (s74y / yaepe)
+              :aspect performance
+              :mod s74t)
+  :aspect state)
+
+
+# alignment:
+s74k :0-0
+s74m :4-4
+s74p :0-0
+s74t :0-0
+s74t2 :2-2
+s74y :1-1
+
+
+# document level annotation:
+(s74s0 / sentence
+  :temporal ((s69u2 :after s74t)
+                    (s74t :after s74m))
+  :modal ((root :modal author)
+                    (s74k :AFF s74t)
+                    (s74t :UNSP s74m)
+                    (author :full-affirmative s74k)
+                    (author :full-affirmative s74t))
+  :coref ((s69t :same-entity s74k)
+                    (s67p2 :same-entity s74p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	titinan      chichari          yapuranu
+Morphemes:           	titi -nan    ts- ichari      ya -pura -nu
+
+# sentence level graph:
+(s75c / chichari
+  :experiencer (s75p / person
+                 :refer-person 1st
+                 :refer-number singular)
+  :stimulus (s75p2 / person
+              :refer-person 3rd
+              :refer-number plural
+              :undergoer-of (s75t / titinan))
+  :aspect state)
+
+
+# alignment:
+s75c :2-2
+s75p :0-0
+s75p2 :0-0
+s75t :1-1
+
+
+# document level annotation:
+(s75s0 / sentence
+  :temporal ((s69u2 :after s75c))
+  :modal ((root :modal author)
+                    (author :full-affirmative s75c))
+  :coref ((s73p2 :same-entity s75p)
+                    (s74k :same-entity s75p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	nan            tsɨmɨntsararaay    natsui
+Morphemes:           	na      ts- ɨmɨntsara -ra -ay  na -tsui
+
+# sentence level graph:
+(s76x / ɨmɨntsarara
+  :actor (s76p / person
+           :refer-person 1st
+           :refer-number singular)
+  :theme (s76t2 / thing)
+  :recipient (s76p2 / person
+               :refer-person 2nd)
+  :aspect performance)
+
+
+# alignment:
+s76p :0-0
+s76p2 :0-0
+s76t2 :0-0
+
+
+# document level annotation:
+(s76s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s76x))
+  :coref ((s75p :same-entity s76p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5
+Words:               	titi      tskakɨrɨtsuriay         kuika  parana      tsɨmari
+Morphemes:           	titi  ts- kakɨrɨ -tsuriay     ku -i -ka  parana    tsɨma -ri
+
+# sentence level graph:
+(s77k2 / kakɨrɨ
+  :actor (s77p / person
+           :refer-person 1st
+           :refer-number singular
+           :undergoer-of (s77t2 / titi))
+  :place (s77k / ku
+           :place (s77t / tsɨma
+                    :part-of (s77p2 / parana
+                               :refer-number singular)
+                    :refer-number singular))
+  :aspect state)
+
+
+# alignment:
+s77k :3-3
+s77p :0-0
+s77p2 :4-4
+s77t :2-2
+s77t2 :1-1
+
+
+# document level annotation:
+(s77s0 / sentence
+  :temporal ((s69u2 :after s77k2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s77k2))
+  :coref ((s76p :same-entity s77p)
+                    (s65p :same-entity s77p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	anan           tsamɨmɨrapuranu                 aypapan
+Morphemes:           	anan     tsa- mɨmɨra -pura -nu           aypa -pa -pan
+
+# sentence level graph:
+(s78a / aypa
+  :undergoer (s78p / person
+               :ARG0-of (s78h / have-rel-role-91
+                          :ARG1 (s78p2 / person
+                                  :refer-person 1st
+                                  :refer-number singular)
+                          :ARG2 (s78m / mɨmɨra))
+               :refer-number plural)
+  :aspect performance)
+
+
+# alignment:
+s78a :3-3
+s78h :0-0
+s78p :0-0
+s78p2 :0-0
+
+
+# document level annotation:
+(s78s0 / sentence
+  :temporal ((s69u2 :before s78a))
+  :modal ((root :modal author)
+                    (author :full-affirmative s78a))
+  :coref ((s77p :same-entity s78p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	tsamɨmɨrapuranumukinan    tsa    kakɨrɨtsuriay
+Morphemes:           	tsa- mɨmɨra -pura -nu -muki -nan    tsa  kakiri -tsuriay
+
+# sentence level graph:
+(s79k / kakɨri
+  :actor (s79p / person
+           :refer-person 1st
+           :refer-number singular)
+  :companion (s79p2 / person
+               :ARG0-of (s79h / have-rel-role-91
+                          :ARG1 s79p
+                          :ARG2 (s79m / mɨmɨra))
+               :refer-number plural)
+  :aspect state
+  :temporal (s79b / before
+              :op1 (s79e / event)))
+
+
+# alignment:
+s79h :0-0
+s79k :3-3
+s79p :0-0
+s79p2 :0-0
+s79b :0-0
+s79e :0-0
+
+
+# document level annotation:
+(s79s0 / sentence
+  :temporal ((s78a :before s79k))
+  :modal ((root :modal author)
+                    (author :full-affirmative s79k))
+  :coref ((s78p2 :same-entity s79p)
+                    (s78p :same-entity s79p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8
+Words:               	ay  inu     aypa       ay      penu               erurapa         yapuranutsuriay     ajanka
+Morphemes:           	ay  inu     aypa       ay      penu             erura -pa   ya -pura -nu -tsuriay   ajan -ka
+
+# sentence level graph:
+(s80e / erura
+  :actor (s80p / person
+           :refer-person 1st
+           :refer-number plural)
+  :theme (s80p2 / person
+           :refer-person 3rd
+           :refer-number plural)
+  :goal (s80a / ajan)
+  :aspect performance
+  :temporal (s80b / before
+              :op1 (s80a2 / aypa
+                     :undergoer s80p2
+                     :aspect performance)))
+
+
+# alignment:
+s80a :8-8
+s80a2 :3-3
+s80e :6-6
+s80p :0-0
+s80p2 :0-0
+s80b :0-0
+
+
+# document level annotation:
+(s80s0 / sentence
+  :temporal ((s80a2 :before s80e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s80e)
+                    (author :full-affirmative s80a2))
+  :coref ((s79p :subset-of s80p)
+                    (s79p2 :same-entity s80p2)
+                    (s78a :same-event s80b)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	iruaka          tsamɨmɨranu
+Morphemes:           	iruaka      tsa- mɨmɨra -nu
+
+# sentence level graph:
+(s81h / have-91
+  :ARG0 (s81p / person
+          :refer-person 1st
+          :refer-number singular)
+  :ARG1 (s81p2 / person
+          :ARG0-of (s81h2 / have-rel-role-91
+                     :ARG1 s81p
+                     :ARG2 (s81m / mɨmɨra))
+          :quant 4)
+  :aspect state)
+
+
+# alignment:
+s81h :0-0
+s81h2 :0-0
+s81p :0-0
+s81p2 :0-0
+
+
+# document level annotation:
+(s81s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s81h))
+  :coref ((s79p :same-entity s81p)
+                    (s80p2 :same-entity s81p2)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	mukuika,        inumanu
+Morphemes:           	mukuika    inu - umanu
+
+# sentence level graph:
+(s82m / manu
+  :undergoer (s82p / person
+               :quant 2
+               :refer-person 3rd)
+  :aspect performance)
+
+
+# alignment:
+s82p :0-0
+
+
+# document level annotation:
+(s82s0 / sentence
+  :temporal ((s80e :after s82m))
+  :modal ((root :modal author)
+                    (author :full-affirmative s82m))
+  :coref ((s81p2 :subset-of s82p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	mutsapɨrɨkanan  inu  chimira
+Morphemes:           	mutsapɨrɨka -nan  inu  chimira
+
+# sentence level graph:
+(s83c / chimira
+  :actor (s83p / person
+           :refer-person 3rd
+           :quant 3)
+  :aspect state)
+
+
+# alignment:
+s83c :3-3
+s83p :0-0
+
+
+# document level annotation:
+(s83s0 / sentence
+  :temporal ((s82m :after s83c))
+  :modal ((root :modal author)
+                    (author :full-affirmative s83c))
+  :coref ((s81p2 :subset-of s83p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	na          tsamɨmɨranu
+Morphemes:           	na      tsa- mɨmɨra -nu
+
+# sentence level graph:
+(s84h / have-mod-91
+  :ARG1 (s84p / person
+          :ARG0-of (s84h2 / have-rel-role-91
+                     :ARG1 (s84p2 / person
+                             :refer-person 1st
+                             :refer-number singular)
+                     :ARG2 (s84m / mɨmɨra))
+          :refer-number plural)
+  :ARG2 (s84n / na)
+  :aspect state)
+
+
+# alignment:
+s84h :0-0
+s84h2 :0-0
+s84n :1-1
+s84p :0-0
+s84p2 :0-0
+
+
+# document level annotation:
+(s84s0 / sentence
+  :temporal ((s82m :after s84h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s84h))
+  :coref ((s81p2 :same-entity s84p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2
+Words:               	yaepenan           tsapitu
+Morphemes:           	yaepe -nan         tsa- pitu
+
+# sentence level graph:
+(s85p2 / pitu
+  :actor (s85p / person
+           :refer-person 1st
+           :refer-number singular)
+  :temporal (s85y / yaepe)
+  :aspect state)
+
+
+# alignment:
+s85p :0-0
+s85y :1-1
+
+
+# document level annotation:
+(s85s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s85p2))
+  :coref ((s81p :same-entity s85p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3
+Words:               	ay    tsa     upa
+Morphemes:           	ay    tsa     upa
+
+# sentence level graph:
+(s86u / upa
+  :actor (s86p / person
+           :refer-person 1st
+           :refer-number singular)
+  :aspect performance)
+
+
+# alignment:
+s86p :0-0
+s86u :3-3
+
+
+# document level annotation:
+(s86s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s86u)))
+
+
+

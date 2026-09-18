@@ -1,0 +1,291 @@
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10	11
+Words:               	Ałk’idą́ą́’   díí  nahasdzáán                          nihił  dah                               si’ánígíí                            bikáa’gi                         ’ádahóót’įįd                         ha’níigo                            baa                     dahane’
+Morphemes:           	ałk’idą́ą́’   díí  nahasdzáán                        nih- ił  dah                           si- ’án =ígíí                        bi- káa’ =gi               ’á- da- h- óó- t- ’įįd                   ha- ’a- ní =go                          b- aa                   da- hane’
+
+# sentence level graph:
+(s1e / exist-91
+  :ARG1 (s1d / dahane’
+          :topic (s1h / ha’níigo
+                   :theme (s1x / ’ádahóót’įįd
+                            :place (s1b2 / bikáa’gi-
+                                     :part (s1n / nahasdzáán
+                                             :mod (s1d2 / díí)
+                                             :place-of (s1s / si’ánígíí
+                                                         :mod (s1d3 / dah-)
+                                                         :companion (s1p / person
+                                                                      :refer-person 1st
+                                                                      :refer-number plural)
+                                                         :aspect state)))
+                            :time (s1a / ałk’idą́ą́’)
+                            :aspect performance
+                            :quote s1h))
+          :refer-number plural)
+  :aspect state)
+
+
+# alignment:
+s1a :0-0
+s1b2 :7-7
+s1d :11-11
+s1d2 :2-2
+s1d3 :5-5
+s1e :0-0
+s1h :0-0
+s1n :3-3
+s1p :0-0
+s1s :6-6
+s1x :8-8
+
+
+# document level annotation:
+(s1s0 / sentence
+  :temporal ((document-creation-time :before s1e)
+                    (s1e :contained s1d)
+                    (s1d :before s1x)
+                    (s1x :depends-on s1a)
+                    (document-creation-time :before s3j))
+  :modal ((root :modal author)
+                    (author :full-affirmative s1s)
+                    (author :full-affirmative s1h)
+                    (author :full-affirmative s1e)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4
+Words:               	Ch’óol’į́’í                             hoolyéegi                   ’áhóót’įįd               daaní
+Morphemes:           	Ch’óol’į́’í                     h- oo- l- yée =gi           ’á- h- óó- t- ’įįd             daa- ní
+
+# sentence level graph:
+(s2d / daaní
+  :actor (s2p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :theme (s2x / ’áhóót’įįd
+           :place (s2m / mountain
+                    :name (s2n / name
+                            :op1 "Ch’óol’į́’í")
+                    :wiki "El_Gobernador_Knob")
+           :aspect performance
+           :quote s2d)
+  :aspect habitual)
+
+
+# alignment:
+s2d :0-0
+s2m :0-0
+s2n :0-0
+s2p :0-0
+s2x :2-3
+
+
+# document level annotation:
+(s2s0 / sentence
+  :temporal ((document-creation-time :overlap s2d)
+                    (s2d :before s2x))
+  :modal ((root :modal author)
+                    (author :full-affirmative s2x)
+                    (author :full-affirmative s2d))
+  :coref ((s1h :same-event s2d)
+                    (s1x :same-event s2x)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10	11	12	13	14	15
+Words:               	’Áłtsé Hastiin  dóó  ’Áłtsé ’Asdzą́ą́                              wolyéii  ’índa  Yoołgaii ’Asdzą́ą́  dóó  ’Asdzą́ą́ Nádleehé                                             ’ahíjiikaigo                                 nidzíiztą́               jiní
+Morphemes:           	’Áłtsé Hastiin  dóó  ’Áłtsé ’Asdzą́ą́                        wo- l- yé =ii  ’índa  Yoołgaii ’Asdzą́ą́  dóó  ’Asdzą́ą́ Nádleehé                                    ’ah- í j- ii- kai =go                         ni- dz- í- iz- tą́             ji- ní
+
+# sentence level graph:
+(s3j / jiní
+  :aspect habitual
+  :theme (s3n / nidzíiztą́
+           :actor (s3a / and
+                    :op1 (s3p / person
+                           :name (s3n2 / name
+                                   :op1 "Áłtsé"
+                                   :op2 "Hastiin"))
+                    :op2 (s3p2 / person
+                           :name (s3n3 / name
+                                   :op1 "’Áłtsé"
+                                   :op2 "’Asdzą́ą́"))
+                    :op3 (s3p3 / person
+                           :name (s3n4 / name
+                                   :op1 "Yoołgaii"
+                                   :op2 "’Asdzą́ą́"))
+                    :op4 (s3p4 / person
+                           :name (s3n5 / name
+                                   :op1 "Asdzą́ą́"
+                                   :op2 "Nádleehé")))
+           :temporal (s3x / ’ahíjiikaigo
+                       :aspect performance
+                       :actor s3a
+                       :modal-strength full-affirmative)
+           :aspect performance
+           :quote s3j
+           :modal-strength full-affirmative)
+  :modal-strength full-affirmative)
+
+
+# alignment:
+s3j :0-0
+s3n :10-10
+s3p :1-1
+s3a :0-0
+s3n2 :0-0
+s3p2 :3-3
+s3n3 :0-0
+s3p3 :6-6
+s3n4 :0-0
+s3p4 :8-8
+s3n5 :0-0
+s3x :9-9
+
+
+# document level annotation:
+(s3s0 / sentence
+  :temporal ((s3j :before s2n)
+                    (s2n :before s2x)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10	11	12	13	14	15	16	17	18	19
+Words:               	Ńléídę́ę́’                                     hayííłką́ągo  ’Áłtsé Hastiin                     ’azhdoolish                        biniiyé                          ch’ízhníyáago      Ch’óol’į́’í                                si’ą́ąjį’                         ’ajííghal  ńt’éé’                        bílátahgi   t’áá  ’áłtsíísígo   k’os                            bił  dah                        shoogish               jiní
+Morphemes:           	ńléí =dę́ę́’                           ha- y- íí- ł- ką́ą =go  ’Áłtsé Hastiin             ’a- zh- d- oo- lish                      bi- niiyé                  ch’í- zh- ní- yáa =go      Ch’óol’į́’í                            si- ’ą́ą =jį’                   ’a- j- íí- ghal  ńt’éé’                    bí- látah =gi   t’áá  ’áłtsíísígo   k’os                          b- ił  dah                    sh- oo- gish             ji- ní
+
+# sentence level graph:
+(s4j / jiní
+  :aspect habitual
+  :theme (s4x / ’ajííghal
+           :aspect endeavor
+           :quote s4j
+           :experiencer (s4p / person
+                          :name (s4n / name
+                                  :op1 "’Áłtsé"
+                                  :op2 "Hastiin"))
+           :stimulus (s4m / mountain
+                       :name (s4n2 / name
+                               :op1 "Ch’óol’į́’í")
+                       :part-of (s4b / bílátahgi
+                                  :place-of (s4s2 / shoogish
+                                              :aspect state
+                                              :manner (s4d2 / dah)
+                                              :undergoer (s4k2 / k’os
+                                                           :ARG1-of (s4h2 / have-mod-91
+                                                                      :ARG2 (s4x3 / ’áłtsíísígo
+                                                                              :mod (s4t2 / t’áá))
+                                                                      :aspect state)))))
+           :temporal (s4c / ch’ízhníyáago
+                       :aspect performance
+                       :actor s4p
+                       :purpose (s4x2 / ’azhdoolish
+                                  :aspect activity
+                                  :actor s4n)
+                       :temporal (s4h / hayííłką́ągo
+                                   :aspect performance
+                                   :place (s4x4 / ńléídę́ę́’)))))
+
+
+# alignment:
+s4b :11-11
+s4c :6-6
+s4d2 :0-0
+s4h :2-2
+s4h2 :0-0
+s4j :0-0
+s4k2 :0-0
+s4m :7-7
+s4n :0-0
+s4n2 :0-0
+s4p :0-0
+s4s2 :17-17
+s4t2 :0-0
+s4x :9-9
+s4x2 :4-4
+s4x3 :0-0
+s4x4 :0-0
+
+
+# document level annotation:
+(s4s0 / sentence
+  :temporal ((s4j :before s4x)
+                    (s4x :contained s4s2)
+                    (s4x2 :before s4h)
+                    (s4c :after s4x2))
+  :modal ((root :modal author)
+                    (s4p :full-affirmative s4x)
+                    (author :full-affirmative s4s2)
+                    (author :full-affirmative s4p)
+                    (author :full-affirmative s4x2)
+                    (author :full-affirmative s4p)
+                    (author :full-affirmative s4h)
+                    (author :full-affirmative s4p)
+                    (author :full-affirmative s4c)
+                    (author :full-affirmative s4p)
+                    (author :full-affirmative s4j)
+                    (author :full-affirmative s4p)))
+
+
+
+################################################################################
+# meta-info
+Index:               	1	2	3	4	5	6	7	8	9	10	11
+Words:               	Yah                               ’anídzoodzáago        Ńléí     la’    ha’át’éego      Ch’óol’į́’í                        bílátahgi   k’os                            bił  dah                        shoogish
+Morphemes:           	yah                   ’a- ní- dz- oo- d- záa =go        Ńléí     la’  ha’át’íí =go      Ch’óol’į́’í                    bí- látah =gi   k’os                          b- ił  dah                    sh- oo- gish
+
+# sentence level graph:
+(s5j / jiní
+  :aspect habitual
+  :modal-strength full-affirmative
+  :theme (s5j2 / jiní
+           :aspect activity
+           :modal-strength full-affirmative
+           :temporal (s5x / ’anídzoodzáago
+                       :aspect performance
+                       :modal-strength full-affirmative
+                       :actor (s5p / person
+                                :refer-person 3rd
+                                :refer-number singular))
+           :actor s5p
+           :theme (s5s / shoogish
+                    :aspect state
+                    :modal-strength full-affirmative
+                    :quote s5j2
+                    :reason (s5h / ha’át’éego-)
+                    :place (s5b / bílátahgi
+                             :part (s5m / mountain
+                                     :name (s5n / name
+                                             :op1 "Ch’óol’į́’í")))
+                    :undergoer (s5k / k’os)
+                    :manner (s5d / dah)
+                    :mode interrogative)))
+
+
+# alignment:
+s5b :7-7
+s5d :10-10
+s5h :5-5
+s5j :0-0
+s5j2 :0-0
+s5k :8-8
+s5m :6-6
+s5n :0-0
+s5p :0-0
+s5s :11-11
+s5x :2-2
+
+
+# document level annotation:
+(s5s0 / sentence
+  :temporal ((s5j :before s5x)
+                    (s5s :contained s5x))
+  :coref ((s5s :same-event s4s2)))
+
+
+

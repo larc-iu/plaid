@@ -1,0 +1,102 @@
+################################################################################
+# meta-info :: sent_id = pt-sample-s1
+# :: snt1
+Index: 1   2          3         4 5           6
+Words: O   governador abandonou a candidatura ontem .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s2
+# :: snt2
+Index: 1  2        3        4    5 6      7    8
+Words: As crianças correram para a escola pela manhã .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s3
+# :: snt3
+Index: 1     2         3   4     5     6  7
+Words: Maria escreveu uma carta longa ao amigo .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s4
+# :: snt4
+Index: 1  2        3    4    5     6 7        8
+Words: Os pássaros voam alto sobre a floresta tropical .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s5
+# :: snt5
+Index: 1   2   3 4     5       6       7 8      9  10
+Words: Ela leu o livro inteiro durante a viagem de trem .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s6
+# :: snt6
+Index: 1 2   3       4 5     6     7  8
+Words: A mãe abraçou o filho antes de viajar .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s7
+# :: snt7
+Index: 1    2          3 4          5  6   7        8
+Words: Eles escolheram o presidente em uma eleição justa .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:
+
+
+################################################################################
+# meta-info :: sent_id = pt-sample-s8
+# :: snt8
+Index: 1 2       3      4     5  6
+Words: A reunião acabou tarde da noite .
+
+# sentence level graph:
+
+# alignment:
+
+# document level annotation:

@@ -1,0 +1,3378 @@
+################################################################################
+# meta-info 
+# :: snt1
+Index:              1                     2            
+Words:              anyentehlehlta        ampay'avehla'
+Morphemes:          an-                   yentehl       -e      =hlta   a-      mp    -ay'     -av     -ehla' 
+Morpheme Gloss(en): Gloss(en)            
+Morpheme Gloss(es): Gloss(es)             2/3F.I        ser     difícil V1.NFUT =PHOD 2/3F.III empezar PST/HAB INTNS NOM.LOC
+Morpheme Cat:       Cat                   v:Any         v       v:Any   prt     v:Any v        v:Any   sus:Any v:Any
+Word Gloss:         Gloss                 era           difícil al      inicio 
+English Sent Gloss:                      
+Spanish Sent Gloss: Era difícil al inicio
+
+# sentence level graph:
+(s1h / have-mod-91
+  :ARG1 (s1t / thing)
+  :ARG2 (s1a / anyentehlehlta)
+  :temporal (s1a2 / ampay'avo-00)
+  :aspect state)
+
+
+# alignment:
+s1h: 0-0
+s1t: 0-0
+s1a: 1-1
+s1a2: 2-2
+
+
+# document level annotation:
+(s1s0 / sentence
+  :temporal ((past-reference :depends-on s1a2)
+                    (s1a2 :overlap s1h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s1h)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt2
+Index:              1                                                         2             3        4             
+Words:              kenma'mekama'ha                                           apkehlpasmoma valayona apkenma'mekama
+Morphemes:          k-                                                        en-           ma'm     -ek            -am       -a      ='ha  apk- ehl-  pasm   -om   -a     valayo  =na apk-      en-   ma'm   -ek   -am      -a     
+Morpheme Gloss(en): Gloss(en)                                                
+Morpheme Gloss(es): Gloss(es)                                                 2/3M.I        DISTR    trabajar       PST/HAB   AMBL    INF   =así nomás 2/3M.I DISTR ayudar PST/HAB INF paraguayo =DEF  2/3M.I DISTR trabajar PST/HAB AMBL  INF
+Morpheme Cat:       Cat                                                       v:Any         v:Any    v              v:Any     v:Any   v:Any prt  v:Any v:Any  v     v:Any  v:Any   sus prt       v:Any v:Any  v     v:Any    v:Any   v:Any
+Word Gloss:         Gloss                                                     trabajaban    nomás    ayudando       paraguayo trabajo
+English Sent Gloss:                                                          
+Spanish Sent Gloss: Trabajaban nomás, ayudando a los paraguayos en su trabajo
+
+# sentence level graph:
+(s2e / enma'mekama-00
+  :actor (s2p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :manner (s2e2 / empasmoma-00
+            :actor s2p
+            :undergoer (s2p2 / person
+                         :mod (s2n / nationality
+                                :name (s2n2 / name
+                                        :op1 "valayona")
+                                :wiki "Paraguay")
+                         :refer-number plural)
+            :temporal (s2e3 / enma'mekama-00
+                        :actor s2p2
+                        :aspect activity)
+            :aspect activity)
+  :mod (s2x / 'ha)
+  :place (s2p3 / place)
+  :aspect habitual)
+
+
+# alignment:
+s2e: 1-1
+s2e2: 2-2
+s2e3: 4-4
+s2n: 3-3
+s2n2: -1--1
+s2p: 0-0
+s2p2: 0-0
+s2p3: 0-0
+
+
+# document level annotation:
+(s2s0 / sentence
+  :temporal ((s1h :overlap s2e)
+                    (s2e :overlap s2e2)
+                    (s2e2 :overlap s2e3))
+  :modal ((root :modal author)
+                    (author :full-affirmative s2e3)
+                    (author :full-affirmative s2e2)
+                    (author :full-affirmative s2e))
+  :coref ((s1t :subset-of s2e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt3
+Index:              1            
+Words:              fabrica      
+Morphemes:          fabrica      
+Morpheme Gloss(en): Gloss(en)    
+Morpheme Gloss(es): Gloss(es)     fábrica.SP
+Morpheme Cat:       Cat           cs        
+Word Gloss:         Gloss         fábrica.SP
+English Sent Gloss:              
+Spanish Sent Gloss: En la fábrica
+
+# sentence level graph:
+(s3f / fabrica)
+
+
+# alignment:
+s3f: 1-1
+
+
+# document level annotation:
+(s3s0 / sentence
+  :coref ((s2p3 :same-entity s3f)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt4
+Index:              1                   2             
+Words:              akyentahlnema       apkenma'mekama
+Morphemes:          ak-                 yentahln       -em     -a      apk-    en-   ma'm   -ek   -am      -a     
+Morpheme Gloss(en): Gloss(en)          
+Morpheme Gloss(es): Gloss(es)           2/3F.III       ser     difícil PST/HAB INF   2/3M.I DISTR trabajar PST/HAB AMBL  INF
+Morpheme Cat:       Cat                 v:Any          v       v:Any   v:Any   v:Any v:Any  v     v:Any    v:Any   v:Any
+Word Gloss:         Gloss               era            difícil trabajo
+English Sent Gloss:                    
+Spanish Sent Gloss: Era duro su trabajo
+
+# sentence level graph:
+(s4h / have-mod-91
+  :ARG1 (s4e / enma'mekama-00
+          :actor (s4p / person
+                   :refer-person 3rd
+                   :refer-number plural)
+          :aspect process)
+  :ARG2 (s4a / akyentahlnema)
+  :aspect state)
+
+
+# alignment:
+s4h: 0-0
+s4e: 2-2
+s4p: 0-0
+s4a: 1-1
+
+
+# document level annotation:
+(s4s0 / sentence
+  :temporal ((s4e :overlap s4h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s4e)
+                    (author :full-affirmative s4h))
+  :coref ((s2e :same-event s4e)
+                    (s2p :same-entity s4p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt5
+Index:              1         2         
+Words:              metke     akyanmoama
+Morphemes:          metke     ak-        yanmo    -am     -a     
+Morpheme Gloss(en): Gloss(en)
+Morpheme Gloss(es): Gloss(es) sin        2/3F.III cambiar PST/HAB INF  
+Morpheme Cat:       Cat       prt        v:Any    v       v:Any   v:Any
+Word Gloss:         Gloss     sin        pago    
+English Sent Gloss:          
+Spanish Sent Gloss: Sin pago 
+
+# sentence level graph:
+(s5h / have-manner-91
+  :ARG1 (s5e / event)
+  :ARG2 (s5e2 / enyanmoama-00
+          :recipient (s5p / person)
+          :aspect process)
+  :aspect state)
+
+
+# alignment:
+s5h: 0-0
+s5e: 0-0
+s5e2: 2-2
+s5p: 0-0
+
+
+# document level annotation:
+(s5s0 / sentence
+  :temporal ((s5e :after s5e2)
+                    (s5e :overlap s5e2))
+  :modal ((root :modal author)
+                    (author :full-negative s5e2)
+                    (author :full-affirmative s5h))
+  :coref ((s4e :same-event s5e)
+                    (s4p :same-entity s5p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt6
+Index:              1             2         
+Words:              metko         akyanmoama
+Morphemes:          metko         ak-        yanmo    -am     -a     
+Morpheme Gloss(en): Gloss(en)    
+Morpheme Gloss(es): Gloss(es)     NEG.EXT    2/3F.III cambiar PST/HAB INF  
+Morpheme Cat:       Cat           v          v:Any    v       v:Any   v:Any
+Word Gloss:         Gloss         no         había    pago   
+English Sent Gloss:              
+Spanish Sent Gloss: No había pago
+
+# sentence level graph:
+(s6e / exist-91
+  :ARG1 (s6t/ thing
+          :theme-of (s6e2 / enyanmoama-00
+                  :recipient (s6p / person)))
+  :aspect state)
+
+
+# alignment:
+s6e: 0-0
+s6e2: 2-2
+s6p: 0-0
+
+
+# document level annotation:
+(s6s0 / sentence
+  :temporal ((s5e :overlap s6e))
+  :modal ((root :modal author)
+                    (author :full-negative s6e))
+  :coref ((s5p :same-entity s6p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt7
+Index:              1                                2         3     4               
+Words:              vanhla'ha                        mahla     nema  anma'mesekama'ha
+Morphemes:          vanhla                           ='ha      mahla n                -em    -a       an-     ma'm  -es         -ek      -am   -a      ='ha 
+Morpheme Gloss(en): Gloss(en)                       
+Morpheme Gloss(es): Gloss(es)                        solamente =así  nomás            como   sentarse PST/HAB INF   2/3F.PL.III trabajar CAUS  PST/HAB AMBL  INF =así nomás
+Morpheme Cat:       Cat                              adv       prt   prt              v      v:Any    v:Any   v:Any v           v>v      v:Any v:Any   v:Any prt
+Word Gloss:         Gloss                            solamente como  los              hicían trabajar None   
+English Sent Gloss:                                 
+Spanish Sent Gloss: Solamente se los hacían trabajar
+
+# sentence level graph:
+(s7e / enma'mesekama-00
+  :causer (s7p / person
+            :refer-person 3rd
+            :refer-number plural)
+  :actor (s7p2 / person
+           :refer-person 3rd
+           :refer-number plural)
+  :mod (s7v / vanhla'ha)
+  :aspect habitual
+  :mod (s7m / mahla))
+
+
+# alignment:
+s7e: 4-4
+s7p: 0-0
+s7p2: 0-0
+s7v: 1-1
+
+
+# document level annotation:
+(s7s0 / sentence
+  :temporal ((s5e :overlap s7e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s7e))
+  :coref ((s6p :same-entity s7p2)
+                    (s2p2 :same-entity s7p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt8
+Index:              1                      2     3            
+Words:              ta                     ko'o  asvetay'ahlta
+Morphemes:          =ta                    ko'o  as-           vet   -ay' -a      =hlta
+Morpheme Gloss(en): Gloss(en)             
+Morpheme Gloss(es): Gloss(es)              =PHOD 1SG:PRO       1SG.I ver  PST/HAB INF   =PHOD
+Morpheme Cat:       Cat                    prt   pro           v:Any v    v:Any   v:Any prt  
+Word Gloss:         Gloss                  antes yo            lo    que  vi     
+English Sent Gloss:                       
+Spanish Sent Gloss: Así era mi observación
+
+# sentence level graph:
+(s8i / identity-91
+  :ARG0 (s8e / event)
+  :ARG1 (s8t / thing
+                 :stimulus-of (s8e2 / elvetay'a
+                         :experiencer (s8p / person
+                                 :refer-person 1st
+                                 :refer-number singular)
+                         :place (s8p2 / place)
+                         :aspect state))
+  :aspect state)
+
+
+# alignment:
+s8e: 0-0
+s8e2: 0-0
+s8p: 0-0
+
+
+# document level annotation:
+(s8s0 / sentence
+  :temporal ((past-reference :overlap s8e2)
+                    (s8e2 :overlap s8i)
+                    (s8e2 :overlap s8e))
+  :modal ((root :modal author)
+                    (s8p :full-affirmative s8e2)
+                    (s8e2 :unspecified s8t)
+                    (author :full-affirmative s8p)
+                    (author :full-affirmative s8i))
+  :coref ((s7e :same-event s8e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt9
+Index:              1                                 2               3         
+Words:              kam'a                             elenyemay'akha' ennengko'o
+Morphemes:          kam'a                             el-             enyem      -ay'  -akha' ennengko'o
+Morpheme Gloss(en): Gloss(en)                        
+Morpheme Gloss(es): Gloss(es)                         DEM.DIST        1PL.I      venir de     PST/HAB    NOM.LOC 1PL:PRO
+Morpheme Cat:       Cat                               dem             v:Any      v     v:Any  v:Any      pro    
+Word Gloss:         Gloss                             DEM.DIST        el         lugar de     donde      venimos nostros
+English Sent Gloss:                                  
+Spanish Sent Gloss: Allá en el lugar de donde venimos
+
+# sentence level graph:
+(s9k / kam'a
+  :source-of (s9e / elenyemay'a-00
+              :actor (s9p / person
+                       :refer-person 1st
+                       :refer-number plural)
+              :aspect performance))
+
+
+# alignment:
+s9k: 1-1
+s9e: 2-2
+s9p: 0-0
+
+
+# document level annotation:
+(s9s0 / sentence
+  :temporal ((s8e2 :after s9e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s9e))
+  :coref ((s9p :subset-of s8p)
+                    (s9p :subset-of s7p2)
+                    (s8p2 :same-entity s9k)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt10
+Index:              1                 2     
+Words:              nakhoye'          na    
+Morphemes:          nakhoye'          na    
+Morpheme Gloss(en): Gloss(en)        
+Morpheme Gloss(es): Gloss(es)         verdad emm   
+Morpheme Cat:       Cat               adv    interj
+Word Gloss:         Gloss             verdad emm   
+English Sent Gloss:                  
+Spanish Sent Gloss: Es verdad, emm...
+
+# sentence level graph:
+(s10h / have-mod-91
+  :ARG1 (s10e / event)
+  :ARG2 (s10n / nakhoye')
+  :aspect state)
+
+
+# alignment:
+s10h: 0-0
+s10e: 0-0
+s10n: 1-1
+
+
+# document level annotation:
+(s10s0 / sentence
+  :temporal ((s10e :overlap s10h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s10h))
+  :coref ((s8e :same-event s10e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt11
+Index:              1                                                           2        3       4       5       6       7        8          9   
+Words:              ampay'avehlahlta                                            ko'o     mahla   ocho    o       diez    añonehla asyahekama m'a 
+Morphemes:          a-                                                          mp       -ay'    -av     -ehla   =hlta   ko'o     mahla      ocho o       diez año     =nehla  as-  yah   -ek   -am     -a    m'a  
+Morpheme Gloss(en): Gloss(en)                                                  
+Morpheme Gloss(es): Gloss(es)                                                   2/3F.III empezar PST/HAB INTNS   NOM.LOC =PHOD    1SG:PRO    como ocho.SP o.SP diez.SP años.SP =DUB 1SG.I vivir PST/HAB AMBL  INF   DEM.DIST
+Morpheme Cat:       Cat                                                         v:Any    v       v:Any   sus:Any v:Any   prt      pro        prt  cs      cs   cs      cs      prt  v:Any v     v:Any   v:Any v:Any adv     
+Word Gloss:         Gloss                                                       al       inicio  yo      como    ocho.SP o        diez.SP    años vivía   allá
+English Sent Gloss:                                                            
+Spanish Sent Gloss: Al inicio cuando yo tenía como ocho o diez años, vivía allá
+
+# sentence level graph:
+(s11e / enyahekama-00
+  :actor (s11p / person
+           :refer-person 1st
+           :refer-number singular)
+  :place (s11m / m'a)
+  :temporal (s11a / ampay'avo-00)
+  :temporal (s11h / have-age-91
+              :ARG1 s11p
+              :ARG2 (s11o / or
+                      :op1 (s11t / temporal-quantity
+                             :unit (s11a2 / añonehla)
+                             :quant 8)
+                      :op2 (s11t2 / temporal-quantity
+                             :unit (s11a3 / añonehla)
+                             :quant 10))
+              :aspect state)
+  :aspect activity)
+
+
+# alignment:
+s11e: 8-8
+s11m: 9-9
+s11p: 0-0
+s11a: 1-1
+s11h: 0-0
+s11o: 0-0
+s11t: 0-0
+s11a2: 7-7
+s11t2: 0-0
+s11a3: 7-7
+
+
+# document level annotation:
+(s11s0 / sentence
+  :temporal ((s11a :overlap s11e)
+                    (past-reference :depends-on s11a)
+                    (s11e :overlap s11h))
+  :modal ((root :modal author)
+                    (author :neutral-affirmative s11h)
+                    (author :full-affirmative s11e))
+  :coref ((s1a2 :same-event s11a)
+                    (s8p :same-entity s11p)
+                    (s9k :same-entity s11m)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt12
+Index:              1                                            2     3                4      
+Words:              askempay'avo                                 na    askehlpahlkekama valayo 
+Morphemes:          ask-                                         emp   -ay'             -avo    na        ask-      ehl-  pahlk -ek       -am     -a    valayo
+Morpheme Gloss(en): Gloss(en)                                   
+Morpheme Gloss(es): Gloss(es)                                    1SG.I empezar          PST/HAB INTNS.SBJ emm       1SG.I DISTR mezclarse PST/HAB AMBL  INF    paraguayo
+Morpheme Cat:       Cat                                          v:Any v                v:Any   v:Any     interj    v:Any v:Any v         v:Any   v:Any v:Any  sus      
+Word Gloss:         Gloss                                        Había empezado         eso     mezclarme paraguayo
+English Sent Gloss:                                             
+Spanish Sent Gloss: Había comenzado a andar entre los paraguayos
+
+# sentence level graph:
+(s12e / empahlkay'a-00
+  :actor (s12p / person
+           :refer-person 1st
+           :refer-number singular)
+  :goal (s12p2 / person
+          :mod (s12n / nationality
+                 :name (s12n2 / name
+                         :op1 "valayo")
+                 :wiki "Paraguay")
+          :refer-number plural)
+  :aspect activity)
+
+
+# alignment:
+s12e: 3-3
+s12p: 0-0
+s12p2: 0-0
+s12n: -1--1
+s12n2: -1--1
+
+
+# document level annotation:
+(s12s0 / sentence
+  :temporal ((s11e :contained s12e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s12e))
+  :coref ((s11p :same-entity s12p)
+                    (s7p :same-entity s12p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt13
+Index:              1                                               2             3           4     
+Words:              askenmama                                       a'temakhanhan apkeleyvoma valayo
+Morphemes:          ask-                                            en-           m           -am    -a      a'-       t        -em -akha   =nhan   apk- el-    eyv   -om   -a    valayo 
+Morpheme Gloss(en): Gloss(en)                                      
+Morpheme Gloss(es): Gloss(es)                                       1SG.I         DISTR       tomar  PST/HAB INF       2/3F.III ser PST/HAB NOM.LOC =y   2/3M.I DISTR vivir (pl.) PST/HAB INF paraguayo
+Morpheme Cat:       Cat                                             v:Any         v:Any       v      v:Any   v:Any     v:Any    v   v:Any   v:Any   prt  v:Any  v:Any v     v:Any v:Any   sus
+Word Gloss:         Gloss                                           tomaba        manera      sus    vidas   paraguayo
+English Sent Gloss:                                                
+Spanish Sent Gloss: Y agarraba la cultura de los paraguayos también
+
+# sentence level graph:
+(s13e / enmama-00
+  :actor (s13p / person
+           :refer-person 1st
+           :refer-number singular)
+  :theme (s13t / thing
+           :manner-of (s13e2 / eleyvoma-00
+                        :actor (s13p2 / person
+                                 :mod (s13n / nationality
+                                        :name (s13n2 / name
+                                                :op1 "valayo")
+                                        :wiki "Paraguay")
+                                 :refer-number plural)
+                        :aspect activity))
+  :aspect activity)
+
+
+# alignment:
+s13e: 1-1
+s13p: 0-0
+s13t: 0-0
+s13e2: 3-3
+s13p2: 0-0
+s13n: -1--1
+s13n2: -1--1
+
+
+# document level annotation:
+(s13s0 / sentence
+  :temporal ((s12e :after s13e)
+                    (s13e :overlap s13e2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s13e2)
+                    (author :full-affirmative s13e))
+  :coref ((s12p :same-entity s13p)
+                    (s12p2 :same-entity s13p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt14
+Index:              1                            2       3          4     
+Words:              na                           cultura pangkaona  valayo
+Morphemes:          na                           cultura p-         angkok -ao-      =na     valayo
+Morpheme Gloss(en): Gloss(en)                   
+Morpheme Gloss(es): Gloss(es)                    emm     cultura.SP 2/3M.I POS       PL      =DEF   paraguayo
+Morpheme Cat:       Cat                          interj  cs         v:Any  prt       sus:Any prt    sus      
+Word Gloss:         Gloss                        emm     cultura.SP su     paraguayo
+English Sent Gloss:                             
+Spanish Sent Gloss: La cultura de los paraguayos
+
+# sentence level graph:
+(s14c / cultura
+  :poss (s14p / person
+          :mod (s14n / nationality
+                 :name (s14n2 / name
+                         :op1 "valayo")
+                 :wiki "Paraguay")
+          :refer-number plural))
+
+
+# alignment:
+s14c: 2-2
+s14p: 0-0
+s14n: -1--1
+s14n2: -1--1
+
+
+# document level annotation:
+(s14s0 / sentence
+  :coref ((s13t :same-entity s14c)
+                    (s13p2 :same-entity s14p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt15
+Index:              1                             2      3                     
+Words:              na                            mahla  askelyepetkekangkanhan
+Morphemes:          na                            mahla  ask-                   el-   yepetk   -ek     -angk   -a    =nhan
+Morpheme Gloss(en): Gloss(en)                    
+Morpheme Gloss(es): Gloss(es)                     emm    como                   1SG.I DISTR    mezclar PST/HAB AMBL  SUBJ  =y 
+Morpheme Cat:       Cat                           interj prt                    v:Any v:Any    v       v:Any   v:Any v:Any prt
+Word Gloss:         Gloss                         emm    como                   me    mezclaba
+English Sent Gloss:                              
+Spanish Sent Gloss: Parece que me iba entre ellos
+
+# sentence level graph:
+(s15a / and
+  :op1 (s15e / event)
+  :op2 (s15e2 / enyepetkay'a-00
+         :actor (s15p / person
+                  :refer-person 1st
+                  :refer-number singular)
+         :goal (s15p2 / person
+                 :refer-person 3rd
+                 :refer-number plural)
+         :aspect activity
+         :mod (s15m / mahla)))
+
+
+# alignment:
+s15a: 0-0
+s15e: 0-0
+s15e2: 3-3
+s15p: 0-0
+s15p2: 0-0
+
+
+# document level annotation:
+(s15s0 / sentence
+  :temporal ((s15e :overlap s15e2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s15e2))
+  :coref ((s13e :same-event s15e)
+                    (s13p :same-entity s15p)
+                    (s14p :same-entity s15p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt16
+Index:              1                                                  2                    3           4       5         6         7      
+Words:              tenyo                                              mangkollekeskamohlka akvahlvaona meta'a  valayonak elvetay'o ko'o   
+Morphemes:          tenyo                                              m-                   angko-      l-      lek       -es       -kam    -o        =hlka ak-     vahlvok -ao-  =na      meta'a  valayo =nak e-      l-        vet   -ay'    -o    ko'o 
+Morpheme Gloss(en): Gloss(en)                                         
+Morpheme Gloss(es): Gloss(es)                                          entonces             NEG         2/3F.II DISTR     sacar     (p.ej.  miel)     APPL  PST/HAB SUBJ    =pero 2/3F.III corazón PL     =DEF siempre paraguayo =DEF  1SG.III DISTR ver   PST/HAB SUBJ 1SG:PRO
+Morpheme Cat:       Cat                                                prt                  v:Any       v:Any   v:Any     v         v>v     v:Any     v:Any prt     v:Any   sus   sus:Any  prt     prt    sus  prt     v:Any     v:Any v       v:Any v:Any pro    
+Word Gloss:         Gloss                                              entonces             no          gustaba su        corazón   siempre paraguayo me    veían   yo     
+English Sent Gloss:                                                   
+Spanish Sent Gloss: Pero a los paraguayos siempre no les gustaba verme
+
+# sentence level graph:
+(s16e / ellekeskama-00
+  :actor (s16e2 / elvetay'a-00
+           :experiencer (s16p / person
+                          :mod (s16n / nationality
+                                 :name (s16n2 / name
+                                         :op1 "valayo")
+                                 :wiki "Paraguay")
+                          :refer-number plural)
+           :stimulus (s16p2 / person
+                       :refer-person 1st
+                       :refer-number singular)
+           :aspect state)
+  :theme (s16a / akvahlvaona
+           :part s16p)
+  :source s16p
+  :ARG2-of (s16c / contrast-91
+             :ARG1 (s16e3 / event))
+  :aspect habitual)
+
+
+# alignment:
+s16a: 3-3
+s16c: 0-0
+s16e: 2-2
+s16e2: 6-6
+s16n: -1--1
+s16n2: -1--1
+s16p: 0-0
+s16p2: 0-0
+s16e3: 0-0
+
+
+# document level annotation:
+(s16s0 / sentence
+  :temporal ((s15e :overlap s16e)
+                    (s16e :overlap s16e2))
+  :modal ((root :modal author)
+                    (author :full-negative s16e)
+                    (author :full-affirmative s16e2))
+  :coref ((s15e2 :same-event s16e3)
+                    (s15p :same-entity s16p2)
+                    (s15p2 :same-entity s16p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt17
+Index:              1                                             2       3       4        5       
+Words:              ehltekangko                                   meta'a  nenhlet indio    indio   
+Morphemes:          e-                                            hl-     t       -ek      -angk    -o       meta'a nenhlet indio    indio   
+Morpheme Gloss(en): Gloss(en)                                    
+Morpheme Gloss(es): Gloss(es)                                     1SG.III DISTR   decir    PST/HAB  CPLX     SUBJ   siempre indígena indio.SP indio.SP
+Morpheme Cat:       Cat                                           v:Any   v:Any   v        v:Any    v:Any    v:Any  prt     sus      cs       cs      
+Word Gloss:         Gloss                                         dijeron siempre indígena indio.SP indio.SP
+English Sent Gloss:                                              
+Spanish Sent Gloss: Me llamaban siempre "indígena, indio, indio!"
+
+# sentence level graph:
+(s17e / entema-00
+  :actor (s17p / person
+           :refer-person 3rd
+           :refer-number plural)
+  :recipient (s17p2 / person
+               :refer-number singular
+               :refer-person 1st)
+  :theme (s17a / and
+           :op1 (s17n / nenhlet)
+           :op2 (s17i2 / indio))
+  :aspect habitual)
+
+
+# alignment:
+s17e: 1-1
+s17p: 0-0
+s17p2: 0-0
+s17a: 0-0
+s17n: 3-3
+s17i2: 4-4
+
+
+# document level annotation:
+(s17s0 / sentence
+  :temporal ((s15e :overlap s17e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s17e))
+  :coref ((s16p :same-entity s17p)
+                    (s16p2 :same-entity s17p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt18
+Index:              1                                         2              3          4             
+Words:              akvaya'moho                               ehlta'nongkoma ennengko'o ehlta'nongkoma
+Morphemes:          ak-                                       v              -ay        -a'm           -oho    ehl-      ta'nongk -om   -a      ennengko'o ehl-    ta'nongk -om   -a     
+Morpheme Gloss(en): Gloss(en)                                
+Morpheme Gloss(es): Gloss(es)                                 2/3F.III       llegar     PST/HAB        APPRX   INTNS.SBJ 1PL      odiar PST/HAB INF        1PL:PRO 1PL      odiar PST/HAB INF  
+Morpheme Cat:       Cat                                       v:Any          v          v:Any          v:Any   v:Any     v:Any    v     v:Any   v:Any      pro     v:Any    v     v:Any   v:Any
+Word Gloss:         Gloss                                     llegar         nos        odiaban        nostros nos       odiaban 
+English Sent Gloss:                                          
+Spanish Sent Gloss: Hasta nos odiaban a nosotros, nos odiaban
+
+# sentence level graph:
+(s18e / enta'nongkoma-00
+  :actor (s18p / person
+           :refer-number plural
+           :refer-person 3rd)
+  :recipient (s18p2 / person
+               :refer-number plural
+               :refer-person 1st)
+  :mod (s18a / akvaya'moho)
+  :aspect habitual)
+
+
+# alignment:
+s18e: 2-2
+s18p: 0-0
+s18p2: 0-0
+s18a: 1-1
+
+
+# document level annotation:
+(s18s0 / sentence
+  :temporal ((s15e :overlap s18e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s18e))
+  :coref ((s17p :same-entity s18p)
+                    (s9p :subset-of s18p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt19
+Index:              1                2     3            
+Words:              ta               ko'o  asvetay'ahlta
+Morphemes:          =ta              ko'o  as-           vet   -ay' -a      =hlta
+Morpheme Gloss(en): Gloss(en)       
+Morpheme Gloss(es): Gloss(es)        =PHOD 1SG:PRO       1SG.I ver  PST/HAB INF   =PHOD
+Morpheme Cat:       Cat              prt   pro           v:Any v    v:Any   v:Any prt  
+Word Gloss:         Gloss            antes yo            lo    que  vi     
+English Sent Gloss:                 
+Spanish Sent Gloss: Así es lo que vi
+
+# sentence level graph:
+(s19i / identity-91
+  :ARG0 (s19e / event)
+  :ARG1 (s19t / thing
+                 :stimulus-of (s19e2 / elvetay'a-00
+                         :experiencer (s19p / person
+                                 :refer-person 1st
+                                 :refer-number singular)
+                         :aspect state))
+  :aspect state)
+
+
+# alignment:
+s19e: 0-0
+s19p: 0-0
+s19e2: 0-0
+
+
+# document level annotation:
+(s19s0 / sentence
+  :temporal ((past-reference :overlap s19e2)
+                    (s19e2 :overlap s19i))
+  :modal ((root :modal author)
+                    (s19p :full-affirmative s19e2)
+                    (s19e2 :unspecified s19t)
+                    (author :full-affirmative s19p)
+                    (author :full-affirmative s19i))
+  :coref ((s18p2 :same-entity s19p)
+                    (s19e :subset-of s16e)
+                    (s19e :subset-of s17e)
+                    (s19e :subset-of s18e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt20
+Index:              1                           2          3         4          
+Words:              mohltay'avo                 ennengko'o na        olyepetkama
+Morphemes:          m-                          ohl-       t         -ay'        -avo    ennengko'o na      ol-    yepetk -am     -a   
+Morpheme Gloss(en): Gloss(en)                  
+Morpheme Gloss(es): Gloss(es)                   NEG        1PL.II    desear      PST/HAB INTNS      1PL:PRO emm    1PL.II mezclar AMBL  FUT  
+Morpheme Cat:       Cat                         v:Any      v:Any     v           v:Any   sus:Any    pro     interj v:Any  v       v:Any v:Any
+Word Gloss:         Gloss                       no         queríamos nostros     emm     mezclarnos
+English Sent Gloss:                            
+Spanish Sent Gloss: No queríamos ir entre ellos
+
+# sentence level graph:
+(s20e / entay'avo-00
+  :experiencer (s20p / person
+                 :refer-number plural
+                 :refer-person 1st)
+  :stimulus (s20e2 / enyepetkay'a-00
+              :actor s20p
+              :goal (s20p2 / person
+                      :refer-number plural
+                      :refer-person 3rd)
+              :aspect performance)
+  :aspect state)
+
+
+# alignment:
+s20e: 0-0
+s20p: 0-0
+s20e2: 4-4
+s20p2: 0-0
+
+
+# document level annotation:
+(s20s0 / sentence
+  :temporal ((s15e :overlap s20e)
+                    (s20e :after s20e2))
+  :modal ((root :modal author)
+                    (s20p :full-affirmative s20e)
+                    (s20e :unspecified s20e2)
+                    (author :full-negative s20p))
+  :coref ((s18p2 :same-entity s20p)
+                    (s18p :same-entity s20p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt21
+Index:              1                                                          2                     3           4              5      
+Words:              tenyo                                                      ahlengkeskamkehlta'ha akvayakmoho astahlnemakha' escuela
+Morphemes:          tenyo                                                      a-                    hleng       -kes           -kam    -ke     =hlta   ='ha  ak-     v     -ay      -akm   -oho    as-   tahln     -em   -akha' escuela
+Morpheme Gloss(en): Gloss(en)                                                 
+Morpheme Gloss(es): Gloss(es)                                                  entonces              1SG.I       viajar         CAUS    PST/HAB V1.NFUT =PHOD =así    nomás 2/3F.III llegar PST/HAB APPRX INTNS.SBJ 1SG.I entrar PST/HAB NOM.LOC escuela.SP
+Morpheme Cat:       Cat                                                        prt                   v:Any       v              v>v     v:Any   v:Any   prt   prt     v:Any v        v:Any  v:Any   v:Any v:Any     v     v:Any  v:Any   cs     
+Word Gloss:         Gloss                                                      entonces              lo          hice           viajar  hasta   cuando  entré escuela
+English Sent Gloss:                                                           
+Spanish Sent Gloss: Entonces yo continuaba nomás hasta que entré en la escuela
+
+# sentence level graph:
+(s21e / enhlengkeskama-00
+  :actor (s21p / person
+           :refer-number singular
+           :refer-person 1st)
+  :temporal (s21e2 / elvay'a-00
+              :op1 (s21e3 / entahlnema-00
+                     :actor s21p
+                     :goal (s21e4 / escuela)
+                     :aspect performance))
+  :aspect endeavor)
+
+
+# alignment:
+s21e: 2-2
+s21e2: 3-3
+s21p: 0-0
+s21e3: 4-4
+s21e4: 5-5
+
+
+# document level annotation:
+(s21s0 / sentence
+  :temporal ((s15e :overlap s21e)
+                    (s21e :after s21e3))
+  :modal ((root :modal author)
+                    (author :full-affirmative s21e3)
+                    (author :full-affirmative s21e))
+  :coref ((s19p :same-entity s21p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt22
+Index:              1                                               2       3       4         
+Words:              asva'mohla'                                     segundo grado   escuela   
+Morphemes:          as-                                             v       -a'm    -ohla'     segundo  grado      escuela 
+Morpheme Gloss(en): Gloss(en)                                      
+Morpheme Gloss(es): Gloss(es)                                       1SG.I   llegar  APPRX      NOM.LOC  segundo.SP grado.SP escuela.SP
+Morpheme Cat:       Cat                                             v:Any   v       v:Any      v:Any    cs         cs       cs        
+Word Gloss:         Gloss                                           cuando  llegaba segundo.SP grado.SP escuela.SP
+English Sent Gloss:                                                
+Spanish Sent Gloss: Hasta que llegué al segundo grado de la escuela
+
+# sentence level graph:
+(s22e / event
+  :temporal (s22e2 / elvay'a-00
+              :actor (s22p / person
+                       :refer-number singular
+                       :refer-person 1st)
+              :goal (s22g / grado
+                      :ord 2
+                      :part (s22e3 / escuela))
+              :aspect performance))
+
+
+# alignment:
+s22e: 0-0
+s22e2: 1-1
+s22p: 0-0
+s22g: 3-3
+s22e3: 4-4
+
+
+# document level annotation:
+(s22s0 / sentence
+  :temporal ((s21e3 :after s22e2)
+                    (s22e2 :overlap s22e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s22e2))
+  :coref ((s21p :same-entity s22p)
+                    (s21e4 :same-entity s22e3)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt23
+Index:              1                      2          3           4       
+Words:              asyasangke'            aktemakha' elyesetmala vakkahak
+Morphemes:          as-                    yas        -angk       -e'      ak-     t        -em -akha'  el-     yeset -m   -a      =la   vakkahak
+Morpheme Gloss(en): Gloss(en)             
+Morpheme Gloss(es): Gloss(es)              1SG.I      saber       CPLX     V1.NFUT 2/3F.III ser PST/HAB NOM.LOC 1PL.I leer PST/HAB INF   =HYP     papel
+Morpheme Cat:       Cat                    v:Any      v           v:Any    v:Any   v:Any    v   v:Any   v:Any   v:Any v    v:Any   v:Any prt      sus  
+Word Gloss:         Gloss                  aprendía   sobre       leer     papel  
+English Sent Gloss:                       
+Spanish Sent Gloss: Aprendía a leer libros
+
+# sentence level graph:
+(s23e / enyasekamok-00
+  :experiencer (s23p / person
+                 :refer-number singular
+                 :refer-person 1st)
+  :stimulus (s23e2 / elyesetma-00
+              :actor s23p
+              :undergoer (s23v / vakkahak
+                           :refer-number plural)
+              :aspect activity
+              :mod s23e)
+  :aspect state
+  :temporal (s23e3 / event))
+
+
+# alignment:
+s23e: 0-0
+s23p: 0-0
+s23e2: 3-3
+s23v: 4-4
+s23e3: 0-0
+
+
+# document level annotation:
+(s23s0 / sentence
+  :temporal ((s23e :overlap s23e2))
+  :modal ((root :modal author)
+                    (s23p :full-affirmative s23e)
+                    (s23e :unspecified s23e2)
+                    (author :full-affirmative s23p))
+  :coref ((s22e :same-event s23e)
+                    (s22p :same-entity s23p)
+                    (s22e2 :same-event s23e3)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt24
+Index:              1                                      2           3        4        5       
+Words:              tenyo                                  aktemakhana cultura  pangkaok valayona
+Morphemes:          tenyo                                  ak-         t        -em      -akha    na        cultura p-         angkok -ao- valayo  =na      
+Morpheme Gloss(en): Gloss(en)                             
+Morpheme Gloss(es): Gloss(es)                              entonces    2/3F.III ser      PST/HAB  NOM.LOC   DEF     cultura.SP 2/3M.I POS  PL      paraguayo =DEF
+Morpheme Cat:       Cat                                    prt         v:Any    v        v:Any    v:Any     prt     cs         v:Any  prt  sus:Any sus       prt 
+Word Gloss:         Gloss                                  entonces    manera   cultura  suya     paraguayo
+English Sent Gloss:                                       
+Spanish Sent Gloss: Y también la cultura de los paraguayos
+
+# sentence level graph:
+(s24a / and
+  :op1 (s24e / event)
+  :op2 (s24t / thing
+         :part-of (s24c / cultura
+                    :poss (s24p / person
+                            :mod (s24n / nationality
+                                   :name (s24n2 / name
+                                           :op1 "valayo")
+                                   :wiki "Paraguay")
+                            :refer-number plural))
+         :refer-number plural))
+
+
+# alignment:
+s24a: 0-0
+s24e: 0-0
+s24t: 0-0
+s24c: 3-3
+s24p: 0-0
+s24n: -1--1
+s24n2: -1--1
+
+
+# document level annotation:
+(s24s0 / sentence
+  :coref ((s23e2 :same-event s24e)
+                    (s14c :same-entity s24c)
+                    (s20p2 :same-entity s24p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt25
+Index:              1                                                        2         3       4         5         6       7         8           
+Words:              na                                                       yetnemana meta'a  actividad escolar   desfile aktemana  ha'e        
+Morphemes:          na                                                       yetn      -em     -a        =na       meta'a  actividad escolar      desfile    ak-        t        -em -a      =na   ha'e
+Morpheme Gloss(en): Gloss(en)                                               
+Morpheme Gloss(es): Gloss(es)                                                emm       existir PST/HAB   INF       =DEF    siempre   actividad.SP escolar.SP desfile.SP 2/3F.III ser PST/HAB INF   =DEF DEM.DIST
+Morpheme Cat:       Cat                                                      interj    v       v:Any     v:Any     prt     prt       cs           cs         cs         v:Any    v   v:Any   v:Any prt  pro     
+Word Gloss:         Gloss                                                    emm       había   siempre   actividad escolar desfile   tipo         eso       
+English Sent Gloss:                                                         
+Spanish Sent Gloss: Siempre había actividades escolares, desfiles, cosas así
+
+# sentence level graph:
+(s25e / exist-91
+  :ARG1 (s25a / and
+          :op1 (s25a2 / actividad
+                 :topic (s25e2 / escolar))
+          :op2 (s25d / desfile)
+          :op3 (s25t / thing
+                 :ARG1-of (s25r / resemble-91
+                            :ARG2 (s25o / or
+                                    :op1 s25a2
+                                    :op2 s25d))))
+  :aspect habitual)
+
+
+# alignment:
+s25e: 0-0
+s25a: 0-0
+s25a2: 0-0
+s25e2: 5-5
+s25d: 0-0
+s25t: 0-0
+s25r: 0-0
+s25o: 0-0
+
+
+# document level annotation:
+(s25s0 / sentence
+  :temporal ((s23e :overlap s25e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s25e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt26
+Index:              1                                                                  2        3             4       5        6       7             8      9        10         
+Words:              tenyo                                                              escuela  eyangkaohlkek na      kopmehek mahla   yepetkekakha' m'a    cultura  pangkaohlke
+Morphemes:          tenyo                                                              escuela  ey-           angkok  -ao-     =hlkek  na            ko-    pm       -ehek       mahla      yepetk -ek     -akh    -a'   m'a   cultura  p-         angkok -ao- =hlke  
+Morpheme Gloss(en): Gloss(en)                                                         
+Morpheme Gloss(es): Gloss(es)                                                          entonces escuela.SP    1PL.POS POS      PL      =HOD          emm    2/3F.II  ser         FUT        como   mezclar PST/HAB REP   INF   DEM.DIST cultura.SP 2/3M.I POS  PL      =HOD
+Morpheme Cat:       Cat                                                                prt      cs            sus:Any prt      sus:Any prt           interj v:Any    v           v:Any      prt    v       v:Any   v:Any v:Any adv      cs         v:Any  prt  sus:Any prt 
+Word Gloss:         Gloss                                                              entonces escuela       POS     emm      hacía   como          se     mezclaba eso         cultura.SP su    
+English Sent Gloss:                                                                   
+Spanish Sent Gloss: Entonces nuestra escuela siempre participaba en eso, en su cultura
+
+# sentence level graph:
+(s26e / enyepetkay'a-00
+  :actor (s26e2 / escuela
+           :poss (s26p / person
+                   :refer-number plural
+                   :refer-person 1st))
+  :goal (s26c / cultura
+          :poss (s26p2 / person
+                 :refer-number plural
+                 :refer-person 3rd)
+          :mod (s26m / m'a))
+  :mod (s26m2 / mahla)
+  :aspect habitual)
+
+
+# alignment:
+s26a: 0-0
+s26c: 9-9
+s26e: 7-7
+s26e2: 2-2
+s26m: 8-8
+s26p: 0-0
+s26p2: 0-0
+
+
+# document level annotation:
+(s26s0 / sentence
+  :temporal ((s23e :overlap s26e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s26e))
+  :coref ((s22e3 :same-entity s26e2)
+                    (s26p :subset-of s23p)
+                    (s24c :same-entity s26c)
+                    (s24p :same-entity s26p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt27
+Index:              1                                                                     2          3             4      5          6          
+Words:              tenyo                                                                 valayohlke ehlteyannoho' meta'a ennengko'o nenhletanak
+Morphemes:          tenyo                                                                 valayo     =hlke         ehl-   teyann     -oho'       meta'a   ennengko'o nenhlet =anak  
+Morpheme Gloss(en): Gloss(en)                                                            
+Morpheme Gloss(es): Gloss(es)                                                             entonces   paraguayo     =HOD   1PL        mirar       FUT      siempre    1PL:PRO persona =DEF
+Morpheme Cat:       Cat                                                                   prt        sus           prt    v:Any      v           v:Any    prt        pro     sus     prt 
+Word Gloss:         Gloss                                                                 entonces   paraguayo     nos    miraban    siempre     nosotros indígena  
+English Sent Gloss:                                                                      
+Spanish Sent Gloss: Entonces los paraguayos siempre nos miraban a nosotros, los indígenas
+
+# sentence level graph:
+(s27e / enteyannay'avo-00
+  :experiencer (s27p / person
+                 :mod (s27n / nationality
+                        :name (s27n2 / name
+                                :op1 "valayo")
+                        :wiki "Paraguay")
+                 :refer-number plural)
+  :stimulus (s27p2 / person
+              :refer-number plural
+              :mod (s27e2 / ethnic-group
+                     :name (s27n3 / name
+                             :op1 "nenhlet")
+                     :wiki "Sanapana")
+              :refer-person 1st)
+  :aspect habitual
+  :degree intensifier)
+
+
+# alignment:
+s27e: 3-3
+s27p: 0-0
+s27n: -1--1
+s27n2: -1--1
+s27p2: 0-0
+s27e2: -1--1
+s27n3: -1--1
+
+
+# document level annotation:
+(s27s0 / sentence
+  :temporal ((s23e :overlap s27e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s27e))
+  :coref ((s26p2 :same-entity s27p)
+                    (s26p :same-entity s27p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt28
+Index:              1                      2         
+Words:              mangkollekeskama       akvahlvaok
+Morphemes:          m-                     angko-     l-      lek   -es   -kam    -a    ak-   vahlvok -ao-
+Morpheme Gloss(en): Gloss(en)             
+Morpheme Gloss(es): Gloss(es)              NEG        2/3F.II DISTR sacar (p.ej.  miel) APPL  PST/HAB INF  2/3M.POS corazón PL
+Morpheme Cat:       Cat                    v:Any      v:Any   v:Any v     v>v     v:Any v:Any sus:Any sus  sus:Any 
+Word Gloss:         Gloss                  No         les     sacó  su    corazón
+English Sent Gloss:                       
+Spanish Sent Gloss: No les gustaba a ellos
+
+# sentence level graph:
+(s28e / ellekeskama-00
+  :actor (s28e2 / event)
+  :theme (s28a / akvahlvaok
+           :part (s28p / person
+                   :refer-number plural
+                   :refer-person 3rd))
+  :source s28p
+  :aspect state)
+
+
+# alignment:
+s28e: 1-1
+s28t: 0-0
+s28a: 2-2
+s28p: 0-0
+
+
+# document level annotation:
+(s28s0 / sentence
+  :temporal ((s23e :overlap s28e))
+  :modal ((root :modal author)
+                    (author :full-negative s28e))
+  :coref ((s27e :same-event s28e2)
+                    (s16a :same-entity s28a)
+                    (s27p :same-entity s28p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt29
+Index:              1                                     2           3       4          
+Words:              mangkohl                              mehltay'avo mahla   olyepetkama
+Morphemes:          m-                                    angko-      hl-     m-          e-      hl-     t     -ay'   -avo      mahla     ol-  yepetk -am     -a   
+Morpheme Gloss(en): Gloss(en)                            
+Morpheme Gloss(es): Gloss(es)                             NEG         2/3F.II DISTR       NEG     2/3M.II DISTR desear PST/HAB   INTNS.SBJ como 1PL.II mezclar AMBL  FUT  
+Morpheme Cat:       Cat                                   v:Any       v:Any   v:Any       v:Any   v:Any   v:Any v      v:Any     v:Any     prt  v:Any  v       v:Any v:Any
+Word Gloss:         Gloss                                 no          querían no          querían como    que   nos    mezclemos
+English Sent Gloss:                                      
+Spanish Sent Gloss: No querían que nos íbamos entre ellos
+
+# sentence level graph:
+(s29e / entay'avo-00
+  :experiencer (s29p / person
+                 :refer-number plural
+                 :refer-person 3rd)
+  :stimulus (s29e2 / enyepetkay'a-00
+              :actor (s29p2 / person
+                       :refer-number plural
+                       :refer-person 1st)
+              :goal s29p
+              :mod (s29m / mahla)
+              :aspect activity)
+  :aspect state)
+
+
+# alignment:
+s29e: 0-0
+s29p: 0-0
+s29e2: 4-4
+s29p2: 0-0
+
+
+# document level annotation:
+(s29s0 / sentence
+  :temporal ((s23e :overlap s29e)
+                    (s29e :after s29e2))
+  :modal ((root :modal author)
+                    (s29p :full-affirmative s29e)
+                    (s29e :unspecified s29e2)
+                    (author :full-affirmative s29p))
+  :coref ((s28p :same-entity s29p)
+                    (s27p2 :same-entity s29p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt30
+Index:              1                 2         3    
+Words:              na                asvetay'a ko'o 
+Morphemes:          na=               as-       vet   -ay' -a      ko'o 
+Morpheme Gloss(en): Gloss(en)        
+Morpheme Gloss(es): Gloss(es)         DEF=      1SG.I ver  PST/HAB INF   1SG:PRO
+Morpheme Cat:       Cat               prt       v:Any v    v:Any   v:Any pro    
+Word Gloss:         Gloss             DEF       lo    que  vi      yo   
+English Sent Gloss:                  
+Spanish Sent Gloss: Así era lo que vi
+
+# sentence level graph:
+(s30i2 / identity-91
+  :ARG0 (s30e / event)
+  :ARG2 (s30t / thing
+          :stimulus-of (s30e2 / elvetay'a-00
+                         :experiencer (s30p / person
+                                        :refer-number singular
+                                        :refer-person 1st)
+                         :aspect state))
+  :aspect state)
+
+
+# alignment:
+s30i2: 0-0
+s30e: 0-0
+s30e2: 0-0
+s30e3: 0-0
+s30p: 0-0
+
+
+# document level annotation:
+(s30s0 / sentence
+  :temporal ((s23e :overlap s30e2)
+                    (s30e2 :overlap s30i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s30p)
+                    (s30p :full-affirmative s30e2)
+                    (s30e2 :unspecified s30t))
+  :coref ((s30e :subset-of s27e)
+                    (s30e :subset-of s28e)
+                    (s30e :subset-of s29e)
+                    (s23p :same-entity s30p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt31
+Index:              1                                      2              3       4          5      
+Words:              observacion                            ahangkok       ko'o    aktemakha' hlemmea
+Morphemes:          observacion                            ah-            angkok  ko'o       ak-     t        -em -akha'  hlemmea
+Morpheme Gloss(en): Gloss(en)                             
+Morpheme Gloss(es): Gloss(es)                              observación.SP 1SG.POS POS        1SG:PRO 2/3F.III ser PST/HAB NOM.LOC antes
+Morpheme Cat:       Cat                                    cs             v:Any   prt        pro     v:Any    v   v:Any   v:Any   adv  
+Word Gloss:         Gloss                                  observación.SP POS     yo         tipo    antes   
+English Sent Gloss:                                       
+Spanish Sent Gloss: Es mi observación sobre cómo era antes
+
+# sentence level graph:
+(s31i2 / identity-91
+  :ARG0 (s31e / event)
+  :ARG1 (s31t / thing
+          :stimulus-of (s31o / observar
+                  :experiencer (s31p / person
+                         :refer-number singular
+                         :refer-person 1st))
+          :topic (s31h / hlemmea))
+  :aspect state)
+
+
+# alignment:
+s31i2: 0-0
+s31e: 0-0
+s31o: 0-0
+s31p: 0-0
+s31h: 5-5
+
+
+# document level annotation:
+(s31s0 / sentence
+  :modal ((root :modal author)
+                    (s31p :full-affirmative s31o)
+                    (s31o :unspecified s31t)
+                    (author :full-affirmative s31p))
+  :coref ((s30i2 :same-event s31i2)
+                    (s30e :same-event s31e)
+                    (s30t :same-entity s31t)
+                    (s30e2 :same-entity s31o)
+                    (s30p :same-entity s31p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt32
+Index:              1                        2          3       
+Words:              anyentehlehlta           ennengko'o eleyvoma
+Morphemes:          an-                      yentehl    -e       =hlta   ennengko'o el-   eyv     -om   -a   
+Morpheme Gloss(en): Gloss(en)               
+Morpheme Gloss(es): Gloss(es)                2/3F.I     ser      difícil V1.NFUT    =PHOD 1PL:PRO 1PL.I vivir (pl.) PST/HAB INF
+Morpheme Cat:       Cat                      v:Any      v        v:Any   prt        pro   v:Any   v     v:Any v:Any
+Word Gloss:         Gloss                    era        difícil  nostros nuestra    vida 
+English Sent Gloss:                         
+Spanish Sent Gloss: Nuestra vida era difícil
+
+# sentence level graph:
+(s32h / have-mod-91
+  :ARG1 (s32e / eleyvoma-00
+          :actor (s32p / person
+                   :refer-number plural
+                   :refer-person 1st)
+          :aspect process)
+  :ARG2 (s32a / anyentehlehlta)
+  :aspect state)
+
+
+# alignment:
+s32h: 0-0
+s32e: 3-3
+s32p: 0-0
+s32a: 1-1
+
+
+# document level annotation:
+(s32s0 / sentence
+  :temporal ((s23e :overlap s32h)
+                    (s32h :overlap s32e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s32e)
+                    (author :full-affirmative s32h))
+  :coref ((s29p2 :same-entity s32p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt33
+Index:              1                                                        2        3         4          5          6       
+Words:              tenyo                                                    na       elavakha' ennengko'o pueblo     sanapana
+Morphemes:          tenyo                                                    na       el-       avakha'    ennengko'o pueblo   sanapana 
+Morpheme Gloss(en): Gloss(en)                                               
+Morpheme Gloss(es): Gloss(es)                                                entonces emm       1PL.I      territorio 1PL:PRO  pueblo.SP sanapaná
+Morpheme Cat:       Cat                                                      prt      interj    v:Any      <Not       Sure>    pro       cs       sus
+Word Gloss:         Gloss                                                    entonces emm       nuestro    territorio nostros  pueblo    sanapaná
+English Sent Gloss:                                                         
+Spanish Sent Gloss: Entonces emmm... nuestro territorio, del pueblo sanapaná
+
+# sentence level graph:
+(s33e / elavakha'
+  :poss (s33p / person
+          :refer-number plural
+          :mod (s33e2 / ethnic-group
+                 :name (s33n / name
+                         :op1 "nenhlet")
+                 :wiki "Sanapana")
+          :refer-person 1st))
+
+
+# alignment:
+s33e: 3-3
+s33p: 0-0
+s33e2: -1--1
+s33n: -1--1
+
+
+# document level annotation:
+(s33s0 / sentence
+  :coref ((s9p :same-entity s33p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt34
+Index:              1                                               2                  3                 
+Words:              alenyay'avo                                     aksavhommahlko     elavakha'         
+Morphemes:          al-                                             eny                -ay'               -avo    ak-       savh     -omm       -ahlk   -o    el-   avakha'
+Morpheme Gloss(en): Gloss(en)                                      
+Morpheme Gloss(es): Gloss(es)                                       2/3F.PL.III        desafortunadamente PST/HAB INTNS.SBJ 2/3F.III completar  PST/HAB PAS.F SUBJ  1PL.I   territorio
+Morpheme Cat:       Cat                                             v:Any              v                  v:Any   v:Any     v:Any    v          v:Any   v>v   v:Any v:Any   <Not       Sure>
+Word Gloss:         Gloss                                           desafortunadamente dejó               de      existir   nuestro  territorio
+English Sent Gloss:                                                
+Spanish Sent Gloss: Lástimosamente no existe más nuestro territorio
+
+# sentence level graph:
+(s34e / ensavhommahlka'-00
+  :undergoer (s34e2 / elavakha'
+               :poss (s34p / person
+                       :refer-number plural
+                       :refer-person 1st))
+  :mod (s34a / alenyay'avo)
+  :aspect performance)
+
+
+# alignment:
+s34e: 2-2
+s34e2: 3-3
+s34p: 0-0
+s34a: 1-1
+
+
+# document level annotation:
+(s34s0 / sentence
+  :temporal ((past-reference :contained s34e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s34e))
+  :coref ((s33e :same-entity s34e2)
+                    (s33p :same-entity s34p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt35
+Index:              1                                             2             3          4           
+Words:              ansavhommahlkeye'                             anmammahlka'  ennengko'o elavakhahlta
+Morphemes:          an-                                           savh          -omm       -ahlk        -eye'    an-     m           -amm  -ahlk   -a'   ennengko'o el-     avakha  =hlta     
+Morpheme Gloss(en): Gloss(en)                                    
+Morpheme Gloss(es): Gloss(es)                                     2/3F.I        completar  PST/HAB      PAS.F    V1.NFUT 2/3F.PL.III tomar PST/HAB PAS.F INF        1PL:PRO 1PL.POS territorio =PHOD
+Morpheme Cat:       Cat                                           v:Any         v          v:Any        v>v      v:Any   v:Any       v     v:Any   v>v   v:Any      pro     sus:Any <Not       Sure> prt
+Word Gloss:         Gloss                                         completamente fue        comprado     nosotros nuestro territorio 
+English Sent Gloss:                                              
+Spanish Sent Gloss: Completamente fue comprado nuestro territorio
+
+# sentence level graph:
+(s35a / and
+  :op1 (s35e / ensavhommahlka'-00
+         :undergoer (s35e2 / elavakhahlta
+                      :poss (s35p / person
+                              :refer-number plural
+                              :refer-person 1st))
+         :aspect performance)
+  :op2 (s35e3 / enmama-00
+         :theme s35e2
+         :aspect performance))
+
+
+# alignment:
+s35a: 0-0
+s35e: 1-1
+s35e2: 0-0
+s35p: 0-0
+s35e3: 2-2
+
+
+# document level annotation:
+(s35s0 / sentence
+  :temporal ((s35e :overlap s35e3))
+  :modal ((root :modal author)
+                    (author :full-affirmative s35e)
+                    (author :full-affirmative s35e3))
+  :coref ((s34e :same-event s35e)
+                    (s34e2 :same-entity s35e2)
+                    (s34p :same-entity s35p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt36
+Index:              1                   2        
+Words:              pueblo              sanapana 
+Morphemes:          pueblo              sanapana 
+Morpheme Gloss(en): Gloss(en)          
+Morpheme Gloss(es): Gloss(es)           pueblo.SP sanapaná
+Morpheme Cat:       Cat                 cs        sus     
+Word Gloss:         Gloss               pueblo.SP sanapaná
+English Sent Gloss:                    
+Spanish Sent Gloss: Del pueblo sanapaná
+
+# sentence level graph:
+(s36e / ethnic-group
+     :name (s36n / name
+          :op1 "sanapana"
+     :wiki "Sanapaná"))
+
+
+# alignment:
+s36e: 1-1
+
+
+# document level annotation:
+(s36s0 / sentence
+  :coref ((s33e2 :same-entity s36e)
+                    (s36e :subset-of s35p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt37
+Index:              1                                                                        2               3        4          5        6      7        8       9       
+Words:              ahlta                                                                    apkeleyvomakha' hengka'e vaykakhavo rio      verde  entre    rio     paraguay
+Morphemes:          =ahlta                                                                   apk-            el-      eyv        -om      -akha' hengka'e v       -ayk     -akh   -avo    rio      verde     entre  rio      paraguay
+Morpheme Gloss(en): Gloss(en)                                                               
+Morpheme Gloss(es): Gloss(es)                                                                =PHOD           2/3M.I   DISTR      vivir    (pl.)  PST/HAB  NOM.LOC DEM.PROX llegar PST/HAB REP      INTNS.SBJ río.SP verde.SP entre.SP río.SP Paraguay.SP
+Morpheme Cat:       Cat                                                                      prt             v:Any    v:Any      v        v:Any  v:Any    pro     v        v:Any  v:Any   v:Any    cs        cs     cs       cs       cs    
+Word Gloss:         Gloss                                                                    antes           lugar    de         vivencia éste   hasta    río     verde    entre  río     paraguay
+English Sent Gloss:                                                                         
+Spanish Sent Gloss: Esto era su lugar de vivencia antes, hasta el Río Verde del Río Paraguay
+
+# sentence level graph:
+(s37i2 / identity-91
+  :ARG0 (s37t / thing
+          :place-of (s37e / eleyvoma-00
+                      :actor (s37p / person
+                               :refer-number plural
+                               :refer-person 3rd)
+                      :aspect endeavor))
+  :ARG1 (s37p2 / place
+          :start (s37h / hengka'e)
+          :goal (s37a / and
+                  :op1 (s37r / river
+                         :name (s37n / name
+                                 :op1 "rio"
+                                 :op2 "verde")
+                         :wiki "Río_Verde_Paraguay)
+                  :op2 (s37r2 / river
+                         :name (s37n2 / name
+                                 :op1 "rio"
+                                 :op2 "paraguay")
+                         :wiki "Paraguay_River")))
+  :aspect state)
+
+
+# alignment:
+s37i2: 0-0
+s37t: 0-0
+s37e: 2-2
+s37p: 0-0
+s37p2: 0-0
+s37h: 3-3
+s37a: 0-0
+s37r: 5-6
+s37n: -1--1
+s37r2: 8-9
+s37n2: -1--1
+
+
+# document level annotation:
+(s37s0 / sentence
+  :temporal ((past-reference :overlap s37e)
+                    (s37e :overlap s37i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s37e)
+                    (author :full-affirmative s37i2))
+  :coref ((s35e2 :same-entity s37t)
+                    (s36e :same-entity s37p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt38
+Index:              1                                              2             3          
+Words:              vanhla                                         apkelavakhaok sanapana   
+Morphemes:          vanhla                                         apk-          el-         avakh    -aok       sanapana
+Morpheme Gloss(en): Gloss(en)                                     
+Morpheme Gloss(es): Gloss(es)                                      solamente     2/3M.I      DISTR    territorio PL       sanapaná
+Morpheme Cat:       Cat                                            adv           v:Any       v:Any    <Not       Sure>    sus:Any  sus
+Word Gloss:         Gloss                                          solamente     territorios sanapaná
+English Sent Gloss:                                               
+Spanish Sent Gloss: Solamente eran los territorios de los sanapaná
+
+# sentence level graph:
+(s38i2 / identity-91
+  :ARG0 (s38t / thing)
+  :ARG1 (s38a / apkelavakhaok
+          :poss (s38p / person
+                  :refer-number plural
+                  :mod (s38e / ethnic-group
+                         :name (s38n / name
+                                 :op1 "nenhlet")
+                         :wiki "Sanapaná"))
+          :mod (s38v / vanhla))
+  :aspect state)
+
+
+# alignment:
+s38i2: 0-0
+s38t: 0-0
+s38a: 2-2
+s38p: 0-0
+s38e: -1--1
+s38n: -1--1
+s38v: 1-1
+
+
+# document level annotation:
+(s38s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s38i2))
+  :coref ((s37p2 :same-entity s38t)
+                    (s37p :same-entity s38p)
+                    (s37i2 :same-event s38i2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt39
+Index:              1                                                 2          3            4         
+Words:              tenyo                                             kehlvoyena savhommahlko territorio
+Morphemes:          tenyo                                             kehlv      -oye         =na        savh    -omm      -ahlk      -o    territorio
+Morpheme Gloss(en): Gloss(en)                                        
+Morpheme Gloss(es): Gloss(es)                                         entonces   enseguida    INTNS      =DEF    completar PST/HAB    PAS.F SUBJ       territorio.SP
+Morpheme Cat:       Cat                                               prt        <Not         Sure>      sus:Any prt       v          v:Any v>v        v:Any         cs
+Word Gloss:         Gloss                                             entonces   ahora        dejó       de      existir   territorio
+English Sent Gloss:                                                  
+Spanish Sent Gloss: Entonces ahora dejó de existir nuestro territorio
+
+# sentence level graph:
+(s39e / ensavhommahlka'-00
+  :undergoer (s39t / territorio)
+  :temporal (s39k / kehlvoyena)
+  :aspect performance)
+
+
+# alignment:
+s39e: 3-3
+s39t: 4-4
+s39k: 2-2
+
+
+# document level annotation:
+(s39s0 / sentence
+  :temporal ((present-reference :depends-on s39k)
+                    (s39k :before s39e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s39e))
+  :coref ((s35e :same-event s39e)
+                    (s38a :same-entity s39t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt40
+Index:              1                
+Words:              ansavhommahlkeye'
+Morphemes:          an-               savh   -omm      -ahlk   -eye'
+Morpheme Gloss(en): Gloss(en)        
+Morpheme Gloss(es): Gloss(es)         2/3F.I completar PST/HAB PAS.F V1.NFUT
+Morpheme Cat:       Cat               v:Any  v         v:Any   v>v   v:Any  
+Word Gloss:         Gloss             dejó   de        existir
+English Sent Gloss:                  
+Spanish Sent Gloss: Dejó de existir  
+
+# sentence level graph:
+(s40e / ensavhommahlka'-00
+  :undergoer (s40t / thing)
+  :aspect performance)
+
+
+# alignment:
+s40e: 1-1
+s40t: 0-0
+
+
+# document level annotation:
+(s40s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s40e))
+  :coref ((s39e :same-event s40e)
+                    (s39t :same-entity s40t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt41
+Index:              1                                                                       2          3          4           5          6          7              
+Words:              tenyo                                                                   enhlevay'o ennengko'o kessoyetkok kehlvoyena mahla      akya'yematko'ok
+Morphemes:          tenyo                                                                   en-        hlev       -ay'        -o         ennengko'o kess            -oye    =tkok   kehlv     -oye    =na       mahla   ak-  ya'y -em      -a  =tko'ok
+Morpheme Gloss(en): Gloss(en)                                                              
+Morpheme Gloss(es): Gloss(es)                                                               entonces   1PL.I      recibir     PST/HAB    SUBJ       1PL:PRO         pequeño INTNS   =pequeño, -ito    enseguida INTNS   =DEF como 2/3F.III ser redondo PST/HAB INF =pequeño, -ito
+Morpheme Cat:       Cat                                                                     prt        v:Any      v           v:Any      v:Any      pro             adj     sus:Any prt       <Not    Sure>     sus:Any prt  prt  v:Any    v   v:Any   v:Any   prt
+Word Gloss:         Gloss                                                                   entonces   hemos      recibido    nosotros   pequeño    ahora           como    un      pequeño   círculo
+English Sent Gloss:                                                                        
+Spanish Sent Gloss: Entonces ahora hemos recibido algo muy pequeño, como un pequeño círculo
+
+# sentence level graph:
+(s41e / enhlevay'a-00
+  :recipient (s41p / person
+               :refer-number plural
+               :refer-person 1st)
+  :theme (s41t / thing
+           :ARG1-of (s41h / have-mod-91
+                      :ARG2 (s41k / kessoyetkok
+                              :degree intensifier))
+           :ARG1-of (s41r / resemble-91
+                      :ARG2 (s41t2 / thing
+                              :ARG1-of (s41h2 / have-mod-91
+                                         :ARG2 (s41a / akya'yematko'ok))
+                              :mod (s41t3 / tko'ok))))
+  :temporal (s41k2 / kehlvoyena)
+  :aspect performance)
+
+
+# alignment:
+s41e: 2-2
+s41p: 0-0
+s41t: 0-0
+s41h: 0-0
+s41k: 4-4
+s41r: 0-0
+s41t2: 0-0
+s41h2: 0-0
+s41a: 7-7
+s41t3: 7-7
+s41k2: 5-5
+
+
+# document level annotation:
+(s41s0 / sentence
+  :temporal ((s40e :after s41e)
+                    (present-reference :depends-on s41k2)
+                    (s41k2 :before s41e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s41e))
+  :coref ((s35p :same-entity s41p)
+                    (s39k :same-entity s41k2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt42
+Index:              1                                               2                3            
+Words:              nema                                            elenmongkeskay'a akya'yematkok
+Morphemes:          n                                               -em              -a            elen- mong  -kes     -k      -ay'  -a    ak-     ya'y  -em      -a    =tkok  
+Morpheme Gloss(en): Gloss(en)                                      
+Morpheme Gloss(es): Gloss(es)                                       sentarse         PST/HAB       INF   1PL.I sentarse (pl.)   CAUS  LOC   PST/HAB INF   2/3F.III ser   redondo PST/HAB INF =pequeño, -ito
+Morpheme Cat:       Cat                                             v                v:Any         v:Any v:Any v        v>v     v:Any v:Any v:Any   v:Any v        v:Any v:Any   prt    
+Word Gloss:         Gloss                                           no               hicieron      vivir un    pequeño  círculo None 
+English Sent Gloss:                                                
+Spanish Sent Gloss: Nos hicieron vivir en una pequeña parte redonda
+
+# sentence level graph:
+(s42e / elenmongkeskama-00
+  :causer (s42p / person
+            :refer-number plural
+            :refer-person 3rd)
+  :actor (s42p2 / person
+           :refer-number plural
+           :refer-person 1st)
+  :place (s42t / thing
+           :ARG1-of (s42h / have-mod-91
+                      :ARG2 (s42a / akya'yematkok))
+           :mod (s42t2 / tkok))
+  :aspect performance)
+
+
+# alignment:
+s42e: 2-2
+s42p: 0-0
+s42p2: 0-0
+s42t: 0-0
+s42h: 0-0
+s42a: 3-3
+s42t2: 3-3
+
+
+# document level annotation:
+(s42s0 / sentence
+  :temporal ((s41e :overlap s42e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s42e))
+  :coref ((s29p :same-entity s42p)
+                    (s41p :same-entity s42p2)
+                    (s41t :same-entity s42t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt43
+Index:              1                                  2        3       4      5        
+Words:              tenyo                              ahlta    antemak ko'o   asvetay'a
+Morphemes:          tenyo                              =ahlta   an-     t      -em       -ak     ko'o    as-     vet   -ay' -a     
+Morpheme Gloss(en): Gloss(en)                         
+Morpheme Gloss(es): Gloss(es)                          entonces =PHOD   2/3F.I ser       PST/HAB V2.NFUT 1SG:PRO 1SG.I ver  PST/HAB INF  
+Morpheme Cat:       Cat                                prt      prt     v:Any  v         v:Any   v:Any   pro     v:Any v    v:Any   v:Any
+Word Gloss:         Gloss                              entonces antes   era    yo        lo      que     vi     
+English Sent Gloss:                                   
+Spanish Sent Gloss: Entonces... Así era mi observación
+
+# sentence level graph:
+(s43i2 / identity-91
+  :ARG0 (s43e / event)
+  :ARG1 (s43t / thing
+          :stimulus-of (s43e2 / elvetay'a-00
+                         :experiencer (s43p / person
+                                        :refer-number singular
+                                        :refer-person 1st)
+                         :aspect state))
+  :aspect state)
+
+
+# alignment:
+s43i2: 0-0
+s43t: 0-0
+s43t2: 0-0
+s43e: 0-0
+s43p: 0-0
+
+
+# document level annotation:
+(s43s0 / sentence
+  :temporal ((s41e :overlap s43e2)
+                    (s43e2 :overlap s43i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s43p)
+                    (s43p :full-affirmative s43e2)
+                    (s43e2 :unspecified s43t))
+  :coref ((s43t :subset-of s41e)
+                    (s43t :subset-of s42e)
+                    (s31p :same-entity s43p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt44
+Index:              1                             2             
+Words:              asvetay'a                     kehlvoyenanhan
+Morphemes:          as-                           vet            -ay' -a      kehlv -oye      =na   =nhan  
+Morpheme Gloss(en): Gloss(en)                    
+Morpheme Gloss(es): Gloss(es)                     1SG.I          ver  PST/HAB INF   enseguida INTNS =DEF    =y 
+Morpheme Cat:       Cat                           v:Any          v    v:Any   v:Any <Not      Sure> sus:Any prt prt
+Word Gloss:         Gloss                         lo             que  veo     ahora
+English Sent Gloss:                              
+Spanish Sent Gloss: Y es lo que veo ahora también
+
+# sentence level graph:
+(s44i2 / identity-91
+  :ARG0 (s44e / event)
+  :ARG1 (s44t / thing
+          :stimulus (s44e2 / elvetay'a-00
+                      :experiencer (s44p / person
+                                     :refer-number singular
+                                     :refer-person 1st)
+                      :aspect state
+                      :temporal (s44k / kehlvoyenanhan)))
+  :aspect state)
+
+
+# alignment:
+s44i2: 0-0
+s44t: 0-0
+s44t2: 0-0
+s44e: 0-0
+s44p: 0-0
+s44k: 2-2
+
+
+# document level annotation:
+(s44s0 / sentence
+  :temporal ((s44k :overlap s44e2)
+                    (s44e2 :overlap s44i2)
+                    (present-reference :depends-on s44k))
+  :modal ((root :modal author)
+                    (author :full-affirmative s44p)
+                    (s44p :full-affirmative s44e2)
+                    (s44e2 :unspecified s44t))
+  :coref ((s43e :same-event s44e)
+                    (s41k2 :same-entity s44k)
+                    (s43p :same-entity s44p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt45
+Index:              1                                                     2          3           4              
+Words:              mehltay'avo                                           ennengko'o nenhletanak apkenmopay'anak
+Morphemes:          m-                                                    e-         hl-         t               -ay'     -avo    ennengko'o nenhlet =anak   apk- en-    mop   -ay'   -a      =nak 
+Morpheme Gloss(en): Gloss(en)                                            
+Morpheme Gloss(es): Gloss(es)                                             NEG        2/3M.II     DISTR           desear   PST/HAB INTNS.SBJ  1PL:PRO persona =DEF 2/3M.I DISTR blanco PST/HAB INF   =DEF
+Morpheme Cat:       Cat                                                   v:Any      v:Any       v:Any           v        v:Any   v:Any      pro     sus     prt  v:Any  v:Any v      v:Any   v:Any prt 
+Word Gloss:         Gloss                                                 no         quieren     nostros         indígena los     blancos   
+English Sent Gloss:                                                      
+Spanish Sent Gloss: Los blancos no quieren que nosotros, los indígenas...
+
+# sentence level graph:
+(s45e / entay'avo-00
+  :experiencer (s45p / person
+                 :ARG1-of (s45h / have-mod-91
+                            :ARG2 (s45a / apkenmopay'anak))
+                 :refer-number plural)
+  :stimulus (s45p2 / person
+              :refer-number plural
+              :mod (s45e2 / ethnic-group
+                     :name (s45n / name
+                             :op1 "nenhlet")
+                     :wiki "Sanapana")
+              :refer-person 1st)
+  :aspect state)
+
+
+# alignment:
+s45e: 1-1
+s45p: 0-0
+s45h: 0-0
+s45a: 4-4
+s45p2: 0-0
+s45e2: -1--1
+s45n: -1--1
+
+
+# document level annotation:
+(s45s0 / sentence
+  :temporal ((present-reference :overlap s45e))
+  :modal ((root :modal author)
+                    (author :full-negative s45e))
+  :coref ((s38p :same-entity s45p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt46
+Index:              1                                      2          3        4       5        
+Words:              mehltay'avo                            ennengko'o ongveta' na      akyavay'a
+Morphemes:          m-                                     e-         hl-      t       -ay'      -avo    ennengko'o ong-    vet    -a' na    ak-    yav      -ay' -a    
+Morpheme Gloss(en): Gloss(en)                             
+Morpheme Gloss(es): Gloss(es)                              NEG        2/3M.II  DISTR   desear    PST/HAB INTNS.SBJ  1PL:PRO 1PL.II ver FUT   emm    2/3F.III ser  grande PST/HAB INF
+Morpheme Cat:       Cat                                    v:Any      v:Any    v:Any   v         v:Any   v:Any      pro     v:Any  v   v:Any interj v:Any    v    v:Any  v:Any  
+Word Gloss:         Gloss                                  no         quieren  nostros vamos     a       ver        emm     grande
+English Sent Gloss:                                       
+Spanish Sent Gloss: No quieren que nos encontremos grandes
+
+# sentence level graph:
+(s46e / entay'avo-00
+  :experiencer (s46p / person
+                 :refer-number plural
+                 :refer-person 3rd)
+  :stimulus (s46e2 / elvetay'a-00
+              :experiencer (s46p2 / person
+                             :refer-number plural
+                             :refer-person 1st)
+              :stimulus (s46h / have-mod-91
+                          :ARG1 s46p2
+                          :ARG2 (s46a / akyavay'a)
+                          :aspect state)
+              :aspect state)
+  :aspect state)
+
+
+# alignment:
+s46a: 5-5
+s46e: 0-0
+s46e2: 0-0
+s46h: 0-0
+s46p: 0-0
+s46p2: 0-0
+
+
+# document level annotation:
+(s46s0 / sentence
+  :temporal ((s46e :after s46e2)
+                    (s46e2 :overlap s46h)
+                    (present-reference :overlap s46e))
+  :modal ((root :modal author)
+                    (s46p :full-affirmative s46e)
+                    (s46e :unspecified s46p2)
+                    (s46p2 :full-affirmative s46e2)
+                    (s46e2 :unspecified s46h)
+                    (author :full-negative s46p))
+  :coref ((s45p :same-entity s46p)
+                    (s45p2 :same-entity s46p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt47
+Index:              1                                                                                                                      2        3         4          5        6         7       8         9       10         11     12        13         
+Words:              aya'hay'avo                                                                                                            meta'a   enhleanma ennengko'o valayona taye      a'tema  may       may'ana ehltenya'  hlepop akyavay'a nenhletanak
+Morphemes:          ay-                                                                                                                    a'h      -ay'      -avo       meta'a   en-       hlen    -m        -a      ennengko'o valayo =na       taye        a'-    t      -em      -a    may     ma  -y'    -a      =na e-    hl-     teny  -a'    hlepop ak-    yav      -ay'  -a     nenhlet =anak
+Morpheme Gloss(en): Gloss(en)                                                                                                             
+Morpheme Gloss(es): Gloss(es)                                                                                                              2/3F.III de        balde      PST/HAB  INTNS.SBJ siempre 1PL.I     decir   PST/HAB    INF    1PL:PRO   paraguayo   =DEF   INTER  2/3F.III ser   PST/HAB INF querer PST/HAB INF =DEF  2/3M.II DISTR buscar FUT    tierra 2/3F.III ser   grande PST/HAB INF   persona =DEF
+Morpheme Cat:       Cat                                                                                                                    v:Any    v         v:Any      v:Any    prt       v:Any   v         v:Any   v:Any      pro    sus       prt         pro    v:Any  v        v:Any v:Any   v   v:Any  v:Any   prt v:Any v:Any   v     v:Any  sus    v:Any  v        v:Any v:Any  sus     prt  
+Word Gloss:         Gloss                                                                                                                  de       balde     siempre    nos      dicen     nostros paraguayo porqué? es         None   quieren   buscar      tierra grande indígena
+English Sent Gloss:                                                                                                                       
+Spanish Sent Gloss: De balde siempre los paraguayos nos dicen, "Por qué quieren... por qué los indígenas quieren buscar terrenos grandes?"
+
+# sentence level graph:
+(s47e / enhleanma-00
+  :actor (s47p / person
+           :mod (s47n / nationality
+                  :name (s47n2 / name
+                          :op1 "valayo")
+                  :wiki "Paraguay")
+           :refer-number plural)
+  :recipient (s47p2 / person
+               :refer-number plural
+               :refer-person 1st)
+  :mod (s47a / aya'hay'avo)
+  :theme (s47h / have-reason-91
+           :ARG1 (s47m / may'a-00
+                   :experiencer (s47p3 / person
+                                  :refer-number plural
+                                  :mod (s47e2 / ethnic-group
+                                         :name (s47n3 / name
+                                                 :op1 "nenhlet")
+                                         :wiki "Sanapana"))
+                   :stimulus (s47e3 / entenyay'a-00
+                               :actor s47p3
+                               :undergoer (s47h2 / hlepop
+                                            :ARG1-of (s47h3 / have-mod-91
+                                                       :ARG2 (s47a2 / akyavay'a)))
+                               :aspect performance)
+                   :aspect state
+                   :quote s47e)
+           :ARG2 (s47u / umr-unknown)
+           :aspect state
+           :mode interrogative
+           :quote s47e)
+  :aspect habitual)
+
+
+# alignment:
+s47a: 1-1
+s47a2: 12-12
+s47e: 0-0
+s47e2: -1--1
+s47e3: 10-10
+s47h: 0-0
+s47h2: 11-11
+s47h3: 0-0
+s47m: 0-0
+s47n: -1--1
+s47n2: -1--1
+s47n3: -1--1
+s47p: 0-0
+s47p2: 0-0
+s47p3: 0-0
+s47u: 0-0
+
+
+# document level annotation:
+(s47s0 / sentence
+  :temporal ((present-reference :overlap s47e)
+                    (s47e :overlap s47h)
+                    (s47e :overlap s47m)
+                    (s47m :after s47e3))
+  :modal ((root :modal author)
+                    (author :full-affirmative s47e)
+                    (author :full-affirmative s47p)
+                    (s47p :full-affirmative s47p3)
+                    (s47p :full-affirmative s47h)
+                    (s47p3 :full-affirmative s47m)
+                    (s47m :unspecified s47e3))
+  :coref ((s42p :same-entity s47p)
+                    (s46p2 :same-entity s47p2)
+                    (s47p2 :same-entity s47p3)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt48
+Index:              1             
+Words:              menma'mekangka
+Morphemes:          m-             e-    n-       ma'm  -ek      -angk   -a   
+Morpheme Gloss(en): Gloss(en)     
+Morpheme Gloss(es): Gloss(es)      NEG   2/3M.II  DISTR trabajar PST/HAB AMBL  SUBJ 
+Morpheme Cat:       Cat            v:Any v:Any    v:Any v        v:Any   v:Any v:Any
+Word Gloss:         Gloss          no    trabajan
+English Sent Gloss:               
+Spanish Sent Gloss: "No trabajan" 
+
+# sentence level graph:
+(s48e / enma'mekama-00
+  :actor (s48p / person
+           :refer-number plural
+           :refer-person 3rd)
+  :aspect activity
+  :quote (s48e2 / event))
+
+
+# alignment:
+s48e: 1-1
+s48p: 0-0
+s48e2: 0-0
+
+
+# document level annotation:
+(s48s0 / sentence
+  :temporal ((s48e2 :overlap s48e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s48e2)
+                    (author :full-affirmative s47p)
+                    (s47p :full-negative s48e))
+  :coref ((s47p3 :same-entity s48p)
+                    (s47e :same-entity s48e2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt49
+Index:              1        
+Words:              have'    
+Morphemes:          have'    
+Morpheme Gloss(en): Gloss(en)
+Morpheme Gloss(es): Gloss(es) NEG.PRED
+Morpheme Cat:       Cat       prt     
+Word Gloss:         Gloss     no      
+English Sent Gloss:          
+Spanish Sent Gloss: No es así
+
+# sentence level graph:
+(s49e / event)
+
+
+# alignment:
+s49e: 0-0
+
+
+# document level annotation:
+(s49s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-negative s49e))
+  :coref ((s48e :same-event s49e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt50
+Index:              1                       2           
+Words:              apkelavakha'            pangkav'oye'
+Morphemes:          apk-                    el-          avakha'    p-   angkok   -ao'-   -oye'
+Morpheme Gloss(en): Gloss(en)              
+Morpheme Gloss(es): Gloss(es)               2/3M.I       DISTR      país 2/3M.POS POS     PL    INTNS  
+Morpheme Cat:       Cat                     v:Any        v:Any      <Not Sure>    sus:Any prt   sus:Any sus:Any
+Word Gloss:         Gloss                   su           territorio su   propio  
+English Sent Gloss:                        
+Spanish Sent Gloss: Es su propio territorio
+
+# sentence level graph:
+(s50i2 / identity-91
+  :ARG0 (s50t / thing)
+  :ARG1 (s50a / apkelavakha'
+          :poss (s50p / person
+                  :refer-number plural
+                  :refer-person 3rd)
+          :mod (s50p2 / pangkav'oye'))
+  :aspect state)
+
+
+# alignment:
+s50i2: 0-0
+s50t: 0-0
+s50a: 1-1
+s50p: 0-0
+s50p2: 2-2
+
+
+# document level annotation:
+(s50s0 / sentence
+  :temporal ((present-reference :overlap s50i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s50i2))
+  :coref ((s47u :same-event s50i2)
+                    (s40t :same-entity s50t)
+                    (s48p :same-entity s50p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt51
+Index:              1                                          2            3         
+Words:              apkelavakha'                               pangkav'oye' nenhlet   
+Morphemes:          apk-                                       el-          avakha'    p-   angkok   -ao'-   -oye'     nenhlet
+Morpheme Gloss(en): Gloss(en)                                 
+Morpheme Gloss(es): Gloss(es)                                  2/3M.I       DISTR      país 2/3M.POS POS     PL        INTNS   persona
+Morpheme Cat:       Cat                                        v:Any        v:Any      <Not Sure>    sus:Any prt       sus:Any sus:Any sus
+Word Gloss:         Gloss                                      su           territorio su   propio   los     indígenas
+English Sent Gloss:                                           
+Spanish Sent Gloss: Es el verdadero territorio de los sanapaná
+
+# sentence level graph:
+(s51i2 / identity-91
+  :ARG0 (s51t / thing)
+  :ARG1 (s51a / apkelavakha'
+          :poss (s51p / person
+                  :refer-number plural
+                  :mod (s51e / ethnic-group
+                         :name (s51n / name
+                                 :op1 "nenhlet")
+                         :wiki "Sanapana"))
+          :mod (s51p2 / pangkav'oye'))
+  :aspect state)
+
+
+# alignment:
+s51i2: 0-0
+s51t: 0-0
+s51a: 1-1
+s51p: 0-0
+s51e: -1--1
+s51n: -1--1
+s51p2: 2-2
+
+
+# document level annotation:
+(s51s0 / sentence
+  :modal ((root :modal author)
+                    (author :full-affirmative s51i2))
+  :coref ((s50i2 :same-event s51i2)
+                    (s50t :same-entity s51t)
+                    (s50a :same-entity s51a)
+                    (s50p :same-entity s51p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt52
+Index:              1                                           2           3        4       
+Words:              nane                                        anyemay'ona pueblo   sanapana
+Morphemes:          =nane                                       a-          nyem     -ay'     -o    =na     pueblo   sanapana
+Morpheme Gloss(en): Gloss(en)                                  
+Morpheme Gloss(es): Gloss(es)                                   =P.REM      2/3F.III venir    de    PST/HAB SUBJ     =DEF     pueblo.SP sanapaná
+Morpheme Cat:       Cat                                         prt         v:Any    v        v:Any v:Any   prt      cs       sus      
+Word Gloss:         Gloss                                       hace        tiempo   venían   de    pueblo  sanapaná
+English Sent Gloss:                                            
+Spanish Sent Gloss: El pueblo sanapaná vino de allá hace tiempo
+
+# sentence level graph:
+(s52e / elenyemay'a-00
+  :actor (s52e2 / ethnic-group
+           :name (s52n / name
+                   :op1 "sanapana")
+           :wiki "Sanapaná")
+  :source (s52p / place)
+  :temporal (s52n2 / nane)
+  :aspect performance)
+
+
+# alignment:
+s52e: 2-2
+s52e2: 4-4
+s52n: -1--1
+s52p: 0-0
+s52n2: 1-1
+
+
+# document level annotation:
+(s52s0 / sentence
+  :temporal ((past-reference :depends-on s52n2)
+                    (s52n2 :contained s52e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s52e))
+  :coref ((s51p :same-entity s52e2)
+                    (s51t :same-entity s52p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt53
+Index:              1                                    2           
+Words:              akteyapmakhana                       apkehltomaok
+Morphemes:          ak-                                  teyap        -m    -akha   =na     apk-  ehl-   t      -om   -a      -ok  
+Morpheme Gloss(en): Gloss(en)                           
+Morpheme Gloss(es): Gloss(es)                            2/3F.III     salir PST/HAB NOM.LOC =DEF  2/3M.I DISTR  comer PST/HAB INF   PL     
+Morpheme Cat:       Cat                                  v:Any        v     v:Any   v:Any   prt   v:Any  v:Any  v     v:Any   v:Any sus:Any
+Word Gloss:         Gloss                                el           lugar de      donde   salía su     comida
+English Sent Gloss:                                     
+Spanish Sent Gloss: Es el lugar de donde salía su comida
+
+# sentence level graph:
+(s53i2 / identity-91
+  :ARG0 (s53t / thing)
+  :ARG1 (s53p / place
+          :source-of (s53e / elenteyapma-00
+                       :actor (s53t2 / thing
+                                :undergoer-of (s53e2 / entoma-00
+                                                :actor (s53p2 / person
+                                                         :refer-number plural
+                                                         :refer-person 3rd))
+                                :refer-number plural)
+                       :aspect habitual))
+  :aspect state)
+
+
+# alignment:
+s53e: 1-1
+s53i2: 0-0
+s53p: 0-0
+s53t: 0-0
+s53t2: 0-0
+s53e2: 2-2
+s53p2: 0-0
+
+
+# document level annotation:
+(s53s0 / sentence
+  :temporal ((s52e :before s53e)
+                    (s53e :overlap s53i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s53i2)
+                    (author :full-affirmative s53e))
+  :coref ((s52p :same-entity s53t)
+                    (s52e2 :same-entity s53p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt54
+Index:              1                       2         3     
+Words:              nahlmahlke              anteyapma meta'a
+Morphemes:          nahlma                  =hlke     an-    teyap   -m    -a      meta'a 
+Morpheme Gloss(en): Gloss(en)              
+Morpheme Gloss(es): Gloss(es)               monte     =HOD   2/3F.I  salir PST/HAB V2.NFUT siempre
+Morpheme Cat:       Cat                     sus       prt    v:Any   v     v:Any   v:Any   prt    
+Word Gloss:         Gloss                   monte     salir  siempre
+English Sent Gloss:                        
+Spanish Sent Gloss: Siempre salía del monte
+
+# sentence level graph:
+(s54e / elenteyapma-00
+  :actor (s54t / thing)
+  :source (s54n / nahlmahlke)
+  :aspect habitual)
+
+
+# alignment:
+s54e: 2-2
+s54t: 0-0
+s54n: 1-1
+
+
+# document level annotation:
+(s54s0 / sentence
+  :temporal ((s53e :overlap s54e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s54e))
+  :coref ((s53t2 :same-entity s54t)
+                    (s53t :subset-of s54n)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt55
+Index:              1                                                                  2        3      4       5       
+Words:              akteyapmakhana                                                     meta'a   anta'a may'a   ehlto'ok
+Morphemes:          ak-                                                                teyap    -m     -akha   =na      meta'a anta'a  ma     -y'     -a      e-    hl-     t     -o'   -ok    
+Morpheme Gloss(en): Gloss(en)                                                         
+Morpheme Gloss(es): Gloss(es)                                                          2/3F.III salir  PST/HAB NOM.LOC  =DEF   siempre animal querer  PST/HAB INF   2/3M.II DISTR comer PL      FUT  
+Morpheme Cat:       Cat                                                                v:Any    v      v:Any   v:Any    prt    prt     sus    v       v:Any   v:Any v:Any   v:Any v     sus:Any v:Any
+Word Gloss:         Gloss                                                              el       lugar  de      donde    salía  siempre animal querían comer  
+English Sent Gloss:                                                                   
+Spanish Sent Gloss: Es el lugar de donde salían siempre los animales que querían comer
+
+# sentence level graph:
+(s55i2 / identity-91
+  :ARG0 (s55t / thing)
+  :ARG1 (s55p / place
+          :source-of (s55e / elenteyapma-00
+                       :actor (s55a / anta'a
+                                :refer-number plural
+                                :undergoer-of (s55e2 / entoma-00
+                                                :actor (s55p2 / person
+                                                         :refer-number plural
+                                                         :refer-person 3rd)
+                                                :stimulus-of (s55m / may'a-00
+                                                               :experiencer s55p2
+                                                               :aspect state)
+                                                :aspect performance))
+                       :aspect habitual))
+  :aspect state)
+
+
+# alignment:
+s55a: 3-3
+s55e: 1-1
+s55i2: 0-0
+s55p: 0-0
+s55t: 0-0
+s55e2: 5-5
+s55p2: 0-0
+s55m: 0-0
+
+
+# document level annotation:
+(s55s0 / sentence
+  :temporal ((s53e :overlap s55e)
+                    (s55e :overlap s55i2)
+                    (s55e :overlap s55m)
+                    (s55m :after s55e2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s55e)
+                    (author :full-affirmative s55p2)
+                    (s55p2 :full-affirmative s55m)
+                    (s55m :unspecified s55e2))
+  :coref ((s54e :subset-of s55e)
+                    (s53t :same-entity s55t)
+                    (s54t :subset-of s55a)
+                    (s53p2 :same-entity s55p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt56
+Index:              1                        2      3          
+Words:              nahlma'                  meta'a angkonyema'
+Morphemes:          nahlma'                  meta'a angko-      nyem    -a'  
+Morpheme Gloss(en): Gloss(en)               
+Morpheme Gloss(es): Gloss(es)                monte  siempre     2/3F.II venir de    FUT
+Morpheme Cat:       Cat                      sus    prt         v:Any   v     v:Any
+Word Gloss:         Gloss                    monte  siempre     venía   de   
+English Sent Gloss:                         
+Spanish Sent Gloss: Siempre venían del monte
+
+# sentence level graph:
+(s56e / elenyemay'a-00
+  :actor (s56t / thing)
+  :source (s56n / nahlma')
+  :aspect habitual)
+
+
+# alignment:
+s56e: 3-3
+s56t: 0-0
+s56n: 1-1
+
+
+# document level annotation:
+(s56s0 / sentence
+  :temporal ((s53e :overlap s56e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s56e))
+  :coref ((s54n :same-entity s56n)
+                    (s55a :same-entity s56t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt57
+Index:              1                           2          3           4       
+Words:              tenyo                       kehlvoyena ammaskemke' hengka'e
+Morphemes:          tenyo                       kehlv      -oye        =na      am-     mask   -em      -ke'    hengka'e
+Morpheme Gloss(en): Gloss(en)                  
+Morpheme Gloss(es): Gloss(es)                   entonces   enseguida   INTNS    =DEF    2/3F.I terminar PST/HAB V1.NFUT  DEM.PROX
+Morpheme Cat:       Cat                         prt        <Not        Sure>    sus:Any prt    v:Any    v       v:Any    v:Any    pro
+Word Gloss:         Gloss                       entonces   ahora       terminó  éste   
+English Sent Gloss:                            
+Spanish Sent Gloss: Entonces ahora terminó esto
+
+# sentence level graph:
+(s57e / emmaskema-00
+  :temporal (s57k / kehlvoyena)
+  :aspect performance
+  :undergoer (s57e2 / event)
+  :place (s57h / hengka'e))
+
+
+# alignment:
+s57e: 3-3
+s57h: 4-4
+s57k: 2-2
+s57e2: 0-0
+
+
+# document level annotation:
+(s57s0 / sentence
+  :temporal ((present-reference :depends-on s57k)
+                    (s57k :before s57e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s57e))
+  :coref ((s44k :same-entity s57k)
+                    (s37h :same-entity s57h)
+                    (s57e2 :subset-of s56e)
+                    (s57e2 :subset-of s55e)
+                    (s57e2 :subset-of s54e)
+                    (s57e2 :subset-of s53e)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt58
+Index:              1                
+Words:              kessoyetkok      
+Morphemes:          kess              -oye    =tkok  
+Morpheme Gloss(en): Gloss(en)        
+Morpheme Gloss(es): Gloss(es)         pequeño INTNS   =pequeño, -ito
+Morpheme Cat:       Cat               adj     sus:Any prt      
+Word Gloss:         Gloss             pequeño
+English Sent Gloss:                  
+Spanish Sent Gloss: Es muy pequeño...
+
+# sentence level graph:
+(s58h / have-mod-91
+  :ARG1 (s58t / thing)
+  :ARG2 (s58k / kessoyetkok
+          :degree intensifier)
+  :aspect state)
+
+
+# alignment:
+s58h: 0-0
+s58t: 0-0
+s58k: 1-1
+
+
+# document level annotation:
+(s58s0 / sentence
+  :temporal ((present-reference :overlap s58h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s58h))
+  :coref ((s57h :same-entity s58t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt59
+Index:              1                                 2             3        4         
+Words:              anyentehlek                       antahangkoye' eleyvoma kehlvoyena
+Morphemes:          an-                               yentehl       -ek      an-        t       -aha   =ngkoye' el-     eyv    -om   -a    kehlv -oye    =na 
+Morpheme Gloss(en): Gloss(en)                        
+Morpheme Gloss(es): Gloss(es)                         2/3F.I        ser      difícil    V1.NFUT 2/3F.I ser      V2.NFUT =INTNS 1PL.I vivir (pl.) PST/HAB INF  enseguida INTNS   =DEF
+Morpheme Cat:       Cat                               v:Any         v        v:Any      v:Any   v      v:Any    <Not    Sure>  v:Any v     v:Any v:Any   <Not Sure>     sus:Any prt 
+Word Gloss:         Gloss                             difícil       es       nuestra    vida    ahora 
+English Sent Gloss:                                  
+Spanish Sent Gloss: Muy difícil es nuestra vida ahora
+
+# sentence level graph:
+(s59h / have-mod-91
+  :ARG1 (s59e / eleyvoma-00
+          :actor (s59p / person
+                   :refer-number plural
+                   :refer-person 1st)
+          :aspect process)
+  :ARG2 (s59a / anyentehlek
+          :degree intensifier)
+  :temporal (s59k / kehlvoyena)
+  :aspect state)
+
+
+# alignment:
+s59h: 0-0
+s59e: 3-3
+s59p: 0-0
+s59a: 1-1
+s59k: 4-4
+
+
+# document level annotation:
+(s59s0 / sentence
+  :temporal ((present-reference :depends-on s59k)
+                    (s59k :overlap s59e)
+                    (s59e :overlap s59h))
+  :modal ((root :modal author)
+                    (author :full-affirmative s59e)
+                    (author :full-affirmative s59h))
+  :coref ((s57k :same-entity s59k)
+                    (s42p2 :same-entity s59p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt60
+Index:              1                       2         3         
+Words:              ko'o                    asvetay'a kehlvoyena
+Morphemes:          ko'o                    as-       vet        -ay' -a      kehlv -oye      =na  
+Morpheme Gloss(en): Gloss(en)              
+Morpheme Gloss(es): Gloss(es)               1SG:PRO   1SG.I      ver  PST/HAB INF   enseguida INTNS =DEF   
+Morpheme Cat:       Cat                     pro       v:Any      v    v:Any   v:Any <Not      Sure> sus:Any prt
+Word Gloss:         Gloss                   yo        lo         que  veo     ahora
+English Sent Gloss:                        
+Spanish Sent Gloss: Es mi observación ahora
+
+# sentence level graph:
+(s60i2 / identity-91
+  :ARG0 (s60e / event)
+  :ARG1 (s60t / thing
+          :stimulus-of (s60e2 / elvetay'a-00
+                         :experiencer (s60p / person
+                                        :refer-number singular
+                                        :refer-person 1st)
+                         :temporal (s60k / kehlvoyena)
+                         :aspect state))
+  :aspect state)
+
+
+# alignment:
+s60i2: 0-0
+s60t: 0-0
+s60t2: 0-0
+s60e: 0-0
+s60p: 0-0
+s60k: 3-3
+
+
+# document level annotation:
+(s60s0 / sentence
+  :temporal ((present-reference :depends-on s60k)
+                    (s60k :overlap s60e)
+                    (s60e :overlap s60i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s60p)
+                    (s60p :full-affirmative s60e2)
+                    (s60e2 :unspecified s60t))
+  :coref ((s59k :same-entity s60k)
+                    (s60e :subset-of s57e)
+                    (s60e :subset-of s58h)
+                    (s60e :subset-of s59h)
+                    (s44p :same-entity s60p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt61
+Index:              1                                                                                2          3        4                5             6       7      8           9       
+Words:              enyasangkoye'                                                                    ennengko'o ma'ala   ontahlnengvomola mo'ola        piquete tenyo  avtepahlkek no      
+Morphemes:          en-                                                                              yas        -angk    -oye'            ennengko'o    ma'a    =la    on-         tahln    -engv  -om   -o    =la   mo'o =la    piquete tenyo      avtep    =ahlkek no  
+Morpheme Gloss(en): Gloss(en)                                                                       
+Morpheme Gloss(es): Gloss(es)                                                                        1PL.I      saber    CPLX             INTNS.V1.NFUT 1PL:PRO querer =HYP        1PL.II   entrar LOC   APPRX FUT   =HYP otro.f =HYP    piquete.SP entonces dueño   =HOD no.SP
+Morpheme Cat:       Cat                                                                              v:Any      v        v:Any            v:Any         pro     v      prt         v:Any    v      v:Any v:Any v:Any prt  pro    prt     cs         prt      sus     prt  cs   
+Word Gloss:         Gloss                                                                            sabemos    nosotros si               queremos      entrar  otro   piquete     entonces dueño  no   
+English Sent Gloss:                                                                                 
+Spanish Sent Gloss: Sabemos bien que si queremos entrar en otro piquete, entonces el dueño dice "no"
+
+# sentence level graph:
+(s61e / enyasekamok-00
+  :experiencer (s61p / person
+                 :refer-number plural
+                 :refer-person 1st)
+  :stimulus (s61h / have-condition-91
+              :ARG1 (s61e2 / event
+                      :actor (s61a / avtepahlkek
+                               :possession-of (s61p2 / piquete
+                                          :mod (s61m / mo'ola)
+                                          :refer-number singular))
+                      :theme (s61n / no)
+                      :recipient s61p
+                      :aspect performance)
+              :ARG2 (s61m2 / may'a-00
+                      :experiencer s61p
+                      :stimulus (s61e3 / entahlnema-00
+                                  :actor s61p
+                                  :goal s61p2
+                                  :aspect performance)
+                      :aspect state)
+              :aspect state)
+  :aspect state)
+
+
+# alignment:
+s61a: 8-8
+s61e: 0-0
+s61e2: 0-0
+s61h: 0-0
+s61m: 5-5
+s61m2: 0-0
+s61n: 9-9
+s61p: 0-0
+s61p2: 0-0
+s61e3: 4-4
+
+
+# document level annotation:
+(s61s0 / sentence
+  :temporal ((present-reference :overlap s61e)
+                    (s61e :overlap s61h)
+                    (s61h :overlap s61m2)
+                    (s61m2 :after s61e3)
+                    (s61e3 :after s61e2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s61p)
+                    (s61p :full-affirmative s61e)
+                    (s61e :unspecified have-condition-91)
+                    (have-condition-91 :unspecified s61e2)
+                    (have-condition-91 :full-affirmative s61p)
+                    (s61p :full-affirmative s61m2)
+                    (s61m2 :unspecified s61e3))
+  :coref ((s59p :same-entity s61p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt62
+Index:              1                2        3       
+Words:              have'            apangkok hengka'e
+Morphemes:          have'            ap-      angkok   hengka'e
+Morpheme Gloss(en): Gloss(en)       
+Morpheme Gloss(es): Gloss(es)        NEG.PRED 2/3M.POS POS      DEM.PROX
+Morpheme Cat:       Cat              prt      sus:Any  prt      pro     
+Word Gloss:         Gloss            no       es       suyo     acá     
+English Sent Gloss:                 
+Spanish Sent Gloss: "acá no es suyo"
+
+# sentence level graph:
+(s62e / event
+  :actor (s62p / person)
+  :recipient (s62p2 / person
+               :refer-number singular)
+  :theme (s62b / belong-91
+           :ARG0 (s62h / hengka'e)
+           :ARG1 s62p2
+           :aspect state
+           :quote s62e)
+  :condition (s62e2 / event)
+  :aspect state)
+
+
+# alignment:
+s62e: 0-0
+s62p: 0-0
+s62p2: 0-0
+s62b: 0-0
+s62h: 3-3
+s62e2: 0-0
+
+
+# document level annotation:
+(s62s0 / sentence
+  :temporal ((s61e2 :after s62e)
+                    (s62e :overlap s62b))
+  :modal ((root :modal author)
+                    (author :neutral-affirmative have-condition-91)
+                    (have-condition-91 :full-affirmative s62e2)
+                    (have-condition-91 :full-affirmative s62e)
+                    (have-condition-91 :full-affirmative s62p)
+                    (s62p :full-negative s62b))
+  :coref ((s61a :same-entity s62p)
+                    (s61p :same-entity s62p2)
+                    (s61p2 :same-entity s62h)
+                    (s61m2 :same-event s62e2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt63
+Index:              1        
+Words:              etyep    
+Morphemes:          e-        tyep    -ø   
+Morpheme Gloss(en): Gloss(en)
+Morpheme Gloss(es): Gloss(es) 2/3M.II salir IMPER
+Morpheme Cat:       Cat       v:Any   v     v:Any
+Word Gloss:         Gloss     salí   
+English Sent Gloss:          
+Spanish Sent Gloss: "Salí!"  
+
+# sentence level graph:
+(s63e / event
+  :actor (s63p / person)
+  :recipient (s63p2 / person
+               :refer-person 3rd
+               :refer-number singular)
+  :theme (s63e2 / elenteyapma-00
+           :actor s63p2
+           :source (s63t / thing)
+           :aspect performance
+           :mode imperative
+           :quote s63e)
+  :condition (s63e3 / event)
+  :aspect performance)
+
+
+# alignment:
+s63e: 0-0
+s63p: 0-0
+s63p2: 0-0
+s63e2: 1-1
+s63t: 0-0
+s63e3: 0-0
+
+
+# document level annotation:
+(s63s0 / sentence
+  :temporal ((s62e :after s63e)
+                    (s63e :after s63e2))
+  :modal ((root :modal author)
+                    (author :neutral-affirmative have-condition-91)
+                    (have-condition-91 :full-affirmative s63e3)
+                    (have-condition-91 :full-affirmative s63e)
+                    (have-condition-91 :full-affirmative s63p)
+                    (s63p :partial-affirmative s63e2))
+  :coref ((s62p :same-entity s63p)
+                    (s62p2 :same-entity s63p2)
+                    (s62h :same-entity s63t)
+                    (s62e2 :same-event s63e3)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt64
+Index:              1                2      
+Words:              metko            permiso
+Morphemes:          metko            permiso
+Morpheme Gloss(en): Gloss(en)       
+Morpheme Gloss(es): Gloss(es)        NEG.EXT permiso.SP
+Morpheme Cat:       Cat              v       cs        
+Word Gloss:         Gloss            no      hay        permiso
+English Sent Gloss:                 
+Spanish Sent Gloss: "No hay permiso"
+
+# sentence level graph:
+(s64e / exist-91
+  :ARG1 (s64p / permiso
+          :stimulus (s64e2 / event))
+  :aspect state)
+
+
+# alignment:
+s64e: 0-0
+s64p: 0-0
+s64e2: 0-0
+
+
+# document level annotation:
+(s64s0 / sentence
+  :temporal ((present-reference :overlap s64e)
+                    (s64e :after s64e2))
+  :modal ((root :modal author)
+                    (author :full-negative s64e)
+                    (author :full-negative null-conceiver)
+                    (null-conceiver :full-affirmative s64p)
+                    (s64p :unspecified s64e2))
+  :coref ((s61e3 :same-event s64e2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt65
+Index:              1                   2         
+Words:              asvetay'ana         kehlvoyena
+Morphemes:          as-                 vet        -ay' -a      =na   kehlv -oye      =na  
+Morpheme Gloss(en): Gloss(en)          
+Morpheme Gloss(es): Gloss(es)           1SG.I      ver  PST/HAB INF   =DEF  enseguida INTNS =DEF   
+Morpheme Cat:       Cat                 v:Any      v    v:Any   v:Any prt   <Not      Sure> sus:Any prt
+Word Gloss:         Gloss               lo         que  veo     ahora
+English Sent Gloss:                    
+Spanish Sent Gloss: Es lo que veo ahora
+
+# sentence level graph:
+(s65i2 / identity-91
+  :ARG0 (s65e / event)
+  :ARG1 (s65t / thing
+          :stimulus-of (s65e2 / elvetay'a-00
+                         :experiencer (s65p / person
+                                        :refer-number singular
+                                        :refer-person 1st)
+                         :aspect state
+                         :temporal (s65k / kehlvoyena)))
+  :aspect state)
+
+
+# alignment:
+s65i2: 1-1
+s65t: 0-0
+s65t2: 0-0
+s65e: 0-0
+s65p: 0-0
+s65k: 2-2
+
+
+# document level annotation:
+(s65s0 / sentence
+  :temporal ((present-reference :depends-on s65k)
+                    (s65k :overlap s65e2)
+                    (s65e2 :overlap s65i2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s65p)
+                    (s65p :full-affirmative s65e2)
+                    (s65e2 :unspecified s65t))
+  :coref ((s60k :same-entity s65k)
+                    (s65e :subset-of s61e2)
+                    (s65e :subset-of s62e)
+                    (s65e :subset-of s63e)
+                    (s65e :subset-of s64e)
+                    (s60p :same-entity s65p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt66
+Index:              1                             2      3              4        
+Words:              del                           pasado kehlvoyenanhan futuro   
+Morphemes:          del                           pasado kehlv          -oye      =na    =nhan   futuro
+Morpheme Gloss(en): Gloss(en)                    
+Morpheme Gloss(es): Gloss(es)                     del.SP pasado.SP      enseguida INTNS  =DEF    =y     futuro.SP
+Morpheme Cat:       Cat                           cs     cs             <Not      Sure>  sus:Any prt    prt       cs
+Word Gloss:         Gloss                         del    pasado         ahora     futuro
+English Sent Gloss:                              
+Spanish Sent Gloss: Del pasado, y ahora al futuro
+
+# sentence level graph:
+(s66b / be-temporally-at-91
+  :ARG1 (s66t / thing)
+  :ARG2 (s66d / date-interval
+          :op1 (s66p / pasado)
+          :op2 (s66k / kehlvoyenanhan)
+          :op3 (s66f / futuro))
+  :aspect state)
+
+
+# alignment:
+s66b: 0-0
+s66t: 0-0
+s66d: 0-0
+s66p: 2-2
+s66k: 3-3
+s66f: 4-4
+
+
+# document level annotation:
+(s66s0 / sentence
+  :temporal ((past-reference :depends-on s66p)
+                    (present-reference :depends-on s66k)
+                    (future-reference :depends-on s66f)
+                    (s66d :overlap s66t))
+  :modal ((root :modal author)
+                    (author :full-affirmative s66b))
+  :coref ((s65e :same-event s66t)
+                    (s65k :same-entity s66k)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt67
+Index:              1                                                  2             3       4          5        6           7         
+Words:              nahlka                                             askehltavoye' ontehek ennengko'o mahla    empayvomana ennengko'o
+Morphemes:          na                                                 =hlka         ask-    ehl-       t        -av         -oye'      on-           t        -ehek ennengko'o mahla   em-  payv  -om    -a      =na   ennengko'o
+Morpheme Gloss(en): Gloss(en)                                         
+Morpheme Gloss(es): Gloss(es)                                          DEF           =pero   1SG.I      DISTR    desear      INTNS      INTNS.V1.NFUT 1PL.II   hacer FUT        1PL:PRO como 1PL.I hablar PST/HAB INF   =DEF       1PL:PRO
+Morpheme Cat:       Cat                                                prt           prt     v:Any      v:Any    v           v:Any      v:Any         v:Any    v     v:Any      pro     prt  v:Any v      v:Any   v:Any prt        pro    
+Word Gloss:         Gloss                                              pero          quiero  hacemos    nosotros como        nuestro    idioma        nosotros
+English Sent Gloss:                                                   
+Spanish Sent Gloss: Pero quiero que hacemos... como, nuestro idioma...
+
+# sentence level graph:
+(s67c / contrast-91
+  :ARG1 (s67e / event)
+  :ARG2 (s67e2 / entay'avo-00
+          :experiencer (s67p / person
+                         :refer-number singular
+                         :refer-person 1st)
+          :stimulus (s67e3 / event
+                      :actor (s67p2 / person
+                               :refer-number plural
+                               :refer-person 1st)
+                      :undergoer (s67t / thing
+                                   :medium-of (s67e4 / empayvoma-00
+                                                :actor s67p2))
+                      :aspect activity)
+          :aspect state))
+
+
+# alignment:
+s67c: 0-0
+s67e: 0-0
+s67e2: 0-0
+s67e3: 0-0
+s67p: 0-0
+s67p2: 0-0
+s67t: 0-0
+s67e4: 6-6
+
+
+# document level annotation:
+(s67s0 / sentence
+  :temporal ((present-reference :overlap s67e2)
+                    (s67e2 :after s67e3))
+  :modal ((root :modal author)
+                    (s67p :full-affirmative s67e2)
+                    (s67e2 :unspecified s67e3)
+                    (author :full-affirmative s67p))
+  :coref ((s65e :same-event s67e)
+                    (s65p :same-entity s67p)
+                    (s61p :same-entity s67p2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt68
+Index:              1                                2          3           
+Words:              onyenna'te'sek                   ennengko'o empayvomanak
+Morphemes:          on-                              yenna't    -e's         -ek      ennengko'o em-    payv    -om   -a     =nak   
+Morpheme Gloss(en): Gloss(en)                       
+Morpheme Gloss(es): Gloss(es)                        1PL.II     ser          fuerte   CAUS       FUT    1PL:PRO 1PL.I hablar PST/HAB INF =DEF
+Morpheme Cat:       Cat                              v:Any      v            v>v      v:Any      pro    v:Any   v     v:Any  v:Any   prt
+Word Gloss:         Gloss                            hacemos    fuerte       nosotros nuestro    idioma
+English Sent Gloss:                                 
+Spanish Sent Gloss: Que fortalezcamos nuestro idioma
+
+# sentence level graph:
+(s68e / enyenna'teskama-00
+  :actor (s68p / person
+           :refer-number plural
+           :refer-person 1st)
+  :undergoer (s68t / thing
+               :medium-of (s68e2 / empayvoma-00
+                            :actor s68p))
+  :aspect activity)
+
+
+# alignment:
+s68e: 1-1
+s68p: 0-0
+s68t: 0-0
+s68e2: 3-3
+
+
+# document level annotation:
+(s68s0 / sentence
+  :temporal ((s68e2 :after s68e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s67p)
+                    (s67p :full-affirmative s68e2)
+                    (s68e2 :unspecified s68e))
+  :coref ((s67e3 :same-event s68e)
+                    (s67p2 :same-entity s68p)
+                    (s67t :same-entity s68t)
+                    (s67e2 :same-event s68e2)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt69
+Index:              1                                                             2          3           4        5         
+Words:              onhlengkesek                                                  ennengko'o empayvomana metkela  enyetyapma
+Morphemes:          on-                                                           hleng      -kes        -ek      ennengko'o em-     payv  -om    -a      =na   metke =la en-  yetyap -m     -a     
+Morpheme Gloss(en): Gloss(en)                                                    
+Morpheme Gloss(es): Gloss(es)                                                     1PL.II     viajar      CAUS     FUT        1PL:PRO 1PL.I hablar PST/HAB INF   =DEF  sin =HYP 1PL.I  perder PST/HAB INF  
+Morpheme Cat:       Cat                                                           v:Any      v           v>v      v:Any      pro     v:Any v      v:Any   v:Any prt   prt prt  v:Any  v      v:Any   v:Any
+Word Gloss:         Gloss                                                         hacemos    continuar   nosotros nuestro    idioma  sin   perder
+English Sent Gloss:                                                              
+Spanish Sent Gloss: Que hagamos continuar nuestro idioma, para que no lo perdamos
+
+# sentence level graph:
+(s69e / event
+  :experiencer (s69p / person)
+  :stimulus (s69e2 / enhlengkeskama-00
+              :causer (s69p2 / person
+                        :refer-number plural
+                        :refer-person 1st)
+              :actor (s69t / thing
+                       :theme-of (s69e3 / empayvoma-00
+                                   :actor s69p2))
+              :manner (s69e4 / enyetyapma-00
+                        :actor s69p2
+                        :undergoer s69t
+                        :aspect performance)
+              :aspect activity
+              :purpose (s69e5 / event)))
+
+
+# alignment:
+s69e: 0-0
+s69e2: 1-1
+s69e3: 3-3
+s69e4: 5-5
+s69p: 0-0
+s69p2: 0-0
+s69t: 0-0
+s69e5: 0-0
+
+
+# document level annotation:
+(s69s0 / sentence
+  :temporal ((s69e :after s69e2)
+                    (s69e2 :overlap s69e4))
+  :modal ((root :modal author)
+                    (author :full-affirmative s69p)
+                    (s69p :fullfull-affirmative s69e)
+                    (s69e :unspecified s69e2)
+                    (s69e :unspecified s69e4)
+                    (author :full-affirmative s69p2)
+                    (s69p2 :partial-affirmative have-purpose-91)
+                    (have-purpose-91 :full-affirmative s69e5))
+  :coref ((s68e2 :same-event s69e)
+                    (s67p :same-entity s69p)
+                    (s68p :same-entity s69p2)
+                    (s68t :same-entity s69t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt70
+Index:              1                                   2       3     4      5         6          7           
+Words:              metkola                             may'a   onhla na     onyetepok ennengko'o empayvomanak
+Morphemes:          metko                               =la     ma    -y'    -a        on-        hla          na       on-     yetep  -ok    ennengko'o em-     payv  -om    -a      =nak 
+Morpheme Gloss(en): Gloss(en)                          
+Morpheme Gloss(es): Gloss(es)                           NEG.EXT =HYP  querer PST/HAB   INF        1PL.II       ???      emm     1PL.II perder FUT        1PL:PRO 1PL.I hablar PST/HAB INF   =DEF 
+Morpheme Cat:       Cat                                 v       prt   v      v:Any     v:Any      v:Any        <Not     Sure>   interj v:Any  v          v:Any   pro   v:Any  v       v:Any v:Any prt
+Word Gloss:         Gloss                               para    no    querer None      emm        perder       nosotros nuestro idioma
+English Sent Gloss:                                    
+Spanish Sent Gloss: Para no... no perder nuestro idioma
+
+# sentence level graph:
+(s70e / event
+  :purpose (s70e2 / enyetyapma-00
+             :actor (s70p / person
+                      :refer-number plural
+                      :refer-person 1st)
+             :undergoer (s70t / thing
+                          :medium-of (s70e3 / empayvoma-00
+                                       :actor s70p))
+             :aspect performance))
+
+
+# alignment:
+s70e: 0-0
+s70e2: 5-5
+s70p: 0-0
+s70t: 0-0
+s70e3: 7-7
+
+
+# document level annotation:
+(s70s0 / sentence
+  :temporal ((s70e :after s70e2))
+  :modal ((root :modal author)
+                    (author :full-affirmative s70p)
+                    (s70p :partial-affirmative have-purpose-91)
+                    (have-purpose-91 :full-negative s70e2))
+  :coref ((s69e2 :same-event s70e)
+                    (s69e5 :same-event s70e2)
+                    (s69p2 :same-entity s70p)
+                    (s69t :same-entity s70t)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt71
+Index:              1                                        2            3      
+Words:              kaymahlke'                               onhlengkesek cultura
+Morphemes:          k-                                       aym          -ahlk   -e'   on-       hleng   -kes    -ek    cultura
+Morpheme Gloss(en): Gloss(en)                               
+Morpheme Gloss(es): Gloss(es)                                2/3F.I       dejar   de    sobra     PAS.F   V1.NFUT 1PL.II viajar  CAUS FUT cultura.SP
+Morpheme Cat:       Cat                                      v:Any        v       v>v   v:Any     v:Any   v       v>v    v:Any   cs  
+Word Gloss:         Gloss                                    hace         falta   hacer continuar cultura
+English Sent Gloss:                                         
+Spanish Sent Gloss: Tenemos que hacer seguir nuestra cultura
+
+# sentence level graph:
+(s71a / ayaymommahlka'-00
+  :experiencer (s71p / person
+                 :refer-number plural
+                 :refer-person 1st)
+  :stimulus (s71e / enhlengkeskama-00
+              :causer s71p
+              :actor (s71c / cultura
+                       :poss s71p)
+              :aspect activity)
+  :aspect state)
+
+
+# alignment:
+s71a: 0-0
+s71p: 0-0
+s71e: 2-2
+s71c: 3-3
+
+
+# document level annotation:
+(s71s0 / sentence
+  :temporal ((present-reference :overlap s71a)
+                    (s71a :after s71e))
+  :modal ((root :modal author)
+                    (s71p :full-affirmative s71a)
+                    (s71a :unspecified s71e)
+                    (author :full-affirmative s71p))
+  :coref ((s70p :same-entity s71p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt72
+Index:              1                             2          3        4        
+Words:              anhleamke'                    ennengko'o cultura  eyangkaok
+Morphemes:          an-                           hle        -am      -ke'      ennengko'o cultura ey-        angkok  -ao-
+Morpheme Gloss(en): Gloss(en)                    
+Morpheme Gloss(es): Gloss(es)                     2/3F.I     viajar   PST/HAB   V1.NFUT    1PL:PRO cultura.SP 1PL.POS POS  PL     
+Morpheme Cat:       Cat                           v:Any      v        v:Any     v:Any      pro     cs         sus:Any prt  sus:Any
+Word Gloss:         Gloss                         viaja      nosotros cultura   POS       
+English Sent Gloss:                              
+Spanish Sent Gloss: Sigue todavía nuestra cultura
+
+# sentence level graph:
+(s72e / enhleama-00
+  :actor (s72c / cultura
+           :poss (s72p / person
+                   :refer-number plural
+                   :refer-person 1st))
+  :aspect activity)
+
+
+# alignment:
+s72e: 1-1
+s72c: 3-3
+s72p: 0-0
+
+
+# document level annotation:
+(s72s0 / sentence
+  :temporal ((present-reference :overlap s72e))
+  :modal ((root :modal author)
+                    (author :full-affirmative s72e))
+  :coref ((s71c :same-entity s72c)
+                    (s71p :same-entity s72p)))
+
+
+
+################################################################################
+# meta-info 
+# :: snt73
+Index:              1                                   2          3      
+Words:              mohlhlakamo                         ennengko'o cultura
+Morphemes:          m-                                  ohl-       hlak    -am        -o       ennengko'o cultura
+Morpheme Gloss(en): Gloss(en)                          
+Morpheme Gloss(es): Gloss(es)                           NEG        1PL.II  dejar      (pl.)    PST/HAB    SUBJ    1PL:PRO cultura.SP
+Morpheme Cat:       Cat                                 v:Any      v:Any   v          v:Any    v:Any      pro     cs     
+Word Gloss:         Gloss                               no         hemos   abandonado nosotros cultura   
+English Sent Gloss:                                    
+Spanish Sent Gloss: No hemos abandonado nuestra cultura
+
+# sentence level graph:
+(s73e / ehlhlakama-00
+  :actor (s73p / person
+           :refer-number plural
+           :refer-person 1st)
+  :undergoer (s73c / cultura
+               :poss s73p)
+  :aspect performance)
+
+
+# alignment:
+s73c: 3-3
+s73e: 1-1
+s73p: 0-0
+
+
+# document level annotation:
+(s73s0 / sentence
+  :temporal ((past-reference :contained s73e))
+  :modal ((root :modal author)
+                    (author :full-negative s73e))
+  :coref ((s72p :same-entity s73p)
+                    (s72c :same-entity s73c)))
+

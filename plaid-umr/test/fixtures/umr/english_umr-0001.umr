@@ -1,0 +1,1893 @@
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s1-root
+# :: snt1
+Index: 1   2    3 4     5      6       7  8           9         10
+Words: 200 dead , 1,500 feared missing in Philippines landslide . 
+
+# sentence level graph:
+(s1p / override-91
+    :ARG1 (s1l / landslide-01
+        :ARG3 (s1a / and
+            :op1 (s1d / die-01
+                :ARG1 (s1p3 / person :quant 200)
+                :aspect state)
+            :op2 (s1f / fear-01
+                :ARG1 (s1m / miss-01
+                    :ARG1 (s1p2 / person :quant 1500)
+                    :aspect state)
+                :aspect state)
+        :aspect process)
+    :place (s1c / country :wiki "Philippines" 
+        :name (s1n / name :op1 "Philippines"))))
+
+
+# alignment:
+s1p: 1-1
+s1l: 9-9
+s1a: 0-0
+s1d: 2-2
+s1p3: 1-1
+s1f: 5-5
+s1m: 6-6
+s1p2: 4-4
+s1c: 8-8
+s1n: 0-0
+
+
+# document level annotation:
+(s1s0 / sentence
+    :temporal  ((override :before s1l)
+            (s1l :overlap s1d)
+            (document-creation-time :overlap s1f)
+            (s1l :overlap s1m))
+    :modal ((root :modal author)
+            (author :full-affirmative s1l)
+            (author :full-affirmative s1d)
+            (author :full-affirmative s1f)
+            (author :partial-affirmative s1m)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s2-root
+# :: snt2
+Index: 1        2 3           4 5   6  7 8    9
+Words: TACLOBAN , Philippines , Feb 17 , 2006 .
+
+# sentence level graph:
+(s2p / publication-91
+    :ARG3 (s2t / thing)
+    :place (s2h / human-settlement :wiki "Tacloban" 
+        :name (s2n / name :op1 "Tacloban")
+        :place (s2c2 / country :wiki "Philippines" 
+            :name (s2n2 / name :op1 "Philippines")))
+    :temporal (s2d / date-entity 
+        :month 2 
+        :day 17 
+        :year 2006))
+
+
+# alignment:
+s2p: 0-0
+s2t: 0-0
+s2h: 1-1
+s2n: 0-0
+s2c2: 3-3
+s2n2: 0-0
+s2d: 5-8
+
+
+# document level annotation:
+(s2s0 / sentence
+    :temporal ((document-creation-time :overlap s2d))
+    :modal ((root :modal author)
+            (author :full-affirmative s2p))
+    :coref ((s1p :same-entity s2p)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s3-root
+# :: snt3
+Index: 1     2   3      4    5        6      7   8     9      10   11      12 13  14      15          16 17     18   19 20        21     22 23     24      25 26  27  28    29   30
+Words: About 200 people were believed killed and 1,500 others were missing in the central Philippines on Friday when a  landslide buried an entire village ,  the Red Cross said . 
+
+# sentence level graph:
+(s3s / say-01
+    :ARG0 (s3o2 / organization :wiki "International_Red_Cross_and_Red_Crescent_Movement"
+        :name (s3n2 / name :op1 "Red" :op2 "Cross"))
+    :ARG1 (s3a / and
+        :op1 (s3b / believe-01
+            :ARG1 (s3k / kill-01                        
+                :ARG1 (s3p / person                     
+                    :quant (s3a2 / about 
+                        :op1 200))
+                :aspect performance)
+            :aspect state)
+        :op2 (s3m / miss-01                             
+            :ARG1 (s3p2 / person :quant 1500            
+                :ARG1-of (s3o / other-01
+                    :ARG2 s3p))
+            :aspect state)
+        :place (s3c / country 
+            :name (s3n / name :op1 "Philippines")
+            :part (s3c2 / center))
+        :temporal (s3d / date-entity
+            :weekday (s3f / friday))
+        :ARG1-of (s3h / have-cause-91
+            :ARG2 (s3b2 / bury-01
+                :ARG0 (s3l / landslide-01
+                    :aspect process)
+                :ARG1 (s3v / village
+                    :extent (s3e / entire)))
+                :aspect performance)
+        :quote s3s)
+    :aspect performance)
+
+
+# alignment:
+s3s: 29-29
+s3o2: 27-28
+s3n2: 0-0
+s3a: 7-7
+s3b: 5-5
+s3k: 6-6
+s3p: 3-3
+s3a2: 1-1
+s3m: 11-11
+s3p2: 0-0
+s3o: 9-9
+s3c: 15-15
+s3n: 0-0
+s3c2: 14-14
+s3d: 0-0
+s3f: 17-17
+s3h: 18-18
+s3b2: 21-21
+s3l: 20-20
+s3v: 24-24
+s3e: 23-23
+
+
+# document level annotation:
+(s3s0 / sentence
+    :temporal ((document-creation-time :before s3d)
+                (document-creation-time :before s3s)
+                (s3s :overlap s3b)
+                (s3b :before s3k)
+                (s3s :overlap s3m)
+                (s3k :overlap s3b2)
+                (s3b2 :overlap s3l))
+    :modal ((root :modal author)
+            (author :full-affirmative s3s)
+            (author :full-affirmative s3o2)
+            (s3o2 :full-affirmative s3b)
+            (s3o2 :full-affirmative s3m)
+            (s3o2 :full-affirmative s3b2)
+            (s3o2 :full-affirmative s3l))
+    :coref ((s2t :subset-of s3s)
+            (s1d :same-event s3k)
+            (s1m :same-event s3m)       
+            (s1p :same-entity s3p)      
+            (s1p2 :same-entity s3p2)
+            (s1l :same-event s3l)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s4-root
+# :: snt4
+Index: 1            2    3    4 5   6      7    8    9        10    11  12        13  14  15      16 17         18 19  20    21 22  23         24     25 26    27
+Words: Eyewitnesses said only a few houses were left standing after the landslide hit the village of Guinsaugon in the south of the Philippine island of Leyte . 
+
+# sentence level graph:
+(s4s / say-01 
+    :ARG0 (s4p / person
+        :ARG0-of (s4w / witness-01
+            :ARG1 s4l2))
+    :ARG1 (s4l / leave-14 
+        :ARG0 (s4h / hit-01 
+            :ARG0 (s4l2 / landslide-01
+                :ARG1 (s4t / thing)
+                :aspect process)
+            :ARG1 (s4v / village  
+                :mod (s4h3 / human-settlement :wiki "Saint_Bernard,_Southern_Leyte" 
+                    :name (s4n / name :op1 "Guinsaugon"))
+                :place (s4s2 / south 
+                    :part-of (s4i2 / island :wiki "Leyte" 
+                        :name (s4n2 / name :op1 "Leyte") 
+                        :place (s4c / country  :wiki "Philippines" 
+                            :name (s4n3 / name :op1 "Philippine")))))
+            :aspect performance) 
+        :ARG1 (s4s3 / stand-01 
+            :ARG1 (s4h2 / house 
+                :quant (s4a / a-few 
+                    :mod (s4o / only)))
+            :aspect state)
+        :aspect state
+        :quote s4s)
+    :aspect performance)
+
+
+# alignment:
+s4s: 2-2
+s4p: 1-1
+s4w: 0-0
+s4l: 8-8
+s4h: 13-13
+s4l2: 12-12
+s4t: 0-0
+s4v: 15-15
+s4h3: 20-20
+s4n: 0-0
+s4i2: 24-24
+s4n2: 26-26
+s4c: 23-23
+s4n3: 0-0
+s4s3: 9-9
+s4h2: 6-6
+s4a: 4-5
+s4o: 3-3
+
+
+# document level annotation:
+(s4s0 / sentence
+    :temporal ((s3b2 :overlap s4l)
+            (s4l :after s4s3))
+    :modal ((root :modal author)
+            (author :full-affirmative s4s)
+            (author :full-affirmative s4p)
+            (s4p :full-affirmative s4l2)
+            (s4p :full-affirmative s4l)
+            (s4p :full-affirmative s4h)
+            (s4p :full-affirmative s4s3))
+    :coref ((s2t :subset-of s4s)
+            (s3l :same-event s4l)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s5-root
+# :: snt5
+Index: 1 2     3   4     5     6       7 8   9    10 11 12      13     14 15  16   17 18  19         20  21    22 23   24 25 26    27        28
+Words: " There are about 1,500 missing , 200 dead ,  "  Richard Gordon ,  the head of the Philippine Red Cross ,  said in a  radio interview . 
+
+# sentence level graph:
+(s5s / say-01 
+    :ARG0 (s5p / person :wiki "Richard_J._Gordon" 
+        :name (s5n / name :op1 "Richard" :op2 "Gordon") 
+        :ARG0-of (s5h / head-01 
+            :ARG1 (s5o / organization :wiki "Philippine_Red_Cross"                          
+                :name (s5n2 / name :op1 "Philippine" :op2 "Red" :op3 "Cross"))))
+    :ARG1 (s5a / and 
+        :op1 (s5p2 / person             
+            :quant (s5a2 / about 
+                :op1 1500)
+            :ARG1-of (s5m / miss-02     
+                :aspect state) ) 
+        :op2 (s5p3 / person             
+            :quant 200  
+            :ARG1-of (s5d / die-01   
+                :aspect state))
+        :quote s5s)
+    :temporal (s5i2 / interview-01 
+        :ARG1 s5p 
+        :medium (s5r / radio))
+    :aspect performance)
+
+
+# alignment:
+s5s: 22-22
+s5p: 11-12
+s5n: 0-0
+s5h: 15-15
+s5o: 18-20
+s5n2: 0-0
+s5a: 0-0
+s5p2: 0-0
+s5a2: 3-3
+s5m: 5-5
+s5p3: 0-0
+s5d: 8-8
+s5i2: 26-26
+s5r: 25-25
+
+
+# document level annotation:
+(s5s0 / sentence
+    :temporal ((document-creation-time :after s5s)
+            (s4l2 :after s5s)
+            (s5s :contains s5i2)
+            (s5s :overlap s5m)
+            (s5s :overlap s5d))
+    :modal ((root :modal author)
+            (author :full-affirmative s5s)
+            (author :full-affirmative s5p)
+            (s5p :full-affirmative s5p2)
+            (s5p :full-affirmative s5p3))
+    :coref ((s2t :subset-of s5s)
+            (s3m :same-event s5m)
+            (s3p2 :same-entity s5p2)
+            (s3k :same-event s5d)
+            (s3k :same-entity s5p3)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s6-root
+# :: snt6
+Index: 1   2     3       4    5   6          7       8      9 10  11 12  13       14   15  16   17   18    19     20       21
+Words: The first footage from the devastated village showed a sea of mud covering what had been lush green valley farmland . 
+
+# sentence level graph:
+(s6s / show-01 
+    :ARG0 (s6f / footage 
+        :source (s6v / village
+            :ARG1-of (s6d / devastate-01
+                :aspect state))
+        :ord (s6o / ordinal-entity :value 1))
+    :ARG1 (s6s2 / sea
+        :material (s6m / mud)
+        :ARG0-of (s6c / cover-01 
+            :ARG1 (s6t / thing 
+                :ARG1-of (s6i2 / identity-91
+                    :ARG2 (s6f2 / farmland  
+                        :mod (s6l / lush)
+                        :mod (s6g / green)
+                        :place (s6v2 / valley))
+                    :aspect state))
+            :aspect state))
+    :aspect state)
+
+
+# alignment:
+s6s: 8-8
+s6f: 3-3
+s6v: 7-7
+s6d: 6-6
+s6o: 2-2
+s6s2: 10-10
+s6m: 12-12
+s6c: 13-13
+s6t: 14-14
+s6i2: 16-16
+s6f2: 20-20
+s6l: 17-17
+s6g: 18-18
+s6v2: 19-19
+
+
+# document level annotation:
+(s6s0 / sentence
+    :temporal ((document-creation-time :before s6s)
+            (s4l2 :after s6s)
+            (s6s :overlap s6c)
+            (s6s :overlap s6d)
+            (s6c :before s6i2))
+    :modal ((root :modal author)
+            (author :full-affirmative s6s)
+            (author :full-affirmative s6d)
+            (author :full-affirmative s6c)
+            (author :full-affirmative s6i2))
+    :coref ((s2t :subset-of s6s)
+            (s4h3 :same-entity s6v)
+            (s4t :same-entity s6m)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s7-root
+# :: snt7
+Index: 1    2 3   4      5  6   7       8   9   10         11      12   13    14 15   16
+Words: Only a few sheets of tin roofing and the occasional coconut tree could be seen . 
+
+# sentence level graph:
+(s7s / see-01 
+    :ARG1 (s7a / and 
+        :op1 (s7r / roofing
+            :material (s7t / tin)
+            :unit (s7s2 / sheet)
+            :quant (s7a2 / a-few))
+        :op2 (s7t2 / tree 
+            :mod (s7c / coconut) 
+            :mod (s7o / occasional)) 
+        :mod (s7o2 / only))
+    :aspect state)
+
+
+# alignment:
+s7s: 15-15
+s7a: 8-8
+s7r: 7-7
+s7t: 6-6
+s7s2: 4-4
+s7a2: 2-3
+s7t2: 12-12
+s7c: 11-11
+s7o: 10-10
+s7o2: 1-1
+
+
+# document level annotation:
+(s7s0 / sentence
+    :temporal ((s7s :contains s6s))
+    :modal ((root :modal author)
+            (author :neutral-affirmative s7s))
+    :coref ((s2t :subset-of s7s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s8-root
+# :: snt8
+Index: 1    2      3  4   5 6         7         8    9    10    11 12      13      14  15   16 17         18      19 20  21    22 23  24          25
+Words: Tiny groups of mud - spattered survivors were also shown ,  walking through the muck ,  apparently stunned by the scope of the destruction . 
+
+# sentence level graph:
+(s8s / show-01 
+    :ARG1 (s8g / group
+        :mod (s8t2 / tiny)
+        :group-of (s8p / person 
+            :ARG0-of (s8s2 / survive-02
+                :ARG1 (s8e / event)) 
+            :ARG2-of (s8s3 / spatter-01 
+                :ARG1 (s8m / mud)     
+                :aspect state))
+        :ARG0-of (s8w / walk-01 
+            :ARG2 (s8t / through 
+                :op1 (s8m2 / muck))
+            :aspect activity)
+        :ARG1-of (s8s4 / stun-01 
+            :ARG0 (s8s5 / scope
+                :extent-of (s8d / destroy-01
+                    :aspect process))
+            :ARG1-of (s8a / appear-02)
+            :aspect state)) 
+    :mod (s8a2 / also)
+    :aspect performance)
+
+
+# alignment:
+s8s: 10-10
+s8g: 2-2
+s8t2: 1-1
+s8p: 0-0
+s8s2: 7-7
+s8e: 0-0
+s8s3: 6-6
+s8m: 4-4
+s8w: 12-12
+s8t: 13-13
+s8m2: 15-15
+s8s4: 18-18
+s8s5: 21-21
+s8d: 24-24
+s8a: 17-17
+s8a2: 9-9
+
+
+# document level annotation:
+(s8s0 / sentence
+    :temporal ((s8s :contains s6s)
+            (s8s :before s8w)
+            (s8w :overlap s8s3)
+            (s8w :overlap s8s4)
+            (s8s4 :before s8d))
+    :modal ((root :modal author)
+            (author :full-affirmative s8s)
+            (author :full-affirmative s8s3)
+            (author :full-affirmative s8w)
+            (author :partial-affirmative s8s4)
+            (author :full-affirmative s8d))
+    :coref ((s2t :subset-of s8s)
+            (s8m :same-entity s8m2)
+            (s6m :same-entity s8m)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s9-root
+# :: snt9
+Index: 1  2 3         4       5  6   7      8 9         10     11     12   13     14    15   16      17 18  19   20   21 22  23 24   25  26  27 28 29   30   31  32          33
+Words: In a televised address to the nation , President Gloria Arroyo said rescue teams were rushing to the area from "  air ,  land and sea "  to cope with the catastrophe . 
+
+# sentence level graph:
+(s9s / say-01 
+    :ARG0 (s9p / person :wiki "Gloria_Macapagal_Arroyo"
+        :name (s9n / name :op1 "Gloria" :op2 "Arroyo") 
+        :ARG1-of (s9h / have-org-role-92 
+            :ARG2 s9n2
+            :ARG3 (s9p2 / president))) 
+    :ARG1 (s9r / rush-01  
+        :ARG1 (s9t / team
+                :ARG0-of (s9r2 / rescue-01
+                    :aspect process))
+        :ARG2 (s9a / area) 
+        :path (s9a2 / and 
+            :op1 (s9a3 / air) 
+            :op2 (s9l / land) 
+            :op3 (s9s2 / sea))
+        :purpose (s9c / cope-01 
+            :ARG0 s9t
+            :ARG1 (s9c2 / catastrophe)                          
+            :aspect activity)
+        :aspect activity
+        :quote s9s) 
+    :temporal (s9a4 / address-03 
+        :ARG0 s9p 
+        :ARG1 (s9n2 / nation)  
+        :ARG1-of (s9t2 / televise-01
+            :aspect activity)
+        :aspect performance)
+    :aspect performance)
+
+
+# alignment:
+s9s: 12-12
+s9p: 10-11
+s9n: 0-0
+s9h: 0-0
+s9p2: 9-9
+s9r: 16-16
+s9t: 14-14
+s9r2: 13-13
+s9a: 19-19
+s9a2: 25-25
+s9a3: 22-22
+s9l: 24-24
+s9s2: 26-26
+s9c: 29-29
+s9c2: 32-32
+s9a4: 4-4
+s9n2: 7-7
+s9t2: 3-3
+
+
+# document level annotation:
+(s9s0 / sentence
+    :temporal ((document-creation-time :before s9s)
+            (s4l2 :after s9s)
+            (s9s :overlap s9r)
+            (s9r :overlap s9c))
+    :modal ((root :modal author)
+            (author :full-affirmative s9s)
+            (author :full-affirmative s9p)
+            (s9p :full-affirmative s9r)
+            (s9p :full-affirmative s9c))
+    :coref ((s2t :subset-of s9s)
+            (s4l2 :same-entity s9c2)
+            (s4c :same-entity s9n2)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s10-root
+# :: snt10
+Index: 1 2 3    4       5   6     7     8   9   10     11    12    13 14  15 16      17          18 19     20 21  22   23 24 25  26   27
+Words: " I have ordered the Coast Guard and our entire naval force in the (  central Philippines )  region to the area ,  "  she said . 
+
+# sentence level graph:
+(s10s / say-01 
+    :ARG0 (s10p / person   
+        :refer-person 3rd
+        :refer-number singular) 
+    :ARG1 (s10o / order-01 
+        :ARG0 s10p 
+        :ARG1 (s10a / and 
+            :op1 (s10a2 / armed-organization :wiki "Philippine_Coast_Guard"                     
+                :name (s10n / name :op1 "Coast" :op2 "Guard")) 
+            :op2 (s10f / force    
+                :poss (s10p2 / person
+                    :refer-person 1st
+                    :refer-number plural) 
+                :mod (s10n2 / navy) 
+                :extent (s10e / entire)
+                :place (s10r / region
+                    :mod (s10c / country-region :wiki - 
+                        :name (s10n3 / name :op1 "Central" :op2 "Philippines")))))
+        :ARG2 (s10h / have-goal-91
+            :ARG1 s10a
+            :ARG2 (s10a3 / area)
+            :aspect performance    ) 
+        :aspect performance
+        :quote s10s)
+    :aspect performance)
+
+
+# alignment:
+s10s: 26-26
+s10p: 2-2
+s10o: 4-4
+s10a: 8-8
+s10a2: 6-7
+s10n: 0-0
+s10f: 12-12
+s10p2: 9-9
+s10n2: 11-11
+s10e: 10-10
+s10r: 19-19
+s10c: 16-17
+s10n3: 0-0
+s10h: 20-20
+s10a3: 22-22
+
+
+# document level annotation:
+(s10s0 / sentence
+    :temporal ((s9s :after s10s)
+            (s10s :before s10o)
+            (s10o :after s10h))
+    :modal ((root :modal author)
+            (author :full-affirmative s10s)
+            (author :full-affirmative s10p)
+            (s10p :full-affirmative s10o)
+            (s10p :full-affirmative s10h))
+    :coref ((s2t :subset-of s10s)
+            (s9p :same-entity s10p)
+            (s6v :same-entity s10a3)
+            (s9t :subset-of s10a)
+            (s9r :subset-of s10h)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s11-root
+# :: snt11
+Index: 1 2     3     4    5  6    7  8        9         10  11      12      13  14     15  16     17 18
+Words: " Naval ships will be used as floating hospitals and command centres for relief and rescue .  " 
+
+# sentence level graph:
+(s11s / say-01
+    :ARG0 (s11p / person)
+    :ARG1 (s11u / use-01 
+        :ARG0 (s11o / organization)     
+        :ARG1 (s11s2 / ship 
+            :mod (s11n / navy)) 
+        :ARG2 (s11a / and 
+            :op1 (s11h / hospital 
+                :ARG1-of (s11f / float-01)) 
+            :op2 (s11c / center 
+                :mod (s11c2 / command-02
+                    :aspect process) 
+                :purpose (s11a2 / and 
+                    :op1 (s11r / relieve-01
+                        :ARG0 s11o
+                        :ARG1 (s11p2 / person)  
+                        :aspect process) 
+                    :op2 (s11r2 / rescue-01
+                        :ARG0 s11o
+                        :ARG1 s11p2
+                        :aspect process))))
+        :aspect process
+        :quote s11s)
+    :aspect performance)
+
+
+# alignment:
+s11s: 0-0
+s11p: 0-0
+s11u: 6-6
+s11o: 0-0
+s11s2: 3-3
+s11n: 2-2
+s11a: 10-10
+s11h: 9-9
+s11f: 8-8
+s11c: 12-12
+s11c2: 11-11
+s11a2: 15-15
+s11r: 14-14
+s11p2: 0-0
+s11r2: 16-16
+
+
+# document level annotation:
+(s11s0 / sentence
+    :temporal ((s10s :after s11s)
+            (s11s :after s11u)
+            (s10h :after s11u)
+            (s11u :overlap s11c2)
+            (s11u :overlap s11r)
+            (s11u :overlap s11r2))
+    :modal ((root :modal author)
+            (author :full-affirmative s11s)
+            (author :full-affirmative s11p)
+            (s11p :full-affirmative s11u)
+            (s11p :full-affirmative s11c2)
+            (s11p :full-affirmative s11r)
+            (s11p :full-affirmative s11r2))
+    :coref ((s2t :subset-of s11s)
+            (s10p :same-entity s11p)
+            (s9t :same-entity s11o)
+            (s8p :same-entity s11p2)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s12-root
+# :: snt12
+Index: 1     2        3       4      5    6   7      8      9         10    11   12  13     14   15    16     17     18 19         20     21  22        23
+Words: Leyte Governor Rosette Lerias said the latest census indicated there were 375 houses with 3,000 people living in Guinsaugon before the landslide . 
+
+# sentence level graph:
+(s12s / say-01 
+    :ARG0 (s12p / person :wiki -
+        :name (s12n / name :op1 "Rosette" :op2 "Lerias")
+        :ARG1-of (s12h / have-org-role-92
+            :ARG2 (s12i2 / island :wiki "Leyte" 
+                :name (s12n2 / name :op1 "Leyta")) 
+            :ARG3 (s12p3 / person   
+                :ARG0-of (s12g / govern-01))))
+    :ARG1 (s12i3 / indicate-01 
+        :ARG0 (s12c / census 
+            :mod (s12l / last)) 
+        :ARG1 (s12e / exist-91
+            :ARG1 (s12h2 / human-settlement :wiki "Saint_Bernard,_Southern_Leyte"
+                :name (s12n3 / name :op1 "Guinsaugon"))
+            :ARG2 (s12h3 / house :quant 375 
+                :place-of (s12l2 / live-01 
+                    :ARG0 (s12p2 / person :quant 3000)
+                    :aspect state))
+            :temporal (s12b / before 
+                :op1 (s12l3 / landslide-01
+                    :aspect process))
+            :aspect state)
+        :aspect state
+        :quote s12s)
+    :aspect performance)
+
+
+# alignment:
+s12s: 5-5
+s12p: 3-4
+s12n: 0-0
+s12h: 0-0
+s12i2: 1-1
+s12n2: 0-0
+s12p3: 2-2
+s12g: 0-0
+s12i3: 9-9
+s12c: 8-8
+s12l: 7-7
+s12e: 10-11
+s12h2: 19-19
+s12n3: 0-0
+s12h3: 13-13
+s12l2: 17-17
+s12p2: 16-16
+s12b: 20-20
+s12l3: 22-22
+
+
+# document level annotation:
+(s12s0 / sentence
+    :temporal ((document-creation-time :before s12s)
+            (s12s :before s12i3)
+            (s12i3 :before s12l3)
+            (s12l3 :before s12l2))
+    :modal ((root :modal author)
+            (author :full-affirmative s12s)
+            (author :full-affirmative s12p)
+            (s12p :full-affirmative s12i3)
+            (s12p :full-affirmative s12c)
+            (s12p :full-affirmative s12l3)
+            (s12c :full-affirmative s12e)
+            (s12c :full-affirmative s12l2))
+    :coref ((s2t :subset-of s12s)
+            (s4i2 :same-entity s12i2)
+            (s10a3 :same-entity s12h2)
+            (s12p2 :subset-of s8p)
+            (s9c2 :same-event s12l3)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s13-root
+# :: snt13
+Index: 1   2         3   4       5  6       7         8
+Words: She described the village as totally flattened .
+
+# sentence level graph:
+(s13d / describe-01 
+    :ARG0 (s13p / person
+        :refer-person 3rd
+        :refer-number singular) 
+    :ARG1 (s13v / village)
+    :ARG2 (s13f / flatten-01 
+        :ARG0 (s13e / event)
+        :ARG1 s13v 
+        :extent (s13t / total)
+        :aspect state
+        :quote s13d)
+    :aspect performance)
+
+
+# alignment:
+s13d: 2-2
+s13p: 1-1
+s13v: 4-4
+s13f: 7-7
+s13e: 0-0
+s13t: 6-6
+
+
+# document level annotation:
+(s13s0 / sentence
+    :temporal ((s12s :after s13d)
+            (s12l3 :after s13f))
+    :modal ((root :modal author)
+            (author :full-affirmative s13d)
+            (author :full-affirmative s13p)
+            (s13p :full-affirmative s13f))
+    :coref ((s2t :subset-of s13d)
+            (s12p :same-entity s13p)
+            (s12h2 :same-entity s13v)
+            (s12l3 :same-event s13e)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s14-root
+# :: snt14
+Index: 1 2  3   4    5   6       7    8   9        10  11 12      13  14      15 16      17 18 19  20   21 22      23        24
+Words: " It was like mud running down the mountain and it covered the village in seconds ,  "  she said ,  quoting survivors . 
+
+# sentence level graph:
+(s14s / say-01 
+    :ARG0 (s14p2 / person 
+        :refer-person 3rd
+        :refer-number singular) 
+    :ARG1 (s14a / and 
+        :op1 (s14r / resemble-91 
+            :ARG1 (s14t / thing)
+            :ARG2 (s14m / mud
+                :ARG0-of (s14r2 / run-02 
+                    :direction (s14d / down-03
+                        :ARG2 (s14m2 / mountain))
+                    :aspect activity
+                    :modal-strength full-affirmative))
+            :aspect state
+            :modal-strength full-affirmative) 
+        :op2 (s14c / cover-02 
+            :ARG1 (s14v / village) 
+            :ARG2 s14t
+            :duration (s14m3 / multiple 
+                :op1 (s14t2 / temporal-quantity :quant 1 
+                    :unit (s14s3 / second)))
+            :aspect performance
+            :modal-strength full-affirmative) 
+        :ARG1-of (s14q / quote-01 
+            :ARG0 s14p2 
+            :ARG2 (s14p / person 
+                :ARG0-of (s14s4 / survive-02
+                    :ARG1 (s14e / event)
+                    :aspect performance
+                    :modal-strength full-affirmative))
+            :aspect activity
+            :modal-strength full-affirmative)
+        :quote s14s
+        :quote s14q)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s14s: 19-19
+s14p2: 18-18
+s14a: 9-9
+s14r: 4-4
+s14t: 2-2
+s14m: 5-5
+s14r2: 6-6
+s14d: 7-7
+s14m2: 8-8
+s14c: 11-11
+s14v: 13-13
+s14m3: 15-15
+s14t2: 0-0
+s14s3: 0-0
+s14q: 21-21
+s14p: 22-22
+s14s4: 0-0
+s14e: 0-0
+
+
+# document level annotation:
+(s14s0 / sentence
+    :coref ((s2t :subset-of s14s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s15-root
+# :: snt15
+Index: 1       2      3             4   5   6       7 8     9    10    11   12 13       14   15  16   17    18     19   20    21
+Words: Experts blamed deforestation for the tragedy , which came after days of rainfall that was five times higher than usual . 
+
+# sentence level graph:
+(s15b / blame-01 
+    :ARG0 (s15p / person 
+        :ARG1-of (s15e / expert-01
+            :aspect state
+            :modal-strength full-affirmative)) 
+    :ARG1 (s15d / deforest-01
+        :aspect activity
+        :modal-strength full-affirmative)
+    :ARG2 (s15t / tragedy 
+        :ARG1-of (s15c / come-01 
+                :temporal (s15a / after 
+                    :op1 (s15r / rain-01
+                        :ARG1-of (s15h2 / have-quant-91 
+                            :ARG2 (s15v / volume-quantity) 
+                            :ARG3 (s15h / high-02
+                                :extent (s15t2 / times :op1 5)
+                                :degree (s15m / more)) 
+                            :ARG4 (s15u / usual))
+                        :duration (s15m2 / multiple 
+                            :op1 (s15t3 / temporal-quantity :quant 1 
+                                :unit (s15d2 / day)))
+                        :aspect activity
+                        :modal-strength full-affirmative))
+                :aspect performance
+                :modal-strength full-affirmative))
+    :aspect state
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s15b: 2-2
+s15p: 1-1
+s15e: 0-0
+s15d: 3-3
+s15t: 6-6
+s15c: 9-9
+s15a: 10-10
+s15r: 13-13
+s15h2: 0-0
+s15v: 0-0
+s15h: 18-18
+s15t2: 17-17
+s15m: 0-0
+s15m2: 11-11
+s15u: 20-20
+s15t3: 0-0
+s15d2: 0-0
+
+
+# document level annotation:
+(s15s0 / sentence
+    :coref ((s2t :subset-of s15b)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s16-root
+# :: snt16
+Index: 1      2    3    4    5          6         7   8    9         10    11         12      13 14  15   16  17     18   19   20 21     22 23    24 25  26   27   28  29       30     31      32  33    34  35      36  37  38  39  40   41  
+Words: Lerias said that many Guinsaugon residents had been evacuated after landslides earlier in the week had killed more than 20 people on Leyte ,  but that many had returned Friday because the rains had stopped and the sun had come out.
+
+# sentence level graph:
+(s16s / say-01
+    :ARG0 (s16p / person
+        :name (s16n / name :op1 "Lerias"))
+    :ARG1 (s16u / unexpected-co-occurrence-91
+        :ARG1 (s16e / evacuate-01
+            :ARG1 (s16h / human-settlement :wiki "Saint_Bernard,_Southern_Leyte"
+                :name (s16n2 / name :op1 "Guinsaugon"))
+            :ARG2 (s16p2 / person
+                :ARG0-of (s16r / reside-01
+                    :ARG1 s16h)
+                :quant (s16m / many)
+                :refer-number plural)
+            :temporal (s16a / after
+                :op1 (s16k / kill-01
+                    :ARG0 (s16l / landslide-01
+                        :refer-number plural
+                        :aspect process)
+                    :ARG1 (s16p3 / person
+                        :quant (s16m2 / more-than
+                            :op1 20))
+                    :place (s16i2 / island :wiki "Leyte"
+                        :name (s16n3 / name :op1 "Leyte"))
+                    :temporal (s16e2 / earlier-in
+                        :op1 (s16w / week))
+                    :aspect performance))
+            :aspect performance)
+        :ARG2 (s16r2 / return-01
+            :ARG1 (s16p4 / person
+                :ARG1-of (s16i4 / include-91
+                    :ARG2 s16p2)
+                :quant (s16m3 / many)
+                :refer-number plural)
+            :temporal (s16d / date-entity
+                :weekday (s16f / friday))
+            :reason (s16a2 / and
+                :op1 (s16r4 / rain-01
+                    :aspect endeavor
+                    :quote s16s)
+                :op2 (s16c2 / come-out-09
+                    :ARG1 (s16c3 / celestial-body :wiki "sun"
+                        :name (s16n4 / name :op1 "sun"))
+                    :aspect performance))
+            :aspect performance
+            :quote s16s))
+    :aspect performance)
+
+
+# alignment:
+s16s: 2-2
+s16p: 1-1
+s16n: 0-0
+s16u: 25-25
+s16e: 9-9
+s16h: 5-5
+s16n2: 0-0
+s16p2: 6-6
+s16r: 0-0
+s16m: 4-4
+s16a: 10-10
+s16k: 17-17
+s16l: 11-11
+s16p3: 21-21
+s16m2: 18-19
+s16i2: 23-23
+s16n3: 0-0
+s16e2: 12-13
+s16w: 15-15
+s16r2: 29-29
+s16m3: 27-27
+s16i4: 0-0
+s16p4: 0-0
+s16f: 30-30
+s16d: 0-0
+s16a2: 36-36
+s16r4: 33-33
+s16c2: 40-40
+s16c3: 38-38
+s16n4: -1--1
+
+
+# document level annotation:
+(s16s0 / sentence
+  :temporal ((s16s :before s16e)
+            (s16e :before s16k)
+            (s16k :overlap s16l)
+            (s16e2 :contained s16k)
+            (s16e2 :contained s16l)
+            (document-creation-time :depends-on s16e2)
+            (s16e :after s16r2)
+            (s16d :contained s16r2)
+            (document-creation-time :depends-on s16d)
+            (s16r2 :before s16r4)
+            (s16r4 :overlap s16c2))
+  :modal ((root :modal author)
+            (author :full-affirmative s16s)
+            (author :full-affirmative s16p)
+            (s16p :full-affirmative s16e)
+            (s16p :full-affirmative s16k)
+            (s16p :full-affirmative s16l)
+            (s16p :full-affirmative s16r2)
+            (s16p :full-affirmative s16r4)
+            (s16p :full-affirmative s16c2)
+            (author :full-affirmative s16k)
+            (author :full-affirmative s16e)
+            (author :full-affirmative s16r4)
+            (author :full-affirmative s16c2)
+            (author :full-affirmative s16r2))
+  :coref ((s16p2 :subset-of s16p4)
+            (s2t :subset-of s16s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s17-root
+# :: snt17
+Index: 1 2    3   4 5         6          7     8      9      10  11        12  13   14   15     16  17  18  19   20 21  22   23      24   25 26  27      28 29   30   31      32 33   34 35  36         37          38     
+Words: A mild 2.6 - magnitude earthquake which struck before the landslide may also have helped set off the wall of mud that crashed down on the village ,  said Rene Solidum ,  head of the government vulcanology office.
+
+# sentence level graph:
+(s17s / say-01
+    :ARG0 (s17p / person
+        :name (s17n / name :op1 "Rene" :op2 "Solidum")
+        :ARG1-of (s17h / have-org-role-92
+            :ARG2 (s17o / office
+                :topic (s17v / vulcanology)
+                :part (s17g / government)
+                :refer-number singular)
+            :ARG3 (s17h2 / head)))
+    :ARG1 (s17h3 / help-01
+        :ARG0 (s17e / earthquake-02
+            :ARG2 (s17s2 / seismic-quantity
+                :quant 2.6
+                :scale (s17r / richter))
+            :mod (s17m / mild)
+            :ARG2-of (s17s3 / strike-01
+                :temporal (s17b / before
+                    :op1 (s17l / landslide-01
+                        :aspect process
+                        :refer-number singular))
+                :aspect performance
+                :quote s17s)
+            :refer-number singular
+            :aspect process)
+        :ARG1 (s17s4 / set-off-04
+            :ARG0 (s17w / wall
+                :material (s17m2 / mud)
+                :ARG1-of (s17c / crash-01
+                    :direction (s17d / down)
+                    :goal (s17v2 / village
+                        :refer-number singular)
+                    :aspect performance)
+                :refer-number singular)
+            :causer s17e
+            :aspect performance)
+        :mod (s17a / also)
+        :aspect performance
+        :quote s17s)
+    :aspect performance)
+
+
+# alignment:
+s17s: 29-29
+s17p: 30-31
+s17n: 0-0
+s17h: 0-0
+s17o: 38-38
+s17v: 37-37
+s17g: 36-36
+s17h2: 33-33
+s17h3: 15-15
+s17e: 6-6
+s17m: 2-2
+s17s2: 3-5
+s17r: 0-0
+s17s3: 8-8
+s17b: 9-9
+s17l: 11-11
+s17a: 13-13
+s17s4: 16-17
+s17w: 19-19
+s17m2: 21-21
+s17c: 23-23
+s17d: 24-24
+s17v2: 27-27
+
+
+# document level annotation:
+(s17s0 / sentence
+    :temporal ((s16r :after s17l)
+            (s17l :before s17s3)
+            (s17s3 :overlap s17e)
+            (s17s3 :after s17h3)
+            (s17h3 :overlap s17s4)
+            (s17s4 :after s17c)
+            (s17c :after s17s))
+    :modal ((root :modal author)
+            (author :full-affirmative s17p)
+            (author :full-affirmative s17s)
+            (s17p :neutral-affirmative s17h3)
+            (s17p :neutral-affirmative s17s4)
+            (s17p :full-affirmative s17e)
+            (s17p :full-affirmative s17s3)
+            (s17p :full-affirmative s17l)
+            (s17p :full-affirmative s17c))
+    :coref ((s2t :subset-of s17s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s18-root
+# :: snt18
+Index: 1 2   3    4     5    6      7    8     9   10 11        12      13 14  15     16 17       18  19 20    21  22 23    24         25 26 27    28   29       30 31 32 33      34   35
+Words: " The area could have really been ready for a  landslide because of the amount of rainfall and if there was a  minor earthquake ,  it might have hastened it ,  "  Solidum said . 
+
+# sentence level graph:
+(s18s / say-01 
+    :ARG0 (s18p / person :wiki - 
+        :name (s18n / name :op1 "Solidum")) 
+    :ARG1 (s18a / and 
+        :op1 (s18r / ready-02 
+            :ARG1 (s18a2 / area) 
+            :ARG2 (s18l / landslide-01)
+            :degree intensifier
+            :cause (s18v / volume-quantity
+                :quant-of (s18r3 / rain-01
+                    :aspect performance
+                    :modal-strength full-affirmative))
+            :aspect state
+            :modal-strength neutral-affirmative)
+        :op2 (s18h / hasten-01 
+            :ARG0 (s18e / earthquake-01
+                :ARG1-of (s18m / minor-01)
+                :aspect performance
+                :modal-strength full-affirmative) 
+            :ARG1 s18l
+            :condition s18e
+            :aspect activity
+            :modal-strength neutral-affirmative)
+        :quote s18s)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s18s: 34-34
+s18p: 33-33
+s18n: 0-0
+s18a: 18-18
+s18r: 8-8
+s18a2: 3-3
+s18l: 11-11
+s18v: 15-15
+s18r3: 17-17
+s18h: 29-29
+s18e: 24-24
+s18m: 23-23
+
+
+# document level annotation:
+(s18s0 / sentence
+    :coref ((s2t :subset-of s18s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s19-root
+# :: snt19
+Index: 1    2       3      4       5 6    7  8 9      10   11    12 13   14 15   16     17  18   19        20 21  22  23  24     25      26
+Words: Army Colonel Nestor Sadirin , head of a rescue task force ,  said 16 dead bodies had been recovered so far and 100 people rescued . 
+
+# sentence level graph:
+(s19s / say-01 
+    :ARG0 (s19p / person :wiki - 
+        :name (s19n / name :op1 "Nestor" :op2 "Sadirin") 
+        :ARG1-of (s19h / have-org-role-92 
+            :ARG2 (s19a / army) 
+            :ARG3 (s19c / colonel)) 
+        :ARG0-of (s19h2 / head-01 
+            :ARG1 (s19f / force 
+                :ARG0-of (s19t / task-01
+                    :ARG1 (s19r / rescue-01)))
+            :aspect state)) 
+    :ARG1 (s19a2 / and 
+        :op1 (s19r2 / recover-02 
+            :ARG1 (s19b / body :quant 16 
+                :ARG1-of (s19d / die-01
+                    :aspect state)) 
+            :temporal (s19s2 / so-far)
+            :aspect performance) 
+        :op2 (s19r3 / rescue-01  
+            :ARG1 (s19p2 / person :quant 100)
+            :aspect performance)
+        :quote s19s)
+    :aspect performance)
+
+
+# alignment:
+s19s: 13-13
+s19p: 3-4
+s19n: 0-0
+s19h: 0-0
+s19a: 1-1
+s19c: 2-2
+s19h2: 6-6
+s19f: 11-11
+s19t: 10-10
+s19r: 9-9
+s19a2: 22-22
+s19r2: 19-19
+s19b: 16-16
+s19d: 15-15
+s19s2: 20-21
+s19r3: 25-25
+s19p2: 24-24
+
+
+# document level annotation:
+(s19s0 / sentence
+    :modal ((root :modal author))
+    :coref ((s2t :subset-of s19s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s20-root
+# :: snt20
+Index: 1     2           3     4       5    6  7 8     9         10   11  12      13  14 15         16 17    18 19    20  21        22    23   24 25   26 27    28     29  30   31     32
+Words: Leyte Congressman Roger Mercado said in a radio interview that the village had a  population of 3,000 to 4,000 and expressed fears that as many as 2,000 people had been buried . 
+
+# sentence level graph:
+(s20a / and 
+    :op1 (s20s / say-01 
+        :ARG0 (s20p / person :wiki - 
+            :name (s20n / name :op1 "Roger" :op2 "Mercado") 
+            :ARG1-of (s20h / have-org-role-92 
+                :ARG2 (s20i2 / island :wiki "Leyte" 
+                    :name (s20n2 / name :op1 "Leyte")) 
+                :ARG3 (s20c / congressman))) 
+        :ARG1 (s20p2 / populate-01 
+            :ARG1 (s20v / village)
+            :ARG2 (s20p4 / person    
+                :quant (s20b / between :op1 3000 :op2 4000))
+            :aspect state
+            :modal-strength full-affirmative
+            :quote s20s)
+        :aspect performance
+        :modal-strength full-affirmative) 
+    :op2 (s20e / express-01 
+        :ARG0 s20p 
+        :ARG1 (s20f / fear-01 
+            :ARG0 s20p 
+            :ARG1 (s20b2 / bury-01 
+                :ARG1 (s20p3 / person 
+                    :quant (s20a2 / as-many-as :op1 2000))
+                :aspect performance
+                :modal-strength neutral-affirmative)
+            :aspect state
+            :modal-strength full-affirmative
+            :quote s20e)
+        :aspect performance
+        :modal-strength full-affirmative)
+    :temporal (s20i3 / interview-01 
+        :ARG1 s20p 
+        :medium (s20r / radio)
+        :aspect performance
+        :modal-strength full-affirmative))
+
+
+# alignment:
+s20a: 20-20
+s20s: 5-5
+s20p: 0-0
+s20n: 3-4
+s20h: 0-0
+s20i2: 1-1
+s20n2: 0-0
+s20c: 2-2
+s20v: 12-12
+s20p2: 15-15
+s20b: 0-0
+s20e: 21-21
+s20f: 22-22
+s20b2: 31-31
+s20p3: 28-28
+s20a2: 24-26
+s20i3: 9-9
+s20r: 8-8
+s20p4: 0-0
+
+
+# document level annotation:
+(s20s0 / sentence
+    :coref ((s2t :subset-of s20a)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s21-root
+# :: snt21
+Index: 1      2      3   4    5        6  7    8  9   10   11 12   13   14  15     16 17    18    19     20        21    22  23   24 25  26  27 28    29        30   31  32   33   34  35     36      37   38 39   40    
+Words: Lerias called for more rescuers to come to the site to help look for bodies as heavy earth moving equipment could not work in the mud ,  which officials said was more than six metres (yards) deep in many areas.
+
+# sentence level graph:
+(s21c / call-03 
+    :ARG0 (s21p / person :wiki - 
+        :name (s21n / name :op1 "Lerias")) 
+    :ARG1 (s21p2 / person 
+        :ARG0-of (s21r / rescue-01) 
+        :ARG1-of (s21h / have-quant-91 
+            :ARG3 (s21m / more))) 
+    :purpose (s21c2 / come-01 
+        :ARG1 s21p2 
+        :ARG4 (s21s / site) 
+        :purpose (s21h2 / help-01 
+            :ARG0 s21p2 
+            :ARG1 (s21l / look-01 
+                :ARG0 s21p2 
+                :ARG1 (s21b / body
+                    :refer-number plural)
+                :aspect activity
+                :modal-strength full-affirmative
+                :modal-predicate s21h2)
+            :aspect activity
+            :modal-strength full-affirmative)
+        :aspect performance
+        :modal-strength full-affirmative) 
+    :reason (s21w / work-09 
+        :ARG1 (s21e / equipment 
+            :ARG0-of (s21m2 / move-01 
+                :ARG1 (s21e2 / earth)) 
+            :mod (s21h3 / heavy)) 
+        :place (s21m3 / mud 
+            :ARG1-of (s21d / deep-02 
+                :ARG2 (s21m4 / more-than 
+                    :op1 (s21d2 / distance-quantity :quant 6 
+                        :unit (s21m5 / meter))) 
+                :place (s21a / area 
+                    :quant (s21m6 / many))
+                :aspect state
+                :modal-strength full-affirmative
+                :quote s21s2) 
+            :ARG1-of (s21s2 / say-01 
+                :ARG0 (s21p4 / person 
+                    :ARG1-of (s21h4 / have-role-91
+                        :ARG3 (s21o / official)))
+                :aspect performance
+                :modal-strength full-affirmative))
+        :polarity -
+        :aspect activity
+        :modal-strength neutral-negative)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s21c: 2-2
+s21p: 1-1
+s21n: 0-0
+s21p2: 5-5
+s21r: 0-0
+s21h: 0-0
+s21m: 4-4
+s21c2: 7-7
+s21s: 10-10
+s21h2: 12-12
+s21l: 13-13
+s21b: 15-15
+s21w: 23-23
+s21e: 20-20
+s21m2: 19-19
+s21e2: 18-18
+s21h3: 17-17
+s21m3: 26-26
+s21d: 37-37
+s21m4: 32-33
+s21d2: 0-0
+s21m5: 35-35
+s21a: 40-40
+s21m6: 39-39
+s21s2: 30-30
+s21p4: 29-29
+s21h4: 0-0
+s21o: 0-0
+
+
+# document level annotation:
+(s21s0 / sentence
+    :coref ((s2t :subset-of s21c)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s22-root
+# :: snt22
+Index: 1         2      3     4    5   6         7      8         9 10      11 12      13      14  15    16 17     18     19 20   21   22    23 24  25   26 27   28        29     30   
+Words: Volunteer rescue teams from the country's mining companies , skilled in digging through the earth to rescue people ,  were also going to the area ,  said President Arroyo said.
+
+# sentence level graph:
+(s22s / say-01 
+    :ARG0 (s22p / person :wiki "Gloria_Macapagal_Arroyo" 
+        :name (s22n / name :op1 "Arroyo") 
+        :ARG1-of (s22h / have-org-role-92 
+            :ARG2 s22c2
+            :ARG3 (s22p2 / president))) 
+    :ARG1 (s22g / go-01 
+        :ARG1 (s22t / team 
+            :ARG0-of (s22r / rescue-01
+                :aspect activity) 
+            :ARG0-of (s22v / volunteer-01
+                :aspect activity
+                :modal-strength full-affirmative) 
+            :source (s22c / company 
+                :mod (s22m / mine-01) 
+                :poss (s22c2 / country)) 
+            :ARG1-of (s22s2 / skillful-01
+                :ARG2 (s22d / dig-01 
+                    :ARG0 s22t
+                    :ARG2 (s22t2 / through 
+                        :op1 (s22e / earth)) 
+                    :ARG3 (s22r2 / rescue-01 
+                        :ARG0 s22t 
+                        :ARG1 (s22p3 / person
+                            :refer-number plural)
+                        :aspect performance
+                        :modal-strength full-affirmative)
+                    :aspect activity
+                    :modal-strength full-affirmative)
+                :aspect state
+                :modal-strength full-affirmative)) 
+        :ARG4 (s22a / area) 
+        :mod (s22a2 / also)
+        :aspect performance
+        :modal-strength full-affirmative)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s22s: 27-27
+s22p: 29-29
+s22n: 0-0
+s22h: 0-0
+s22p2: 28-28
+s22g: 22-22
+s22t: 3-3
+s22r: 2-2
+s22v: 1-1
+s22c: 8-8
+s22m: 7-7
+s22c2: 6-6
+s22s2: 10-10
+s22d: 12-12
+s22t2: 13-13
+s22e: 15-15
+s22r2: 17-17
+s22p3: 18-18
+s22a: 25-25
+s22a2: 21-21
+
+
+# document level annotation:
+(s22s0 / sentence
+    :coref ((s2t :subset-of s22s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s23-root
+# :: snt23
+Index: 1      2    3   4   5     6    7   8      9  10       11      12   13 14   15  16        17
+Words: Gordon said the Red Cross said was trying to dispatch sniffer dogs to hunt for survivors . 
+
+# sentence level graph:
+(s23s / say-01 
+    :ARG0 (s23p / person :wiki "Richard_J._Gordon" 
+        :name (s23n / name :op1 "Gordon")) 
+    :ARG1 (s23s2 / say-01 
+        :ARG0 (s23o / organization :wiki "International_Red_Cross_and_Red_Crescent_Movement" 
+            :name (s23n2 / name :op1 "Red" :op2 "Cross")) 
+        :ARG1 (s23t / try-01 
+            :ARG0 s23o 
+            :ARG1 (s23d / dispatch-01 
+                :ARG0 s23o 
+                :ARG1 (s23d2 / dog 
+                    :ARG0-of (s23s3 / sniff-01
+                        :aspect habitual)) 
+                :ARG2 (s23h / hunt-01 
+                    :ARG0 s23d2 
+                    :ARG1 (s23p2 / person 
+                        :ARG0-of (s23s4 / survive-02
+                            :aspect activity))
+                    :aspect activity
+                    :modal-strength full-affirmative)
+                :aspect partial-affirmative
+                :modal-strength full-affirmative
+                :modal-predicate s23t)
+            :aspect activity
+            :modal-strength full-affirmative
+            :quote s23s2)
+        :aspect performance
+        :modal-strength full-affirmative
+        :quote s23s)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s23s: 2-2
+s23p: 1-1
+s23n: 0-0
+s23s2: 6-6
+s23o: 4-5
+s23n2: 0-0
+s23t: 8-8
+s23d: 10-10
+s23d2: 12-12
+s23s3: 11-11
+s23h: 14-14
+s23p2: 16-16
+s23s4: 0-0
+
+
+# document level annotation:
+(s23s0 / sentence
+    :coref ((s2t :subset-of s23s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s24-root
+# :: snt24
+Index: 1        2           3    4    5  6     7   8    9       10    11     12  13  14      15     16    17        18      19  20       21  22  23   24    25 26     27           
+Words: Military helicopters were able to reach the area despite heavy clouds but the flights ceased after nightfall because the aircraft did not have night -  flying capabilities.
+
+# sentence level graph:
+(s24r / reach-01 
+    :ARG0 (s24h / helicopter 
+        :mod (s24m / military)) 
+    :ARG1 (s24a / area) 
+    :concession (s24w / weather-91
+        :ARG1 s24a 
+        :ARG2 (s24c / cloud 
+            :refer-number plural
+            :mod (s24h2 / heavy))
+        :aspect state
+        :modal-strength full-affirmative)
+    :concession-of (s24c2 / cease-01 
+        :ARG1 (s24f / fly-01 
+            :ARG2 s24h) 
+        :temporal (s24a2 / after 
+            :op1 (s24f3 / fall-04 
+                :ARG1 (s24n / night))) 
+        :reason (s24c4 / capable-01 
+                :ARG1 (s24a3 / aircraft)
+                :ARG2 (s24f2 / fly-01 
+                    :temporal (s24d / date-entity 
+                        :dayperiod (s24n2 / night)))
+                :polarity -
+                :aspect state
+                :modal-strength full-negative)
+        :aspect performance
+        :modal-strength full-affirmative)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s24r: 6-6
+s24h: 2-2
+s24m: 1-1
+s24a: 8-8
+s24w: 0-0
+s24c: 11-11
+s24h2: 10-10
+s24c2: 15-15
+s24f: 14-14
+s24a2: 16-16
+s24f3: 17-17
+s24n: 0-0
+s24c4: 26-26
+s24a3: 20-20
+s24f2: 25-25
+s24d: 0-0
+s24n2: 24-24
+
+
+# document level annotation:
+(s24s0 / sentence
+    :coref ((s2t :subset-of s24r)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s25-root
+# :: snt25
+Index: 1      2    3 4       5         6     7  8   9         10     11 12     13  14   15   16 17  18       19      20    21 22       23  24       25
+Words: Lerias said a smaller landslide later in the afternoon caused no damage but left many of the rescuers worried about a  possible new disaster . 
+
+# sentence level graph:
+(s25s / say-01 
+    :ARG0 (s25p / person :wiki - 
+        :name (s25n / name :op1 "Lerias")) 
+    :ARG1 (s25d2 / damage-01 
+        :polarity -
+        :ARG0 (s25l / landslide-01 
+            :mod (s25s2 / small 
+                :ARG2-of (s25h / have-degree-91 
+                    :ARG1 s25l 
+                    :ARG3 (s25m / more)
+                    :ARG4 (s25e / event)))
+            :temporal (s25l2 / later-in
+                :op1 (s25d / date-entity 
+                    :dayperiod (s25a / afternoon)))) 
+        :concession (s25l3 / leave-13 
+            :ARG0 s25l 
+            :ARG1 (s25w / worry-02 
+                :ARG0 (s25p2 / person 
+                    :ARG0-of (s25r / rescue-01) 
+                    :quant (s25m2 / many)) 
+                :ARG1 (s25d3 / disaster-01 
+                    :ARG1-of (s25n2 / new-01)
+                    :aspect performance
+                    :modal-strength neutral-affirmative)))
+        :quote s25s)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s25s: 2-2
+s25p: 1-1
+s25n: 0-0
+s25d2: 12-12
+s25l: 5-5
+s25s2: 4-4
+s25h: 0-0
+s25m: 0-0
+s25e: 0-0
+s25l2: 6-7
+s25d: 0-0
+s25a: 9-9
+s25l3: 14-14
+s25w: 19-19
+s25p2: 18-18
+s25r: 0-0
+s25m2: 15-15
+s25d3: 24-24
+s25n2: 23-23
+
+
+# document level annotation:
+(s25s0 / sentence
+    :coref ((s2t :subset-of s25s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s26-root
+# :: snt26
+Index: 1      2      3      4   5        6     7 8    9 10       11  12   13   14 15 16      17 18  19    20
+Words: Relief groups called for drinking water , food , blankets and body bags to be brought to the scene . 
+
+# sentence level graph:
+(s26c / call-03 
+    :ARG0 (s26g / group 
+        :ARG0-of (s26r / relieve-01)
+        :refer-number plural) 
+    :ARG1 (s26b / bring-01 
+        :ARG1 (s26a / and 
+            :op1 (s26w / water 
+                :purpose (s26d / drink-01
+                    :ARG1 s26w)) 
+            :op2 (s26f / food) 
+            :op3 (s26b2 / blanket
+                :refer-number plural) 
+            :op4 (s26b3 / bag 
+                :mod (s26b4 / body)
+                :refer-number plural)) 
+        :ARG2 (s26s / scene)
+        :aspect performance
+        :modal-strength full-affirmative
+        :quote s26c)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s26c: 3-3
+s26g: 2-2
+s26r: 1-1
+s26b: 16-16
+s26a: 11-11
+s26w: 6-6
+s26d: 5-5
+s26f: 8-8
+s26b2: 10-10
+s26b3: 13-13
+s26b4: 12-12
+s26s: 19-19
+
+
+# document level annotation:
+(s26s0 / sentence
+    :coref ((s2t :subset-of s26c)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s27-root
+# :: snt27
+Index: 1          2     3      4   5     6    7  8 9     10        11   12    13        14   15  16      17 18  19   20 21    22 23      24         25  26    27   28 29  30          31   32
+Words: Provincial board member Eva Dumol said in a radio interview that heavy equipment that was already in the area to clear up earlier landslides was being sent to the Guinasaugon area . 
+
+# sentence level graph:
+(s27s / say-01 
+    :ARG0 (s27p / person :wiki - 
+        :name (s27n / name :op1 "Eva" :op2 "Dumol") 
+        :ARG1-of (s27h / have-org-role-92 
+            :ARG2 (s27b / board 
+                :mod (s27p2 / provincial)) 
+            :ARG3 (s27m / member))) 
+    :ARG1 (s27s2 / send-01 
+        :ARG1 (s27e / equipment 
+            :mod (s27h2 / heavy) 
+            :ARG1-of (s27h3 / have-place-91
+                :ARG2 (s27a / area)
+                :temporal (s27a2 / already)
+                :purpose (s27c / clear-up-04 
+                    :instrument s27e
+                    :ARG1 (s27l / landslide-01
+                        :temporal (s27b2 / before 
+                            :op1 (s27e2 / event))))))
+        :ARG2 (s27a3 / area
+            :mod (s27s4 / settlement :wiki "Saint_Bernard,_Southern_Leyte"
+                :name (s27n2 / name :op1 "Guinasaugon")))
+        :aspect activity
+        :modal-strength full-affirmative
+        :quote s27s) 
+    :temporal (s27i2 / interview-01 
+        :ARG1 s27p 
+        :medium (s27r / radio)
+        :aspect performance
+        :modal-strength full-affirmative)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s27s: 6-6
+s27p: 0-0
+s27n: 4-5
+s27h: 0-0
+s27b: 2-2
+s27p2: 1-1
+s27m: 3-3
+s27s2: 27-27
+s27e: 13-13
+s27h2: 12-12
+s27h3: 0-0
+s27a: 19-19
+s27a2: 16-16
+s27c: 21-22
+s27l: 24-24
+s27b2: 23-23
+s27e2: 0-0
+s27a3: 31-31
+s27s4: 30-30
+s27n2: 0-0
+s27i2: 10-10
+s27r: 9-9
+
+
+# document level annotation:
+(s27s0 / sentence
+    :coref ((s2t :subset-of s27s)))
+
+
+
+################################################################################
+# meta-info :: sent_id = u_tree-cs-s28-root
+# :: snt28
+Index: 1    2    3     4      5    6      7  8 9        10    11  12       13 14    15 16       17   
+Words: More than 5,000 people were killed in a combined flood and mudslide on Leyte in November 1991.
+
+# sentence level graph:
+(s28k / kill-01 
+    :ARG0 (s28c / combine-01 
+        :ARG1 (s28f / flood-01 
+            :aspect activity
+            :modal-strength full-affirmative) 
+        :ARG2 (s28m / mudslide-01
+            :aspect activity
+            :modal-strength full-affirmative)
+        :aspect state
+        :modal-strength full-affirmative) 
+    :ARG1 (s28p / person 
+        :quant (s28m2 / more-than :op1 5000)) 
+    :place (s28i2 / island :wiki "Leyte" 
+        :name (s28n / name :op1 "Leyte"))
+    :temporal (s28d / date-entity 
+        :month 11 
+        :year 1991)
+    :aspect performance
+    :modal-strength full-affirmative)
+
+
+# alignment:
+s28k: 6-6
+s28c: 9-9
+s28f: 10-10
+s28m: 12-12
+s28p: 4-4
+s28m2: 1-2
+s28i2: 14-14
+s28n: 0-0
+s28d: 16-17
+
+
+# document level annotation:
+(s28s0 / sentence
+    :coref ((s2t :subset-of s28k)))
+
+
+

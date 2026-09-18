@@ -1,0 +1,2424 @@
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 34
+# :: snt1
+Index:  1  2    3    4  5    6  7  8    9 10 11 12   13 14 15 16 17 18 19   20 21 22 23 24 25     26   27 28   29 30 31 32   33 34
+Words: 我  就  这样   孤独   地  生活   着  ，  没有   一  个  能  真正   谈  得  来  的  人  ，  一直   到  六  年  前  在  撒哈拉    沙漠   上  发生   了  那  次  故障   。 
+
+# sentence level graph:
+(s1x35 / and
+        :op1 (s1x6 / 生活-01
+                    :ARG0 (s1x1 / individual-person
+                                 :refer-person 1
+                                 :refer-number singular)
+                    :aspect activity
+                    :manner (s1x4 / 孤独)
+                    :manner (s1x3 / 这样
+                                   :mod (s1x2 / 就))
+                    :modal-strength (s1x69 / full-affirmative))
+        :op2 (s1x9 / 有-03
+                    :modal-strength (s1x71 / full-negative)
+                    :polarity -
+                    :ARG1 (s1x18 / 人
+                                  :quant 1
+                                  :unit (s1x11 / 个)
+                                  :mod (s1x12 / 能-01
+                                               :ARG0 (s1x14 / 谈得来
+                                                             :mod (s1x13 / 真正))
+                                               :modal-strength neutral-affirmative))
+                    :duration (s1x21 / 到-01
+                                      :mod (s1x20 / 一直)
+                                      :ARG1 (s1x29 / 发生-01
+                                                    :ARG0 (s1x33 / 故障
+                                                                  :unit (s1x32 / 次)
+                                                                  :mod (s1x31 / 那))
+                                                    :aspect performance
+                                                    :temporal (s1x24 / 前
+                                                                      :op1 (s1x60 / now)
+                                                                      :op2 (s1x62 / temporal-quantity
+                                                                                   :quant 6
+                                                                                   :unit (s1x23 / 年)))
+                                                    :place (s1x27 / 沙漠
+                                                                   :name (s1x26 / 撒哈拉))
+                                                    :modal-strength (s1x70 / full-affirmative)))))
+
+# alignment:
+s1x1: 0-0
+s1x11: 11-11
+s1x12: 12-12
+s1x13: 13-13
+s1x14: 14-14
+s1x18: 18-18
+s1x2: 2-2
+s1x20: 20-20
+s1x21: 21-21
+s1x23: 23-23
+s1x24: 24-24
+s1x26: 26-26
+s1x27: 27-27
+s1x29: 29-29
+s1x3: 3-3
+s1x31: 31-31
+s1x32: 32-32
+s1x33: 33-33
+s1x35: 0-0
+s1x4: 4-4
+s1x6: 6-6
+s1x60: 0-0
+s1x62: 0-0
+s1x69: 0-0
+s1x70: 0-0
+s1x71: 0-0
+s1x9: 9-9
+
+# document level annotation:
+(s1s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 35
+# :: snt2
+Index:  1  2      3  4  5  6    7    8  9 10
+Words: 我  的  发动机    里  有  个  东西   损坏   了  。 
+
+# sentence level graph:
+(s2x8 / 损坏-01
+       :aspect performance
+       :ARG1 (s2x7 / 东西
+                    :unit (s2x6 / 个)
+                    :place (s2x3 / 发动机
+                                  :possessor-of (s2x1 / individual-person
+                                               :refer-person 1
+                                               :refer-number singular)))
+       :modal-strength (s2x19 / full-affirmative))
+
+# alignment:
+s2x1: 0-0
+s2x19: 0-0
+s2x3: 3-3
+s2x6: 6-6
+s2x7: 7-7
+s2x8: 8-8
+
+# document level annotation:
+(s2s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 36
+# :: snt3
+Index:    1    2  3  4    5  6      7  8    9 10   11 12 13 14   15   16   17   18   19 20   21   22 23
+Words: 当时   由于   我  既  没有   带  机械师    也  没有   带  旅客   ，  我  就  试图   独自   完成   这个   困难   的  维修   工作   。 
+
+# sentence level graph:
+(s3x24 / causation
+        :ARG1 (s3x26 / and
+                      :op1 (s3x6 / 带-02
+                                  :ARG1 (s3x7 / 机械师)
+                                  :modal-strength (s3x49 / full-negative)
+                                  :polarity -)
+                      :op2 (s3x10 / 带-01
+                                   :ARG1 (s3x11 / 旅客)
+                                   :modal-strength (s3x50 / full-negative)
+                                   :polarity -)
+                      :ARG0 (s3x3 / individual-person
+                                   :refer-person 1
+                                   :refer-number singular))
+        :ARG2 (s3x15 / 试图-01
+                      :ARG0 (s3x13 / individual-person
+                                    :refer-person 1
+                                    :refer-number singular)
+                      :ARG1 (s3x17 / 完成-01
+                                    :manner (s3x16 / 独自
+                                                    :ARG1 (s3x22 / 工作
+                                                                  :mod (s3x19 / 困难)
+                                                                  :mod (s3x21 / 维修)
+                                                                  :mod (s3x18 / 个
+                                                                               / 这)
+                                                                  :unit s3x18))
+                                    :ARG0 s3x13
+                                    :modal-predicate s3x15
+                                    :modal-strength (s3x47 / neutral-affirmative
+                                                    :conceiver s3x13))))
+
+# alignment:
+s3x10: 6-6
+s3x11: 11-11
+s3x13: 0-0
+s3x15: 15-15
+s3x16: 16-16
+s3x17: 17-17
+s3x18: 18-18
+s3x19: 19-19
+s3x21: 21-21
+s3x22: 22-22
+s3x24: 0-0
+s3x26: 0-0
+s3x3: 0-0
+s3x47: 0-0
+s3x49: 0-0
+s3x50: 0-0
+s3x6: 6-6
+s3x7: 7-7
+
+# document level annotation:
+(s3s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 37
+# :: snt4
+Index:  1  2  3    4  5  6  7  8  9 10   11 12 13   14 15 16 17 18 19   20 21   22 23
+Words: 这  对  我  来说   是  个  生  与  死  的  问题   。  我  随身   带  的  水  只  够  饮用   一  星期   。 
+
+# sentence level graph:
+(s4x24 / causation
+        :ARG2 (s4x4 / 来说-01
+                     :ARG0 (s4x1 / 这)
+                     :ARG1 (s4x3 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG2 (s4x11 / 问题
+                                   :mod (s4x30 / and
+                                                :op1 (s4x7 / 生)
+                                                :op2 (s4x9 / 死))
+                                   :unit (s4x6 / 个))
+                     :ARG2 (s4y1 / identity-91
+                                  :ARG0 s4x1
+                                  :ARG1 s4x11))
+        :ARG1 (s4x19 / 够-01
+                      :ARG1 (s4x20 / 饮用-01
+                                    :duration (s4x36 / temporal-quantity
+                                                      :quant 1
+                                                      :unit (s4x22 / 星期))
+                                    :modal-strength (s4x45 / full-affirmative))
+                      :ARG0 (s4x17 / 水
+                                    :ARG1-of (s4x15 / 带-02
+                                                     :manner (s4x14 / 随身)))
+                      :mod (s4x18 / 只)))
+
+# alignment:
+s4x1: 1-1
+s4x11: 11-11
+s4x14: 14-14
+s4x15: 15-15
+s4x17: 17-17
+s4x18: 18-18
+s4x19: 19-19
+s4x20: 20-20
+s4x22: 22-22
+s4x24: 0-0
+s4x3: 0-0
+s4x30: 0-0
+s4x36: 0-0
+s4x4: 4-4
+s4x45: 0-0
+s4x6: 6-6
+s4x7: 7-7
+s4x9: 9-9
+s4y1: 0-0
+
+# document level annotation:
+(s4s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 38
+# :: snt5
+Index:    1  2    3  4  5  6  7  8    9   10   11 12 13   14 15 16
+Words: 第一   天  晚上   我  就  睡  在  这  远离   人间   烟火   的  大  沙漠   上  。 
+
+# sentence level graph:
+(s5x6 / 睡-02
+       :mod (s5x5 / 就)
+       :ARG0 (s5x4 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :place (s5x14 / 沙漠
+                      :ARG0-of (s5x9 / 远离-01
+                                      :ARG1 (s5x11 / 烟火
+                                                    :mod (s5x10 / 人间)))
+                      :mod (s5x13 / 大)
+                      :mod (s5x8 / 这))
+       :temporal (s5x3 / 晚上
+                        :temporal (s5x2 / 天
+                                         :ord (s5x29 / ordinal-entity
+                                                      :value 1)))
+       :modal-strength (s5x33 / full-affirmative))
+
+# alignment:
+s5x10: 10-10
+s5x11: 11-11
+s5x13: 13-13
+s5x14: 14-14
+s5x2: 2-2
+s5x29: 0-0
+s5x3: 3-3
+s5x33: 0-0
+s5x4: 0-0
+s5x5: 5-5
+s5x6: 6-6
+s5x8: 8-8
+s5x9: 9-9
+
+# document level annotation:
+(s5s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 39
+# :: snt6
+Index:  1  2    3  4  5  6  7    8  9 10     11 12 13   14 15 16 17
+Words: 我  比  大海   中  伏  在  小  木排   上  的  遇难者    还  要  孤独   得  多  。 
+
+# sentence level graph:
+(s6x14 / 孤独-01
+        :ARG0 (s6x1 / individual-person
+                     :refer-person 1
+                     :refer-number singular)
+        :degree (s6x16 / 多)
+        :mod (s6x12 / 还要)
+        :compared-to (s6x11 / 遇难者
+                             :ARG0-of (s6x5 / 伏
+                                             :ARG1 (s6x8 / 木排
+                                                          :mod (s6x7 / 小))))
+        :modal-strength (s6x28 / full-affirmative))
+
+# alignment:
+s6x1: 0-0
+s6x11: 11-11
+s6x12: 12-12
+s6x14: 14-14
+s6x16: 16-16
+s6x28: 0-0
+s6x5: 5-5
+s6x7: 7-7
+s6x8: 8-8
+
+# document level annotation:
+(s6s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 40
+# :: snt7
+Index:  1  2    3  4    5  6  7  8  9   10 11 12   13   14 15 16   17 18   19   20   21 22   23 24   25   26 27
+Words: 而  在  第二   天  拂晓   ，  当  一  个  奇怪   的  小  声音   叫醒   我  的  时候   ，  你们   可以   想见   我  当时   是  多么   吃惊   。 
+
+# sentence level graph:
+(s7x28 / contrast
+        :ARG2 (s7x20 / 可以-01
+                      :ARG0 (s7x21 / 想见-01
+                                    :ARG1 (s7x26 / 吃惊-01
+                                                  :degree (s7x25 / 多么)
+                                                  :temporal (s7x23 / 当时)
+                                                  :temporal (s7x14 / 叫醒-01
+                                                                    :ARG0 (s7x13 / 声音
+                                                                                  :mod (s7x10 / 奇怪)
+                                                                                  :mod (s7x12 / 小)
+                                                                                  :quant 1
+                                                                                  :unit (s7x9 / 个))
+                                                                    :modal-strength (s7x50 / full-affirmative))
+                                                  :temporal (s7x5 / 拂晓
+                                                                   :temporal (s7x4 / 天
+                                                                                    :ord (s7x45 / ordinal-entity
+                                                                                                 :value 2)))))
+                      :ARG0 (s7x19 / individual-person
+                                    :refer-person 2
+                                    :refer-number plural)))
+
+# alignment:
+s7x10: 10-10
+s7x12: 12-12
+s7x13: 13-13
+s7x14: 14-14
+s7x19: 0-0
+s7x20: 20-20
+s7x21: 21-21
+s7x23: 23-23
+s7x25: 25-25
+s7x26: 26-26
+s7x28: 0-0
+s7x4: 4-4
+s7x45: 0-0
+s7x5: 5-5
+s7x50: 0-0
+s7x9: 9-9
+
+# document level annotation:
+(s7s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 41
+# :: snt8
+Index:  1    2  3    4    5  6 7  8  9 10 11 12 13 14 15 16 17 18 19 20
+Words: 这  小小   的  声音   说道   ：  “ 请  你  给  我  画  一  只  羊  ，  好  吗  ？  ” 
+
+# sentence level graph:
+(s8x5 / 说道-01
+       :ARG0 (s8x4 / 声音
+                    :mod (s8x2 / 小小-01)
+                    :mod (s8x1 / 这))
+       :ARG1 (s8x26 / and
+                     :op1 (s8x8 / 请-01
+                                 :ARG2 (s8x12 / 画-01
+                                               :ARG0 (s8x9 / individual-person
+                                                            :refer-person 2
+                                                            :refer-number singular)
+                                               :ARG1 (s8x15 / 羊
+                                                             :quant 1
+                                                             :unit (s8x14 / 只))
+                                               :beneficiary (s8x11 / individual-person
+                                                                    :refer-person 1
+                                                                    :refer-number singular))
+                                 :ARG1 s8x9
+                                 :mode imperative)
+                     :op2 (s8x17 / 好
+                                  :mode interrogative))
+       :modal-strength (s8x39 / full-affirmative
+                       :conceiver (s8x41 / author)))
+
+# alignment:
+s8x1: 1-1
+s8x11: 0-0
+s8x12: 12-12
+s8x14: 14-14
+s8x15: 15-15
+s8x17: 17-17
+s8x2: 2-2
+s8x26: 0-0
+s8x39: 0-0
+s8x4: 4-4
+s8x41: 0-0
+s8x5: 5-5
+s8x8: 8-8
+s8x9: 0-0
+
+# document level annotation:
+(s8s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 42
+# :: snt9
+Index: 1  2  3
+Words: “ 啊  ？ 
+
+# sentence level graph:
+(s9x4 / say
+       :ARG1 (s9x2 / 啊
+                    :mode interrogative))
+
+# alignment:
+s9x2: 2-2
+s9x4: 0-0
+
+# document level annotation:
+(s9s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 43
+# :: snt10
+Index: 1  2  3  4  5  6  7 8 9
+Words: “ 给  我  画  一  只  羊  … ”
+
+# sentence level graph:
+(s10x10 / say
+        :ARG1 (s10x4 / 画-01
+                     :ARG1 (s10x7 / 羊
+                                  :quant 1
+                                  :unit (s10x6 / 只))
+                     :beneficiary (s10x3 / individual-person
+                                         :refer-person 1
+                                         :refer-number singular)
+                     :mode imperative
+                     :modal-strength (s10x19 / partial-affirmative)))
+
+# alignment:
+s10x10: 0-0
+s10x19: 0-0
+s10x3: 0-0
+s10x4: 4-4
+s10x6: 6-6
+s10x7: 7-7
+
+# document level annotation:
+(s10s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 44
+# :: snt11
+Index:  1  2  3    4    5    6    7  8      9 10   11   12 13
+Words: 我  象  是  受到   惊雷   轰击   一般   ，  一下子    就  站立   起来   。 
+
+# sentence level graph:
+(s11x11 / 站立-01
+        :ARG0 (s11x1 / individual-person
+                     :refer-person 1
+                     :refer-number singular)
+        :manner (s11x9 / 一下子)
+        :manner (s11x2 / 像-01
+                       :ARG1 (s11x4 / 受到-01
+                                    :ARG1 (s11x6 / 轰击-01
+                                                 :ARG0 (s11x5 / 惊雷))))
+        :mod (s11x10 / 就)
+        :modal-strength (s11x24 / full-affirmative))
+
+# alignment:
+s11x1: 0-0
+s11x10: 10-10
+s11x11: 11-11
+s11x2: 0-0
+s11x24: 0-0
+s11x4: 4-4
+s11x5: 5-5
+s11x6: 6-6
+s11x9: 9-9
+
+# document level annotation:
+(s11s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 45
+# :: snt12
+Index:  1    2  3  4  5  6    7  8
+Words: 我  使劲   地  揉  了  揉  眼睛   ， 
+
+# sentence level graph:
+(s12x4 / 揉-01
+       :aspect performance
+       :ARG0 (s12x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :ARG1 (s12x7 / 眼睛)
+       :manner (s12x2 / 使劲-01
+                      :ARG0 s12x1)
+       :modal-strength (s12x16 / full-affirmative))
+
+# alignment:
+s12x1: 0-0
+s12x16: 0-0
+s12x2: 2-2
+s12x4: 4-4
+s12x7: 7-7
+
+# document level annotation:
+(s12s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 46
+# :: snt13
+Index:    1  2  3  4  5  6
+Words: 仔细   地  看  了  看  。 
+
+# sentence level graph:
+(s13x3 / 看-02
+       :aspect performance
+       :manner (s13x1 / 仔细)
+       :ARG0 (s13x11 / snt47)
+       :modal-strength (s13x13 / full-affirmative))
+
+# alignment:
+s13x1: 1-1
+s13x11: 0-0
+s13x13: 0-0
+s13x3: 3-3
+
+# document level annotation:
+(s13s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 47
+# :: snt14
+Index:  1    2  3  4    5    6  7      8    9 10 11 12   13 14 15 16
+Words: 我  看见   一  个  十分   奇怪   的  小家伙    严肃   地  朝  我  凝眸   望  着  。 
+
+# sentence level graph:
+(s14x2 / 看见-01
+       :ARG0 (s14x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :ARG1 (s14x14 / 望-01
+                     :aspect activity
+                     :ARG0 (s14x8 / 小家伙
+                                  :mod (s14x6 / 奇怪
+                                              :degree (s14x5 / 十分))
+                                  :quant 1
+                                  :unit (s14x4 / 个))
+                     :manner (s14x9 / 严肃)
+                     :manner (s14x13 / 凝眸)
+                     :direction (s14x12 / individual-person
+                                        :refer-person 1
+                                        :refer-number singular)
+                     :modal-strength (s14x31 / full-affirmative
+                                     :conceiver s14x1))
+       :modal-strength (s14x30 / full-affirmative))
+
+# alignment:
+s14x1: 0-0
+s14x12: 0-0
+s14x13: 13-13
+s14x14: 14-14
+s14x2: 2-2
+s14x30: 0-0
+s14x31: 0-0
+s14x4: 4-4
+s14x5: 5-5
+s14x6: 6-6
+s14x8: 8-8
+s14x9: 9-9
+
+# document level annotation:
+(s14s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 48
+# :: snt15
+Index:  1  2    3  4  5  6  7    8  9 10 11 12 13 14   15 16
+Words: 这  是  后来   我  给  他  画  出来   的  最  好  的  一  副  画像   。 
+
+# sentence level graph:
+(s15y1 / identity-91
+       :ARG0 (s15x1 / 这)
+       :ARG1 (s15x15 / 画像
+                     :quant 1
+                     :unit (s15x14 / 副)
+                     :mod (s15x11 / 好
+                                  :degree (s15x10 / 最))
+                     :ARG1-of (s15x7 / 画-01
+                                     :ARG0 (s15x4 / individual-person
+                                                  :refer-person 1
+                                                  :refer-number singular)
+                                     :beneficiary (s15x6 / individual-person
+                                                         :refer-person 3
+                                                         :refer-number singular)
+                                     :temporal (s15x3 / 后来))))
+
+# alignment:
+s15x1: 1-1
+s15x10: 10-10
+s15x11: 11-11
+s15x14: 14-14
+s15x15: 15-15
+s15x3: 3-3
+s15x4: 0-0
+s15x6: 0-0
+s15x7: 7-7
+s15y1: 0-0
+
+# document level annotation:
+(s15s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 49
+# :: snt16
+Index:    1  2  3  4  5    6  7  8  9   10 11   12   13 14 15 16
+Words: 可是   ，  我  的  画  当然   要  比  他  本人   的  模样   逊色   得  多  。 
+
+# sentence level graph:
+(s16x17 / contrast
+        :ARG2 (s16x7 / 要-03
+                     :ARG0 (s16x13 / 逊色
+                                   :degree (s16x15 / 多)
+                                   :compared-to (s16x12 / 模样
+                                                        :possessor-of (s16x10 / 本人
+                                                                      :ARG0-of (s16x24 / mean
+                                                                                       :ARG1 (s16x9 / individual-person
+                                                                                                    :refer-person 3
+                                                                                                    :refer-number singular))))
+                                   :ARG0 (s16x5 / 画
+                                                :possessor-of (s16x3 / individual-person
+                                                             :refer-person 1
+                                                             :refer-number singular)))
+                     :mod (s16x6 / 当然)))
+
+# alignment:
+s16x10: 10-10
+s16x12: 12-12
+s16x13: 13-13
+s16x15: 15-15
+s16x17: 0-0
+s16x24: 0-0
+s16x3: 0-0
+s16x5: 5-5
+s16x6: 6-6
+s16x7: 7-7
+s16x9: 0-0
+
+# document level annotation:
+(s16s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 50
+# :: snt17
+Index:  1  2  3  4  5    6  7
+Words: 这  不  是  我  的  过错   。 
+
+# sentence level graph:
+(s17y1 / identity-91
+       :ARG0 (s17x1 / 这)
+       :ARG1 (s17x6 / 过错
+                    :possessor-of (s17x4 / individual-person
+                                 :refer-person 1
+                                 :refer-number singular)
+                    :polarity -))
+
+# alignment:
+s17x1: 1-1
+s17x4: 0-0
+s17x6: 6-6
+s17y1: 0-0
+
+# document level annotation:
+(s17s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 51
+# :: snt18
+Index:  1  2  3  4      5  6  7  8  9 10   11   12   13 14   15 16   17 18 19 20 21   22 23 24 25   26 27   28 29   30 31   32 33 34 35 36
+Words: 六  岁  时  ，  大人们    使  我  对  我  的  画家   生涯   失去   了  勇气   ，  除了   画  过  开  着  肚皮   和  闭  着  肚皮   的  蟒蛇   ，  后来   再  没有   学  过  画  。 
+
+# sentence level graph:
+(s18x39 / causation
+        :ARG1 (s18x13 / 失去-01
+                      :ARG0 (s18x7 / individual-person
+                                   :refer-person 1
+                                   :refer-number singular)
+                      :ARG1 (s18x15 / 勇气)
+                      :aspect performance
+                      :topic (s18x12 / 生涯
+                                     :possessor-of (s18x9 / individual-person
+                                                  :refer-person 1
+                                                  :refer-number singular)
+                                     :mod (s18x11 / 画家))
+                      :cause (s18x5 / 大人们)
+                      :temporal (s18x49 / age
+                                        :ARG1 s18x7
+                                        :ARG2 (s18x50 / temporal-quantity
+                                                      :quant 6
+                                                      :unit (s18x2 / 岁)))
+                      :modal-strength (s18x76 / full-affirmative))
+        :ARG2 (s18x33 / 学-01
+                      :aspect performance
+                      :ARG1 (s18x35 / 画
+                                    :polarity -
+                                    :mod (s18x31 / 再))
+                      :temporal (s18x30 / 后来)
+                      :ARG2-of (s18x17 / except
+                                       :ARG1 (s18x18 / 画-01
+                                                     :aspect performance
+                                                     :ARG1 (s18x28 / 蟒蛇
+                                                                   :ARG0-of (s18x23 / and
+                                                                                    :op1 (s18x20 / 开
+                                                                                                 :aspect activity
+                                                                                                 :ARG1 (s18x22 / 肚皮))
+                                                                                    :op2 (s18x24 / 闭-01
+                                                                                                 :aspect activity
+                                                                                                 :ARG1 (s18x26 / 肚皮))))
+                                                     :modal-strength (s18x78 / full-affirmative)))
+                      :modal-strength (s18x77 / full-affirmative)))
+
+# alignment:
+s18x11: 11-11
+s18x12: 12-12
+s18x13: 13-13
+s18x15: 15-15
+s18x17: 0-0
+s18x18: 18-18
+s18x2: 2-2
+s18x20: 20-20
+s18x22: 22-22
+s18x23: 0-0
+s18x24: 24-24
+s18x26: 22-22
+s18x28: 28-28
+s18x30: 30-30
+s18x31: 31-31
+s18x33: 33-33
+s18x35: 18-18
+s18x39: 0-0
+s18x49: 0-0
+s18x5: 5-5
+s18x50: 0-0
+s18x7: 0-0
+s18x76: 0-0
+s18x77: 0-0
+s18x78: 0-0
+s18x9: 0-0
+
+# document level annotation:
+(s18s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 52
+# :: snt19
+Index:  1    2  3    4  5    6  7  8  9   10   11 12     13 14
+Words: 我  惊奇   地  睁大   着  眼睛   看  着  这  突然   出现   的  小家伙    。 
+
+# sentence level graph:
+(s19x7 / 看-03
+       :aspect activity
+       :ARG0 (s19x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :manner (s19x4 / 睁大
+                      :aspect activity
+                      :ARG1 (s19x6 / 眼睛))
+       :ARG1 (s19x13 / 小家伙
+                     :mod (s19x9 / 这)
+                     :ARG1-of (s19x11 / 出现-01
+                                      :manner (s19x10 / 突然)
+                                      :modal-strength (s19x30 / full-affirmative
+                                                      :conceiver s19x1)))
+       :modal-strength (s19x28 / full-affirmative
+                       :conceiver (s19x29 / author)))
+
+# alignment:
+s19x1: 0-0
+s19x10: 10-10
+s19x11: 11-11
+s19x13: 13-13
+s19x28: 0-0
+s19x29: 0-0
+s19x30: 0-0
+s19x4: 4-4
+s19x6: 6-6
+s19x7: 7-7
+s19x9: 9-9
+
+# document level annotation:
+(s19s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 53
+# :: snt20
+Index:    1  2  3    4  5  6    7  8  9   10   11 12 13   14 15   16 17
+Words: 你们   不  要  忘记   ，  我  当时   处  在  远离   人烟   千  里  之外   的  地方   。 
+
+# sentence level graph:
+(s20x3 / 要-03
+       :ARG0 (s20x4 / 忘记-01
+                    :ARG0 (s20x1 / individual-person
+                                 :refer-person 2
+                                 :refer-number plural)
+                    :ARG1 (s20x8 / 处-01
+                                 :ARG0 (s20x6 / individual-person
+                                              :refer-person 1
+                                              :refer-number singular)
+                                 :temporal (s20x7 / 当时)
+                                 :ARG1 (s20x16 / 地方
+                                               :ARG0-of (s20x10 / 远离-01
+                                                                :ARG1 (s20x11 / 人烟))
+                                               :place (s20x29 / relative-position
+                                                              :quant (s20x30 / distance-quantity
+                                                                             :quant 1000
+                                                                             :unit (s20x13 / 里))))
+                                 :modal-strength (s20x34 / full-affirmative))
+                    :modal-strength (s20x33 / partial-negative
+                                    :conceiver s20x6))
+       :polarity -)
+
+# alignment:
+s20x1: 0-0
+s20x10: 10-10
+s20x11: 11-11
+s20x13: 13-13
+s20x16: 16-16
+s20x29: 0-0
+s20x3: 3-3
+s20x30: 0-0
+s20x33: 0-0
+s20x34: 0-0
+s20x4: 4-4
+s20x6: 0-0
+s20x7: 7-7
+s20x8: 8-8
+
+# document level annotation:
+(s20s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 54
+# :: snt21
+Index:  1    2      3  4  5  6    7  8  9 10 11 12 13 14 15 16 17   18 19 20   21   22   23 24   25 26   27 28   29 30
+Words: 而  这个   小家伙    给  我  的  印象   是  ，  他  既  不  象  迷  了  路  的  样子   ，  也  没有   半点   疲乏   、  饥渴   、  惧怕   的  神情   。 
+
+# sentence level graph:
+(s21x31 / contrast
+        :ARG2 (s21x7 / 印象
+                     :ARG0 (s21x3 / 小家伙
+                                  :mod (s21x2 / 个
+                                              / 这)
+                                  :unit s21x2)
+                     :ARG1 (s21x5 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG2 (s21x38 / and
+                                   :op1 (s21x13 / 象-01
+                                                :ARG0 (s21x10 / individual-person
+                                                              :refer-person 3
+                                                              :refer-number singular)
+                                                :polarity -
+                                                :ARG1 (s21x18 / 样子
+                                                              :mod (s21x14 / 迷路
+                                                                           :aspect performance
+                                                                           :ARG0 s21x10)))
+                                   :op2 (s21x21 / 有-01
+                                                :ARG1 (s21x29 / 神情
+                                                              :quant (s21x22 / 半点)
+                                                              :mod (s21x50 / and
+                                                                           :op1 (s21x23 / 疲乏)
+                                                                           :op2 (s21x25 / 饥渴)
+                                                                           :op3 (s21x27 / 惧怕)))))))
+
+# alignment:
+s21x10: 0-0
+s21x13: 13-13
+s21x14: 14-14
+s21x18: 18-18
+s21x2: 2-2
+s21x21: 21-21
+s21x22: 22-22
+s21x23: 23-23
+s21x25: 25-25
+s21x27: 27-27
+s21x29: 29-29
+s21x3: 3-3
+s21x31: 0-0
+s21x38: 0-0
+s21x5: 0-0
+s21x50: 0-0
+s21x7: 7-7
+
+# document level annotation:
+(s21s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 55
+# :: snt22
+Index:  1    2  3  4  5  6  7    8  9   10   11 12 13   14 15 16   17 18
+Words: 他  丝毫   不  象  是  一  个  迷失   在  旷无   人烟   的  大  沙漠   中  的  孩子   。 
+
+# sentence level graph:
+(s22x4 / 象-01
+       :ARG0 (s22x1 / individual-person
+                    :refer-person 3
+                    :refer-number singular)
+       :polarity -
+       :degree (s22x2 / 丝毫)
+       :ARG1 (s22x17 / 孩子
+                     :ARG0-of (s22x8 / 迷失-02
+                                     :place (s22x14 / 沙漠
+                                                    :mod (s22x13 / 大-01)
+                                                    :mod (s22x10 / 旷无人烟)))
+                     :quant 1
+                     :unit (s22x7 / 个)))
+
+# alignment:
+s22x1: 0-0
+s22x10: 10-10
+s22x13: 13-13
+s22x14: 14-14
+s22x17: 17-17
+s22x2: 2-2
+s22x4: 4-4
+s22x7: 7-7
+s22x8: 8-8
+
+# document level annotation:
+(s22s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 56
+# :: snt23
+Index:  1  2  3    4    5    6  7  8    9 10 11 12   13 14 15 16   17 18 19 20 21 22 23   24 25   26 27 28
+Words: 当  我  在  惊讶   之中   终于   又  能  说出   话  来  的  时候   ，  对  他  说道   ：  “  唉  ，  你  在  这儿   干  什么   ？  ” 
+
+# sentence level graph:
+(s23x17 / 说道-01
+        :temporal (s23x8 / 能-02
+                         :ARG0 (s23x9 / 说出-01
+                                      :ARG1 (s23x10 / 话)
+                                      :condition (s23x4 / 惊讶-01
+                                                        :ARG0 (s23x2 / individual-person
+                                                                     :refer-person 1
+                                                                     :refer-number singular))
+                                      :ARG0 s23x2)
+                         :mod (s23x7 / 又)
+                         :mod (s23x6 / 终于)
+                         :modal-strength neutral-affirmative)
+        :ARG0 s23x2
+        :ARG2 (s23x16 / individual-person
+                      :refer-person 3
+                      :refer-number singular)
+        :ARG1 (s23x39 / and
+                      :op1 (s23x20 / 唉)
+                      :op2 (s23x25 / 干-01
+                                   :ARG0 (s23x22 / individual-person
+                                                 :refer-person 2
+                                                 :refer-number singular)
+                                   :place (s23x24 / 这儿)
+                                   :ARG1 (s23x26 / umr-unknown)
+                                   :mode interrogative))
+        :modal-strength (s23x46 / full-affirmative))
+
+# alignment:
+s23x10: 10-10
+s23x16: 0-0
+s23x17: 17-17
+s23x2: 0-0
+s23x20: 20-20
+s23x22: 0-0
+s23x24: 24-24
+s23x25: 25-25
+s23x26: 0-0
+s23x39: 0-0
+s23x4: 4-4
+s23x46: 0-0
+s23x6: 6-6
+s23x7: 7-7
+s23x8: 8-8
+s23x9: 9-9
+
+# document level annotation:
+(s23s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 57
+# :: snt24
+Index:    1  2  3        4  5    6  7  8  9   10 11 12   13 14 15 16   17 18   19 20 21 22 23 24 25 26 27 28 29 30 31
+Words: 可是   他  却  不慌不忙     地  好象   有  一  件  重要   的  事  一般   ，  对  我  重复   地  说道   ：  “  请  …  给  我  画  一  只  羊  …  ” 
+
+# sentence level graph:
+(s24x32 / contrast
+        :ARG2 (s24x19 / 说道-01
+                      :ARG0 (s24x2 / individual-person
+                                   :refer-person 3
+                                   :refer-number singular)
+                      :manner (s24x17 / 重复-01)
+                      :manner (s24x6 / 像-01
+                                     :ARG1 (s24x7 / 有-01
+                                                  :ARG0 s24x2
+                                                  :ARG1 (s24x12 / 事
+                                                                :mod (s24x10 / 重要)
+                                                                :quant 1
+                                                                :unit (s24x9 / 件)))
+                                     :manner (s24x4 / 不慌不忙
+                                                    :ARG0 s24x2))
+                      :ARG2 (s24x16 / individual-person
+                                    :refer-person 1
+                                    :refer-number singular)
+                      :ARG1 (s24x22 / 请-03
+                                    :ARG0 (s24x26 / 画-01
+                                                  :ARG0 s24x16
+                                                  :ARG1 (s24x29 / 羊
+                                                                :quant 1
+                                                                :unit (s24x28 / 只))
+                                                  :beneficiary (s24x25 / individual-person
+                                                                       :refer-person 1
+                                                                       :refer-number singular)
+                                                  :modal-strength (s24x57 / partial-affirmative
+                                                                  :conceiver s24x2))
+                                    :mode imperative)
+                      :modal-strength (s24x56 / full-affirmative)))
+
+# alignment:
+s24x10: 10-10
+s24x12: 12-12
+s24x16: 0-0
+s24x17: 17-17
+s24x19: 19-19
+s24x2: 0-0
+s24x22: 22-22
+s24x25: 0-0
+s24x26: 26-26
+s24x28: 28-28
+s24x29: 29-29
+s24x32: 0-0
+s24x4: 4-4
+s24x56: 0-0
+s24x57: 0-0
+s24x6: 0-0
+s24x7: 7-7
+s24x9: 9-9
+
+# document level annotation:
+(s24s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 58
+# :: snt25
+Index:  1  2  3    4  5    6  7  8    9 10   11 12 13 14 15 16 17   18 19 20   21 22 23
+Words: 当  一  种  神秘   的  东西   把  你  镇住   的  时候   ，  你  是  不  敢  不  听从   它  的  支配   的  ， 
+
+# sentence level graph:
+(s25x16 / 敢-02
+        :ARG1 (s25x18 / 听从-01
+                      :modal-strength (s25x43 / full-negative
+                                      :polarity -
+                                      :temporal (s25x9 / 镇住-01
+                                                       :ARG0 (s25x6 / 东西
+                                                                    :mod (s25x4 / 神秘
+                                                                                :unit (s25x3 / 种))
+                                                                    :quant 1)
+                                                       :ARG1 (s25x8 / individual-person
+                                                                    :refer-person 2
+                                                                    :refer-number singular))
+                                      :mode judgement
+                                      :ARG0 (s25x13 / individual-person
+                                                    :refer-person 2
+                                                    :refer-number singular))
+                      :polarity -
+                      :ARG1 (s25x21 / 支配-01
+                                    :ARG0 (s25x19 / individual-person
+                                                  :refer-person 3
+                                                  :refer-number singular))
+                      :ARG0 s25x13))
+
+# alignment:
+s25x13: 0-0
+s25x16: 16-16
+s25x18: 18-18
+s25x19: 0-0
+s25x21: 21-21
+s25x3: 3-3
+s25x4: 4-4
+s25x43: 0-0
+s25x6: 6-6
+s25x8: 0-0
+s25x9: 9-9
+
+# document level annotation:
+(s25s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 59
+# :: snt26
+Index:  1  2        3  4    5  6  7    8    9 10   11 12   13 14 15   16   17 18   19 20 21   22   23   24 25 26   27   28 29 30 31 32 33 34 35   36 37
+Words: 在  这  旷无人烟     的  沙漠   上  ，  面临   死亡   的  危险   的  情况   下  ，  尽管   这样   的  举动   使  我  感到   十分   荒诞   ，  我  还是   掏出   了  一  张  纸  和  一  支  钢笔   。 
+
+# sentence level graph:
+(s26x38 / contrast
+        :ARG1 (s26x22 / 感到-01
+                      :ARG0 (s26x21 / individual-person
+                                    :refer-person 1
+                                    :refer-number singular)
+                      :ARG1 (s26x24 / 荒诞
+                                    :degree (s26x23 / 十分))
+                      :cause (s26x19 / 举动
+                                     :mod (s26x17 / 这样))
+                      :modal-strength (s26x71 / full-affirmative))
+        :ARG2 (s26x28 / 掏出-01
+                      :aspect performance
+                      :mod (s26x27 / 还是)
+                      :ARG0 (s26x26 / individual-person
+                                    :refer-person 1
+                                    :refer-number singular)
+                      :ARG1 (s26x50 / and
+                                    :op1 (s26x32 / 纸
+                                                 :quant 1
+                                                 :unit (s26x31 / 张))
+                                    :op2 (s26x36 / 钢笔
+                                                 :quant 1
+                                                 :unit (s26x35 / 支)))
+                      :modal-strength (s26x69 / full-affirmative))
+        :condition (s26x13 / 情况
+                           :ARG0-of (s26x59 / mean
+                                            :ARG1 (s26x8 / 面临-01
+                                                         :ARG1 (s26x11 / 危险
+                                                                       :mod (s26x9 / 死亡)))))
+        :place (s26x5 / 沙漠
+                      :mod (s26x3 / 旷无人烟)
+                      :mod (s26x2 / 这)))
+
+# alignment:
+s26x11: 11-11
+s26x13: 13-13
+s26x17: 17-17
+s26x19: 19-19
+s26x2: 2-2
+s26x21: 0-0
+s26x22: 22-22
+s26x23: 23-23
+s26x24: 24-24
+s26x26: 0-0
+s26x27: 27-27
+s26x28: 28-28
+s26x3: 3-3
+s26x31: 31-31
+s26x32: 32-32
+s26x35: 35-35
+s26x36: 36-36
+s26x38: 0-0
+s26x5: 5-5
+s26x50: 0-0
+s26x59: 0-0
+s26x69: 0-0
+s26x71: 0-0
+s26x8: 8-8
+s26x9: 9-9
+
+# document level annotation:
+(s26s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 60
+# :: snt27
+Index:    1  2  3  4    5  6  7  8  9 10   11 12   13 14   15 16   17 18 19   20 21 22   23 24 25     26 27 28 29 30   31 32
+Words: 这时   我  却  又  记起   ，  我  只  学  过  地理   、  历史   、  算术   和  语法   ，  就  有点   不  大  高兴   地  对  小家伙    说  我  不  会  画画   。 
+
+# sentence level graph:
+(s27x33 / causation
+        :ARG1 (s27x35 / contrast
+                      :ARG2 (s27x5 / 记起
+                                   :mod (s27x4 / 又)
+                                   :ARG0 (s27x2 / individual-person
+                                                :refer-person 1
+                                                :refer-number singular)
+                                   :temporal (s27x1 / 这时)
+                                   :ARG1 (s27x9 / 学-01
+                                                :ARG1 (s27x41 / and
+                                                              :op1 (s27x11 / 地理)
+                                                              :op2 (s27x13 / 历史)
+                                                              :op3 (s27x15 / 算术)
+                                                              :op4 (s27x17 / 语法))
+                                                :ARG0 (s27x7 / individual-person
+                                                             :refer-person 1
+                                                             :refer-number singular
+                                                             :modal-strength (s27x69 / full-affirmative
+                                                                             :conceiver (s27x70 / author)))
+                                                :mod (s27x8 / 只)
+                                                :aspect performance
+                                                :modal-strength (s27x61 / full-affirmative
+                                                                :conceiver s27x2))
+                                   :modal-strength (s27x60 / full-affirmative
+                                                   :conceiver (s27x68 / author))))
+        :ARG2 (s27x27 / 说-01
+                      :ARG0 s27x2
+                      :ARG1 (s27x30 / 会-01
+                                    :modal-strength (s27x63 / full-affirmative
+                                                    :conceiver (s27x65 / author))
+                                    :polarity -
+                                    :ARG1 (s27x31 / 画画-01
+                                                  :ARG0 (s27x28 / individual-person
+                                                                :refer-person 1
+                                                                :refer-number singular)
+                                                  :modal-strength (s27x64 / full-negative
+                                                                  :conceiver s27x2)
+                                                  :quote s27x27))))
+
+# alignment:
+s27x1: 1-1
+s27x11: 11-11
+s27x13: 13-13
+s27x15: 15-15
+s27x17: 17-17
+s27x2: 0-0
+s27x27: 27-27
+s27x28: 0-0
+s27x30: 30-30
+s27x31: 31-31
+s27x33: 0-0
+s27x35: 0-0
+s27x4: 4-4
+s27x41: 0-0
+s27x5: 5-5
+s27x60: 0-0
+s27x61: 0-0
+s27x63: 0-0
+s27x64: 0-0
+s27x65: 0-0
+s27x68: 0-0
+s27x69: 0-0
+s27x7: 0-0
+s27x70: 0-0
+s27x8: 8-8
+s27x9: 9-9
+
+# document level annotation:
+(s27s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 61
+# :: snt28
+Index:  1    2  3  4  5 6    7    8  9
+Words: 他  回答   我  说  ：  “ 没有   关系   ， 
+
+# sentence level graph:
+(s28x2 / 回答-01
+       :ARG0 (s28x1 / individual-person
+                    :refer-person 3
+                    :refer-number singular)
+       :ARG2 (s28x7 / 有-03
+                    :modal-strength (s28x22 / full-negative
+                                    :conceiver s28x1)
+                    :polarity -
+                    :ARG1 (s28x8 / 关系)
+                    :quote (s28x2 / 回答-01)))
+
+# alignment:
+s28x1: 0-0
+s28x2: 2-2
+s28x22: 0-0
+s28x7: 7-7
+s28x8: 8-8
+
+# document level annotation:
+(s28s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 62
+# :: snt29
+Index:  1  2  3  4  5  6  7  8 9
+Words: 给  我  画  一  只  羊  吧  ！  ”
+
+# sentence level graph:
+(s29x10 / say
+        :ARG1 (s29x3 / 画-01
+                     :ARG1 (s29x6 / 羊
+                                  :quant 1
+                                  :unit (s29x5 / 只))
+                     :beneficiary (s29x2 / individual-person
+                                         :refer-person 1
+                                         :refer-number singular)
+                     :mode expressive
+                     :mode imperative
+                     :modal-strength (s29x20 / partial-affirmative)))
+
+# alignment:
+s29x10: 0-0
+s29x2: 0-0
+s29x20: 0-0
+s29x3: 3-3
+s29x5: 5-5
+s29x6: 6-6
+
+# document level annotation:
+(s29s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 63
+# :: snt30
+Index:    1  2    3    4  5  6  7  8
+Words: 因为   我  从来   没有   画  过  羊  。 
+
+# sentence level graph:
+(s30x11 / causation
+        :ARG1 (s30x5 / 画
+                     :aspect performance
+                     :ARG1 (s30x7 / 羊)
+                     :ARG0 (s30x2 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :temporal (s30x3 / 从来)
+                     :modal-strength (s30x21 / full-negative)
+                     :polarity -))
+
+# alignment:
+s30x11: 0-0
+s30x2: 0-0
+s30x21: 0-0
+s30x3: 3-3
+s30x5: 5-5
+s30x7: 7-7
+
+# document level annotation:
+(s30s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 64
+# :: snt31
+Index:  1  2  3  4  5  6  7  8    9 10 11 12 13 14 15 16
+Words: 我  就  给  他  重  画  我  所  仅仅   会  画  的  两  副  画  中 
+
+# sentence level graph:
+(s31x6 / 画
+       :ARG0 (s31x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular
+                    :modal-strength (s31x37 / full-affirmative
+                                    :conceiver (s31x38 / author)))
+       :mod (s31x2 / 就)
+       :ARG1 (s31x21 / thing
+                     :ARG1-of (s31x22 / include-91
+                                      :ARG2 (s31x15 / 画
+                                                    :quant 2
+                                                    :unit (s31x14 / 副)
+                                                    :ARG1-of (s31x11 / 画-01
+                                                                     :ARG1-of (s31x10 / 会-01
+                                                                                      :ARG0 (s31x7 / individual-person
+                                                                                                   :refer-person 1
+                                                                                                   :refer-number singular)
+                                                                                      :mod (s31x9 / 仅仅))
+                                                                     :ARG0 s31x7))))
+       :beneficiary (s31x4 / individual-person
+                           :refer-person 3
+                           :refer-number singular)
+       :manner (s31x5 / 重)
+       :modal-strength (s31x35 / full-affirmative
+                       :conceiver (s31x36 / author)))
+
+# alignment:
+s31x1: 0-0
+s31x10: 10-10
+s31x11: 6-6
+s31x14: 14-14
+s31x15: 6-6
+s31x2: 2-2
+s31x21: 0-0
+s31x22: 0-0
+s31x35: 0-0
+s31x36: 0-0
+s31x37: 0-0
+s31x38: 0-0
+s31x4: 0-0
+s31x5: 5-5
+s31x6: 6-6
+s31x7: 0-0
+s31x9: 9-9
+
+# document level annotation:
+(s31s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 65
+# :: snt32
+Index:  1  2  3    4    5  6    7  8
+Words: 的  那  副  闭着   肚皮   的  巨蟒   。 
+
+# sentence level graph:
+(s32x7 / 巨蟒
+       :unit (s32x3 / 副)
+       :ARG0-of (s32x4 / 闭-01
+                       :ARG1 (s32x5 / 肚皮)
+                       :aspect activity)
+       :mod (s32x2 / 那))
+
+# alignment:
+s32x2: 2-2
+s32x3: 3-3
+s32x4: 4-4
+s32x5: 5-5
+s32x7: 7-7
+
+# document level annotation:
+(s32s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 66
+# :: snt33
+Index: 1  2  3  4  5 6  7  8  9 10 11 12 13   14       15 16
+Words: “ 不  ，  不  ！  ” 我  听  了  他  的  话  ，  简直   目瞪口呆     。 
+
+# sentence level graph:
+(s33x17 / and
+        :op1 (s33x20 / say
+                     :ARG1 (s33x21 / and
+                                   :op1 (s33x2 / 不)
+                                   :op2 (s33x4 / 不)
+                                   :mode expressive))
+        :op2 (s33x15 / 目瞪口呆-01
+                     :ARG0 (s33x7 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :cause (s33x8 / 听-01
+                                   :aspect performance
+                                   :ARG1 (s33x12 / 话
+                                                 :possessor-of (s33x10 / individual-person
+                                                               :refer-person 3
+                                                               :refer-number singular))
+                                   :modal-strength (s33x35 / full-affirmative))
+                     :mod (s33x14 / 简直)
+                     :modal-strength (s33x36 / full-affirmative)))
+
+# alignment:
+s33x10: 0-0
+s33x12: 12-12
+s33x14: 14-14
+s33x15: 15-15
+s33x17: 0-0
+s33x2: 2-2
+s33x20: 0-0
+s33x21: 0-0
+s33x35: 0-0
+s33x36: 0-0
+s33x4: 2-2
+s33x7: 0-0
+s33x8: 8-8
+
+# document level annotation:
+(s33s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 67
+# :: snt34
+Index:  1  2  3    4  5  6    7  8  9 10 11 12 13 14 15
+Words: 我  不  要  蟒蛇   ，  它  肚子   里  还  有  一  头  象  。  ” 
+
+# sentence level graph:
+(s34x16 / say
+        :ARG1 (s34x18 / and
+                      :op1 (s34x3 / 要-01
+                                  :ARG0 (s34x1 / individual-person
+                                               :refer-person 1
+                                               :refer-number singular)
+                                  :modal-strength (s34x31 / full-negative)
+                                  :polarity -
+                                  :ARG1 (s34x4 / 蟒蛇))
+                      :op2 (s34x10 / 有-03
+                                   :ARG0 (s34x7 / 肚子
+                                                :part-of (s34x6 / individual-person
+                                                                :refer-person 3
+                                                                :refer-number singular))
+                                   :ARG1 (s34x13 / 象
+                                                 :quant 1
+                                                 :unit (s34x12 / 头))
+                                   :mod (s34x9 / 还)
+                                   :modal-strength (s34x32 / full-affirmative
+                                                   :ARG0 s34x1))))
+
+# alignment:
+s34x1: 0-0
+s34x10: 10-10
+s34x12: 12-12
+s34x13: 13-13
+s34x16: 0-0
+s34x18: 0-0
+s34x3: 3-3
+s34x31: 0-0
+s34x32: 0-0
+s34x4: 4-4
+s34x6: 0-0
+s34x7: 7-7
+s34x9: 9-9
+
+# document level annotation:
+(s34s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 68
+# :: snt35
+Index:    1  2    3  4    5  6    7  8  9 10   11 12
+Words: 巨蟒   这  东西   太  危险   ，  大象   又  太  占  地方   。 
+
+# sentence level graph:
+(s35x13 / and
+        :op1 (s35x5 / 危险
+                    :ARG0 (s35x3 / 东西
+                                 :mod (s35x2 / 这)
+                                 :ARG0-of (s35x18 / mean
+                                                  :ARG1 (s35x1 / 巨蟒)))
+                    :degree (s35x4 / 太))
+        :op2 (s35x10 / 占-02
+                     :ARG0 (s35x7 / 大象)
+                     :mod (s35x8 / 又)
+                     :ARG1 (s35x11 / 地方)
+                     :degree (s35x9 / 太)
+                     :modal-strength (s35x27 / full-affirmative)))
+
+# alignment:
+s35x1: 1-1
+s35x10: 10-10
+s35x11: 11-11
+s35x13: 0-0
+s35x18: 0-0
+s35x2: 2-2
+s35x27: 0-0
+s35x3: 3-3
+s35x4: 4-4
+s35x5: 5-5
+s35x7: 7-7
+s35x8: 8-8
+s35x9: 4-4
+
+# document level annotation:
+(s35s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 69
+# :: snt36
+Index:  1  2  3    4    5  6  7
+Words: 我  住  的  地方   非常   小  。 
+
+# sentence level graph:
+(s36x6 / 小-01
+       :degree (s36x5 / 非常)
+       :ARG0 (s36x4 / 地方
+                    :ARG1-of (s36x2 / 住-01
+                                    :ARG0 (s36x1 / individual-person
+                                                 :refer-person 1
+                                                 :refer-number singular))))
+
+# alignment:
+s36x1: 0-0
+s36x2: 2-2
+s36x4: 4-4
+s36x5: 5-5
+s36x6: 6-6
+
+# document level annotation:
+(s36s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 70
+# :: snt37
+Index:  1    2  3  4  5  6
+Words: 我  需要   一  只  羊  。 
+
+# sentence level graph:
+(s37x2 / 需要-01
+       :ARG1 (s37x5 / 羊
+                    :quant 1
+                    :unit (s37x4 / 只))
+       :modal-strength (s37x14 / full-affirmative))
+
+# alignment:
+s37x14: 0-0
+s37x2: 2-2
+s37x4: 4-4
+s37x5: 5-5
+
+# document level annotation:
+(s37s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 71
+# :: snt38
+Index:  1  2  3  4  5  6  7  8 9
+Words: 给  我  画  一  只  羊  吧  。  ”
+
+# sentence level graph:
+(s38x10 / say
+        :ARG1 (s38x3 / 画-01
+                     :ARG1 (s38x6 / 羊
+                                  :quant 1
+                                  :unit (s38x5 / 只))
+                     :mode imperative
+                     :modal-strength (s38x20 / partial-affirmative)))
+
+# alignment:
+s38x10: 0-0
+s38x20: 0-0
+s38x3: 3-3
+s38x5: 5-5
+s38x6: 6-6
+
+# document level annotation:
+(s38s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 72
+# :: snt39
+Index:  1  2  3  4  5  6  7
+Words: 我  就  给  他  画  了  。 
+
+# sentence level graph:
+(s39x5 / 画-01
+       :aspect performance
+       :ARG0 (s39x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :beneficiary (s39x4 / individual-person
+                           :refer-person 3
+                           :refer-number singular)
+       :mod (s39x2 / 就-01)
+       :modal-strength (s39x14 / full-affirmative))
+
+# alignment:
+s39x1: 0-0
+s39x14: 0-0
+s39x2: 2-2
+s39x4: 0-0
+s39x5: 5-5
+
+# document level annotation:
+(s39s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 73
+# :: snt40
+Index:  1    2  3  4  5  6    7  8  9 10 11 12 13 14 15
+Words: 他  专心   地  看  着  ，  随后   又  说  ：  “  我  不  要  ， 
+
+# sentence level graph:
+(s40x17 / temporal
+        :ARG1 (s40x4 / 看-02
+                     :ARG0 (s40x1 / individual-person
+                                  :refer-person 3
+                                  :refer-number singular)
+                     :manner (s40x2 / 专心
+                                    :ARG0 s40x1)
+                     :modal-strength (s40x30 / full-affirmative
+                                     :conceiver (s40x34 / author)))
+        :ARG2 (s40x9 / 说
+                     :ARG0 s40x1
+                     :ARG1 (s40x14 / 要-05
+                                   :modal-strength (s40x32 / full-negative
+                                                   :conceiver s40x1)
+                                   :polarity -
+                                   :ARG0 (s40x12 / individual-person
+                                                 :refer-person 1
+                                                 :refer-number singular)
+                                   :quote s40x9)))
+
+# alignment:
+s40x1: 0-0
+s40x12: 0-0
+s40x14: 14-14
+s40x17: 0-0
+s40x2: 2-2
+s40x30: 0-0
+s40x32: 0-0
+s40x34: 0-0
+s40x4: 4-4
+s40x9: 9-9
+
+# document level annotation:
+(s40s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 74
+# :: snt41
+Index:  1  2  3    4  5  6  7  8  9 10
+Words: 这  只  羊  已经   病  得  很  重  了  。 
+
+# sentence level graph:
+(s41x5 / 病-01
+       :degree (s41x8 / 重
+                      :degree (s41x7 / 很))
+       :aspect performance
+       :ARG0 (s41x3 / 羊
+                    :mod (s41x1 / 这)
+                    :unit (s41x2 / 只))
+       :modal-strength (s41x22 / fullafff))
+
+# alignment:
+s41x1: 1-1
+s41x2: 2-2
+s41x22: 0-0
+s41x3: 3-3
+s41x5: 5-5
+s41x7: 7-7
+s41x8: 8-8
+
+# document level annotation:
+(s41s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 75
+# :: snt42
+Index:  1  2    3  4  5  6  7 8
+Words: 给  我  重新   画  一  只  。  ”
+
+# sentence level graph:
+(s42x9 / say
+       :ARG1 (s42x4 / 画-01
+                    :manner (s42x3 / 重新)
+                    :ARG1 (s42x14 / thing
+                                  :quant 1
+                                  :unit (s42x6 / 只))
+                    :mode imperative
+                    :modal-strength (s42x19 / partial-affirmative)))
+
+# alignment:
+s42x14: 0-0
+s42x19: 0-0
+s42x3: 3-3
+s42x4: 4-4
+s42x6: 6-6
+s42x9: 0-0
+
+# document level annotation:
+(s42s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 76
+# :: snt43
+Index:  1  2  3  4    5  6
+Words: 我  又  画  了  起来   。 
+
+# sentence level graph:
+(s43x3 / 画-01
+       :ARG0 (s43x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :mod (s43x2 / 又)
+       :modal-strength (s43x14 / full-affirmative
+                       :conceiver (s43x15 / author)))
+
+# alignment:
+s43x1: 0-0
+s43x14: 0-0
+s43x15: 0-0
+s43x2: 2-2
+s43x3: 3-3
+
+# document level annotation:
+(s43s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 77
+# :: snt44
+Index:  1  2  3  4    5    6    7  8  9 10 11
+Words: 我  的  这  位  朋友   天真   可爱   地  笑  了  。 
+
+# sentence level graph:
+(s44x9 / 笑-01
+       :ARG0 (s44x5 / 朋友
+                    :possessor-of (s44x1 / individual-person
+                                 :refer-person 1
+                                 :refer-number singular)
+                    :mod (s44x3 / 这)
+                    :unit (s44x4 / 位))
+       :manner (s44x18 / and
+                       :op1 (s44x6 / 天真)
+                       :op2 (s44x7 / 可爱))
+       :aspect performance
+       :modal-strength (s44x24 / full-affirmative
+                       :conceiver s44x1))
+
+# alignment:
+s44x1: 0-0
+s44x18: 0-0
+s44x24: 0-0
+s44x3: 3-3
+s44x4: 4-4
+s44x5: 5-5
+s44x6: 6-6
+s44x7: 7-7
+s44x9: 9-9
+
+# document level annotation:
+(s44s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 78
+# :: snt45
+Index: 1  2  3  4  5  6  7  8  9   10 11 12 13 14
+Words: “ 你  看  ，  你  画  的  不  是  小羊   ”  他  说  。 
+
+# sentence level graph:
+(s45x13 / 说-01
+        :ARG0 (s45x12 / individual-person
+                      :refer-person 3
+                      :refer-number singular)
+        :modal-strength (s45x26 / full-affirmative
+                        :conceiver (s45x27 / author))
+        :ARG1 (s45x3 / 看-02
+                     :ARG0 (s45x2 / individual-person
+                                  :refer-person 2
+                                  :refer-number singular)
+                     :ARG1 (s45x10 / 小羊
+                                   :polarity -)
+                     :ARG1 (s45y1 / identity-91
+                                  :ARG0 (s45x21 / thing
+                                                :ARG1-of (s45x6 / 画
+                                                                :ARG0 (s45x5 / individual-person
+                                                                             :refer-person 2
+                                                                             :refer-number singular)))
+                                  :ARG1 s45x10)))
+
+# alignment:
+s45x10: 10-10
+s45x12: 0-0
+s45x13: 13-13
+s45x2: 0-0
+s45x21: 0-0
+s45x26: 0-0
+s45x27: 0-0
+s45x3: 3-3
+s45x5: 0-0
+s45x6: 6-6
+s45y1: 0-0
+
+# document level annotation:
+(s45s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 79
+# :: snt46
+Index:  1  2    3  4
+Words: 是  头  公羊   ， 
+
+# sentence level graph:
+(s46y1 / identity-91
+       :ARG0 (s46x7 / thing
+                    :mod (s46x9 / snt80))
+       :ARG1 (s46x3 / 公羊
+                    :unit (s46x2 / 头)))
+
+# alignment:
+s46x2: 2-2
+s46x3: 3-3
+s46x7: 0-0
+s46x9: 0-0
+s46y1: 0-0
+
+# document level annotation:
+(s46s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 80
+# :: snt47
+Index:  1  2    3  4  5 6
+Words: 还  有  犄角   呢  。  ”
+
+# sentence level graph:
+(s47x7 / say
+       :ARG1 (s47x2 / 有-01
+                    :mod (s47x1 / 还)
+                    :ARG1 (s47x3 / 犄角)
+                    :ARG0 (s47x13 / thing)
+                    :mode expressive
+                    :modal-strength (s47x15 / full-affirmative)))
+
+# alignment:
+s47x1: 1-1
+s47x13: 0-0
+s47x15: 0-0
+s47x2: 2-2
+s47x3: 3-3
+s47x7: 0-0
+
+# document level annotation:
+(s47s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 81
+# :: snt48
+Index:    1  2  3    4  5  6  7  8  9
+Words: 于是   我  又  重新   画  了  一  张  。 
+
+# sentence level graph:
+(s48x10 / causation
+        :ARG2 (s48x5 / 画-01
+                     :ARG0 (s48x2 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG1 (s48x14 / thing
+                                   :quant 1
+                                   :unit (s48x8 / 张))
+                     :manner (s48x4 / 重新)
+                     :mod (s48x3 / 又)
+                     :aspect performance
+                     :modal-strength (s48x21 / full-affirmative
+                                     :conceiver (s48x22 / author))))
+
+# alignment:
+s48x10: 0-0
+s48x14: 0-0
+s48x2: 0-0
+s48x21: 0-0
+s48x22: 0-0
+s48x3: 3-3
+s48x4: 4-4
+s48x5: 5-5
+s48x8: 8-8
+
+# document level annotation:
+(s48s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 82
+# :: snt49
+Index:  1  2  3  4  5  6  7    8  9 10   11 12 13
+Words: 这  副  画  同  前  几  副  一样   又  被  拒绝   了  。 
+
+# sentence level graph:
+(s49x11 / 拒绝-01
+        :aspect performance
+        :ARG1 (s49x3 / 画
+                     :mod (s49x1 / 这)
+                     :unit (s49x2 / 副))
+        :ARG0 (s49x20 / person)
+        :manner (s49x4 / 一样-02
+                       :ARG1 (s49x22 / thing
+                                     :mod (s49x5 / 前)
+                                     :quant (s49x6 / 几)
+                                     :unit (s49x7 / 副)))
+        :mod (s49x9 / 又)
+        :modal-strength (s49x29 / full-affirmative))
+
+# alignment:
+s49x1: 1-1
+s49x11: 11-11
+s49x2: 2-2
+s49x20: 0-0
+s49x22: 0-0
+s49x29: 0-0
+s49x3: 3-3
+s49x4: 8-8
+s49x5: 5-5
+s49x6: 6-6
+s49x7: 2-2
+s49x9: 9-9
+
+# document level annotation:
+(s49s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 83
+# :: snt50
+Index: 1  2  3  4  5  6  7  8
+Words: “ 这  一  只  太  老  了  。 
+
+# sentence level graph:
+(s50x9 / say
+       :ARG1 (s50x6 / 老-01
+                    :ARG0 (s50x12 / thing
+                                  :mod (s50x1 / “)
+                                  :quant 1
+                                  :unit (s50x4 / 只))
+                    :degree (s50x5 / 太)
+                    :smood (s50x7 / 了)))
+
+# alignment:
+s50x1: 1-1
+s50x12: 0-0
+s50x4: 4-4
+s50x5: 5-5
+s50x6: 6-6
+s50x7: 7-7
+s50x9: 0-0
+
+# document level annotation:
+(s50s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 84
+# :: snt51
+Index:  1    2  3  4  5  6  7  8  9 10 11 12
+Words: 我  想要   一  只  能  活  得  长  的  羊  。  ” 
+
+# sentence level graph:
+(s51x13 / say
+        :ARG1 (s51x2 / 想要-02
+                     :ARG0 (s51x1 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG1 (s51x10 / 羊
+                                   :ARG0-of (s51x6 / 活-01
+                                                   :manner (s51x8 / 长)
+                                                   :ARG0-of (s51x5 / 能-01
+                                                                   :modal-strength neutral-affirmative))
+                                   :quant 1
+                                   :unit (s51x4 / 只))))
+
+# alignment:
+s51x1: 0-0
+s51x10: 10-10
+s51x13: 0-0
+s51x2: 2-2
+s51x4: 4-4
+s51x5: 5-5
+s51x6: 6-6
+s51x8: 8-8
+
+# document level annotation:
+(s51s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 85
+# :: snt52
+Index:  1  2    3  4  5    6  7    8  9   10     11 12
+Words: 我  不  耐烦   了  。  因为   我  急于   要  检修   发动机    ， 
+
+# sentence level graph:
+(s52x13 / causation
+        :ARG2 (s52x3 / 耐烦
+                     :ARG0 (s52x1 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :modal-strength (s52x25 / full-negative)
+                     :polarity -)
+        :ARG1 (s52x8 / 急于
+                     :ARG0 (s52x7 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG1 (s52x9 / 要-05
+                                  :ARG0 s52x1
+                                  :ARG1 (s52x10 / 检修-01
+                                                :ARG0 s52x1
+                                                :ARG1 (s52x11 / 发动机)
+                                                :modal-strength (s52x29 / neutral-affirmative))
+                                  :modal-strength (s52x28 / neutral-affirmative))))
+
+# alignment:
+s52x1: 0-0
+s52x10: 10-10
+s52x11: 11-11
+s52x13: 0-0
+s52x25: 0-0
+s52x28: 0-0
+s52x29: 0-0
+s52x3: 3-3
+s52x7: 0-0
+s52x8: 8-8
+s52x9: 9-9
+
+# document level annotation:
+(s52s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 86
+# :: snt53
+Index:    1  2    3  4  5  6  7  8  9
+Words: 于是   就  草草   画  了  这  张  画  ， 
+
+# sentence level graph:
+(s53x10 / causation
+        :ARG2 (s53x4 / 画-01
+                     :ARG1 (s53x8 / 画
+                                  :mod (s53x6 / 这)
+                                  :unit (s53x7 / 张))
+                     :aspect performance
+                     :manner (s53x3 / 草草)
+                     :modal-strength (s53x19 / full-affirmative)))
+
+# alignment:
+s53x10: 0-0
+s53x19: 0-0
+s53x3: 3-3
+s53x4: 4-4
+s53x6: 6-6
+s53x7: 7-7
+s53x8: 4-4
+
+# document level annotation:
+(s53s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 87
+# :: snt54
+Index:    1    2  3  4  5    6  7 8
+Words: 并且   匆匆   地  对  他  说道   ：  “
+
+# sentence level graph:
+(s54x9 / and
+       :op2 (s54x6 / 说道-01
+                   :ARG2 (s54x5 / individual-person
+                                :refer-person 3
+                                :refer-number singular)
+                   :manner (s54x2 / 匆匆)
+                   :modal-strength (s54x15 / full-affirmative)))
+
+# alignment:
+s54x15: 0-0
+s54x2: 2-2
+s54x5: 0-0
+s54x6: 6-6
+s54x9: 0-0
+
+# document level annotation:
+(s54s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 88
+# :: snt55
+Index:  1  2  3  4    5  6
+Words: 这  是  一  只  箱子   ， 
+
+# sentence level graph:
+(s55x7 / say
+       :ARG1 (s55x5 / 箱子
+                    :quant 1
+                    :unit (s55x4 / 只))
+       :ARG1 (s55y1 / identity-91
+                    :ARG0 (s55x1 / 这)
+                    :ARG1 s55x5))
+
+# alignment:
+s55x1: 1-1
+s55x4: 4-4
+s55x5: 5-5
+s55x7: 0-0
+s55y1: 0-0
+
+# document level annotation:
+(s55s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 89
+# :: snt56
+Index:  1  2  3  4  5  6    7  8 9
+Words: 你  要  的  羊  就  在  里面   。  ”
+
+# sentence level graph:
+(s56x10 / say
+        :ARG1 (s56x4 / 羊
+                     :ARG1-of (s56x2 / 要-01
+                                     :ARG0 (s56x1 / individual-person
+                                                  :refer-person 2
+                                                  :refer-number singular))
+                     :place (s56x7 / 里面
+                                   :mod (s56x5 / 就))))
+
+# alignment:
+s56x1: 0-0
+s56x10: 0-0
+s56x2: 2-2
+s56x4: 4-4
+s56x5: 5-5
+s56x7: 7-7
+
+# document level annotation:
+(s56s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 90
+# :: snt57
+Index:    1  2    3    4  5    6  7  8  9 10 11     12       13 14 15 16 17 18 19 20 21 22 23 24 25 26
+Words: 这时   我  十分   惊奇   地  看到   我  的  这  位  小  评判员    喜笑颜开     。  他  说  ：  “  这  正  是  我  想  要  的  ， 
+
+# sentence level graph:
+(s57x37 / muti-sentence
+        :snt1 (s57x6 / 看到-01
+                     :ARG0 (s57x2 / individual-person
+                                  :refer-person 1
+                                  :refer-number singular)
+                     :ARG1 (s57x13 / 喜笑颜开
+                                   :ARG0 (s57x12 / 评判员
+                                                 :mod (s57x11 / 小)
+                                                 :mod (s57x9 / 这)
+                                                 :unit (s57x10 / 位)
+                                                 :possessor-of (s57x7 / individual-person
+                                                              :refer-person 1
+                                                              :refer-number singular))
+                                   :modal-strength (s57x52 / full-affirmative
+                                                   :conceiver s57x2))
+                     :manner (s57x4 / 惊奇
+                                    :degree (s57x3 / 十分))
+                     :temporal (s57x1 / 这时)
+                     :modal-strength (s57x51 / full-affirmative))
+        :snt2 (s57x16 / 说-01
+                      :ARG0 (s57x15 / individual-person
+                                    :refer-person 3
+                                    :refer-number singular)
+                      :ARG1 (s57x43 / thing
+                                    :mod (s57x20 / 正)
+                                    :ARG1-of (s57x23 / 想要-02
+                                                     :ARG0 (s57x22 / individual-person
+                                                                   :refer-person 1
+                                                                   :refer-number singular)))
+                      :ARG1 (s57y1 / identity-91
+                                   :ARG0 (s57x19 / 这)
+                                   :ARG1 s57x43)
+                      :modal-strength (s57x53 / full-affirmative)))
+
+# alignment:
+s57x1: 1-1
+s57x10: 10-10
+s57x11: 11-11
+s57x12: 12-12
+s57x13: 13-13
+s57x15: 0-0
+s57x16: 16-16
+s57x19: 9-9
+s57x2: 0-0
+s57x20: 20-20
+s57x22: 0-0
+s57x23: 23-23
+s57x3: 3-3
+s57x37: 0-0
+s57x4: 4-4
+s57x43: 0-0
+s57x51: 0-0
+s57x52: 0-0
+s57x53: 0-0
+s57x6: 6-6
+s57x7: 0-0
+s57x9: 9-9
+s57y1: 0-0
+
+# document level annotation:
+(s57s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 91
+# :: snt58
+Index:  1  2  3  4  5    6    7  8  9 10 11 12     13 14 15
+Words: 你  说  这  只  羊  需要   很多   草  吗  ？  ”  “  为什么    ？  ” 
+
+# sentence level graph:
+(s58x18 / muti-sentence
+        :snt1 (s58x20 / say
+                      :ARG1 (s58x2 / 说-01
+                                   :ARG0 (s58x1 / individual-person
+                                                :refer-person 2
+                                                :refer-number singular)
+                                   :ARG1 (s58x6 / 需要-01
+                                                :ARG0 (s58x5 / 羊
+                                                             :mod (s58x3 / 这)
+                                                             :unit (s58x4 / 只))
+                                                :ARG1 (s58x8 / 草
+                                                             :quant (s58x7 / 很多))
+                                                :mode interrogative)))
+        :snt2 (s58x31 / say
+                      :ARG1 (s58x33 / cause
+                                    :ARG0 (s58x13 / amr-unknown)
+                                    :mode interrogative)))
+
+# alignment:
+s58x1: 0-0
+s58x13: 0-0
+s58x18: 0-0
+s58x2: 2-2
+s58x20: 0-0
+s58x3: 3-3
+s58x31: 0-0
+s58x33: 0-0
+s58x4: 4-4
+s58x5: 5-5
+s58x6: 6-6
+s58x7: 7-7
+s58x8: 8-8
+
+# document level annotation:
+(s58s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 92
+# :: snt59
+Index: 1    2  3  4  5    6    7  8    9 10 11 12
+Words: “ 因为   我  住  的  地方   一切   都  非常   小  …  ” 
+
+# sentence level graph:
+(s59x13 / say
+        :ARG1 (s59x15 / causation
+                      :ARG1 (s59x10 / 小-01
+                                    :degree (s59x9 / 非常)
+                                    :ARG0 (s59x7 / 一切
+                                                 :place (s59x6 / 地方
+                                                               :ARG1-of (s59x4 / 住-01
+                                                                               :ARG0 (s59x3 / individual-person
+                                                                                            :refer-person 1
+                                                                                            :refer-number singular))))
+                                    :mod (s59x8 / 都))))
+
+# alignment:
+s59x10: 10-10
+s59x13: 0-0
+s59x15: 0-0
+s59x3: 0-0
+s59x4: 4-4
+s59x6: 6-6
+s59x7: 7-7
+s59x8: 8-8
+s59x9: 9-9
+
+# document level annotation:
+(s59s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 93
+# :: snt60
+Index:    1  2  3  4    5  6  7  8 9
+Words: 地方   小  也  够  喂养   它  的  。  ”
+
+# sentence level graph:
+(s60x10 / say
+        :ARG1 (s60x12 / concession
+                      :ARG1 (s60x2 / 小
+                                   :ARG0 (s60x1 / 地方))
+                      :ARG2 (s60x4 / 够-01
+                                   :ARG1 (s60x5 / 喂养-01
+                                                :ARG1 (s60x6 / individual-person
+                                                             :refer-person 3
+                                                             :refer-number singular)))
+                      :smood (s60x7 / 的)))
+
+# alignment:
+s60x1: 1-1
+s60x10: 0-0
+s60x12: 0-0
+s60x2: 2-2
+s60x4: 4-4
+s60x5: 5-5
+s60x6: 0-0
+s60x7: 7-7
+
+# document level annotation:
+(s60s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 94
+# :: snt61
+Index:  1  2
+Words: 我  说 
+
+# sentence level graph:
+(s61x2 / 说-01
+       :ARG0 (s61x1 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :modal-strength (s61x6 / full-affirmative))
+
+# alignment:
+s61x1: 0-0
+s61x2: 2-2
+s61x6: 0-0
+
+# document level annotation:
+(s61s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 95
+# :: snt62
+Index: 1  2  3  4  5  6  7  8  9 10 11 12   13 14
+Words: “ 我  给  你  画  的  是  一  只  很  小  的  小羊   ， 
+
+# sentence level graph:
+(s62x15 / say
+        :ARG1 (s62x13 / 小羊
+                      :quant 1
+                      :unit (s62x9 / 只)
+                      :mod (s62x11 / 小
+                                   :degree (s62x10 / 很)))
+        :ARG1 (s62y1 / identity-91
+                     :ARG0 (s62x18 / thing
+                                   :ARG1-of (s62x5 / 画-01
+                                                   :ARG0 (s62x2 / individual-person
+                                                                :refer-person 1
+                                                                :refer-number singular)
+                                                   :beneficiary (s62x4 / individual-person
+                                                                       :refer-person 2
+                                                                       :refer-number singular)))
+                     :ARG1 s62x13))
+
+# alignment:
+s62x10: 10-10
+s62x11: 11-11
+s62x13: 13-13
+s62x15: 0-0
+s62x18: 0-0
+s62x2: 0-0
+s62x4: 0-0
+s62x5: 5-5
+s62x9: 9-9
+s62y1: 0-0
+
+# document level annotation:
+(s62s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 96
+# :: snt63
+Index:  1  2    3    4  5  6  7  8 9 10 11 12 13 14 15   16 17 18 19 20 21   22 23 24 25
+Words: 他  把  脑袋   靠近   这  张  画  。  “ 并  不  象  你  说  的  那么   小  …  瞧  ！  它  睡着   了  …  ” 
+
+# sentence level graph:
+(s63x25 / muti-sentence
+        :snt1 (s63x4 / 靠近-01
+                     :ARG0 (s63x3 / 脑袋
+                                  :part-of (s63x1 / individual-person
+                                                  :refer-person 3
+                                                  :refer-number singular))
+                     :ARG1 (s63x7 / 画
+                                  :mod (s63x5 / 这)
+                                  :unit (s63x6 / 张))
+                     :modal-strength (s63x49 / full-affirmative))
+        :snt2 (s63x33 / say
+                      :ARG1 (s63x34 / and
+                                    :op1 (s63x17 / 小
+                                                 :degree (s63x16 / 那么)
+                                                 :manner (s63x12 / 象-01
+                                                                 :ARG1 (s63x38 / thing
+                                                                               :ARG1-of (s63x14 / 说-01
+                                                                                                :ARG0 (s63x13 / individual-person
+                                                                                                              :refer-person 2
+                                                                                                              :refer-number singular)))
+                                                                 :polarity -))
+                                    :op2 (s63x19 / 瞧
+                                                 :mode expressive)
+                                    :op3 (s63x22 / 睡着-01
+                                                 :ARG0 (s63x21 / individual-person
+                                                               :refer-person 3
+                                                               :refer-number singular)
+                                                 :aspect performance
+                                                 :modal-strength (s63x50 / full-affirmative
+                                                                 :conceiver s63x1)))
+                      :ARG0 s63x1))
+
+# alignment:
+s63x1: 0-0
+s63x12: 12-12
+s63x13: 0-0
+s63x14: 14-14
+s63x16: 16-16
+s63x17: 17-17
+s63x19: 19-19
+s63x21: 0-0
+s63x22: 22-22
+s63x25: 0-0
+s63x3: 3-3
+s63x33: 0-0
+s63x34: 0-0
+s63x38: 0-0
+s63x4: 4-4
+s63x49: 0-0
+s63x5: 5-5
+s63x50: 0-0
+s63x6: 6-6
+s63x7: 7-7
+
+# document level annotation:
+(s63s0 / sentence)
+################################################################################
+# meta-info :: type = partial_conversion :: sent_id = 97
+# :: snt64
+Index:  1    2  3  4    5  6  7    8  9
+Words: 就  这样   ，  我  认识   了  小  王子   。 
+
+# sentence level graph:
+(s64x5 / 认识
+       :ARG0 (s64x4 / individual-person
+                    :refer-person 1
+                    :refer-number singular)
+       :ARG1 (s64x8 / 王子
+                    :mod (s64x7 / 小))
+       :manner (s64x2 / 这样-01
+                      :mod (s64x1 / 就))
+       :modal-strength (s64x20 / full-affirmative))
+
+# alignment:
+s64x1: 1-1
+s64x2: 2-2
+s64x20: 0-0
+s64x4: 0-0
+s64x5: 5-5
+s64x7: 7-7
+s64x8: 8-8
+
+# document level annotation:
+(s64s0 / sentence)
+################################################################################
