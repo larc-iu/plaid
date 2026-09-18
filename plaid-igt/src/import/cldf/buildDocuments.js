@@ -27,6 +27,7 @@ import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords } from '../align.js
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
+import { isLangTag } from '../../domain/fieldNames.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -415,13 +416,25 @@ export function buildCldfDocuments(dataset, options = {}) {
   const isAlternative = (row) =>
     !!cell(examples, row, 'exampleReference') && list(examples, row, 'analyzedWord').length === 0;
   const languageLabel = (id) => languageById.get(id)?.name || id;
+  // A meta language as a writing-system tag: its ISO 639-3 code, else its own
+  // ID when that is shaped like a tag. A Glottocode is not one.
+  const languageTag = (id) => languageById.get(id)?.iso639P3 || (isLangTag(id) ? id : null);
   // Only qualify the field name when the dataset really does translate into
-  // more than one meta language. One language needs no disambiguation, and
-  // "Translation (English)" would be noise.
-  const translationFieldFor = (metaLanguageId) =>
-    metaLanguageId && metaLanguageIds.size > 1
-      ? `${o.translationField} (${languageLabel(metaLanguageId)})`
-      : o.translationField;
+  // more than one meta language, and then by code, the way every importer
+  // names a field that is one of several languages ("Translation (eng)"). One
+  // language needs no disambiguation. A language with no code keeps its name.
+  // A qualified field records the language it is in (translationLangs, read
+  // into the schema below): only a bare "Translation" is known by the setup
+  // to be in the project's meta language, and a FLEx export sends a field
+  // that records none under the one tag it uses for glosses.
+  const translationLangs = new Map();
+  const translationFieldFor = (metaLanguageId) => {
+    if (!metaLanguageId || metaLanguageIds.size <= 1) return o.translationField;
+    const tag = languageTag(metaLanguageId);
+    const name = `${o.translationField} (${tag ?? languageLabel(metaLanguageId)})`;
+    if (tag) translationLangs.set(name, tag);
+    return name;
+  };
 
   for (const row of examples?.rows || []) {
     if (!isAlternative(row)) continue;
@@ -797,7 +810,8 @@ export function buildCldfDocuments(dataset, options = {}) {
   // field the setup never creates silently loses its annotations.
   const fieldSet = new Map();
   const addField = (name, scope) => {
-    if (name) fieldSet.set(`${scope}:${name}`, { name, scope });
+    const lang = scope === 'Sentence' ? translationLangs.get(name) : null;
+    if (name) fieldSet.set(`${scope}:${name}`, { name, scope, ...(lang ? { lang } : {}) });
   };
   for (const d of documents) {
     for (const s of d.sentences)

@@ -91,7 +91,7 @@ const shapeOf = ({ docs }) =>
         ]),
       })),
       // Values, not field names: CLDF has one Translated_Text slot and states
-      // the language separately, so a name like "Translation (English)"
+      // the language separately, so a name like "Translation (eng)"
       // legitimately comes back as plain "Translation".
       annotations: Object.values(s.annotations ?? {})
         .map((a) => a?.value ?? '')

@@ -135,6 +135,27 @@ describe('deriveSetupData', () => {
     expect(unnamed.every((f) => f.lang === null)).toBe(true);
   });
 
+  // A dataset translated into several: each translation is named after its
+  // language, and what the build recorded for it wins over the meta language.
+  it('keeps the language the build recorded for a translation', () => {
+    const base = fixtureBuild();
+    const build = {
+      ...base,
+      schema: {
+        ...base.schema,
+        fields: [
+          { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng' },
+          { name: 'Translation (rus)', scope: 'Sentence', lang: 'rus' },
+        ],
+      },
+      languages: { object: {}, meta: { iso639P3: 'eng' } },
+    };
+    expect(deriveSetupData(build, 'x').fields.fields.map((f) => [f.name, f.lang])).toEqual([
+      ['Translation (eng)', 'eng'],
+      ['Translation (rus)', 'rus'],
+    ]);
+  });
+
   it('turns the derived schema into setup-wizard input', () => {
     const setup = deriveSetupData(fixtureBuild(), 'My Corpus');
     expect(setup.basicInfo.projectName).toBe('My Corpus');

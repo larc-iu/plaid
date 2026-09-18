@@ -56,14 +56,16 @@ export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon'
     },
     fields: {
       // The gloss, translation and comment fields are in the dataset's meta
-      // language by the format's own definition, and the unmarked one of
-      // several translations is the project's meta language (the others are
-      // named after theirs). Recorded, so the FLEx export tags them without
-      // anyone typing the code. A custom column's language is not known.
+      // language by the format's own definition. A dataset translated into
+      // several has each translation named after its language, and the build
+      // says which. Recorded, so the FLEx export tags them without anyone
+      // typing the code. A custom column's language is not known.
       fields: build.schema.fields.map((f) => ({
         name: f.name,
         scope: f.scope,
-        lang: META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null,
+        lang:
+          f.lang ??
+          (META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null),
         isCustom: true,
       })),
       // A dataset says nothing about which words to skip, so the project gets

@@ -962,3 +962,57 @@ describe('buildCldfDocuments name collisions and placeholder languages', () => {
     expect(picked.object.name).toBe('');
   });
 });
+
+// tsezacp's shape: every line once with an English translation and once more,
+// pointing back at it, with a Russian one.
+describe('a dataset translated into several meta languages', () => {
+  const columns = [
+    col('ID', 'id'),
+    col('Language_ID', 'languageReference'),
+    col('Primary_Text', 'primaryText'),
+    col('Analyzed_Word', 'analyzedWord', { separator: '\t' }),
+    col('Gloss', 'gloss', { separator: '\t' }),
+    col('Translated_Text', 'translatedText'),
+    col('Meta_Language_ID', 'metaLanguageReference'),
+    col('Example_ID', 'exampleReference'),
+  ];
+  const build = (russian, languageRows) => {
+    const csv =
+      'ID,Language_ID,Primary_Text,Analyzed_Word,Gloss,Translated_Text,Meta_Language_ID,Example_ID\r\n' +
+      '1,ddo,a b,a\tb,x\ty,The a b.,eng,\r\n' +
+      `1r,ddo,a b,,,По-русски.,${russian},1\r\n`;
+    const languages = [
+      {
+        url: 'languages.csv',
+        'dc:conformsTo': `${TERMS}LanguageTable`,
+        tableSchema: {
+          columns: [col('ID', 'id'), col('Name', 'name'), col('ISO639P3code', 'iso639P3code')],
+        },
+      },
+    ];
+    const files = { 'languages.csv': `ID,Name,ISO639P3code\r\n${languageRows}` };
+    const ds = dataset(csv, columns, languages, files);
+    return buildCldfDocuments(ds, deriveImportOptions(ds));
+  };
+
+  it('names each translation by its code and records the language', () => {
+    const b = build('rus', 'ddo,Tsez,ddo\r\neng,English,eng\r\nrus,Russian,rus\r\n');
+    expect(b.documents[0].sentences[0].fields).toMatchObject({
+      'Translation (eng)': 'The a b.',
+      'Translation (rus)': 'По-русски.',
+    });
+    expect(b.schema.fields.filter((f) => f.scope === 'Sentence')).toEqual([
+      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng' },
+      { name: 'Translation (rus)', scope: 'Sentence', lang: 'rus' },
+    ]);
+    expect(b.languages.meta.iso639P3).toBe('eng');
+  });
+
+  it('keeps the name of a language with no code, and records none', () => {
+    const b = build('russ1263', 'ddo,Tsez,ddo\r\neng,English,eng\r\nruss1263,Russian,\r\n');
+    expect(b.schema.fields.filter((f) => f.scope === 'Sentence')).toEqual([
+      { name: 'Translation (eng)', scope: 'Sentence', lang: 'eng' },
+      { name: 'Translation (Russian)', scope: 'Sentence' },
+    ]);
+  });
+});
