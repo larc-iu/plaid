@@ -117,10 +117,10 @@ const TEXT_ITEM_TYPES = {
   source: 'source',
   description: 'comment',
 };
-// Which language a mapped field goes out under when its name does not say.
-// Only the title is the text's own: a bare "Abbreviation" is the one in the
-// primary analysis writing system, the same as every other field a FLEx
-// import names without a tag, and it has to go back to FLEx in that one.
+// Which language a mapped field goes out under when its name does not say:
+// the baseline's for the title, which is the text's own, and the analysis
+// one for the rest. A FLEx import tags every abbreviation it brings in
+// ("Abbreviation (en)"), so a bare one is one somebody added by hand.
 
 /**
  * A document's metadata as <interlinear-text> items.

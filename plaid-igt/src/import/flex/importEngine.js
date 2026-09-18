@@ -170,26 +170,26 @@ export function deriveImportConfig(ir, build, opts = {}) {
     base ? { ...f, name: languages.size > 1 ? `${base} (${f.ws})` : base } : f,
   );
 
-  // Alternate text titles and abbreviations (e.g. the English names of
-  // vernacular-titled texts)
+  // Alternate text titles (e.g. the English names of vernacular-titled texts)
+  // and the abbreviations. A document field records no language of its own,
+  // so its name is the only place to say which one it is in, and each is
+  // tagged even where there is only one: a bare "Abbreviation" would go back
+  // to FLEx under whatever tag the export uses for glosses.
   const titleWss = new Set();
   const abbrWss = new Set();
   for (const d of build.documents) {
     for (const ws of Object.keys(d.names)) {
       if (d.names[ws] !== d.name) titleWss.add(ws);
     }
-    for (const ws of Object.keys(d.abbreviations || {})) {
-      if (d.abbreviations[ws] !== d.abbreviation) abbrWss.add(ws);
-    }
+    for (const [ws] of abbreviationsOf(d)) abbrWss.add(ws);
   }
   // Every text carries these three itself, so they are offered whether or not
   // this import fills them. Everything else is declared only where a text has
-  // it: an empty "Abbreviation" beside a filled "Abbreviation (en)" reads as a
-  // mistake, and the notebook fields exist only for a text given a record.
+  // it: an empty "Abbreviation (nl)" beside a filled "Abbreviation (en)" reads
+  // as a mistake, and the notebook fields exist only for a text given a record.
   const filled = new Set(build.documents.flatMap((d) => Object.keys(documentMetadataOf(d))));
   const documentMetadata = [
     ...[...titleWss].map((ws) => ({ name: `Title (${ws})` })),
-    ...(filled.has('Abbreviation') ? [{ name: 'Abbreviation' }] : []),
     ...[...abbrWss].map((ws) => ({ name: `Abbreviation (${ws})` })),
     { name: 'Source' },
     { name: 'Description' },
@@ -588,16 +588,27 @@ const participantsText = (groups) =>
     .map((g) => (g.role ? `${g.role}: ${g.people.join(', ')}` : g.people.join(', ')))
     .join('; ');
 
+/**
+ * A text's abbreviations as [ws, abbreviation], one per distinct string: the
+ * same string in two writing systems is one fact and is kept once, under the
+ * first writing system FLEx lists it in.
+ */
+const abbreviationsOf = (doc) => {
+  const seen = new Set();
+  return Object.entries(doc.abbreviations || {}).filter(([, abbr]) => {
+    if (!abbr || seen.has(abbr)) return false;
+    seen.add(abbr);
+    return true;
+  });
+};
+
 /** Flatten a document's FLEx metadata onto the configured metadata fields. */
 function documentMetadataOf(doc) {
   const md = {};
   for (const [ws, title] of Object.entries(doc.names)) {
     if (title !== doc.name) md[`Title (${ws})`] = title;
   }
-  if (doc.abbreviation) md.Abbreviation = doc.abbreviation;
-  for (const [ws, abbr] of Object.entries(doc.abbreviations || {})) {
-    if (abbr !== doc.abbreviation) md[`Abbreviation (${ws})`] = abbr;
-  }
+  for (const [ws, abbr] of abbreviationsOf(doc)) md[`Abbreviation (${ws})`] = abbr;
   if (doc.source) md.Source = pickEn(doc.source);
   if (doc.description) md.Description = pickEn(doc.description);
   if (doc.genres?.length) md.Genre = doc.genres.join(', ');

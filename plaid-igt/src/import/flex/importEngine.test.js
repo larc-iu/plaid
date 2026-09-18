@@ -29,7 +29,6 @@ const build = {
       guid: 'g-doc1',
       name: '01 Мах',
       names: { [BASE_WS]: '01 Мах', en: 'The Tale' },
-      abbreviation: 'МХ',
       abbreviations: { [BASE_WS]: 'МХ', en: 'Tale' },
       source: { en: 'Rosa' },
       description: null,
@@ -317,7 +316,8 @@ describe('deriveImportConfig', () => {
     // not this import fills them, then only the notebook fields with data.
     expect(config.documentMetadata.map((m) => m.name)).toEqual([
       'Title (en)',
-      'Abbreviation',
+      // Tagged in every writing system: nothing else records which it is in.
+      'Abbreviation (lez)',
       'Abbreviation (en)',
       'Source',
       'Description',
@@ -329,6 +329,15 @@ describe('deriveImportConfig', () => {
   });
 
   // One language needs no tag, so a selection down to en names them bare.
+  it('keeps an abbreviation two writing systems share once', () => {
+    const doc = { ...build.documents[0], abbreviations: { [BASE_WS]: 'MX', en: 'MX', ru: 'MX2' } };
+    const config = deriveImportConfig(ir, { ...build, documents: [doc] });
+    expect(config.documentMetadata.map((m) => m.name)).toEqual(
+      expect.arrayContaining(['Abbreviation (lez)', 'Abbreviation (ru)']),
+    );
+    expect(config.documentMetadata.map((m) => m.name)).not.toContain('Abbreviation (en)');
+  });
+
   it('restricts fields to the selected analysis writing systems', () => {
     const config = deriveImportConfig(ir, build, { analysisWss: ['en'] });
     const names = config.fields.map((f) => `${f.scope}:${f.name}`);
@@ -887,7 +896,7 @@ describe('runImport', () => {
       Source: 'Rosa',
       Genre: 'Folktale',
       'Title (en)': 'The Tale',
-      Abbreviation: 'МХ',
+      'Abbreviation (lez)': 'МХ',
       'Abbreviation (en)': 'Tale',
       Researchers: 'Ana Ruiz',
       // Participants keep the roles FLEx grouped them under.
