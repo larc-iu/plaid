@@ -1,0 +1,251 @@
+/* The UMR canvas. Colors follow the apps' visual language: color means scope
+   or provenance, pattern means role. The sentence graph is neutral, the
+   document graph has a hue of its own. */
+
+.umr-block {
+  --umr-edge: hsl(215 16% 47%);
+  --umr-edge-lit: hsl(221 83% 53%);
+  --umr-node-bg: hsl(0 0% 100%);
+  --umr-node-border: hsl(214 32% 82%);
+  --umr-doc: hsl(292 60% 45%);
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 12px 0 16px;
+}
+
+.umr-block-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 16px 6px;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+.umr-block-index {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.umr-block-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.umr-block-note {
+  margin-inline-start: auto;
+  border-radius: 999px;
+  background: hsl(38 92% 90%);
+  color: hsl(26 90% 30%);
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.umr-canvas {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 16px;
+}
+
+.umr-stage {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+
+.umr-graph {
+  position: relative;
+}
+
+.umr-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.umr-edge {
+  fill: none;
+  stroke: var(--umr-edge);
+  stroke-width: 1.5;
+  transition: stroke 120ms;
+}
+.umr-edge--reentrant {
+  stroke-width: 1.2;
+  opacity: 0.75;
+}
+.umr-edge--lit {
+  stroke: var(--umr-edge-lit);
+  stroke-width: 2;
+  opacity: 1;
+}
+
+.umr-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: hsl(var(--background));
+  border: 1px solid var(--umr-node-border);
+  color: var(--umr-edge);
+  padding: 0 6px;
+  font-size: 0.72rem;
+  line-height: 1.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  transition:
+    left 150ms,
+    top 150ms;
+}
+.umr-edge-label--reentrant {
+  border-style: dashed;
+}
+.umr-edge-label--lit {
+  color: var(--umr-edge-lit);
+  border-color: var(--umr-edge-lit);
+}
+
+.umr-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid var(--umr-node-border);
+  border-radius: 8px;
+  background: var(--umr-node-bg);
+  padding: 4px 10px;
+  box-shadow: 0 1px 2px hsl(215 25% 27% / 0.08);
+  cursor: default;
+  user-select: none;
+  outline: none;
+  transition:
+    left 150ms,
+    top 150ms,
+    border-color 120ms,
+    box-shadow 120ms;
+}
+.umr-node--unaligned {
+  background: transparent;
+  border-style: dashed;
+  box-shadow: none;
+}
+.umr-node--constant {
+  font-size: 0.85em;
+  color: hsl(var(--muted-foreground));
+}
+.umr-node:hover {
+  border-color: var(--umr-edge);
+}
+.umr-node--focused,
+.umr-node:focus-visible {
+  border-color: var(--umr-edge-lit);
+  box-shadow: 0 0 0 3px hsl(221 83% 53% / 0.2);
+}
+
+.umr-node-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+}
+.umr-node-var {
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: hsl(var(--muted-foreground));
+}
+.umr-node-concept {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.umr-node-attrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 260px;
+}
+.umr-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  padding: 0 6px;
+  font-size: 0.68rem;
+  line-height: 1.1rem;
+  white-space: nowrap;
+}
+.umr-chip-rel {
+  color: hsl(var(--muted-foreground));
+}
+.umr-chip-value {
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .umr-node,
+  .umr-edge-label {
+    transition: none;
+  }
+}
+
+/* The token row. */
+.umr-tokens {
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 8px;
+}
+.umr-word-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: max-content;
+  min-width: 100%;
+}
+.umr-word {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  min-width: 24px;
+  transition: background 120ms;
+}
+.umr-word--anchored .umr-word-text {
+  border-bottom: 2px solid var(--umr-node-border);
+}
+.umr-word--lit {
+  background: hsl(221 83% 53% / 0.12);
+}
+.umr-word--lit .umr-word-text {
+  border-bottom-color: var(--umr-edge-lit);
+}
+.umr-word-index {
+  font-size: 0.65rem;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.umr-word-text {
+  font-size: 0.95rem;
+  white-space: nowrap;
+  padding-bottom: 1px;
+}
+.umr-word-gloss {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+.umr-ilg-row {
+  display: flex;
+  gap: 10px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+}
+.umr-ilg-header {
+  flex: none;
+  min-width: 9rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

@@ -1,0 +1,29 @@
+import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
+import { getFixture } from './fixtureProject.js';
+
+// The read-only canvas over the imported English corpus: every sentence
+// block draws its nodes over its words, with edge labels once measured.
+test.describe('canvas', () => {
+  test('draws the imported graphs', async ({ page }) => {
+    const { projectId, documentId } = await getFixture();
+    await seedAuth(page);
+    const diag = collectClientErrors(page);
+    await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
+
+    const firstBlock = page.locator('.umr-block').first();
+    await expect(firstBlock).toBeVisible();
+    await expect(firstBlock.locator('.umr-node').first()).toBeVisible();
+    // Positions come from a measuring pass; once placed, the labels appear.
+    await expect(firstBlock.locator('.umr-edge-label').first()).toBeVisible();
+
+    const blocks = await page.locator('.umr-block').count();
+    expect(blocks).toBeGreaterThan(1);
+    const words = await firstBlock.locator('.umr-word').count();
+    expect(words).toBeGreaterThan(0);
+
+    // The first block alone, tokens and gloss lines included, for a look.
+    await firstBlock.screenshot({ path: process.env.UMR_SHOT || 'test-results/canvas.png' });
+
+    expect(diag.errors, JSON.stringify(diag.errors, null, 2)).toEqual([]);
+  });
+});
