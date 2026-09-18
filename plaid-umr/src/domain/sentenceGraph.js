@@ -214,12 +214,14 @@ export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
 // needs a root to draw and write from, so the node that reaches the most
 // others stands in, ties to the first in anchor order.
 function rootsOf(sentence, nodesById) {
-  const marked = sentence.nodes.filter((n) => n.root);
-  if (marked.length) return marked;
   const inSentence = (id) => nodesById.get(id)?.sentence === sentence.index;
-  const roots = sentence.nodes.filter(
-    (n) => !n.in.some((e) => inSentence(e.source) && !CYCLE_ROLES.has(e.role)),
+  const marked = sentence.nodes.filter((n) => n.root);
+  const derived = sentence.nodes.filter(
+    (n) => !n.root && !n.in.some((e) => inSentence(e.source) && !CYCLE_ROLES.has(e.role)),
   );
+  // The marked root first, then any fragment: a node nothing reaches while
+  // the graph has its root elsewhere.
+  const roots = [...marked, ...derived];
   if (roots.length || !sentence.nodes.length) return roots;
   const reach = (start) => {
     const seen = new Set([start.id]);

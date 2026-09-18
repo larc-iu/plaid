@@ -2,14 +2,20 @@ import React from 'react';
 
 // One node of the graph: the variable small at the left, the concept, and the
 // attributes as chips. What is stored is what is seen. A node with no anchor
-// is hollow (a state, so a shape and not a pattern).
+// is hollow (a state, so a shape and not a pattern). The grip on the bottom
+// edge starts an edge drag.
 export const UmrNode = React.memo(function UmrNode({
   node,
   position,
   nodeRef,
   focused,
+  dropTarget,
+  modeTarget,
   onFocus,
+  onClick,
+  onGripPointerDown,
   tabIndex = -1,
+  readOnly = true,
 }) {
   const style = position
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
@@ -22,7 +28,10 @@ export const UmrNode = React.memo(function UmrNode({
         'umr-node',
         node.aligned ? '' : 'umr-node--unaligned',
         node.constant ? 'umr-node--constant' : '',
+        node.root ? 'umr-node--root' : '',
         focused ? 'umr-node--focused' : '',
+        dropTarget ? 'umr-node--drop' : '',
+        modeTarget ? 'umr-node--target' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -32,6 +41,14 @@ export const UmrNode = React.memo(function UmrNode({
       aria-label={label}
       data-node-id={node.id}
       onFocus={onFocus ? () => onFocus(node.id) : undefined}
+      onClick={
+        onClick
+          ? (e) => {
+              e.stopPropagation();
+              onClick(node.id);
+            }
+          : undefined
+      }
     >
       <div className="umr-node-head">
         {node.var && <span className="umr-node-var">{node.var}</span>}
@@ -50,6 +67,16 @@ export const UmrNode = React.memo(function UmrNode({
             </span>
           ))}
         </div>
+      )}
+      {!readOnly && !node.constant && (
+        <span
+          className="umr-grip"
+          title="Drag to a node, a word or empty space"
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            onGripPointerDown?.(e);
+          }}
+        />
       )}
     </div>
   );

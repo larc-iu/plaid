@@ -4,6 +4,8 @@ import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { UserButton } from '@ui/components/shared/UserButton';
 import { headerItem } from '@ui/components/shared/headerItem.js';
 import { adminUrl } from '@ui/domain/siblingApps.js';
+import { useUserKeymap } from '@ui/hooks/useUserKeymap.js';
+import { keys } from '../lib/keymap.js';
 
 // The shell. A LAYOUT route (App.jsx), so it mounts once and the screens swap
 // inside its Outlet. The assistant panel will be mounted here when the UMR
@@ -15,6 +17,8 @@ export const Layout = () => {
   // `getClient` throws when nobody is signed in, and this is a layout route:
   // everything below it is guarded, but the shell itself renders first.
   const client = user ? getClient() : null;
+  // The signed-in person's own shortcuts, over the app's table.
+  useUserKeymap(keys);
 
   const handleLogout = () => {
     logout();

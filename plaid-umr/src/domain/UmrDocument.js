@@ -1,13 +1,22 @@
 // A UMR document: the lifecycle is plaid-ui's DocumentModel, what the layers
-// mean is here. Reads only in phase 1; the editing methods arrive with the
-// canvas.
+// mean is here. Reads through `graph` (sentenceGraph.js) and every edit is
+// one audited operation that patches the raw document once the server has
+// answered, since a node, an edge and an anchor all need server ids.
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
-import { getUmrLayerInfo } from '../utils/umrLayerUtils.js';
-import { buildDocumentGraph, toUmrSentences } from './sentenceGraph.js';
+import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
+import { buildDocumentGraph, toUmrSentences, nextVariable, CYCLE_ROLES } from './sentenceGraph.js';
 import { serializeUmrFile } from './format/umrFile.js';
 import { validateDocument } from './format/validate.js';
+
+const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
+
+const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
+
+// A metadata patch that restates the whole `umr` namespace: a document
+// metadata PATCH replaces a nested namespace wholesale.
+const umrPatch = (entity, changes) => ({ [UMR_NAMESPACE]: { ...umrOf(entity), ...changes } });
 
 export class UmrDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
@@ -60,5 +69,502 @@ export class UmrDocument extends DocumentModel {
 
   _patchContext(next) {
     return [getUmrLayerInfo(next)];
+  }
+
+  // ----- reading helpers -----
+
+  node(id) {
+    return this.graph.nodesById.get(id) || null;
+  }
+
+  sentence(index) {
+    return this.graph.sentences[index - 1] || null;
+  }
+
+  edge(id) {
+    for (const s of this.graph.sentences) {
+      const e = s.edges.find((x) => x.id === id);
+      if (e) return e;
+    }
+    return null;
+  }
+
+  // Every variable in use, so a new one is unique per document.
+  takenVariables() {
+    const taken = new Set();
+    this.graph.nodesById.forEach((n) => {
+      if (n.var) taken.add(n.var);
+    });
+    return taken;
+  }
+
+  // The anchor pieces for a set of words of one sentence: one piece per run
+  // of adjacent words, none for no words (a zero-width piece at the
+  // sentence's start stands for unaligned).
+  piecesFor(sentence, wordIds) {
+    const chosen = sentence.words
+      .filter((w) => wordIds.includes(w.id))
+      .sort((a, b) => a.index - b.index);
+    if (!chosen.length) return [{ begin: sentence.begin, end: sentence.begin }];
+    const pieces = [];
+    chosen.forEach((w) => {
+      const last = pieces[pieces.length - 1];
+      if (last && last.lastIndex === w.index - 1) {
+        last.end = w.end;
+        last.lastIndex = w.index;
+      } else {
+        pieces.push({ begin: w.begin, end: w.end, lastIndex: w.index });
+      }
+    });
+    return pieces.map(({ begin, end }) => ({ begin, end }));
+  }
+
+  // Nodes that only the edge keeps reachable from the sentence's roots: what
+  // deleting it as a subtree takes with it. Empty when the target has another
+  // way in.
+  exclusiveDescendants(edgeId) {
+    const edge = this.edge(edgeId);
+    if (!edge) return [];
+    const target = this.node(edge.target);
+    const sentence = this.sentence(target.sentence);
+    if (!sentence) return [];
+    const inSentence = (id) => this.node(id)?.sentence === sentence.index;
+    const reachFrom = (starts, skipEdgeId) => {
+      const seen = new Set();
+      const stack = [...starts];
+      while (stack.length) {
+        const n = stack.pop();
+        if (seen.has(n.id)) continue;
+        seen.add(n.id);
+        n.out.forEach((e) => {
+          if (e.id !== skipEdgeId && inSentence(e.target)) stack.push(this.node(e.target));
+        });
+      }
+      return seen;
+    };
+    const roots = sentence.roots.filter((r) => r.id !== target.id);
+    const stillReachable = reachFrom(roots, edgeId);
+    const below = reachFrom([target], edgeId);
+    return [...below].filter((id) => !stillReachable.has(id)).map((id) => this.node(id));
+  }
+
+  // Would an edge from `sourceId` to `targetId` close a cycle the format does
+  // not allow (one through anything but a quote)? True when the target
+  // reaches the source.
+  wouldCycle(sourceId, targetId, role) {
+    if (CYCLE_ROLES.has(role)) return false;
+    if (sourceId === targetId) return true;
+    const seen = new Set();
+    const stack = [this.node(targetId)];
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n || seen.has(n.id)) continue;
+      seen.add(n.id);
+      if (n.id === sourceId) return true;
+      n.out.forEach((e) => {
+        if (!CYCLE_ROLES.has(e.role)) stack.push(this.node(e.target));
+      });
+    }
+    return false;
+  }
+
+  // ----- raw patch helpers -----
+
+  _layers(info) {
+    return {
+      tokens: (info.nodeTokenLayer.tokens ||= []),
+      spans: (info.conceptLayer.spans ||= []),
+      relations: (info.relationLayer.relations ||= []),
+      triples: (info.documentGraphLayer.relations ||= []),
+    };
+  }
+
+  // Remove spans and everything that hangs off them, the way the server's
+  // cascade does when their tokens go.
+  _dropSpans(info, spanIds) {
+    const gone = new Set(spanIds);
+    const L = this._layers(info);
+    const tokenIds = new Set(L.spans.filter((s) => gone.has(s.id)).flatMap((s) => s.tokens || []));
+    info.nodeTokenLayer.tokens = L.tokens.filter((t) => !tokenIds.has(t.id));
+    info.conceptLayer.spans = L.spans.filter((s) => !gone.has(s.id));
+    info.relationLayer.relations = L.relations.filter(
+      (r) => !gone.has(r.source) && !gone.has(r.target),
+    );
+    info.documentGraphLayer.relations = L.triples.filter(
+      (r) => !gone.has(r.source) && !gone.has(r.target),
+    );
+  }
+
+  // ----- mutations -----
+
+  /**
+   * A new node in a sentence: anchored to `wordIds` (none for an abstract
+   * concept), under `parentId` with `role` when given. Resolves to
+   * `{ nodeId, edgeId }`, or false on failure.
+   */
+  async createNode({
+    sentenceIndex,
+    concept,
+    wordIds = [],
+    parentId = null,
+    role = null,
+    attrs = [],
+  }) {
+    const info = this.layerInfo;
+    const sentence = this.sentence(sentenceIndex);
+    if (!sentence || !concept) return false;
+    if (parentId && !role) return false;
+    const pieces = this.piecesFor(sentence, wordIds);
+    const variable = nextVariable(sentenceIndex, concept, this.takenVariables());
+    const parent = parentId ? this.node(parentId) : null;
+    const order = parent ? Math.max(-1, ...parent.out.map((e) => e.order)) + 1 : 0;
+    // The first node of a sentence is its root. A later parentless node is a
+    // fragment until it is connected, and the graph keeps its root.
+    const meta = { var: variable, attrs };
+    if (!parent && sentence.nodes.length === 0) meta.root = true;
+    const textId = info.textLayer.text.id;
+    let result = null;
+    const ok = await this._withSaving(
+      'Failed to add the node',
+      async () => {
+        const tokenIds = (
+          await this._client.tokens.bulkCreate(
+            pieces.map((p) => ({
+              tokenLayerId: info.nodeTokenLayer.id,
+              text: textId,
+              begin: p.begin,
+              end: p.end,
+            })),
+          )
+        ).ids;
+        const span = await this._client.spans.create(info.conceptLayer.id, tokenIds, concept, {
+          [UMR_NAMESPACE]: meta,
+        });
+        const spanId = span?.id || span;
+        let edgeId = null;
+        if (parent) {
+          const rel = await this._client.relations.create(
+            info.relationLayer.id,
+            parent.id,
+            spanId,
+            role,
+            { [UMR_NAMESPACE]: { order } },
+          );
+          edgeId = rel?.id || rel;
+        }
+        result = { nodeId: spanId, edgeId };
+        this._applyRawPatch((next, infoNext) => {
+          const L = this._layers(infoNext);
+          pieces.forEach((p, i) => L.tokens.push({ id: tokenIds[i], begin: p.begin, end: p.end }));
+          L.spans.push({
+            id: spanId,
+            tokens: tokenIds,
+            value: concept,
+            metadata: { [UMR_NAMESPACE]: meta },
+          });
+          if (edgeId) {
+            L.relations.push({
+              id: edgeId,
+              source: parent.id,
+              target: spanId,
+              value: role,
+              metadata: { [UMR_NAMESPACE]: { order } },
+            });
+          }
+        });
+      },
+      parent ? `Add ${role} ${concept} under ${parent.concept}` : `Add ${concept}`,
+    );
+    return ok ? result : false;
+  }
+
+  async setConcept(nodeId, concept) {
+    const node = this.node(nodeId);
+    if (!node || !concept || node.concept === concept) return false;
+    return this._withSaving(
+      'Failed to change the concept',
+      async () => {
+        this._applyRawPatch((next, infoNext) => {
+          const span = this._layers(infoNext).spans.find((s) => s.id === nodeId);
+          if (span) span.value = concept;
+        });
+        await this._client.spans.update(nodeId, concept);
+      },
+      `Rename ${node.var} to ${concept}`,
+    );
+  }
+
+  async setVariable(nodeId, variable) {
+    const node = this.node(nodeId);
+    if (!node || node.var === variable) return false;
+    if (!VARIABLE.test(variable)) {
+      this.setError(`${variable} is not a variable: s, the sentence number, letters, a number.`);
+      return false;
+    }
+    if (this.takenVariables().has(variable)) {
+      this.setError(`${variable} is already in use.`);
+      return false;
+    }
+    return this._patchNodeMeta(nodeId, { var: variable }, `Rename ${node.var} to ${variable}`);
+  }
+
+  // The node's attributes, whole: `[{ rel, value }]` in the order to write.
+  async setAttrs(nodeId, attrs) {
+    const node = this.node(nodeId);
+    if (!node) return false;
+    const next = attrs.map((a, i) => ({ rel: a.rel, value: a.value, order: i }));
+    return this._patchNodeMeta(nodeId, { attrs: next }, `Set attributes of ${node.var}`);
+  }
+
+  async _patchNodeMeta(nodeId, changes, label) {
+    return this._withSaving(
+      'Failed to save the node',
+      async () => {
+        let patch = null;
+        this._applyRawPatch((next, infoNext) => {
+          const span = this._layers(infoNext).spans.find((s) => s.id === nodeId);
+          if (!span) return;
+          patch = umrPatch(span, changes);
+          span.metadata = { ...(span.metadata || {}), ...patch };
+        });
+        if (patch) await this._client.spans.patchMetadata(nodeId, patch);
+      },
+      label,
+    );
+  }
+
+  // Re-anchor a node to a set of its sentence's words (none for unaligned).
+  // New pieces first, then the span takes them and the old ones go: an op
+  // cannot use an id made in its own batch.
+  async setAnchor(nodeId, wordIds) {
+    const info = this.layerInfo;
+    const node = this.node(nodeId);
+    const sentence = node ? this.sentence(node.sentence) : null;
+    if (!sentence) return false;
+    const same =
+      wordIds.length === (node.wordIds || []).length &&
+      wordIds.every((id) => node.wordIds.includes(id));
+    if (same) return false;
+    const pieces = this.piecesFor(sentence, wordIds);
+    const oldIds = node.pieces.map((p) => p.id);
+    const textId = info.textLayer.text.id;
+    const words = sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.text);
+    return this._withSaving(
+      'Failed to change the anchor',
+      async () => {
+        const tokenIds = (
+          await this._client.tokens.bulkCreate(
+            pieces.map((p) => ({
+              tokenLayerId: info.nodeTokenLayer.id,
+              text: textId,
+              begin: p.begin,
+              end: p.end,
+            })),
+          )
+        ).ids;
+        await this._client.batched(async (b) => {
+          b.spans.setTokens(nodeId, tokenIds);
+          b.tokens.bulkDelete(oldIds);
+        });
+        this._applyRawPatch((next, infoNext) => {
+          const L = this._layers(infoNext);
+          const old = new Set(oldIds);
+          infoNext.nodeTokenLayer.tokens = L.tokens.filter((t) => !old.has(t.id));
+          pieces.forEach((p, i) =>
+            infoNext.nodeTokenLayer.tokens.push({ id: tokenIds[i], begin: p.begin, end: p.end }),
+          );
+          const span = L.spans.find((s) => s.id === nodeId);
+          if (span) span.tokens = tokenIds;
+        });
+      },
+      words.length ? `Anchor ${node.var} to ${words.join(' ')}` : `Unanchor ${node.var}`,
+    );
+  }
+
+  // An edge from one node to another of the same sentence. A second edge into
+  // a node is a re-entrancy. Resolves to the edge id, or false.
+  async createEdge(sourceId, targetId, role) {
+    const info = this.layerInfo;
+    const source = this.node(sourceId);
+    const target = this.node(targetId);
+    if (!source || !target || !role) return false;
+    if (source.sentence !== target.sentence) {
+      this.setError('An edge joins two nodes of one sentence.');
+      return false;
+    }
+    if (this.wouldCycle(sourceId, targetId, role)) {
+      this.setError(`${role} from ${source.var} to ${target.var} would close a cycle.`);
+      return false;
+    }
+    const order = Math.max(-1, ...source.out.map((e) => e.order)) + 1;
+    let edgeId = null;
+    const ok = await this._withSaving(
+      'Failed to add the edge',
+      async () => {
+        const rel = await this._client.relations.create(
+          info.relationLayer.id,
+          sourceId,
+          targetId,
+          role,
+          { [UMR_NAMESPACE]: { order } },
+        );
+        edgeId = rel?.id || rel;
+        this._applyRawPatch((next, infoNext) => {
+          this._layers(infoNext).relations.push({
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            value: role,
+            metadata: { [UMR_NAMESPACE]: { order } },
+          });
+        });
+      },
+      `Add ${role} from ${source.var} to ${target.var}`,
+    );
+    return ok ? edgeId : false;
+  }
+
+  async setRole(edgeId, role) {
+    const edge = this.edge(edgeId);
+    if (!edge || !role || edge.role === role) return false;
+    return this._withSaving(
+      'Failed to change the relation',
+      async () => {
+        this._applyRawPatch((next, infoNext) => {
+          const rel = this._layers(infoNext).relations.find((r) => r.id === edgeId);
+          if (rel) rel.value = role;
+        });
+        await this._client.relations.update(edgeId, role);
+      },
+      `Relabel ${edge.role} as ${role}`,
+    );
+  }
+
+  // Delete an edge. With `subtree`, the nodes only it kept reachable go too
+  // (their anchors are deleted and the server's cascade takes the rest).
+  // Resolves to the number of nodes deleted, or false.
+  async deleteEdge(edgeId, { subtree = true } = {}) {
+    const edge = this.edge(edgeId);
+    if (!edge) return false;
+    const doomed = subtree ? this.exclusiveDescendants(edgeId) : [];
+    const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
+    const spanIds = doomed.map((n) => n.id);
+    const ok = await this._withSaving(
+      'Failed to delete the edge',
+      async () => {
+        await this._client.batched(async (b) => {
+          b.relations.delete(edgeId);
+          if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
+        });
+        this._applyRawPatch((next, infoNext) => {
+          const L = this._layers(infoNext);
+          infoNext.relationLayer.relations = L.relations.filter((r) => r.id !== edgeId);
+          if (spanIds.length) this._dropSpans(infoNext, spanIds);
+        });
+      },
+      doomed.length
+        ? `Delete ${edge.role} and ${doomed.length} node${doomed.length === 1 ? '' : 's'} under it`
+        : `Delete ${edge.role}`,
+    );
+    return ok ? doomed.length : false;
+  }
+
+  // Re-parent: the edge is deleted and remade from the new source, in one
+  // batch, keeping its role.
+  async moveEdge(edgeId, newSourceId) {
+    const info = this.layerInfo;
+    const edge = this.edge(edgeId);
+    const source = this.node(newSourceId);
+    if (!edge || !source || edge.source === newSourceId) return false;
+    const target = this.node(edge.target);
+    if (source.sentence !== target.sentence) {
+      this.setError('An edge joins two nodes of one sentence.');
+      return false;
+    }
+    if (this.wouldCycle(newSourceId, edge.target, edge.role)) {
+      this.setError(`Moving ${edge.role} under ${source.var} would close a cycle.`);
+      return false;
+    }
+    const order = Math.max(-1, ...source.out.map((e) => e.order)) + 1;
+    return this._withSaving(
+      'Failed to move the edge',
+      async () => {
+        const results = await this._client.batched(async (b) => {
+          b.relations.delete(edgeId);
+          b.relations.create(info.relationLayer.id, newSourceId, edge.target, edge.role, {
+            [UMR_NAMESPACE]: { order },
+          });
+        });
+        const newId = results.at(-1)?.body?.id;
+        this._applyRawPatch((next, infoNext) => {
+          const L = this._layers(infoNext);
+          infoNext.relationLayer.relations = L.relations.filter((r) => r.id !== edgeId);
+          infoNext.relationLayer.relations.push({
+            id: newId,
+            source: newSourceId,
+            target: edge.target,
+            value: edge.role,
+            metadata: { [UMR_NAMESPACE]: { order } },
+          });
+        });
+      },
+      `Move ${edge.role} ${target.var} under ${source.var}`,
+    );
+  }
+
+  // Delete a node and everything that hangs off it. Its children stay where
+  // they are (as fragments) unless `subtree`.
+  async deleteNode(nodeId, { subtree = true } = {}) {
+    const node = this.node(nodeId);
+    if (!node) return false;
+    const below = subtree
+      ? node.out.flatMap((e) => this.exclusiveDescendants(e.id)).filter((n) => n.id !== nodeId)
+      : [];
+    const doomed = [node, ...below];
+    const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
+    const spanIds = doomed.map((n) => n.id);
+    return this._withSaving(
+      'Failed to delete the node',
+      async () => {
+        await this._client.tokens.bulkDelete(tokenIds);
+        this._applyRawPatch((next, infoNext) => this._dropSpans(infoNext, spanIds));
+      },
+      below.length ? `Delete ${node.var} and ${below.length} below it` : `Delete ${node.var}`,
+    );
+  }
+
+  // Make a node its sentence's root: the mark moves from the old roots.
+  async setRoot(nodeId) {
+    const node = this.node(nodeId);
+    const sentence = node ? this.sentence(node.sentence) : null;
+    if (!sentence || node.root) return false;
+    const old = sentence.nodes.filter((n) => n.root);
+    return this._withSaving(
+      'Failed to set the root',
+      async () => {
+        const patches = [];
+        this._applyRawPatch((next, infoNext) => {
+          const spans = this._layers(infoNext).spans;
+          old.forEach((o) => {
+            const span = spans.find((s) => s.id === o.id);
+            if (!span) return;
+            const { root: _root, ...rest } = umrOf(span);
+            const patch = { [UMR_NAMESPACE]: rest };
+            span.metadata = { ...(span.metadata || {}), ...patch };
+            patches.push([o.id, patch]);
+          });
+          const span = spans.find((s) => s.id === nodeId);
+          if (span) {
+            const patch = umrPatch(span, { root: true });
+            span.metadata = { ...(span.metadata || {}), ...patch };
+            patches.push([nodeId, patch]);
+          }
+        });
+        await this._client.batched(async (b) => {
+          patches.forEach(([id, patch]) => b.spans.patchMetadata(id, patch));
+        });
+      },
+      `Make ${node.var} the root`,
+    );
   }
 }

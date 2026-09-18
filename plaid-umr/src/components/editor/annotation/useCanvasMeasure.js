@@ -74,5 +74,5 @@ export const useCanvasMeasure = (measureKey) => {
     return () => observer.disconnect();
   }, [measure]);
 
-  return { canvasRef, wordRef, nodeRef, columns, sizes, remeasure: measure };
+  return { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes, remeasure: measure };
 };

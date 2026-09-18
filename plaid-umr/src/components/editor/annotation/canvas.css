@@ -249,3 +249,73 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Editing. */
+.umr-grip {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  border: 1px solid var(--umr-node-border);
+  background: hsl(var(--background));
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.umr-node:hover .umr-grip,
+.umr-node--focused .umr-grip {
+  opacity: 1;
+}
+.umr-grip:hover {
+  border-color: var(--umr-edge-lit);
+  background: hsl(221 83% 53% / 0.15);
+}
+.umr-node--root .umr-node-concept {
+  text-decoration: underline;
+  text-decoration-color: var(--umr-node-border);
+  text-underline-offset: 3px;
+}
+.umr-node--drop,
+.umr-word--drop {
+  outline: 2px solid var(--umr-edge-lit);
+  outline-offset: 2px;
+}
+.umr-node--target {
+  cursor: pointer;
+  box-shadow: 0 0 0 2px hsl(221 83% 53% / 0.25);
+}
+.umr-edge--hand {
+  stroke: var(--umr-edge-lit);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.5;
+}
+.umr-edge-label[role='button'] {
+  cursor: pointer;
+}
+.umr-edge-label[role='button']:hover {
+  color: var(--umr-edge-lit);
+  border-color: var(--umr-edge-lit);
+}
+.umr-tokens--anchor .umr-word {
+  cursor: pointer;
+}
+.umr-tokens--anchor .umr-word:hover {
+  background: hsl(221 83% 53% / 0.08);
+}
+.umr-block-note--mode {
+  background: hsl(221 83% 53% / 0.12);
+  color: hsl(221 83% 40%);
+}
+
+.umr-inline-editor {
+  position: absolute;
+  z-index: 20;
+}
+.umr-inline-input {
+  height: 28px;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

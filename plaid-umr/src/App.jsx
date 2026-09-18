@@ -7,6 +7,7 @@ import { createProtectedRoute } from '@ui/components/shared/ProtectedRoute.jsx';
 import { LoginForm } from '@ui/components/auth/LoginForm.jsx';
 import { RedeemInvite } from '@ui/components/auth/RedeemInvite.jsx';
 import { UserProfile } from '@ui/components/auth/UserProfile.jsx';
+import { keys, KEY_GROUPS } from './lib/keymap.js';
 import { ProjectList } from './components/projects/ProjectList';
 import { DocumentList } from './components/documents/DocumentList';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
@@ -43,6 +44,10 @@ const DocumentComments = lazyNamed(
 const ProjectConfiguration = lazyNamed(
   () => import('./components/projects/ProjectConfiguration.jsx'),
   'ProjectConfiguration',
+);
+const KeyboardSettings = lazyNamed(
+  () => import('@ui/components/shared/KeyboardSettings.jsx'),
+  'KeyboardSettings',
 );
 const ExportEditor = lazyNamed(
   () => import('./components/editor/ExportEditor.jsx'),
@@ -83,7 +88,16 @@ function App() {
             }
           >
             <Route index element={<Navigate to="/projects" replace />} />
-            <Route path="profile" element={<UserProfile />} />
+            <Route
+              path="profile"
+              element={
+                <UserProfile>
+                  <Suspended>
+                    <KeyboardSettings keymap={keys} groups={KEY_GROUPS} />
+                  </Suspended>
+                </UserProfile>
+              }
+            />
             <Route path="projects" element={<ProjectList />} />
             <Route path="projects/:projectId/documents" element={<DocumentList />} />
             <Route

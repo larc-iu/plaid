@@ -9,13 +9,17 @@ export const TokenRow = React.memo(function TokenRow({
   wordRef,
   anchoredWordIds,
   highlightedWordIds,
+  dropWordId,
   direction,
+  onWordClick,
+  onWordDoubleClick,
+  anchorMode = false,
 }) {
   const words = sentence.words;
   const perWord = (sentence.ilg || []).filter((line) => line.items.length === words.length);
   const rows = (sentence.ilg || []).filter((line) => line.items.length !== words.length);
   return (
-    <div className="umr-tokens" dir={direction}>
+    <div className={`umr-tokens${anchorMode ? ' umr-tokens--anchor' : ''}`} dir={direction}>
       <div className="umr-word-row">
         {words.map((w, i) => (
           <div
@@ -25,10 +29,13 @@ export const TokenRow = React.memo(function TokenRow({
               'umr-word',
               anchoredWordIds?.has(w.id) ? 'umr-word--anchored' : '',
               highlightedWordIds?.has(w.id) ? 'umr-word--lit' : '',
+              dropWordId === w.id ? 'umr-word--drop' : '',
             ]
               .filter(Boolean)
               .join(' ')}
             data-word-id={w.id}
+            onClick={onWordClick ? () => onWordClick(w.id) : undefined}
+            onDoubleClick={onWordDoubleClick ? () => onWordDoubleClick(w.id) : undefined}
           >
             <span className="umr-word-index">{i + 1}</span>
             <span className="umr-word-text" dir="auto">

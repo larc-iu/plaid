@@ -1,4 +1,4 @@
-import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
+import { test, expect, seedAuth, collectClientErrors, cleanDiagnostics } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
 
 // The read-only canvas over the imported English corpus: every sentence
@@ -29,6 +29,8 @@ test.describe('canvas', () => {
       .nth(shotIndex)
       .screenshot({ path: process.env.UMR_SHOT || 'test-results/canvas.png' });
 
-    expect(diag.errors, JSON.stringify(diag.errors, null, 2)).toEqual([]);
+    const clean = cleanDiagnostics(diag);
+    expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+    expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
   });
 });
