@@ -756,6 +756,60 @@ describe('runImport', () => {
     ).toBe(false);
   });
 
+  // A .flextext has no lexicon: the texts come in and no vocabulary is touched.
+  it('imports the texts alone when there is no lexicon', async () => {
+    client = makeFakeClient();
+    const operations = [];
+    const run = client.withOperation;
+    client.withOperation = (message, fn) => {
+      operations.push(message);
+      return run(message, fn);
+    };
+    const results = await runImport({
+      operation: 'Import FLEx texts',
+      client,
+      projectId: 'p1',
+      build,
+      lexicon: [],
+      config,
+      vocabId: null,
+    });
+    expect(results).toMatchObject({ imported: 1 });
+    expect(operations).toEqual(['Import FLEx texts']);
+    expect(client.calls.filter((c) => c.kind.startsWith('vocab'))).toEqual([]);
+    expect(client.calls.filter((c) => c.kind === 'tokens.bulkCreate')).toHaveLength(3);
+  });
+
+  // FLEx marks a guessed analysis in a .flextext by its status, and a guessed
+  // word gloss can come with no morpheme breakdown at all.
+  it('marks what a .flextext says FLEx guessed', async () => {
+    const [doc] = build.documents;
+    const word = {
+      begin: 0,
+      end: 2,
+      forms: { [BASE_WS]: 'за' },
+      gloss: { en: 'I' },
+      pos: null,
+      approved: false,
+      machineAgents: ['guess'],
+      morphemes: [],
+    };
+    client = makeFakeClient();
+    await runImport({
+      client,
+      projectId: 'p1',
+      build: { ...build, documents: [{ ...doc, words: [word] }] },
+      lexicon: [],
+      config,
+      vocabId: null,
+    });
+    const spans = client.calls.filter((c) => c.kind === 'spans.bulkCreate').flatMap((c) => c.args);
+    expect(spans.find((s) => s.spanLayerId === 'sl-wg')).toMatchObject({
+      value: 'I',
+      metadata: { prov: 'inferred', provSource: 'flex-import:guess' },
+    });
+  });
+
   it('imports a document with the right call shapes', async () => {
     client = makeFakeClient();
     const results = await runImport({

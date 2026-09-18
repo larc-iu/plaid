@@ -146,7 +146,8 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // her categories in English only, and FLEx matches an imported `pos` against
   // its categories in the writing system the file claims, creating a new
   // category when nothing matches.
-  const posWs = ir.writingSystems.analysis.includes('en') ? 'en' : primaryAnalysisWs;
+  // A .flextext says which writing system its categories are in (`posWs`).
+  const posWs = ir.posWs ?? (ir.writingSystems.analysis.includes('en') ? 'en' : primaryAnalysisWs);
   addField('wordGloss', 'Word', 'Gloss', ir.wsUsage.wordGloss);
   if (build.documents.some((d) => d.words.some((w) => w.pos))) {
     perWs.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });
@@ -815,7 +816,8 @@ async function importDocument({
     // import as confirmed; analyses only its morphological parser guessed
     // (never confirmed by the user) keep the unconfirmed-inferred shape, so
     // they render in the needs-review style and confirm-on-touch applies.
-    progress('Linking lexicon');
+    // An import with no lexicon (a .flextext) has nothing to link.
+    if (senseToItem.size) progress('Linking lexicon');
     const linkSpecs = [];
     morphSpecs.forEach((s, i) => {
       const itemId = s.morpheme?.senseGuid && senseToItem.get(s.morpheme.senseGuid);
@@ -856,8 +858,10 @@ async function importDocument({
 // The whole import is ONE logical operation in the audit log (vocabulary +
 // every document); each write keeps its own description underneath. Resumable
 // retries start a fresh operation, which is the honest reading of the log.
-export async function runImport(args) {
-  return args.client.withOperation('Import FLEx project', () => runImportImpl(args));
+// `operation` names it in the log. A null `vocabId` imports the texts alone
+// (a .flextext has no lexicon), and then `lexicon` is not read.
+export async function runImport({ operation = 'Import FLEx project', ...args }) {
+  return args.client.withOperation(operation, () => runImportImpl(args));
 }
 
 async function runImportImpl({
@@ -883,20 +887,22 @@ async function runImportImpl({
   // Built from the parsed lexicon rather than threaded out of importLexicon,
   // whose return shape (the senseGuid -> item id Map) is contractual.
   const senseTypes = senseMorphTypes(lexicon);
-  const senseToItem = await importLexicon({
-    client,
-    vocabId,
-    lexicon,
-    baselineWs: config.baselineWs,
-    primaryAnalysisWs: config.primaryAnalysisWs,
-    customFieldWs: config.customFieldWs ?? {},
-    analysisWss: config.analysisWss ?? null,
-    lexiconFields: config.lexiconFields ?? [],
-    variants: config.variants === true,
-    resume: config.resume === true,
-    onProgress,
-    shouldStop,
-  });
+  const senseToItem = !vocabId
+    ? new Map()
+    : await importLexicon({
+        client,
+        vocabId,
+        lexicon,
+        baselineWs: config.baselineWs,
+        primaryAnalysisWs: config.primaryAnalysisWs,
+        customFieldWs: config.customFieldWs ?? {},
+        analysisWss: config.analysisWss ?? null,
+        lexiconFields: config.lexiconFields ?? [],
+        variants: config.variants === true,
+        resume: config.resume === true,
+        onProgress,
+        shouldStop,
+      });
 
   // Resume bookkeeping: what an earlier run made, by FLEx text guid.
   const prior = await priorImports(client, projectId);

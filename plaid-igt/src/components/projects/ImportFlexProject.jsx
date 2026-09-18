@@ -1,6 +1,10 @@
-// "Import from FLEx" — create a project from a FieldWorks .fwbackup file.
+// "Import from FLEx": create a project from a FieldWorks backup (.fwbackup),
+// or from FLEx interlinear texts (.flextext files), which have no lexicon.
+// One page for both, since past reading the file they are one import: the
+// .flextext reader produces the IR the backup parser does, and the same
+// engine writes it.
 //
-// Flow: pick file → parse client-side (streaming, drops non-IGT objects) →
+// Flow: pick file(s) → parse client-side (streaming, drops non-IGT objects) →
 // review (project name, orthography names, derived fields, alignment
 // warnings) → run (shared project setup, then the import engine) → done.
 //
@@ -19,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
 import { parseFwdata } from '../../import/flex/fwdataParser';
+import { parseFlextextFiles } from '../../import/flex/flextextParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
 import { defaultIgnoredTokensSetup, readImportState } from '../../domain/igtConfig';
@@ -36,11 +41,41 @@ const SCOPE_BADGE = {
   Sentence: 'border-transparent bg-green-100 text-green-700',
 };
 
-export const ImportFlexProject = () => {
-  useDocumentTitle('Import FLEx Project');
+// What differs between the two FieldWorks formats, on screen and in the
+// import record (`kind`, which also names the route a resume comes back to).
+const FORMATS = {
+  fwbackup: {
+    kind: 'FLEx',
+    title: 'Import from FLEx (.fwbackup)',
+    pageTitle: 'Import FLEx Project',
+    accept: '.fwbackup,application/zip',
+    drop: 'Drop a .fwbackup file here, or click to choose',
+    where: 'In FieldWorks: File → Project Management → Back up this Project',
+    reading: 'Reading backup… large projects can take a few seconds.',
+    again: 'Choose the same backup: what is already there is kept.',
+    operation: 'Import FLEx project',
+  },
+  flextext: {
+    kind: 'FLEx .flextext',
+    title: 'Import from FLEx (.flextext)',
+    pageTitle: 'Import FLEx Texts',
+    accept: '.flextext',
+    drop: 'Drop .flextext files here, or click to choose',
+    where: 'In FieldWorks: File → Export Interlinear → FLExText',
+    reading: 'Reading files…',
+    again: 'Choose the same files: what is already there is kept.',
+    operation: 'Import FLEx texts',
+  },
+};
+
+export const ImportFlexProject = ({ format = 'fwbackup' }) => {
+  const fmt = FORMATS[format];
+  const flextext = format === 'flextext';
+  useDocumentTitle(fmt.pageTitle);
   const { client, user } = useAuth();
   const fileInputRef = useRef(null);
-  const [parsed, setParsed] = useState(null); // {backupName, ir, build, analysisWssAvailable}
+  // {sourceName, fileCount, ir, build, analysisWssAvailable}
+  const [parsed, setParsed] = useState(null);
   const [projectName, setProjectName] = useState('');
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
   const [selectedTexts, setSelectedTexts] = useState(new Set()); // doc guids
@@ -59,25 +94,53 @@ export const ImportFlexProject = () => {
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
   const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
-    useProjectImportRun({ client, kind: 'FLEx', resumeId });
+    useProjectImportRun({ client, kind: fmt.kind, resumeId });
   // On a resume the lexicon is the one the record names: the run writes into
   // it whatever the screen would otherwise offer.
   const resumeRecord = resumeProject ? readImportState(resumeProject.config) : null;
   const resumedLexicon =
     (resumeProject?.vocabs || []).find((v) => v.id === resumeRecord?.vocabId) ?? null;
 
-  const handleFile = async (file) => {
-    if (!file) return;
-    setStage('parsing');
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
+  // A backup is one file, and names its project. A .flextext is one of any
+  // number, named for the texts it holds.
+  const readFiles = async (files) => {
+    if (!flextext) {
+      const bytes = new Uint8Array(await files[0].arrayBuffer());
       // Let the spinner paint before the synchronous parse occupies the thread.
       await new Promise((r) => setTimeout(r, 50));
       const { name, xml } = readFwbackup(bytes);
-      const ir = parseFwdata(xml);
+      return { sourceName: name, fileCount: 1, projectName: name, ir: parseFwdata(xml) };
+    }
+    const picked = files.filter((f) => /\.flextext$/i.test(f.name));
+    if (!picked.length) throw new Error('No .flextext files among those chosen');
+    const texts = await Promise.all(
+      picked.map(async (f) => ({ name: f.name, xml: await f.text() })),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    const ir = parseFlextextFiles(texts);
+    for (const f of files) {
+      if (!picked.includes(f)) ir.warnings.unshift(`${f.name} is not a .flextext file. Not read.`);
+    }
+    const one = picked.length === 1;
+    return {
+      sourceName: one ? picked[0].name : `${picked[0].name} and ${picked.length - 1} more`,
+      fileCount: picked.length,
+      projectName: one ? picked[0].name.replace(/\.flextext$/i, '') : '',
+      ir,
+    };
+  };
+
+  const handleFiles = async (fileList) => {
+    const files = [...(fileList ?? [])];
+    if (!files.length) return;
+    setStage('parsing');
+    try {
+      const { sourceName, fileCount, projectName: name, ir } = await readFiles(files);
       const build = buildDocuments(ir);
       if (build.documents.length === 0) {
-        throw new Error('No interlinear texts found in this backup');
+        throw new Error(
+          flextext ? 'No texts found in these files' : 'No interlinear texts found in this backup',
+        );
       }
       // Analysis writing systems that actually carry data, project order first
       const used = new Set([
@@ -93,7 +156,7 @@ export const ImportFlexProject = () => {
         ...ir.writingSystems.analysis.filter((ws) => used.has(ws)),
         ...[...used].filter((ws) => !ir.writingSystems.analysis.includes(ws)),
       ];
-      setParsed({ backupName: name, ir, build, analysisWssAvailable });
+      setParsed({ sourceName, fileCount, ir, build, analysisWssAvailable });
       setProjectName(name);
       setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
       setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
@@ -108,13 +171,15 @@ export const ImportFlexProject = () => {
       setExistingVocabId('');
       setStage('review');
       // Adding entries needs vocab-maintainer rights, so only offer those.
-      client.vocabLayers
-        .list()
-        .then((all) => setExistingVocabs((all || []).filter((v) => canManageVocabulary(v, user))))
-        .catch((err) => console.warn('Could not list vocabularies:', err));
+      if (!flextext) {
+        client.vocabLayers
+          .list()
+          .then((all) => setExistingVocabs((all || []).filter((v) => canManageVocabulary(v, user))))
+          .catch((err) => console.warn('Could not list vocabularies:', err));
+      }
     } catch (e) {
       console.error('FLEx parse failed:', e);
-      notifyError(humanizeError(e), 'Could not read backup');
+      notifyError(humanizeError(e), flextext ? 'Could not read files' : 'Could not read backup');
       setStage('pick');
     }
   };
@@ -149,10 +214,14 @@ export const ImportFlexProject = () => {
   const effectiveLexiconName = lexiconName ?? defaultLexiconName;
   const existingVocab = existingVocabs.find((v) => v.id === existingVocabId) ?? null;
   const lexiconChoiceValid =
-    lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim();
+    flextext || (lexiconMode === 'existing' ? !!existingVocab : !!effectiveLexiconName.trim());
 
   const startImport = () => {
-    const vocabName = lexiconMode === 'existing' ? existingVocab.name : effectiveLexiconName.trim();
+    const vocabName = flextext
+      ? null
+      : lexiconMode === 'existing'
+        ? existingVocab.name
+        : effectiveLexiconName.trim();
 
     const config = {
       ...liveConfig,
@@ -163,8 +232,10 @@ export const ImportFlexProject = () => {
       variants: importVariants,
     };
 
+    // With no lexicon to import, the documents take the bar from setup on.
+    const docsFrom = flextext ? 10 : 30;
     return start({
-      source: parsed.backupName,
+      source: parsed.sourceName,
       setupShare: 0.1,
       setupData: () => ({
         basicInfo: { projectName: projectName.trim() },
@@ -187,11 +258,13 @@ export const ImportFlexProject = () => {
           ignoredTokens: defaultIgnoredTokensSetup(),
         },
         vocabulary: {
-          vocabularies: [
-            lexiconMode === 'existing'
-              ? { id: existingVocab.id, name: vocabName, enabled: true, isCustom: false }
-              : { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
-          ],
+          vocabularies: flextext
+            ? []
+            : [
+                lexiconMode === 'existing'
+                  ? { id: existingVocab.id, name: vocabName, enabled: true, isCustom: false }
+                  : { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
+              ],
         },
         documentMetadata: {
           enabledFields: config.documentMetadata.map((m) => ({
@@ -208,6 +281,7 @@ export const ImportFlexProject = () => {
       // setup just created. Read before the record is written, since writing
       // it replaces the whole value.
       vocabId: async ({ projectId, setup }) => {
+        if (flextext) return null;
         const chosen = resumeId
           ? null
           : lexiconMode === 'existing'
@@ -227,10 +301,11 @@ export const ImportFlexProject = () => {
           null
         );
       },
-      requireVocab: 'The lexicon this import writes into is not on the project.',
+      requireVocab: flextext ? null : 'The lexicon this import writes into is not on the project.',
       run: ({ projectId, vocabId, shouldStop, setProgress }) => {
         const totalDocs = filteredBuild.documents.length;
         return runImport({
+          operation: fmt.operation,
           client,
           projectId,
           build: filteredBuild,
@@ -247,7 +322,7 @@ export const ImportFlexProject = () => {
             } else if (p.phase === 'document') {
               setProgress({
                 label: documentLabel(p, totalDocs),
-                pct: 30 + documentFraction(p, totalDocs) * 70,
+                pct: docsFrom + documentFraction(p, totalDocs) * (100 - docsFrom),
               });
             }
           },
@@ -281,21 +356,28 @@ export const ImportFlexProject = () => {
             New Project
           </Link>
           <span>/</span>
-          <span>Import from FLEx</span>
+          <span>{fmt.title}</span>
         </nav>
 
         <div>
-          <h1 className="text-2xl font-bold">Import from FLEx</h1>
-          <p className="text-sm text-muted-foreground">
-            Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
-            morpheme analyses, translations, and the full lexicon are imported. Media (audio and
-            pictures) is not yet imported.
-          </p>
+          <h1 className="text-2xl font-bold">{fmt.title}</h1>
+          {flextext ? (
+            <p className="text-sm text-muted-foreground">
+              Create a project from FLEx interlinear texts (<code>.flextext</code>). Texts, glosses,
+              morpheme analyses, and translations are imported. The lexicon, media, and time
+              alignment are not.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
+              morpheme analyses, translations, and the full lexicon are imported. Media (audio and
+              pictures) is not yet imported.
+            </p>
+          )}
           {resumeId && (
             <p className="mt-2 text-sm">
               Continuing the unfinished import into{' '}
-              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              backup: what is already there is kept.{' '}
+              <span className="font-medium">{resumeName ?? 'this project'}</span>. {fmt.again}{' '}
               <button
                 type="button"
                 onClick={finishAsIs}
@@ -314,20 +396,19 @@ export const ImportFlexProject = () => {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              handleFile(e.dataTransfer.files?.[0]);
+              handleFiles(e.dataTransfer.files);
             }}
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="font-medium">Drop a .fwbackup file here, or click to choose</p>
-            <p className="text-sm text-muted-foreground">
-              In FieldWorks: File → Project Management → Back up this Project
-            </p>
+            <p className="font-medium">{fmt.drop}</p>
+            <p className="text-sm text-muted-foreground">{fmt.where}</p>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".fwbackup,application/zip"
+              accept={fmt.accept}
+              multiple={flextext}
               className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0])}
+              onChange={(e) => handleFiles(e.target.files)}
             />
           </div>
         )}
@@ -335,24 +416,39 @@ export const ImportFlexProject = () => {
         {stage === 'parsing' && (
           <div className="flex items-center justify-center gap-3 rounded-lg border bg-card p-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Reading backup… large projects can take a few seconds.
-            </p>
+            <p className="text-sm text-muted-foreground">{fmt.reading}</p>
           </div>
         )}
 
         {(stage === 'review' || stage === 'running' || stage === 'done') && parsed && (
           <div className="flex flex-col gap-4">
             <div className="rounded-lg border bg-card p-4">
-              <p className="mb-2 font-medium">Contents of “{parsed.backupName}”</p>
+              <p className="mb-2 font-medium">
+                {parsed.fileCount > 1
+                  ? `Contents of ${parsed.fileCount} files`
+                  : `Contents of “${parsed.sourceName}”`}
+              </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
                 <p>{parsed.build.stats.documents} texts</p>
                 <p>{parsed.build.stats.sentences.toLocaleString()} sentences</p>
                 <p>{parsed.build.stats.words.toLocaleString()} words</p>
                 <p>{parsed.build.stats.morphemes.toLocaleString()} morphemes</p>
-                <p>{parsed.build.stats.lexiconEntries.toLocaleString()} lexicon entries</p>
-                <p>{parsed.build.stats.lexiconSenses.toLocaleString()} senses</p>
+                {!flextext && (
+                  <>
+                    <p>{parsed.build.stats.lexiconEntries.toLocaleString()} lexicon entries</p>
+                    <p>{parsed.build.stats.lexiconSenses.toLocaleString()} senses</p>
+                  </>
+                )}
               </div>
+              {parsed.ir.unread?.length > 0 && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Not imported:{' '}
+                  {parsed.ir.unread
+                    .map((u) => `${u.label} (${u.count.toLocaleString()})`)
+                    .join(', ')}
+                  .
+                </p>
+              )}
               {totalWarnings > 0 && (
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
@@ -372,8 +468,9 @@ export const ImportFlexProject = () => {
               {irWarnings.length > 0 && (
                 <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm">
                   <p className="font-medium text-orange-800">
-                    {irWarnings.length} reference{irWarnings.length === 1 ? '' : 's'} in the backup
-                    could not be resolved. Some data may be missing from the import:
+                    {flextext
+                      ? `${irWarnings.length} warning${irWarnings.length === 1 ? '' : 's'}:`
+                      : `${irWarnings.length} reference${irWarnings.length === 1 ? '' : 's'} in the backup could not be resolved. Some data may be missing from the import:`}
                   </p>
                   <ul className="mt-1 list-disc pl-5 text-orange-700">
                     {irWarningSamples.map((w, i) => (
@@ -404,110 +501,112 @@ export const ImportFlexProject = () => {
               )}
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <p className="mb-1 font-medium">Lexicon</p>
-              <p className="mb-3 text-sm text-muted-foreground">
-                The FLEx lexicon ({parsed.ir.lexicon.length.toLocaleString()} entries) becomes the
-                vocabulary the interlinear links to.
-              </p>
-              <div className="flex flex-col gap-3">
-                {resumeId ? (
-                  <p className="text-sm">
-                    Entries go into{' '}
-                    <strong>
-                      {resumedLexicon?.name ??
-                        (resumeProject ? 'a lexicon no longer on the project' : '…')}
-                    </strong>
-                    .
-                  </p>
-                ) : (
-                  <>
-                    <label className="flex cursor-pointer items-center gap-2 text-sm">
-                      <input
-                        type="radio"
-                        name="flex-lexicon-mode"
-                        checked={lexiconMode === 'new'}
-                        disabled={locked}
-                        onChange={() => setLexiconMode('new')}
-                      />
-                      Create a new lexicon
-                    </label>
-                    {lexiconMode === 'new' && (
-                      <Input
-                        id="flex-lexicon-name"
-                        aria-label="Lexicon name"
-                        className="ml-6 max-w-md"
-                        value={effectiveLexiconName}
-                        onChange={(e) => setLexiconName(e.target.value)}
-                        disabled={locked}
-                      />
-                    )}
-                    <label
-                      className={`flex items-center gap-2 text-sm ${
-                        existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="flex-lexicon-mode"
-                        checked={lexiconMode === 'existing'}
-                        disabled={locked || existingVocabs.length === 0}
-                        onChange={() => setLexiconMode('existing')}
-                      />
-                      Add to a lexicon you maintain
-                      {existingVocabs.length === 0 && (
-                        <span className="text-xs">(none available)</span>
-                      )}
-                    </label>
-                    {lexiconMode === 'existing' && (
-                      <div className="ml-6 flex flex-col gap-1.5">
-                        <select
-                          id="flex-lexicon-existing"
-                          aria-label="Existing lexicon"
-                          className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-                          value={existingVocabId}
-                          disabled={locked}
-                          onChange={(e) => setExistingVocabId(e.target.value)}
-                        >
-                          <option value="">Choose a lexicon…</option>
-                          {existingVocabs.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.name}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-muted-foreground">
-                          Entries are added to it and its existing fields stay as they are. Senses
-                          already imported from this FLEx project are reused, not duplicated.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Senses are kept under their entry, in FLEx order.
+            {!flextext && (
+              <div className="rounded-lg border bg-card p-4">
+                <p className="mb-1 font-medium">Lexicon</p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  The FLEx lexicon ({parsed.ir.lexicon.length.toLocaleString()} entries) becomes the
+                  vocabulary the interlinear links to.
                 </p>
-                {variantEntryCount > 0 && (
-                  <label className="flex cursor-pointer items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={importVariants}
-                      disabled={locked}
-                      onChange={(e) => setImportVariants(e.target.checked)}
-                    />
-                    <span>
-                      Variants and complex forms
-                      <span className="block text-xs text-muted-foreground">
-                        {variantEntryCount} {variantEntryCount === 1 ? 'entry' : 'entries'}. A
-                        variant refers to its canonical form, and a complex form to what it is built
-                        from.
+                <div className="flex flex-col gap-3">
+                  {resumeId ? (
+                    <p className="text-sm">
+                      Entries go into{' '}
+                      <strong>
+                        {resumedLexicon?.name ??
+                          (resumeProject ? 'a lexicon no longer on the project' : '…')}
+                      </strong>
+                      .
+                    </p>
+                  ) : (
+                    <>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="flex-lexicon-mode"
+                          checked={lexiconMode === 'new'}
+                          disabled={locked}
+                          onChange={() => setLexiconMode('new')}
+                        />
+                        Create a new lexicon
+                      </label>
+                      {lexiconMode === 'new' && (
+                        <Input
+                          id="flex-lexicon-name"
+                          aria-label="Lexicon name"
+                          className="ml-6 max-w-md"
+                          value={effectiveLexiconName}
+                          onChange={(e) => setLexiconName(e.target.value)}
+                          disabled={locked}
+                        />
+                      )}
+                      <label
+                        className={`flex items-center gap-2 text-sm ${
+                          existingVocabs.length ? 'cursor-pointer' : 'text-muted-foreground'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="flex-lexicon-mode"
+                          checked={lexiconMode === 'existing'}
+                          disabled={locked || existingVocabs.length === 0}
+                          onChange={() => setLexiconMode('existing')}
+                        />
+                        Add to a lexicon you maintain
+                        {existingVocabs.length === 0 && (
+                          <span className="text-xs">(none available)</span>
+                        )}
+                      </label>
+                      {lexiconMode === 'existing' && (
+                        <div className="ml-6 flex flex-col gap-1.5">
+                          <select
+                            id="flex-lexicon-existing"
+                            aria-label="Existing lexicon"
+                            className="h-9 max-w-md rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                            value={existingVocabId}
+                            disabled={locked}
+                            onChange={(e) => setExistingVocabId(e.target.value)}
+                          >
+                            <option value="">Choose a lexicon…</option>
+                            {existingVocabs.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.name}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-muted-foreground">
+                            Entries are added to it and its existing fields stay as they are. Senses
+                            already imported from this FLEx project are reused, not duplicated.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Senses are kept under their entry, in FLEx order.
+                  </p>
+                  {variantEntryCount > 0 && (
+                    <label className="flex cursor-pointer items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={importVariants}
+                        disabled={locked}
+                        onChange={(e) => setImportVariants(e.target.checked)}
+                      />
+                      <span>
+                        Variants and complex forms
+                        <span className="block text-xs text-muted-foreground">
+                          {variantEntryCount} {variantEntryCount === 1 ? 'entry' : 'entries'}. A
+                          variant refers to its canonical form, and a complex form to what it is
+                          built from.
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                )}
+                    </label>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="rounded-lg border bg-card p-4">
               <div className="mb-2 flex items-center justify-between">
@@ -647,9 +746,8 @@ export const ImportFlexProject = () => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Orthographies</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The first vernacular writing system ({parsed.build.baselineWs}) becomes the
-                  baseline text. Other writing systems on words become orthographies. Rename them if
-                  you like.
+                  The baseline text is in {parsed.build.baselineWs}. Other writing systems on words
+                  become orthographies. Rename them if you like.
                 </p>
                 <div className="flex flex-col gap-2">
                   {liveConfig.orthographies.map((o) => (

@@ -1,9 +1,10 @@
 // The FLEx export target writes one .flextext for the texts and one .lift (with its
 // .lift-ranges) for the lexicon. It is judged here as run with a preset that maps every
-// field and keeps the lexicon and citation forms on. The export runs one way: FLEx reads
-// these files, and Plaid's own FLEx importer reads a .fwbackup instead. So "carried" means
-// the files hold the information where FLEx reads it back from, which a later check
-// confirms by parsing them and validating against FlexInterlinear.xsd and the LIFT schema.
+// field and keeps the lexicon and citation forms on. The export is judged one way, by
+// what FLEx reads: Plaid reads a .flextext back too (import/flex/flextextParser.js), but
+// without its lexicon, and no round trip runs through it. So "carried" means the files
+// hold the information where FLEx reads it back from, which a later check confirms by
+// parsing them and validating against FlexInterlinear.xsd and the LIFT schema.
 
 const TAGSET_RULING =
   'user, 2026-09-17: tagsets go to FLEx as lists where they can reasonably be seen as FLEx lists, and not where that takes a lot of coercion';

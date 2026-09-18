@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   decorateWithAffixMarkers,
+  readAffixMarkers,
   FLEX_MORPH_TYPES,
   isValidMorphType,
   isClitic,
@@ -167,5 +168,45 @@ describe('decorateWithAffixMarkers', () => {
     expect(decorateWithAffixMarkers(null, 'x')).toBe('x');
     expect(decorateWithAffixMarkers('suffix', '')).toBe('');
     expect(decorateWithAffixMarkers('suffix', null)).toBe(null);
+  });
+});
+
+describe('readAffixMarkers', () => {
+  it('undoes decorateWithAffixMarkers for every type', () => {
+    for (const type of FLEX_MORPH_TYPES) {
+      expect(readAffixMarkers(type, decorateWithAffixMarkers(type, 'ka'))).toEqual({
+        form: 'ka',
+        morphType: type,
+      });
+    }
+  });
+
+  it('keeps a typed form that lacks its markers as written', () => {
+    expect(readAffixMarkers('suffix', 'ar')).toEqual({ form: 'ar', morphType: 'suffix' });
+    expect(readAffixMarkers('suffix', '-')).toEqual({ form: '-', morphType: 'suffix' });
+    expect(readAffixMarkers('stem', '-ar')).toEqual({ form: '-ar', morphType: 'stem' });
+  });
+
+  it('reads the type of an untyped morph off its markers', () => {
+    expect(readAffixMarkers(null, '-ar')).toEqual({ form: 'ar', morphType: 'suffix' });
+    expect(readAffixMarkers(undefined, 'ka-')).toEqual({ form: 'ka', morphType: 'prefix' });
+    expect(readAffixMarkers(null, '-um-')).toEqual({ form: 'um', morphType: 'infix' });
+    expect(readAffixMarkers(null, '=ni')).toEqual({ form: 'ni', morphType: 'enclitic' });
+    expect(readAffixMarkers(null, 'ni=')).toEqual({ form: 'ni', morphType: 'proclitic' });
+    expect(readAffixMarkers('Martian', '-ar')).toEqual({ form: 'ar', morphType: 'suffix' });
+  });
+
+  it('leaves an untyped form whole when its markers name no type', () => {
+    expect(readAffixMarkers(null, 'perro')).toEqual({ form: 'perro', morphType: null });
+    expect(readAffixMarkers(null, 'a-b')).toEqual({ form: 'a-b', morphType: null });
+    expect(readAffixMarkers(null, '=a-')).toEqual({ form: '=a-', morphType: null });
+    expect(readAffixMarkers(null, '*kwa')).toEqual({ form: '*kwa', morphType: null });
+    expect(readAffixMarkers(null, '-')).toEqual({ form: '-', morphType: null });
+    expect(readAffixMarkers(null, '')).toEqual({ form: '', morphType: null });
+    expect(readAffixMarkers(null, null)).toEqual({ form: null, morphType: null });
+  });
+
+  it('matches a type name regardless of case', () => {
+    expect(readAffixMarkers('Suffix', '-ar')).toEqual({ form: 'ar', morphType: 'suffix' });
   });
 });

@@ -252,8 +252,9 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * An import writes this on the project it is filling and removes it when it
  * finishes, so a project whose import was cancelled, lost or closed is not
  * mistaken for a complete one: `{kind, source, vocabId, startedAt}`, `kind`
- * being the format ('FLEx', 'CLDF', 'ELAN', 'Plaid IGT archive'), `source` the
- * file it was reading and `vocabId` the lexicon it writes into once known.
+ * being the format ('FLEx', 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT
+ * archive'), `source` the file it was reading and `vocabId` the lexicon it
+ * writes into once known.
  * Every importer resumes, so the way to clear it is to run the same import
  * again.
  */
@@ -287,6 +288,7 @@ export const markImportStarted = async (client, projectId, kind, source, vocabId
 export const importRouteFor = (kind) =>
   ({
     FLEx: '/projects/import',
+    'FLEx .flextext': '/projects/import-flextext',
     CLDF: '/projects/import-cldf',
     ELAN: '/projects/import-elan',
     'Plaid IGT archive': '/projects/import-archive',

@@ -100,7 +100,14 @@ function App() {
                 <Route path="/projects" element={<ProjectList />} />
                 <Route path="/projects/new" element={<NewProjectChooser />} />
                 <Route path="/projects/new/blank" element={<ProjectSetup />} />
-                <Route path="/projects/import" element={<ImportFlexProject />} />
+                <Route
+                  path="/projects/import"
+                  element={<ImportFlexProject key="fwbackup" format="fwbackup" />}
+                />
+                <Route
+                  path="/projects/import-flextext"
+                  element={<ImportFlexProject key="flextext" format="flextext" />}
+                />
                 <Route path="/projects/import-archive" element={<ImportNativeProject />} />
                 <Route path="/projects/import-cldf" element={<ImportCldfProject />} />
                 <Route path="/projects/import-elan" element={<ImportElanProject />} />

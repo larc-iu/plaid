@@ -23,7 +23,10 @@ function alignSegment(body, begin, end, analyses, baselineWs) {
   const warnings = [];
   let cursor = begin;
   for (const a of analyses) {
-    const form = a.kind === 'punct' ? a.form : (a.forms?.[baselineWs] ?? pickEn(a.forms));
+    // `surface` is the form a word is written with in the text, where the IR
+    // knows it: a .flextext's text is rebuilt from exactly those forms.
+    const form =
+      a.kind === 'punct' ? a.form : (a.surface ?? a.forms?.[baselineWs] ?? pickEn(a.forms));
     if (!form) {
       warnings.push(`word with no form at offset ${cursor}`);
       continue;
@@ -127,7 +130,7 @@ export function buildDocuments(ir, opts = {}) {
 
     documents.push({
       guid: text.guid,
-      name: text.names?.[baselineWs] ?? pickEn(text.names) ?? 'Untitled',
+      name: text.names?.[baselineWs] ?? pickEn(text.names) ?? text.fallbackName ?? 'Untitled',
       names: text.names ?? {},
       // Every writing system's abbreviation, each distinct one kept under its
       // own tag (documentMetadataOf in importEngine.js), since the name is the only
@@ -146,7 +149,7 @@ export function buildDocuments(ir, opts = {}) {
         literalTranslation: s.seg?.literalTranslation ?? null,
         notes: s.seg?.notes ?? [],
       })),
-      words: words.map(({ beginU16, endU16, kind: _kind, ...w }) => ({
+      words: words.map(({ beginU16, endU16, kind: _kind, surface: _surface, ...w }) => ({
         ...w,
         begin: toCp(beginU16),
         end: toCp(endU16),

@@ -117,6 +117,45 @@ export function decorateWithAffixMarkers(morphType, form) {
   return marks ? `${marks[0]}${form}${marks[1]}` : form;
 }
 
+// The one plain type each pair of "-" and "=" markers belongs to, keyed
+// "<before>,<after>". The interfixes share their markers with a plainer type,
+// so markers alone never name one, and "*" and "~" are left out because both
+// also occur in forms as themselves (a reconstructed "*kwa").
+const TYPE_BY_MARKERS = {
+  '-,': 'suffix',
+  ',-': 'prefix',
+  '-,-': 'infix',
+  '=,': 'enclitic',
+  ',=': 'proclitic',
+  '=,=': 'simulfix',
+};
+
+/**
+ * A morph form as FLEx writes it, read back: the inverse of
+ * decorateWithAffixMarkers, returning `{ form, morphType }`. A morph of a known
+ * type loses exactly that type's markers ("-ar" of a suffix is "ar"), and a
+ * form without them is kept as written. A morph with no type, or a type
+ * outside FLEX_MORPH_TYPES, takes the type its markers name ("ni=" is a
+ * proclitic), and keeps its form whole when they name none.
+ */
+export function readAffixMarkers(morphType, form) {
+  const named = String(morphType ?? '').toLowerCase();
+  const known = FLEX_MORPH_TYPES.includes(named) ? named : null;
+  if (form == null || form === '') return { form, morphType: known };
+  if (known) {
+    const [before, after] = MORPH_TYPE_MARKERS[known] ?? ['', ''];
+    const bare =
+      form.length > before.length + after.length && form.startsWith(before) && form.endsWith(after);
+    return {
+      form: bare ? form.slice(before.length, form.length - after.length) : form,
+      morphType: known,
+    };
+  }
+  const m = /^([-=]?)(.+?)([-=]?)$/su.exec(form);
+  const inferred = m && TYPE_BY_MARKERS[`${m[1]},${m[3]}`];
+  return inferred ? { form: m[2], morphType: inferred } : { form, morphType: null };
+}
+
 // --- Typing the clitic side of a "=" boundary ------------------------------
 // A "=" names a BOUNDARY (Leipzig rule 2: clitic boundary), but Plaid stores
 // cliticness on the morpheme, so something has to decide which side is the
