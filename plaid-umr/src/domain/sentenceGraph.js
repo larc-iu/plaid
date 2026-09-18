@@ -4,12 +4,20 @@
 // the exporter writes come from here, so they cannot disagree.
 //
 // Storage (see docs/umr/DESIGN.md):
-//   node  = a span in the concept layer, value = concept, tokens = the anchor
-//           pieces in the UMR node layer (zero-width when unaligned),
-//           metadata.umr = { var, attrs: [{ rel, value, order }], constant? }
-//   edge  = a relation in the relation layer, value = role,
-//           metadata.umr = { order }
-//   triple = a relation in the document-graph layer, value = the relation
+//   node   = a span in the concept layer, value = concept, tokens = the anchor
+//            pieces in the UMR node layer (zero-width when unaligned),
+//            metadata.umr = { var, attrs: [{ rel, value, order }], constant?,
+//            root? } where `root` marks the sentence's root
+//   edge   = a relation in the relation layer, value = role,
+//            metadata.umr = { order }
+//   triple = a relation in the document-graph layer, value = the relation,
+//            metadata.umr = { group, sentences? } where `group` is temporal,
+//            modal or coref and `sentences` lists, for a triple between two
+//            constants (which belongs to no sentence by itself), the
+//            sentences whose blocks write it
+//   sentence token metadata.umr = { snt, text?, ilg, meta, rawGraph?,
+//            rawAlignment? } where the raw pair holds a graph the parser
+//            could not read, kept as text so nothing is lost
 //
 // By its real path rather than through `@ui`: the node suite has no alias.
 import { cpSlice } from '@larc-iu/plaid-client';
@@ -53,21 +61,26 @@ export function buildDocumentGraph(layerInfo) {
 
   // Sentences and their words. A word belongs to the sentence its begin
   // falls in.
-  const sentences = sentenceTokens.map((token, i) => ({
-    index: i + 1,
-    tokenId: token.id,
-    begin: token.begin,
-    end: token.end,
-    text: cpSlice(body, token.begin, token.end).replace(/\n+$/, ''),
-    words: [],
-    morphemes: [],
-    ilg: umrMeta(token).ilg || [],
-    meta: umrMeta(token).meta || [],
-    snt: umrMeta(token).snt || null,
-    nodes: [],
-    edges: [],
-    triples: [],
-  }));
+  const sentences = sentenceTokens.map((token, i) => {
+    const meta = umrMeta(token);
+    return {
+      index: i + 1,
+      tokenId: token.id,
+      begin: token.begin,
+      end: token.end,
+      text: meta.text || cpSlice(body, token.begin, token.end).replace(/\n+$/, ''),
+      words: [],
+      morphemes: [],
+      ilg: meta.ilg || [],
+      meta: meta.meta || [],
+      snt: meta.snt || null,
+      rawGraph: meta.rawGraph || null,
+      rawAlignment: meta.rawAlignment || null,
+      nodes: [],
+      edges: [],
+      triples: [],
+    };
+  });
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
 
   wordTokens.forEach((token) => {
@@ -106,6 +119,7 @@ export function buildDocumentGraph(layerInfo) {
       concept: span.value ?? '',
       attrs: [...(meta.attrs || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       constant: meta.constant === true,
+      root: meta.root === true,
       pieces,
       aligned: pieces.some((p) => p.end > p.begin),
       metadata: span.metadata || null,
@@ -148,23 +162,28 @@ export function buildDocumentGraph(layerInfo) {
 
   // Document-level triples, attached to the LATER of the two sentences
   // involved: the one whose block the file writes them in. A triple between
-  // two constants goes with every sentence that has a modal group (see
-  // toUmrSentences).
+  // two constants belongs to the sentences its metadata lists.
   docRelations.forEach((rel) => {
     const source = nodesById.get(rel.source);
     const target = nodesById.get(rel.target);
     if (!source || !target) return;
+    const meta = umrMeta(rel);
     const triple = {
       id: rel.id,
       source: rel.source,
       target: rel.target,
       rel: rel.value ?? '',
+      group: meta.group || groupOf(rel.value ?? ''),
       metadata: rel.metadata || null,
     };
     source.docOut.push(triple);
     target.docIn.push(triple);
     const later = Math.max(source.sentence ?? 0, target.sentence ?? 0);
-    if (later > 0) sentences[later - 1].triples.push(triple);
+    if (later > 0) {
+      sentences[later - 1].triples.push(triple);
+    } else if (source.constant && target.constant) {
+      (meta.sentences || []).forEach((n) => sentences[n - 1]?.triples.push(triple));
+    }
   });
 
   // Anchors as 1-based word indices, per piece, once the words are known.
@@ -177,12 +196,55 @@ export function buildDocumentGraph(layerInfo) {
     });
     s.nodes.sort(nodeOrder);
     s.edges.sort((a, b) => a.order - b.order);
-    s.roots = s.nodes.filter(
-      (n) => !n.in.some((e) => nodesById.get(e.source)?.sentence === s.index),
-    );
+    s.roots = rootsOf(s, nodesById);
   });
 
   return { sentences, constants, nodesById };
+}
+
+// The roles a graph may cycle through (the validator allows no others): an
+// edge with one of these into a node does not make it a child, so the root
+// of `(s / say-01 :ARG1 (b / believe-01 :quote s))` is still say-01.
+export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
+
+// The sentence's roots. A node marked as the root (the file's own, kept at
+// import) is one whatever reaches it, since a graph may cycle back into its
+// root through more than :quote in the released data. Otherwise: nodes no
+// in-sentence edge reaches, cycle roles aside. A graph with neither still
+// needs a root to draw and write from, so the node that reaches the most
+// others stands in, ties to the first in anchor order.
+function rootsOf(sentence, nodesById) {
+  const marked = sentence.nodes.filter((n) => n.root);
+  if (marked.length) return marked;
+  const inSentence = (id) => nodesById.get(id)?.sentence === sentence.index;
+  const roots = sentence.nodes.filter(
+    (n) => !n.in.some((e) => inSentence(e.source) && !CYCLE_ROLES.has(e.role)),
+  );
+  if (roots.length || !sentence.nodes.length) return roots;
+  const reach = (start) => {
+    const seen = new Set([start.id]);
+    const stack = [start];
+    while (stack.length) {
+      const n = stack.pop();
+      n.out.forEach((e) => {
+        if (inSentence(e.target) && !seen.has(e.target)) {
+          seen.add(e.target);
+          stack.push(nodesById.get(e.target));
+        }
+      });
+    }
+    return seen.size;
+  };
+  let best = sentence.nodes[0];
+  let bestReach = -1;
+  sentence.nodes.forEach((n) => {
+    const r = reach(n);
+    if (r > bestReach) {
+      best = n;
+      bestReach = r;
+    }
+  });
+  return [best];
 }
 
 // Nodes in a sentence read by anchor position, then by variable, so a list
@@ -206,15 +268,12 @@ export function alignmentOf(node, words) {
   return ranges;
 }
 
-// The constant nodes' triple between two constants (`root :modal author`) is
-// written in every sentence that has a modal group, which is the convention
-// of the released corpora.
-const isConstantOnly = (triple, nodesById) =>
-  nodesById.get(triple.source)?.constant && nodesById.get(triple.target)?.constant;
-
-const groupOf = (rel) => {
-  if (/^:(same-entity|same-event|subset-of|subset|contains)$/.test(rel)) return 'coref';
-  if (/^:(before|after|contained|overlap|depends-on)$/.test(rel)) return 'temporal';
+// Which document-level group a relation belongs to, for a relation written
+// by a path that did not record it. `:contains` is in two groups, which is
+// why the import records the group rather than leaving it to this.
+export const groupOf = (rel) => {
+  if (/^:(same-entity|same-event|subset-of|subset)$/.test(rel)) return 'coref';
+  if (/^:(before|after|contained|overlap|depends-on|contains)$/.test(rel)) return 'temporal';
   return 'modal';
 };
 
@@ -222,14 +281,12 @@ const groupOf = (rel) => {
  * The sentence objects `serializeUmrFile` takes, from a built document graph.
  * Child order under a node follows the stored `order` across attributes and
  * edges, and a re-entrant node is expanded at the first edge reached from the
- * root (the same rule the canvas uses for tree edges).
+ * root (the same rule the canvas uses for tree edges). Nodes the root does
+ * not reach (a second fragment) are not written: the file has one graph per
+ * sentence, and the canvas and validation show the fragment.
  */
 export function toUmrSentences(graph) {
-  const { sentences, constants, nodesById } = graph;
-  const constantTriples = constants
-    .flatMap((c) => c.docOut)
-    .filter((t) => isConstantOnly(t, nodesById))
-    .filter((t, i, arr) => arr.findIndex((u) => u.id === t.id) === i);
+  const { sentences, nodesById } = graph;
 
   return sentences.map((s) => {
     const nodes = new Map();
@@ -267,14 +324,7 @@ export function toUmrSentences(graph) {
 
     const groups = { temporal: [], modal: [], coref: [] };
     const nameOf = (id) => nodesById.get(id)?.var;
-    s.triples.forEach((t) =>
-      groups[groupOf(t.rel)].push([nameOf(t.source), t.rel, nameOf(t.target)]),
-    );
-    if (groups.modal.length) {
-      constantTriples.forEach((t) =>
-        groups.modal.unshift([nameOf(t.source), t.rel, nameOf(t.target)]),
-      );
-    }
+    s.triples.forEach((t) => groups[t.group].push([nameOf(t.source), t.rel, nameOf(t.target)]));
     const hasTriples = groups.temporal.length || groups.modal.length || groups.coref.length;
 
     return {
@@ -285,6 +335,8 @@ export function toUmrSentences(graph) {
       ilg: ilgLines(s),
       words: s.words.map((w) => w.text),
       graph: penman,
+      rawGraph: s.rawGraph,
+      rawAlignment: s.rawAlignment,
       alignment,
       docGraph: hasTriples ? { var: `s${s.index}s0`, ...groups } : null,
     };

@@ -15,8 +15,14 @@ export const DEFAULT_OPTIONS = Object.freeze({
   gap: 12,
   marginTop: 16,
   marginBottom: 20,
-  // How far above a child its tree edge's label floats.
+  // How far above a child its tree edge's label floats, and the label's
+  // height, which the row gap keeps clear of lanes.
   labelLift: 13,
+  labelHeight: 12,
+  // Lanes: the first sits this far below the row, the next this far apart.
+  laneInset: 6,
+  laneStep: 9,
+  cornerRadius: 8,
   // What a node measures before the DOM has measured it: enough for the
   // variable, the concept and a chip or two.
   estimateWidth: (node) => Math.max(64, 16 + 7.5 * (node.concept.length + 4)),
@@ -186,37 +192,86 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
 
   const height = opt.marginTop + Math.max(rowCount, 1) * opt.rowHeight + opt.marginBottom;
 
-  const edges = sentence.edges
-    .filter((e) => nodes.has(e.source) && nodes.has(e.target))
-    .map((edge) => {
-      const s = nodes.get(edge.source);
-      const t = nodes.get(edge.target);
-      const isTree = tree.treeEdgeIds.has(edge.id);
-      return {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        role: edge.role,
-        tree: isTree,
-        path: isTree ? treePath(s, t) : reentrantPath(s, t, opt),
-        label: labelPoint(s, t, isTree, opt),
-      };
-    });
+  // Where the row gaps are: below the tallest node of each row, above the
+  // labels floating over the next row's nodes.
+  const tallest = new Map();
+  nodes.forEach((p) => tallest.set(p.row, Math.max(tallest.get(p.row) || 0, p.height)));
+  const gapOf = (row) => {
+    const top = opt.marginTop + row * opt.rowHeight + (tallest.get(row) || opt.nodeHeight);
+    const bottom = opt.marginTop + (row + 1) * opt.rowHeight - opt.labelLift - opt.labelHeight;
+    return { top, bottom };
+  };
+
+  const placed = sentence.edges.filter((e) => nodes.has(e.source) && nodes.has(e.target));
+  const lanes = assignLanes(placed, nodes, tree, gapOf, opt);
+
+  const edges = placed.map((edge) => {
+    const s = nodes.get(edge.source);
+    const t = nodes.get(edge.target);
+    const isTree = tree.treeEdgeIds.has(edge.id);
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      role: edge.role,
+      tree: isTree,
+      path: isTree ? treePath(s, t, lanes.get(edge.id), opt) : reentrantPath(s, t, opt),
+      label: labelPoint(s, t, isTree, opt),
+    };
+  });
 
   return { nodes, edges, height, rows: rowCount, tree };
 }
 
-// Bottom center of the parent to top center of the child. The tangents are
-// vertical at both ends and long, so an edge leaves straight down, runs
-// across the gap, and arrives straight up, instead of slicing under the
-// parent's neighbors on a long reach.
-function treePath(s, t) {
+// A tree edge that reaches sideways runs horizontally across its row gap. In
+// one gap every such run gets a lane of its own, the longest reach nearest
+// the parent, so a parent with many far children fans out into distinct
+// lines rather than one band. A short reach needs no lane.
+function assignLanes(edges, nodes, tree, gapOf, opt) {
+  const byGap = new Map();
+  edges.forEach((edge) => {
+    if (!tree.treeEdgeIds.has(edge.id)) return;
+    const s = nodes.get(edge.source);
+    const t = nodes.get(edge.target);
+    const reach = Math.abs(t.x - s.x);
+    if (reach < 2 * opt.cornerRadius) return;
+    if (!byGap.has(s.row)) byGap.set(s.row, []);
+    byGap.get(s.row).push({ id: edge.id, reach });
+  });
+  const lanes = new Map();
+  byGap.forEach((list, row) => {
+    const { top, bottom } = gapOf(row);
+    const first = top + opt.laneInset;
+    const last = Math.max(first, bottom - opt.laneInset);
+    const step = list.length > 1 ? Math.min(opt.laneStep, (last - first) / (list.length - 1)) : 0;
+    list
+      .sort((a, b) => b.reach - a.reach)
+      .forEach((item, i) => lanes.set(item.id, first + i * step));
+  });
+  return lanes;
+}
+
+// Bottom center of the parent to top center of the child: straight down
+// when the child is beneath, otherwise down to the edge's lane, across, and
+// down again, with rounded corners.
+function treePath(s, t, lane, opt) {
   const x1 = s.x;
   const y1 = s.y + s.height;
   const x2 = t.x;
   const y2 = t.y;
-  const k = Math.max(16, (y2 - y1) * 0.9);
-  return `M ${r(x1)} ${r(y1)} C ${r(x1)} ${r(y1 + k)}, ${r(x2)} ${r(y2 - k)}, ${r(x2)} ${r(y2)}`;
+  if (lane == null) {
+    return `M ${r(x1)} ${r(y1)} L ${r(x2)} ${r(y2)}`;
+  }
+  const dir = x2 > x1 ? 1 : -1;
+  const rad = Math.min(opt.cornerRadius, Math.abs(x2 - x1) / 2, (lane - y1) / 1, (y2 - lane) / 1);
+  return [
+    `M ${r(x1)} ${r(y1)}`,
+    `L ${r(x1)} ${r(lane - rad)}`,
+    `Q ${r(x1)} ${r(lane)}, ${r(x1 + dir * rad)} ${r(lane)}`,
+    `L ${r(x2 - dir * rad)} ${r(lane)}`,
+    `Q ${r(x2)} ${r(lane)}, ${r(x2)} ${r(lane + rad)}`,
+    `L ${r(x2)} ${r(y2)}`,
+  ].join(' ');
 }
 
 // A re-entrant edge leaves the parent's side and arrives at the child's side,

@@ -514,13 +514,23 @@ export function serializeUmrFile({ sentences }) {
     });
     out.push('');
 
+    // A graph kept as text (one the parser could not read) is written back
+    // as it was, alignment block included.
     out.push('# sentence level graph:');
-    const graph = sentence.graph ? serializePenman(sentence.graph) : '';
-    if (graph) out.push(...graph.split('\n'));
+    if (typeof sentence.rawGraph === 'string') {
+      if (sentence.rawGraph) out.push(...sentence.rawGraph.split('\n'));
+    } else {
+      const graph = sentence.graph ? serializePenman(sentence.graph) : '';
+      if (graph) out.push(...graph.split('\n'));
+    }
     out.push('');
 
     out.push('# alignment:');
-    out.push(...serializeAlignment(sentence));
+    if (typeof sentence.rawGraph === 'string') {
+      if (sentence.rawAlignment) out.push(...sentence.rawAlignment.split('\n'));
+    } else {
+      out.push(...serializeAlignment(sentence));
+    }
     out.push('');
 
     out.push('# document level annotation:');

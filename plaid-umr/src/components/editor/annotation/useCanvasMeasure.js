@@ -63,12 +63,14 @@ export const useCanvasMeasure = (measureKey) => {
     measure();
   }, [measure, measureKey]);
 
-  // Fonts loading or the container resizing move the columns.
+  // Fonts loading or the container resizing move the columns. The words are
+  // siblings of the graph, so it is their common parent, the stage (sized by
+  // its content), that is watched.
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => measure());
-    observer.observe(canvas);
+    observer.observe(canvas.parentElement || canvas);
     return () => observer.disconnect();
   }, [measure]);
 

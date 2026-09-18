@@ -27,14 +27,16 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
   }
 
   const parsed = parseUmrFile(text);
-  if (parsed.errors?.length) {
-    const first = parsed.errors[0];
+  if (!parsed.sentences.length) {
+    const first = parsed.errors?.[0];
     throw new Error(
-      `The file could not be read: ${first.message}${first.line ? ` (line ${first.line})` : ''}`,
+      first ? `The file could not be read: ${first.message}` : 'No sentences found in the file',
     );
   }
-  if (!parsed.sentences.length) throw new Error('No sentences found in the file');
-  const warnings = [...(parsed.warnings || []).map((w) => (typeof w === 'string' ? w : w.message))];
+  const warnings = [
+    ...(parsed.warnings || []).map((w) => (typeof w === 'string' ? w : w.message)),
+    ...(parsed.errors || []).map((e) => (typeof e === 'string' ? e : e.message)),
+  ];
 
   const plan = planImport(parsed.sentences, warnings);
 
@@ -86,10 +88,13 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       value: n.concept,
       metadata: { [UMR_NAMESPACE]: n.meta },
     }));
-    const spanResults = await client.batched(async (b) => {
-      b.spans.bulkCreate(spanOps);
-    });
-    const spanIds = spanResults.at(-1)?.body?.ids || [];
+    let spanIds = [];
+    if (spanOps.length) {
+      const spanResults = await client.batched(async (b) => {
+        b.spans.bulkCreate(spanOps);
+      });
+      spanIds = spanResults.at(-1)?.body?.ids || [];
+    }
     if (spanIds.length !== spanOps.length) {
       throw new Error(
         `The server returned ${spanIds.length} node ids for ${spanOps.length} nodes.`,
@@ -110,6 +115,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       source: spanOf(t.source),
       target: spanOf(t.target),
       value: t.rel,
+      metadata: { [UMR_NAMESPACE]: t.meta },
     }));
     if (edgeOps.length || tripleOps.length) {
       await client.batched(async (b) => {
@@ -138,7 +144,10 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
 
 // Everything the writes need, computed before the first request so a file
 // that cannot be imported costs no document. Node keys are `sentence:var`,
-// constants are their own name.
+// constants are their own name. A sentence whose graph the parser could not
+// read keeps its graph and alignment blocks as text on the sentence, so the
+// export writes them back and nothing is lost; its document-level triples
+// are read all the same.
 export function planImport(parsedSentences, warnings = []) {
   let offset = 0;
   const bodyLines = [];
@@ -148,9 +157,9 @@ export function planImport(parsedSentences, warnings = []) {
   const nodeIndex = new Map();
   const edges = [];
   const triples = [];
-  const seenTriples = new Set();
-  const constantsInUse = new Map();
+  const tripleBySig = new Map();
   const varToKey = new Map();
+  const pendingTriples = [];
 
   const addNode = (key, concept, meta, pieceIndexes) => {
     nodeIndex.set(key, nodes.length);
@@ -181,55 +190,77 @@ export function planImport(parsedSentences, warnings = []) {
       ilg: (ps.ilg || []).filter((l) => l.key !== 'index' && l.key !== 'words'),
       meta: ps.meta || [],
     };
+    const sentenceText = (ps.sentenceText || '').trim();
+    if (sentenceText && sentenceText !== line) meta.text = sentenceText;
     sentences.push({ index, begin, end, words, meta });
 
-    if (!ps.graph?.root) return;
-    ps.graph.nodes.forEach((node, v) => {
-      const ranges = ps.alignment?.get(v) || [];
-      const pieceIndexes = [];
-      ranges.forEach(([a, b]) => {
-        const first = words[a - 1];
-        const last = words[b - 1];
-        if (!first || !last) {
-          warnings.push(`Sentence ${index}: ${v} aligns to words ${a}-${b}, outside the sentence.`);
-          return;
-        }
-        pieceIndexes.push(addPiece(first.begin, last.end));
+    const readable = ps.graph?.root && !ps.graph.errors?.length;
+    if (ps.graph?.root && !readable) {
+      meta.rawGraph = ps.raw?.graph || '';
+      meta.rawAlignment = ps.raw?.alignment || '';
+      warnings.push(
+        `Sentence ${index}: the graph could not be read and is kept as text (${ps.graph.errors[0].message}).`,
+      );
+    }
+    if (readable) {
+      ps.graph.nodes.forEach((node, v) => {
+        const ranges = ps.alignment?.get(v) || [];
+        const pieceIndexes = [];
+        ranges.forEach(([a, b]) => {
+          const first = words[a - 1];
+          const last = words[b - 1];
+          if (!first || !last) {
+            warnings.push(
+              `Sentence ${index}: ${v} aligns to words ${a}-${b}, outside the sentence.`,
+            );
+            return;
+          }
+          pieceIndexes.push(addPiece(first.begin, last.end));
+        });
+        if (!pieceIndexes.length) pieceIndexes.push(addPiece(begin, begin));
+        const attrs = [];
+        node.children.forEach((child, order) => {
+          if (child.kind === 'node') {
+            edges.push({
+              source: `${index}:${v}`,
+              target: `${index}:${child.value}`,
+              role: child.rel,
+              order,
+              sentence: index,
+            });
+          } else {
+            attrs.push({ rel: child.rel, value: child.value, order });
+          }
+        });
+        const key = `${index}:${v}`;
+        varToKey.set(v, key);
+        const meta = { var: v, attrs };
+        // The file's root is data: a graph with a cycle no :quote explains
+        // has no root by derivation, and the file says which node it is.
+        if (v === ps.graph.root) meta.root = true;
+        addNode(key, node.concept, meta, pieceIndexes);
       });
-      if (!pieceIndexes.length) pieceIndexes.push(addPiece(begin, begin));
-      const attrs = [];
-      node.children.forEach((child, order) => {
-        if (child.kind === 'node') {
-          edges.push({
-            source: `${index}:${v}`,
-            target: `${index}:${child.value}`,
-            role: child.rel,
-            order,
-          });
-        } else {
-          attrs.push({ rel: child.rel, value: child.value, order });
-        }
-      });
-      const key = `${index}:${v}`;
-      varToKey.set(v, key);
-      addNode(key, node.concept, { var: v, attrs }, pieceIndexes);
-    });
+    }
 
-    const dg = ps.docGraph;
-    if (!dg) return;
+    if (ps.docGraph) pendingTriples.push({ index, dg: ps.docGraph });
+  });
+
+  // Document-level triples, resolved once every sentence's nodes are known:
+  // a file may name a node of a later sentence, and the export writes the
+  // triple where the later of its two nodes lives.
+  pendingTriples.forEach(({ index, dg }) => {
     const resolve = (name) => {
       if (DOC_CONSTANTS.includes(name)) {
-        if (!constantsInUse.has(name)) {
-          constantsInUse.set(name, true);
+        if (!nodeIndex.has(name))
           addNode(name, name, { var: name, constant: true }, [addPiece(0, 0)]);
-        }
         return name;
       }
       const key = varToKey.get(name);
-      if (!key)
+      if (!key) {
         warnings.push(
           `Sentence ${index}: document-level triple names ${name}, which no sentence defines.`,
         );
+      }
       return key || null;
     };
     ['temporal', 'modal', 'coref'].forEach((group) => {
@@ -238,15 +269,37 @@ export function planImport(parsedSentences, warnings = []) {
         const target = resolve(b);
         if (!source || !target) return;
         const sig = `${source} ${rel} ${target}`;
-        if (seenTriples.has(sig)) return;
-        seenTriples.add(sig);
-        triples.push({ source, target, rel });
+        const constantOnly = DOC_CONSTANTS.includes(a) && DOC_CONSTANTS.includes(b);
+        const seen = tripleBySig.get(sig);
+        if (seen) {
+          // The same triple in several sentences is one relation; a triple
+          // between two constants remembers every sentence that writes it.
+          if (constantOnly && !seen.meta.sentences.includes(index)) seen.meta.sentences.push(index);
+          return;
+        }
+        const meta = { group };
+        if (constantOnly) meta.sentences = [index];
+        const triple = { source, target, rel, meta };
+        tripleBySig.set(sig, triple);
+        triples.push(triple);
       });
     });
   });
 
-  const dropped = parsedSentences.filter((ps) => !ps.graph?.root).length;
-  if (dropped) warnings.push(`${count(dropped, 'sentence has', 'sentences have')} no graph.`);
+  // An edge to a node the sentence never defined (a reference the parser
+  // could not resolve) has nowhere to land.
+  const kept = edges.filter((e) => {
+    const ok = nodeIndex.has(e.source) && nodeIndex.has(e.target);
+    if (!ok) {
+      warnings.push(
+        `Sentence ${e.sentence}: ${e.role} to ${e.target.split(':')[1]} dropped, no such node.`,
+      );
+    }
+    return ok;
+  });
+
+  const empty = parsedSentences.filter((ps) => !ps.graph?.root).length;
+  if (empty) warnings.push(`${count(empty, 'sentence has', 'sentences have')} no graph.`);
 
   return {
     body: bodyLines.join('\n') + '\n',
@@ -254,7 +307,7 @@ export function planImport(parsedSentences, warnings = []) {
     pieces,
     nodes,
     nodeIndex,
-    edges,
+    edges: kept.map(({ source, target, role, order }) => ({ source, target, role, order })),
     triples,
   };
 }

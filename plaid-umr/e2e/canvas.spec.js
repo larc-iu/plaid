@@ -21,8 +21,13 @@ test.describe('canvas', () => {
     const words = await firstBlock.locator('.umr-word').count();
     expect(words).toBeGreaterThan(0);
 
-    // The first block alone, tokens and gloss lines included, for a look.
-    await firstBlock.screenshot({ path: process.env.UMR_SHOT || 'test-results/canvas.png' });
+    // One block alone, tokens and gloss lines included, for a look. Which
+    // one is UMR_SHOT_INDEX's (1-based), the first by default.
+    const shotIndex = Number(process.env.UMR_SHOT_INDEX || 1) - 1;
+    await page
+      .locator('.umr-block')
+      .nth(shotIndex)
+      .screenshot({ path: process.env.UMR_SHOT || 'test-results/canvas.png' });
 
     expect(diag.errors, JSON.stringify(diag.errors, null, 2)).toEqual([]);
   });

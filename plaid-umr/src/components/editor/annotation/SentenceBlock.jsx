@@ -5,8 +5,9 @@ import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
 import './canvas.css';
 
-// Room between rows for an edge and the label floating above its child.
-const EDGE_ROOM = 44;
+// Room between rows: lanes for the edges running across, and the label
+// floating above each child.
+const EDGE_ROOM = 66;
 
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
 // layout, edges an SVG underlay of the same size, the token row beneath.
@@ -70,7 +71,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {sentence.roots.length > 1 && (
           <span className="umr-block-note">{sentence.roots.length} unconnected graphs</span>
         )}
-        {sentence.nodes.length === 0 && <span className="umr-block-note">No graph</span>}
+        {sentence.nodes.length === 0 && !sentence.rawGraph && (
+          <span className="umr-block-note">No graph</span>
+        )}
+        {sentence.rawGraph && (
+          <span className="umr-block-note">Graph kept as text, could not be read</span>
+        )}
       </header>
       <div
         className="umr-canvas"
@@ -107,7 +113,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   />
                 ))}
             </svg>
-            {sentence.nodes.map((node) => (
+            {sentence.nodes.map((node, i) => (
               <UmrNode
                 key={node.id}
                 node={node}
@@ -115,6 +121,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 position={measured ? layout.nodes.get(node.id) : null}
                 focused={focusedId === node.id}
                 onFocus={setFocusedId}
+                tabIndex={i === 0 ? 0 : -1}
               />
             ))}
             {measured &&
