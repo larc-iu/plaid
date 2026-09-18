@@ -60,6 +60,15 @@ def _span_layer(token_layer, name, scope=None):
     return None
 
 
+def field_layer_id(doc, token_layer_id, name, scope=None):
+    """The id of the annotation field called ``name`` on a token layer, or
+    None. For a service that reads a field only as context and carries on
+    without it, so it can say the field was not there rather than go quiet."""
+    _, layer = _find_layer(doc.get('text_layers', []), token_layer_id)
+    found = _span_layer(layer, name, scope) if layer and name else None
+    return found['id'] if found else None
+
+
 def _links_by_token(token_layer):
     out = {}
     for v in token_layer.get('vocabs') or []:

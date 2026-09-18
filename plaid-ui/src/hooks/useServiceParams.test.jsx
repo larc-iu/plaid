@@ -27,6 +27,28 @@ async function mount(props) {
 describe('useServiceParams', () => {
   beforeEach(() => localStorage.clear());
 
+  // A value remembered from an earlier run can name a field this project does
+  // not have, and the cache outranks everything else in the merge.
+  it('replaces a remembered field the project does not have', async () => {
+    const schema = [
+      {
+        key: 'gloss_field',
+        label: 'Gloss field',
+        type: 'field',
+        scope: 'Morpheme',
+        default: 'Gloss',
+      },
+    ];
+    localStorage.setItem('k', JSON.stringify({ gloss_field: 'Gloss' }));
+    const { params, unmount } = await mount({
+      schema,
+      storageKey: 'k',
+      fields: { Morpheme: ['Gloss (pmy)', 'POS'] },
+    });
+    expect(params().values.gloss_field).toBe('Gloss (pmy)');
+    await unmount();
+  });
+
   it('seeds from the schema when there is nothing else', async () => {
     const { params, unmount } = await mount({});
     expect(params().values.language).toBe('en');

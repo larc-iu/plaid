@@ -7,7 +7,7 @@ import { ServiceParamForm } from './ServiceParamForm.jsx';
 // the reason a built-in and a registered service look the same on screen.
 // "Method" rather than "Service" or "Algorithm" because the list holds both.
 export function ServiceMethodRow({ spot, disabled = false, label = 'Method', emptyHint }) {
-  const { options, selection, choose, service, builtin, params } = spot;
+  const { options, selection, choose, service, builtin, params, fields } = spot;
   // What the chosen method does, in a line. A service's longer summary stays
   // behind the info popover.
   const description = service?.description || builtin?.description || null;
@@ -45,6 +45,7 @@ export function ServiceMethodRow({ spot, disabled = false, label = 'Method', emp
             values={params.values}
             errors={params.errors}
             onChange={params.setParam}
+            fields={fields}
             disabled={disabled}
           />
           {params.isDirty && (

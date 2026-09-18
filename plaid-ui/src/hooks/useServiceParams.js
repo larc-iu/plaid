@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { buildDefaultValues, coerceParamValues } from '@larc-iu/plaid-client';
+import { resolveFieldParams } from '../domain/serviceFields.js';
 
 // Destructive per-run opt-ins that must NOT persist across dialog opens/sessions:
 // they reset to their (safe, default-OFF) schema value every (re)init and are
@@ -31,7 +32,16 @@ const NON_PERSISTENT_PARAMS = new Set(['overwrite']);
 //   storageKey:    full localStorage key, or null to keep values in memory
 //   seedParams:    app-supplied values under the project's, else null
 //   defaultParams: project-level defaults for THIS method, else null
-export function useServiceParams({ schema, storageKey, seedParams = null, defaultParams = null }) {
+//   fields:        {scope: [field name]}, the project's annotation fields, for
+//                  a `field` parameter. Whatever the merge settles on for one
+//                  is then checked against them (domain/serviceFields.js).
+export function useServiceParams({
+  schema,
+  storageKey,
+  seedParams = null,
+  defaultParams = null,
+  fields = null,
+}) {
   const [values, setValues] = useState({});
 
   // Latest values, so setParam can persist without recreating on every change.
@@ -45,6 +55,8 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
   seedRef.current = seedParams;
   const defaultRef = useRef(defaultParams);
   defaultRef.current = defaultParams;
+  const fieldsRef = useRef(fields);
+  fieldsRef.current = fields;
 
   // A schema is stable for the life of a method, so seeding is keyed on the
   // storage key rather than on schema identity (re-discovery replaces a
@@ -57,6 +69,7 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
   // the project's, for anyone who had never touched the dialog.
   const seedSignature = JSON.stringify(seedParams ?? null);
   const defaultSignature = JSON.stringify(defaultParams ?? null);
+  const fieldsSignature = JSON.stringify(fields ?? null);
 
   const seed = useCallback(
     ({ useCache = true } = {}) => {
@@ -80,10 +93,10 @@ export function useServiceParams({ schema, storageKey, seedParams = null, defaul
         // to the schema/project default on each open (NON_PERSISTENT_PARAMS).
         if (cached[k] !== undefined && !NON_PERSISTENT_PARAMS.has(k)) merged[k] = cached[k];
       }
-      return merged;
+      return resolveFieldParams(schema, merged, fieldsRef.current);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [storageKey, seedSignature, defaultSignature],
+    [storageKey, seedSignature, defaultSignature, fieldsSignature],
   );
 
   // A re-seed replaces the form, and `seed()` deliberately does not restore a

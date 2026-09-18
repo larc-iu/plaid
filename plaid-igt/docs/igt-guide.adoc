@@ -524,6 +524,7 @@ Everything it produces is marked as machine-made and shows in violet until you c
 4. **Link to the lexicon.** Words and morphemes that have no link yet are linked to lexicon entries, by the built-in rule described below or by a service. This runs last so that it can link the stems step 3 just produced. Needs the project to have a vocabulary.
 
 Each step remembers whether you left it on, and a service step is unavailable when no service for it is online.
+A service's options that name one of your fields, such as the field its glosses go into or the translation it reads, are chosen from the project's own fields, so you pick `Gloss (en)` from a list rather than typing it.
 
 A run over a long document takes minutes.
 While it goes, the dialog lists the steps it will take and ticks them off, and shows the step it is on, how far that step has got, and how long the run has been going.
@@ -532,7 +533,7 @@ You can close the dialog and watch the document instead: the run carries on, and
 Editing is paused for as long as the run writes, and the document says so at the top; it comes back when the run ends.
 Reloading the page does not stop it, but it does end the run early: the step that was in flight is picked up and finishes, and the steps after it do not run.
 **Stop** ends the run at whichever step it is on, whether that step is a service or one of the built-in ones, and the steps after it do not run.
-When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on.
+When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on. It also says when a service went without a field it reads for context, such as the translation an analysis service is shown.
 Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
 == Copying previous analyses

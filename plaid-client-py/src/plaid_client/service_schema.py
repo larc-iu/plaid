@@ -77,6 +77,18 @@ class Param:
         return p
 
     @staticmethod
+    def field(key, label, scope, *, description=None, default='', required=False):
+        """The name of one of the project's annotation fields at ``scope``
+        (``'Sentence'``, ``'Word'`` or ``'Morpheme'``). A UI that knows the
+        project offers its fields at that scope to choose from, and any other
+        treats the parameter as a string. The value arrives as a string."""
+        p = {'key': key, 'label': label, 'type': 'field', 'scope': scope,
+             'default': default, 'required': required}
+        if description is not None:
+            p['description'] = description
+        return p
+
+    @staticmethod
     def number(key, label, *, description=None, default=None, required=False,
                min=None, max=None, step=None, slider=False):
         """A numeric argument. Set ``slider=True`` (with ``min``/``max``) to ask

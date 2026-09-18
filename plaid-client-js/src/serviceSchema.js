@@ -22,9 +22,14 @@
  *       { key, label, type, description?, default?, required?,
  *         options?: [{value, label}],   // enum / multiselect
  *         min?, max?, step?, slider?,   // number (slider: drag, don't type)
- *         placeholder?, multiline? }    // string
+ *         placeholder?, multiline?,     // string
+ *         scope? }                      // field: 'Sentence' | 'Word' | 'Morpheme'
  *     ]
  *   }
+ *
+ * A `field` parameter names one of the project's annotation fields at its
+ * `scope`. A UI that knows the project offers those fields to choose from; to
+ * everything here, and to a UI that does not, it is a string.
  *
  * A parameter's `key` is a string VALUE, so it passes over the wire verbatim;
  * the UI sends `{ [param.key]: value }` in the request data. Declare each `key`

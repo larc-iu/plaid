@@ -91,6 +91,15 @@ def test_coerce_casts_clamps_validates():
     assert errors == {}
 
 
+def test_field_param_is_a_string_naming_a_field():
+    p = Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True)
+    assert p == {'key': 'gloss_field', 'label': 'Gloss field', 'type': 'field',
+                 'scope': 'Morpheme', 'default': 'Gloss', 'required': True}
+    assert default_values([p]) == {'gloss_field': 'Gloss'}
+    assert coerce([p], {'gloss_field': 'Gloss (pmy)'}) == ({'gloss_field': 'Gloss (pmy)'}, {})
+    assert 'gloss_field' in coerce([p], {'gloss_field': ''})[1]
+
+
 def test_coerce_blank_number_falls_back_to_default():
     schema = [Param.number('beam', 'Beam', default=4, min=1, max=10)]
     v = lambda raw: coerce(schema, raw)[0]['beam']

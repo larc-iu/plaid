@@ -50,8 +50,8 @@ from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged, requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
 from plaid_client.workflows.igt import (
-    derive, select_targets, word_state, parse_interleaved, align_words, analysis_for, write_analyses,
-    tagset_for, mode_rule, value_lines,
+    derive, field_layer_id, select_targets, word_state, parse_interleaved, align_words, analysis_for,
+    write_analyses, tagset_for, mode_rule, value_lines,
 )
 
 DEFAULT_SERVICE_ID = 'llm-analyzer'
@@ -373,10 +373,10 @@ class LLMAnalyzeService(BaseService):
                              description='The language of the glosses and free translations.'),
                 Param.string('orthography', 'Orthography', default='', placeholder='baseline',
                              description='Name of a word orthography to send instead of the baseline text.'),
-                Param.string('gloss_field', 'Gloss field', default='Gloss',
-                             description='The morpheme-scope field that receives the glosses.'),
-                Param.string('translation_field', 'Translation field', default='Translation',
-                             description='The sentence-scope field holding the free translation.'),
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
+                            description='The morpheme-scope field that receives the glosses.'),
+                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                            description='The sentence-scope field holding the free translation.'),
                 Param.number('examples', 'Examples per sentence', default=DEFAULT_EXAMPLES,
                              description='How many of the most similar analyzed sentences to show the model.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
@@ -429,6 +429,10 @@ class LLMAnalyzeService(BaseService):
         except ValueError as e:
             response_helper.error(str(e))
             return
+        # The translation is context only, so a run goes on without it, and
+        # says so rather than analyzing a little worse without a word.
+        translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
+                               else translation_field)
 
         targets, skipped = select_targets(sentences, overwrite)
         skipped['unaligned'] = 0
@@ -533,6 +537,7 @@ class LLMAnalyzeService(BaseService):
                 'skipped': skipped, 'sentences_failed': failed,
                 'lexicon_entries': len(lexicon), 'example_sentences': len(pool),
                 'tagset': tagset['name'] if tagset else None,
+                'translation_field_missing': translation_missing,
             })
 
 

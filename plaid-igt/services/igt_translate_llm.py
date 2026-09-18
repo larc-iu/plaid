@@ -173,12 +173,12 @@ class LLMTranslateService(BaseService):
                              description='The language to translate into.'),
                 Param.string('orthography', 'Orthography', default='', placeholder='baseline',
                              description='Name of a word orthography to send instead of the baseline text.'),
-                Param.string('translation_field', 'Translation field', default='Translation',
-                             description='The sentence-scope field that receives the drafts.'),
+                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                            required=True, description='The sentence-scope field that receives the drafts.'),
                 Param.boolean('use_glosses', 'Use glosses', default=True,
                               description="Show the model the sentence's morpheme glosses."),
-                Param.string('gloss_field', 'Gloss field', default='Gloss',
-                             description='The morpheme-scope field holding the glosses.'),
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss',
+                            description='The morpheme-scope field holding the glosses.'),
                 Param.number('context', 'Context sentences', default=DEFAULT_CONTEXT,
                              description='How many preceding sentences to show the model.'),
                 Param.boolean('overwrite', 'Overwrite human-edited translations', default=False,
@@ -225,6 +225,9 @@ class LLMTranslateService(BaseService):
         read_version = doc.get('version')
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
         gloss_layer_id = None
+        # The glosses are context only, so a run goes on without them, and says
+        # so rather than translating a little worse without a word.
+        gloss_missing = None
         try:
             try:
                 sentences, gloss_layer_id = derive(doc, *layers, gloss_field=gloss_field if use_glosses else None,
@@ -233,6 +236,7 @@ class LLMTranslateService(BaseService):
                 if not use_glosses or 'morpheme-scope field' not in str(e):
                     raise
                 # No such gloss field: translate from the words alone.
+                gloss_missing = gloss_field
                 sentences, _ = derive(doc, *layers, gloss_field=None,
                                       translation_field=translation_field, orthography=orthography)
         except ValueError as e:
@@ -337,6 +341,7 @@ class LLMTranslateService(BaseService):
                 'document_id': document_id, 'status': 'success', 'sentences': len(sentences),
                 'sentences_written': len(plans), 'sentences_replaced': replaced,
                 'skipped': skipped, 'sentences_failed': failed,
+                'gloss_field_missing': gloss_missing,
             })
 
 

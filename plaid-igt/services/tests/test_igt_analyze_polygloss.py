@@ -129,6 +129,7 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
     assert result['words_written'] == 2 and result['words_replaced'] == 0
     assert result['skipped'] == {'protected': 0, 'no_morpheme': 0, 'unaligned': 0}
     assert result['sentences_failed'] == []
+    assert result['translation_field_missing'] is None
     assert 'stopped' not in result
 
     # The prompt carried the words, the translation and both language names.
@@ -266,6 +267,20 @@ def test_a_gloss_field_by_that_name_is_refused_once_in_its_own_words():
     assert text.startswith('No morpheme-scope field named "Nope"')
     assert 'Gloss' in text                     # it names what is there instead
     assert service.client.writes == []
+
+
+def test_a_translation_field_that_is_not_there_is_named_and_the_run_goes_on():
+    # Context only: glosses still land, and the result says what was missing
+    # rather than analyzing without the translation in silence.
+    service = _service()
+    helper = servicetest.run(service, {**REQUEST, 'translation_field': 'Translation (en)'})
+
+    assert helper.errors == []
+    [result] = helper.results
+    assert result['translation_field_missing'] == 'Translation (en)'
+    assert result['words_written'] == 2
+    [prompt] = service.model.prompts
+    assert 'the house is coming' not in prompt
 
 
 def test_a_missing_option_is_reported_once_and_nothing_is_read():

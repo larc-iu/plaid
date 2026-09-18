@@ -91,7 +91,16 @@ function OptionRow({ spotKey, value, label, checked, onSelect, disabled, badge, 
 // One spot's card: every service ever seen for its task (online or not) plus
 // any app built-ins, a default selection, and default parameter values for the
 // selected default service.
-function SpotCard({ spot, services, draftEntry, onChange, onDiscard, canManage, builtinOptions }) {
+function SpotCard({
+  spot,
+  services,
+  draftEntry,
+  onChange,
+  onDiscard,
+  canManage,
+  builtinOptions,
+  fields,
+}) {
   const spotServices = useMemo(
     () => filterServicesByTask(services, spot.key),
     [services, spot.key],
@@ -180,6 +189,7 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard, canManage, 
               schema={paramSchema}
               values={paramValues}
               onChange={setParam}
+              fields={fields}
               disabled={!canManage}
             />
           </div>
@@ -198,7 +208,9 @@ function SpotCard({ spot, services, draftEntry, onChange, onDiscard, canManage, 
  * `spots` is the app's, being a list of places in its own UI. `builtinOptions`
  * lets a selected built-in show options of its own, and `saveExtra` lets the
  * app write a second config key in the same Save, clearing its own `extraDirty`
- * once that write has landed.
+ * once that write has landed. `fieldsOf(project)` gives the project's
+ * annotation fields as {scope: [field name]}, for a `field` parameter to be
+ * chosen from.
  */
 export const ServiceDefaultsSettings = ({
   projectId,
@@ -209,6 +221,7 @@ export const ServiceDefaultsSettings = ({
   onProjectLoaded,
   extraDirty = false,
   saveExtra,
+  fieldsOf,
 }) => {
   const namespace = configNamespace();
   const [project, setProject] = useState(null);
@@ -339,6 +352,7 @@ export const ServiceDefaultsSettings = ({
           onDiscard={discard}
           canManage={canManage}
           builtinOptions={builtinOptions}
+          fields={project ? (fieldsOf?.(project) ?? null) : null}
         />
       ))}
 

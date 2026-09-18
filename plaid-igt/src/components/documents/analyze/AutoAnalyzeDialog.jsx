@@ -10,6 +10,7 @@ import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';
 import { runBuiltinAnalysis } from '@/domain/autoPass';
 import { BUILTIN_LINK_PRECEDENT } from '@/domain/serviceDefaults';
 import { resolveAutoAnalysis } from '@/domain/igtConfig';
+import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -73,17 +74,22 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
   const autoCfg = resolveAutoAnalysis(project?.config);
   const hasVocabs = Object.keys(doc?.vocabularies || {}).length > 0;
 
+  // What a service's field parameters are chosen from, so none names a field
+  // this project does not have.
+  const fields = useMemo(() => (project ? fieldNamesOf(project) : null), [project]);
   const translateSpot = useServiceSpot({
     task: TASKS.TRANSLATE,
     project,
     services: availableServices,
     storageId: 'translate',
+    fields,
   });
   const analyzeSpot = useServiceSpot({
     task: TASKS.ANALYZE,
     project,
     services: availableServices,
     storageId: 'analyze',
+    fields,
   });
   const linkSpot = useServiceSpot({
     task: TASKS.LINK_VOCAB,
@@ -209,6 +215,10 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       const failed = result?.sentencesFailed?.length ?? 0;
       if (failed) parts.push(`could not ${verb} ${plural(failed, 'sentence')}`);
     };
+    // A field a service reads only for context, and went on without.
+    const noteMissing = (name, scope, what) => {
+      if (name) parts.push(`read no ${what} (no ${scope} field “${name}”)`);
+    };
     const plural = (n, s) => `${n} ${s}${n === 1 ? '' : 's'}`;
     const identifiers = {
       documentId: doc.id,
@@ -261,6 +271,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           wrote = true;
         }
         noteFailures(result, 'translate');
+        noteMissing(result?.glossFieldMissing, 'morpheme', 'glosses');
       }
       if (stopRef.current) return halt();
       // 2. copy previous analyses (built-in)
@@ -321,6 +332,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         const prot = result?.skipped?.protected ?? 0;
         if (prot) parts.push(`left ${plural(prot, 'human-analyzed word')} alone`);
         noteFailures(result, 'analyze');
+        noteMissing(result?.translationFieldMissing, 'sentence', 'translations');
       }
       if (stopRef.current) return halt();
       // 4. link to the lexicon

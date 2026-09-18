@@ -559,7 +559,7 @@ The standard `extras` keys are:
 `summary`:: A longer, human-readable description (Markdown), shown on demand—use it for what the one-line `description` is too short to say.
 `parameters`:: An ordered list of the arguments a user may set per request. Each entry is a small descriptor; the client renders a form from it and sends the chosen values as part of the request data.
 
-A parameter descriptor has a `key` (the field its value is sent under), a `label`, and a `type`, plus optional `description`, `default`, and `required`. The types are `string` (optional `placeholder`, `multiline`), `number` (optional `min`, `max`, `step`, `slider`), `boolean`, and `enum`/`multiselect` (each with `options`, a list of `{value, label}`). The `Param.*` builders produce these in Python; in JavaScript you write the equivalent objects.
+A parameter descriptor has a `key` (the field its value is sent under), a `label`, and a `type`, plus optional `description`, `default`, and `required`. The types are `string` (optional `placeholder`, `multiline`), `number` (optional `min`, `max`, `step`, `slider`), `boolean`, `enum`/`multiselect` (each with `options`, a list of `{value, label}`), and `field` (with a `scope`), the name of one of the project's annotation fields at that scope. An application that knows the project's fields offers them to choose from. To anything else a `field` is a string. The `Param.*` builders produce these in Python; in JavaScript you write the equivalent objects.
 
 [NOTE]
 ====

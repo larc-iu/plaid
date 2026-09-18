@@ -43,6 +43,12 @@ export function existingFields(project) {
   return out;
 }
 
+/** The same, as names only: what a `field` service parameter is chosen from. */
+export const fieldNamesOf = (project) =>
+  Object.fromEntries(
+    Object.entries(existingFields(project)).map(([scope, fs]) => [scope, fs.map((f) => f.name)]),
+  );
+
 // Names read alike when their base names do, ignoring case, spacing and
 // punctuation: "Translation (nl)", "translation" and "Translation-nl" all fold
 // together. The writing-system tag comes off first, because "Gloss (en)" beside

@@ -44,7 +44,8 @@ from typing import Dict, List, Optional, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
 from plaid_client.service import check_unchanged
 from plaid_client.workflows.igt import (
-    ParsedWord, derive, select_targets, parse_interleaved, align_words, analysis_for, write_analyses,
+    ParsedWord, derive, field_layer_id, select_targets, parse_interleaved, align_words, analysis_for,
+    write_analyses,
 )
 
 DEFAULT_MODEL = 'lecslab/polygloss-byt5-interleaved-2025-12-28'
@@ -166,10 +167,10 @@ class PolyGlossService(BaseService):
                              description="The language of the free translations."),
                 Param.string('orthography', 'Orthography', default='', placeholder='baseline',
                              description='Name of a word orthography to send instead of the baseline text.'),
-                Param.string('gloss_field', 'Gloss field', default='Gloss',
-                             description='The morpheme-scope field that receives the glosses.'),
-                Param.string('translation_field', 'Translation field', default='Translation',
-                             description='The sentence-scope field holding the free translation.'),
+                Param.field('gloss_field', 'Gloss field', 'Morpheme', default='Gloss', required=True,
+                            description='The morpheme-scope field that receives the glosses.'),
+                Param.field('translation_field', 'Translation field', 'Sentence', default='Translation',
+                            description='The sentence-scope field holding the free translation.'),
                 Param.boolean('overwrite', 'Overwrite human-edited annotations', default=False,
                               description='Also replace analyses a human made or verified.'),
             ],
@@ -224,6 +225,10 @@ class PolyGlossService(BaseService):
         except ValueError as e:
             response_helper.error(str(e))
             return
+        # The translation is context only, so a run goes on without it, and
+        # says so rather than analyzing a little worse without a word.
+        translation_missing = (None if field_layer_id(doc, sent_layer_id, translation_field)
+                               else translation_field)
 
         # Eligible sentences: any word we may write (the write contract).
         targets, skipped = select_targets(sentences, overwrite)
@@ -319,6 +324,7 @@ class PolyGlossService(BaseService):
                 'sentences': len(sentences), 'sentences_sent': len(targets),
                 'words_written': written, 'words_replaced': replaced,
                 'skipped': skipped, 'sentences_failed': failed,
+                'translation_field_missing': translation_missing,
             })
 
 def main():

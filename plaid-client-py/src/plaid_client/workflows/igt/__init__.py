@@ -17,7 +17,7 @@ words (and free translation) into one interleaved line per sentence; see
 ``plaid-igt/services/igt_analyze_polygloss.py`` for the template.
 """
 
-from .derive import derive, word_state, select_targets, is_token_ignored
+from .derive import derive, field_layer_id, word_state, select_targets, is_token_ignored
 from .interlinear import (
     ParsedWord,
     parse_interleaved,
@@ -43,7 +43,7 @@ from .tagsets import (
 )
 
 __all__ = [
-    'derive', 'word_state', 'select_targets', 'is_token_ignored',
+    'derive', 'field_layer_id', 'word_state', 'select_targets', 'is_token_ignored',
     'ParsedWord', 'parse_interleaved', 'align_words', 'analysis_for', 'similarity',
     'clitic_side_of_boundary', 'clitic_types', 'ALIGN_THRESHOLD',
     'write_analyses', 'chunk_plans', 'BATCH_OP_BUDGET',

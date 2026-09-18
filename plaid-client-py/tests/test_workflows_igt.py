@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client.workflows.igt import (
+    field_layer_id,
     ParsedWord, parse_interleaved, align_words, analysis_for, clitic_types,
     derive, word_state, select_targets, is_token_ignored, chunk_plans, write_analyses,
     normalize_tagset, read_tagsets, tagset_for, vocab_tagset_for, governed_fields, mode_rule, value_lines,
@@ -125,6 +126,15 @@ def test_derive_rejects_a_missing_gloss_field_with_a_helpful_message():
         assert 'Gloss' in str(e)
     else:
         raise AssertionError('expected ValueError')
+
+
+def test_field_layer_id_finds_a_field_or_says_none():
+    doc = raw_doc()
+    assert field_layer_id(doc, 'sentL', 'Translation') == 'trL'
+    assert field_layer_id(doc, 'morphL', 'Gloss', 'Morpheme') == 'glossL'
+    assert field_layer_id(doc, 'sentL', 'Translation (en)') is None
+    assert field_layer_id(doc, 'sentL', '') is None
+    assert field_layer_id(doc, 'nope', 'Translation') is None
 
 
 def test_is_token_ignored():

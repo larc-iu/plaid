@@ -102,6 +102,18 @@ test('coerceParamValues flags missing required and falls back invalid enum', () 
   assert.ok(r2.errors.name);
 });
 
+test('a field param is a string naming a field', () => {
+  const schema = [
+    { key: 'gloss_field', label: 'Gloss field', type: 'field', scope: 'Morpheme', default: 'Gloss', required: true },
+  ];
+  assert.deepEqual(buildDefaultValues(schema), { gloss_field: 'Gloss' });
+  assert.deepEqual(coerceParamValues(schema, { gloss_field: 'Gloss (pmy)' }), {
+    values: { gloss_field: 'Gloss (pmy)' },
+    errors: {},
+  });
+  assert.ok(coerceParamValues(schema, { gloss_field: '' }).errors.gloss_field);
+});
+
 test('param-key string values survive the request-data recasing round-trip', () => {
   // A param `key` is a value, used verbatim as a request-data field name. A
   // snake_case key (a Python service's convention) is a fixed point of the JS

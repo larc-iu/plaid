@@ -15,7 +15,7 @@ interface ServiceParam {
   /** Key the value is sent under in the request payload. */
   key: string;
   label: string;
-  type: "string" | "number" | "boolean" | "enum" | "multiselect";
+  type: "string" | "number" | "boolean" | "enum" | "multiselect" | "field";
   description?: string;
   default?: any;
   required?: boolean;
@@ -30,6 +30,11 @@ interface ServiceParam {
   /** `string` only. */
   placeholder?: string;
   multiline?: boolean;
+  /**
+   * `field` only: the scope of the project's annotation fields the value names
+   * one of. A `field` value is a string everywhere else.
+   */
+  scope?: "Sentence" | "Word" | "Morpheme";
 }
 
 /** A service's standardized self-description (lives in `extras`). */

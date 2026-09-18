@@ -9,7 +9,17 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 // edits via onChange(key, value); the parent holds the values + validation
 // `errors` (see useServiceParams). Returns null when the service declares no
 // parameters.
-export function ServiceParamForm({ schema, values, onChange, errors = {}, disabled = false }) {
+//
+// `fields` ({scope: [field name]}) is the project's annotation fields, which a
+// `field` parameter is chosen from. Without it such a parameter is a text box.
+export function ServiceParamForm({
+  schema,
+  values,
+  onChange,
+  errors = {},
+  fields = null,
+  disabled = false,
+}) {
   if (!schema || schema.length === 0) return null;
   return (
     <div className="flex flex-wrap items-start gap-4">
@@ -20,6 +30,7 @@ export function ServiceParamForm({ schema, values, onChange, errors = {}, disabl
           value={values?.[param.key]}
           error={errors?.[param.key]}
           onChange={(v) => onChange(param.key, v)}
+          fields={fields}
           disabled={disabled}
         />
       ))}
@@ -27,9 +38,12 @@ export function ServiceParamForm({ schema, values, onChange, errors = {}, disabl
   );
 }
 
-function ParamField({ param, value, error, onChange, disabled }) {
+function ParamField({ param, value, error, onChange, fields, disabled }) {
   const id = `svc-param-${param.key}`;
-  const control = renderControl(id, param, value, onChange, disabled);
+  const names = param.type === 'field' ? fields?.[param.scope] : null;
+  const control = Array.isArray(names)
+    ? fieldControl(id, names, value, onChange, disabled)
+    : renderControl(id, param, value, onChange, disabled);
   return (
     <div
       className="flex flex-col gap-1.5"
@@ -63,6 +77,24 @@ function ParamField({ param, value, error, onChange, disabled }) {
 function round(value, step) {
   const decimals = (String(step).split('.')[1] || '').length;
   return Number(value.toFixed(decimals));
+}
+
+// One of the project's fields at the parameter's scope.
+function fieldControl(id, names, value, onChange, disabled) {
+  return (
+    <Select value={value ?? ''} onValueChange={onChange} disabled={disabled || !names.length}>
+      <SelectTrigger id={id} style={{ width: 200 }}>
+        <SelectValue placeholder={names.length ? 'Choose a field' : 'No fields'} />
+      </SelectTrigger>
+      <SelectContent>
+        {names.map((name) => (
+          <SelectItem key={name} value={name}>
+            {name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 function renderControl(id, param, value, onChange, disabled) {

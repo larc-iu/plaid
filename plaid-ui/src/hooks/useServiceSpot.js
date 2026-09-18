@@ -31,6 +31,8 @@ const EMPTY = [];
 //   seedParams: values to sit UNDER the project's defaults, for an argument the
 //               app can answer from the project itself (UD seeds `language`).
 //               A function of the chosen method's schema, or a plain object.
+//   fields:     {scope: [field name]}, the project's annotation fields, which a
+//               `field` parameter is chosen from. Null where there are none.
 export function useServiceSpot({
   task,
   project,
@@ -38,6 +40,7 @@ export function useServiceSpot({
   builtins = EMPTY,
   storageId,
   seedParams = null,
+  fields = null,
 }) {
   const selectionKey = `${appPrefix()}_${storageId}_service`;
   const [choice, setChoice] = useState(null);
@@ -115,6 +118,7 @@ export function useServiceSpot({
     schema,
     storageKey: selection ? `${appPrefix()}_${storageId}_params_${selection}` : null,
     seedParams: seeded,
+    fields,
     // A project default's params belong to the method it names, and to no other.
     defaultParams:
       projectDefault && selectionFromConfig(projectDefault) === selection
@@ -130,6 +134,7 @@ export function useServiceSpot({
     builtin: selected?.builtin ?? null,
     isBuiltin: decoded?.kind === 'builtin',
     params,
+    fields,
     // Nothing can run: no built-in, and no service online for this task.
     empty: options.length === 0,
   };

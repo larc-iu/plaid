@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { ServiceDefaultsSettings } from '@ui/components/shared/ServiceDefaultsSettings.jsx';
 import { IGT_NAMESPACE, resolveAutoAnalysis } from '@/domain/igtConfig';
+import { fieldNamesOf } from '@/import/elan/fieldTargets';
 import {
   BUILTIN_TOKENIZE_RULE_BASED,
   BUILTIN_LINK_PRECEDENT,
@@ -138,6 +139,7 @@ export const ServicesSettings = ({ projectId, client }) => {
 
   return (
     <ServiceDefaultsSettings
+      fieldsOf={fieldNamesOf}
       projectId={projectId}
       client={client}
       spots={SPOTS}
