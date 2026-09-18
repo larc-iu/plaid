@@ -8,8 +8,18 @@ import { parsePenman } from '../../../domain/format/penman.js';
 // under the text as it is typed.
 export function PenmanEditor({ initial, onApply, onCancel, applying = false }) {
   const [text, setText] = useState(initial);
+  // What the text is compared against. When the stored graph changes under an
+  // untouched editor (another writer, a failed apply's reload), the text
+  // follows it; once typed in, the text stays and only the base moves.
+  const [base, setBase] = useState(initial);
   const ref = useRef(null);
-  const dirty = text !== initial;
+  const dirty = text !== base;
+  useEffect(() => {
+    if (initial === base) return;
+    if (!dirty) setText(initial);
+    setBase(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
   const problem = useMemo(() => {
     const parsed = parsePenman(text);
     if (parsed.errors.length) return parsed.errors[0];

@@ -68,6 +68,18 @@ export class UmrDocument extends DocumentModel {
     return this._derived('problems', () => validateDocument(toUmrSentences(this.graph)));
   }
 
+  // The same, by sentence index.
+  get problemsBySentence() {
+    return this._derived('problemsBySentence', () => {
+      const map = new Map();
+      this.problems.forEach((p) => {
+        if (!map.has(p.sentence)) map.set(p.sentence, []);
+        map.get(p.sentence).push(p);
+      });
+      return map;
+    });
+  }
+
   _patchContext(next) {
     return [getUmrLayerInfo(next)];
   }
@@ -149,12 +161,38 @@ export class UmrDocument extends DocumentModel {
     return [...below].filter((id) => !stillReachable.has(id)).map((id) => this.node(id));
   }
 
+  // Nodes only `nodeId` keeps reachable from the sentence's roots: what its
+  // deletion takes with it, the node itself aside. Computed with the node
+  // gone, so a grandchild reachable through two of its children counts.
+  orphanedBy(nodeId) {
+    const node = this.node(nodeId);
+    const sentence = node ? this.sentence(node.sentence) : null;
+    if (!sentence) return [];
+    const inSentence = (id) => this.node(id)?.sentence === sentence.index;
+    const reach = (starts) => {
+      const seen = new Set();
+      const stack = [...starts];
+      while (stack.length) {
+        const n = stack.pop();
+        if (!n || n.id === nodeId || seen.has(n.id)) continue;
+        seen.add(n.id);
+        n.out.forEach((e) => {
+          if (inSentence(e.target)) stack.push(this.node(e.target));
+        });
+      }
+      return seen;
+    };
+    const still = reach(sentence.roots.filter((r) => r.id !== nodeId));
+    const below = reach(node.out.map((e) => this.node(e.target)));
+    return [...below].filter((id) => !still.has(id)).map((id) => this.node(id));
+  }
+
   // Would an edge from `sourceId` to `targetId` close a cycle the format does
   // not allow (one through anything but a quote)? True when the target
   // reaches the source.
   wouldCycle(sourceId, targetId, role) {
-    if (CYCLE_ROLES.has(role)) return false;
     if (sourceId === targetId) return true;
+    if (CYCLE_ROLES.has(role)) return false;
     const seen = new Set();
     const stack = [this.node(targetId)];
     while (stack.length) {
@@ -167,6 +205,13 @@ export class UmrDocument extends DocumentModel {
       });
     }
     return false;
+  }
+
+  // The next free position among a node's children: attributes and edges
+  // share one order, the file's child order.
+  nextOrder(node) {
+    const orders = [...node.out.map((e) => e.order), ...node.attrs.map((a) => a.order ?? 0)];
+    return Math.max(-1, ...orders) + 1;
   }
 
   // ----- raw patch helpers -----
@@ -218,7 +263,7 @@ export class UmrDocument extends DocumentModel {
     const pieces = this.piecesFor(sentence, wordIds);
     const variable = nextVariable(sentenceIndex, concept, this.takenVariables());
     const parent = parentId ? this.node(parentId) : null;
-    const order = parent ? Math.max(-1, ...parent.out.map((e) => e.order)) + 1 : 0;
+    const order = parent ? this.nextOrder(parent) : 0;
     // The first node of a sentence is its root. A later parentless node is a
     // fragment until it is connected, and the graph keeps its root.
     const meta = { var: variable, attrs };
@@ -313,7 +358,15 @@ export class UmrDocument extends DocumentModel {
   async setAttrs(nodeId, attrs) {
     const node = this.node(nodeId);
     if (!node) return false;
-    const next = attrs.map((a, i) => ({ rel: a.rel, value: a.value, order: i }));
+    // An attribute keeps its place among the node's children when one with
+    // its relation was there before; a new one goes after everything.
+    const free = node.attrs.map((a) => ({ rel: a.rel, order: a.order ?? 0 }));
+    let tail = this.nextOrder(node);
+    const next = attrs.map((a) => {
+      const i = free.findIndex((f) => f.rel === a.rel);
+      const order = i >= 0 ? free.splice(i, 1)[0].order : tail++;
+      return { rel: a.rel, value: a.value, order };
+    });
     return this._patchNodeMeta(nodeId, { attrs: next }, `Set attributes of ${node.var}`);
   }
 
@@ -397,7 +450,7 @@ export class UmrDocument extends DocumentModel {
       this.setError(`${role} from ${source.var} to ${target.var} would close a cycle.`);
       return false;
     }
-    const order = Math.max(-1, ...source.out.map((e) => e.order)) + 1;
+    const order = this.nextOrder(source);
     let edgeId = null;
     const ok = await this._withSaving(
       'Failed to add the edge',
@@ -486,7 +539,7 @@ export class UmrDocument extends DocumentModel {
       this.setError(`Moving ${edge.role} under ${source.var} would close a cycle.`);
       return false;
     }
-    const order = Math.max(-1, ...source.out.map((e) => e.order)) + 1;
+    const order = this.nextOrder(source);
     return this._withSaving(
       'Failed to move the edge',
       async () => {
@@ -518,9 +571,7 @@ export class UmrDocument extends DocumentModel {
   async deleteNode(nodeId, { subtree = true } = {}) {
     const node = this.node(nodeId);
     if (!node) return false;
-    const below = subtree
-      ? node.out.flatMap((e) => this.exclusiveDescendants(e.id)).filter((n) => n.id !== nodeId)
-      : [];
+    const below = subtree ? this.orphanedBy(nodeId) : [];
     const doomed = [node, ...below];
     const tokenIds = doomed.flatMap((n) => n.pieces.map((p) => p.id));
     const spanIds = doomed.map((n) => n.id);
@@ -636,8 +687,27 @@ export class UmrDocument extends DocumentModel {
         }
       });
     });
+    // The text is the root's graph, so only what the root reaches is the
+    // text's to delete: a fragment the text never showed stays.
+    const written = new Set();
+    const stack = [...sentence.roots.slice(0, 1)];
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n || written.has(n.id)) continue;
+      written.add(n.id);
+      n.out.forEach((e) => {
+        if (this.node(e.target)?.sentence === sentenceIndex) stack.push(this.node(e.target));
+      });
+    }
     sentence.nodes.forEach((n) => {
-      if (!newVars.has(n.var)) plan.delete.push(n.id);
+      if (written.has(n.id) && !newVars.has(n.var)) plan.delete.push(n.id);
+    });
+    // An edge into or out of a deleted node goes with it (the server's
+    // cascade), and a second delete would be a 404.
+    const gone = new Set(plan.delete);
+    plan.edgesDelete = plan.edgesDelete.filter((id) => {
+      const e = this.edge(id);
+      return e && !gone.has(e.source) && !gone.has(e.target);
     });
     const oldRoot = sentence.roots[0]?.var;
     if (parsed.root !== oldRoot) plan.root = parsed.root;
@@ -674,6 +744,7 @@ export class UmrDocument extends DocumentModel {
       'Failed to apply the text',
       async () => {
         const idByVar = new Map(sentence.nodes.map((n) => [n.var, n.id]));
+        const gone = new Set(plan.delete);
         // Deletes first, so a variable given to a new node is free.
         if (plan.delete.length) {
           const tokenIds = plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id));
@@ -684,6 +755,18 @@ export class UmrDocument extends DocumentModel {
           });
         }
         for (const edgeId of plan.edgesDelete) await client.relations.delete(edgeId);
+        // The root moves: the old marks come off first, so no two nodes wear
+        // one, whether the new root is made below or was there already.
+        if (plan.root) {
+          const olds = sentence.nodes.filter(
+            (n) => n.root && n.var !== plan.root && !gone.has(n.id),
+          );
+          for (const o of olds) {
+            const span = this._layers(info).spans.find((s) => s.id === o.id);
+            const { root: _r, ...rest } = umrOf(span);
+            await client.spans.patchMetadata(o.id, { [UMR_NAMESPACE]: rest });
+          }
+        }
         for (const c of plan.create) {
           const { ids } = await client.tokens.bulkCreate([
             {
@@ -703,10 +786,7 @@ export class UmrDocument extends DocumentModel {
         for (const c of plan.concept) await client.spans.update(c.nodeId, c.concept);
         for (const a of plan.attrs) {
           const span = this._layers(info).spans.find((s) => s.id === a.nodeId);
-          await client.spans.patchMetadata(
-            a.nodeId,
-            umrPatch(span, { attrs: a.attrs.map((x, i) => ({ ...x, order: i })) }),
-          );
+          await client.spans.patchMetadata(a.nodeId, umrPatch(span, { attrs: a.attrs }));
         }
         const edgesAdd = [
           ...plan.edgesAdd,
@@ -722,7 +802,10 @@ export class UmrDocument extends DocumentModel {
         for (const e of edgesAdd) {
           const source = idByVar.get(e.sourceVar);
           const target = idByVar.get(e.targetVar);
-          if (!source || !target) continue;
+          if (!source || !target) {
+            console.warn('applyPenman: an edge lost its end', e);
+            continue;
+          }
           await client.relations.create(info.relationLayer.id, source, target, e.role, {
             [UMR_NAMESPACE]: { order: e.order },
           });
@@ -732,12 +815,6 @@ export class UmrDocument extends DocumentModel {
         }
         if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
           const newId = idByVar.get(plan.root);
-          const olds = sentence.nodes.filter((n) => n.root && n.id !== newId);
-          for (const o of olds) {
-            const span = this._layers(info).spans.find((s) => s.id === o.id);
-            const { root: _r, ...rest } = umrOf(span);
-            await client.spans.patchMetadata(o.id, { [UMR_NAMESPACE]: rest });
-          }
           if (newId) {
             const span = this._layers(info).spans.find((s) => s.id === newId);
             await client.spans.patchMetadata(newId, umrPatch(span, { root: true }));

@@ -70,6 +70,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
+  // Writes from gestures run one after another: the document refuses a write
+  // while one is in flight, and three quick clicks in anchor mode are three
+  // writes, not one and two lost.
+  const queueRef = useRef(Promise.resolve());
+  const run = useCallback((fn) => {
+    const next = queueRef.current.then(fn, fn);
+    queueRef.current = next.catch(() => {});
+    return next;
+  }, []);
   const { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes } = useCanvasMeasure(
     `${dataVersion}:${sentence.index}`,
   );
@@ -183,18 +192,21 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const p = ed.pending;
       if (p.newNode) {
         setEditor(null);
-        const r = await doc.createNode({ ...p.newNode, role });
+        const r = await run(() => doc.createNode({ ...p.newNode, role }));
         if (r) focusNode(r.nodeId);
         return;
       }
       closeEditor();
-      if (p.edgeId) await doc.setRole(p.edgeId, role);
-      else await doc.createEdge(p.sourceId, p.targetId, role);
+      if (p.edgeId) await run(() => doc.setRole(p.edgeId, role));
+      else await run(() => doc.createEdge(p.sourceId, p.targetId, role));
     } else if (ed.kind === 'new') {
       setEditor(null);
       let wordIds = ed.wordIds;
       let concept = text;
-      const picked = /^\d+$/.test(text) ? sentence.words[Number(text) - 1] : null;
+      // A number names a word only when no word was dropped on: a word whose
+      // form is a numeral is a concept like any other.
+      const picked =
+        !ed.wordIds.length && /^\d+$/.test(text) ? sentence.words[Number(text) - 1] : null;
       if (picked) {
         wordIds = [picked.id];
         concept = picked.text;
@@ -203,18 +215,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       if (ed.parentId) {
         askRole({ newNode }, { x: ed.x, y: ed.y });
       } else {
-        const r = await doc.createNode(newNode);
+        const r = await run(() => doc.createNode(newNode));
         if (r) focusNode(r.nodeId);
       }
     } else if (ed.kind === 'concept') {
       closeEditor();
-      await doc.setConcept(ed.nodeId, text);
+      await run(() => doc.setConcept(ed.nodeId, text));
     } else if (ed.kind === 'variable') {
       closeEditor();
-      await doc.setVariable(ed.nodeId, text);
+      await run(() => doc.setVariable(ed.nodeId, text));
     } else if (ed.kind === 'attrs') {
       closeEditor();
-      await doc.setAttrs(ed.nodeId, lineToAttrs(text));
+      await run(() => doc.setAttrs(ed.nodeId, lineToAttrs(text)));
     }
   };
 
@@ -228,9 +240,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const node = nodesById.get(focusedId);
     if (!node) return;
     const edge = wholeNode ? null : treeEdgeInto(node.id);
-    const doomed = edge
-      ? doc.exclusiveDescendants(edge.id)
-      : [node, ...node.out.flatMap((e) => doc.exclusiveDescendants(e.id))];
+    // A root has no edge to delete; the node itself is the other chord's.
+    if (!wholeNode && !edge) return;
+    const doomed = edge ? doc.exclusiveDescendants(edge.id) : [node, ...doc.orphanedBy(node.id)];
     const next = edge ? edge.source : treeEdgeInto(node.id)?.source || null;
     if (doomed.length > 1) {
       const n = doomed.length;
@@ -244,8 +256,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       });
       if (!ok) return;
     }
-    if (edge) await doc.deleteEdge(edge.id);
-    else await doc.deleteNode(node.id);
+    if (edge) await run(() => doc.deleteEdge(edge.id));
+    else await run(() => doc.deleteNode(node.id));
     if (next) focusNode(next);
   };
 
@@ -253,6 +265,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const handleKeyDown = async (e) => {
     if (readOnly || editor || e.isComposing) return;
+    // A text box inside the block owns its keys. The bare letters below are
+    // `outsideText` in the table, and this is where that is kept.
+    if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
+    // Shift+Tab is the way out of the block for a keyboard.
+    if (e.key === 'Tab' && e.shiftKey) return;
     if (e.key === 'Escape') {
       if (mode) {
         e.preventDefault();
@@ -321,7 +338,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         setMode({ kind: 'reentrancy', nodeId: id });
         break;
       case 'node.root':
-        await doc.setRoot(id);
+        await run(() => doc.setRoot(id));
         break;
       case 'node.delete':
         await deleteIntoFocused(false);
@@ -346,7 +363,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (mode.kind === 'move') {
       const edge = treeEdgeInto(mode.nodeId);
       setMode(null);
-      if (edge && id !== mode.nodeId) await doc.moveEdge(edge.id, id);
+      if (edge && id !== mode.nodeId) await run(() => doc.moveEdge(edge.id, id));
       focusNode(mode.nodeId);
     } else if (mode.kind === 'reentrancy') {
       setMode(null);
@@ -360,20 +377,23 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (readOnly || mode?.kind !== 'anchor') return;
     const node = nodesById.get(mode.nodeId);
     if (!node) return;
-    const has = node.wordIds.includes(wordId);
-    const next = has ? node.wordIds.filter((w) => w !== wordId) : [...node.wordIds, wordId];
-    await doc.setAnchor(node.id, next);
+    await run(() => {
+      // Read at run time: an earlier click in the queue may have moved it.
+      const current = doc.node(node.id);
+      if (!current) return false;
+      const has = current.wordIds.includes(wordId);
+      const next = has ? current.wordIds.filter((w) => w !== wordId) : [...current.wordIds, wordId];
+      return doc.setAnchor(current.id, next);
+    });
   };
 
   const doubleClickWord = async (wordId) => {
     if (readOnly || mode) return;
     const word = sentence.words.find((w) => w.id === wordId);
     if (!word) return;
-    const r = await doc.createNode({
-      sentenceIndex: sentence.index,
-      concept: word.text,
-      wordIds: [wordId],
-    });
+    const r = await run(() =>
+      doc.createNode({ sentenceIndex: sentence.index, concept: word.text, wordIds: [wordId] }),
+    );
     if (r) focusNode(r.nodeId);
   };
 
@@ -446,7 +466,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else if (d.kind === 'move' && over?.kind === 'node') {
         const edge = doc.edge(d.edgeId);
         if (edge && over.id !== edge.source && over.id !== edge.target) {
-          await doc.moveEdge(d.edgeId, over.id);
+          await run(() => doc.moveEdge(d.edgeId, over.id));
         }
       }
     };
@@ -578,7 +598,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           applying={applying}
           onApply={async (text) => {
             setApplying(true);
-            const changes = await doc.applyPenman(sentence.index, text);
+            const changes = await run(() => doc.applyPenman(sentence.index, text));
             setApplying(false);
             if (changes !== false) setTextMode(false);
           }}

@@ -124,6 +124,46 @@ test('applyPenman adds a node with its edge, changes a concept and an attribute,
   assert.match(calls[0][1], /3 changes/);
 });
 
+test('an edge into a deleted node is left to the cascade, not deleted twice', async () => {
+  const { doc, calls } = load();
+  const text = `(s1e / eat-01 :ARG0 (s1p / person) :aspect performance)`;
+  const plan = doc.planPenman(1, text);
+  // s1l and s1n go; the :name edge into s1n and the :purpose edge out of s1l
+  // go with them, so nothing is deleted by id.
+  assert.equal(plan.edgesDelete.length, 0);
+  await doc.applyPenman(1, text);
+  assert.ok(!calls.some((c) => c[0] === 'relations.delete'));
+});
+
+test("a fragment the text never showed is not the text's to delete", async () => {
+  const { doc } = load();
+  const r = await doc.createNode({ sentenceIndex: 1, concept: 'thing' });
+  assert.ok(r);
+  const text = doc.penmanOf(1);
+  assert.doesNotMatch(text, /thing/);
+  assert.equal(doc.planPenman(1, text).changes, 0);
+});
+
+test('re-rooting onto a node the text creates clears the old mark first', async () => {
+  const { doc, calls } = load();
+  const text = `(s1x / say-01
+    :ARG1 (s1l / leave-02
+        :ARG0 (s1p / person
+            :name (s1n / name :op1 "Lindsay"))
+        :aspect performance
+        :purpose (s1e / eat-01 :ARG0 s1p :aspect performance)))`;
+  const plan = doc.planPenman(1, text);
+  assert.equal(plan.root, 's1x');
+  await doc.applyPenman(1, text);
+  const names = calls.map((c) => c[0]);
+  const unmark = calls.find((c) => c[0] === 'spans.patchMetadata');
+  assert.ok(unmark, 'the old root loses its mark');
+  assert.equal(unmark[2].umr.root, undefined);
+  assert.ok(names.indexOf('spans.patchMetadata') < names.indexOf('spans.create'));
+  const created = calls.find((c) => c[0] === 'spans.create');
+  assert.equal(created[2].umr.root, true);
+});
+
 test('applyPenman deletes a node the text no longer has and re-roots', async () => {
   const { doc, calls } = load();
   const text = `(s1e / eat-01 :ARG0 (s1p / person) :aspect performance)`;
@@ -135,4 +175,6 @@ test('applyPenman deletes a node the text no longer has and re-roots', async () 
   assert.ok(names.includes('tokens.bulkDelete'));
   const rootPatches = calls.filter((c) => c[0] === 'spans.patchMetadata');
   assert.ok(rootPatches.some((c) => c[2].umr.root === true));
+  // The old root was deleted with its subtree, so no mark to clear.
+  assert.ok(!rootPatches.some((c) => c[2].umr.root === undefined && c[2].umr.var === 's1l'));
 });

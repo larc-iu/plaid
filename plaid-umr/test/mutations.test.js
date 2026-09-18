@@ -229,12 +229,66 @@ test('setVariable refuses a taken or malformed variable', async () => {
   assert.equal(byVar(doc, 's1z9').concept, 'landslide-01');
 });
 
-test('setAttrs restates the whole umr namespace', async () => {
+test('setAttrs restates the whole umr namespace and keeps the child order', async () => {
   const { doc, calls } = load();
+  // s1l's children: :ARG1 landslide-01 (0), :aspect state (1)... whatever the
+  // corpus has, an aspect that was there keeps its place and a new attribute
+  // goes after every child, edges included.
   const landslide = byVar(doc, 's1l');
-  await doc.setAttrs(landslide.id, [{ rel: ':aspect', value: 'process' }]);
+  const before = landslide.attrs.find((a) => a.rel === ':aspect');
+  const tail = doc.nextOrder(landslide);
+  await doc.setAttrs(landslide.id, [
+    { rel: ':aspect', value: 'process' },
+    { rel: ':polarity', value: '-' },
+  ]);
   const patch = calls.find((c) => c.name === 'spans.patchMetadata').args[1];
   assert.equal(patch.umr.var, 's1l');
-  assert.deepEqual(patch.umr.attrs, [{ rel: ':aspect', value: 'process', order: 0 }]);
+  assert.deepEqual(patch.umr.attrs, [
+    { rel: ':aspect', value: 'process', order: before ? before.order : tail },
+    { rel: ':polarity', value: '-', order: before ? tail : tail + 1 },
+  ]);
   assert.match(doc.toUmr(), /:aspect process/);
+});
+
+test('deleteNode takes a grandchild reachable only through two of its children', async () => {
+  const { doc } = load();
+  const parent = byVar(doc, 's1l');
+  const p = await doc.createNode({
+    sentenceIndex: 1,
+    concept: 'p',
+    parentId: parent.id,
+    role: ':ARG2',
+  });
+  const a = await doc.createNode({
+    sentenceIndex: 1,
+    concept: 'a',
+    parentId: p.nodeId,
+    role: ':op1',
+  });
+  const b = await doc.createNode({
+    sentenceIndex: 1,
+    concept: 'b',
+    parentId: p.nodeId,
+    role: ':op2',
+  });
+  const d = await doc.createNode({
+    sentenceIndex: 1,
+    concept: 'd',
+    parentId: a.nodeId,
+    role: ':mod',
+  });
+  assert.ok(await doc.createEdge(b.nodeId, d.nodeId, ':mod'));
+  const orphans = doc
+    .orphanedBy(p.nodeId)
+    .map((n) => n.concept)
+    .sort();
+  assert.deepEqual(orphans, ['a', 'b', 'd']);
+  await doc.deleteNode(p.nodeId);
+  assert.equal(doc.node(d.nodeId), null);
+});
+
+test('a quote onto itself is still a cycle', () => {
+  const { doc } = load();
+  const landslide = byVar(doc, 's1l');
+  assert.equal(doc.wouldCycle(landslide.id, landslide.id, ':quote'), true);
 });

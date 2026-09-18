@@ -89,14 +89,26 @@ export function sensesFor(frames, form) {
   const candidates = lemmaCandidates(form);
   const out = [];
   candidates.forEach((lemma, rank) => {
-    Object.keys(frames).forEach((id) => {
-      if (lemmaOf(id) === lemma) out.push({ id, lemma, args: frames[id], rank });
+    rolesetsStartingWith(frames, `${lemma}-`, 200).forEach(({ id, args }) => {
+      if (lemmaOf(id) === lemma) out.push({ id, lemma, args, rank });
     });
   });
   return out
     .sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id, undefined, { numeric: true }))
     .map(({ id, lemma, args }) => ({ id, lemma, args }));
 }
+
+// A frame file's ids, sorted, once per file: the picker asks on every
+// keystroke and a file has tens of thousands of entries.
+const keyLists = new WeakMap();
+const keysOf = (frames) => {
+  let keys = keyLists.get(frames);
+  if (!keys) {
+    keys = Object.keys(frames).sort();
+    keyLists.set(frames, keys);
+  }
+  return keys;
+};
 
 // The rolesets whose id starts with what was typed, for a picker with no
 // anchored word to go on. Capped: a frame file has thousands.
@@ -105,7 +117,9 @@ export function rolesetsStartingWith(frames, prefix, limit = 40) {
   const p = String(prefix || '').toLowerCase();
   if (!p) return [];
   const out = [];
-  for (const id of Object.keys(frames)) {
+  for (const id of keysOf(frames)) {
+    if (id < p && !id.startsWith(p)) continue;
+    if (id > p && !id.startsWith(p)) break;
     if (id.startsWith(p)) {
       out.push({ id, lemma: lemmaOf(id), args: frames[id] });
       if (out.length >= limit) break;

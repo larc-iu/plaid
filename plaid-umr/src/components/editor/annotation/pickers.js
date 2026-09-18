@@ -50,27 +50,29 @@ export const normalizeRole = (text) => {
 // words first (with their arguments), then the surface forms, then the
 // abstract inventory. `typed` adds rolesets starting with what was typed,
 // for a node with no word to go on.
+const nameOf = (c) => (typeof c === 'string' ? c : c.name);
+// The inventory's groups never change: built once.
+const STATIC_CONCEPT_GROUPS = [
+  { group: 'Abstract', items: uniq(flat(ABSTRACT_CONCEPTS).map(nameOf)) },
+  { group: 'Rolesets', items: uniq(flat(ROLESETS_91).map(nameOf)) },
+  {
+    group: 'Discourse',
+    items: uniq(flat(DISCOURSE_CONCEPTS.validator || DISCOURSE_CONCEPTS).map(nameOf)),
+  },
+];
+
 export const conceptOptions = (words = [], frames = null, typed = '') => {
   const senses = uniq(words.flatMap((w) => sensesFor(frames, w.text).map((x) => x.id)));
   const byPrefix = typed && !words.length ? rolesetsStartingWith(frames, typed) : [];
   const senseItem = (id) => ({ value: id, label: `${id} ${argSummary(frames?.[id])}` });
   const surface = uniq(words.map((w) => w.text));
-  const abstract = uniq(flat(ABSTRACT_CONCEPTS).map((c) => (typeof c === 'string' ? c : c.name)));
-  const rolesets = uniq(flat(ROLESETS_91).map((c) => (typeof c === 'string' ? c : c.name)));
-  const discourse = uniq(
-    flat(DISCOURSE_CONCEPTS.validator || DISCOURSE_CONCEPTS).map((c) =>
-      typeof c === 'string' ? c : c.name,
-    ),
-  );
   return [
     ...(senses.length ? [{ group: 'Senses', items: senses.map(senseItem) }] : []),
     ...(byPrefix.length
       ? [{ group: 'Rolesets', items: byPrefix.map((x) => senseItem(x.id)) }]
       : []),
     ...(surface.length ? [{ group: 'Word', items: surface }] : []),
-    { group: 'Abstract', items: abstract },
-    { group: 'Rolesets', items: rolesets },
-    { group: 'Discourse', items: discourse },
+    ...STATIC_CONCEPT_GROUPS,
   ];
 };
 

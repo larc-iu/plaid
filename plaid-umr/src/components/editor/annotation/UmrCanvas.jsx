@@ -23,22 +23,10 @@ const useFrames = (languageTag) => {
 // The document as a column of sentence blocks. Reads the document it is
 // handed, live or a snapshot, so a past state draws as readily as the
 // present one.
-// What the official checks find, by sentence. Derived off the document so it
-// is computed once per data version.
-const problemsBySentence = (doc) =>
-  doc._derived('problemsBySentence', () => {
-    const map = new Map();
-    doc.problems.forEach((p) => {
-      if (!map.has(p.sentence)) map.set(p.sentence, []);
-      map.get(p.sentence).push(p);
-    });
-    return map;
-  });
-
 export const UmrCanvas = ({ doc, readOnly = true }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
   const graph = doc.graph;
-  const problems = problemsBySentence(doc);
+  const problems = doc.problemsBySentence;
   const sentences = graph.sentences;
   if (sentences.length === 0) {
     return (
