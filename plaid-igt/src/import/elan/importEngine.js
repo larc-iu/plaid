@@ -344,9 +344,9 @@ async function runElanImportImpl({
   const project = await client.projects.get(projectId);
   const targets = resolveTargets(project, build);
   // What the tier names declare: the transcription tier's writing system and,
-  // for glosses and translations, the unmarked Translation field's (the
-  // primary analysis language on our side), else the first sentence field
-  // that declares one.
+  // for glosses and translations, the Translation field's when the tiers are in
+  // one language (so it is named plain "Translation"), else the first sentence
+  // field that declares one.
   const sentFields = build.schema.fields.filter((f) => f.scope === 'Sentence' && f.lang);
   await recordProjectLanguages(client, project, {
     object: build.schema.baselineLang ?? null,

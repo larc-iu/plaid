@@ -30,7 +30,7 @@ import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
 // lives with the CLDF importer that first needed it; it belongs in align.js
 // beside its siblings and should move there when that file next settles.
 import { ROLES, nodeLabel } from './schema.js';
-import { parseFlexTierName } from './tierNaming.js';
+import { fieldWorksFieldNames, parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
 
@@ -194,7 +194,6 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   // The recording's original file name goes in a Media file metadata field
   // unless the person turns that off.
   const recordMediaName = options.recordMediaName !== false;
-  const nameOf = (node) => (fieldNames[node.key] || defaultFieldName(node)).trim();
   const { byRole } = resolveMapping(nodes, roles);
   const warnings = [];
 
@@ -207,6 +206,16 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   const wordFieldNodes = byRole.get(ROLES.WORD_FIELD) || [];
   const morphFieldNodes = byRole.get(ROLES.MORPH_FIELD) || [];
   const orthographyNodes = byRole.get(ROLES.ORTHOGRAPHY) || [];
+  // A field nobody named is called what the review screen would have offered:
+  // the FLEx importer's name for a FieldWorks-shaped tier, else the tier's.
+  const fieldWorksNames = fieldWorksFieldNames(
+    [...sentFieldNodes, ...wordFieldNodes, ...morphFieldNodes].map((node) => ({
+      key: node.key,
+      name: defaultFieldName(node),
+    })),
+  );
+  const nameOf = (node) =>
+    (fieldNames[node.key] || fieldWorksNames[node.key] || defaultFieldName(node)).trim();
 
   const documents = [];
   const stats = {

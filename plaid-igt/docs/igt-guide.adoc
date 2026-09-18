@@ -867,7 +867,7 @@ Either way, the import asks what each tier becomes:
 * **Orthography**: an alternate spelling of each word, beside the baseline.
 * **Sentence field**, **Word field**, **Morpheme field**: one value per sentence, word or morpheme, in an annotation field. Importing into an existing project writes into that project's own fields.
 
-Tier names of the form `Translation-gls-nl`, which is how a corpus prepared for FieldWorks names them, are read: `gls` is the kind of annotation and `nl` the language, so such a tier is offered the matching field without your having to say so.
+Tier names of the form `Translation-gls-nl`, which is how a corpus prepared for FieldWorks names them, are read: `gls` is the kind of annotation and `nl` the language, so such a tier is offered the matching field without your having to say so. A tier that needs a new field names it the way a FLEx import would, `Translation (nl)`, or plain `Translation` when every such tier is in one language.
 
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file and it carries on, keeping the documents and entries already there and finishing the ones it never reached.

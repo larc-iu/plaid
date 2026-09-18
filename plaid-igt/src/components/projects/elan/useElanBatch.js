@@ -8,12 +8,19 @@
 
 import { useMemo, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
-import { compareSchemas, suggestRoles, validateRoles, ROLES } from '@/import/elan/schema';
+import {
+  compareSchemas,
+  suggestRoles,
+  validateRoles,
+  ROLES,
+  SCOPE_OF_ROLE,
+} from '@/import/elan/schema';
 import {
   buildElanDocuments,
   defaultFieldName,
   matchMediaFiles,
 } from '@/import/elan/buildDocuments';
+import { fieldWorksFieldNames } from '@/import/elan/tierNaming';
 
 const EAF = /\.eaf$/i;
 
@@ -22,6 +29,20 @@ export const partitionPicked = (fileList) => {
   const all = [...(fileList || [])];
   return { eafs: all.filter((f) => EAF.test(f.name)), media: all.filter((f) => !EAF.test(f.name)) };
 };
+
+/** One entry per node in a field role, as the tier-naming helpers take them. */
+export const fieldTierEntries = (nodes, roles) =>
+  nodes
+    .map((node) => ({
+      key: node.key,
+      name: defaultFieldName(node),
+      scope: SCOPE_OF_ROLE[roles[node.key]],
+    }))
+    .filter((e) => e.scope);
+
+// A new project's fields: a FieldWorks-shaped tier is named as the FLEx
+// importer would name the field, anything else after the tier.
+const newFieldNames = (nodes, roles) => fieldWorksFieldNames(fieldTierEntries(nodes, roles));
 
 /**
  * @param options.skipEmptyTiers  give a tier with no annotations no role. A
@@ -33,7 +54,7 @@ export const partitionPicked = (fileList) => {
  *   the tier's own name. It decides for the whole batch at once because some
  *   pairings only follow from the set (see suggestFieldNames).
  */
-export function useElanBatch({ skipEmptyTiers = false, namesFor = null } = {}) {
+export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames } = {}) {
   const [files, setFiles] = useState(null); // parsed .eaf objects
   const [mediaFiles, setMediaFiles] = useState([]);
   const [comparison, setComparison] = useState(null);

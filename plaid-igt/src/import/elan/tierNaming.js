@@ -48,6 +48,30 @@ const fold = (name) =>
     .replace(/[^a-z0-9]/g, '');
 
 /**
+ * A field name for each FieldWorks-shaped tier, the one the FLEx importer gives
+ * the same field: the base alone when the tiers are all in one language, the
+ * base and the tag when they are in more than one (`Translation-gls-pmy` →
+ * "Translation (pmy)" beside "Translation (en)"). FLEx's own item codes
+ * ("gls", "txt") never reach a field name.
+ *
+ * `alsoIn` is the languages a project's existing fields are in. A tier joining
+ * a project whose fields are in another language is one of several, and a bare
+ * name could be one of those fields already.
+ *
+ * @param entries [{key, name}] — one per tier in a field role
+ * @returns {Object<string, string>} node key → field name
+ */
+export function fieldWorksFieldNames(entries, alsoIn = []) {
+  const parsed = (entries || [])
+    .map((e) => [e.key, parseFlexTierName(e.name)])
+    .filter(([, p]) => p);
+  const languages = new Set([...parsed.map(([, p]) => p.ws), ...alsoIn.filter(Boolean)]);
+  return Object.fromEntries(
+    parsed.map(([key, p]) => [key, languages.size > 1 ? `${p.base} (${p.ws})` : p.base]),
+  );
+}
+
+/**
  * The field each tier should write into, worked out from the names on both
  * sides. Only tiers whose names are FieldWorks-shaped get an answer; anything
  * else is left for the caller's own default.

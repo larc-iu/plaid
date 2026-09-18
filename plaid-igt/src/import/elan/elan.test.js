@@ -789,6 +789,58 @@ describe('several tier trees in one file', () => {
   });
 });
 
+describe('a corpus prepared for FieldWorks', () => {
+  // Her own file's shape: `Transcription-txt-oni` with a free translation per
+  // analysis language under it.
+  const fieldWorks = (translations) =>
+    eafXml({
+      types: { u: null, ft: 'Symbolic_Association' },
+      tiers: [
+        {
+          id: 'A_Transcription-txt-oni',
+          type: 'u',
+          participant: 'A',
+          anns: [['u1', 'ai', 0, 1000]],
+        },
+        ...translations.map((ws, i) => ({
+          id: `A_Translation-gls-${ws}`,
+          type: 'ft',
+          parent: 'A_Transcription-txt-oni',
+          participant: 'A',
+          anns: [[`t${i}`, `in ${ws}`, 'u1', null]],
+        })),
+      ],
+    });
+  const built = (translations) => {
+    const parsed = [readEaf(fieldWorks(translations), 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    return buildElanDocuments(parsed, nodes, suggestRoles(nodes));
+  };
+
+  // Named as the FLEx importer names the same fields, never after FLEx's own
+  // item codes.
+  it('names each field as the FLEx importer would', () => {
+    const build = built(['pmy', 'en']);
+    expect(build.schema.fields).toHaveLength(2);
+    expect(build.schema.fields).toEqual(
+      expect.arrayContaining([
+        { name: 'Translation (pmy)', scope: 'Sentence', lang: 'pmy' },
+        { name: 'Translation (en)', scope: 'Sentence', lang: 'en' },
+      ]),
+    );
+    expect(build.documents[0].sentences[0].fields).toEqual({
+      'Translation (pmy)': 'in pmy',
+      'Translation (en)': 'in en',
+    });
+  });
+
+  it('leaves the code off a single language', () => {
+    expect(built(['pmy']).schema.fields).toEqual([
+      { name: 'Translation', scope: 'Sentence', lang: 'pmy' },
+    ]);
+  });
+});
+
 describe('tier names differing only in case', () => {
   // Real file: CoEDL/elan-helpers' Abui fixture has `Phrase` (participant SL)
   // and `phrase`, unrelated tiers holding unrelated text. EAF's TIER_ID is

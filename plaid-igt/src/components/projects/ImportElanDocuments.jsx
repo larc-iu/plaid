@@ -51,10 +51,10 @@ import {
 } from '../../import/elan/fieldTargets';
 import { discoverExportLayers } from '../../export/exportLayers';
 import { nodeLabel } from '../../import/elan/schema';
-import { suggestFieldNames } from '../../import/elan/tierNaming';
+import { fieldWorksFieldNames, suggestFieldNames } from '../../import/elan/tierNaming';
 import { defaultFieldName } from '../../import/elan/buildDocuments';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { partitionPicked, useElanBatch } from './elan/useElanBatch';
+import { fieldTierEntries, partitionPicked, useElanBatch } from './elan/useElanBatch';
 import { ElanProblems, ElanTierReview, SchemaMismatch } from './elan/ElanTierReview.jsx';
 import { elanCounts } from '@/import/elan/preview.js';
 import { NAMED_ROLES, SCOPE_OF_ROLE } from '@/import/elan/schema';
@@ -99,23 +99,23 @@ export const ImportElanDocuments = () => {
     skipEmptyTiers: true,
     // Place every tier we can on the project's own fields: first by the
     // FieldWorks tier-naming convention (Translation-gls-nl → "Translation
-    // (nl)"), then by a name that simply reads alike. What is left keeps the
-    // tier's name and waits for the picker.
+    // (nl)"), then by a name that simply reads alike. A FieldWorks-shaped tier
+    // left over is named as the FLEx importer would name its field, counting
+    // the languages the project's fields are in already. Anything else keeps
+    // the tier's name and waits for the picker.
     namesFor: (nodes, roles) => {
-      const entries = nodes
-        .map((node) => ({
-          key: node.key,
-          name: defaultFieldName(node),
-          scope: SCOPE_OF_ROLE[roles[node.key]],
-        }))
-        .filter((e) => e.scope);
+      const entries = fieldTierEntries(nodes, roles);
       const placed = suggestFieldNames(entries, fields, fieldLangs);
       for (const e of entries) {
         if (placed[e.key]) continue;
         const alike = similarField(fields, e.scope, e.name);
         if (alike) placed[e.key] = alike;
       }
-      return placed;
+      const fresh = fieldWorksFieldNames(
+        entries.filter((e) => !placed[e.key]),
+        Object.values(fieldLangs),
+      );
+      return { ...fresh, ...placed };
     },
   });
 
@@ -261,6 +261,14 @@ export const ImportElanDocuments = () => {
       : { text: 'new field' };
   };
 
+  // What a tier's new field is called: the FLEx importer's name for it when the
+  // tier is FieldWorks-shaped, else the tier's own.
+  const newFieldName = (node) =>
+    fieldWorksFieldNames(
+      [{ key: node.key, name: defaultFieldName(node) }],
+      Object.values(fieldLangs),
+    )[node.key] ?? defaultFieldName(node);
+
   // The field a tier writes to: one of the project's, or a new one by name.
   const renderFieldControl = (node) => {
     const scope = SCOPE_OF_ROLE[batch.roles[node.key]];
@@ -287,7 +295,7 @@ export const ImportElanDocuments = () => {
           onValueChange={(v) => {
             setCreating((c) => ({ ...c, [node.key]: v === NEW_FIELD }));
             if (v !== NEW_FIELD) batch.setName(node.key, v);
-            else batch.setName(node.key, defaultFieldName(node));
+            else batch.setName(node.key, newFieldName(node));
           }}
         >
           <SelectTrigger className="h-8 w-44">
