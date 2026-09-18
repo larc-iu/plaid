@@ -224,6 +224,7 @@ SURFACE_EXEMPT = {
     'isBuiltInField': 'the Settings field table',
     'reservedMetadata': 'the entry form',
     'newVocabField': 'the Settings field table: one row before its first reload',
+    'exportedVocabFields': "an export file's columns, and the agent writes no export",
     'seedDefaultFields': 'a new vocabulary',
     'vocabFieldTagset': 'the Settings field table',
     'vocabGovernedFields': 'the Settings field table',
