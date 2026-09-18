@@ -26,7 +26,7 @@
 // enhanced graph leaves out) is not an edge, and the basic edge under it is an
 // ordinary basic edge.
 
-export const ENHANCED_PREFIX = 'E:';
+const ENHANCED_PREFIX = 'E:';
 
 export const isEnhancedLabel = (label) => String(label ?? '').startsWith(ENHANCED_PREFIX);
 
