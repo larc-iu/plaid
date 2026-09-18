@@ -8,6 +8,7 @@ import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { buildDocumentGraph, toUmrSentences, nextVariable, CYCLE_ROLES } from './sentenceGraph.js';
 import { serializeUmrFile } from './format/umrFile.js';
+import { parsePenman, serializePenman } from './format/penman.js';
 import { validateDocument } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
@@ -566,5 +567,185 @@ export class UmrDocument extends DocumentModel {
       },
       `Make ${node.var} the root`,
     );
+  }
+
+  // ----- text mode -----
+
+  // The sentence's graph as PENMAN, the text mode's starting point.
+  penmanOf(sentenceIndex) {
+    const sent = toUmrSentences(this.graph)[sentenceIndex - 1];
+    return sent?.graph ? serializePenman(sent.graph) : '';
+  }
+
+  /**
+   * What applying a PENMAN text to a sentence would change: nodes matched by
+   * variable, so a renamed variable is a new node and the old one goes.
+   * Returns `{ errors }` when the text does not parse, else the plan.
+   */
+  planPenman(sentenceIndex, text) {
+    const sentence = this.sentence(sentenceIndex);
+    if (!sentence) return { errors: [{ message: 'No such sentence.' }] };
+    const parsed = parsePenman(text);
+    if (parsed.errors.length) return { errors: parsed.errors };
+    if (!parsed.root) return { errors: [{ message: 'The text has no graph.' }] };
+    const oldByVar = new Map(sentence.nodes.map((n) => [n.var, n]));
+    const newVars = new Set(parsed.nodes.keys());
+    const plan = {
+      create: [],
+      delete: [],
+      concept: [],
+      attrs: [],
+      edgesAdd: [],
+      edgesDelete: [],
+      orders: [],
+      root: null,
+    };
+    parsed.nodes.forEach((node, v) => {
+      const attrs = [];
+      const edges = [];
+      node.children.forEach((child, order) => {
+        if (child.kind === 'node') edges.push({ role: child.rel, target: child.value, order });
+        else attrs.push({ rel: child.rel, value: child.value, order });
+      });
+      const old = oldByVar.get(v);
+      if (!old) {
+        plan.create.push({ var: v, concept: node.concept, attrs, edges });
+        return;
+      }
+      if (old.concept !== node.concept)
+        plan.concept.push({ nodeId: old.id, concept: node.concept });
+      const oldAttrs = old.attrs.map((a) => `${a.rel} ${a.value}`).join('\n');
+      const nextAttrs = attrs.map((a) => `${a.rel} ${a.value}`).join('\n');
+      if (oldAttrs !== nextAttrs) plan.attrs.push({ nodeId: old.id, attrs });
+      // Edges by (role, target variable): an edge with a new target or role
+      // is a new edge, and the old one goes.
+      const oldEdges = old.out
+        .filter((e) => this.node(e.target)?.sentence === sentenceIndex)
+        .map((e) => ({ id: e.id, key: `${e.role} ${this.node(e.target).var}`, order: e.order }));
+      const nextKeys = new Map(edges.map((e) => [`${e.role} ${e.target}`, e]));
+      oldEdges.forEach((e) => {
+        if (!nextKeys.has(e.key)) plan.edgesDelete.push(e.id);
+        else if (nextKeys.get(e.key).order !== e.order) {
+          plan.orders.push({ edgeId: e.id, order: nextKeys.get(e.key).order });
+        }
+      });
+      const oldKeys = new Set(oldEdges.map((e) => e.key));
+      edges.forEach((e) => {
+        if (!oldKeys.has(`${e.role} ${e.target}`)) {
+          plan.edgesAdd.push({ sourceVar: v, role: e.role, targetVar: e.target, order: e.order });
+        }
+      });
+    });
+    sentence.nodes.forEach((n) => {
+      if (!newVars.has(n.var)) plan.delete.push(n.id);
+    });
+    const oldRoot = sentence.roots[0]?.var;
+    if (parsed.root !== oldRoot) plan.root = parsed.root;
+    const changes =
+      plan.create.length +
+      plan.delete.length +
+      plan.concept.length +
+      plan.attrs.length +
+      plan.edgesAdd.length +
+      plan.edgesDelete.length +
+      plan.orders.length +
+      (plan.root ? 1 : 0);
+    return { ...plan, changes };
+  }
+
+  /**
+   * Apply a PENMAN text to a sentence as ONE operation: the plan's writes in
+   * dependency order, then a reload, since a dozen ids come back along the
+   * way. A new node is unaligned until anchored on the canvas. Resolves to
+   * the number of changes, or false.
+   */
+  async applyPenman(sentenceIndex, text) {
+    const info = this.layerInfo;
+    const sentence = this.sentence(sentenceIndex);
+    const plan = this.planPenman(sentenceIndex, text);
+    if (plan.errors) {
+      this.setError(plan.errors[0].message);
+      return false;
+    }
+    if (!plan.changes) return 0;
+    const textId = info.textLayer.text.id;
+    const client = this._client;
+    return this._withSaving(
+      'Failed to apply the text',
+      async () => {
+        const idByVar = new Map(sentence.nodes.map((n) => [n.var, n.id]));
+        // Deletes first, so a variable given to a new node is free.
+        if (plan.delete.length) {
+          const tokenIds = plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id));
+          await client.tokens.bulkDelete(tokenIds);
+          plan.delete.forEach((id) => {
+            const n = this.node(id);
+            if (n) idByVar.delete(n.var);
+          });
+        }
+        for (const edgeId of plan.edgesDelete) await client.relations.delete(edgeId);
+        for (const c of plan.create) {
+          const { ids } = await client.tokens.bulkCreate([
+            {
+              tokenLayerId: info.nodeTokenLayer.id,
+              text: textId,
+              begin: sentence.begin,
+              end: sentence.begin,
+            },
+          ]);
+          const meta = { var: c.var, attrs: c.attrs };
+          if (plan.root === c.var) meta.root = true;
+          const span = await client.spans.create(info.conceptLayer.id, ids, c.concept, {
+            [UMR_NAMESPACE]: meta,
+          });
+          idByVar.set(c.var, span?.id || span);
+        }
+        for (const c of plan.concept) await client.spans.update(c.nodeId, c.concept);
+        for (const a of plan.attrs) {
+          const span = this._layers(info).spans.find((s) => s.id === a.nodeId);
+          await client.spans.patchMetadata(
+            a.nodeId,
+            umrPatch(span, { attrs: a.attrs.map((x, i) => ({ ...x, order: i })) }),
+          );
+        }
+        const edgesAdd = [
+          ...plan.edgesAdd,
+          ...plan.create.flatMap((c) =>
+            c.edges.map((e) => ({
+              sourceVar: c.var,
+              role: e.role,
+              targetVar: e.target,
+              order: e.order,
+            })),
+          ),
+        ];
+        for (const e of edgesAdd) {
+          const source = idByVar.get(e.sourceVar);
+          const target = idByVar.get(e.targetVar);
+          if (!source || !target) continue;
+          await client.relations.create(info.relationLayer.id, source, target, e.role, {
+            [UMR_NAMESPACE]: { order: e.order },
+          });
+        }
+        for (const o of plan.orders) {
+          await client.relations.patchMetadata(o.edgeId, { [UMR_NAMESPACE]: { order: o.order } });
+        }
+        if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
+          const newId = idByVar.get(plan.root);
+          const olds = sentence.nodes.filter((n) => n.root && n.id !== newId);
+          for (const o of olds) {
+            const span = this._layers(info).spans.find((s) => s.id === o.id);
+            const { root: _r, ...rest } = umrOf(span);
+            await client.spans.patchMetadata(o.id, { [UMR_NAMESPACE]: rest });
+          }
+          if (newId) {
+            const span = this._layers(info).spans.find((s) => s.id === newId);
+            await client.spans.patchMetadata(newId, umrPatch(span, { root: true }));
+          }
+        }
+        await this._reload();
+      },
+      `Apply text to sentence ${sentenceIndex} (${plan.changes} change${plan.changes === 1 ? '' : 's'})`,
+    ).then((ok) => (ok ? plan.changes : false));
   }
 }

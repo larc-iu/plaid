@@ -141,6 +141,29 @@ test.describe('editing', () => {
     await page.keyboard.press('Enter');
     await expect(nodeByConcept(page, 'lunch')).toBeVisible();
 
+    // Validation marks: the corpus sentence has no :temporal for its events,
+    // so the header counts problems and a node wears a mark.
+    await expect(block.locator('.umr-problems-toggle')).toBeVisible();
+    await block.locator('.umr-problems-toggle').click();
+    await expect(block.locator('.umr-problem').first()).toBeVisible();
+    await expect(block.locator('.umr-node-mark').first()).toBeVisible();
+    await block.locator('.umr-problems-toggle').click();
+
+    // Text mode: the graph as PENMAN, a node added by typing, applied as one.
+    await block.locator('.umr-text-toggle').click();
+    const area = block.locator('textarea.umr-penman-text');
+    await expect(area).toHaveValue(/^\(s1l \/ leave-02/);
+    const typed = (await area.inputValue()).replace(
+      ':purpose (s1e / eat-01',
+      ':purpose (s1e / eat-01 :time (s1t / today)',
+    );
+    await area.fill(typed);
+    await expect(block.locator('.umr-penman-status')).toContainText('Changed');
+    await block.getByRole('button', { name: 'Apply' }).click();
+    await expect(nodeByConcept(page, 'today')).toBeVisible();
+    await expect(block.locator('.umr-edge-label', { hasText: ':time' })).toBeVisible();
+    await block.screenshot({ path: process.env.UMR_EDIT_SHOT || 'test-results/editing.png' });
+
     // Every write landed.
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
@@ -149,5 +172,6 @@ test.describe('editing', () => {
     // The export says the same.
     await page.goto(`/#/projects/${ids.projectId}/documents/${ids.documentId}/export`);
     await expect(page.locator('pre, textarea').first()).toContainText(':ARG1 (s1l2 / lunch)');
+    await expect(page.locator('pre, textarea').first()).toContainText(':time (s1t / today)');
   });
 });

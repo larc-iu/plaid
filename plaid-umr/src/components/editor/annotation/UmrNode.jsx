@@ -16,7 +16,13 @@ export const UmrNode = React.memo(function UmrNode({
   onGripPointerDown,
   tabIndex = -1,
   readOnly = true,
+  problems = null,
 }) {
+  const worst = problems?.some((p) => p.level === 'error')
+    ? 'error'
+    : problems?.length
+      ? 'warning'
+      : null;
   const style = position
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
     : { left: 0, top: 0, visibility: 'hidden' };
@@ -50,6 +56,12 @@ export const UmrNode = React.memo(function UmrNode({
           : undefined
       }
     >
+      {worst && (
+        <span
+          className={`umr-node-mark umr-node-mark--${worst}`}
+          title={problems.map((p) => p.message).join('\n')}
+        />
+      )}
       <div className="umr-node-head">
         {node.var && <span className="umr-node-var">{node.var}</span>}
         <span className="umr-node-concept" dir="auto">

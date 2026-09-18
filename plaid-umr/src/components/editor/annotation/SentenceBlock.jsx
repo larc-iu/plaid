@@ -6,6 +6,7 @@ import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
+import { PenmanEditor } from './PenmanEditor.jsx';
 import {
   roleOptions,
   normalizeRole,
@@ -36,8 +37,30 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   direction = 'ltr',
   readOnly = true,
   frames = null,
+  problems = [],
 }) {
   const confirm = useConfirm();
+  // Problems by the node they name, for the marks; the rest belong to the
+  // sentence as a whole.
+  const problemsByNode = useMemo(() => {
+    const byVar = new Map();
+    problems.forEach((p) => {
+      if (!p.var) return;
+      if (!byVar.has(p.var)) byVar.set(p.var, []);
+      byVar.get(p.var).push(p);
+    });
+    const map = new Map();
+    sentence.nodes.forEach((n) => {
+      if (n.var && byVar.has(n.var)) map.set(n.id, byVar.get(n.var));
+    });
+    return map;
+  }, [problems, sentence]);
+  const errorCount = problems.filter((p) => p.level === 'error').length;
+  const warningCount = problems.length - errorCount;
+  const [showProblems, setShowProblems] = useState(false);
+  // Text mode: the graph as PENMAN in place of the canvas until applied.
+  const [textMode, setTextMode] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy', nodeId }`.
@@ -515,9 +538,67 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {sentence.rawGraph && (
           <span className="umr-block-note">Graph kept as text, could not be read</span>
         )}
+        {!readOnly && (
+          <button
+            type="button"
+            className={`umr-text-toggle${textMode ? ' umr-text-toggle--on' : ''}`}
+            aria-pressed={textMode}
+            onClick={() => setTextMode((v) => !v)}
+          >
+            Text
+          </button>
+        )}
+        {problems.length > 0 && (
+          <button
+            type="button"
+            className="umr-problems-toggle"
+            aria-expanded={showProblems}
+            onClick={() => setShowProblems((v) => !v)}
+          >
+            {errorCount > 0 && <span className="umr-count umr-count--error">{errorCount}</span>}
+            {warningCount > 0 && (
+              <span className="umr-count umr-count--warning">{warningCount}</span>
+            )}
+          </button>
+        )}
       </header>
+      {showProblems && (
+        <ul className="umr-problems">
+          {problems.map((p, i) => (
+            <li key={i} className={`umr-problem umr-problem--${p.level}`}>
+              <span className="umr-problem-code">{p.code}</span>
+              <span>{p.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {textMode && (
+        <PenmanEditor
+          initial={doc.penmanOf(sentence.index)}
+          applying={applying}
+          onApply={async (text) => {
+            setApplying(true);
+            const changes = await doc.applyPenman(sentence.index, text);
+            setApplying(false);
+            if (changes !== false) setTextMode(false);
+          }}
+          onCancel={async (dirty) => {
+            if (dirty) {
+              const ok = await confirm({
+                title: 'Leave the text unapplied',
+                description: 'What was typed is not stored.',
+                confirmLabel: 'Leave',
+                destructive: true,
+              });
+              if (!ok) return;
+            }
+            setTextMode(false);
+          }}
+        />
+      )}
       <div
         className="umr-canvas"
+        hidden={textMode}
         onMouseOver={(e) => {
           const el = e.target.closest?.('[data-node-id]');
           setHoveredId(el ? el.dataset.nodeId : null);
@@ -574,6 +655,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 }
                 tabIndex={i === 0 ? 0 : -1}
                 readOnly={readOnly}
+                problems={problemsByNode.get(node.id)}
               />
             ))}
             {measured &&
