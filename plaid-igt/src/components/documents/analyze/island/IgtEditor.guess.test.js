@@ -123,6 +123,55 @@ describe('IgtEditor suggestion provenance', () => {
 // fill. The fill used to say "linked" too, which duplicated the chip in a much
 // louder channel and washed whole rows; a link is a value and wears the value
 // channels, exactly as a gloss does.
+// A FieldWorks import in two analysis languages tags every annotation field
+// but keeps the entry's built-in `gloss`, whose language the lexicon records.
+// The first field is named with no tag at all, so only what it records can
+// pair it with that `gloss`.
+describe('an entry guess in a field of another name', () => {
+  function mountTagged() {
+    const raw = buildRawDoc({
+      body: 'kucing',
+      words: [{ id: 'w-1', begin: 0, end: 6 }],
+      wordFields: ['Gloss (Malay)', 'Gloss (en)'],
+    });
+    const langs = { 'Gloss (Malay)': 'pmy', 'Gloss (en)': 'en' };
+    raw.textLayers[0].tokenLayers
+      .flatMap((tl) => tl.spanLayers || [])
+      .filter((sl) => langs[sl.name])
+      .forEach((sl) => {
+        sl.config.igt.lang = langs[sl.name];
+      });
+    const entry = { id: 'i-1', form: 'kucing', metadata: { gloss: 'kucing', 'gloss (en)': 'cat' } };
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies: {
+        v1: {
+          id: 'v1',
+          name: 'Lexicon',
+          config: { igt: { fields: { gloss: { lang: 'pmy' }, 'gloss (en)': { lang: 'en' } } } },
+          items: [entry],
+          vocabLinks: [{ id: 'l-1', tokens: ['w-1'], vocabItem: entry }],
+        },
+      },
+      client,
+      projectId: 'proj-1',
+    });
+    client.documents.get = async () => doc.raw;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc, {});
+  }
+
+  it('pairs each field with the entry field in its language', () => {
+    mountTagged();
+    expect(cell('wa:w-1:Gloss (Malay)').placeholder).toBe('kucing');
+    expect(cell('wa:w-1:Gloss (en)').placeholder).toBe('cat');
+  });
+});
+
 describe('a morpheme carries no fill of its own', () => {
   const A = { id: 'i-a', form: 'a', metadata: { morphType: 'prefix' } };
   const ROA = { id: 'i-roa', form: 'roa', metadata: { morphType: 'stem' } };

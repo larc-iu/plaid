@@ -209,7 +209,7 @@ try {
   if (target.names?.en === 'The Sea Princess') {
     check(tokens[0].content === 'За', 'first word surface "За"');
     check(
-      tokens[0].annotations?.Gloss?.value === 'I-ERG',
+      tokens[0].annotations?.['Gloss (en)']?.value === 'I-ERG',
       'word gloss I-ERG',
       JSON.stringify(tokens[0].annotations),
     );
@@ -221,14 +221,14 @@ try {
     const m0 = tokens[0].morphemes?.[0];
     check(m0?.metadata?.form === 'за', 'morpheme form metadata');
     check(m0?.metadata?.morphType === 'stem', 'morpheme morphType metadata');
-    check(m0?.annotations?.Gloss?.value === '1sg-ERG', 'morpheme gloss');
+    check(m0?.annotations?.['Gloss (en)']?.value === '1sg-ERG', 'morpheme gloss');
     check(m0?.annotations?.POS?.value != null, 'morpheme POS present');
     check(!!m0?.vocabItem, 'morpheme linked to lexicon item');
     check(
-      s0.annotations?.Translation?.value?.includes('Sea Princess'),
+      s0.annotations?.['Translation (en)']?.value?.includes('Sea Princess'),
       'free translation on sentence',
     );
-    const noteOk = sentences.some((s) => s.annotations?.Note?.value);
+    const noteOk = sentences.some((s) => s.annotations?.['Note (en)']?.value);
     check(noteOk, 'at least one sentence note imported');
   }
 

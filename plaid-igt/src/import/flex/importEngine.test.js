@@ -158,15 +158,15 @@ const project = {
           id: 'sent1',
           config: role('sentence'),
           spanLayers: [
-            { id: 'sl-tr', name: 'Translation', config: scope('Sentence') },
-            { id: 'sl-note', name: 'Note', config: scope('Sentence') },
+            { id: 'sl-tr', name: 'Translation (en)', config: scope('Sentence') },
+            { id: 'sl-note', name: 'Note (en)', config: scope('Sentence') },
           ],
         },
         {
           id: 'word1',
           config: role('word'),
           spanLayers: [
-            { id: 'sl-wg', name: 'Gloss', config: scope('Word') },
+            { id: 'sl-wg', name: 'Gloss (en)', config: scope('Word') },
             { id: 'sl-wp', name: 'POS', config: scope('Word') },
           ],
         },
@@ -174,7 +174,7 @@ const project = {
           id: 'morph1',
           config: role('morpheme'),
           spanLayers: [
-            { id: 'sl-mg', name: 'Gloss', config: scope('Morpheme') },
+            { id: 'sl-mg', name: 'Gloss (en)', config: scope('Morpheme') },
             { id: 'sl-mg-ru', name: 'Gloss (ru)', config: scope('Morpheme') },
             { id: 'sl-mp', name: 'POS', config: scope('Morpheme') },
           ],
@@ -291,17 +291,26 @@ describe('deriveImportConfig', () => {
     expect(noEn.fields.find((f) => f.kind === 'wordPos').ws).toBe('ru');
   });
 
-  it('creates fields per analysis ws that occurs, primary unsuffixed', () => {
+  // No analysis language is the default one. With en and ru both in use,
+  // every field says which it is in, including the fields that happen to
+  // occur in en only.
+  it('creates fields per analysis ws that occurs, each tagged', () => {
     const config = deriveImportConfig(ir, build);
     const names = config.fields.map((f) => `${f.scope}:${f.name}`);
-    expect(names).toContain('Word:Gloss');
-    expect(names).toContain('Morpheme:Gloss');
-    expect(names).toContain('Morpheme:Gloss (ru)');
-    expect(names).toContain('Sentence:Translation');
-    expect(names).toContain('Sentence:Note');
-    expect(names).not.toContain('Sentence:Literal Translation'); // no ws occurs
-    expect(names).toContain('Word:POS');
-    expect(names).toContain('Morpheme:POS');
+    expect(names).toEqual([
+      'Word:Gloss (en)',
+      'Word:POS',
+      'Morpheme:Gloss (en)',
+      'Morpheme:Gloss (ru)',
+      'Morpheme:POS',
+      'Sentence:Translation (en)',
+      'Sentence:Note (en)',
+    ]);
+    expect(config.fields.find((f) => f.name === 'Gloss (ru)')).toMatchObject({
+      kind: 'morphGloss',
+      scope: 'Morpheme',
+      ws: 'ru',
+    });
     expect(config.orthographies).toEqual([{ ws: TRANS_WS, name: TRANS_WS }]);
     expect(config.baselineWs).toBe(BASE_WS);
     // The Info tab, in its own order: the text's own four fields whether or
@@ -319,12 +328,18 @@ describe('deriveImportConfig', () => {
     ]);
   });
 
+  // One language needs no tag, so a selection down to en names them bare.
   it('restricts fields to the selected analysis writing systems', () => {
     const config = deriveImportConfig(ir, build, { analysisWss: ['en'] });
     const names = config.fields.map((f) => `${f.scope}:${f.name}`);
-    expect(names).toContain('Morpheme:Gloss');
-    expect(names).not.toContain('Morpheme:Gloss (ru)');
-    expect(names).toContain('Word:POS'); // POS fields are not ws-bound
+    expect(names).toEqual([
+      'Word:Gloss',
+      'Word:POS', // POS fields are not ws-bound
+      'Morpheme:Gloss',
+      'Morpheme:POS',
+      'Sentence:Translation',
+      'Sentence:Note',
+    ]);
   });
 });
 

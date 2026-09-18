@@ -122,7 +122,7 @@ try {
     JSON.stringify(layers),
   );
   check(
-    layers.morphFields.includes('Gloss'),
+    layers.morphFields.includes('Gloss (en)'),
     'discovered morpheme Gloss field',
     JSON.stringify(layers),
   );
@@ -157,7 +157,7 @@ try {
 
   const someText = decode(plainEntries[plainDocs[0]]);
   check(/\(\d+\)/.test(someText), 'plain text has sentence numbering');
-  check(/Translation: /.test(someText), 'plain text carries a translation line');
+  check(/Translation \(en\): /.test(someText), 'plain text carries a translation line');
 
   const vocab = await client.vocabLayers.get(vocabId, true);
   const tsvLines = decode(plainEntries[tsvs[0]]).trimEnd().split('\n');
@@ -322,7 +322,7 @@ try {
     JSON.stringify(manifest.schema.orthographies),
   );
   check(
-    manifest.schema.fields.morpheme.some((f) => f.name === 'Gloss'),
+    manifest.schema.fields.morpheme.some((f) => f.name === 'Gloss (en)'),
     'schema lists morpheme Gloss',
   );
 

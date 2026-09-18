@@ -173,6 +173,7 @@ export const grid = {
                     name,
                     {
                       vocabItem: token.vocabItem,
+                      ...this._entryPairing('word', name, token.vocabItem),
                     },
                   ) ?? null,
                   this._tagsetFor('word', name),
@@ -184,6 +185,7 @@ export const grid = {
                     form: this._precedentForm(token.content, KINDS.WORD),
                     field: name,
                     vocabItem: token.vocabItem,
+                    ...this._entryPairing('word', name, token.vocabItem),
                     span: token.annotations?.[name],
                     tagset: this._tagsetFor('word', name),
                   }),
@@ -335,8 +337,10 @@ export const grid = {
                 tagset: this._tagsetFor('morpheme', name),
                 guessTarget: morph.id,
                 guess: allowedGuess(
-                  ctx.guess?.guessFor('morpheme', value, name, { vocabItem: morph.vocabItem }) ??
-                    null,
+                  ctx.guess?.guessFor('morpheme', value, name, {
+                    vocabItem: morph.vocabItem,
+                    ...this._entryPairing('morpheme', name, morph.vocabItem),
+                  }) ?? null,
                   this._tagsetFor('morpheme', name),
                 ),
                 alternatives: () =>
@@ -346,6 +350,7 @@ export const grid = {
                     form: value,
                     field: name,
                     vocabItem: morph.vocabItem,
+                    ...this._entryPairing('morpheme', name, morph.vocabItem),
                     span: morph.annotations?.[name],
                     tagset: this._tagsetFor('morpheme', name),
                   }),

@@ -5,9 +5,9 @@
 // carry and the writing system it is in: `Translation-gls-nl` is a free
 // translation (FLEx's `gls`) in nl, `Transcription-txt-oni` the baseline in oni.
 // (The speaker is normalized out before this, see baseTierName.) A project that
-// came from the same FieldWorks project names the same fields "Translation" and
-// "Translation (nl)" — the convention on our side, where the PRIMARY analysis
-// writing system takes the bare name.
+// came from the same FieldWorks project names the same fields "Translation
+// (pmy)" and "Translation (nl)", or "Translation" and "Translation (nl)" when
+// it was imported before every field carried its tag.
 //
 // The two conventions carry the same fact in different shapes, so the mapping
 // can be worked out instead of typed.

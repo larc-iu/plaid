@@ -8,6 +8,7 @@ import {
   tagsetEnforces,
   validateValue,
 } from '@/domain/tagsets';
+import { readFieldLang, readVocabFields } from '@/domain/igtConfig';
 import { notifyError, notifyInfo } from '@/utils/feedback';
 import { arrowStep, caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { keys } from '@/lib/keymap.js';
@@ -646,6 +647,27 @@ export const cells = {
       this._tagsetCache = map;
     }
     return this._tagsetCache.get(`${scope}:${name}`) ?? null;
+  },
+
+  // What pairs an annotation field with a field of the linked lexicon entry
+  // when their names differ (see entryFieldFor): the language the annotation
+  // field records and the entry's field schema. Asked once per rendered cell,
+  // so the languages are memoized on layerInfo like the tagsets above.
+  _entryPairing(scope, name, vocabItem) {
+    const info = this.doc.layerInfo;
+    if (this._fieldLangCacheInfo !== info) {
+      this._fieldLangCacheInfo = info;
+      const map = new Map();
+      for (const [bucket, layers] of Object.entries(info?.spanLayers || {})) {
+        for (const sl of layers || []) map.set(`${bucket}:${sl.name}`, readFieldLang(sl.config));
+      }
+      this._fieldLangCache = map;
+    }
+    const vocab = vocabItem ? this.doc.vocabularies?.[vocabItem.vocabId] : null;
+    return {
+      fieldLang: this._fieldLangCache.get(`${scope}:${name}`) ?? null,
+      entryFields: vocab ? readVocabFields(vocab.config) : null,
+    };
   },
 
   _guessSource(sentences, wordFields, morphFields) {

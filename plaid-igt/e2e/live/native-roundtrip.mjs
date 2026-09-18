@@ -442,7 +442,7 @@ try {
   const glossLayer = (projectABefore.textLayers || [])
     .flatMap((tl) => tl.tokenLayers || [])
     .flatMap((tl) => tl.spanLayers || [])
-    .find((sl) => sl.name === 'Gloss' && sl.config?.igt?.scope === 'Morpheme');
+    .find((sl) => sl.name === 'Gloss (en)' && sl.config?.igt?.scope === 'Morpheme');
   check(!!glossLayer, 'project A has a morpheme-scope Gloss field to govern');
   await client.projects.setConfig(setupA.projectId, 'igt', 'tagsets', {
     Leipzig: { delimiters: '.:', mode: 'mixed', values: [{ value: 'PL' }, { value: 'NOM' }] },
@@ -481,7 +481,7 @@ try {
     .flatMap(([scope, fs]) => fs.filter((f) => f.tagset).map((f) => `${scope}:${f.name}`))
     .sort();
   check(
-    governedIn.join() === 'morpheme:Gloss',
+    governedIn.join() === 'morpheme:Gloss (en)',
     "archive A carries the Gloss field's tagset reference, on that field alone",
     `governed: [${governedIn.join(', ')}]`,
   );

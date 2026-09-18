@@ -92,8 +92,13 @@ const senseMorphTypes = (lexicon) => {
   return out;
 };
 
-/** Display name for an analysis writing system: primary ws gets the bare field name. */
-const fieldName = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
+/**
+ * A lexicon key for an analysis writing system: the primary ws keeps the bare
+ * built-in key (`gloss`), whose language the vocab's field schema records, and
+ * every other one carries its tag (`gloss (ru)`). Annotation fields are named
+ * by their own rule in deriveImportConfig.
+ */
+const entryKey = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
 
 /**
  * Derive the wizard pre-fill from a parse: orthographies, annotation fields
@@ -127,11 +132,11 @@ function customFieldWritingSystems(ir, baselineWs, primaryAnalysisWs) {
 export function deriveImportConfig(ir, build, opts = {}) {
   const primaryAnalysisWs = ir.writingSystems.analysis[0] ?? 'en';
   const wsAllowed = opts.analysisWss ? new Set(opts.analysisWss) : null;
-  const fields = [];
+  const perWs = [];
   const addField = (kind, scope, base, wss) => {
     for (const ws of wss) {
       if (wsAllowed && !wsAllowed.has(ws)) continue;
-      fields.push({ kind, scope, ws, name: fieldName(base, ws, primaryAnalysisWs) });
+      perWs.push({ kind, scope, ws, base });
     }
   };
   // A part of speech is read as the category's English abbreviation when it
@@ -144,15 +149,26 @@ export function deriveImportConfig(ir, build, opts = {}) {
   const posWs = ir.writingSystems.analysis.includes('en') ? 'en' : primaryAnalysisWs;
   addField('wordGloss', 'Word', 'Gloss', ir.wsUsage.wordGloss);
   if (build.documents.some((d) => d.words.some((w) => w.pos))) {
-    fields.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });
+    perWs.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });
   }
   addField('morphGloss', 'Morpheme', 'Gloss', ir.wsUsage.morphGloss);
   if (build.documents.some((d) => d.words.some((w) => w.morphemes?.some((m) => m.pos)))) {
-    fields.push({ kind: 'morphPos', scope: 'Morpheme', ws: posWs, name: 'POS' });
+    perWs.push({ kind: 'morphPos', scope: 'Morpheme', ws: posWs, name: 'POS' });
   }
   addField('freeTranslation', 'Sentence', 'Translation', ir.wsUsage.freeTranslation);
   addField('literalTranslation', 'Sentence', 'Literal Translation', ir.wsUsage.literalTranslation);
   addField('note', 'Sentence', 'Note', ir.wsUsage.note);
+  // Every field carries its tag once the import makes fields in more than one
+  // language ("Gloss (pmy)" beside "Gloss (en)"), and none when there is only
+  // one. None of them is the default: each records its own language
+  // (config.igt.lang), and a bare name among tagged ones left the reader to
+  // guess which it was. Which analysis writing system FLEx happens to list
+  // first means nothing to a person reading the fields. The CLDF importer
+  // names its translations by the same rule.
+  const languages = new Set(perWs.filter((f) => f.base).map((f) => f.ws));
+  const fields = perWs.map(({ base, ...f }) =>
+    base ? { ...f, name: languages.size > 1 ? `${base} (${f.ws})` : base } : f,
+  );
 
   // Alternate text titles and abbreviations (e.g. the English names of
   // vernacular-titled texts)
@@ -241,9 +257,9 @@ export function resolveTargets(project, config) {
  * forms conservatively). Returns Map<senseGuid, vocabItemId>.
  *
  * Multilingual values (gloss, definition, the opt-in `lexiconFields`) are
- * written per analysis writing system exactly as the text fields are named:
- * the primary ws under the bare key (`gloss`), the others suffixed
- * (`gloss (ru)`); `analysisWss` (null = all) limits which are kept.
+ * written per analysis writing system (see entryKey): the primary ws under the
+ * bare key (`gloss`), the others suffixed (`gloss (ru)`). `analysisWss`
+ * (null = all) limits which are kept.
  *
  * Resume-safe: items already in the vocab with a matching metadata.flexSense
  * are reused, not duplicated.
@@ -273,7 +289,7 @@ export async function importLexicon({
     const out = {};
     for (const [ws, text] of Object.entries(m ?? {})) {
       if (wsOk && !wsOk.has(ws)) continue;
-      out[fieldName(base, ws, primaryAnalysisWs)] = text;
+      out[entryKey(base, ws, primaryAnalysisWs)] = text;
     }
     return out;
   };
