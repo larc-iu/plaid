@@ -98,8 +98,9 @@ test.describe('editing', () => {
     await page.mouse.move(2, 2);
     await expect(block.locator('.umr-word--lit .umr-word-text')).toHaveText('lunch');
 
-    // Enter renames the concept.
+    // Enter opens the concept with the frame file's senses of the word first.
     await page.keyboard.press('Enter');
+    await expect(page.locator('[role="option"]', { hasText: /^lunch-01 ARG/ })).toBeVisible();
     await editor(page).fill('lunch-01');
     await page.keyboard.press('Enter');
     await expect(nodeByConcept(page, 'lunch-01')).toBeVisible();
@@ -130,17 +131,23 @@ test.describe('editing', () => {
     await expect(word).toHaveClass(/umr-word--drop/);
     await page.mouse.up();
     await expect(editor(page)).toHaveValue('lunch');
+    // The list opens under the pointer, and a hovered option is the one Enter
+    // takes, so the pointer leaves first.
+    await page.mouse.move(2, 2);
     await page.keyboard.press('Enter');
+    // The role editor lists the parent's own arguments first.
+    await expect(page.locator('[role="option"]', { hasText: /^:ARG1 / }).first()).toBeVisible();
     await editor(page).fill(':ARG1');
     await page.keyboard.press('Enter');
     await expect(nodeByConcept(page, 'lunch')).toBeVisible();
 
-    // The export says the same.
-    await page.goto(`/#/projects/${ids.projectId}/documents/${ids.documentId}/export`);
-    await expect(page.locator('pre, textarea').first()).toContainText(':ARG1 (s1l2 / lunch)');
-
+    // Every write landed.
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
     expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+
+    // The export says the same.
+    await page.goto(`/#/projects/${ids.projectId}/documents/${ids.documentId}/export`);
+    await expect(page.locator('pre, textarea').first()).toContainText(':ARG1 (s1l2 / lunch)');
   });
 });

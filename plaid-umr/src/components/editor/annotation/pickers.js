@@ -8,14 +8,27 @@ import {
   ROLESETS_91,
   DISCOURSE_CONCEPTS,
   ATTRIBUTES,
-  isInverse,
 } from '../../../domain/format/inventory.js';
+import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
 
 const flat = (v) => (Array.isArray(v) ? v : Object.values(v || {}).flat());
 
 const uniq = (list) => [...new Set(list.filter(Boolean))];
 
-export const roleOptions = () => [
+// Roles for an edge out of `parentConcept`: the parent's own arguments
+// first, with what each means, when the frame file knows the roleset.
+export const roleOptions = (frames = null, parentConcept = null) => [
+  ...(parentConcept && argsOf(frames, parentConcept).length
+    ? [
+        {
+          group: parentConcept,
+          items: argsOf(frames, parentConcept).map((a) => ({
+            value: a.role,
+            label: `${a.role} ${a.description}`,
+          })),
+        },
+      ]
+    : []),
   { group: 'Core', items: ARG_ROLES },
   { group: 'Participant', items: flat(ROLES.participant) },
   { group: 'Non-participant', items: flat(ROLES.nonParticipant) },
@@ -23,19 +36,24 @@ export const roleOptions = () => [
   { group: 'Discourse', items: flat(ROLES.discourse) },
 ];
 
-// A role typed with `-of` is the inverse of a listed one, and a role typed
-// without its colon gets one.
+// A role typed without its colon gets one. A label picked from a list
+// (`:ARG0 giver`) is the role alone.
 export const normalizeRole = (text) => {
-  const t = String(text || '').trim();
+  const t = String(text || '')
+    .trim()
+    .split(/\s+/)[0];
   if (!t) return '';
-  const withColon = t.startsWith(':') ? t : `:${t}`;
-  void isInverse;
-  return withColon;
+  return t.startsWith(':') ? t : `:${t}`;
 };
 
-// Concepts for a node anchored to `words` (their surface forms first), then
-// the abstract inventory.
-export const conceptOptions = (words = []) => {
+// Concepts for a node anchored to `words`: the frame file's senses of those
+// words first (with their arguments), then the surface forms, then the
+// abstract inventory. `typed` adds rolesets starting with what was typed,
+// for a node with no word to go on.
+export const conceptOptions = (words = [], frames = null, typed = '') => {
+  const senses = uniq(words.flatMap((w) => sensesFor(frames, w.text).map((x) => x.id)));
+  const byPrefix = typed && !words.length ? rolesetsStartingWith(frames, typed) : [];
+  const senseItem = (id) => ({ value: id, label: `${id} ${argSummary(frames?.[id])}` });
   const surface = uniq(words.map((w) => w.text));
   const abstract = uniq(flat(ABSTRACT_CONCEPTS).map((c) => (typeof c === 'string' ? c : c.name)));
   const rolesets = uniq(flat(ROLESETS_91).map((c) => (typeof c === 'string' ? c : c.name)));
@@ -45,6 +63,10 @@ export const conceptOptions = (words = []) => {
     ),
   );
   return [
+    ...(senses.length ? [{ group: 'Senses', items: senses.map(senseItem) }] : []),
+    ...(byPrefix.length
+      ? [{ group: 'Rolesets', items: byPrefix.map((x) => senseItem(x.id)) }]
+      : []),
     ...(surface.length ? [{ group: 'Word', items: surface }] : []),
     { group: 'Abstract', items: abstract },
     { group: 'Rolesets', items: rolesets },

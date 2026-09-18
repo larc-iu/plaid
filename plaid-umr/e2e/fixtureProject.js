@@ -14,7 +14,12 @@ import { fileURLToPath } from 'node:url';
 import PlaidClient from '@larc-iu/plaid-client';
 import { createUmrProject } from '../src/domain/umrProjectSetup.js';
 import { importUmrDocument } from '../src/domain/umrImport.js';
-import { getUmrLayerInfo, missingUmrLayerLabels } from '../src/utils/umrLayerUtils.js';
+import {
+  getUmrLayerInfo,
+  missingUmrLayerLabels,
+  readProjectLanguage,
+  UMR_NAMESPACE,
+} from '../src/utils/umrLayerUtils.js';
 import { readToken } from './fixtures.js';
 
 const PROJECT_NAME = 'E2E UMR Fixture';
@@ -55,6 +60,11 @@ async function ensureFixture() {
     project = await client.projects.get(created.id);
   }
   const projectId = project.id;
+
+  // English, so the concept picker has a frame file to offer senses from.
+  if (readProjectLanguage(project) !== 'en') {
+    await client.projects.setConfig(projectId, UMR_NAMESPACE, 'language', 'en');
+  }
 
   const docs = await client.projects.listDocuments(projectId);
   let doc = docs.find((d) => d.name === DOC_NAME) || null;

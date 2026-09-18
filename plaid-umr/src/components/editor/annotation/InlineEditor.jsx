@@ -21,10 +21,16 @@ export function InlineEditor({
   renderOption,
   onCommit,
   onCancel,
+  onTyped,
   className = '',
 }) {
   const [value, setValue] = useState(initial);
   const [pristine, setPristine] = useState(true);
+  // Whether the arrows have picked an option. A hovered option is highlighted
+  // too, and the list opens wherever the pointer happens to rest (under the
+  // word an edge was just dropped on), so Enter on an untouched editor trusts
+  // the highlight only once the keyboard has moved it.
+  const navigatedRef = useRef(false);
   const doneRef = useRef(false);
   const once = (fn) => {
     if (doneRef.current) return;
@@ -68,6 +74,7 @@ export function InlineEditor({
         onChange={(v) => {
           setValue(v);
           setPristine(false);
+          onTyped?.(v);
         }}
         onFocus={(e) => {
           setPristine(true);
@@ -78,16 +85,20 @@ export function InlineEditor({
         onKeyDown={(e, combo) => {
           // The canvas listens for keys too: none of these are its.
           e.stopPropagation();
-          if (e.key === 'Enter') {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            navigatedRef.current = true;
+          } else if (e.key === 'Enter') {
             e.preventDefault();
-            const picked = combo.activeValue;
+            const trusted = !pristine || navigatedRef.current;
+            const picked = trusted ? combo.activeValue : null;
             once(() => commit(picked != null ? picked : value));
           } else if (e.key === 'Escape') {
             e.preventDefault();
             once(onCancel);
           } else if (e.key === 'Tab') {
             e.preventDefault();
-            once(() => commit(combo.activeValue ?? value));
+            const trusted = !pristine || navigatedRef.current;
+            once(() => commit((trusted ? combo.activeValue : null) ?? value));
           }
         }}
         filter={filter}

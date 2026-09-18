@@ -35,6 +35,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   dataVersion,
   direction = 'ltr',
   readOnly = true,
+  frames = null,
 }) {
   const confirm = useConfirm();
   const [focusedId, setFocusedId] = useState(null);
@@ -453,21 +454,33 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const overNodeId = drag?.over?.kind === 'node' ? drag.over.id : null;
   const overWordId = drag?.over?.kind === 'word' ? drag.over.id : null;
 
+  // The parent whose arguments a role editor lists first.
+  const parentConceptOf = (pending) => {
+    const id = pending.edgeId
+      ? doc.edge(pending.edgeId)?.source
+      : pending.sourceId || pending.newNode?.parentId;
+    return id ? nodesById.get(id)?.concept : null;
+  };
+
   const editorOptions = (ed) => {
     if (!ed) return [];
-    if (ed.kind === 'role') return roleOptions();
+    if (ed.kind === 'role') return roleOptions(frames, parentConceptOf(ed.pending));
     if (ed.kind === 'new') {
       const words = ed.wordIds.length
         ? sentence.words.filter((w) => ed.wordIds.includes(w.id))
         : [];
       return [
         ...(ed.wordIds.length ? [] : [{ group: 'Words', items: wordOptions(sentence.words) }]),
-        ...conceptOptions(words),
+        ...conceptOptions(words, frames, ed.typed || ''),
       ];
     }
     if (ed.kind === 'concept') {
       const node = nodesById.get(ed.nodeId);
-      return conceptOptions(sentence.words.filter((w) => node?.wordIds.includes(w.id)));
+      return conceptOptions(
+        sentence.words.filter((w) => node?.wordIds.includes(w.id)),
+        frames,
+        ed.typed || '',
+      );
     }
     if (ed.kind === 'attrs') return attributeLineOptions();
     return [];
@@ -620,6 +633,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 }
                 onCommit={commitEditor}
                 onCancel={closeEditor}
+                onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
               />
             )}
           </div>
