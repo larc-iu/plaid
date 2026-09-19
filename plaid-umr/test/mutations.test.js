@@ -189,6 +189,25 @@ test('deleteEdge takes the nodes only that edge reached, and spares a re-entrant
   assert.equal(del.args[0].length, 2);
 });
 
+// A reported-speech sentence's root is re-entered by :quote from the quoted
+// clause. Deleting that edge, as "Delete relation to parent" on the root
+// does, took the root out of the roots kept and so the whole graph with it.
+test('deleting the edge into a root takes no node with it', async () => {
+  const { doc } = load();
+  const s3 = doc.sentence(3);
+  const root = s3.roots[0];
+  const quote = root.in.find((e) => e.role === ':quote');
+  assert.ok(quote, 'sentence 3 of the corpus has a :quote into its root');
+  const before = s3.nodes.length;
+  assert.deepEqual(doc.exclusiveDescendants(quote.id), []);
+  assert.equal(await doc.deleteEdge(quote.id), 0);
+  assert.equal(doc.sentence(3).nodes.length, before);
+  assert.equal(
+    doc.node(root.id).in.some((e) => e.id === quote.id),
+    false,
+  );
+});
+
 test('moveEdge re-parents in one batch and keeps the role', async () => {
   const { doc, calls } = load();
   const landslide = byVar(doc, 's1l');

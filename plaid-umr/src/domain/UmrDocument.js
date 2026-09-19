@@ -217,8 +217,10 @@ export class UmrDocument extends DocumentModel {
       }
       return seen;
     };
-    const roots = sentence.roots.filter((r) => r.id !== target.id);
-    const stillReachable = reachFrom(roots, edgeId);
+    // Every root stays, the edge's own target included: the edge into a root
+    // (the :quote back into a reported-speech root, an edge a sentence split
+    // left crossing) takes no node with it.
+    const stillReachable = reachFrom(sentence.roots, edgeId);
     const below = reachFrom([target], edgeId);
     return [...below].filter((id) => !stillReachable.has(id)).map((id) => this.node(id));
   }
