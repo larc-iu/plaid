@@ -207,17 +207,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           const x2 = MARGIN - 8;
           const y2 = lane.constY.get(t.constant.var) + 11;
           const k = Math.max(24, (x1 - x2) / 2);
-          // The label, left-aligned, near the node's end of the line but never
-          // over the constants: a node close to the margin pushes it right.
-          const lx = Math.max(x2 + 14, x1 - 120);
+          // The label, left-aligned, a third of the way along from the constant:
+          // clear of the constants, and clear of a node beside the margin.
+          // Lines from one constant to different nodes part by height there.
+          const lx = x2 + 14;
           return {
             ...t,
             path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
-            label: {
-              x: lx,
-              y: y1 + (y2 - y1) * ((x1 - lx) / Math.max(1, x1 - x2)) - 10,
-              left: true,
-            },
+            label: { x: lx, y: y2 + (y1 - y2) * 0.35 - 10, left: true },
           };
         }
         const pa = layout.nodes.get(t.a.id);
