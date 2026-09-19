@@ -341,6 +341,18 @@ test.describe('editing', () => {
     await expect(nodeByConcept(page, 'person')).toHaveCount(0);
     await expect(nodeByConcept(page, 'name')).toHaveCount(0);
 
+    // A document-level relation is deleted from its own editor: the node
+    // menu cannot name one, and Shift+Backspace there is keyboard-only.
+    // Deleting a node focuses its parent, which wears a document-level tag,
+    // so that tag is one click away.
+    const tagged = block.locator('.umr-node--focused');
+    await expect(tagged.locator('.umr-doc-tag').first()).toBeVisible();
+    const before = await block.locator('.umr-doc-tag').count();
+    await tagged.locator('.umr-doc-tag').first().click();
+    await expect(editor(page)).toBeVisible();
+    await page.locator('.umr-inline-delete').click();
+    await expect(block.locator('.umr-doc-tag')).toHaveCount(before - 1);
+
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
     expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);

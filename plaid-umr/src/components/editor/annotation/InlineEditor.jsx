@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { textIncludes } from '@ui/domain/collation.js';
 
@@ -68,6 +69,28 @@ export function InlineEditor({
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* What Shift+Backspace does, for a mouse: the only way to delete a
+          re-entrant edge or a document-level relation, neither of which the
+          node's own menu can name. The pointer-down is swallowed so the
+          input never blurs, because a blur COMMITS. */}
+      {onDelete && (
+        <button
+          type="button"
+          className="umr-inline-delete"
+          title="Delete"
+          aria-label="Delete"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            once(onDelete);
+          }}
+        >
+          <Trash2 size={13} aria-hidden="true" />
+        </button>
+      )}
       <Combobox
         options={options}
         value={value}

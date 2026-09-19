@@ -712,3 +712,31 @@
 .umr-mode-end:hover {
   background: hsl(221 83% 53% / 0.18);
 }
+
+/* The editor, with its delete button beside the input when the thing being
+   edited can be deleted (an edge, a document-level relation). */
+.umr-inline-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.umr-inline-editor > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.umr-inline-delete {
+  order: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 24px;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+}
+.umr-inline-delete:hover {
+  border-color: hsl(var(--destructive) / 0.5);
+  color: hsl(var(--destructive));
+}
