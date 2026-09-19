@@ -145,7 +145,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // How far the canvas has scrolled sideways. The margin sticks to the
   // visible left edge, so a line to a constant ends where the chip is seen.
   const [scrollLeft, setScrollLeft] = useState(0);
-  // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy', nodeId }`.
+  // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy' |
+  // 'child', nodeId }`.
   const [mode, setMode] = useState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
   const [editor, setEditor] = useState(null);
@@ -500,17 +501,24 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       else await run(() => doc.createEdge(p.sourceId, p.targetId, role));
     } else if (ed.kind === 'new') {
       setEditor(null);
-      let wordIds = ed.wordIds;
-      let concept = text;
       // A number names a word only when no word was dropped on: a word whose
       // form is a numeral is a concept like any other.
       const picked =
         !ed.wordIds.length && /^\d+$/.test(text) ? sentence.words[Number(text) - 1] : null;
+      // A word picked by its number is where the node is anchored, not what
+      // its concept is: the picker asks for the concept next, the word's own
+      // senses first, as a drop on the word does. Its form is almost never
+      // the concept.
       if (picked) {
-        wordIds = [picked.id];
-        concept = picked.text;
+        askNewNode(ed.parentId, [picked.id], { x: ed.x, y: ed.y }, picked.text);
+        return;
       }
-      const newNode = { sentenceIndex: sentence.index, concept, wordIds, parentId: ed.parentId };
+      const newNode = {
+        sentenceIndex: sentence.index,
+        concept: text,
+        wordIds: ed.wordIds,
+        parentId: ed.parentId,
+      };
       if (ed.parentId) {
         askRole({ newNode }, { x: ed.x, y: ed.y });
       } else {
@@ -616,6 +624,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.anchor':
         setMode({ kind: 'anchor', nodeId: id });
         break;
+      // The grip drag as two clicks: the menu, then where the child is.
+      case 'node.child':
+        setMode({ kind: 'child', nodeId: id });
+        break;
       case 'node.move':
         if (treeEdgeInto(id)) setMode({ kind: 'move', nodeId: id });
         break;
@@ -704,13 +716,35 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     } else if (mode.kind === 'reentrancy') {
       setMode(null);
       if (id !== mode.nodeId) askRole({ sourceId: id, targetId: mode.nodeId }, positionBelow(id));
+    } else if (mode.kind === 'child') {
+      // An existing node as the child, as a grip dropped on it.
+      setMode(null);
+      if (id !== mode.nodeId) askRole({ sourceId: mode.nodeId, targetId: id }, positionBelow(id));
     } else {
       focusNode(id);
     }
   };
 
+  // A new child's word, asked for its concept (see askNewNode below).
+  const childAtWord = (parentId, wordId) => {
+    const word = sentence.words.find((w) => w.id === wordId);
+    const col = columns.get(wordId);
+    askNewNode(
+      parentId,
+      [wordId],
+      { x: (col?.x ?? 16) - 110, y: layout.height - 44 },
+      word?.text || '',
+    );
+  };
+
   const clickWord = async (wordId) => {
-    if (readOnly || mode?.kind !== 'anchor') return;
+    if (readOnly) return;
+    if (mode?.kind === 'child') {
+      setMode(null);
+      childAtWord(mode.nodeId, wordId);
+      return;
+    }
+    if (mode?.kind !== 'anchor') return;
     const node = nodesById.get(mode.nodeId);
     if (!node) return;
     await run(() => {
@@ -813,14 +847,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         } else if (over?.kind === 'node' && over.id !== d.sourceId) {
           askRole({ sourceId: d.sourceId, targetId: over.id }, positionBelow(over.id));
         } else if (over?.kind === 'word') {
-          const word = sentence.words.find((w) => w.id === over.id);
-          const col = columns.get(over.id);
-          askNewNode(
-            d.sourceId,
-            [over.id],
-            { x: (col?.x ?? p.x) - 110, y: layout.height - 44 },
-            word?.text || '',
-          );
+          childAtWord(d.sourceId, over.id);
         } else if (over?.kind === 'empty') {
           askNewNode(d.sourceId, [], { x: p.x - 110, y: p.y });
         }
@@ -934,6 +961,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         anchor: 'Click words to anchor to them.',
         move: 'Click the new parent.',
         reentrancy: 'Click the second parent.',
+        child: "Click the child's word, an existing node, or empty space for no word.",
       }[mode.kind]
     : null;
 
@@ -1111,6 +1139,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             className="umr-graph"
             ref={canvasRef}
             style={{ height: `${layout.height}px`, minWidth: `${width}px` }}
+            // Empty space in child mode: a child with no word, where the
+            // click was.
+            onClick={(e) => {
+              if (mode?.kind !== 'child' || e.target.closest?.('[data-node-id]')) return;
+              const parentId = mode.nodeId;
+              setMode(null);
+              const p = graphPoint(e.clientX, e.clientY);
+              askNewNode(parentId, [], { x: p.x - 110, y: p.y });
+            }}
             onDoubleClick={(e) => {
               if (readOnly || mode || editor) return;
               if (e.target.closest?.('[data-node-id]')) return;
@@ -1257,7 +1294,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             )}
             {editor && editor.kind !== 'attrs' && (
               <InlineEditor
-                key={`${editor.kind}:${editor.nodeId || editor.pending?.edgeId || editor.pending?.tripleId || 'new'}`}
+                // Keyed by what it edits, so one editor replacing another of the same
+                // kind (a new node's word, then its concept) is a fresh one.
+                key={`${editor.kind}:${editor.nodeId || editor.pending?.edgeId || editor.pending?.tripleId || editor.wordIds?.join(',') || 'new'}`}
                 x={editor.x}
                 y={editor.y}
                 value={editor.value || ''}
@@ -1330,7 +1369,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             direction={direction}
             onWordClick={readOnly ? null : clickWord}
             onWordDoubleClick={readOnly ? null : doubleClickWord}
-            anchorMode={mode?.kind === 'anchor'}
+            pickingWords={mode?.kind === 'anchor' || mode?.kind === 'child'}
           />
         </div>
       </div>

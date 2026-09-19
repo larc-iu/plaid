@@ -172,6 +172,7 @@ A relation's label works the same way: click it to change the relation, drag it 
 
 Everything else is on the node's own menu, which opens on a right-click anywhere on the node or with the **⋯** button at its top right.
 The menu lists every action with the key that does the same thing, and greys out the ones that do not apply (a root has no relation to a parent).
+**Add a child** on the menu waits for the next click: the child's word, an existing node to make the child, or empty space for a child with no word. **Cancel** in the sentence header leaves it.
 
 == Moving around
 
@@ -181,7 +182,7 @@ The menu lists every action with the key that does the same thing, and greys out
 
 == Making nodes and edges
 
-* **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word (its concept starts as the word), or type a concept for an abstract node. Then the relation.
+* **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word, then pick its concept from the word's senses (Enter keeps the word as typed), or type a concept for an abstract node. Then the relation.
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
 * **n** makes a node with no parent; so does a double-click on a word or on empty space. Either way the concept picker opens, prefilled with the word when there is one.
 * Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.

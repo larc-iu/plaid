@@ -307,10 +307,10 @@
   color: var(--umr-edge-lit);
   border-color: var(--umr-edge-lit);
 }
-.umr-tokens--anchor .umr-word {
+.umr-tokens--pick .umr-word {
   cursor: pointer;
 }
-.umr-tokens--anchor .umr-word:hover {
+.umr-tokens--pick .umr-word:hover {
   background: hsl(221 83% 53% / 0.08);
 }
 .umr-block-note--mode {

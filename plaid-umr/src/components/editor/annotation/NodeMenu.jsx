@@ -17,8 +17,10 @@ import { keys } from '../../../lib/keymap.js';
 // invisible trigger the block moves to wherever the menu was asked for (the
 // pointer for a right-click, the button for a click on it).
 //
-// `fixed:canvas:Enter` is the concept editor's key: a positional key nobody
-// can rebind, listed here the same as the rest. The chords are read in
+// `fixed:canvas:Enter` is the concept editor's key and `fixed:canvas:Tab`
+// the new child's: positional keys nobody can rebind, listed here the same
+// as the rest. Tab asks for the child by typing where the menu's item waits
+// for a click, and either ends in the same concept and role. The chords are read in
 // WORDS (Enter, Shift+Backspace) rather than as keycaps: a menu row is a
 // sentence, and ⇧⌫ in the middle of one is a puzzle. The FIRST chord only:
 // an action with two (Backspace and Delete) would otherwise print both and
@@ -31,6 +33,7 @@ const ITEMS = [
     ['node.variable', 'Rename variable'],
   ],
   [
+    ['node.child', 'Add a child', 'fixed:canvas:Tab'],
     ['node.anchor', 'Change anchor'],
     ['node.move', 'Move under another node'],
     ['node.reentrancy', 'Add a second parent'],

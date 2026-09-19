@@ -138,7 +138,12 @@ test.describe('editing', () => {
     await expect(editor(page)).toBeVisible();
     await editor(page).fill('7');
     await page.keyboard.press('Enter');
-    await expect(editor(page)).toBeVisible();
+    // The word is the anchor, not the concept: the concept is asked next,
+    // with the word's senses. Enter keeps the form as typed.
+    await expect(editor(page)).toHaveValue('lunch');
+    await expect(page.locator('[role="option"]', { hasText: /^lunch-01 ARG/ })).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(editor(page)).toHaveValue('');
     await editor(page).fill('ARG1');
     await page.keyboard.press('Enter');
     const lunch = nodeByConcept(page, 'lunch');
@@ -394,6 +399,36 @@ test.describe('editing', () => {
       // word to anchor to, so the way out is a button.
       await block.getByRole('button', { name: 'Done' }).click();
       await expect(block.locator('.umr-block-note--mode')).toHaveCount(0);
+
+      // A child from the menu: the next click says where, here a word, whose
+      // senses the concept picker then offers. The menu names Tab for it.
+      const eat = nodeByConcept(page, 'eat-01');
+      await eat.click({ button: 'right' });
+      await expect(menu.getByRole('menuitem', { name: /Add a child/ })).toContainText('Tab');
+      await menu.getByRole('menuitem', { name: /Add a child/ }).click();
+      await expect(block.locator('.umr-block-note--mode')).toContainText("child's word");
+      await block.locator('.umr-word', { hasText: 'lunch' }).click();
+      await expect(editor(page)).toHaveValue('lunch');
+      await page.locator('[role="option"]', { hasText: /^lunch-01 ARG/ }).click();
+      await page
+        .locator('[role="option"]', { hasText: /^:ARG1/ })
+        .first()
+        .click();
+      await expect(nodeByConcept(page, 'lunch-01')).toBeVisible();
+      await expect(block.locator('.umr-block-note--mode')).toHaveCount(0);
+      // Or empty space, for a child with no word: the top right of the graph,
+      // where the root's row has nothing.
+      await nodeByConcept(page, 'lunch-01').click({ button: 'right' });
+      await menu.getByRole('menuitem', { name: /Add a child/ }).click();
+      const graphBox = await block.locator('.umr-graph').boundingBox();
+      await page.mouse.click(graphBox.x + graphBox.width - 24, graphBox.y + 10);
+      await expect(editor(page)).toHaveValue('');
+      await editor(page).fill('thing');
+      await page.keyboard.press('Enter');
+      await editor(page).fill(':mod');
+      await page.keyboard.press('Enter');
+      await expect(nodeByConcept(page, 'thing')).toBeVisible();
+      await expect(nodeByConcept(page, 'thing')).toHaveClass(/umr-node--unaligned/);
 
       // And one that writes: the menu deletes the node with its subtree, name
       // and all, after a confirm that counts what goes.

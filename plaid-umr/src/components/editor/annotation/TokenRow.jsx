@@ -13,13 +13,13 @@ export const TokenRow = React.memo(function TokenRow({
   direction,
   onWordClick,
   onWordDoubleClick,
-  anchorMode = false,
+  pickingWords = false,
 }) {
   const words = sentence.words;
   const perWord = (sentence.ilg || []).filter((line) => line.perWord);
   const rows = (sentence.ilg || []).filter((line) => !line.perWord);
   return (
-    <div className={`umr-tokens${anchorMode ? ' umr-tokens--anchor' : ''}`} dir={direction}>
+    <div className={`umr-tokens${pickingWords ? ' umr-tokens--pick' : ''}`} dir={direction}>
       <div className="umr-word-row">
         {words.map((w, i) => (
           <div
