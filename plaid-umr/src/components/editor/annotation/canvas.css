@@ -699,3 +699,16 @@
   text-underline-offset: 2px;
   cursor: pointer;
 }
+
+/* The way out of a mode for a mouse. Escape does the same. */
+.umr-mode-end {
+  margin-inline-start: 6px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  padding: 0 5px;
+  font-size: 0.66rem;
+  line-height: 1rem;
+}
+.umr-mode-end:hover {
+  background: hsl(221 83% 53% / 0.18);
+}

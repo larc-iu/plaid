@@ -188,7 +188,7 @@ The menu lists every action with the key that does the same thing, and greys out
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
 * **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
 * **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document.
-* **u** changes the anchor: click words to add or remove them, Escape when done.
+* **u** changes the anchor: click words to add or remove them, then **Done** in the sentence's header, or Escape.
 * **m** moves the node under another parent: click the new parent. Dragging an edge's label onto a node does the same.
 * **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.
 

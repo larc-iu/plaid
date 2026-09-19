@@ -64,9 +64,13 @@ export function NodeMenu({ at, disabled, onAction, onClose, onClosed }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        // Seventeen rows is taller than the room under a node near the foot
-        // of a long sentence, and Radix will not shrink what it cannot fit.
-        className="max-h-[70vh] w-96 overflow-y-auto"
+        // Seventeen rows is taller than the room under a node halfway down a
+        // long sentence, and Radix places what it cannot fit rather than
+        // shrinking it: with neither side big enough the menu simply ran off
+        // the bottom and its last rows could not be reached. This is the
+        // height it says is going spare, so the menu always fits and scrolls
+        // inside itself instead.
+        className="max-h-[var(--radix-dropdown-menu-content-available-height)] w-96 overflow-y-auto"
         collisionPadding={8}
         // Where focus goes when the menu closes, which Radix would
         // otherwise decide: back to that invisible anchor, blurring whatever

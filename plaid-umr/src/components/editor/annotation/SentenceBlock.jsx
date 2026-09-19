@@ -843,9 +843,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const modeHint = mode
     ? {
-        anchor: 'Click words to anchor to them. Escape when done.',
-        move: 'Click the new parent. Escape to cancel.',
-        reentrancy: 'Click the second parent. Escape to cancel.',
+        anchor: 'Click words to anchor to them.',
+        move: 'Click the new parent.',
+        reentrancy: 'Click the second parent.',
       }[mode.kind]
     : null;
 
@@ -861,7 +861,24 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         <span className="umr-block-text" dir="auto">
           {sentence.text}
         </span>
-        {modeHint && <span className="umr-block-note umr-block-note--mode">{modeHint}</span>}
+        {modeHint && (
+          <span className="umr-block-note umr-block-note--mode">
+            {modeHint}
+            {/* Escape leaves a mode, and anchor mode ends no other way: a
+                click there is a word, not a way out. */}
+            <button
+              type="button"
+              className="umr-mode-end"
+              onClick={() => {
+                const id = mode.nodeId;
+                setMode(null);
+                focusNode(id);
+              }}
+            >
+              {mode.kind === 'anchor' ? 'Done' : 'Cancel'}
+            </button>
+          </span>
+        )}
         {sentence.roots.length > 1 && (
           <span className="umr-block-note">{sentence.roots.length} unconnected graphs</span>
         )}

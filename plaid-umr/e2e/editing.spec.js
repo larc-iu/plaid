@@ -328,7 +328,9 @@ test.describe('editing', () => {
     // anchor mode, which the word clicks then drive.
     await menu.getByRole('menuitem', { name: /Change anchor/ }).click();
     await expect(block.locator('.umr-block-note--mode')).toContainText('Click words');
-    await page.keyboard.press('Escape');
+    // Anchor mode ends no other way with a mouse: a click on the graph is a
+    // word to anchor to, so the way out is a button.
+    await block.getByRole('button', { name: 'Done' }).click();
     await expect(block.locator('.umr-block-note--mode')).toHaveCount(0);
 
     // And one that writes: the menu deletes the node with its subtree, name
