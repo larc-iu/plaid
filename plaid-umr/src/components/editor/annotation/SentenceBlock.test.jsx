@@ -45,12 +45,19 @@ const fixture = () => {
     words,
     morphemes: [],
     ilg: [
-      { header: 'Word Gloss (en)', key: 'word-gloss', lang: 'en', items: ['L.', 'go', 'eat'] },
+      {
+        header: 'Word Gloss (en)',
+        key: 'word-gloss',
+        lang: 'en',
+        items: ['L.', 'go', 'eat'],
+        perWord: [['L.'], ['go'], ['eat']],
+      },
       {
         header: 'Sentence Gloss (en)',
         key: 'sentence-gloss',
         lang: 'en',
         items: ['Lindsay', 'went'],
+        perWord: null,
       },
     ],
     nodes: [leave, person, eat],

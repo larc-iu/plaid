@@ -60,6 +60,27 @@ const findTokenLayerByRole = (textLayer, role) => findByRole(textLayer?.tokenLay
 
 const findFlagged = (layers, flag) => (layers || []).find((l) => hasFlag(l, flag)) || null;
 
+// Another app's annotation layers on the substrate, which the gloss lines
+// can read: IGT's fields say their scope (`config.igt.scope`, Word,
+// Morpheme or Sentence) and writing system (`config.igt.lang`); a layer that
+// says nothing takes the scope of the token layer it hangs off.
+const glossLayersOf = (sentenceLayer, wordLayer, morphemeLayer) => {
+  const out = [];
+  const take = (tokenLayer, scope) => {
+    (tokenLayer?.spanLayers || []).forEach((layer) => {
+      if (layer.config?.[UMR_NAMESPACE]) return;
+      const igt = layer.config?.igt || {};
+      const declared = String(igt.scope || '').toLowerCase();
+      const s = declared === 'token' ? 'word' : declared || scope;
+      out.push({ layer, scope: s, lang: igt.lang || null });
+    });
+  };
+  take(sentenceLayer, 'sentence');
+  take(wordLayer, 'word');
+  take(morphemeLayer, 'morpheme');
+  return out;
+};
+
 const EMPTY = Object.freeze({
   textLayer: null,
   sentenceTokenLayer: null,
@@ -69,6 +90,7 @@ const EMPTY = Object.freeze({
   conceptLayer: null,
   relationLayer: null,
   documentGraphLayer: null,
+  glossLayers: [],
   missingLayers: REQUIRED,
   isConfigured: false,
 });
@@ -98,6 +120,7 @@ export const getUmrLayerInfo = (document) => {
     conceptLayer,
     relationLayer,
     documentGraphLayer,
+    glossLayers: glossLayersOf(sentenceTokenLayer, wordTokenLayer, morphemeTokenLayer),
   };
   const missingLayers = REQUIRED.filter((key) => !info[key]);
   return { ...info, missingLayers, isConfigured: missingLayers.length === 0 };
@@ -121,4 +144,10 @@ export const hasForeignSubstrateParticipants = (layerInfo) =>
 export const readProjectLanguage = (project) => {
   const tag = project?.config?.[UMR_NAMESPACE]?.language;
   return typeof tag === 'string' ? tag.trim() : '';
+};
+
+// The project's gloss-line mapping (see domain/ilg.js), or null when unset.
+export const readIlgConfig = (project) => {
+  const list = project?.config?.[UMR_NAMESPACE]?.ilg;
+  return Array.isArray(list) ? list : null;
 };

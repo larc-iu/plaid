@@ -31,6 +31,19 @@ const baseName = (name) => name.replace(/\.(umr|txt)$/i, '') || name;
 // Strip characters illegal in zip entry / file names.
 const sanitize = (s) => (s || 'document').replace(/[\\/:*?"<>|]+/g, '_').trim() || 'document';
 
+// A document's id when a .umr file may be imported onto it: it has words and
+// no UMR node yet. Null otherwise, and the file makes a new document.
+const annotatable = async (client, documentId) => {
+  const raw = await client.documents.get(documentId, true);
+  const info = getUmrLayerInfo(raw);
+  if (!info.isConfigured) return null;
+  // Constants (author, root) are not a graph.
+  const nodes = (info.conceptLayer.spans || []).filter((sp) => sp.metadata?.umr?.constant !== true);
+  if (nodes.length) return null;
+  if (!(info.wordTokenLayer.tokens || []).length) return null;
+  return documentId;
+};
+
 // Document names aren't unique, so de-dupe zip entries: `name.umr`,
 // `name (2).umr`, …
 const dedupeName = (name, used) => {
@@ -184,6 +197,12 @@ export const ProjectImportExport = () => {
       acc.push(row);
       setResults([...acc]);
     };
+    let existingDocs = [];
+    try {
+      existingDocs = await client.projects.listDocuments(projectId);
+    } catch (err) {
+      console.error('Could not list the documents before importing:', err);
+    }
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -213,16 +232,22 @@ export const ProjectImportExport = () => {
         continue;
       }
       try {
-        // One audit-log operation per imported document (text, tokens, nodes
-        // and edges), labeled with the document name.
-        const { warnings } = await client.withOperation(`Import UMR document "${name}"`, () =>
-          importUmrDocument(client, projectId, name, text, layerInfo),
+        // A document by the file's name that holds no UMR nodes yet takes the
+        // file's graphs onto its own words (an IGT document, say); otherwise
+        // the file becomes a new document. One audit-log operation either way,
+        // labeled with the document name.
+        const existing = (existingDocs || []).find((d) => d.name === name);
+        const into = existing ? await annotatable(client, existing.id) : null;
+        const { warnings, attached } = await client.withOperation(
+          `Import UMR document "${name}"`,
+          () => importUmrDocument(client, projectId, name, text, layerInfo, { into }),
         );
         push({
           key: `${i}`,
           file: file.name,
           name,
           status: 'imported',
+          attached,
           warnings: warnings || [],
         });
       } catch (err) {
@@ -435,6 +460,12 @@ export const ProjectImportExport = () => {
                                 </div>
                                 {r.status === 'rejected' && (
                                   <p className="pl-6 text-xs text-destructive">{r.reason}</p>
+                                )}
+                                {r.status === 'imported' && r.attached && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {' '}
+                                    onto the existing document
+                                  </span>
                                 )}
                                 {r.status === 'imported' && r.warnings?.length > 0 && (
                                   <ul className="ml-11 list-disc space-y-0.5 text-xs text-amber-700">

@@ -5,7 +5,8 @@
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
-import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
+import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
+import { resolveIlg, ilgLinesFor } from './ilg.js';
 import {
   buildDocumentGraph,
   toUmrSentences,
@@ -58,7 +59,11 @@ export class UmrDocument extends DocumentModel {
   // The whole document as graphs: sentences with words, nodes, edges and
   // triples, plus the constants. Cached per data version.
   get graph() {
-    return this._derived('graph', () => buildDocumentGraph(this.layerInfo));
+    return this._derived('graph', () => {
+      const info = this.layerInfo;
+      const mapping = resolveIlg(readIlgConfig(this._project), info);
+      return buildDocumentGraph(info, { ilg: (s) => ilgLinesFor(s, info, mapping) });
+    });
   }
 
   get sentences() {

@@ -4,9 +4,10 @@
 // since a .umr file carries tokens and not a text. Sentences tile the text
 // (the sentence layer is partitioning), each taking the newline after it.
 import { cpLength } from '@larc-iu/plaid-client';
-import { UMR_NAMESPACE, missingUmrLayerLabels } from '../utils/umrLayerUtils.js';
+import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
+import { buildDocumentGraph } from './sentenceGraph.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -16,9 +17,12 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * @param {string} name the document's name
  * @param {string} text the .umr file
  * @param {object} layerInfo from getUmrLayerInfo(project), configured
- * @returns {Promise<{ document: { id: string, name: string }, warnings: string[] }>}
+ * @param {object} [options] `into`: an existing document's id to annotate,
+ *   whose words must match the file's sentence by sentence; it must hold no
+ *   UMR nodes yet
+ * @returns {Promise<{ document: { id: string, name: string }, warnings: string[], attached: boolean }>}
  */
-export async function importUmrDocument(client, projectId, name, text, layerInfo) {
+export async function importUmrDocument(client, projectId, name, text, layerInfo, options = {}) {
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!text || !text.trim()) throw new Error('No content to import');
   if (!layerInfo?.isConfigured) {
@@ -38,31 +42,60 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     ...(parsed.errors || []).map((e) => (typeof e === 'string' ? e : e.message)),
   ];
 
-  const plan = planImport(parsed.sentences, warnings);
+  // Onto an existing document: its words are the file's, sentence by sentence,
+  // and nothing of the substrate is written.
+  let existing = null;
+  if (options.into) {
+    const raw = await client.documents.get(options.into, true);
+    const info = getUmrLayerInfo(raw);
+    if (!info.isConfigured) throw new Error('The document is not set up for UMR.');
+    const graph = buildDocumentGraph(info);
+    // Constants (author, root) are not a graph: a document whose only nodes
+    // are those is as bare as one with none.
+    if (graph.sentences.some((s) => s.nodes.length)) {
+      throw new Error(
+        `"${raw.name}" already holds UMR nodes. Delete them first, or import as a new document.`,
+      );
+    }
+    existing = { raw, info, graph };
+  }
 
-  let documentId = null;
+  const plan = planImport(parsed.sentences, warnings, existing ? { existing: existing.graph } : {});
+
+  let documentId = existing ? existing.raw.id : null;
   try {
-    const created = await client.documents.create(projectId, name);
-    documentId = created.id;
-    const textResponse = await client.texts.create(layerInfo.textLayer.id, documentId, plan.body);
-    const textId = textResponse.id;
+    let textId;
+    if (existing) {
+      textId = existing.info.textLayer.text.id;
+    } else {
+      const created = await client.documents.create(projectId, name);
+      documentId = created.id;
+      const textResponse = await client.texts.create(layerInfo.textLayer.id, documentId, plan.body);
+      textId = textResponse.id;
+    }
 
-    // Tokens: sentences, words and node anchors in one atomic batch.
-    const sentenceOps = plan.sentences.map((s) => ({
-      tokenLayerId: layerInfo.sentenceTokenLayer.id,
-      text: textId,
-      begin: s.begin,
-      end: s.end,
-      metadata: { [UMR_NAMESPACE]: s.meta },
-    }));
-    const wordOps = plan.sentences.flatMap((s) =>
-      s.words.map((w) => ({
-        tokenLayerId: layerInfo.wordTokenLayer.id,
-        text: textId,
-        begin: w.begin,
-        end: w.end,
-      })),
-    );
+    // Tokens: sentences, words and node anchors in one atomic batch. Onto an
+    // existing document, the anchors alone, and the sentences take what the
+    // file said about them.
+    const sentenceOps = existing
+      ? []
+      : plan.sentences.map((s) => ({
+          tokenLayerId: layerInfo.sentenceTokenLayer.id,
+          text: textId,
+          begin: s.begin,
+          end: s.end,
+          metadata: { [UMR_NAMESPACE]: s.meta },
+        }));
+    const wordOps = existing
+      ? []
+      : plan.sentences.flatMap((s) =>
+          s.words.map((w) => ({
+            tokenLayerId: layerInfo.wordTokenLayer.id,
+            text: textId,
+            begin: w.begin,
+            end: w.end,
+          })),
+        );
     const pieceOps = plan.pieces.map((p) => ({
       tokenLayerId: layerInfo.nodeTokenLayer.id,
       text: textId,
@@ -70,11 +103,20 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       end: p.end,
     }));
     const tokenResults = await client.batched(async (b) => {
-      b.tokens.bulkCreate(sentenceOps);
+      if (sentenceOps.length) b.tokens.bulkCreate(sentenceOps);
       if (wordOps.length) b.tokens.bulkCreate(wordOps);
       if (pieceOps.length) b.tokens.bulkCreate(pieceOps);
+      if (existing) {
+        plan.sentences.forEach((s) => {
+          const token = existing.graph.sentences[s.index - 1];
+          if (token) b.tokens.patchMetadata(token.tokenId, { [UMR_NAMESPACE]: s.meta });
+        });
+      }
     });
-    const pieceIds = pieceOps.length ? tokenResults.at(-1)?.body?.ids || [] : [];
+    // The anchors' ids: after the sentence and word creates, before any
+    // sentence metadata patches.
+    const pieceIndex = (sentenceOps.length ? 1 : 0) + (wordOps.length ? 1 : 0);
+    const pieceIds = pieceOps.length ? tokenResults[pieceIndex]?.body?.ids || [] : [];
     if (pieceIds.length !== pieceOps.length) {
       throw new Error(
         `The server returned ${pieceIds.length} anchor ids for ${pieceOps.length} anchors.`,
@@ -124,9 +166,9 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       });
     }
 
-    return { document: { id: documentId, name }, warnings };
+    return { document: { id: documentId, name }, warnings, attached: !!existing };
   } catch (err) {
-    if (documentId) {
+    if (documentId && !existing) {
       try {
         await client.documents.delete(documentId);
       } catch (delErr) {
@@ -148,7 +190,22 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
 // read keeps its graph and alignment blocks as text on the sentence, so the
 // export writes them back and nothing is lost; its document-level triples
 // are read all the same.
-export function planImport(parsedSentences, warnings = []) {
+export function planImport(parsedSentences, warnings = [], { existing = null } = {}) {
+  if (existing) {
+    if (existing.sentences.length !== parsedSentences.length) {
+      throw new Error(
+        `The file has ${parsedSentences.length} sentences and the document ${existing.sentences.length}.`,
+      );
+    }
+    parsedSentences.forEach((ps, i) => {
+      const have = existing.sentences[i].words.map((w) => w.text);
+      if (have.join(' ') !== ps.words.join(' ')) {
+        throw new Error(
+          `Sentence ${i + 1} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
+        );
+      }
+    });
+  }
   let offset = 0;
   const bodyLines = [];
   const sentences = [];
@@ -173,18 +230,26 @@ export function planImport(parsedSentences, warnings = []) {
   parsedSentences.forEach((ps, i) => {
     const index = i + 1;
     const line = ps.words.join(' ');
-    const begin = offset;
+    let begin = offset;
+    let end;
     const words = [];
-    let cursor = begin;
-    ps.words.forEach((w, wi) => {
-      const len = cpLength(w);
-      words.push({ index: wi + 1, begin: cursor, end: cursor + len });
-      cursor += len + 1;
-    });
-    // The sentence takes the newline after it, so the layer tiles the text.
-    const end = begin + cpLength(line) + 1;
-    bodyLines.push(line);
-    offset = end;
+    if (existing) {
+      const have = existing.sentences[i];
+      begin = have.begin;
+      end = have.end;
+      have.words.forEach((w) => words.push({ index: w.index, begin: w.begin, end: w.end }));
+    } else {
+      let cursor = begin;
+      ps.words.forEach((w, wi) => {
+        const len = cpLength(w);
+        words.push({ index: wi + 1, begin: cursor, end: cursor + len });
+        cursor += len + 1;
+      });
+      // The sentence takes the newline after it, so the layer tiles the text.
+      end = begin + cpLength(line) + 1;
+      bodyLines.push(line);
+      offset = end;
+    }
     const meta = {
       snt: ps.snt ?? index,
       ilg: (ps.ilg || []).filter((l) => l.key !== 'index' && l.key !== 'words'),

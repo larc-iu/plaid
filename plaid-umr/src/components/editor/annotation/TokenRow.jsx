@@ -16,8 +16,8 @@ export const TokenRow = React.memo(function TokenRow({
   anchorMode = false,
 }) {
   const words = sentence.words;
-  const perWord = (sentence.ilg || []).filter((line) => line.items.length === words.length);
-  const rows = (sentence.ilg || []).filter((line) => line.items.length !== words.length);
+  const perWord = (sentence.ilg || []).filter((line) => line.perWord);
+  const rows = (sentence.ilg || []).filter((line) => !line.perWord);
   return (
     <div className={`umr-tokens${anchorMode ? ' umr-tokens--anchor' : ''}`} dir={direction}>
       <div className="umr-word-row">
@@ -43,7 +43,7 @@ export const TokenRow = React.memo(function TokenRow({
             </span>
             {perWord.map((line, li) => (
               <span key={li} className="umr-word-gloss" dir="auto" title={line.header}>
-                {line.items[i]}
+                {line.perWord[i].join(' ')}
               </span>
             ))}
           </div>

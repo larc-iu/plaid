@@ -48,7 +48,7 @@ const anchorPieces = (span, tokensById) =>
  * @param {object} layerInfo from getUmrLayerInfo(raw)
  * @returns {{ sentences: Array, constants: Array, nodesById: Map }}
  */
-export function buildDocumentGraph(layerInfo) {
+export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   const body = layerInfo.textLayer?.text?.body ?? '';
   const sentenceTokens = [...(layerInfo.sentenceTokenLayer?.tokens || [])].sort(byBegin);
   const wordTokens = [...(layerInfo.wordTokenLayer?.tokens || [])].sort(byBegin);
@@ -71,7 +71,10 @@ export function buildDocumentGraph(layerInfo) {
       text: meta.text || cpSlice(body, token.begin, token.end).replace(/\n+$/, ''),
       words: [],
       morphemes: [],
-      ilg: meta.ilg || [],
+      // What an import stored, and (once the words are known) the lines the
+      // mapping resolves them and the layers into.
+      storedIlg: meta.ilg || [],
+      ilg: [],
       meta: meta.meta || [],
       snt: meta.snt || null,
       rawGraph: meta.rawGraph || null,
@@ -198,6 +201,7 @@ export function buildDocumentGraph(layerInfo) {
     s.nodes.sort(nodeOrder);
     s.edges.sort((a, b) => a.order - b.order);
     s.roots = rootsOf(s, nodesById);
+    s.ilg = ilg ? ilg(s, layerInfo) : storedLines(s);
   });
 
   const chains = corefChains(docRelations, nodesById);
@@ -257,6 +261,16 @@ function corefChains(docRelations, nodesById) {
   chains.forEach((chain) => chain.nodes.forEach((id) => (nodesById.get(id).chain = chain.index)));
   return chains;
 }
+
+// Without a mapping, the stored lines as they were, grouped under the words
+// when there is one item per word.
+const storedLines = (s) =>
+  (s.storedIlg || [])
+    .filter((line) => line.key !== 'index' && line.key !== 'words')
+    .map((line) => ({
+      ...line,
+      perWord: line.items.length === s.words.length ? line.items.map((x) => [x]) : null,
+    }));
 
 // The roles a graph may cycle through (the validator allows no others): an
 // edge with one of these into a node does not make it a child, so the root
@@ -401,16 +415,14 @@ export function toUmrSentences(graph) {
   });
 }
 
-// The gloss lines to write: the stored lines from an import, with Index and
-// Words always regenerated from the word layer so they can never drift from
-// the text. Layer-backed lines (config.umr.ilg) land here in phase 2.
+// The gloss lines to write: Index and Words regenerated from the word layer
+// so they can never drift from the text, then the sentence's resolved lines.
 function ilgLines(s) {
-  const stored = (s.ilg || []).filter((line) => line.key !== 'index' && line.key !== 'words');
   const words = s.words.map((w) => w.text);
   return [
     { header: 'Index', key: 'index', lang: null, items: words.map((_, i) => String(i + 1)) },
     { header: 'Words', key: 'words', lang: null, items: words },
-    ...stored,
+    ...(s.ilg || []).map(({ header, key, lang, items }) => ({ header, key, lang, items })),
   ];
 }
 
