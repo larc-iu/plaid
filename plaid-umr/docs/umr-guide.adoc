@@ -139,8 +139,11 @@ Which layers feed which lines is set in **Project Settings, UMR settings** (see 
 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
 Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
-A relation between a node and a constant reads on the node as a tag in the document graph's own color (`author :full-affirmative`), and a temporal relation between two nodes of the sentence as a tag on each (`:before s3b`, `s3d :before`).
-Focusing or hovering a node draws its own relations: a line to the constant, an arc to the other node. Nothing is drawn for the others, so a long sentence stays readable.
+A relation between a node and a constant reads on the node as a tag in the document graph's own color (`author :full-affirmative`), and a relation between two nodes as a tag on each (`:before s3b`, `s3d :before`), in this sentence or another.
+The tag reads the triple in its own order with the node left out, so `s3d :before` on `s3b` says that `s3d` is before it.
+A node wears at most five tags. Past that it shows four and a count (`+22`), which lists them all when clicked on a focused node.
+Focusing or hovering a node draws its own relations: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
+Nothing is drawn for the others, so a long sentence stays readable.
 
 == Coreference
 
@@ -225,8 +228,8 @@ In this editor they are made from the same canvas as the sentence graph.
 * **t** starts a temporal relation: pick a constant or another node's variable, then the relation.
 * **o** starts a modal relation: pick the conceiver (`author`, `root`, `null-conceiver`, or a node), then the relation.
 
-A tag on a node opens its relation to change it; Shift+Backspace there deletes it.
-Triples the canvas cannot draw (coreference, a temporal relation to another sentence) are listed under the graph and open the same way.
+A tag on a node opens its relation to change it, at either end, and the trash button or Shift+Backspace there deletes it.
+The one kind of triple no node wears, one between two constants (`root :modal author`), is listed under the graph and opens the same way.
 
 = Gloss lines
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SentenceBlock } from './SentenceBlock.jsx';
+import { CrossLinks } from './CrossLinks.jsx';
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
@@ -136,6 +137,19 @@ export const UmrCanvas = ({
     reveal(index, `${block} ${node}`);
   }, [sentParam, varParam, focusNonce, reveal]);
 
+  // The node whose cross-sentence relations are drawn. Each block says which
+  // of its nodes is active, and at most two are at once (one hovered, one
+  // holding focus): the one that became active last wins, so hover is seen
+  // over focus, and focus is seen again once the pointer leaves.
+  const activesRef = useRef(new Map());
+  const [activeId, setActiveId] = useState(null);
+  const onActive = useCallback((index, id) => {
+    const actives = activesRef.current;
+    actives.delete(index);
+    if (id) actives.set(index, id);
+    setActiveId([...actives.values()].pop() || null);
+  }, []);
+
   // Turning the page from the bottom of the list leaves the reader at the
   // bottom of a page they have not read yet, so that pager takes them back
   // up. The top one does not, because they are already there.
@@ -157,6 +171,12 @@ export const UmrCanvas = ({
   }
   return (
     <div className="umr-canvas-list" ref={listTopRef}>
+      <CrossLinks
+        listRef={listTopRef}
+        graph={graph}
+        activeId={activeId}
+        version={doc.dataVersion}
+      />
       <ListPager {...paged} onPage={setPage} position="top" className="mx-6 rounded-md border" />
       {paged.pageItems.map((sentence) => (
         <SentenceBlock
@@ -171,6 +191,7 @@ export const UmrCanvas = ({
           lexicon={lexicon}
           problems={problems.get(sentence.index) || NO_PROBLEMS}
           goToNode={goToNode}
+          onActive={onActive}
         />
       ))}
       <ListPager {...paged} onPage={handlePageFromBottom} className="mx-6 mb-6 rounded-md border" />

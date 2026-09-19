@@ -362,6 +362,48 @@ export function alignmentOf(node, words) {
 export const docTagText = (triple, selfId, otherVar) =>
   triple.source === selfId ? `${triple.rel} ${otherVar}` : `${otherVar} ${triple.rel}`;
 
+/**
+ * Every document-level tag a node wears, at whichever end of the triple it
+ * is, and in the order it wears them: a constant at the other end first
+ * (the modal and temporal anchoring of an event), then a node of its own
+ * sentence, then a node of another sentence, the nearest sentence first.
+ *
+ * A triple is written in the block of the later of its two sentences, but
+ * the earlier node takes part in it as much as the later one, so both wear
+ * it. Across the released corpora most node-to-node triples cross a
+ * sentence (512 of 774), and a tag on the later end alone left the earlier
+ * node looking unrelated.
+ *
+ * @returns {{id, source, target, rel, group, text, otherId, cross: boolean}[]}
+ */
+export const docTagsOf = (node, nodesById) => {
+  const seen = new Set();
+  const tags = [];
+  [...(node.docOut || []), ...(node.docIn || [])].forEach((t) => {
+    if (seen.has(t.id)) return;
+    seen.add(t.id);
+    const otherId = t.source === node.id ? t.target : t.source;
+    const other = nodesById.get(otherId);
+    if (!other) return;
+    const rank = other.constant ? 0 : other.sentence === node.sentence ? 1 : 2;
+    const distance = rank === 2 ? Math.abs((other.sentence ?? 0) - (node.sentence ?? 0)) : 0;
+    tags.push({
+      key: [rank, distance],
+      tag: {
+        id: t.id,
+        source: t.source,
+        target: t.target,
+        rel: t.rel,
+        group: t.group,
+        text: docTagText(t, node.id, other.var),
+        otherId,
+        cross: rank === 2,
+      },
+    });
+  });
+  return tags.sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1]).map((x) => x.tag);
+};
+
 export const groupOf = (rel) => {
   if (/^:(same-entity|same-event|subset-of|subset)$/.test(rel)) return 'coref';
   if (/^:(before|after|contained|overlap|depends-on|contains)$/.test(rel)) return 'temporal';

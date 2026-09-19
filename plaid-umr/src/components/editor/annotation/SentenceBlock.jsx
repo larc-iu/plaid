@@ -9,7 +9,7 @@ import { InlineEditor } from './InlineEditor.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
 import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
-import { docTagText } from '../../../domain/sentenceGraph.js';
+import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import {
   roleOptions,
@@ -103,6 +103,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // The project's vocabularies as a lexicon (vocabLexicon.js).
   lexicon = null,
   problems = [],
+  // Told which node of this block is active (hovered, or focused while the
+  // block holds focus), so the canvas can draw what reaches other sentences.
+  onActive = null,
 }) {
   const confirm = useConfirm();
   // Problems by the node they name, for the marks; the rest belong to the
@@ -128,6 +131,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
+  // Whether focus is in this block. `focusedId` outlives it, because the
+  // block hands focus back to that node when an editor closes, but a node
+  // shows as focused, with its lines, only while focus is here: otherwise
+  // every block the annotator had clicked into kept a focused node lit.
+  const [focusWithin, setFocusWithin] = useState(false);
   // The node menu: which node it is about and where it was asked for, in
   // graph coordinates.
   const [menu, setMenu] = useState(null);
@@ -192,13 +200,21 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (focusedId && !nodesById.has(focusedId)) setFocusedId(null);
   }, [focusedId, nodesById]);
 
-  const active = hoveredId || focusedId;
+  const shownFocusId = focusWithin ? focusedId : null;
+  const active = hoveredId || shownFocusId;
   const activeNode = active ? nodesById.get(active) : null;
+  useEffect(() => {
+    if (!onActive) return undefined;
+    onActive(sentence.index, active);
+    return () => onActive(sentence.index, null);
+  }, [onActive, sentence.index, active]);
 
   // The document lane. Constants pinned in the margin: the three every
   // document has, plus any this sentence's triples name. A triple with a
-  // constant at one end or both ends in this sentence is drawn; the rest
-  // (coreference, a cross-sentence temporal) are listed under the graph.
+  // constant at one end or both ends in this sentence is drawn here, one
+  // reaching another sentence is drawn by the canvas across the blocks, and
+  // one between two constants (`root :modal author`), which belongs to no
+  // node, is listed under the graph.
   const lane = useMemo(() => {
     const names = [...ALWAYS_PINNED];
     const triples = sentence.triples || [];
@@ -233,9 +249,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           node: a.constant ? b : a,
           constant: a.constant ? a : b,
         });
-      } else if (here(a) && here(b) && t.group !== 'coref') {
+      } else if (here(a) && here(b)) {
         drawn.push({ ...t, kind: 'inner', a, b });
-      } else {
+      } else if (a.constant && b.constant) {
         listed.push({ ...t, a, b });
       }
     });
@@ -246,8 +262,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // margin's origin). At rest the document level is tags on the nodes and
   // nothing else: every triple drawn as a curve, on a long sentence, was the
   // tangle. Focus or hover a node and its own relations light up, a line to
-  // the margin constant or an arc to the other node, with the label on the
-  // arc.
+  // the margin constant or to the other node, unlabeled. A relation to
+  // another sentence is the canvas's to draw (CrossLinks.jsx).
   const docEdges = useMemo(() => {
     if (!measured || !active) return [];
     const dx = MARGIN + pad;
@@ -277,18 +293,34 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         const pa = layout.nodes.get(t.a.id);
         const pb = layout.nodes.get(t.b.id);
         if (!pa || !pb) return null;
-        const x1 = pa.x + dx;
-        const x2 = pb.x + dx;
+        // A quarter in from the right of each box: the middle is where the
+        // tree edges arrive and leave, and a second head there reads as
+        // the tree's.
+        const x1 = pa.x + pa.width / 4 + dx;
+        const x2 = pb.x + pb.width / 4 + dx;
+        // No label on the line: each end wears the relation as a tag, and a
+        // label floating mid-arc landed on whatever node was under it.
+        if (pa.row !== pb.row) {
+          // Rows apart: out of the side facing the other node and into the
+          // side facing back, as a relation to another sentence is drawn.
+          // An arc over both from the top dived through every row between.
+          const down = pb.y > pa.y;
+          const y1 = down ? pa.y + pa.height : pa.y;
+          const y2 = down ? pb.y : pb.y + pb.height;
+          const k = Math.max(24, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
+          return {
+            ...t,
+            path: `M ${x1} ${y1} C ${x1} ${y1 + k}, ${x2} ${y2 - k}, ${x2} ${y2}`,
+          };
+        }
         let lift = 18 + Math.abs(x2 - x1) / 8;
-        // The arc rises over the two nodes when there is room above them and
-        // dips under them when there is not (a pair on the top row), so it
-        // is never cut off by the top of the stage.
-        const above = Math.min(pa.y, pb.y) - lift >= 6;
+        // One row: the arc rises over the two nodes when there is room above
+        // them and dips under them when there is not (the top row), so it is
+        // never cut off by the top of the stage.
+        const above = pa.y - lift >= 6;
         const y1 = above ? pa.y : pa.y + pa.height;
         const y2 = above ? pb.y : pb.y + pb.height;
         if (!above) lift = -lift;
-        // No label on the arc either: each end wears the relation as a tag,
-        // and a label floating mid-arc landed on whatever node was under it.
         return {
           ...t,
           path: `M ${x1} ${y1} C ${x1} ${y1 - lift}, ${x2} ${y2 - lift}, ${x2} ${y2}`,
@@ -297,25 +329,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       .filter(Boolean);
   }, [lane, layout, measured, pad, active, scrollLeft]);
 
-  // The document triples of each node, as tags: `author :full-affirmative`
-  // for a margin constant, and for a pair of this sentence's nodes the
-  // triple with the node's own variable left out, `:before s3b` on the
-  // source and `s3d :before` on the target.
+  // The document triples of each node, as tags: the triple with the node's
+  // own variable left out, `author :full-affirmative`, `:before s3b` on the
+  // source and `s3d :before` on the target, whichever sentence the other
+  // end is in.
   const docTagsByNode = useMemo(() => {
     const map = new Map();
-    const tag = (nodeId, t, text) => {
-      if (!map.has(nodeId)) map.set(nodeId, []);
-      map.get(nodeId).push({ id: t.id, rel: t.rel, group: t.group, text });
-    };
-    lane.drawn.forEach((t) => {
-      if (t.kind === 'margin') tag(t.node.id, t, docTagText(t, t.node.id, t.constant.var));
-      else {
-        tag(t.a.id, t, docTagText(t, t.a.id, t.b.var));
-        tag(t.b.id, t, docTagText(t, t.b.id, t.a.var));
-      }
+    sentence.nodes.forEach((n) => {
+      const tags = docTagsOf(n, nodesById);
+      if (tags.length) map.set(n.id, tags);
     });
     return map;
-  }, [lane]);
+  }, [sentence, nodesById]);
 
   const chainOf = (node) => {
     if (node.chain == null) return null;
@@ -416,6 +441,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       else {
         await run(() => doc.createTriple({ ...p.triple, rel, sentenceIndex: sentence.index }));
       }
+      return;
+    }
+    if (ed.kind === 'docList') {
+      const tag = (docTagsByNode.get(ed.nodeId) || []).find(
+        (t) => t.id === option?.tripleId || t.text === text,
+      );
+      setEditor(null);
+      if (tag) {
+        askDocRole({ tripleId: tag.id, role: tag.rel, group: tag.group }, positionBelow(ed.nodeId));
+      } else closeEditor();
       return;
     }
     if (ed.kind === 'pick') {
@@ -610,6 +645,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       case 'node.modal':
         askPick('modal', id);
+        break;
+      // Every document relation of a node, when there are more than it
+      // shows as tags: pick one to change it.
+      case 'node.docRelations':
+        setEditor({ kind: 'docList', nodeId: id, ...positionBelow(id), value: '' });
         break;
       case 'canvas.newRoot':
         askNewNode(null, [], { x: 16, y: layout.height - 44 });
@@ -860,6 +900,21 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const group = ed.pending.tripleId ? ed.pending.group : ed.pending.triple.group;
       return docRelationOptions(group);
     }
+    if (ed.kind === 'docList') {
+      return [
+        {
+          group: 'Document relations',
+          items: (docTagsByNode.get(ed.nodeId) || []).map((t) => {
+            const other = nodesById.get(t.otherId);
+            return {
+              value: t.text,
+              label: other && !other.constant ? `${t.text} (${other.concept})` : t.text,
+              tripleId: t.id,
+            };
+          }),
+        },
+      ];
+    }
     if (ed.kind === 'pick') {
       const constants =
         ed.group === 'modal' ? MODAL_CONSTANTS : ed.group === 'temporal' ? TEMPORAL_CONSTANTS : [];
@@ -888,6 +943,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       aria-label={`Sentence ${sentence.index}`}
       data-sentence-index={sentence.index}
       onKeyDown={handleKeyDown}
+      onFocus={() => setFocusWithin(true)}
+      // A blur to nothing (a click on empty canvas, a word, another window)
+      // leaves the node focused as far as the block is concerned. One to
+      // somewhere else takes it: a portaled editor of this block's (React
+      // bubbles its focus here) gives it straight back.
+      onBlur={(e) => {
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) setFocusWithin(false);
+      }}
     >
       <header className="umr-block-header">
         <span className="umr-block-index">{sentence.index}</span>
@@ -1094,7 +1157,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 node={node}
                 nodeRef={nodeRef(node.id)}
                 position={measured ? layout.nodes.get(node.id) : null}
-                focused={focusedId === node.id}
+                focused={shownFocusId === node.id}
                 dropTarget={overNodeId === node.id}
                 modeTarget={!!mode && mode.nodeId !== node.id && mode.kind !== 'anchor'}
                 onFocus={setFocusedId}
@@ -1204,11 +1267,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     role: 'Relation',
                     docRole: 'Relation',
                     pick: 'Variable or constant',
+                    docList: 'Relation',
                     new: 'Word number or concept',
                     concept: 'Concept',
                     variable: 'Variable',
                   }[editor.kind]
                 }
+                strict={editor.kind === 'docList'}
                 onCommit={commitEditor}
                 onCancel={closeEditor}
                 onDelete={

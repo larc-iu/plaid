@@ -39,9 +39,51 @@ s1e: 6-6
 
 `;
 
+// Two sentences with a coreference from the second back to the first, for
+// what is drawn across sentences.
+const TWO = `################################################################################
+# :: snt1\tThe cat chased a mouse .
+Index: 1 2 3 4 5 6
+Words: The cat chased a mouse .
+
+# sentence level graph:
+(s1c / chase-01
+    :ARG0 (s1c2 / cat)
+    :ARG1 (s1m / mouse))
+
+# alignment:
+s1c: 3-3
+s1c2: 2-2
+s1m: 5-5
+
+# document level annotation:
+(s1s0 / sentence
+    :modal ((root :modal author)
+        (author :full-affirmative s1c)))
+
+################################################################################
+# :: snt2\tIt escaped .
+Index: 1 2 3
+Words: It escaped .
+
+# sentence level graph:
+(s2e / escape-01
+    :ARG0 (s2c / cat))
+
+# alignment:
+s2e: 2-2
+s2c: 1-1
+
+# document level annotation:
+(s2s0 / sentence
+    :coref ((s2c :same-entity s1c2)))
+
+
+`;
+
 const API = 'http://localhost:8085';
 
-async function makeDocument() {
+async function makeDocument(text = SAMPLE) {
   const { projectId } = await getFixture();
   const { token } = readToken();
   const client = new PlaidClient(API, token);
@@ -51,7 +93,7 @@ async function makeDocument() {
     client,
     projectId,
     name,
-    SAMPLE,
+    text,
     getUmrLayerInfo(project),
   );
   return { projectId, documentId: document.id, client };
@@ -263,118 +305,184 @@ test.describe('editing', () => {
   // and the rest is on the menu, by right-click or by the ⋯ button.
   test('the mouse reaches every action', async ({ page }) => {
     const own = await makeDocument();
-    const diag = collectClientErrors(page);
-    await seedAuth(page);
-    await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
-    const block = page.locator('.umr-block').first();
-    await expect(block.locator('.umr-edge-label').first()).toBeVisible();
+    try {
+      const diag = collectClientErrors(page);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
+      const block = page.locator('.umr-block').first();
+      await expect(block.locator('.umr-edge-label').first()).toBeVisible();
 
-    // One rule for the node's parts: the first click focuses, and a second
-    // click on a part edits that part. So a click on a chip cannot swallow
-    // the click that was only meant to focus the node.
-    const leave = nodeByConcept(page, 'leave-02');
-    const picker = page.getByRole('dialog', { name: 'Attributes' });
-    await leave.locator('.umr-chip').first().click();
-    await expect(picker).toHaveCount(0);
-    await expect(leave).toHaveClass(/umr-node--focused/);
+      // One rule for the node's parts: the first click focuses, and a second
+      // click on a part edits that part. So a click on a chip cannot swallow
+      // the click that was only meant to focus the node.
+      const leave = nodeByConcept(page, 'leave-02');
+      const picker = page.getByRole('dialog', { name: 'Attributes' });
+      await leave.locator('.umr-chip').first().click();
+      await expect(picker).toHaveCount(0);
+      await expect(leave).toHaveClass(/umr-node--focused/);
 
-    // Focused, the variable renames.
-    await leave.locator('.umr-node-var').click();
-    await expect(editor(page)).toHaveValue('s1l');
-    await editor(page).fill('s1go');
-    await page.keyboard.press('Enter');
-    await expect(leave.locator('.umr-node-var')).toHaveText('s1go');
+      // Focused, the variable renames.
+      await leave.locator('.umr-node-var').click();
+      await expect(editor(page)).toHaveValue('s1l');
+      await editor(page).fill('s1go');
+      await page.keyboard.press('Enter');
+      await expect(leave.locator('.umr-node-var')).toHaveText('s1go');
 
-    // And the chip opens the attribute picker at that node.
-    await leave.locator('.umr-chip').first().click();
-    await expect(picker).toBeVisible();
-    await expect(picker.locator('[aria-pressed="true"]')).toHaveText('performance');
-    await page.keyboard.press('Escape');
-    await expect(picker).toHaveCount(0);
+      // And the chip opens the attribute picker at that node.
+      await leave.locator('.umr-chip').first().click();
+      await expect(picker).toBeVisible();
+      await expect(picker.locator('[aria-pressed="true"]')).toHaveText('performance');
+      await page.keyboard.press('Escape');
+      await expect(picker).toHaveCount(0);
 
-    // The picker opens from the menu too, and is placed against the WINDOW:
-    // the canvas clips (it scrolls sideways), and the picker is taller than
-    // a node near the foot of a sentence.
-    await leave.click({ button: 'right' });
-    await page
-      .getByRole('menu')
-      .getByRole('menuitem', { name: /^Attributes/ })
-      .click();
-    await expect(picker).toBeVisible();
-    await expect(picker.locator('button:focus')).toHaveCount(1);
-    expect(
-      await picker.evaluate((el) => {
-        const r = el.getBoundingClientRect();
-        return r.top >= -1 && r.bottom <= window.innerHeight + 1;
-      }),
-    ).toBe(true);
-    await block.locator('.umr-block-text').click();
-    await expect(picker).toHaveCount(0);
+      // The picker opens from the menu too, and is placed against the WINDOW:
+      // the canvas clips (it scrolls sideways), and the picker is taller than
+      // a node near the foot of a sentence.
+      await leave.click({ button: 'right' });
+      await page
+        .getByRole('menu')
+        .getByRole('menuitem', { name: /^Attributes/ })
+        .click();
+      await expect(picker).toBeVisible();
+      await expect(picker.locator('button:focus')).toHaveCount(1);
+      expect(
+        await picker.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return r.top >= -1 && r.bottom <= window.innerHeight + 1;
+        }),
+      ).toBe(true);
+      await block.locator('.umr-block-text').click();
+      await expect(picker).toHaveCount(0);
 
-    // The concept takes a click to focus and a second one to edit, so a
-    // double-click on a node edits its concept.
-    const person = nodeByConcept(page, 'person').first();
-    await person.locator('.umr-node-concept').click();
-    await expect(editor(page)).toHaveCount(0);
-    await expect(person).toHaveClass(/umr-node--focused/);
-    await person.locator('.umr-node-concept').click();
-    await expect(editor(page)).toHaveValue('person');
-    await page.keyboard.press('Escape');
+      // The concept takes a click to focus and a second one to edit, so a
+      // double-click on a node edits its concept.
+      const person = nodeByConcept(page, 'person').first();
+      await person.locator('.umr-node-concept').click();
+      await expect(editor(page)).toHaveCount(0);
+      await expect(person).toHaveClass(/umr-node--focused/);
+      await person.locator('.umr-node-concept').click();
+      await expect(editor(page)).toHaveValue('person');
+      await page.keyboard.press('Escape');
 
-    // Right-click opens the menu, which says which key does the same.
-    await person.click({ button: 'right' });
-    const menu = page.getByRole('menu');
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /Edit concept/ })).toContainText('Enter');
-    await expect(menu.getByRole('menuitem', { name: /^Attributes/ })).toContainText('A');
-    // A leaf has a parent, so it can move and be deleted; it is not the root.
-    await expect(menu.getByRole('menuitem', { name: /Make this the root/ })).toBeEnabled();
-    await menu.getByRole('menuitem', { name: /Rename variable/ }).click();
-    await expect(editor(page)).toHaveValue('s1p');
-    await page.keyboard.press('Escape');
+      // Right-click opens the menu, which says which key does the same.
+      await person.click({ button: 'right' });
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole('menuitem', { name: /Edit concept/ })).toContainText('Enter');
+      await expect(menu.getByRole('menuitem', { name: /^Attributes/ })).toContainText('A');
+      // A leaf has a parent, so it can move and be deleted; it is not the root.
+      await expect(menu.getByRole('menuitem', { name: /Make this the root/ })).toBeEnabled();
+      await menu.getByRole('menuitem', { name: /Rename variable/ }).click();
+      await expect(editor(page)).toHaveValue('s1p');
+      await page.keyboard.press('Escape');
 
-    // The ⋯ button opens the same menu. On the root, the items that need a
-    // parent are greyed out.
-    await leave.hover();
-    await leave.locator('.umr-more').click();
-    await expect(menu).toBeVisible();
-    for (const name of [/Relation to parent/, /Delete relation to parent/, /Move earlier/]) {
-      await expect(menu.getByRole('menuitem', { name })).toBeDisabled();
+      // The ⋯ button opens the same menu. On the root, the items that need a
+      // parent are greyed out.
+      await leave.hover();
+      await leave.locator('.umr-more').click();
+      await expect(menu).toBeVisible();
+      for (const name of [/Relation to parent/, /Delete relation to parent/, /Move earlier/]) {
+        await expect(menu.getByRole('menuitem', { name })).toBeDisabled();
+      }
+      await expect(menu.getByRole('menuitem', { name: /Make this the root/ })).toBeDisabled();
+
+      // An action picked from the menu runs against that node: the root's
+      // anchor mode, which the word clicks then drive.
+      await menu.getByRole('menuitem', { name: /Change anchor/ }).click();
+      await expect(block.locator('.umr-block-note--mode')).toContainText('Click words');
+      // Anchor mode ends no other way with a mouse: a click on the graph is a
+      // word to anchor to, so the way out is a button.
+      await block.getByRole('button', { name: 'Done' }).click();
+      await expect(block.locator('.umr-block-note--mode')).toHaveCount(0);
+
+      // And one that writes: the menu deletes the node with its subtree, name
+      // and all, after a confirm that counts what goes.
+      await person.click({ button: 'right' });
+      await menu.getByRole('menuitem', { name: /Delete node and all below it/ }).click();
+      await page.getByRole('button', { name: 'Delete' }).click();
+      await expect(nodeByConcept(page, 'person')).toHaveCount(0);
+      await expect(nodeByConcept(page, 'name')).toHaveCount(0);
+
+      // A document-level relation is deleted from its own editor: the node
+      // menu cannot name one, and Shift+Backspace there is keyboard-only.
+      // Deleting a node focuses its parent, which wears a document-level tag,
+      // so that tag is one click away.
+      const tagged = block.locator('.umr-node--focused');
+      await expect(tagged.locator('.umr-doc-tag').first()).toBeVisible();
+      const before = await block.locator('.umr-doc-tag').count();
+      await tagged.locator('.umr-doc-tag').first().click();
+      await expect(editor(page)).toBeVisible();
+      await page.locator('.umr-inline-delete').click();
+      await expect(block.locator('.umr-doc-tag')).toHaveCount(before - 1);
+
+      const clean = cleanDiagnostics(diag);
+      expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+      expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+    } finally {
+      await own.client.documents.delete(own.documentId);
     }
-    await expect(menu.getByRole('menuitem', { name: /Make this the root/ })).toBeDisabled();
+  });
 
-    // An action picked from the menu runs against that node: the root's
-    // anchor mode, which the word clicks then drive.
-    await menu.getByRole('menuitem', { name: /Change anchor/ }).click();
-    await expect(block.locator('.umr-block-note--mode')).toContainText('Click words');
-    // Anchor mode ends no other way with a mouse: a click on the graph is a
-    // word to anchor to, so the way out is a button.
-    await block.getByRole('button', { name: 'Done' }).click();
-    await expect(block.locator('.umr-block-note--mode')).toHaveCount(0);
+  // A document relation reaching another sentence is a tag on BOTH ends,
+  // not a pill under the later graph, and is drawn across the blocks for
+  // the focused node alone.
+  test('relations across sentences', async ({ page }) => {
+    const own = await makeDocument(TWO);
+    try {
+      const diag = collectClientErrors(page);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
+      const one = page.locator('.umr-block').nth(0);
+      const two = page.locator('.umr-block').nth(1);
+      const byVar = (v) => page.locator(`[data-node-var="${v}"]`);
+      await expect(byVar('s2c')).toBeVisible();
 
-    // And one that writes: the menu deletes the node with its subtree, name
-    // and all, after a confirm that counts what goes.
-    await person.click({ button: 'right' });
-    await menu.getByRole('menuitem', { name: /Delete node and all below it/ }).click();
-    await page.getByRole('button', { name: 'Delete' }).click();
-    await expect(nodeByConcept(page, 'person')).toHaveCount(0);
-    await expect(nodeByConcept(page, 'name')).toHaveCount(0);
+      // The earlier node wears the relation as much as the later one. Under
+      // the graphs is left only what belongs to no node.
+      await expect(byVar('s1c2').locator('.umr-doc-tag')).toHaveText(['s2c :same-entity']);
+      await expect(byVar('s2c').locator('.umr-doc-tag')).toHaveText([':same-entity s1c2']);
+      await expect(one.locator('.umr-doc-chip')).toHaveText(['root :modal author']);
+      await expect(two.locator('.umr-doc-chip')).toHaveCount(0);
 
-    // A document-level relation is deleted from its own editor: the node
-    // menu cannot name one, and Shift+Backspace there is keyboard-only.
-    // Deleting a node focuses its parent, which wears a document-level tag,
-    // so that tag is one click away.
-    const tagged = block.locator('.umr-node--focused');
-    await expect(tagged.locator('.umr-doc-tag').first()).toBeVisible();
-    const before = await block.locator('.umr-doc-tag').count();
-    await tagged.locator('.umr-doc-tag').first().click();
-    await expect(editor(page)).toBeVisible();
-    await page.locator('.umr-inline-delete').click();
-    await expect(block.locator('.umr-doc-tag')).toHaveCount(before - 1);
+      // At rest nothing is drawn across. Focus draws the line, and rings the
+      // node at the other end.
+      const links = page.locator('.umr-cross-link');
+      await expect(links).toHaveCount(0);
+      await byVar('s2c').click();
+      await expect(links).toHaveCount(1);
+      await expect(page.locator('.umr-cross-ring')).toHaveCount(1);
 
-    const clean = cleanDiagnostics(diag);
-    expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
-    expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
-    await own.client.documents.delete(own.documentId);
+      // Only the block holding focus shows a focused node: a node focused
+      // earlier in another block does not stay lit.
+      await byVar('s1m').click();
+      await expect(page.locator('.umr-node--focused')).toHaveCount(1);
+      await expect(byVar('s1m')).toHaveClass(/umr-node--focused/);
+      await expect(links).toHaveCount(0);
+
+      // A new one from the menu, to a node of the other sentence.
+      await byVar('s2e').click({ button: 'right' });
+      await page
+        .getByRole('menu')
+        .getByRole('menuitem', { name: /Temporal relation/ })
+        .click();
+      await page.locator('[role="option"]', { hasText: /^s1c chase-01/ }).click();
+      await page.locator('[role="option"]', { hasText: /^:after/ }).click();
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText([':after s1c']);
+      await expect(byVar('s1c').locator('.umr-doc-tag')).toContainText(['s2e :after']);
+      await expect(links).toHaveCount(1);
+
+      // Changed from the earlier end: the tag there opens the same relation.
+      await byVar('s1c').click();
+      await byVar('s1c').locator('.umr-doc-tag', { hasText: 's2e :after' }).click();
+      await expect(editor(page)).toHaveValue(':after');
+      await page.locator('[role="option"]', { hasText: /^:overlap/ }).click();
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText([':overlap s1c']);
+
+      const clean = cleanDiagnostics(diag);
+      expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+      expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+    } finally {
+      await own.client.documents.delete(own.documentId);
+    }
   });
 });

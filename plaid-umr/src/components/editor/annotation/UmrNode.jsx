@@ -1,5 +1,10 @@
 import React, { useRef } from 'react';
 
+// The most document tags a node wears. Past it, one fewer and a `+k` that
+// lists them all: nearly every node has five or fewer, and the one that
+// does not (an entity 26 others are a subset of) would otherwise be a wall.
+const MAX_TAGS = 5;
+
 // One node of the graph: the variable small at the left, the concept, and the
 // attributes as chips. What is stored is what is seen. A node with no anchor
 // is hollow (a state, so a shape and not a pattern). The grip on the bottom
@@ -52,6 +57,8 @@ export const UmrNode = React.memo(function UmrNode({
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
     : { left: 0, top: 0, visibility: 'hidden' };
   const label = [node.var, node.concept].filter(Boolean).join(' ');
+  const shownTags = docTags?.length > MAX_TAGS ? docTags.slice(0, MAX_TAGS - 1) : docTags;
+  const hiddenTags = (docTags?.length || 0) - (shownTags?.length || 0);
   return (
     <div
       ref={nodeRef}
@@ -157,7 +164,7 @@ export const UmrNode = React.memo(function UmrNode({
       )}
       {docTags?.length > 0 && (
         <div className="umr-node-doc">
-          {docTags.map((t) => (
+          {shownTags.map((t) => (
             <span
               key={t.id}
               className="umr-doc-tag"
@@ -181,6 +188,22 @@ export const UmrNode = React.memo(function UmrNode({
               {t.text}
             </span>
           ))}
+          {hiddenTags > 0 && (
+            <span
+              className="umr-doc-tag umr-doc-tag--more"
+              role={live ? 'button' : undefined}
+              tabIndex={-1}
+              // Read-only, or before the node is focused, the rest are
+              // read off the tooltip.
+              title={docTags
+                .slice(shownTags.length)
+                .map((t) => t.text)
+                .join('\n')}
+              onClick={live ? act('node.docRelations') : undefined}
+            >
+              +{hiddenTags}
+            </span>
+          )}
         </div>
       )}
       {onMenu && (
