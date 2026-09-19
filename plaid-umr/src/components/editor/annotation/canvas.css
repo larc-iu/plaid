@@ -588,11 +588,23 @@
   overflow: visible;
   pointer-events: none;
 }
-/* Drawn for the active node only, so always lit. */
+/* Drawn for the active node only, so always lit. Coloured as its tags are. */
 .umr-doc-edge {
   fill: none;
   stroke: var(--umr-doc);
   stroke-width: 1.8;
+}
+.umr-doc-edge[data-family='temporal'],
+.umr-cross-link[data-family='temporal'] {
+  stroke: var(--umr-doc-temporal);
+}
+.umr-doc-edge[data-family='coref'],
+.umr-cross-link[data-family='coref'] {
+  stroke: var(--umr-doc-coref);
+}
+.umr-doc-edge[data-family='default'],
+.umr-cross-link[data-family='default'] {
+  stroke: hsl(var(--muted-foreground));
 }
 /* A triple between two constants, which belongs to no node, in the margin
    under the constants. */
@@ -846,6 +858,21 @@
 .umr-inline-editor > :first-child {
   flex: 1;
   min-width: 0;
+}
+/* Why a value was refused, under the box, which stays open to correct it. */
+.umr-inline-problem {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  max-width: 260px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--destructive) / 0.4);
+  color: hsl(var(--destructive));
+  font-size: 0.72rem;
+  line-height: 1.1rem;
 }
 .umr-inline-delete {
   order: 2;

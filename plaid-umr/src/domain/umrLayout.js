@@ -128,7 +128,8 @@ export function placeRow(items, gap) {
  *   `columns` are the word columns' centers, `sizes` the measured node boxes
  *   (missing ones are estimated), `sentenceX` where an unanchored root goes.
  * @param {object} [options]
- * @returns {{ nodes: Map<nodeId, {x, y, width, height, row}>, edges: Array, height: number, rows: number, tree: object }}
+ * @returns {{ nodes: Map<nodeId, {x, y, width, height, row}>, edges: Array, height: number, left: number, right: number, rows: number, tree: object }}
+ *   `left` and `right` are the extent of what is drawn: `left` is 0 or less.
  */
 export function layoutSentence(sentence, nodesById, measures, options = {}) {
   const opt = { ...DEFAULT_OPTIONS, ...options };
@@ -254,16 +255,32 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
   });
   placeLabels(edges, nodes, opt);
 
-  // As tall as the rows, and as whatever dips below the last of them.
+  // As tall as the rows, and as whatever dips below the last of them. As wide
+  // as the boxes, and as whatever bows out past them: left of the graph is the
+  // margin, where the constants are, so the stage makes room for it.
   let bottom = top - opt.edgeRoom + opt.marginBottom;
+  let left = 0;
+  let right = 0;
+  nodes.forEach((p) => {
+    left = Math.min(left, p.x - p.width / 2);
+    right = Math.max(right, p.x + p.width / 2);
+  });
   edges.forEach((e) => {
     if (e.tree) return;
     bottom = Math.max(bottom, e.label.y + opt.pillHeight / 2 + 8);
-    for (let i = 0; i <= 12; i++) bottom = Math.max(bottom, pointOn(e.curve, i / 12)[1] + 8);
+    const half = opt.pillWidth(e.role) / 2;
+    left = Math.min(left, e.label.x - half);
+    right = Math.max(right, e.label.x + half);
+    for (let i = 0; i <= 12; i++) {
+      const [x, y] = pointOn(e.curve, i / 12);
+      bottom = Math.max(bottom, y + 8);
+      left = Math.min(left, x - 8);
+      right = Math.max(right, x + 8);
+    }
   });
   const height = rowCount ? bottom : opt.marginTop + opt.nodeHeight + opt.marginBottom;
 
-  return { nodes, edges, height, rows: rowCount, tree };
+  return { nodes, edges, height, left, right, rows: rowCount, tree };
 }
 
 // A tree edge that reaches sideways runs horizontally across its row gap. In

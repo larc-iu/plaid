@@ -381,4 +381,30 @@ test('deleteTriple and setTripleRelation touch only the document graph', async (
     calls.map((c) => c.name),
     ['operation', 'relations.update', 'operation', 'relations.delete'],
   );
+  const ends = `from ${doc.node(t.source).var} to ${doc.node(t.target).var}`;
+  assert.deepEqual(
+    calls.filter((c) => c.name === 'operation').map((c) => c.args[0]),
+    [`Relabel ${t.rel} ${ends} as :partial-affirmative`, `Delete :partial-affirmative ${ends}`],
+  );
+});
+
+// What the history lists: a concept change is not a rename, and a relation is
+// named by its two ends, since a role alone names one of many.
+test('an audit label says what changed, and a relation by both its ends', async () => {
+  const { doc, calls } = load();
+  const landslide = byVar(doc, 's1l');
+  const country = byVar(doc, 's1c');
+  const edge = landslide.out.find((e) => e.target === country.id);
+  const concept = country.concept;
+  assert.equal(await doc.setConcept(country.id, 'nation'), true);
+  assert.equal(await doc.setRole(edge.id, ':location'), true);
+  assert.equal(await doc.deleteEdge(edge.id, { subtree: false }), 0);
+  assert.deepEqual(
+    calls.filter((c) => c.name === 'operation').map((c) => c.args[0]),
+    [
+      `Change s1c from ${concept} to nation`,
+      `Relabel ${edge.role} from s1l to s1c as :location`,
+      'Delete :location from s1l to s1c',
+    ],
+  );
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
+import { LINE_FAMILIES, lineFamily } from './docLines.js';
 
 // The active node's document relations that reach ANOTHER sentence, drawn
 // across the blocks between them. A block draws what stays inside it; this
@@ -74,6 +75,7 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
         const s = up ? -1 : 1;
         links.push({
           id: t.id,
+          family: lineFamily(t, graph.nodesById),
           path: `M ${ra.x} ${y1} C ${ra.x} ${y1 + s * k}, ${rb.x} ${y2 - s * k}, ${rb.x} ${y2}`,
         });
         const far = t.source === activeId ? rb : ra;
@@ -110,18 +112,21 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
   return (
     <svg className="umr-cross-links" width={drawn.width} height={drawn.height} aria-hidden="true">
       <defs>
-        <marker
-          id="umr-arrow-cross"
-          viewBox="0 0 8 8"
-          refX="7"
-          refY="4"
-          markerWidth="5"
-          markerHeight="5"
-          orient="auto-start-reverse"
-          markerUnits="strokeWidth"
-        >
-          <path d="M 0 1 L 7 4 L 0 7 z" fill="var(--umr-doc)" />
-        </marker>
+        {Object.entries(LINE_FAMILIES).map(([family, color]) => (
+          <marker
+            key={family}
+            id={`umr-arrow-cross-${family}`}
+            viewBox="0 0 8 8"
+            refX="7"
+            refY="4"
+            markerWidth="5"
+            markerHeight="5"
+            orient="auto-start-reverse"
+            markerUnits="strokeWidth"
+          >
+            <path d="M 0 1 L 7 4 L 0 7 z" fill={color} />
+          </marker>
+        ))}
       </defs>
       {drawn.rings.map(([id, r]) => (
         <rect
@@ -140,7 +145,8 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
           d={l.path}
           className="umr-cross-link"
           data-triple-id={l.id}
-          markerEnd="url(#umr-arrow-cross)"
+          data-family={l.family}
+          markerEnd={`url(#umr-arrow-cross-${l.family})`}
         />
       ))}
     </svg>

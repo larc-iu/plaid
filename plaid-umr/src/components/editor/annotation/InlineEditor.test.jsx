@@ -55,6 +55,39 @@ describe('InlineEditor', () => {
     await r.unmount();
   });
 
+  // A refused value keeps the editor open with the reason under it, so what
+  // was typed is there to correct, and the corrected value commits.
+  it('stays open with the reason when the value is refused', async () => {
+    const onCommit = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value="s1l2"
+        onCommit={onCommit}
+        onCancel={() => {}}
+        check={(text) => (text === 's1p' ? 's1p is already in use.' : null)}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    const type = (text) =>
+      r.step(() => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        setter.call(input, text);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    await type('s1p');
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(r.container.querySelector('[role="alert"]').textContent).toBe('s1p is already in use.');
+    expect(input.value).toBe('s1p');
+    await type('s1lu');
+    expect(r.container.querySelector('[role="alert"]')).toBe(null);
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).toHaveBeenCalledWith('s1lu', null);
+    await r.unmount();
+  });
+
   it('cancels on Escape', async () => {
     const onCancel = vi.fn();
     const r = await renderComponent(

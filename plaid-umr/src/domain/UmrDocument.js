@@ -395,19 +395,33 @@ export class UmrDocument extends DocumentModel {
         });
         await this._client.spans.update(nodeId, concept);
       },
-      `Rename ${node.var} to ${concept}`,
+      `Change ${node.var} from ${node.concept} to ${concept}`,
     );
+  }
+
+  // `from s1e to s1l2`, for an audit label: the relation's two ends, since a
+  // role alone names one of many.
+  _ends({ source, target }) {
+    return `from ${this.node(source)?.var || source} to ${this.node(target)?.var || target}`;
+  }
+
+  /** Why `variable` cannot name the node, or null when it can. */
+  variableProblem(nodeId, variable) {
+    const node = this.node(nodeId);
+    if (!node || node.var === variable) return null;
+    if (!VARIABLE.test(variable)) {
+      return `${variable} is not a variable: s, the sentence number, letters, a number.`;
+    }
+    if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
+    return null;
   }
 
   async setVariable(nodeId, variable) {
     const node = this.node(nodeId);
     if (!node || node.var === variable) return false;
-    if (!VARIABLE.test(variable)) {
-      this.setError(`${variable} is not a variable: s, the sentence number, letters, a number.`);
-      return false;
-    }
-    if (this.takenVariables().has(variable)) {
-      this.setError(`${variable} is already in use.`);
+    const problem = this.variableProblem(nodeId, variable);
+    if (problem) {
+      this.setError(problem);
       return false;
     }
     return this._patchNodeMeta(nodeId, { var: variable }, `Rename ${node.var} to ${variable}`);
@@ -560,7 +574,7 @@ export class UmrDocument extends DocumentModel {
         });
         await this._client.relations.update(edgeId, role);
       },
-      `Relabel ${edge.role} as ${role}`,
+      `Relabel ${edge.role} ${this._ends(edge)} as ${role}`,
     );
   }
 
@@ -636,8 +650,8 @@ export class UmrDocument extends DocumentModel {
         });
       },
       doomed.length
-        ? `Delete ${edge.role} and ${doomed.length} node${doomed.length === 1 ? '' : 's'} under it`
-        : `Delete ${edge.role}`,
+        ? `Delete ${edge.role} ${this._ends(edge)} and ${doomed.length} node${doomed.length === 1 ? '' : 's'} under it`
+        : `Delete ${edge.role} ${this._ends(edge)}`,
     );
     return ok ? doomed.length : false;
   }
@@ -853,7 +867,7 @@ export class UmrDocument extends DocumentModel {
         });
         await this._client.relations.update(id, rel);
       },
-      `Relabel ${t.rel} as ${rel}`,
+      `Relabel ${t.rel} ${this._ends(t)} as ${rel}`,
     );
   }
 
@@ -870,7 +884,7 @@ export class UmrDocument extends DocumentModel {
           );
         });
       },
-      `Delete ${t.rel}`,
+      `Delete ${t.rel} ${this._ends(t)}`,
     );
   }
 

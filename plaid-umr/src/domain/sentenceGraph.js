@@ -345,9 +345,6 @@ export function alignmentOf(node, words) {
   return ranges;
 }
 
-// Which document-level group a relation belongs to, for a relation written
-// by a path that did not record it. `:contains` is in two groups, which is
-// why the import records the group rather than leaving it to this.
 /**
  * The tag a node wears for a document-level triple it takes part in: the
  * triple read in its OWN order with the node itself left out, so
@@ -362,6 +359,15 @@ export function alignmentOf(node, words) {
  */
 export const docTagText = (triple, selfId, otherVar) =>
   triple.source === selfId ? `${triple.rel} ${otherVar}` : `${otherVar} ${triple.rel}`;
+
+/**
+ * The modality nearly every event carries, `(author :full-affirmative x)`:
+ * the document-level triple that says least, grey on its tag and its line.
+ */
+export const isDefaultModality = (triple, nodesById) => {
+  const source = nodesById.get(triple.source);
+  return !!source?.constant && source.var === 'author' && triple.rel === ':full-affirmative';
+};
 
 /**
  * Every document-level tag a node wears, at whichever end of the triple it
@@ -400,13 +406,7 @@ export const docTagsOf = (node, nodesById) => {
         otherId,
         otherVar: other.var,
         cross: rank === 2,
-        // The modality nearly every event carries, `(author
-        // :full-affirmative x)`: the one tag that says least.
-        isDefault:
-          !!other.constant &&
-          other.var === 'author' &&
-          t.rel === ':full-affirmative' &&
-          t.target === node.id,
+        isDefault: isDefaultModality(t, nodesById),
       },
     });
   });
@@ -441,6 +441,9 @@ export const crossSentenceEdges = (graph) => {
   return out;
 };
 
+// Which document-level group a relation belongs to, for a relation written
+// by a path that did not record it. `:contains` is in two groups, which is
+// why the import records the group rather than leaving it to this.
 export const groupOf = (rel) => {
   if (/^:(same-entity|same-event|subset-of|subset)$/.test(rel)) return 'coref';
   if (/^:(before|after|contained|overlap|depends-on|contains)$/.test(rel)) return 'temporal';

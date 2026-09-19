@@ -148,7 +148,7 @@ The tag reads the triple in its own order, with a dot where the node itself stan
 The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
 `author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
 A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked on a focused node.
-Focusing or hovering a node draws its own relations: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
+Focusing or hovering a node draws its own relations, each in its tag's color: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
 Nothing is drawn for the others, so a long sentence stays readable.
 
 == Coreference
@@ -200,7 +200,7 @@ The menu lists every action with the key that does the same thing, and greys out
 * **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, then the word itself, then the abstract concepts, rolesets and discourse concepts.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
 * **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
-* **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document.
+* **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document. A name that is taken or malformed is refused with the reason under the box, which stays open to correct it.
 * **u** changes the anchor: click words to add or remove them, then **Done** in the sentence's header, or Escape.
 * **m** moves the node under another parent: click the new parent. Dragging an edge's label onto a node does the same.
 * **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.

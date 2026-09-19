@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { curvePath, layoutSentence, routeBetween } from '../../../domain/umrLayout.js';
+import { LINE_FAMILIES, lineFamily } from './docLines.js';
 import { keys } from '../../../lib/keymap.js';
 import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
@@ -188,18 +189,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   }, [sentence, nodesById, columns, sizes]);
 
   const measured = columns.size >= sentence.words.length && sentence.words.length > 0;
-  // A node wider than its word overhangs the first or last column. The stage
-  // is padded by the overhang, which moves the words and the graph together
-  // and so changes no measurement.
-  const { width, pad } = useMemo(() => {
-    let right = 0;
-    let left = 0;
-    layout.nodes.forEach((p) => {
-      right = Math.max(right, p.x + p.width / 2);
-      left = Math.min(left, p.x - p.width / 2);
-    });
-    return { width: Math.ceil(right + 16), pad: Math.ceil(-left) };
-  }, [layout]);
+  // A node wider than its word overhangs the first or last column, and a
+  // re-entrant edge can bow out past both. The stage is padded by the
+  // overhang, which moves the words and the graph together and so changes no
+  // measurement.
+  const width = Math.ceil(layout.right + 16);
+  const pad = Math.ceil(-layout.left);
 
   // A focused node that the last edit removed is no longer focused.
   useEffect(() => {
@@ -279,7 +274,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (!measured || !active) return [];
     const dx = MARGIN + pad;
     return lane.drawn
-      .map((t) => {
+      .map((triple) => {
+        const t = { ...triple, family: lineFamily(triple, nodesById) };
         if (t.kind === 'margin') {
           if (t.node.id !== active) return null;
           const p = layout.nodes.get(t.node.id);
@@ -327,7 +323,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         };
       })
       .filter(Boolean);
-  }, [lane, layout, measured, pad, active, scrollLeft]);
+  }, [lane, layout, measured, pad, active, scrollLeft, nodesById]);
 
   // The document triples of each node, as tags: the triple with the node's
   // own variable left out, `author :full-affirmative`, `:before s3b` on the
@@ -1171,14 +1167,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             aria-hidden="true"
           >
             <defs>
-              <Arrow id={`${arrows}-doc`} color="var(--umr-doc)" />
+              {Object.entries(LINE_FAMILIES).map(([family, color]) => (
+                <Arrow key={family} id={`${arrows}-doc-${family}`} color={color} />
+              ))}
             </defs>
             {docEdges.map((t) => (
               <path
                 key={t.id}
                 d={t.path}
                 className="umr-doc-edge"
-                markerEnd={`url(#${arrows}-doc)`}
+                data-family={t.family}
+                markerEnd={`url(#${arrows}-doc-${t.family})`}
               />
             ))}
           </svg>
@@ -1386,6 +1385,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                       : undefined
                 }
                 onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
+                check={
+                  editor.kind === 'variable'
+                    ? (text) => doc.variableProblem(editor.nodeId, text)
+                    : undefined
+                }
               />
             )}
           </div>

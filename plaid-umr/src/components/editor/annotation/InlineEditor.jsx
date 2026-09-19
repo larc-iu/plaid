@@ -11,6 +11,11 @@ import { textIncludes } from '@ui/domain/collation.js';
 // with focus and leaving it is leaving the edit. Escape cancels. A `done`
 // ref keeps the blur that follows an explicit Enter or Escape from firing a
 // second time.
+//
+// `check` says why a value cannot be taken, or nothing when it can. Enter or
+// Tab on a refused value leaves the editor open with the reason under it, so
+// what was typed is there to correct. A blur still commits, and the caller
+// refuses it.
 export function InlineEditor({
   x,
   y,
@@ -24,9 +29,11 @@ export function InlineEditor({
   onCancel,
   onDelete,
   onTyped,
+  check,
   className = '',
 }) {
   const [value, setValue] = useState(initial);
+  const [problem, setProblem] = useState(null);
   const [pristine, setPristine] = useState(true);
   // Whether the arrows have picked an option. A hovered option is highlighted
   // too, and the list opens wherever the pointer happens to rest (under the
@@ -52,6 +59,13 @@ export function InlineEditor({
       return;
     }
     onCommit(text, option);
+  };
+  // Whether `check` refuses the value, saying why when it does.
+  const refuse = (v) => {
+    const text = String(v ?? '').trim();
+    const why = text && check ? check(text) : null;
+    setProblem(why || null);
+    return !!why;
   };
   const filter = ({ options: all, search }) => {
     const q = String(search || '').trim();
@@ -100,6 +114,7 @@ export function InlineEditor({
         onChange={(v) => {
           setValue(v);
           setPristine(false);
+          setProblem(null);
           onTyped?.(v);
         }}
         onFocus={(e) => {
@@ -117,6 +132,7 @@ export function InlineEditor({
             e.preventDefault();
             const trusted = !pristine || navigatedRef.current;
             const picked = trusted ? combo.activeValue : null;
+            if (refuse(picked != null ? picked : value)) return;
             once(() =>
               commit(picked != null ? picked : value, picked != null ? combo.activeOption : null),
             );
@@ -131,7 +147,9 @@ export function InlineEditor({
           } else if (e.key === 'Tab') {
             e.preventDefault();
             const trusted = !pristine || navigatedRef.current;
-            once(() => commit((trusted ? combo.activeValue : null) ?? value));
+            const v = (trusted ? combo.activeValue : null) ?? value;
+            if (refuse(v)) return;
+            once(() => commit(v));
           }
         }}
         filter={filter}
@@ -140,6 +158,11 @@ export function InlineEditor({
         className="umr-inline-input"
         optionClassName="px-2 py-0.5 text-xs"
       />
+      {problem && (
+        <p className="umr-inline-problem" role="alert">
+          {problem}
+        </p>
+      )}
     </div>
   );
 }

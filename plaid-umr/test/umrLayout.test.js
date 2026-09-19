@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { placeRow, layoutSentence, DEFAULT_OPTIONS } from '../src/domain/umrLayout.js';
+import { placeRow, layoutSentence, pointOn, DEFAULT_OPTIONS } from '../src/domain/umrLayout.js';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
@@ -161,6 +161,37 @@ test('a child under its parent drops straight down', () => {
   const eat = layout.nodes.get('n3');
   const xs = [...e2.path.matchAll(/[ML] ([\d.-]+) /g)].map((m) => Number(m[1]));
   assert.deepEqual(xs, [eat.x, eat.x]);
+});
+
+// Lunch with person moved after :purpose: eat-01 now holds person as its tree
+// child, two rows down, and leave-02's :ARG0 is the re-entrant edge. Its
+// curve bows out to the left of the graph, where the margin's constants are,
+// so the layout's extent reaches that far and the stage is padded by it.
+test('the extent holds a re-entrant edge that bows out left of the graph', () => {
+  const { sentence, nodesById } = sentenceFixture();
+  const [e1, e2, e3] = sentence.edges;
+  e1.order = 1;
+  e2.order = 0;
+  nodesById.get('n2').wordIds = ['w1'];
+  const columns = new Map([
+    ['w1', { x: 40 }],
+    ['w2', { x: 120 }],
+    ['w3', { x: 200 }],
+  ]);
+  const sizes = new Map([
+    ['n1', { width: 240, height: 90 }],
+    ['n2', { width: 80, height: 30 }],
+    ['n3', { width: 200, height: 70 }],
+  ]);
+  const layout = layoutSentence(sentence, nodesById, { columns, sizes, sentenceX: 40 });
+  const edge = layout.edges.find((e) => e.id === e1.id);
+  assert.equal(edge.tree, false);
+  assert.equal(layout.edges.find((e) => e.id === e3.id).tree, true);
+  const xs = Array.from({ length: 25 }, (_, i) => pointOn(edge.curve, i / 24)[0]);
+  const boxLeft = Math.min(...[...layout.nodes.values()].map((p) => p.x - p.width / 2));
+  assert.ok(Math.min(...xs) < Math.min(0, boxLeft), 'the curve bows out past the boxes');
+  assert.ok(Math.min(...xs) >= layout.left);
+  assert.ok(Math.max(...xs) <= layout.right);
 });
 
 // Across every sentence of the seven released corpora, with estimated sizes:
