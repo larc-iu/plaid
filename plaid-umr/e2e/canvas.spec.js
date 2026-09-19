@@ -16,6 +16,9 @@ test.describe('canvas', () => {
     // Positions come from a measuring pass; once placed, the labels appear.
     await expect(firstBlock.locator('.umr-edge-label').first()).toBeVisible();
 
+    // A writer sees the drafting service's button beside History.
+    await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
+
     const blocks = await page.locator('.umr-block').count();
     expect(blocks).toBeGreaterThan(1);
     const words = await firstBlock.locator('.umr-word').count();
