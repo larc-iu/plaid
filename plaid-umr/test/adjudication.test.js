@@ -91,6 +91,22 @@ test('marking variables cuts whole tokens only', () => {
   );
   assert.equal(segs.map((s) => s.text).join(''), text);
   assert.deepEqual(markVariables(text, new Map()), [{ text, mark: null }]);
+  // A variable made from a concept in another script is one too.
+  const cyrillic = '(s1д / дом-01 :ARG0 (s2ł / łódź))';
+  const marked = markVariables(
+    cyrillic,
+    new Map([
+      ['s1д', 'differs'],
+      ['s2ł', 'missing'],
+    ]),
+  );
+  assert.deepEqual(
+    marked.filter((x) => x.mark).map((x) => [x.text, x.mark]),
+    [
+      ['s1д', 'differs'],
+      ['s2ł', 'missing'],
+    ],
+  );
   assert.deepEqual(markVariables('', new Map([['s1p', 'missing']])), []);
 });
 

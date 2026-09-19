@@ -283,7 +283,7 @@ export const DocumentEditorShell = () => {
       </div>
 
       {writeLock.held && (
-        <div className="px-6">
+        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
           <RunBanner {...writeLock.held} />
         </div>
       )}
@@ -291,7 +291,7 @@ export const DocumentEditorShell = () => {
       {loading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
 
       {!loading && (loadError || !doc || !project) && (
-        <div className="px-6">
+        <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
           <div
             role="alert"
             className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"

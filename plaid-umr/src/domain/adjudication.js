@@ -84,12 +84,13 @@ export const sentenceMarks = (row) => {
 // A PENMAN text cut into segments, the variables `marks` names carrying their
 // mark: what the tab paints on each side so a disagreement stands out. A
 // variable is matched as a whole token, so `s1p` never marks the inside of
-// `s1p2`.
+// `s1p2`. In any script: a variable takes its letter from its concept, so
+// `s1д` and `s2ł` are variables too.
 export const markVariables = (text, marks) => {
   if (!text) return [];
   if (!marks?.size) return [{ text, mark: null }];
   const out = [];
-  const re = /[A-Za-z][A-Za-z0-9]*/g;
+  const re = /\p{L}[\p{L}\p{N}]*/gu;
   let last = 0;
   let m;
   while ((m = re.exec(text))) {

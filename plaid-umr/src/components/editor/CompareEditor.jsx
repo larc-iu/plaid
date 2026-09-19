@@ -90,7 +90,7 @@ export const CompareEditor = () => {
   const rows = useMemo(() => (report ? scoreRows(report) : []), [report]);
 
   return (
-    <div className="flex flex-col gap-6 px-6 pb-8">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold tracking-tight">Compare</h3>
