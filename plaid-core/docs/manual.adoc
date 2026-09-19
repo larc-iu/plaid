@@ -1474,6 +1474,19 @@ It is worth running this same reconciliation not only when a document is first o
 Opening the document is the baseline; reconciling on a live update is the very same idea, applied at the moment the substrate comes back into view.
 ====
 
+== References in Metadata
+
+An app sometimes needs to point from one of its rows to another row of the same document, in a way no relation can express.
+Plaid UMR, for example, records on each node without a word anchor the id of the sentence token it belongs to, so that it can tell such a node apart from one another app's edit has moved.
+Metadata is the place for this, and Plaid keeps such a reference pointing at the same row wherever the rows themselves are recreated:
+
+* **Restoring** a document to an earlier time re-inserts rows under their old ids, so a reference to a restored row finds it again.
+* **Copying** a document gives every row a fresh id, and any metadata value that is exactly the id of a row being copied (a text, token, span, relation or vocabulary link, or the document itself) becomes the copy's id for that row. Nested maps and arrays are followed. Map keys, strings that merely contain an id, and ids of things outside the document (layers, vocabulary entries) are left as they are.
+* **Plaid IGT's archive** does the same when it imports a project, for every app's rows, including references to other documents of the archive.
+
+The rule is exact equality with a whole string value, so a reference should be stored as the bare id.
+A reference from one document into another document's tokens or spans is not rewritten by any of these, and an app should not rely on one.
+
 = Querying
 
 Plaid offers a rich query system for powering searches across one or even multiple projects.
