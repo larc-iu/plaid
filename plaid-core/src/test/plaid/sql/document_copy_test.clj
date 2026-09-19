@@ -187,10 +187,11 @@
       (is (= (live new-id)
              (comparable (hread/get-with-layer-data-at db new-id (latest-op-ts))))))
 
-    (testing "the copy is one operation of its own type"
-      (is (= "document/copy"
-             (:op_type (psc/q1 db {:select [:op_type] :from [:operations]
-                                   :order-by [[:ts :desc]] :limit 1})))))))
+    (testing "the copy is one operation of its own type, named by the documents' names"
+      (let [op (psc/q1 db {:select [:op_type :description] :from [:operations]
+                           :order-by [[:ts :desc]] :limit 1})]
+        (is (= "document/copy" (:op_type op)))
+        (is (= "Copy \"Doc\" as \"Doc, copy\"" (:description op)))))))
 
 (deftest the-copy-is-editable-without-touching-the-source
   (let [{:keys [doc-id words]} (build-scenario!)

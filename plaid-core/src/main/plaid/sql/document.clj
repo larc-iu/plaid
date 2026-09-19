@@ -699,12 +699,16 @@
   ([db src-id new-name user-id {:keys [include-media?] :or {include-media? true}}]
    (let [new-id (psc/new-uuid)
          now (psc/now-iso)
+         ;; The history names the source as a reader knows it, by its name.
+         ;; A missing source fails inside the operation, before anything is
+         ;; written under this description.
+         src-name (or (:name (psc/fetch-by-id db :documents src-id)) src-id)
          result
          (submit-operation! [tx db {:type :document/copy
                                     :project (project-id db src-id)
                                     :document new-id
-                                    :description (str "Copy document " src-id
-                                                      " as \"" new-name "\"")
+                                    :description (str "Copy \"" src-name
+                                                      "\" as \"" new-name "\"")
                                     :user user-id
                                     ;; The body INSERTs at version=1, as
                                     ;; `create` does; skip the post-body bump so
