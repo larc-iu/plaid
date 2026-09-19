@@ -26,7 +26,7 @@ const PICKED = [
 // Keys: arrows move between values and lines, Enter or Space picks the
 // focused one, Backspace clears the focused row, Escape closes. Focus leaving
 // the picker closes it too.
-export function AttributePopover({ x, y, width = 440, attrs, sets, onChange, onClose }) {
+export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onClose }) {
   const rootRef = useRef(null);
   const byRel = useMemo(() => new Map(attrs.map((a) => [a.rel, a])), [attrs]);
   const rows = useMemo(
