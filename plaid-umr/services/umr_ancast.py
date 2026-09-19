@@ -41,6 +41,7 @@ import contextlib
 import datetime
 import importlib.metadata
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -869,10 +870,15 @@ def build_notice(report, scored: int, skipped: int):
         return {'level': 'warning', 'title': 'Nothing scored',
                 'message': f'AnCast could not read a graph in any of the '
                            f'{skipped} sentence{s(skipped)}.'}
-    # In whole percents, as the Compare tab prints them.
-    parts = [f"Sentence graphs {round(scores['sentence'] * 100)}%"]
+    # In whole percents, rounded as the Compare tab rounds them (JavaScript's
+    # Math.round, half up). Python's round() takes a half to the even side,
+    # so 0.825 would read 82% here and 83% on the tab.
+    def pct(x):
+        return f'{math.floor(x * 100 + 0.5)}%'
+
+    parts = [f"Sentence graphs {pct(scores['sentence'])}"]
     if scores['comprehensive'] is not None:
-        parts.append(f"comprehensive {round(scores['comprehensive'] * 100)}%")
+        parts.append(f"comprehensive {pct(scores['comprehensive'])}")
     tail = f'Scored {scored} sentence{s(scored)}.'
     if skipped:
         tail += f' AnCast could not read {skipped} sentence{s(skipped)}.'

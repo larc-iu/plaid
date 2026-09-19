@@ -488,7 +488,10 @@ test.describe('editing', () => {
       await expect(page.locator('.umr-cross-ring')).toHaveCount(1);
 
       // Only the block holding focus shows a focused node: a node focused
-      // earlier in another block does not stay lit.
+      // earlier in another block does not stay lit, even when a click on
+      // nothing (the sentence's text) came in between.
+      await two.locator('.umr-block-text').click();
+      await expect(byVar('s2c')).toHaveClass(/umr-node--focused/);
       await byVar('s1m').click();
       await expect(page.locator('.umr-node--focused')).toHaveCount(1);
       await expect(byVar('s1m')).toHaveClass(/umr-node--focused/);

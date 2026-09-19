@@ -136,6 +136,20 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // shows as focused, with its lines, only while focus is here: otherwise
   // every block the annotator had clicked into kept a focused node lit.
   const [focusWithin, setFocusWithin] = useState(false);
+  const sectionRef = useRef(null);
+  // A blur to nothing keeps the block's focus (see onBlur below), so the
+  // block that next takes focus has to be the one to end it: focus arriving
+  // in ANOTHER block clears this one's. A portaled editor of this block's is
+  // in no block and leaves it alone.
+  useEffect(() => {
+    if (!focusWithin) return undefined;
+    const onFocusIn = (e) => {
+      const block = e.target?.closest?.('.umr-block');
+      if (block && block !== sectionRef.current) setFocusWithin(false);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, [focusWithin]);
   // The node menu: which node it is about and where it was asked for, in
   // graph coordinates.
   const [menu, setMenu] = useState(null);
@@ -153,6 +167,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
+  // Whether the last press on the graph began on empty space.
+  const pressedEmptyRef = useRef(false);
   // Writes from gestures run one after another: the document refuses a write
   // while one is in flight, and three quick clicks in anchor mode are three
   // writes, not one and two lost.
@@ -405,9 +421,19 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   };
   // Closing an editor hands focus straight back to the node, before any
   // write is awaited: the next key may come sooner than the server does.
+  //
+  // Unless focus has already gone somewhere: an editor closed by a click on
+  // another node, in this sentence or another, must not pull focus back
+  // from it. An editor that simply went (Enter, Escape, a click on empty
+  // canvas) leaves focus on nothing.
   const closeEditor = () => {
     setEditor(null);
-    if (focusedId) setTimeout(() => nodeRefs.current.get(focusedId)?.focus(), 0);
+    if (!focusedId) return;
+    setTimeout(() => {
+      const now = document.activeElement;
+      if (now && now !== document.body) return;
+      nodeRefs.current.get(focusedId)?.focus();
+    }, 0);
   };
 
   // The role for an edge about to exist (`sourceId` and `targetId`, or a
@@ -445,8 +471,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       return;
     }
     if (ed.kind === 'docList') {
-      const tag = (docTagsByNode.get(ed.nodeId) || []).find(
-        (t) => t.id === option?.tripleId || t.text === text,
+      // By the option's triple when one was picked: two tags can read alike.
+      const tag = (docTagsByNode.get(ed.nodeId) || []).find((t) =>
+        option?.tripleId ? t.id === option.tripleId : t.text === text,
       );
       setEditor(null);
       if (tag) {
@@ -590,8 +617,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       else if (e.key === 'ArrowDown') focusNode(treeChildren(id)[0]);
       else if (e.key === 'ArrowLeft') focusNode(rowNeighbor(id, direction === 'rtl' ? 1 : -1));
       else if (e.key === 'ArrowRight') focusNode(rowNeighbor(id, direction === 'rtl' ? -1 : 1));
-      else if (e.key === 'Tab') askNewNode(id, [], positionBelow(id));
-      else if (e.key === 'Enter') await runAction('node.concept', id);
+      else if (e.key === 'Tab') {
+        // A child by typing instead: whatever mode was waiting is over,
+        // child mode included, or its next click would act a second time.
+        setMode(null);
+        askNewNode(id, [], positionBelow(id));
+      } else if (e.key === 'Enter') await runAction('node.concept', id);
       return;
     }
     const action = keys.which(ACTIONS, e);
@@ -762,7 +793,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // is almost never the concept, and the frame file's senses of the word are
   // the first thing the picker offers. Enter takes the word as typed.
   const doubleClickWord = (wordId) => {
-    if (readOnly || mode) return;
+    // Not over an open editor: the first click of the pair may be what
+    // opened it (a word in child mode), and this would throw it away.
+    if (readOnly || mode || editor) return;
     const word = sentence.words.find((w) => w.id === wordId);
     if (!word) return;
     const col = columns.get(wordId);
@@ -967,6 +1000,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   return (
     <section
+      ref={sectionRef}
       className={`umr-block${mode ? ` umr-block--mode-${mode.kind}` : ''}`}
       aria-label={`Sentence ${sentence.index}`}
       data-sentence-index={sentence.index}
@@ -1140,9 +1174,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             ref={canvasRef}
             style={{ height: `${layout.height}px`, minWidth: `${width}px` }}
             // Empty space in child mode: a child with no word, where the
-            // click was.
+            // click was. Only when the press began on empty space too: a drag
+            // from a grip or a label ends in a click on this, the common
+            // ancestor of where it began and ended.
+            onPointerDown={(e) => {
+              pressedEmptyRef.current = !e.target.closest?.(
+                '[data-node-id], .umr-edge-label, .umr-inline-editor',
+              );
+            }}
             onClick={(e) => {
-              if (mode?.kind !== 'child' || e.target.closest?.('[data-node-id]')) return;
+              if (mode?.kind !== 'child' || !pressedEmptyRef.current) return;
+              if (e.target.closest?.('[data-node-id]')) return;
               const parentId = mode.nodeId;
               setMode(null);
               const p = graphPoint(e.clientX, e.clientY);

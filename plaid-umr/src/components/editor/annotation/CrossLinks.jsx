@@ -36,11 +36,18 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
       // its tree edge arrives and two heads there read as one. Held inside
       // the block's visible width, because a wide sentence scrolls sideways
       // and the line should end where the reader can see.
+      //
+      // Null for a node not laid out at all: a block in text mode hides its
+      // canvas, and a hidden node measures as a zero box at the corner.
       const rectOf = (el) => {
+        if (!el.getClientRects().length) return null;
         const r = el.getBoundingClientRect();
         const c = el.closest('.umr-canvas')?.getBoundingClientRect() || r;
-        const mid = Math.min(Math.max(r.left + r.width * 0.75, c.left + 8), c.right - 8);
+        const at = r.left + r.width * 0.75;
+        const mid = Math.min(Math.max(at, c.left + 8), c.right - 8);
         return {
+          // Whether the node itself is in view, and so worth a ring.
+          seen: at >= c.left && at <= c.right,
           x: mid - box.left,
           top: r.top - box.top,
           bottom: r.bottom - box.top,
@@ -57,6 +64,7 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
         if (!a || !b) return;
         const ra = rectOf(a);
         const rb = rectOf(b);
+        if (!ra || !rb) return;
         // Leave the source on the side facing the target and arrive on the
         // side facing the source.
         const up = rb.top < ra.top;
@@ -69,7 +77,7 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
           path: `M ${ra.x} ${y1} C ${ra.x} ${y1 + s * k}, ${rb.x} ${y2 - s * k}, ${rb.x} ${y2}`,
         });
         const far = t.source === activeId ? rb : ra;
-        rings.set(t.otherId, far);
+        if (far.seen) rings.set(t.otherId, far);
       });
       setDrawn({
         width: list.scrollWidth,

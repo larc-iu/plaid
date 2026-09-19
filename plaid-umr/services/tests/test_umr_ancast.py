@@ -426,6 +426,16 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert service.client.operations == ['AnCast adjudication against Bo']
 
 
+def test_the_notice_rounds_a_half_up_as_the_tab_does():
+    """The tab prints `Math.round(x * 100)`, half up. Python's round() takes a
+    half to the even side, which would print 82% for 0.825 where the tab
+    prints 83%."""
+    report = {'against': {'name': 'Bo'},
+              'scores': {'sentence': 0.825, 'comprehensive': 0.125}}
+    notice = umr.build_notice(report, scored=1, skipped=0)
+    assert notice['title'] == 'Sentence graphs 83%, comprehensive 13% against Bo'
+
+
 def test_two_identical_annotations_score_one_and_the_notice_says_so():
     service = _service([_document(DOC, name='Ann', **_barking()),
                         _document(OTHER, name='Bo', **_barking())])
