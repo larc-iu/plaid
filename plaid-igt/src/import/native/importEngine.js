@@ -13,6 +13,10 @@
 // once per project after setup, and filled per document once this app's own
 // tokens and annotations exist.
 //
+// A metadata value that is exactly the archive id of a token, span, relation
+// or document the archive carries is a reference to it, and is rewritten to
+// the new id (./references.js).
+//
 // Resumability (same scheme as FLEx): a document is marked done
 // (metadata.nativeImported) only after every write succeeded; on resume, done
 // documents are skipped and half-imported ones are deleted and redone. Vocab
@@ -20,7 +24,7 @@
 // at creation — it doubles as provenance back to the source archive).
 
 import { documentProgress } from '../progress.js';
-import { ImportCancelled, importStamp, priorImports } from '../resume.js';
+import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../bulk.js';
 import { attributedBody } from './commentAttribution.js';
 import {
@@ -29,6 +33,12 @@ import {
   noOtherLayers,
   restoreOtherLayers,
 } from './otherLayers.js';
+import {
+  archivedIds,
+  documentReferences,
+  relinkDocumentReferences,
+  rewriteReferences,
+} from './references.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -368,6 +378,9 @@ async function importNativeDocument({
   // Optional: archive document id -> {docId, tokenIdMap}, filled in for the
   // runner, which relinks the vocabularies' examples once every document is in.
   docMaps = null,
+  // Archive document id -> the project's document, for every document that is
+  // finished: what a reference to a document resolves through.
+  docIdMap = new Map(),
 }) {
   const progress = documentProgress({
     onProgress,
@@ -384,7 +397,10 @@ async function importNativeDocument({
   const newDoc = await client.documents.create(
     projectId,
     docData.name,
-    importStamp(docData.metadata, docData.id),
+    importStamp(
+      rewriteReferences(docData.metadata, (id) => docIdMap.get(id)),
+      docData.id,
+    ),
   );
   const docId = newDoc.id ?? newDoc;
 
@@ -395,21 +411,30 @@ async function importNativeDocument({
   const relationIdMap = new Map(); // archive relation id → new relation id
   const tokenLayerOf = new Map(); // new token id → the token layer it is in
   let baselineTextId = null; // for comments anchored to the text itself
+  // References in metadata, resolved through everything made so far. This
+  // document's own id is known from here on.
+  const lookup = (id) =>
+    tokenIdMap.get(id) ??
+    spanIdMap.get(id) ??
+    relationIdMap.get(id) ??
+    (id === docData.id ? docId : docIdMap.get(id));
+  const refs = documentReferences({ client, lookup, ahead: archivedIds(docData), check });
 
   if (body.length > 0) {
     progress('Creating text');
-    const text = await client.texts.create(
-      targets.textLayerId,
-      docId,
-      body,
-      docData.baseline?.metadata || {},
-    );
+    const textMetadata = refs.prepare(docData.baseline?.metadata || {});
+    const text = await client.texts.create(targets.textLayerId, docId, body, textMetadata.metadata);
     const textId = text.id ?? text;
     baselineTextId = textId;
+    if (textMetadata.later) refs.remember('text', textId, textMetadata.metadata);
 
     const bulkTokens = async (specs, oldIds) => {
       if (!specs.length) return;
-      const { ids } = await client.tokens.bulkCreate(specs);
+      const ids = await refs.create(
+        'token',
+        specs,
+        async (sent) => (await client.tokens.bulkCreate(sent))?.ids,
+      );
       oldIds.forEach((oldId, i) => {
         if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
       });
@@ -643,8 +668,10 @@ async function importNativeDocument({
       for (let i = 0; i < specs.length; i += CHUNK) {
         check();
         const chunk = specs.slice(i, i + CHUNK);
-        const { ids } = await client.spans.bulkCreate(
+        const ids = await refs.create(
+          'span',
           chunk.map(({ archiveId: _archiveId, ...spec }) => spec),
+          async (sent) => (await client.spans.bulkCreate(sent))?.ids,
         );
         chunk.forEach((spec, j) => {
           if (spec.archiveId != null && ids?.[j]) spanIdMap.set(spec.archiveId, ids[j]);
@@ -666,6 +693,7 @@ async function importNativeDocument({
         tokenIdMap,
         spanIdMap,
         relationIdMap,
+        refs,
         warnings,
         check,
       });
@@ -702,10 +730,12 @@ async function importNativeDocument({
     linkSpecs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
     for (let i = 0; i < linkSpecs.length; i += CHUNK) {
       check();
-      await client.vocabLinks.bulkCreate(
+      await refs.create(
+        'link',
         linkSpecs
           .slice(i, i + CHUNK)
           .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
+        async (sent) => (await client.vocabLinks.bulkCreate(sent))?.ids,
       );
     }
   } else if (hasOtherTokens(docData)) {
@@ -713,6 +743,10 @@ async function importNativeDocument({
     // none.
     warnings.push(`"${docData.name}": tokens from another app skipped (the document has no text)`);
   }
+
+  // What names something this document made after it, now that all of it
+  // exists. Before the done marker, so an interrupted import redoes it too.
+  await refs.settle();
 
   // Comments, BEFORE the done marker so an interrupted import redoes them
   // along with everything else rather than leaving a document half-commented.
@@ -764,8 +798,15 @@ async function importNativeDocument({
   // media upload failed, deliberately leave the document UNMARKED so a re-import
   // deletes-and-redoes it (recovering the media) instead of silently marking it
   // done and losing the media forever.
+  //
+  // The metadata goes again whole, now that what it names in the document
+  // itself exists. From here on another document's reference to it resolves.
   if (!mediaFailed) {
-    await client.documents.setMetadata(docId, importStamp(docData.metadata, docData.id, true));
+    await client.documents.setMetadata(
+      docId,
+      importStamp(rewriteReferences(docData.metadata, lookup), docData.id, true),
+    );
+    if (docData.id != null) docIdMap.set(docData.id, docId);
   }
   return docId;
 }
@@ -909,6 +950,13 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     }
   }
   const results = { imported: 0, skipped: 0, redone: 0 };
+  // The documents a reference can already be resolved to: those an earlier
+  // run finished. Each one this run finishes joins them.
+  const docIdMap = new Map();
+  for (const doc of archive.documents) {
+    const existing = prior.find(doc.data?.id);
+    if (existing && prior.done(existing)) docIdMap.set(doc.data.id, existing.id);
+  }
   for (let i = 0; i < archive.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
     const doc = archive.documents[i];
@@ -944,6 +992,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       docData: doc.data,
       itemIdMap,
       docMaps,
+      docIdMap,
       mediaBytes: doc.mediaBytes,
       mediaName: doc.mediaFile ? doc.mediaFile.split('/').at(-1) : null,
       index: i,
@@ -954,6 +1003,18 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     });
     results.imported += 1;
   }
+  // What names a document made after the one naming it, now that every
+  // document is in. Idempotent, so a resume redoes it harmlessly.
+  await relinkDocumentReferences({
+    client,
+    documents: archive.documents.map((d) => d.data),
+    docIdMap,
+    stampKeys: new Set(IMPORT_STAMP_KEYS),
+    check: () => {
+      if (shouldStop?.()) throw new ImportCancelled();
+    },
+  });
+
   // Last: the structure a vocabulary keeps in item metadata (parents, Entry
   // fields, examples) names ids from the archive, so it is
   // rewritten through the maps now that every item, document and token
@@ -965,6 +1026,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       vocabData: vocab.data,
       itemIdMap,
       docMaps,
+      docIdMap,
       warnings,
       shouldStop,
     });
@@ -1021,8 +1083,13 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
  * Entry-typed field, and the `examples` list's {document, token} pairs.
  * A reference to something that did not survive is dropped, and said.
  */
-export function planVocabRelink(vocabData, itemIdMap, docMaps) {
+export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) {
   const refFields = (vocabData.fields || []).filter((f) => f.type === 'item');
+  // Any other value naming an entry or a document by its archive id is a
+  // reference too (./references.js). The import's own stamp names the archive
+  // entry on purpose, and is written afresh below anyway.
+  const lookup = (id) => itemIdMap.get(id) ?? docIdMap?.get(id);
+  const stamp = new Set([ITEM_SOURCE_KEY]);
   const out = [];
   const dropped = [];
   for (const it of vocabData.items || []) {
@@ -1067,6 +1134,11 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps) {
       else delete next.examples;
       changed = true;
     }
+    const rewritten = rewriteReferences(next, lookup, stamp);
+    if (rewritten !== next) {
+      next = rewritten;
+      changed = true;
+    }
     // The write below replaces the whole map, and `meta` is the ARCHIVE's copy,
     // which carries no stamp of this run (and may carry the stale one of the
     // run that produced the archive). Restamping here is what lets a resume
@@ -1081,10 +1153,11 @@ async function relinkVocabStructure({
   vocabData,
   itemIdMap,
   docMaps,
+  docIdMap,
   warnings,
   shouldStop,
 }) {
-  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps);
+  const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap);
   for (let i = 0; i < patches.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = patches.slice(i, i + CHUNK);

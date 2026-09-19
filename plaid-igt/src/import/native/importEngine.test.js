@@ -110,6 +110,7 @@ function stubClient({
   tokenLayerShapes = {},
 } = {}) {
   const calls = [];
+  const written = new Map();
   let batch = null;
   let nextId = 0;
   const fresh = (prefix) => `${prefix}-${nextId++}`;
@@ -152,6 +153,7 @@ function stubClient({
     relations: {
       bulkCreate: async (specs) =>
         record('relations.bulkCreate', [specs], { ids: specs.map(() => fresh('rel')) }),
+      bulkUpdate: async (rows) => record('relations.bulkUpdate', [rows], { count: rows.length }),
     },
     guidelines: {
       create: async (...a) => record('guidelines.create', a, { id: fresh('gl') }),
@@ -188,29 +190,41 @@ function stubClient({
         batch = null;
       }
     },
+    // Documents this import made keep the metadata written to them, so a read
+    // answers what the server would.
     documents: {
-      create: async (projectId, name, metadata) =>
-        record('documents.create', [projectId, name, metadata], { id: fresh('doc') }),
+      create: async (projectId, name, metadata) => {
+        const made = record('documents.create', [projectId, name, metadata], { id: fresh('doc') });
+        written.set(made.id, { id: made.id, name, metadata });
+        return made;
+      },
       get: async (id) =>
         record(
           'documents.get',
           [id],
-          existingDocs.find((d) => d.id === id) ?? { id, metadata: {} },
+          existingDocs.find((d) => d.id === id) ?? written.get(id) ?? { id, metadata: {} },
         ),
       delete: async (id) => record('documents.delete', [id]),
-      setMetadata: async (...a) => record('documents.setMetadata', a),
+      setMetadata: async (id, metadata) => {
+        if (written.has(id)) written.get(id).metadata = metadata;
+        return record('documents.setMetadata', [id, metadata]);
+      },
+      patchMetadata: async (...a) => record('documents.patchMetadata', a),
       uploadMedia: async (id, file) => record('documents.uploadMedia', [id, file?.name]),
     },
     texts: {
       create: async (...a) => record('texts.create', a, { id: fresh('text') }),
+      patchMetadata: async (...a) => record('texts.patchMetadata', a),
     },
     tokens: {
       bulkCreate: async (specs) =>
         record('tokens.bulkCreate', [specs], { ids: specs.map(() => fresh('tok')) }),
+      bulkUpdate: async (rows) => record('tokens.bulkUpdate', [rows], { count: rows.length }),
     },
     spans: {
       bulkCreate: async (specs) =>
         record('spans.bulkCreate', [specs], { ids: specs.map(() => fresh('span')) }),
+      bulkUpdate: async (rows) => record('spans.bulkUpdate', [rows], { count: rows.length }),
     },
     comments: {
       create: (entityType, entityId, body) => {
@@ -1322,5 +1336,274 @@ describe('importOtherLayerData', () => {
     expect(callsOf(client, 'tokens.bulkCreate')).toEqual([]);
     expect(callsOf(client, 'spans.bulkCreate')).toEqual([]);
     expect(callsOf(client, 'relations.bulkCreate')).toEqual([]);
+  });
+});
+
+describe('runNativeImport, references in metadata', () => {
+  // The loss-trap document: sentence s1, words w1 w2 (w3 an orphan), morphemes
+  // m1 m2 m3, annotations sp1 to sp6. A value naming one of them by its
+  // archive id has to name what the import made of it.
+  // The id a bulk create answered for the first spec `pick` accepts.
+  const madeFor = (client, name, pick) => {
+    const call = callsOf(client, name).find(([, specs]) => specs.some(pick));
+    return call?.result?.ids?.[call[1].findIndex(pick)];
+  };
+  const sentenceId = (client) =>
+    madeFor(client, 'tokens.bulkCreate', (spec) => spec.tokenLayerId === 'new-sl');
+  const spanId = (client, value) => madeFor(client, 'spans.bulkCreate', (sp) => sp.value === value);
+  const wordIds = (client) =>
+    callsOf(client, 'tokens.bulkCreate').find(([, specs]) => specs[0].tokenLayerId === 'new-wl')
+      .result.ids;
+  const morphemeIds = (client) =>
+    callsOf(client, 'tokens.bulkCreate').find(([, specs]) => specs[0].tokenLayerId === 'new-ml')
+      .result.ids;
+
+  async function importWith(edit, overrides = {}) {
+    const archive = buildArchive();
+    edit(archive);
+    const client = stubClient(overrides);
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    return { client, result, archive };
+  }
+
+  it('patches nothing when nothing names anything', async () => {
+    const { client } = await importWith(() => {});
+    for (const name of [
+      'tokens.bulkUpdate',
+      'spans.bulkUpdate',
+      'relations.bulkUpdate',
+      'texts.patchMetadata',
+      'documents.patchMetadata',
+    ]) {
+      expect(callsOf(client, name)).toEqual([]);
+    }
+  });
+
+  it('writes a reference to what already exists as the new id, straight away', async () => {
+    // An annotation naming the sentence it belongs to: sentences are made first.
+    const { client } = await importWith((archive) => {
+      const pos = archive.documents[0].data.sentences[0].words[0].fields.POS;
+      pos.metadata = { ...pos.metadata, other: { sentence: 's1', path: [['s1']] } };
+    });
+    const pos = callsOf(client, 'spans.bulkCreate')
+      .flatMap(([, specs]) => specs)
+      .find((sp) => sp.value === 'NOUN');
+    const s1 = sentenceId(client);
+    expect(s1).toMatch(/^tok-/);
+    expect(pos.metadata).toEqual({
+      prov: 'inferred',
+      provConfirmed: true,
+      other: { sentence: s1, path: [[s1]] },
+    });
+    expect(callsOf(client, 'spans.bulkUpdate')).toEqual([]);
+  });
+
+  it('patches a reference to what is made later, before the document is done', async () => {
+    // A sentence naming one of its annotations, made after every token.
+    const { client } = await importWith((archive) => {
+      archive.documents[0].data.sentences[0].metadata = { speaker: 'A', gloss: 'sp4' };
+    });
+    const [sentence] = callsOf(client, 'tokens.bulkCreate').find(
+      ([, specs]) => specs[0].tokenLayerId === 'new-sl',
+    )[1];
+    expect(sentence.metadata).toEqual({ speaker: 'A', gloss: 'sp4' });
+    expect(argsOf(client, 'tokens.bulkUpdate')).toEqual([
+      [[{ id: sentenceId(client), metadata: { gloss: spanId(client, 'The dogs run.') } }]],
+    ]);
+    const names = client.calls.map(([n]) => n);
+    expect(names.indexOf('tokens.bulkUpdate')).toBeLessThan(
+      names.lastIndexOf('documents.setMetadata'),
+    );
+  });
+
+  it('follows a reference into arrays and objects, and leaves keys and parts of strings alone', async () => {
+    const { client } = await importWith((archive) => {
+      const [, w2] = archive.documents[0].data.sentences[0].words;
+      w2.metadata = { refs: [{ at: 'w1' }, 'm1', 3], note: 'see w1', w1: 'kept', flag: true };
+    });
+    const [w1] = wordIds(client);
+    const [m1] = morphemeIds(client);
+    // w1 is made in the same request and m1 after it, so both are patched,
+    // and the patch holds the one key that changed.
+    expect(argsOf(client, 'tokens.bulkUpdate')).toEqual([
+      [[{ id: wordIds(client)[1], metadata: { refs: [{ at: w1 }, m1, 3] } }]],
+    ]);
+  });
+
+  it("resolves another app's references through the same maps", async () => {
+    // An annotation of another app naming a sentence of this one, and a
+    // relation naming the token it starts from.
+    const { client, result } = await importWith((archive) => {
+      const data = archive.documents[0].data;
+      data.otherLayers = {
+        tokens: [{ layer: 'olNodes', tokens: [{ id: 'n1', begin: 20, end: 20 }] }],
+        spans: [
+          {
+            layer: 'olConcepts',
+            spans: [{ id: 'c1', tokens: ['n1'], value: 'x', metadata: { sentence: 's1' } }],
+          },
+        ],
+        relations: [
+          {
+            layer: 'olRels',
+            relations: [
+              { id: 'r1', source: 'c1', target: 'c1', value: 'y', metadata: { from: 'n1' } },
+            ],
+          },
+        ],
+      };
+      archive.manifest.otherLayers.tokenLayers = [
+        {
+          id: 'olNodes',
+          name: 'Nodes',
+          overlapMode: 'any',
+          parent: null,
+          config: {},
+          spanLayers: [
+            {
+              id: 'olConcepts',
+              name: 'Concepts',
+              config: {},
+              relationLayers: [{ id: 'olRels', name: 'Relations', config: {} }],
+            },
+          ],
+        },
+      ];
+    });
+    expect(result.warnings).toEqual([]);
+    const concept = callsOf(client, 'spans.bulkCreate')
+      .flatMap(([, specs]) => specs)
+      .find((sp) => sp.value === 'x');
+    expect(concept.metadata).toEqual({ sentence: sentenceId(client) });
+    const node = madeFor(client, 'tokens.bulkCreate', (spec) => spec.begin === 20);
+    const [relation] = callsOf(client, 'relations.bulkCreate')[0][1];
+    expect(relation.metadata).toEqual({ from: node });
+  });
+
+  // Two documents, the second a copy of the first under ids of its own.
+  function twoDocuments(archive, { first = {}, second = {} } = {}) {
+    const data = JSON.parse(JSON.stringify(archive.documents[0].data));
+    data.id = 'doc2';
+    data.name = 'Doc Two';
+    archive.documents.push({ ...archive.documents[0], id: 'doc2', name: 'Doc Two', data });
+    Object.assign(archive.documents[0].data.metadata, first);
+    Object.assign(data.metadata, second);
+  }
+
+  it('patches a document naming a later one once that one is in, never its own stamp', async () => {
+    const { client, result } = await importWith((archive) =>
+      twoDocuments(archive, {
+        first: { next: 'doc2', self: 'doc1' },
+        second: { previous: 'doc1' },
+      }),
+    );
+    expect(result.imported).toBe(2);
+    const [one, two] = callsOf(client, 'documents.create').map((c) => c.result.id);
+    const created = callsOf(client, 'documents.create').map(([, , , metadata]) => metadata);
+    // The first is made before the second exists, and before its own id is known.
+    expect(created[0]).toMatchObject({ next: 'doc2', self: 'doc1' });
+    // The second names the first, which is done by then.
+    expect(created[1]).toMatchObject({ previous: one, importSource: 'doc2' });
+    // Its own id is known by the time it is marked done.
+    const done = argsOf(client, 'documents.setMetadata').find(([id]) => id === one)[1];
+    expect(done).toMatchObject({ self: one, next: 'doc2', importSource: 'doc1' });
+    expect(argsOf(client, 'documents.patchMetadata')).toEqual([[one, { next: two }]]);
+  });
+
+  it('settles a document an earlier run finished, which still names a later one', async () => {
+    const { client } = await importWith(
+      (archive) => twoDocuments(archive, { first: { next: 'doc2' }, second: { previous: 'doc1' } }),
+      {
+        existingDocs: [
+          {
+            id: 'old1',
+            name: 'Doc One',
+            metadata: { importSource: 'doc1', importDone: true, Source: 'notes', next: 'doc2' },
+          },
+        ],
+      },
+    );
+    const [two] = callsOf(client, 'documents.create').map((c) => c.result.id);
+    const [, , , created] = callsOf(client, 'documents.create')[0];
+    expect(created.previous).toBe('old1');
+    // The stamp is the archive's id for the document itself, on purpose.
+    expect(argsOf(client, 'documents.patchMetadata')).toEqual([['old1', { next: two }]]);
+  });
+
+  it('patches what is in a document naming a later document, from what the server holds', async () => {
+    const archive = buildArchive();
+    twoDocuments(archive);
+    archive.documents[0].data.sentences[0].fields.Translation.metadata = { see: 'doc2' };
+    const client = stubClient();
+    const plain = client.documents.get;
+    // The server's copy of the first document, holding the reference as written.
+    client.documents.get = async (id, full) =>
+      full
+        ? {
+            textLayers: [
+              {
+                text: { id: 'srv-text', metadata: {} },
+                tokenLayers: [
+                  {
+                    tokens: [{ id: 'srv-tok', metadata: { k: 1 } }],
+                    spanLayers: [
+                      { spans: [{ id: 'srv-span', metadata: { see: 'doc2', note: 'doc2 x' } }] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : plain(id);
+    await runNativeImport({ client, projectId: 'newp', archive });
+    const [, two] = callsOf(client, 'documents.create').map((c) => c.result.id);
+    expect(argsOf(client, 'spans.bulkUpdate')).toEqual([
+      [[{ id: 'srv-span', metadata: { see: two } }]],
+    ]);
+    expect(callsOf(client, 'tokens.bulkUpdate')).toEqual([]);
+    expect(callsOf(client, 'texts.patchMetadata')).toEqual([]);
+  });
+});
+
+describe('planVocabRelink, references in metadata', () => {
+  it('maps any value naming an entry or a document, but never its own stamp', () => {
+    const vocabData = {
+      name: 'Lex',
+      fields: [{ name: 'gloss', inline: true }],
+      items: [
+        { id: 'old-a', form: 'a', metadata: {} },
+        {
+          id: 'old-b',
+          form: 'b',
+          metadata: {
+            cognate: 'old-a',
+            source: { document: 'old-doc' },
+            note: 'old-a is related',
+            nativeImportId: 'old-a',
+          },
+        },
+      ],
+    };
+    const itemIdMap = new Map([
+      ['old-a', 'new-a'],
+      ['old-b', 'new-b'],
+    ]);
+    const { patches } = planVocabRelink(
+      vocabData,
+      itemIdMap,
+      new Map(),
+      new Map([['old-doc', 'new-doc']]),
+    );
+    expect(patches).toEqual([
+      {
+        id: 'new-b',
+        metadata: {
+          cognate: 'new-a',
+          source: { document: 'new-doc' },
+          note: 'old-a is related',
+          nativeImportId: 'old-b',
+        },
+      },
+    ]);
   });
 });

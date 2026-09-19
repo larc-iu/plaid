@@ -54,7 +54,8 @@ the upload's media type is validated from its filename.
 - All character offsets are **Unicode code points** into the owning document's `baseline.body`.
 - All times are **seconds** (floats).
 - Every id in the archive is a **correlation key**, not a value to write back: a
-  re-importer creates fresh entities and maps old ids to new ones.
+  re-importer creates fresh entities and maps old ids to new ones. That includes
+  an id another app keeps inside metadata (see References in metadata).
 
 ## project.json
 
@@ -427,8 +428,39 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `parent` is. What did not survive is dropped and counted in a warning. This
    runs after the documents because an example points into one. The write
    replaces the whole metadata map and restores `nativeImportId` as it goes, so
-   a resume still recognizes an item this pass reached.
+   a resume still recognizes an item this pass reached. Any other value in item
+   metadata that names an entry or a document of the archive is rewritten too
+   (see References in metadata), `nativeImportId` excepted.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
+6. References in metadata are rewritten throughout (below).
+
+### References in metadata
+
+An app may keep the id of another entity in an entity's metadata: an annotation
+naming the sentence token it belongs to, a document naming another document of
+the project. The archive writes metadata as it is, and every entity gets a new id
+on import, so a re-importer treats a metadata value that is **exactly** the archive
+id of a token, span, relation or document the archive carries as a reference to
+it, and writes that entity's new id in its place. The rule covers the metadata of
+documents, texts, tokens, spans, relations and vocabulary links, and of
+vocabulary items (step 4), where an entry id counts too.
+
+- Only a whole string value counts, found through objects and arrays at any
+  depth. A key, a longer string holding an id, and a value of any other type are
+  data and are written as they are.
+- A token, span or relation is found in the same document. A document is found
+  among the archive's documents.
+- A reference may point forward, at something made after the entity holding it
+  (a token naming an annotation, a document naming a document imported after
+  it). What exists when an entity is written is rewritten then. What names
+  something later in the same document is patched once the document's last
+  entity exists, before it is marked done, so an interrupted import redoes it
+  with the rest. What names a later document is patched once every document is
+  in, from what the server holds, so that it also settles a document an earlier
+  run finished and changes nothing when run again.
+- A document's own import stamps (`importSource`, `importDone`) are never
+  rewritten, since `importSource` is the archive id of that very document on
+  purpose.
 
 ## Non-goals
 

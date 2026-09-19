@@ -257,6 +257,9 @@ export async function importOtherLayerData({
   tokenIdMap,
   spanIdMap,
   relationIdMap,
+  // What rewrites references in metadata (./references.js). Without it,
+  // metadata goes as it is.
+  refs = { create: async (_kind, specs, send) => (await send(specs)) ?? [] },
   warnings = [],
   check = () => {},
 }) {
@@ -298,10 +301,11 @@ export async function importOtherLayerData({
       ),
     );
     const send = (chunk) => client.tokens.bulkCreate(chunk);
-    const ids =
+    const ids = await refs.create('token', specs, async (sent) =>
       layer.overlapMode === 'partitioning'
-        ? ((await send(specs))?.ids ?? [])
-        : await bulkInChunks(specs, check, send);
+        ? (await send(sent))?.ids
+        : bulkInChunks(sent, check, send),
+    );
     rows.forEach((t, i) => {
       if (t.id != null && ids[i]) tokenIdMap.set(t.id, ids[i]);
     });
@@ -332,7 +336,9 @@ export async function importOtherLayerData({
         `"${name}": ${plural(rows.length - kept.length, 'annotation')} from another app skipped (unresolvable tokens)`,
       );
     }
-    const ids = await bulkInChunks(specs, check, (chunk) => client.spans.bulkCreate(chunk));
+    const ids = await refs.create('span', specs, (sent) =>
+      bulkInChunks(sent, check, (chunk) => client.spans.bulkCreate(chunk)),
+    );
     kept.forEach((s, i) => {
       if (s.id != null && ids[i]) spanIdMap.set(s.id, ids[i]);
     });
@@ -365,7 +371,9 @@ export async function importOtherLayerData({
         `"${name}": ${plural(rows.length - kept.length, 'relation')} skipped (unresolvable annotations)`,
       );
     }
-    const ids = await bulkInChunks(specs, check, (chunk) => client.relations.bulkCreate(chunk));
+    const ids = await refs.create('relation', specs, (sent) =>
+      bulkInChunks(sent, check, (chunk) => client.relations.bulkCreate(chunk)),
+    );
     kept.forEach((r, i) => {
       if (r.id != null && ids[i]) relationIdMap.set(r.id, ids[i]);
     });

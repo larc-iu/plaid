@@ -15,6 +15,8 @@
 const SOURCE_KEY = 'importSource';
 /** Written last, so a document without it is one the run did not finish. */
 const DONE_KEY = 'importDone';
+/** Both marks, which are the import's own bookkeeping rather than the source's data. */
+export const IMPORT_STAMP_KEYS = Object.freeze([SOURCE_KEY, DONE_KEY]);
 
 export class ImportCancelled extends Error {
   constructor() {

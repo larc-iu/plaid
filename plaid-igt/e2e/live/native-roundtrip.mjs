@@ -5,6 +5,8 @@
 //      + add media and a time-alignment token to one document, and a made-up
 //      app's layers beside this app's (namespace `other`)
 //   2. Export A as a Plaid IGT JSON archive
+//      + references to entities in metadata, which an import has to point at
+//      what it made
 //   3. Import that archive into a fresh project B (the native importer), then
 //      run the import again over B, as a resume would, to see it make nothing
 //      twice
@@ -197,6 +199,7 @@ function normalize(archive) {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const docNameById = new Map(archive.documents.map((d) => [d.data.id, d.name]));
   const documents = archive.documents
     .map((d) => {
       const data = d.data;
@@ -264,7 +267,7 @@ function normalize(archive) {
       const vocab = (v) =>
         v ? { form: itemFormById.get(v.itemId) ?? v.itemId, metadata: v.metadata } : undefined;
 
-      return {
+      const normalized = {
         name: d.name,
         // `importSource` is the resume bookkeeping the importer that MADE the
         // document stamps on it, so A's names a FLEx file and B's names A.
@@ -376,6 +379,24 @@ function normalize(archive) {
           }))
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
       };
+      // A metadata value that is the id of something the archive carries is a
+      // reference to it, and compares by what it names. Only a whole string is
+      // one, so keys and longer strings stay as they are on both sides.
+      const byReference = (value) => {
+        if (typeof value === 'string') {
+          if (tokenDesc.has(value)) return `ref:token:${tokenDesc.get(value)}`;
+          if (spanDesc.has(value)) return `ref:span:${spanDesc.get(value)}`;
+          if (relationDesc.has(value)) return `ref:relation:${relationDesc.get(value)}`;
+          if (docNameById.has(value)) return `ref:document:${docNameById.get(value)}`;
+          return value;
+        }
+        if (Array.isArray(value)) return value.map(byReference);
+        if (value && typeof value === 'object') {
+          return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, byReference(v)]));
+        }
+        return value;
+      };
+      return byReference(normalized);
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -537,7 +558,8 @@ try {
         spanLayerId: conceptLayer,
         tokens: [wordNode],
         value: 'say-01',
-        metadata: { prov: 'inferred' },
+        // The sentence it belongs to, by id: made before it on import.
+        metadata: { prov: 'inferred', sentence: sentA.id },
       },
     ])
   ).ids;
@@ -555,6 +577,20 @@ try {
   await client.relations.bulkCreate([
     { relationLayerId: depLayer, source: lemma1, target: lemma0, value: 'dep', metadata: { k: 1 } },
   ]);
+
+  // References in metadata, which name what they point at by id. The node
+  // names the concepts on it, which an import makes after it, in an array and
+  // an object. A longer string holding an id, and a key that is one, are not
+  // references and come back as they were. The first document names the
+  // second, made after it, and the second names the first.
+  await client.tokens.setMetadata(zeroNode, {
+    concept: conceptA,
+    trail: [{ span: conceptB }, 'plain'],
+    note: `see ${conceptA}`,
+    [conceptA]: 'a key',
+  });
+  await client.documents.patchMetadata(docsA[0].id, { related: [{ document: docsA[1].id }] });
+  await client.documents.patchMetadata(docsA[1].id, { seeAlso: docsA[0].id });
 
   // Comments on each anchor type the archive can represent, so the round trip
   // exercises document / text / token / span / relation resolution rather than
@@ -854,6 +890,29 @@ try {
       d.otherLayers.tokens.some((l) => l.tokens.some((t) => /:(\d+)-\1@/.test(t.at))),
     ),
     'the zero-width token survived the round trip',
+  );
+  const nodeB = normB.documents
+    .flatMap((d) => d.otherLayers.tokens)
+    .flatMap((l) => l.tokens)
+    .find((t) => t.metadata?.concept);
+  check(
+    nodeB?.metadata?.concept === 'ref:span:Other concepts=person' &&
+      nodeB?.metadata?.trail?.[0]?.span === 'ref:span:Other concepts=say-01',
+    'references in metadata name what the import made',
+    JSON.stringify(nodeB?.metadata),
+  );
+  // By name, whichever of the two comes first.
+  const docNamesB = new Set(normB.documents.map((d) => d.name));
+  const namesOther = (d, ref) =>
+    typeof ref === 'string' &&
+    ref.startsWith('ref:document:') &&
+    docNamesB.has(ref.slice('ref:document:'.length)) &&
+    ref.slice('ref:document:'.length) !== d.name;
+  check(
+    normB.documents.some((d) => namesOther(d, d.metadata?.related?.[0]?.document)) &&
+      normB.documents.some((d) => namesOther(d, d.metadata?.seeAlso)),
+    'a document naming another names the one the import made',
+    JSON.stringify(normB.documents.map((d) => d.metadata)),
   );
   check(
     normB.documents.some((d) => d.otherLayers.relations.length === 2),
