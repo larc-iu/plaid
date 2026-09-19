@@ -172,8 +172,10 @@ test.describe('editing', () => {
     await page.keyboard.press('Enter');
     await editor(page).fill(':full-affirmative');
     await page.keyboard.press('Enter');
-    // The sample already draws one to leave-02; today's makes two.
-    await expect(block.locator('.umr-doc-label', { hasText: ':full-affirmative' })).toHaveCount(2);
+    // The relation is a tag on the node; the sample already gives leave-02 one.
+    await expect(
+      block.locator('.umr-doc-tag', { hasText: 'author :full-affirmative' }),
+    ).toHaveCount(2);
     await expect(block.locator('.umr-const--used', { hasText: 'author' })).toBeVisible();
     // `c`: coreference with another node, a chain chip on both.
     await nodeByConcept(page, 'lunch').click();
@@ -197,7 +199,9 @@ test.describe('editing', () => {
     await page.mouse.move(2, 2);
     await editor(page).fill(':before');
     await page.keyboard.press('Enter');
-    await expect(block.locator('.umr-doc-label', { hasText: ':before' })).toBeVisible();
+    await expect(
+      block.locator('.umr-doc-tag', { hasText: 'document-creation-time :before' }),
+    ).toBeVisible();
     await block.screenshot({ path: process.env.UMR_LANE_SHOT || 'test-results/lane.png' });
 
     // Every write landed.

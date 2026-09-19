@@ -19,6 +19,8 @@ export const UmrNode = React.memo(function UmrNode({
   problems = null,
   chain = null,
   onChainClick,
+  docTags = null,
+  onDocTagClick,
 }) {
   const worst = problems?.some((p) => p.level === 'error')
     ? 'error'
@@ -92,6 +94,34 @@ export const UmrNode = React.memo(function UmrNode({
               <span className="umr-chip-value" dir="auto">
                 {a.value}
               </span>
+            </span>
+          ))}
+        </div>
+      )}
+      {docTags?.length > 0 && (
+        <div className="umr-node-doc">
+          {docTags.map((t) => (
+            <span
+              key={t.id}
+              className="umr-doc-tag"
+              role={onDocTagClick ? 'button' : undefined}
+              tabIndex={-1}
+              data-triple-id={t.id}
+              title={
+                onDocTagClick
+                  ? 'Click to change. Shift+Backspace in the editor deletes.'
+                  : undefined
+              }
+              onClick={
+                onDocTagClick
+                  ? (e) => {
+                      e.stopPropagation();
+                      onDocTagClick(t);
+                    }
+                  : undefined
+              }
+            >
+              {t.text}
             </span>
           ))}
         </div>

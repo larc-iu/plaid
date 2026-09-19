@@ -207,14 +207,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           const x2 = MARGIN - 8;
           const y2 = lane.constY.get(t.constant.var) + 11;
           const k = Math.max(24, (x1 - x2) / 2);
-          // The label, left-aligned, a third of the way along from the constant:
-          // clear of the constants, and clear of a node beside the margin.
-          // Lines from one constant to different nodes part by height there.
-          const lx = x2 + 14;
+          // No label on the line: the relation is a tag on the node.
           return {
             ...t,
             path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
-            label: { x: lx, y: y2 + (y1 - y2) * 0.35 - 10, left: true },
+            label: null,
           };
         }
         const pa = layout.nodes.get(t.a.id);
@@ -233,6 +230,23 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       })
       .filter(Boolean);
   }, [lane, layout, measured, pad]);
+
+  // The margin triples of each node, as tags: `author :full-affirmative`.
+  const docTagsByNode = useMemo(() => {
+    const map = new Map();
+    lane.drawn
+      .filter((t) => t.kind === 'margin')
+      .forEach((t) => {
+        if (!map.has(t.node.id)) map.set(t.node.id, []);
+        map.get(t.node.id).push({
+          id: t.id,
+          rel: t.rel,
+          group: t.group,
+          text: `${t.constant.var} ${t.rel}`,
+        });
+      });
+    return map;
+  }, [lane]);
 
   const chainOf = (node) => {
     if (node.chain == null) return null;
@@ -889,32 +903,34 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               />
             ))}
           </svg>
-          {docEdges.map((t) => (
-            <span
-              key={`label-${t.id}`}
-              className={`umr-doc-label${t.label.left ? ' umr-doc-label--left' : ''}`}
-              style={{ position: 'absolute', left: `${t.label.x}px`, top: `${t.label.y}px` }}
-              role={readOnly ? undefined : 'button'}
-              tabIndex={-1}
-              data-triple-id={t.id}
-              onClick={
-                readOnly
-                  ? undefined
-                  : (ev) => {
-                      ev.stopPropagation();
-                      askDocRole(
-                        { tripleId: t.id, role: t.rel, group: t.group },
-                        { x: t.label.x - (MARGIN + pad) - 90, y: t.label.y - 12 },
-                      );
-                    }
-              }
-              title={
-                readOnly ? undefined : 'Click to change. Shift+Backspace in the editor deletes.'
-              }
-            >
-              {t.rel}
-            </span>
-          ))}
+          {docEdges
+            .filter((t) => t.label)
+            .map((t) => (
+              <span
+                key={`label-${t.id}`}
+                className={`umr-doc-label${t.label.left ? ' umr-doc-label--left' : ''}`}
+                style={{ position: 'absolute', left: `${t.label.x}px`, top: `${t.label.y}px` }}
+                role={readOnly ? undefined : 'button'}
+                tabIndex={-1}
+                data-triple-id={t.id}
+                onClick={
+                  readOnly
+                    ? undefined
+                    : (ev) => {
+                        ev.stopPropagation();
+                        askDocRole(
+                          { tripleId: t.id, role: t.rel, group: t.group },
+                          { x: t.label.x - (MARGIN + pad) - 90, y: t.label.y - 12 },
+                        );
+                      }
+                }
+                title={
+                  readOnly ? undefined : 'Click to change. Shift+Backspace in the editor deletes.'
+                }
+              >
+                {t.rel}
+              </span>
+            ))}
           <div
             className="umr-graph"
             ref={canvasRef}
@@ -967,6 +983,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 problems={problemsByNode.get(node.id)}
                 chain={chainOf(node)}
                 onChainClick={onChainClick}
+                docTags={docTagsByNode.get(node.id)}
+                onDocTagClick={
+                  readOnly
+                    ? undefined
+                    : (t) =>
+                        askDocRole(
+                          { tripleId: t.id, role: t.rel, group: t.group },
+                          positionBelow(node.id),
+                        )
+                }
               />
             ))}
             {measured &&
