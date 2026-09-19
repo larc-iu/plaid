@@ -1,8 +1,8 @@
 // The native archive's round-trip expectation: what its loss list says an
 // import gives back, as edits to the snapshots (see ./index.js).
 //
-// Everything in the IGT slice is carried, so the only change is how comments
-// come back: re-posted by the importer, with the original author and date in a
+// Everything in the IGT slice is carried, and so are other apps' layers, so
+// the only change is how comments come back: re-posted by the importer, with the original author and date in a
 // note at the top of the body. The note is read back off the imported side
 // rather than written onto the expected one, because the date it holds is the
 // comment's creation date, which a snapshot does not keep.
@@ -57,6 +57,7 @@ export default {
         'comment.segment',
         'comment.annotation',
         'comment.entry',
+        'comment.relation',
         'comment.secondAuthor',
         'comment.markdown',
       ],

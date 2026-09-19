@@ -3,10 +3,11 @@
 // a new project, and the two are compared. "Carried" means the feature comes back as it was,
 // apart from the import's own bookkeeping listed under `stamps`. The contract promises a
 // lossless archive of the IGT slice of a project, so everything in that slice is declared
-// carried, including data only another importer writes. What the archive leaves out on purpose
-// is another app's layers and config, the review list, and comments and promoted examples
-// pointing at things that no longer exist. Comments are re-posted by the importer, which is a
-// known transformation, not a loss.
+// carried, including data only another importer writes. Other apps' layers and config on the
+// baseline text layer ride along as opaque Plaid data (`otherConfig`, `otherLayers`), so they
+// are carried too. What the archive leaves out on purpose is the review list, and comments and
+// promoted examples pointing at things that no longer exist. Comments are re-posted by the
+// importer, which is a known transformation, not a loss.
 
 // How every imported comment differs from the one it was exported from.
 const REPOSTED = [
@@ -53,8 +54,6 @@ export default {
     'project.serviceDefaults': carried,
     'project.autoAnalysis': carried,
     'project.compose': carried,
-    // The spec's Non-goals still lists export presets, but schema.exportPresets and the
-    // re-import contract both carry them, and so does the code.
     'project.exportPresets': carried,
     'project.reviewedMembers': {
       carried: false,
@@ -62,11 +61,8 @@ export default {
       why: 'names users, so it goes with permissions and is not archived',
       ruling: 'docs/native-format.md, Provenance',
     },
-    'project.foreignConfig': {
-      carried: false,
-      kind: 'foreign',
-      why: 'the archive carries the igt namespace of the project config only. Other apps keep their project config out of it by design (docs/native-format.md, What "lossless" covers).',
-    },
+    // Every namespace but igt and plaid, verbatim (otherConfig).
+    'project.foreignConfig': carried,
 
     // Layers
     'layers.orthography': carried,
@@ -81,19 +77,10 @@ export default {
     'layers.fieldOrder': carried,
     'layers.fieldLang': carried,
     'layers.fieldTagset': carried,
-    'layers.foreignTokenLayer': {
-      carried: false,
-      kind: 'foreign',
-      why: 'token layers with a role IGT does not use (plaid-ud syntactic words) are left out by design (docs/native-format.md, What "lossless" covers).',
-    },
-    // The spec says the archive captures every span layer on the IGT token layers, scoped or
-    // not, but the importer never creates a span layer without a scope. Suspected bug.
+    // Other apps' layers, their config verbatim (otherLayers in project.json).
+    'layers.foreignTokenLayer': carried,
     'layers.unscopedSpanLayer': carried,
-    'layers.relationLayer': {
-      carried: false,
-      kind: 'foreign',
-      why: 'relation layers belong to the app that owns them (plaid-ud dependencies) and are left out by design (docs/native-format.md, What "lossless" covers).',
-    },
+    'layers.relationLayer': carried,
     'layers.fieldEmpty': carried,
 
     // Vocabularies: their schema
@@ -269,11 +256,7 @@ export default {
     'link.entryMorphType': carried,
 
     // Relations
-    'relation.value': {
-      carried: false,
-      kind: 'foreign',
-      why: 'relations belong to the app that owns their layer (plaid-ud) and are left out by design (docs/native-format.md, What "lossless" covers).',
-    },
+    'relation.value': carried,
 
     // Comments
     'comment.document': reposted,
@@ -284,11 +267,7 @@ export default {
     'comment.segment': reposted,
     'comment.annotation': reposted,
     'comment.entry': reposted,
-    'comment.relation': {
-      carried: false,
-      kind: 'foreign',
-      why: 'relations are not in the archive, so a comment on one has no anchor in the file and is dropped at export (docs/native-format.md, Comments).',
-    },
+    'comment.relation': reposted,
     'comment.orphaned': {
       carried: false,
       kind: 'ruled',

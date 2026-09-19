@@ -12,12 +12,15 @@ re-import (Projects → New Project → "Import a Plaid IGT archive").
 **What "lossless" covers.** The archive captures the IGT substrate: the baseline
 text layer, the role-tagged sentence/word/morpheme/time-alignment token layers,
 every span layer attached to them (scoped or not), the linked vocabularies, and
-the project's IGT configuration. It deliberately does NOT capture layers owned by
-other Plaid apps sharing the substrate (e.g. UD's syntactic-word layer or
-relation layers), additional text layers, non-IGT project configuration, users
-or permissions, or document history. Comments ride along as a faithful record
-(author, body, both timestamps), but re-import cannot restore their authorship —
-see Comments.
+the project's IGT configuration. It also carries, without understanding it,
+everything other Plaid apps sharing the project keep on the baseline text layer:
+their token, span and relation layers with their config, the tokens, spans and
+relations on them, and their project config (see Other apps' layers). It does
+NOT capture additional text layers or anything on them, users or permissions
+(the project's `plaid` namespace, which lists whose work is reviewed, among
+them), or document history. Comments ride along as a faithful record (author,
+body, both timestamps), but re-import cannot restore their authorship. See
+Comments.
 
 ## Versioning policy
 
@@ -73,6 +76,8 @@ the upload's media type is validated from its filename.
 | `schema.compose` | the project's own backslash compose codes, `{codes: [{code, char, description?}]}`, `null` when unset. These layer over the built-in codes, so only the project's own are carried |
 | `schema.exportPresets` | the project's saved export presets (stored under config key `export`), `null` when unset |
 | `layers` | substrate layer ids (`baselineText`, `sentence`, `word`, `morpheme`, `timeAlignment`, `spanLayers: [{id, name, scope}]`) — **informative only**, for debugging and correlation |
+| `otherConfig` | every project config namespace other than `igt` and `plaid`, verbatim, `{}` when there is none. See Other apps' layers |
+| `otherLayers` | `{config, spanLayers, tokenLayers}`: other apps' layers and settings on the baseline text layer. See Other apps' layers |
 | `documents` | manifest: `[{id, name, file, mediaFile}]` (`mediaFile` null when no media was embedded) |
 | `vocabularies` | manifest: `[{id, name, file}]` |
 
@@ -142,7 +147,12 @@ the upload's media type is validated from its filename.
 Top level: `id`, `name`, `version` (debugging only), `mediaFile` (archive path or
 null), `metadata` (**the raw document metadata, wholesale** — including keys not in
 `schema.documentMetadata`, e.g. `flexImported`), `baseline` (`{textId, body, metadata?}`),
-`sentences`, `alignment`, and three completeness sections (below).
+`sentences`, `alignment`, three completeness sections (below), and `otherLayers` when
+the document holds anything of another app's (see Other apps' layers).
+
+The document metadata is one flat map with no namespaces, and every key in it is
+carried, whichever app wrote it. The baseline text's own `metadata` is carried the
+same way.
 
 ### Sentences, words, morphemes
 
@@ -219,22 +229,95 @@ lossless even for unusual data:
   createdAt, updatedAt}]`, **omitted entirely when the document has none**. See
   Comments below.
 
+## Other apps' layers
+
+Several Plaid apps can share one project. Each finds the shared layers by their role
+(`config.plaid.role`) and keeps its own layers and settings under its own config
+namespace. This app owns the baseline text layer, the four role-tagged token layers
+on it (the first layer found for each role), and the annotation fields on those.
+Everything else on the baseline text layer belongs to some other app, and the
+archive carries it as plain Plaid data without knowing which app that is or what
+any of it means. Config is written back key by key exactly as it was, so the app
+that owns a layer finds it again by whatever it looks for.
+
+### In project.json
+
+```jsonc
+"otherConfig": { "<namespace>": { "<key>": … } },
+"otherLayers": {
+  "config": { "baseline": { "<namespace>": { … } }, "word": { … } },
+  "spanLayers": [{ "id": "…", "tokenLayer": "word", "scope": null, "name": "…",
+                   "config": { … }, "relationLayers": [{ "id": "…", "name": "…", "config": { … } }] }],
+  "tokenLayers": [{ "id": "…", "name": "…", "overlapMode": "any", "parent": null,
+                    "config": { … },
+                    "spanLayers": [{ "id": "…", "name": "…", "config": { … },
+                                     "relationLayers": [{ "id": "…", "name": "…", "config": { … } }] }] }]
+}
+```
+
+- `otherConfig` holds every project config namespace other than `igt` (this app's
+  own, carried in `schema`) and `plaid` (whose work is reviewed, which names users).
+- `otherLayers.config` holds what this app's own text and token layers keep under
+  namespaces other than `igt` and `plaid`, keyed by role (`baseline`, `sentence`,
+  `word`, `morpheme`, `time-alignment`). Project setup writes those two itself.
+- `otherLayers.spanLayers` lists the span layers on this app's own token layers
+  that are no annotation field (`scope` null), and any field that carries relation
+  layers or config in another namespace (`scope` set). `tokenLayer` is the role of
+  the token layer it sits on. `config` holds every namespace but `igt`. The spans
+  on these layers are in each document's `extraSpans` (a field's are in the tree),
+  so only the layer, its config and its relation layers are described here.
+- `otherLayers.tokenLayers` lists every other token layer on the baseline text
+  layer, **each after the layer it is nested in**. `overlapMode` is `any`,
+  `non-overlapping` or `partitioning`. `parent` is `null` for a root layer,
+  `{role}` when the parent is one of this app's token layers, and `{id}` when it is
+  another layer in this list. `config` is verbatim, `plaid` included.
+- A relation layer is `{id, name, config}`, its config verbatim, and hangs on the
+  span layer whose `relationLayers` it is in.
+- Every `id` is the source layer's, a correlation key the document files use.
+
+### In a document file
+
+```jsonc
+"otherLayers": {
+  "tokens":    [{ "layer": "<token layer id>",
+                  "tokens": [{ "id", "begin", "end", "precedence"?, "metadata"? }] }],
+  "spans":     [{ "layer": "<span layer id>",
+                  "spans": [{ "id", "tokens", "value", "metadata"? }] }],
+  "relations": [{ "layer": "<relation layer id>",
+                  "relations": [{ "id", "source", "target", "value", "metadata"? }] }]
+}
+```
+
+- Each entry names its layer by the id `project.json` describes it under. Ids
+  are values here as everywhere else in the archive, never object keys.
+- `tokens` holds the tokens of the layers in `otherLayers.tokenLayers`, as the
+  server holds them, layers parents first. A zero-width token (`begin` equal to
+  `end`) stays one. `precedence` is omitted when unset.
+- `spans` holds the spans of the span layers on those token layers. A span's
+  `tokens` are ids from its own layer's entry in `tokens`.
+- `relations` holds the relations of **every** relation layer, whichever span layer
+  it hangs on. `source` and `target` are span ids from `spans`, from `extraSpans`,
+  or from a field entry in the tree.
+- Only layers holding something are listed, and the key is omitted entirely when a
+  document holds nothing of another app's.
+
 ## Comments
 
 Comments (discussion anchored to an entity, not annotation of it) are the one
 part of the archive that records a PERSON rather than a piece of language, and
 they behave unlike everything else here.
 
-- `anchor.type` is one of `document`, `text`, `token`, `span` in a document file
-  and `vocab-item` in a vocabulary file — the anchor types this archive can
-  represent. `anchor.id` always names a node in the same file.
+- `anchor.type` is one of `document`, `text`, `token`, `span`, `relation` in a
+  document file and `vocab-item` in a vocabulary file, the anchor types this
+  archive can represent. `anchor.id` always names a node in the same file, which
+  for a token, span or relation may be one in `otherLayers`.
 - **A comment whose anchor is not in the file is dropped at export**, counted in
   one warning per file. A comment outlives its anchor on the server, so a
-  project holds comments on deleted words, annotations and entries; a project
-  also holds entities this archive does not carry (a **relation** belongs to
-  whichever app owns its layer, UD's dependency arcs say). A re-importer would
-  have nothing to hang either on, and the server refuses a comment on a missing
-  anchor, so the archive does not pretend to carry them. The importer still
+  project holds comments on deleted words, annotations and entries. A project
+  can also hold entities this archive does not carry (anything on a text layer
+  other than the baseline). A re-importer would have nothing to hang either on,
+  and the server refuses a comment on a missing anchor, so the archive does not
+  pretend to carry them. The importer still
   skips, with a warning, any comment whose anchor it cannot resolve (an archive
   edited by hand).
 - `author.id` is the user's id, which **is their email address**. `author.name`
@@ -293,7 +376,16 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `tagsets`, `languages`, `speakers`, `serviceDefaults`, `compose`, `export`, and
    `documentMetadata` again (the wizard creates it as bare `{name}` rows, so the
    archive's version is written over it to restore each field's `tagset`).
-   Each governed field's `tagset` is then set on its own span layer.
+   Each governed field's `tagset` is then set on its own span layer. Then other
+   apps' settings and layers (see Other apps' layers), once for the project:
+   `otherConfig` key by key with `projects.setConfig`, `otherLayers.config` on this
+   app's own layers by role, each `otherLayers.spanLayers` entry found (a field, by
+   scope and name) or made on its token layer, and each `otherLayers.tokenLayers`
+   entry made in list order with its overlap mode and its parent (a role resolved
+   to the new project's layer, an id to the layer made for it earlier), then its
+   span layers, then the relation layers on any of these. Config goes back key by
+   key with `setConfig`. A layer whose parent cannot be resolved is skipped with a
+   warning, and so is everything nested in it.
 2. Per vocabulary: write `fields` (with each `tagset`/`lang`, and `type`/`many`/
    `scope`) and `tagsets`, then create items **in array order**, mapping old item
    ids to new. Item
@@ -308,13 +400,26 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    morphemes (`form`/`morphType` folded back into metadata, `precedence` as
    given), orphan tokens, and alignment tokens (times folded back) →
    `spans.bulkCreate` (dedupe field entries by span id; `extraSpans` records are
-   authoritative when their id collides with field entries) →
+   authoritative when their id collides with field entries, and an `extraSpans`
+   record whose `layer.id` is described in `otherLayers.spanLayers` goes on the
+   layer made for it) → other apps' data from `otherLayers`: `tokens.bulkCreate`
+   per token layer in manifest order (a `partitioning` layer in one request, since
+   the server checks that one request covers the text, every other layer in
+   chunks), `spans.bulkCreate` per span layer with token ids mapped old to new,
+   then `relations.bulkCreate` per relation layer with `source` and `target`
+   mapped through the same span map this app's annotations went into (what cannot
+   be mapped is skipped and counted in a warning) →
    `vocabLinks.create(itemId, tokens, metadata)` for inline and extra links →
    `comments.create` per archived comment (anchors resolved through the same
    old→new maps; see Comments) → upload media from `mediaFile`. A document is
    marked done
    (`metadata.nativeImported`) only after every write succeeded; resume skips
-   done documents and deletes + redoes half-imported ones.
+   done documents and deletes + redoes half-imported ones. Other apps' layers are
+   made once per project, not per document, so a resume finds the ones an earlier
+   run made rather than making them again: setup makes only this app's layers, so
+   any other layer in the project is the import's own, and it is recognized by
+   where it sits and its name (a token layer also by its overlap mode and parent).
+   Config a layer already holds is not written again.
 4. Per vocabulary, LAST, once every document exists: rewrite the ids inside item
    metadata through the maps built above (`parent`, every `type: "item"` field,
    and each `{document, token}` example, whose document AND token both have to
@@ -327,5 +432,6 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 
 ## Non-goals
 
-Deliberately not in the archive: export presets and other app UI preferences,
-cross-project vocabulary usage counts, server users/permissions, document history.
+Deliberately not in the archive: cross-project vocabulary usage counts, server
+users/permissions, document history, and text layers other than the baseline with
+everything on them.

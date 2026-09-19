@@ -5,7 +5,14 @@ import {
   serializeVocabularyNative,
   serializeDocumentNative,
 } from '../../export/nativeJson.js';
-import { makeNativeRaw, makeNativeProject } from '../../export/testFixtures.js';
+import {
+  makeNativeRaw,
+  makeNativeProject,
+  makeOtherAppRaw,
+  makeOtherAppProject,
+} from '../../export/testFixtures.js';
+import { CHUNK } from '../bulk.js';
+import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
 import {
   deriveSetupData,
   resolveNativeTargets,
@@ -95,13 +102,23 @@ function targetProject() {
   return p;
 }
 
-function stubClient({ existingDocs = [], existingItems = [], existingVocabComments = [] } = {}) {
+function stubClient({
+  existingDocs = [],
+  existingItems = [],
+  existingVocabComments = [],
+  // What the server says of a token layer that a project read leaves out.
+  tokenLayerShapes = {},
+} = {}) {
   const calls = [];
   let batch = null;
   let nextId = 0;
   const fresh = (prefix) => `${prefix}-${nextId++}`;
+  // Each call keeps what it answered, out of sight of toEqual, so a test can
+  // follow an id from the call that made it to the calls that use it.
   const record = (name, args, result) => {
-    calls.push([name, ...args]);
+    const entry = [name, ...args];
+    Object.defineProperty(entry, 'result', { value: result, enumerable: false });
+    calls.push(entry);
     return result;
   };
   const client = {
@@ -119,6 +136,22 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
     spanLayers: {
       create: async (...a) => record('spanLayers.create', a, { id: fresh('sl') }),
       setConfig: async (...a) => record('spanLayers.setConfig', a),
+    },
+    textLayers: {
+      setConfig: async (...a) => record('textLayers.setConfig', a),
+    },
+    tokenLayers: {
+      create: async (...a) => record('tokenLayers.create', a, { id: fresh('tl') }),
+      setConfig: async (...a) => record('tokenLayers.setConfig', a),
+      get: async (id) => record('tokenLayers.get', [id], { id, ...tokenLayerShapes[id] }),
+    },
+    relationLayers: {
+      create: async (...a) => record('relationLayers.create', a, { id: fresh('rl') }),
+      setConfig: async (...a) => record('relationLayers.setConfig', a),
+    },
+    relations: {
+      bulkCreate: async (specs) =>
+        record('relations.bulkCreate', [specs], { ids: specs.map(() => fresh('rel')) }),
     },
     guidelines: {
       create: async (...a) => record('guidelines.create', a, { id: fresh('gl') }),
@@ -194,6 +227,7 @@ function stubClient({ existingDocs = [], existingItems = [], existingVocabCommen
 }
 
 const callsOf = (client, name) => client.calls.filter(([n]) => n === name);
+const argsOf = (client, name) => callsOf(client, name).map((c) => c.slice(1));
 
 // A vocab bulkCreate carries many entries in one call; flatten them back to
 // per-item records so the assertions below stay item-shaped.
@@ -943,5 +977,350 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
       names.lastIndexOf('documents.setMetadata'),
     );
     expect(result.warnings.filter((w) => /reference/.test(w))).toHaveLength(0);
+  });
+});
+
+describe("runNativeImport, other apps' layers", () => {
+  // An archive of the loss-trap document with a made-up app's layers beside
+  // this app's (testFixtures.js makeOtherAppRaw), through the real exporter.
+  function otherAppArchive({ comments = [] } = {}) {
+    const archive = buildArchive();
+    const project = makeOtherAppProject();
+    const igtDoc = new IgtDocument({ raw: makeOtherAppRaw(), project, vocabularies: {} });
+    archive.manifest = buildProjectFile({
+      project,
+      documents: archive.manifest.documents,
+      vocabularies: archive.manifest.vocabularies,
+      exportedAt: '2026-09-19T00:00:00.000Z',
+    });
+    archive.documents[0].data = serializeDocumentNative(igtDoc, {
+      mediaFile: 'media/Doc One.wav',
+      comments,
+    });
+    return archive;
+  }
+  const madeBy = (client, name, pick) => callsOf(client, name).find(pick)?.result?.id;
+  // The ids a bulk create answered, by the archive ids of what it was given.
+  const bulkIds = (client, name, pick) => {
+    const call = callsOf(client, name).find(([, specs]) => pick(specs));
+    return call?.result?.ids ?? [];
+  };
+
+  async function freshImport(archive = otherAppArchive()) {
+    const client = stubClient();
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    return { client, result };
+  }
+
+  it('writes the project settings back, but never this app’s or the review list', async () => {
+    const { client, result } = await freshImport();
+    expect(result.warnings).toEqual([]);
+    const other = argsOf(client, 'projects.setConfig').filter(([, ns]) => ns !== 'igt');
+    expect(other).toEqual([
+      ['newp', 'other', 'setting', 'x'],
+      ['newp', 'other', 'nested', { a: [1, 2] }],
+    ]);
+    expect(argsOf(client, 'textLayers.setConfig')).toEqual([['new-tl1', 'other', 'locale', 'es']]);
+  });
+
+  it('makes each token layer once, parents first, and writes its settings key by key', async () => {
+    const { client } = await freshImport();
+    const created = argsOf(client, 'tokenLayers.create');
+    expect(created.map((c) => c.slice(0, 3))).toEqual([
+      ['new-tl1', 'Nodes', 'any'],
+      ['new-tl1', 'Words', 'non-overlapping'],
+      ['new-tl1', 'Parts', 'any'],
+    ]);
+    const wordsId = madeBy(client, 'tokenLayers.create', (c) => c[2] === 'Words');
+    expect(created.map((c) => c[3])).toEqual([undefined, 'new-wl', wordsId]);
+    expect(argsOf(client, 'tokenLayers.setConfig').map((c) => c.slice(1))).toEqual([
+      ['other', 'nodes', true],
+      ['plaid', 'role', 'other-word'],
+      ['other', 'words', true],
+      ['other', 'parts', true],
+    ]);
+    const nodesId = madeBy(client, 'tokenLayers.create', (c) => c[2] === 'Nodes');
+    const lemmaId = madeBy(client, 'spanLayers.create', (c) => c[2] === 'Lemma');
+    const conceptsId = madeBy(client, 'spanLayers.create', (c) => c[2] === 'Concepts');
+    // The span layer no field is goes back on this app's word layer, where it was.
+    expect(argsOf(client, 'spanLayers.create')).toEqual([
+      ['new-wl', 'Lemma'],
+      [nodesId, 'Concepts'],
+    ]);
+    expect(argsOf(client, 'relationLayers.create')).toEqual([
+      [lemmaId, 'Deps'],
+      [conceptsId, 'Relations'],
+    ]);
+    expect(argsOf(client, 'spanLayers.setConfig')).toEqual([
+      [lemmaId, 'other', 'lemma', true],
+      [conceptsId, 'other', 'concepts', true],
+    ]);
+    expect(argsOf(client, 'relationLayers.setConfig').map((c) => c.slice(1))).toEqual([
+      ['other', 'deps', true],
+      ['other', 'relations', true],
+    ]);
+  });
+
+  it('puts each token back on its layer, a zero-width one included', async () => {
+    const { client } = await freshImport();
+    const nodesId = madeBy(client, 'tokenLayers.create', (c) => c[2] === 'Nodes');
+    const nodes = argsOf(client, 'tokens.bulkCreate')
+      .map(([specs]) => specs)
+      .find((specs) => specs[0].tokenLayerId === nodesId);
+    expect(nodes).toEqual([
+      {
+        tokenLayerId: nodesId,
+        text: expect.any(String),
+        begin: 20,
+        end: 20,
+        metadata: { abstract: 'person' },
+      },
+      { tokenLayerId: nodesId, text: expect.any(String), begin: 0, end: 6, precedence: 2 },
+    ]);
+    // After this app's own tokens, so a layer nested in the word layer has
+    // words to sit in.
+    const layersInOrder = argsOf(client, 'tokens.bulkCreate').map(
+      ([specs]) => specs[0].tokenLayerId,
+    );
+    expect(layersInOrder.indexOf(nodesId)).toBeGreaterThan(layersInOrder.indexOf('new-wl'));
+  });
+
+  it('maps span tokens and relation ends onto what the import made', async () => {
+    const { client } = await freshImport();
+    const conceptsId = madeBy(client, 'spanLayers.create', (c) => c[2] === 'Concepts');
+    const lemmaId = madeBy(client, 'spanLayers.create', (c) => c[2] === 'Lemma');
+    const [n1, n2] = bulkIds(client, 'tokens.bulkCreate', (specs) => specs[0].begin === 20);
+    const concepts = argsOf(client, 'spans.bulkCreate')
+      .map(([specs]) => specs)
+      .find((specs) => specs[0].spanLayerId === conceptsId);
+    expect(concepts).toEqual([
+      { spanLayerId: conceptsId, tokens: [n1], value: 'person' },
+      { spanLayerId: conceptsId, tokens: [n2], value: 'dog', metadata: { note: 'x' } },
+    ]);
+    const [c1, c2] = bulkIds(
+      client,
+      'spans.bulkCreate',
+      (specs) => specs[0].spanLayerId === conceptsId,
+    );
+    // The Lemma annotations are this app's extraSpans, made on the layer the
+    // archive described rather than on a second one of that name.
+    const [lem1, lem2] = bulkIds(
+      client,
+      'spans.bulkCreate',
+      (specs) => specs[0].spanLayerId === lemmaId,
+    );
+    const relations = argsOf(client, 'relations.bulkCreate').map(([specs]) => specs);
+    const relsId = madeBy(client, 'relationLayers.create', (c) => c[2] === 'Relations');
+    const depsId = madeBy(client, 'relationLayers.create', (c) => c[2] === 'Deps');
+    expect(relations).toEqual(
+      expect.arrayContaining([
+        [{ relationLayerId: depsId, source: lem2, target: lem1, value: 'nsubj' }],
+        [
+          {
+            relationLayerId: relsId,
+            source: c1,
+            target: c2,
+            value: ':ARG0',
+            metadata: { prov: 'inferred' },
+          },
+        ],
+      ]),
+    );
+    expect(relations).toHaveLength(2);
+    // Before the lexicon links, which may be on another app's tokens.
+    const names = client.calls.map(([n]) => n);
+    expect(names.lastIndexOf('relations.bulkCreate')).toBeLessThan(
+      names.indexOf('vocabLinks.bulkCreate'),
+    );
+  });
+
+  it('hangs comments on the tokens, annotations and relations it made', async () => {
+    const comment = (id, entityType, entityId) => ({
+      id,
+      entityType,
+      entityId,
+      author: { id: 'ada@x.com', name: 'Ada' },
+      body: 'Hm.',
+      createdAt: '2026-08-14T09:31:07Z',
+      updatedAt: '2026-08-14T09:31:07Z',
+    });
+    const archive = otherAppArchive({
+      comments: [
+        comment('k1', 'token', 'n1'),
+        comment('k2', 'span', 'c2'),
+        comment('k3', 'relation', 'r1'),
+      ],
+    });
+    const { client, result } = await freshImport(archive);
+    expect(result.warnings).toEqual([]);
+    const [n1] = bulkIds(client, 'tokens.bulkCreate', (specs) => specs[0].begin === 20);
+    const [relation] = bulkIds(
+      client,
+      'relations.bulkCreate',
+      (specs) => specs[0].value === ':ARG0',
+    );
+    const posted = argsOf(client, 'comments.create');
+    expect(posted.map((c) => c[0])).toEqual(['token', 'span', 'relation']);
+    expect(posted[0][1]).toBe(n1);
+    expect(posted[1][1]).toMatch(/^span-/);
+    expect(posted[2][1]).toBe(relation);
+  });
+
+  it('makes no layer twice when a resumed import finds what an earlier run made', async () => {
+    // The project an interrupted run left: every layer made, and one setting
+    // not yet written. A project read carries no overlap mode or parent, so
+    // the importer asks for those.
+    const project = targetProject();
+    const text = project.textLayers[0];
+    text.config = { ...text.config, other: { locale: 'es' } };
+    const wordLayer = text.tokenLayers.find((tl) => tl.id === 'new-wl');
+    wordLayer.spanLayers.push({
+      id: 'had-lemma',
+      name: 'Lemma',
+      config: { other: { lemma: true } },
+      relationLayers: [{ id: 'had-deps', name: 'Deps', config: { other: { deps: true } } }],
+    });
+    text.tokenLayers.push(
+      {
+        id: 'had-nodes',
+        name: 'Nodes',
+        config: { other: { nodes: true } },
+        spanLayers: [
+          {
+            id: 'had-concepts',
+            name: 'Concepts',
+            config: { other: { concepts: true } },
+            relationLayers: [
+              { id: 'had-rels', name: 'Relations', config: { other: { relations: true } } },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'had-words',
+        name: 'Words',
+        config: { plaid: { role: 'other-word' }, other: { words: true } },
+        spanLayers: [],
+      },
+      { id: 'had-parts', name: 'Parts', config: {}, spanLayers: [] },
+    );
+    const client = stubClient({
+      tokenLayerShapes: {
+        'had-nodes': { overlapMode: 'any', parentTokenLayer: null },
+        'had-words': { overlapMode: 'non-overlapping', parentTokenLayer: 'new-wl' },
+        'had-parts': { overlapMode: 'any', parentTokenLayer: 'had-words' },
+      },
+    });
+    client.projects.get = async () => project;
+    const result = await runNativeImport({ client, projectId: 'newp', archive: otherAppArchive() });
+    expect(result.warnings).toEqual([]);
+    expect(callsOf(client, 'tokenLayers.create')).toEqual([]);
+    expect(callsOf(client, 'spanLayers.create')).toEqual([]);
+    expect(callsOf(client, 'relationLayers.create')).toEqual([]);
+    expect(callsOf(client, 'textLayers.setConfig')).toEqual([]);
+    // Only the setting the earlier run did not get to.
+    expect(argsOf(client, 'tokenLayers.setConfig')).toEqual([
+      ['had-parts', 'other', 'parts', true],
+    ]);
+    // And the document's data goes onto the layers that were already there.
+    const layers = argsOf(client, 'tokens.bulkCreate').map(([specs]) => specs[0].tokenLayerId);
+    expect(layers).toEqual(expect.arrayContaining(['had-nodes', 'had-words', 'had-parts']));
+    const relationLayers = argsOf(client, 'relations.bulkCreate').map(
+      ([specs]) => specs[0].relationLayerId,
+    );
+    expect(relationLayers.sort()).toEqual(['had-deps', 'had-rels']);
+  });
+
+  it('warns rather than guessing when the layer another is nested in did not come back', async () => {
+    const archive = otherAppArchive();
+    const words = archive.manifest.otherLayers.tokenLayers.find((tl) => tl.name === 'Words');
+    words.parent = { role: 'no-such-role' };
+    const { client, result } = await freshImport(archive);
+    expect(argsOf(client, 'tokenLayers.create').map((c) => c[1])).toEqual(['Nodes']);
+    expect(result.warnings).toEqual([
+      'Annotation layer "Words" skipped (the layer it is nested in is missing)',
+      'Annotation layer "Parts" skipped (the layer it is nested in is missing)',
+      '"Doc One": 1 token from another app skipped (their layer is missing)',
+      '"Doc One": 1 token from another app skipped (their layer is missing)',
+    ]);
+  });
+});
+
+describe('importOtherLayerData', () => {
+  const tokens = (n) =>
+    Array.from({ length: n }, (_, i) => ({ id: `t${i}`, begin: i, end: i + 1 }));
+
+  it('sends a partitioning layer whole and chunks every other kind', async () => {
+    const restored = noOtherLayers();
+    restored.order.push('part', 'free');
+    restored.tokenLayers.set('part', { id: 'new-part', overlapMode: 'partitioning' });
+    restored.tokenLayers.set('free', { id: 'new-free', overlapMode: 'any' });
+    const client = stubClient();
+    const tokenIdMap = new Map();
+    await importOtherLayerData({
+      client,
+      docData: {
+        name: 'Doc',
+        // Listed child first: the layers go in the order they were made in.
+        otherLayers: {
+          tokens: [
+            { layer: 'free', tokens: tokens(CHUNK + 1) },
+            { layer: 'part', tokens: tokens(CHUNK + 1) },
+          ],
+        },
+      },
+      textId: 'text',
+      restored,
+      tokenIdMap,
+      spanIdMap: new Map(),
+      relationIdMap: new Map(),
+    });
+    const sizes = argsOf(client, 'tokens.bulkCreate').map(([specs]) => [
+      specs[0].tokenLayerId,
+      specs.length,
+    ]);
+    expect(sizes).toEqual([
+      ['new-part', CHUNK + 1],
+      ['new-free', CHUNK],
+      ['new-free', 1],
+    ]);
+    // Both layers used the same archive ids here, and each maps to what its
+    // own create answered, the later layer winning.
+    expect(tokenIdMap.size).toBe(CHUNK + 1);
+  });
+
+  it('skips and counts what it cannot place', async () => {
+    const restored = noOtherLayers();
+    restored.spanLayers.set('sl', 'new-sl');
+    restored.relationLayers.set('rl', 'new-rl');
+    const client = stubClient();
+    const warnings = [];
+    await importOtherLayerData({
+      client,
+      docData: {
+        name: 'Doc',
+        otherLayers: {
+          tokens: [{ layer: 'gone', tokens: [{ id: 'x', begin: 0, end: 1 }] }],
+          spans: [{ layer: 'sl', spans: [{ id: 's1', tokens: ['nosuch'], value: 'v' }] }],
+          relations: [
+            { layer: 'rl', relations: [{ id: 'r1', source: 's1', target: 's1', value: 'v' }] },
+          ],
+        },
+      },
+      textId: 'text',
+      restored,
+      tokenIdMap: new Map(),
+      spanIdMap: new Map(),
+      relationIdMap: new Map(),
+      warnings,
+    });
+    expect(warnings).toEqual([
+      '"Doc": 1 token from another app skipped (their layer is missing)',
+      '"Doc": 1 annotation from another app skipped (unresolvable tokens)',
+      '"Doc": 1 relation skipped (unresolvable annotations)',
+    ]);
+    expect(callsOf(client, 'tokens.bulkCreate')).toEqual([]);
+    expect(callsOf(client, 'spans.bulkCreate')).toEqual([]);
+    expect(callsOf(client, 'relations.bulkCreate')).toEqual([]);
   });
 });

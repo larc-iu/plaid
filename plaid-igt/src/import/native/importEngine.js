@@ -9,6 +9,10 @@
 // ← spans/links). Vocab items are created IN ARRAY ORDER — the archive
 // contract that preserves the order entries spelled alike are numbered in.
 //
+// Other apps' layers ride along as plain Plaid data (./otherLayers.js): made
+// once per project after setup, and filled per document once this app's own
+// tokens and annotations exist.
+//
 // Resumability (same scheme as FLEx): a document is marked done
 // (metadata.nativeImported) only after every write succeeded; on resume, done
 // documents are skipped and half-imported ones are deleted and redone. Vocab
@@ -19,6 +23,12 @@ import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../bulk.js';
 import { attributedBody } from './commentAttribution.js';
+import {
+  hasOtherTokens,
+  importOtherLayerData,
+  noOtherLayers,
+  restoreOtherLayers,
+} from './otherLayers.js';
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
@@ -128,6 +138,8 @@ export function resolveNativeTargets(project, manifest) {
     spanLayerByScopeName,
     // Span layers with no scope, made as the documents that need them arrive.
     unscopedSpanLayers: new Map(),
+    // Other apps' layers, filled in by restoreOtherLayers once per project.
+    otherLayers: noOtherLayers(),
   };
 }
 
@@ -333,6 +345,7 @@ const DOCUMENT_STEPS = [
   'Creating morphemes',
   'Creating segments',
   'Creating annotations',
+  "Creating other apps' annotation",
   'Linking lexicon',
   'Restoring comments',
   'Uploading media',
@@ -379,6 +392,7 @@ async function importNativeDocument({
   const tokenIdMap = new Map(); // archive token id → new token id
   if (docMaps && docData.id != null) docMaps.set(docData.id, { docId, tokenIdMap });
   const spanIdMap = new Map(); // archive span id → new span id
+  const relationIdMap = new Map(); // archive relation id → new relation id
   const tokenLayerOf = new Map(); // new token id → the token layer it is in
   let baselineTextId = null; // for comments anchored to the text itself
 
@@ -539,7 +553,12 @@ async function importNativeDocument({
     // archive's scoped field schema, so it is made here on the token layer its
     // annotations point into, under the name it had. Kept across documents, so
     // a corpus does not end up with one layer of that name per document.
-    const ensureSpanLayer = async (scope, name, tokenIds) => {
+    const ensureSpanLayer = async (scope, name, tokenIds, archiveLayerId = null) => {
+      // One the archive describes was made up front, and is found by its own
+      // id rather than by name, since two layers may share a name.
+      const restored =
+        archiveLayerId == null ? null : targets.otherLayers.spanLayers.get(archiveLayerId);
+      if (restored) return restored;
       const known = targets.spanLayerByScopeName.get(`${scope}:${name}`);
       if (known) return known;
       const tokenLayerId = tokenLayerOf.get(tokenIds[0]);
@@ -560,10 +579,13 @@ async function importNativeDocument({
       label,
       archiveId = null,
       order = null,
+      archiveLayerId = null,
     ) => {
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       const spanLayerId =
-        tokenIds.length === tokens.length ? await ensureSpanLayer(scope, name, tokenIds) : null;
+        tokenIds.length === tokens.length
+          ? await ensureSpanLayer(scope, name, tokenIds, archiveLayerId)
+          : null;
       if (!spanLayerId || tokenIds.length !== tokens.length) {
         warnings.push(
           `"${docData.name}": annotation ${label} skipped (unresolvable ${!spanLayerId ? 'layer' : 'tokens'})`,
@@ -604,6 +626,7 @@ async function importNativeDocument({
         `${extra.layer?.name} (extra)`,
         extra.id ?? null,
         extra.order ?? null,
+        extra.layer?.id ?? null,
       );
     }
     // Created in the order the archive says the project held them, so the one
@@ -627,6 +650,25 @@ async function importNativeDocument({
           if (spec.archiveId != null && ids?.[j]) spanIdMap.set(spec.archiveId, ids[j]);
         });
       }
+    }
+
+    // Other apps' tokens, annotations and relations, now that every token and
+    // annotation of this app's that a relation may join exists. Before the
+    // lexicon links, since a link may be on one of those tokens.
+    if (docData.otherLayers) {
+      check();
+      progress("Creating other apps' annotation");
+      await importOtherLayerData({
+        client,
+        docData,
+        textId,
+        restored: targets.otherLayers,
+        tokenIdMap,
+        spanIdMap,
+        relationIdMap,
+        warnings,
+        check,
+      });
     }
 
     // Vocab links: inline refs from the tree + the extras section. Link
@@ -666,6 +708,10 @@ async function importNativeDocument({
           .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
       );
     }
+  } else if (hasOtherTokens(docData)) {
+    // Tokens need a text to sit on, and a document with an empty baseline gets
+    // none.
+    warnings.push(`"${docData.name}": tokens from another app skipped (the document has no text)`);
   }
 
   // Comments, BEFORE the done marker so an interrupted import redoes them
@@ -688,6 +734,8 @@ async function importNativeDocument({
             return tokenIdMap.get(anchor.id);
           case 'span':
             return spanIdMap.get(anchor.id);
+          case 'relation':
+            return relationIdMap.get(anchor.id);
           default:
             return null;
         }
@@ -807,6 +855,19 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       await client.spanLayers.setConfig(layer.id, IGT_NAMESPACE, 'tagset', field.tagset);
     }
   }
+
+  // Other apps' settings and layers, once for the whole project, before any
+  // document needs them.
+  targets.otherLayers = await restoreOtherLayers({
+    client,
+    projectId,
+    project,
+    manifest: archive.manifest,
+    warnings,
+    check: () => {
+      if (shouldStop?.()) throw new ImportCancelled();
+    },
+  });
 
   // Vocabularies: archive vocab → the same-named project vocab created by
   // setup. Item maps merge (item ids are unique across vocabularies).

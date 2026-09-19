@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { IgtDocument } from '../domain/IgtDocument.js';
-import { makeNativeRaw as buildRaw, makeNativeProject as buildProject } from './testFixtures.js';
+import {
+  makeNativeRaw as buildRaw,
+  makeNativeProject as buildProject,
+  makeOtherAppRaw,
+  makeOtherAppProject,
+} from './testFixtures.js';
 import {
   buildProjectFile,
   serializeVocabularyNative,
@@ -267,9 +272,9 @@ describe('serializeDocumentNative — comments', () => {
   });
 
   it('drops a comment whose anchor is not in the file, and says how many', () => {
-    // A comment outlives its anchor on the server, and a relation belongs to
-    // whichever app owns its layer (UD), never to IGT. Neither has a node here
-    // for a re-importer to hang the comment on.
+    // A comment outlives its anchor on the server, so it can be about a token,
+    // an annotation or a relation that is gone. None has a node here for a
+    // re-importer to hang the comment on.
     const warnings = [];
     const { comments } = serializeDocumentNative(makeDoc(), {
       comments: [
@@ -595,5 +600,162 @@ describe('archive bookkeeping', () => {
     expect(out.items[1].metadata).toEqual({ gloss: 'cat' });
     // The entry is still identified, which is what dedup matches on.
     expect(out.items.map((i) => i.id)).toEqual(['i1', 'i2']);
+  });
+});
+
+describe("other apps' layers", () => {
+  // The fixture's app is made up. The archive knows which layers are this
+  // app's own, and carries everything else as it is.
+  const otherDoc = () =>
+    new IgtDocument({ raw: makeOtherAppRaw(), project: makeOtherAppProject(), vocabularies: {} });
+  const manifest = () =>
+    buildProjectFile({
+      project: makeOtherAppProject(),
+      documents: [],
+      vocabularies: [],
+      exportedAt: '2026-09-19T00:00:00.000Z',
+    });
+
+  it("carries the project's other settings, but not this app's or the review list", () => {
+    expect(manifest().otherConfig).toEqual({ other: { setting: 'x', nested: { a: [1, 2] } } });
+  });
+
+  it("carries what other namespaces this app's own layers hold, by role", () => {
+    expect(manifest().otherLayers.config).toEqual({ baseline: { other: { locale: 'es' } } });
+  });
+
+  it('describes every other token layer, parents before the layers nested in them', () => {
+    const { tokenLayers } = manifest().otherLayers;
+    // The project lists Parts before Words, which Parts is nested in.
+    expect(tokenLayers.map((tl) => tl.id)).toEqual(['olNodes', 'olWords', 'olParts']);
+    expect(tokenLayers[0]).toEqual({
+      id: 'olNodes',
+      name: 'Nodes',
+      overlapMode: 'any',
+      parent: null,
+      config: { other: { nodes: true } },
+      spanLayers: [
+        {
+          id: 'olConcepts',
+          name: 'Concepts',
+          config: { other: { concepts: true } },
+          relationLayers: [
+            { id: 'olRels', name: 'Relations', config: { other: { relations: true } } },
+          ],
+        },
+      ],
+    });
+    // A parent that is this app's layer is named by role, since the importer
+    // makes that layer itself, and one that is another of these by its id.
+    expect(tokenLayers[1]).toMatchObject({
+      overlapMode: 'non-overlapping',
+      parent: { role: 'word' },
+      // Config is verbatim, `plaid` included: a role only its own app reads.
+      config: { plaid: { role: 'other-word' }, other: { words: true } },
+    });
+    expect(tokenLayers[2].parent).toEqual({ id: 'olWords' });
+  });
+
+  it("describes span layers on this app's token layers that are no field of it", () => {
+    const { spanLayers } = manifest().otherLayers;
+    expect(spanLayers).toEqual([
+      {
+        id: 'slMystery',
+        tokenLayer: 'word',
+        scope: null,
+        name: 'Mystery',
+        config: {},
+        relationLayers: [],
+      },
+      {
+        id: 'olLemma',
+        tokenLayer: 'word',
+        scope: null,
+        name: 'Lemma',
+        config: { other: { lemma: true } },
+        relationLayers: [{ id: 'olDeps', name: 'Deps', config: { other: { deps: true } } }],
+      },
+    ]);
+  });
+
+  it('describes nothing for a project that is only this app', () => {
+    const { otherConfig, otherLayers } = buildProjectFile({
+      project: buildProject(),
+      documents: [],
+      vocabularies: [],
+      exportedAt: '2026-09-19T00:00:00.000Z',
+    });
+    expect(otherConfig).toEqual({});
+    expect(otherLayers.config).toEqual({});
+    expect(otherLayers.tokenLayers).toEqual([]);
+    // The unscoped Mystery layer is still one, as it was before.
+    expect(otherLayers.spanLayers.map((sl) => sl.name)).toEqual(['Mystery']);
+  });
+
+  it("writes each document's tokens, spans and relations, naming their layers", () => {
+    const out = serializeDocumentNative(otherDoc());
+    // Parents first, though the project lists Parts before Words.
+    expect(out.otherLayers.tokens.map((e) => e.layer)).toEqual(['olNodes', 'olWords', 'olParts']);
+    expect(out.otherLayers.tokens[0].tokens).toEqual([
+      // Zero-width, as it was.
+      { id: 'n1', begin: 20, end: 20, metadata: { abstract: 'person' } },
+      { id: 'n2', begin: 0, end: 6, precedence: 2 },
+    ]);
+    expect(out.otherLayers.spans).toEqual([
+      {
+        layer: 'olConcepts',
+        spans: [
+          { id: 'c1', tokens: ['n1'], value: 'person' },
+          { id: 'c2', tokens: ['n2'], value: 'dog', metadata: { note: 'x' } },
+        ],
+      },
+    ]);
+    // Relations on every relation layer, including one hanging on a span
+    // layer of this app's word layer, whose spans are in extraSpans already.
+    expect(out.otherLayers.relations).toEqual([
+      {
+        layer: 'olDeps',
+        relations: [{ id: 'dep1', source: 'lem2', target: 'lem1', value: 'nsubj' }],
+      },
+      {
+        layer: 'olRels',
+        relations: [
+          { id: 'r1', source: 'c1', target: 'c2', value: ':ARG0', metadata: { prov: 'inferred' } },
+        ],
+      },
+    ]);
+    expect(out.extraSpans.filter((s) => s.layer.id === 'olLemma').map((s) => s.id)).toEqual([
+      'lem1',
+      'lem2',
+    ]);
+    // This app's own tokens are never in there twice.
+    expect(JSON.stringify(out.otherLayers)).not.toContain('"w1"');
+  });
+
+  it('writes no section for a document with nothing of another app in it', () => {
+    expect(serializeDocumentNative(makeDoc())).not.toHaveProperty('otherLayers');
+  });
+
+  it("keeps comments on another app's tokens, annotations and relations", () => {
+    const warnings = [];
+    const comment = (id, entityType, entityId) => ({
+      id,
+      entityType,
+      entityId,
+      author: { id: 'ada@x.com', name: null },
+      body: 'Hm.',
+    });
+    const { comments } = serializeDocumentNative(otherDoc(), {
+      comments: [
+        comment('k1', 'token', 'n1'),
+        comment('k2', 'span', 'c2'),
+        comment('k3', 'relation', 'r1'),
+        comment('k4', 'relation', 'dep1'),
+        comment('k5', 'relation', 'gone'),
+      ],
+      onWarning: (msg) => warnings.push(msg),
+    });
+    expect(comments.map((c) => c.id)).toEqual(['k1', 'k2', 'k3', 'k4']);
+    expect(warnings).toHaveLength(1);
   });
 });

@@ -269,3 +269,110 @@ export const makeNativeProject = () => ({
   },
   textLayers: makeNativeRaw().textLayers,
 });
+
+// Another Plaid app's layers beside this app's, on the loss-trap document. The
+// app is made up (namespace `other`), since the archive must carry any app's
+// layers without knowing it:
+//   - a root token layer (overlap `any`) holding a ZERO-WIDTH token, with a
+//     span layer and a relation layer on that
+//   - a token layer nested in this app's word layer, and one nested in THAT,
+//     listed child first so the archive has to put the parent first itself
+//   - a span layer on this app's word layer that no field is, with a relation
+//     layer hanging on it
+//   - its own settings on the baseline text layer and on the project
+// Body: "perros corren. extra". w1 = perros [0,6), w2 = corren [7,13).
+export function makeOtherAppRaw() {
+  const raw = makeNativeRaw();
+  const text = raw.textLayers[0];
+  text.config = { ...text.config, other: { locale: 'es' } };
+  const wordLayer = text.tokenLayers.find((tl) => tl.id === 'wl');
+  wordLayer.overlapMode = 'non-overlapping';
+  wordLayer.parentTokenLayer = null;
+  wordLayer.spanLayers.push({
+    id: 'olLemma',
+    name: 'Lemma',
+    config: { other: { lemma: true } },
+    spans: [
+      { id: 'lem1', tokens: ['w1'], value: 'perro' },
+      { id: 'lem2', tokens: ['w2'], value: 'correr', metadata: { prov: 'inferred' } },
+    ],
+    relationLayers: [
+      {
+        id: 'olDeps',
+        name: 'Deps',
+        config: { other: { deps: true } },
+        relations: [{ id: 'dep1', source: 'lem2', target: 'lem1', value: 'nsubj' }],
+      },
+    ],
+  });
+  text.tokenLayers.push(
+    {
+      id: 'olNodes',
+      name: 'Nodes',
+      overlapMode: 'any',
+      parentTokenLayer: null,
+      config: { other: { nodes: true } },
+      tokens: [
+        { id: 'n1', begin: 20, end: 20, precedence: null, metadata: { abstract: 'person' } },
+        { id: 'n2', begin: 0, end: 6, precedence: 2 },
+      ],
+      spanLayers: [
+        {
+          id: 'olConcepts',
+          name: 'Concepts',
+          config: { other: { concepts: true } },
+          spans: [
+            { id: 'c1', tokens: ['n1'], value: 'person' },
+            { id: 'c2', tokens: ['n2'], value: 'dog', metadata: { note: 'x' } },
+          ],
+          relationLayers: [
+            {
+              id: 'olRels',
+              name: 'Relations',
+              config: { other: { relations: true } },
+              relations: [
+                {
+                  id: 'r1',
+                  source: 'c1',
+                  target: 'c2',
+                  value: ':ARG0',
+                  metadata: { prov: 'inferred' },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    // Nested in the layer after it, and listed first on purpose.
+    {
+      id: 'olParts',
+      name: 'Parts',
+      overlapMode: 'any',
+      parentTokenLayer: 'olWords',
+      config: { other: { parts: true } },
+      tokens: [{ id: 'p1', begin: 0, end: 6, precedence: 1 }],
+      spanLayers: [],
+    },
+    {
+      id: 'olWords',
+      name: 'Words',
+      overlapMode: 'non-overlapping',
+      parentTokenLayer: 'wl',
+      config: { plaid: { role: 'other-word' }, other: { words: true } },
+      tokens: [{ id: 'ow1', begin: 0, end: 6 }],
+      spanLayers: [],
+    },
+  );
+  return raw;
+}
+
+export const makeOtherAppProject = () => ({
+  ...makeNativeProject(),
+  config: {
+    ...makeNativeProject().config,
+    plaid: { review: { 'someone@example.com': true } },
+    other: { setting: 'x', nested: { a: [1, 2] } },
+  },
+  textLayers: makeOtherAppRaw().textLayers,
+});

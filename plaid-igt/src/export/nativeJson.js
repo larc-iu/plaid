@@ -16,6 +16,11 @@
 // Span entries carry their ids so provenance metadata rides along and so a
 // span covering several tokens (which appears once per token in the tree) is
 // recognizable as ONE span.
+//
+// Other Plaid apps sharing the project are carried too, without this app
+// knowing anything about them: every layer on the baseline text layer that it
+// does not own, with its config, tokens, spans and relations, as plain Plaid
+// data (`otherLayers`, see domain/otherLayers.js).
 
 import {
   findBaselineTextLayer,
@@ -31,8 +36,15 @@ import {
   readVocabFields,
   readFieldLang,
 } from '../domain/igtConfig.js';
+import { PLAID_NAMESPACE, ROLES } from '@larc-iu/plaid-client';
 import { readTagsetName } from '../domain/tagsets.js';
 import { normalizeVocabFields } from '../domain/vocabFields.js';
+import {
+  configWithout,
+  otherTokenLayers,
+  ownTokenLayers,
+  parentsFirst,
+} from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
 
 export const NATIVE_FORMAT_VERSION = 1;
@@ -144,6 +156,12 @@ export function buildProjectFile({
       timeAlignment: alignmentLayer?.id ?? null,
       spanLayers,
     },
+    // What other apps keep in the project, carried without being understood:
+    // their project settings, and their layers with the settings on them.
+    // `plaid` is left out of the settings because it holds whose work is
+    // reviewed, which names users and so goes with permissions.
+    otherConfig: configWithout(project?.config, [IGT_NAMESPACE, PLAID_NAMESPACE]),
+    otherLayers: describeOtherLayers(textLayer),
     documents,
     vocabularies,
     // What the project has decided, in its own words. Every other thing a
@@ -153,6 +171,85 @@ export function buildProjectFile({
       title: g.title ?? '',
       body: g.body ?? '',
       pinned: !!g.pinned,
+    })),
+  };
+}
+
+const relationLayerRows = (spanLayer) =>
+  (spanLayer.relationLayers || []).map((rl) => ({
+    id: rl.id,
+    name: rl.name ?? null,
+    config: rl.config || {},
+  }));
+
+/**
+ * Everything on the baseline text layer that another app put there, as layer
+ * descriptions an importer can make again (see domain/otherLayers.js).
+ *
+ * - `config`: what this app's own text and token layers hold under namespaces
+ *   other than `igt` and `plaid`, by role. Setup writes those two itself.
+ * - `spanLayers`: span layers on this app's token layers that it has no field
+ *   for, plus any field that other apps hang relation layers or settings on.
+ *   The spans on them are in each document already (a field's in the tree, the
+ *   rest in `extraSpans`), so only the layer, its settings and its relation
+ *   layers are described here.
+ * - `tokenLayers`: every other token layer, parents before the layers nested
+ *   in them, with its span and relation layers. The parent is named by role
+ *   when it is one of this app's layers, and by id when it is another of
+ *   these, since only this app's layers are known to the importer by role.
+ *
+ * A token layer's overlap mode and parent are not in a project read, so the
+ * caller supplies them on the layer (`overlapMode`, `parentTokenLayer`).
+ */
+function describeOtherLayers(textLayer) {
+  const tokenLayers = textLayer?.tokenLayers || [];
+  const own = ownTokenLayers(tokenLayers);
+  const roleOf = new Map(own.map(([role, layer]) => [layer.id, role]));
+
+  const config = {};
+  for (const [role, layer] of [[ROLES.BASELINE, textLayer], ...own]) {
+    const rest = configWithout(layer?.config, [IGT_NAMESPACE, PLAID_NAMESPACE]);
+    if (nonEmpty(rest)) config[role] = rest;
+  }
+
+  const spanLayers = [];
+  for (const [role, layer] of own) {
+    for (const sl of layer.spanLayers || []) {
+      const scope = readScope(sl.config);
+      const rest = configWithout(sl.config, [IGT_NAMESPACE]);
+      const relationLayers = relationLayerRows(sl);
+      if (scope && !nonEmpty(rest) && !relationLayers.length) continue;
+      spanLayers.push({
+        id: sl.id,
+        tokenLayer: role,
+        scope,
+        name: sl.name ?? null,
+        config: rest,
+        relationLayers,
+      });
+    }
+  }
+
+  const parentRef = (id) => {
+    if (id == null) return null;
+    return roleOf.has(id) ? { role: roleOf.get(id) } : { id };
+  };
+  const others = parentsFirst(otherTokenLayers(tokenLayers), (tl) => tl.parentTokenLayer);
+  return {
+    config,
+    spanLayers,
+    tokenLayers: others.map((tl) => ({
+      id: tl.id,
+      name: tl.name ?? null,
+      overlapMode: tl.overlapMode ?? null,
+      parent: parentRef(tl.parentTokenLayer),
+      config: tl.config || {},
+      spanLayers: (tl.spanLayers || []).map((sl) => ({
+        id: sl.id,
+        name: sl.name ?? null,
+        config: sl.config || {},
+        relationLayers: relationLayerRows(sl),
+      })),
     })),
   };
 }
@@ -457,6 +554,66 @@ function completenessSweep(layerInfo, ctx) {
   return { orphanTokens, extraSpans };
 }
 
+/**
+ * The document's share of `otherLayers` in project.json: the tokens and spans
+ * on the token layers this app does not own, and the relations on every
+ * relation layer, whichever span layer it hangs on. Each list names its layer
+ * by id, which the manifest describes, and holds what the server holds (a
+ * zero-width token stays one). Token layers come parents first, the order
+ * their tokens can be made in. `ids` are what a comment can be anchored to.
+ * `data` is null when the document holds none of it.
+ */
+function otherLayerData(layerInfo) {
+  const tokenLayers = layerInfo.primaryTextLayer?.tokenLayers || [];
+  const others = parentsFirst(otherTokenLayers(tokenLayers), (tl) => tl.parentTokenLayer);
+  const tokens = [];
+  const spans = [];
+  const relations = [];
+  const ids = { token: new Set(), span: new Set(), relation: new Set() };
+  for (const tl of others) {
+    if (!tl.tokens?.length) continue;
+    tokens.push({
+      layer: tl.id,
+      tokens: tl.tokens.map((t) => {
+        ids.token.add(t.id);
+        const node = { id: t.id, begin: t.begin, end: t.end };
+        if (t.precedence != null) node.precedence = t.precedence;
+        return withMetadata(node, t.metadata);
+      }),
+    });
+  }
+  for (const sl of others.flatMap((tl) => tl.spanLayers || [])) {
+    if (!sl.spans?.length) continue;
+    spans.push({
+      layer: sl.id,
+      spans: sl.spans.map((s) => {
+        ids.span.add(s.id);
+        return withMetadata(
+          { id: s.id, tokens: s.tokens || [], value: s.value ?? null },
+          s.metadata,
+        );
+      }),
+    });
+  }
+  for (const rl of tokenLayers.flatMap((tl) =>
+    (tl.spanLayers || []).flatMap((sl) => sl.relationLayers || []),
+  )) {
+    if (!rl.relations?.length) continue;
+    relations.push({
+      layer: rl.id,
+      relations: rl.relations.map((r) => {
+        ids.relation.add(r.id);
+        return withMetadata(
+          { id: r.id, source: r.source, target: r.target, value: r.value ?? null },
+          r.metadata,
+        );
+      }),
+    });
+  }
+  const empty = !tokens.length && !spans.length && !relations.length;
+  return { data: empty ? null : { tokens, spans, relations }, ids };
+}
+
 const alignmentNodes = (alignmentTokens) =>
   (alignmentTokens || []).map((t) => {
     const metadata = { ...(t.metadata || {}) };
@@ -481,10 +638,10 @@ const alignmentNodes = (alignmentTokens) =>
  * are not versioned, so `asOf` exports omit them entirely (see runExport).
  *
  * `archived(type, id)` says whether the anchor is in the file being written.
- * A comment outlives its anchor on the server, and a project holds entities
- * this archive does not carry (relations belong to whichever app owns them,
- * UD's dependency arcs say), so a comment can be about something the file has
- * no node for. Such a comment is dropped here: a re-importer would have
+ * A comment outlives its anchor on the server, and a project can hold entities
+ * this archive does not carry (whatever is on a text layer other than the
+ * baseline), so a comment can be about something the file has no node for.
+ * Such a comment is dropped here: a re-importer would have
  * nothing to hang it on, and the server refuses a comment on a missing anchor.
  * The caller counts what was dropped and warns once per file.
  *
@@ -556,12 +713,14 @@ export function serializeDocumentNative(
   extraSpans.sort((a, b) => layerKey(a).localeCompare(layerKey(b)) || byOrder(a, b));
   linkIndex.extras.sort(byOrder);
   const text = layerInfo.primaryTextLayer?.text;
+  const other = otherLayerData(layerInfo);
 
-  // What this file has a node for: the tree, the alignment, and the sweep's
-  // leftovers. A comment anchored anywhere else is dropped (see commentNodes).
-  const tokenIds = new Set(ctx.emittedTokenIds);
+  // What this file has a node for: the tree, the alignment, the sweep's
+  // leftovers, and other apps' layers. A comment anchored anywhere else is
+  // dropped (see commentNodes).
+  const tokenIds = new Set([...ctx.emittedTokenIds, ...other.ids.token]);
   for (const t of orphanTokens) tokenIds.add(t.id);
-  const spanIds = new Set(ctx.emittedSpanIds);
+  const spanIds = new Set([...ctx.emittedSpanIds, ...other.ids.span]);
   for (const sp of extraSpans) spanIds.add(sp.id);
   const archived = (type, id) => {
     switch (type) {
@@ -573,6 +732,8 @@ export function serializeDocumentNative(
         return tokenIds.has(id);
       case 'span':
         return spanIds.has(id);
+      case 'relation':
+        return other.ids.relation.has(id);
       default:
         return false;
     }
@@ -597,6 +758,7 @@ export function serializeDocumentNative(
     extraVocabLinks: linkIndex.extras,
     extraSpans,
     orphanTokens,
+    ...(other.data ? { otherLayers: other.data } : {}),
     ...(nodes.length ? { comments: nodes } : {}),
   };
 }

@@ -14,7 +14,13 @@
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
-import { MEDIA_FILE_FIELD, readVocabFields, readLanguages } from '../domain/igtConfig.js';
+import {
+  MEDIA_FILE_FIELD,
+  findBaselineTextLayer,
+  readVocabFields,
+  readLanguages,
+} from '../domain/igtConfig.js';
+import { otherTokenLayers } from '../domain/otherLayers.js';
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
@@ -189,6 +195,42 @@ async function shapeComments(client, raw, nameCache) {
     createdAt: c.createdAt,
     updatedAt: c.updatedAt,
   }));
+}
+
+/**
+ * The project with each of other apps' token layers given its overlap mode and
+ * parent. A project read leaves both out, and the archive cannot describe a
+ * layer to be made again without them, so each such layer is read on its own.
+ * This app's own layers are made by project setup and need neither. Returns a
+ * copy, leaving `project` as the caller had it.
+ */
+async function withTokenLayerShapes(client, project) {
+  const textLayer = findBaselineTextLayer(project?.textLayers || []);
+  const unread = otherTokenLayers(textLayer?.tokenLayers).filter(
+    (tl) => tl.overlapMode === undefined,
+  );
+  if (!unread.length) return project;
+  const shapes = new Map();
+  for (const tl of unread) {
+    const read = await client.tokenLayers.get(tl.id);
+    shapes.set(tl.id, {
+      overlapMode: read?.overlapMode ?? null,
+      parentTokenLayer: read?.parentTokenLayer ?? null,
+    });
+  }
+  return {
+    ...project,
+    textLayers: project.textLayers.map((t) =>
+      t !== textLayer
+        ? t
+        : {
+            ...t,
+            tokenLayers: t.tokenLayers.map((tl) =>
+              shapes.has(tl.id) ? { ...tl, ...shapes.get(tl.id) } : tl,
+            ),
+          },
+    ),
+  };
 }
 
 /** A document's comments, shaped for `serializeDocumentNative`. */
@@ -591,11 +633,13 @@ export async function runExport({
       });
     }
     entries.push(...mediaEntries);
+    checkStop();
+    const described = await withTokenLayerShapes(client, project);
     entries.unshift({
       path: 'project.json',
       data: toJson(
         buildProjectFile({
-          project,
+          project: described,
           documents: docFiles.map((f, i) => ({
             id: f.id,
             name: f.docName,

@@ -2,9 +2,12 @@
 // disposable). Pipeline against the live core (:8085):
 //
 //   1. FLEx-import a 2-text Lezgi slice into project A (real importer)
-//      + add media and a time-alignment token to one document
+//      + add media and a time-alignment token to one document, and a made-up
+//      app's layers beside this app's (namespace `other`)
 //   2. Export A as a Plaid IGT JSON archive
-//   3. Import that archive into a fresh project B (the native importer)
+//   3. Import that archive into a fresh project B (the native importer), then
+//      run the import again over B, as a resume would, to see it make nothing
+//      twice
 //   4. Export B the same way
 //   5. Compare the two archives SEMANTICALLY (ids are correlation keys, so
 //      both sides are normalized to id-free shapes; the importer's bookkeeping
@@ -38,7 +41,11 @@ import { parseFwdata } from '../../src/import/flex/fwdataParser.js';
 import { buildDocuments } from '../../src/import/flex/buildDocuments.js';
 import { deriveImportConfig, runImport } from '../../src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
-import { findBaselineTextLayer, findAlignmentTokenLayer } from '../../src/domain/igtConfig.js';
+import {
+  findBaselineTextLayer,
+  findAlignmentTokenLayer,
+  findWordTokenLayer,
+} from '../../src/domain/igtConfig.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
 import { newPreset } from '../../src/export/presets.js';
 import { runExport } from '../../src/export/runExport.js';
@@ -126,6 +133,38 @@ function normalize(archive) {
   for (const v of archive.vocabularies) {
     for (const it of v.data.items || []) itemFormById.set(it.id, it.form);
   }
+
+  // Other apps' layers by name rather than by id, which an import replaces.
+  const other = archive.manifest.otherLayers || {};
+  const layerName = new Map();
+  const relationRows = (rows) =>
+    (rows || []).map((rl) => {
+      layerName.set(rl.id, rl.name);
+      return { name: rl.name, config: rl.config };
+    });
+  const otherSpanLayers = (other.spanLayers || []).map((sl) => {
+    layerName.set(sl.id, sl.name);
+    return {
+      tokenLayer: sl.tokenLayer,
+      scope: sl.scope,
+      name: sl.name,
+      config: sl.config,
+      relationLayers: relationRows(sl.relationLayers),
+    };
+  });
+  for (const tl of other.tokenLayers || []) layerName.set(tl.id, tl.name);
+  const otherTokenLayers = (other.tokenLayers || []).map((tl) => ({
+    name: tl.name,
+    overlapMode: tl.overlapMode,
+    parent: tl.parent?.role ?? (tl.parent?.id ? `layer:${layerName.get(tl.parent.id)}` : null),
+    config: tl.config,
+    spanLayers: (tl.spanLayers || []).map((sl) => {
+      layerName.set(sl.id, sl.name);
+      return { name: sl.name, config: sl.config, relationLayers: relationRows(sl.relationLayers) };
+    }),
+  }));
+  const nameOf = (id) => layerName.get(id) ?? `unknown-layer:${id}`;
+  const byJson = (a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b));
   const vocabularies = archive.vocabularies
     .map((v) => ({
       name: v.name,
@@ -175,6 +214,12 @@ function normalize(archive) {
       }
       for (const t of data.orphanTokens || []) note(t.id, `${t.layer}:${t.begin}-${t.end}`);
       for (const a of data.alignment || []) note(a.id, `alignment:${a.begin}-${a.end}`);
+      const otherData = data.otherLayers || {};
+      for (const { layer, tokens } of otherData.tokens || []) {
+        for (const t of tokens) {
+          note(t.id, `${nameOf(layer)}:${t.begin}-${t.end}@${t.precedence ?? ''}`);
+        }
+      }
       const desc = (id) => tokenDesc.get(id) ?? `unknown:${id}`;
 
       // Span id → "field=value", so a comment anchored to an annotation
@@ -192,9 +237,20 @@ function normalize(archive) {
         }
       }
       for (const sp of data.extraSpans || []) noteSpan(sp.layer?.name ?? 'span', sp);
+      for (const { layer, spans } of otherData.spans || []) {
+        for (const sp of spans) noteSpan(nameOf(layer), sp);
+      }
+      const spanOf = (id) => spanDesc.get(id) ?? `unknown:${id}`;
+      const relationDesc = new Map();
+      for (const { layer, relations } of otherData.relations || []) {
+        for (const r of relations) {
+          relationDesc.set(r.id, `${nameOf(layer)}:${spanOf(r.source)}->${spanOf(r.target)}`);
+        }
+      }
       const anchorDesc = (a) => {
         if (a?.type === 'token') return `token:${desc(a.id)}`;
-        if (a?.type === 'span') return `span:${spanDesc.get(a.id) ?? `unknown:${a.id}`}`;
+        if (a?.type === 'span') return `span:${spanOf(a.id)}`;
+        if (a?.type === 'relation') return `relation:${relationDesc.get(a.id) ?? a.id}`;
         return a?.type ?? 'unknown';
       };
 
@@ -258,7 +314,8 @@ function normalize(archive) {
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
         extraSpans: (data.extraSpans || [])
           .map((s) => ({
-            layer: s.layer,
+            // The layer's id is the source project's, a correlation key.
+            layer: { name: s.layer?.name, scope: s.layer?.scope },
             tokens: (s.tokens || []).map(desc).sort(),
             value: s.value,
             metadata: s.metadata,
@@ -273,6 +330,40 @@ function normalize(archive) {
             metadata: t.metadata,
           }))
           .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+        // Another app's tokens, annotations and relations, by layer name.
+        otherLayers: {
+          tokens: (otherData.tokens || [])
+            .map(({ layer, tokens }) => ({
+              layer: nameOf(layer),
+              tokens: tokens.map((t) => ({ at: desc(t.id), metadata: t.metadata })).sort(byJson),
+            }))
+            .sort(byJson),
+          spans: (otherData.spans || [])
+            .map(({ layer, spans }) => ({
+              layer: nameOf(layer),
+              spans: spans
+                .map((sp) => ({
+                  tokens: (sp.tokens || []).map(desc),
+                  value: sp.value,
+                  metadata: sp.metadata,
+                }))
+                .sort(byJson),
+            }))
+            .sort(byJson),
+          relations: (otherData.relations || [])
+            .map(({ layer, relations }) => ({
+              layer: nameOf(layer),
+              relations: relations
+                .map((r) => ({
+                  source: spanOf(r.source),
+                  target: spanOf(r.target),
+                  value: r.value,
+                  metadata: r.metadata,
+                }))
+                .sort(byJson),
+            }))
+            .sort(byJson),
+        },
         // Anchor + the words a person typed. Author and timestamps are
         // DELIBERATELY excluded: the server restamps both on import, which is
         // the whole reason the importer writes an attribution note instead.
@@ -290,6 +381,12 @@ function normalize(archive) {
 
   return {
     schema: archive.manifest.schema,
+    otherConfig: archive.manifest.otherConfig,
+    otherLayers: {
+      config: other.config,
+      spanLayers: otherSpanLayers,
+      tokenLayers: otherTokenLayers,
+    },
     // The project's annotation manual. Ordered, because the list is ordered by
     // title on the way out and a round trip that shuffled it would still be
     // wrong for a person reading it.
@@ -382,8 +479,86 @@ try {
     },
   ]);
 
+  // A made-up app's layers beside this app's. The archive has to carry any
+  // app's without knowing it, so nothing here is any real app's: a root token
+  // layer holding a zero-width token, with a span layer and a relation layer
+  // on it, a layer nested in this app's word layer, a span layer on the word
+  // layer that no field is with a relation layer of its own, and settings on
+  // the project and on the baseline text layer.
+  const textLayerA = findBaselineTextLayer(projectA.textLayers);
+  const wordLayerA = findWordTokenLayer(textLayerA.tokenLayers || []);
+  const idOf = (made) => made?.id ?? made;
+  const nodesLayer = idOf(await client.tokenLayers.create(textLayerA.id, 'Other nodes', 'any'));
+  await client.tokenLayers.setConfig(nodesLayer, 'other', 'nodes', true);
+  const conceptLayer = idOf(await client.spanLayers.create(nodesLayer, 'Other concepts'));
+  await client.spanLayers.setConfig(conceptLayer, 'other', 'concepts', { shape: 'box' });
+  const edgeLayer = idOf(await client.relationLayers.create(conceptLayer, 'Other edges'));
+  await client.relationLayers.setConfig(edgeLayer, 'other', 'edges', true);
+  const nestedLayer = idOf(
+    await client.tokenLayers.create(textLayerA.id, 'Other parts', 'any', wordLayerA.id),
+  );
+  await client.tokenLayers.setConfig(nestedLayer, 'plaid', 'role', 'other-part');
+  const lemmaLayer = idOf(await client.spanLayers.create(wordLayerA.id, 'Other lemma'));
+  await client.spanLayers.setConfig(lemmaLayer, 'other', 'lemma', true);
+  const depLayer = idOf(await client.relationLayers.create(lemmaLayer, 'Other deps'));
+  await client.relationLayers.setConfig(depLayer, 'other', 'deps', true);
+  await client.projects.setConfig(setupA.projectId, 'other', 'settings', { mode: 'x', n: [1, 2] });
+  await client.textLayers.setConfig(textLayerA.id, 'other', 'locale', 'lez');
+
+  const [w0, w1] = baselineA.tokenLayers
+    .find((tl) => tl.config?.plaid?.role === 'word')
+    .tokens.sort((a, b) => a.begin - b.begin);
+  const [zeroNode, wordNode] = (
+    await client.tokens.bulkCreate([
+      { tokenLayerId: nodesLayer, text: baselineA.text.id, begin: w0.begin, end: w0.begin },
+      {
+        tokenLayerId: nodesLayer,
+        text: baselineA.text.id,
+        begin: w1.begin,
+        end: w1.end,
+        precedence: 1,
+        metadata: { note: 'kept' },
+      },
+    ])
+  ).ids;
+  await client.tokens.bulkCreate([
+    {
+      tokenLayerId: nestedLayer,
+      text: baselineA.text.id,
+      begin: w0.begin,
+      end: w0.end,
+      precedence: 1,
+    },
+  ]);
+  const [conceptA, conceptB] = (
+    await client.spans.bulkCreate([
+      { spanLayerId: conceptLayer, tokens: [zeroNode], value: 'person' },
+      {
+        spanLayerId: conceptLayer,
+        tokens: [wordNode],
+        value: 'say-01',
+        metadata: { prov: 'inferred' },
+      },
+    ])
+  ).ids;
+  const [edge] = (
+    await client.relations.bulkCreate([
+      { relationLayerId: edgeLayer, source: conceptB, target: conceptA, value: ':ARG0' },
+    ])
+  ).ids;
+  const [lemma0, lemma1] = (
+    await client.spans.bulkCreate([
+      { spanLayerId: lemmaLayer, tokens: [w0.id], value: 'lemma-0' },
+      { spanLayerId: lemmaLayer, tokens: [w1.id], value: 'lemma-1' },
+    ])
+  ).ids;
+  await client.relations.bulkCreate([
+    { relationLayerId: depLayer, source: lemma1, target: lemma0, value: 'dep', metadata: { k: 1 } },
+  ]);
+
   // Comments on each anchor type the archive can represent, so the round trip
-  // exercises document / text / token / span resolution rather than just one.
+  // exercises document / text / token / span / relation resolution rather than
+  // just one.
   const spanA = baselineA.tokenLayers
     .flatMap((tl) => tl.spanLayers || [])
     .flatMap((sl) => sl.spans || [])[0];
@@ -393,6 +568,7 @@ try {
     ['text', baselineA.text.id, 'The baseline has a stray character near the end.'],
     ['token', sentA.id, 'Is this really one sentence?'],
     ...(spanA ? [['span', spanA.id, 'This gloss looks like a typo.']] : []),
+    ['relation', edge, 'Is this the right role?'],
   ];
   for (const [type, id, body] of seededComments) {
     await client.comments.create(type, id, body);
@@ -513,6 +689,30 @@ try {
     archiveA.documents.some((d) => d.data.alignment.length === 1),
     'archive A carries the alignment token',
   );
+  check(
+    stableStringify(archiveA.manifest.otherConfig) ===
+      stableStringify({ other: { settings: { mode: 'x', n: [1, 2] } } }),
+    "archive A carries the other app's project settings, and nothing of plaid's",
+    JSON.stringify(archiveA.manifest.otherConfig),
+  );
+  const otherTokenLayersA = archiveA.manifest.otherLayers?.tokenLayers || [];
+  check(
+    stableStringify(otherTokenLayersA.map((tl) => [tl.name, tl.overlapMode, tl.parent])) ===
+      stableStringify([
+        ['Other nodes', 'any', null],
+        ['Other parts', 'any', { role: 'word' }],
+      ]),
+    "archive A describes the other app's token layers, with overlap mode and parent",
+    JSON.stringify(otherTokenLayersA.map((tl) => [tl.name, tl.overlapMode, tl.parent])),
+  );
+  const nodesInA = archiveA.documents.flatMap((d) =>
+    (d.data.otherLayers?.tokens || []).flatMap((entry) => entry.tokens),
+  );
+  check(
+    nodesInA.some((t) => t.begin === t.end),
+    'archive A keeps the zero-width token',
+    JSON.stringify(nodesInA),
+  );
 
   // ---- 3. import into project B ----
   const nameB = `rt-b-${Date.now() % 1e7}`;
@@ -540,6 +740,33 @@ try {
     importRes.warnings.join('; '),
   );
   check(importRes.imported === archiveA.documents.length, 'all documents imported');
+
+  // A resume runs the same import over the same project. Every document is
+  // done, so it skips them, and the other app's layers it made the first time
+  // must be found again rather than made a second time.
+  const layerCounts = async (projectId) => {
+    const p = await client.projects.get(projectId);
+    const tokenLayers = (p.textLayers || []).flatMap((tl) => tl.tokenLayers || []);
+    const spanLayers = tokenLayers.flatMap((tl) => tl.spanLayers || []);
+    return {
+      token: tokenLayers.length,
+      span: spanLayers.length,
+      relation: spanLayers.flatMap((sl) => sl.relationLayers || []).length,
+    };
+  };
+  const countsBefore = await layerCounts(setupB.projectId);
+  const again = await runNativeImport({ client, projectId: setupB.projectId, archive: archiveA });
+  const countsAfter = await layerCounts(setupB.projectId);
+  check(
+    again.skipped === archiveA.documents.length && again.warnings.length === 0,
+    'a second run over project B skips every document, without warnings',
+    `${again.skipped} skipped; ${again.warnings.join('; ')}`,
+  );
+  check(
+    stableStringify(countsBefore) === stableStringify(countsAfter),
+    "a second run makes none of the other app's layers again",
+    `${JSON.stringify(countsBefore)} vs ${JSON.stringify(countsAfter)}`,
+  );
 
   // Attribution: the server restamps author and dates, so what must survive is
   // the note. Checked here rather than in the archive comparison, which
@@ -615,6 +842,22 @@ try {
   check(
     normB.documents.some((d) => d.hasMedia),
     'media survived the round trip',
+  );
+  compare("the other app's project settings round-trip", normA.otherConfig, normB.otherConfig);
+  compare(
+    "the other app's layers round-trip (names, overlap modes, parents, config)",
+    normA.otherLayers,
+    normB.otherLayers,
+  );
+  check(
+    normB.documents.some((d) =>
+      d.otherLayers.tokens.some((l) => l.tokens.some((t) => /:(\d+)-\1@/.test(t.at))),
+    ),
+    'the zero-width token survived the round trip',
+  );
+  check(
+    normB.documents.some((d) => d.otherLayers.relations.length === 2),
+    "the other app's relations survived the round trip, on both relation layers",
   );
   check(
     normB.documents.some(

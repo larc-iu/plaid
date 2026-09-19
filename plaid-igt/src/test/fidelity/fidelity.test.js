@@ -514,6 +514,12 @@ const IDENTIFIERS = {
 const PASS_THROUGH = [
   { file: 'plaid-igt/src/import/native/importEngine.js', resource: 'projects', key: 'key' },
   { file: 'plaid-igt/src/import/native/importEngine.js', resource: 'vocabLayers', key: 'key' },
+  // Other apps' settings on the project and on layers, as the archive has them.
+  ...['projects', 'textLayers', 'tokenLayers', 'spanLayers', 'relationLayers'].map((resource) => ({
+    file: 'plaid-igt/src/import/native/otherLayers.js',
+    resource,
+    key: 'key',
+  })),
 ];
 
 // Keys an entry's metadata reserves for structure (vocabFields.js).
