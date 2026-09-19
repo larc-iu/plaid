@@ -11,6 +11,8 @@
 //      sentence: respell a word, split a word, merge two words, split a
 //      sentence, merge two sentences, delete a sentence's text.
 //   4. UMR reads the document again, and each check says what survived.
+//   5. IGT's archive takes the project out and into a new one, and UMR's own
+//      export of the document there must be the same, byte for byte.
 //
 // Run from plaid-umr, through IGT's module aliases:
 //
@@ -27,6 +29,14 @@ import { buildDocuments } from '../../../plaid-igt/src/import/flex/buildDocument
 import { deriveImportConfig, runImport } from '../../../plaid-igt/src/import/flex/importEngine.js';
 import { executeProjectSetup } from '../../../plaid-igt/src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../../../plaid-igt/src/domain/IgtDocument.js';
+import { discoverExportLayers } from '../../../plaid-igt/src/export/exportLayers.js';
+import { newPreset } from '../../../plaid-igt/src/export/presets.js';
+import { runExport } from '../../../plaid-igt/src/export/runExport.js';
+import { readNativeArchive } from '../../../plaid-igt/src/import/native/readArchive.js';
+import {
+  deriveSetupData,
+  runNativeImport,
+} from '../../../plaid-igt/src/import/native/importEngine.js';
 import { UmrDocument } from '../../src/domain/UmrDocument.js';
 import { adoptSubstrate } from '../../src/domain/umrProjectSetup.js';
 import { getUmrLayerInfo } from '../../src/utils/umrLayerUtils.js';
@@ -104,9 +114,10 @@ const setup = await executeProjectSetup({
 if (setup.failures.length) throw new Error(`setup failed: ${setup.failures.join('; ')}`);
 const projectId = setup.projectId;
 
+const made = [projectId];
 const cleanup = async () => {
-  if (KEEP) console.log(`kept project ${projectId}`);
-  else await client.projects.delete(projectId);
+  if (KEEP) console.log(`kept projects ${made.join(', ')}`);
+  else for (const id of made) await client.projects.delete(id);
 };
 
 try {
@@ -392,6 +403,55 @@ try {
   const codes = [...new Set(umr.problems.map((p) => p.code))];
   console.log(
     `   validation after the edits: ${umr.problems.length} problems (${codes.join(', ')})`,
+  );
+
+  // ---- 5. through IGT's archive -------------------------------------------
+
+  const source = await client.projects.get(projectId);
+  const exported = await runExport({
+    client,
+    project: source,
+    preset: newPreset('plaid-igt-json', discoverExportLayers(source), 'rt'),
+    scope: { type: 'project' },
+  });
+  check(
+    exported.warnings.length === 0,
+    'the archive exports cleanly',
+    exported.warnings.join('; '),
+  );
+  const archive = readNativeArchive(new Uint8Array(await exported.blob.arrayBuffer()));
+  const setupB = await executeProjectSetup({
+    client,
+    isNewProject: true,
+    resumeProjectId: null,
+    setupData: deriveSetupData(archive.manifest, `igt-umr-roundtrip-b-${Date.now() % 1e7}`),
+  });
+  if (setupB.failures.length) throw new Error(`setup B failed: ${setupB.failures.join('; ')}`);
+  made.push(setupB.projectId);
+  const imported = await runNativeImport({ client, projectId: setupB.projectId, archive });
+  check(imported.warnings.length === 0, 'and imports cleanly', imported.warnings.join('; '));
+  const projectB = await client.projects.get(setupB.projectId);
+  const [{ id: documentB }] = await client.projects.listDocuments(setupB.projectId);
+  const loadB = () =>
+    UmrDocument.load({
+      client,
+      documentId: documentB,
+      projectId: setupB.projectId,
+      project: projectB,
+    });
+  let umrB = await loadB();
+  const healedB = await umrB.reconcileOnOpen();
+  console.log(`   repair after import: ${umrB.describeReconcile(healedB) || 'nothing to do'}`);
+  umrB = await loadB();
+  check(
+    umrB.graph.nodesById.size === umr.graph.nodesById.size,
+    'every node comes back',
+    `${umrB.graph.nodesById.size} of ${umr.graph.nodesById.size}`,
+  );
+  check(umrB.toUmr() === umr.toUmr(), "and UMR's export of it is the same, byte for byte");
+  check(
+    JSON.stringify(projectB.config?.umr ?? null) === JSON.stringify(source.config?.umr ?? null),
+    "UMR's project settings come back",
   );
 } finally {
   await cleanup();
