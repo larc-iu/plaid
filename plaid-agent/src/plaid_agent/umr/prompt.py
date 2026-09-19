@@ -60,7 +60,8 @@ end up with, not only the one you are adding.
 - Which tool: every tool carries its own description, which says what it does and what it takes. Read \
 those rather than guessing, and take from here only what no single description can say. read_document \
 takes a sentence range or a list of sentences, and a corpus can be far too big to read through, so \
-read the part you need. find_nodes and frequency_list ask the whole project at once.
+read the part you need. search, find_nodes and frequency_list ask the whole project at once, \
+and worklist says which sentences are unfinished.
 {read_budget}
 {be_concise}
 {cite_evidence}

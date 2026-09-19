@@ -57,7 +57,7 @@ def test_no_number_has_a_home_in_both_apps():
 def test_a_number_the_apps_set_apart_says_so_where_it_is_set(name):
     """A reason recorded only in this test is a reason nobody reads. It has to
     be beside the number too."""
-    for app in ('igt', 'ud'):
+    for app in ('igt', 'ud', 'umr'):
         text = '\n'.join(p.read_text() for p in (SRC / app).rglob('*.py') if f'\n{name} = ' in p.read_text())
         head = text[:text.index(f'\n{name} = ')]
         assert 'same budget' in head[-400:], f'{app}/{name} does not say why it differs from the other app'
@@ -74,6 +74,13 @@ CALLABLE = {
     'ud': {'list_documents': {}, 'search': {'field': 'lemma', 'pattern': 'mar', 'document': 'Viaje'},
            'frequency_list': {'what': 'lemma', 'document': 'Viaje'}, 'worklist': {'document': 'Viaje'},
            'comments': {'document': 'Viaje'}, 'recent_changes': {}},
+    # The same for UMR: its counts go through the engine except the attribute
+    # ones, which are metadata it does not index, so that is the branch this
+    # asks for.
+    'umr': {'list_documents': {}, 'search': {'pattern': 'dog', 'document': 'Story'},
+            'frequency_list': {'what': 'attribute', 'document': 'Story'},
+            'worklist': {'document': 'Story'}, 'comments': {'document': 'Story'},
+            'recent_changes': {}},
 }
 # A read the fake client cannot answer, with why. Its signature is swept below
 # like every other.
@@ -93,11 +100,18 @@ def _ws_and_call(app):
         w = Workspace(c, load_project(c, 'p1'))
         w.prefer_scan = True
         return w, call_tool
-    from ud_fixtures import PID, ExtClient, project_raw, document_raw
-    from plaid_agent.ud.project import load_project
-    from plaid_agent.ud.toolkit import call_tool
-    from plaid_agent.ud.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+    if app == 'ud':
+        from ud_fixtures import PID, ExtClient, project_raw, document_raw
+        from plaid_agent.ud.project import load_project
+        from plaid_agent.ud.toolkit import call_tool
+        from plaid_agent.ud.tools import Workspace
+        c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+        return Workspace(c, load_project(c, PID)), call_tool
+    from umr_fixtures import PID, ExtClient, project_raw, document_raw
+    from plaid_agent.umr.project import load_project
+    from plaid_agent.umr.toolkit import call_tool
+    from plaid_agent.umr.tools import Workspace
+    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
     return Workspace(c, load_project(c, PID)), call_tool
 
 
@@ -106,7 +120,7 @@ def _impl(app, tool):
     return mod._IMPL[tool]
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 @pytest.mark.parametrize('tool', sorted(limits.READ_LIMITS))
 def test_a_read_asked_for_nothing_shows_what_the_shared_table_says(app, tool):
     """`clamp_limit` reaches the table's default only when the tool was given

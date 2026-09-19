@@ -510,6 +510,48 @@ def _roots_of(sentence: Sentence, nodes_by_id: Dict[str, GNode]) -> List[GNode]:
     return [best]
 
 
+# --- a node's attributes ------------------------------------------------------
+
+def next_order(node: GNode) -> int:
+    """The next free position among a node's children: attributes and edges
+    share one order, the file's child order."""
+    orders = [e.order for e in node.out] + [a.get('order') or 0 for a in node.attrs]
+    return max(orders) + 1 if orders else 0
+
+
+def place_attributes(node: GNode, attrs: List[dict]) -> List[dict]:
+    """``attrs`` as the node should store them: one that was already there
+    keeps its place among the node's children, and a new one goes after
+    everything. The rule the editor writes by, so a graph written back keeps
+    its child order.
+
+    One reader, because the tool that sets a node's attributes by hand and the
+    scope that sets one across a document have to place them the same way.
+    """
+    free = [(a.get('rel'), a.get('order') or 0) for a in node.attrs]
+    tail = next_order(node)
+    placed: List[dict] = []
+    for a in attrs:
+        at = next((i for i, (rel, _o) in enumerate(free) if rel == a['rel']), None)
+        if at is None:
+            order = tail
+            tail += 1
+        else:
+            order = free.pop(at)[1]
+        placed.append({'rel': a['rel'], 'value': a['value'], 'order': order})
+    return placed
+
+
+def with_attribute(node: GNode, rel: str, value: str) -> List[dict]:
+    """The node's attributes with ``rel`` set to ``value``, or removed where
+    ``value`` is empty. Everything else keeps its value and its place."""
+    attrs = [{'rel': a.get('rel'), 'value': a.get('value')} for a in node.attrs
+             if a.get('rel') != rel]
+    if value:
+        attrs.append({'rel': rel, 'value': value})
+    return place_attributes(node, attrs)
+
+
 # --- the sentence as PENMAN --------------------------------------------------
 
 def penman_nodes(doc: UmrDoc, sentence: Sentence) -> Dict[str, PNode]:

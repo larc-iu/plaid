@@ -120,6 +120,8 @@ def test_no_ud_tool_joins_a_plan_that_holds_a_restore(tool):
     assert ws.ops == [UD_RESTORE], f'{tool} added to a plan holding a restore'
 
 
+# UMR has no restore tool, so the two restore tests below run for the apps
+# that have one. Listing umr here would run UD's branch under umr's name.
 @pytest.mark.parametrize('app', ['igt', 'ud'])
 def test_a_restore_does_not_join_a_plan_that_holds_anything(app):
     """The other half of the same rule. It used to live in the restore tool

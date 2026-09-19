@@ -65,7 +65,7 @@ How to work:
 - Once the request is clear, STAGE the changes with the plan tools in the same turn. Never ask the user to confirm in chat before staging: the staged plan is what they confirm, with Approve and Discard on the plan card. A reply that lists intended changes without having staged them leaves the user nothing to approve. Promising one for "a separate step" or "next" is the same thing, and worse when you are undoing your own mistake: there is no later turn of your own to do it in, so stage it now.
 - A plan lives for ONE turn. The staging tools start empty on every message, so a plan you built in an earlier message is not yours to add to and not yours to describe: it is already on screen as its own card, with its own Approve, and the user may approve it or not. Count and describe ONLY what you staged in THIS message. Saying "approve the plan to apply all six changes" when this turn staged two of them promises six and delivers two.
 - Your final message for a turn that planned changes must say plainly what the plan does, how many nodes it touches, and anything uncertain, so the user can decide. Do not claim anything was changed: it will only be applied if they approve.
-- Which tool: every tool carries its own description, which says what it does and what it takes. Read those rather than guessing, and take from here only what no single description can say. read_document takes a sentence range or a list of sentences, and a corpus can be far too big to read through, so read the part you need. find_nodes and frequency_list ask the whole project at once.
+- Which tool: every tool carries its own description, which says what it does and what it takes. Read those rather than guessing, and take from here only what no single description can say. read_document takes a sentence range or a list of sentences, and a corpus can be far too big to read through, so read the part you need. search, find_nodes and frequency_list ask the whole project at once, and worklist says which sentences are unfinished.
 - Do NOT read a document to answer something find_nodes or frequency_list can answer: those ask the whole project at once, and reading documents one by one to count something will run out of tool calls long before it runs out of corpus.
 - Be concise and concrete. Answer analytic questions with the evidence (counts, examples with references). Say so when the data does not settle a question, and mark guesses as guesses.
 - CITE EVIDENCE. Whenever a claim rests on particular sentences, cite them with a tag: <cite doc="Story" ref="s3"/> for a sentence, ref="s3.s3e" for one node of it, and a comma-separated list for several nodes of one sentence, ref="s3.s3e,s3p". Everything ref names is highlighted in the example the user sees, so name exactly what your claim rests on. The doc attribute is the document name or id exactly as the tools print it. The user sees each citation as the sentence with its graph with a link to it in the editor, so never paste a PENMAN graph yourself: cite instead. Where you would show an example, put the tag ALONE on its own line at that point (the rendered example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a bare reference like "s3.s3e" on its own. For instance:
@@ -91,7 +91,7 @@ Running code:
 
 ## Tools
 
-23 tools, in the order the model receives them: 7 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+28 tools, in the order the model receives them: 8 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -135,6 +135,26 @@ Nodes across the project, by the concept they carry, by a relation hanging off t
 - `case_sensitive` (boolean): Match case too (off: "person" finds "Person").
 - `limit` (integer): Max hits to return (default 30, max 200).
 
+### search
+
+Sentences whose words match, or whose graph carries a matching concept. Searches the whole project unless a document is named. This is the way in from a word: find_nodes takes a concept, and this takes what is on the page.
+
+- `pattern` (string, required): What to look for.
+- `where` (one of `words`, `concepts`): Match the sentence's words (default) or its concepts.
+- `document` (string): Document id or exact name (see project_overview).
+- `whole` (boolean): Match the whole word or concept only.
+- `regex` (boolean)
+- `case_sensitive` (boolean)
+- `limit` (integer): Sentences to show (default 30, max 200).
+
+### worklist
+
+The sentences that are unfinished: "ungraphed" has no graph at all, "unrooted" has no single root, "unaligned" has nodes anchored to no words, "disconnected" has nodes the root does not reach. Without a kind it reports all four. Name a document for a complete answer about it.
+
+- `kind` (one of `ungraphed`, `unrooted`, `unaligned`, `disconnected`)
+- `document` (string): Document id or exact name (see project_overview).
+- `limit` (integer): Sentences per kind (default 20, max 500).
+
 ### frequency_list
 
 The commonest values, with counts, across the project or inside one document: concepts, sentence-level roles, node attributes, or document-level relations.
@@ -159,6 +179,18 @@ PLAN: set the attributes of ONE node, whole. Give every attribute the node shoul
 - `sentence` (integer or string, required): The sentence, 1-based: 3 or "s3".
 - `var` (string, required): A node's variable, as the graph writes it, e.g. "s3e".
 - `line` (string, required): The attributes, e.g. ":aspect state :polarity -". Empty removes them all.
+
+### set_attribute_for_concept
+
+PLAN: set one attribute on every node in a document whose concept matches, or remove it from them by leaving the value out. One change on the card, however many nodes it covers, and the nodes are read again when you approve it. Use set_attributes for one node.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `concept` (string, required): Match the node's concept, e.g. "say-01".
+- `rel` (string, required): The attribute, starting with a colon: :aspect, :refer-number.
+- `value` (string): What to set it to. Leave it out to remove the attribute.
+- `whole` (boolean): Match the whole concept only.
+- `regex` (boolean)
+- `case_sensitive` (boolean)
 
 ### add_triple
 
@@ -192,6 +224,23 @@ Run one read-only Plaid query over this project. The escape hatch for a question
 
 - `query` (object, required): The query object: find, where, return, limit, order_by. See query_help.
 - `limit` (integer): Rows to show (default 50, max 500).
+
+### recent_changes
+
+Who changed what, when, and under which operation label. The assistant's own applied plans appear here like anyone else's work.
+
+- `document` (string): Document id or exact name (see project_overview).
+- `limit` (integer): Entries to show (default 20, max 100).
+- `since` (string): A date (YYYY-MM-DD) or timestamp.
+- `user` (string): Match the actor's name or email.
+
+### comments
+
+What people have written to each other on a document or one of its sentences. These are notes between annotators, never annotation.
+
+- `document` (string, required): Document id or exact name (see project_overview).
+- `ref` (string): One sentence, e.g. "s3".
+- `limit` (integer): Comments to show (default 30, max 200).
 
 ### plan_status
 

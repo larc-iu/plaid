@@ -21,15 +21,26 @@ from typing import Any, Dict, List
 from ..core.corpus import Corpus as BaseCorpus, rx
 from ..core.limits import GROUP_LIMIT, READ_LIMITS
 from ..core.args import clamp_limit
-from ..core.tools import ToolError
-from .project import UmrProject
+from ..core.tools import ToolError, truncate
+from .project import UmrProject, reachable_from_root
 from .tools import Workspace
 
-#: Documents a corpus read loads to show its hits. A hit here renders as one
-#: line naming the node and its sentence, so a good few documents fit.
+# Documents a corpus read loads to show its hits. A hit here is one line
+# naming the node and its sentence, which is what UD's is too, so UMR sets the
+# same budget; IGT sets it lower, because a hit there is a block of aligned
+# lines and fewer of them fit in one answer.
 RENDER_DOC_BUDGET = 12
 
 COUNTABLE = ('concept', 'role', 'attribute', 'document-relation')
+
+#: What a search matches on: the words of the sentence, or the concepts of the
+#: graph over it. Either way what comes back is SENTENCES, because a sentence
+#: is what a UMR annotator opens and works on.
+SEARCHABLE = ('words', 'concepts')
+
+#: What "unfinished" means for a sentence graph. Each is something the editor
+#: would show as wrong or missing, never a matter of taste.
+WORKLIST_KINDS = ('ungraphed', 'unrooted', 'unaligned', 'disconnected')
 
 
 class Corpus(BaseCorpus):
@@ -55,6 +66,11 @@ class Corpus(BaseCorpus):
     def edge(self, var: str = '?r', **c) -> list:
         """A sentence-level relation between two nodes."""
         return ['relation', var, {'layer': self.p.relation_layer_id, **c}]
+
+    def word(self, var: str = '?w', **c) -> list:
+        """A word of the baseline text: what a sentence is made of, and what a
+        node is aligned to."""
+        return ['token', var, {'layer': self.p.word_layer_id, **c}]
 
     def triple(self, var: str = '?t', **c) -> list:
         """A document-level relation: temporal, modal or coreference."""
@@ -159,6 +175,127 @@ def _matches(value: str, pattern: str, regex: bool, whole: bool, case_sensitive:
         return bool(re.search(p, text, 0 if case_sensitive else re.I))
     except re.error as e:
         raise ToolError(f'That pattern is not a valid regular expression: {e}') from None
+
+
+def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document: str = None,
+             regex: bool = False, whole: bool = False, case_sensitive: bool = False,
+             limit: int = None) -> str:
+    """Sentences whose words, or whose graph concepts, match."""
+    if not pattern:
+        raise ToolError('Give a pattern to search for.')
+    if where not in SEARCHABLE:
+        raise ToolError(f'where must be one of: {", ".join(SEARCHABLE)}.')
+    limit = clamp_limit(limit, *READ_LIMITS['search'])
+    corpus = ws.corpus
+    if document:
+        doc_ids = [ws.resolve_document_id(document)]
+        totals = {}
+    else:
+        spec = _spec(pattern, regex, whole, case_sensitive)
+        clause = (corpus.word('?w', value=spec) if where == 'words'
+                  else corpus.node('?n', value=spec))
+        rows = corpus.documents_with([clause], '?w' if where == 'words' else '?n')
+        totals = dict(rows)
+        doc_ids = [d for d, _n in rows][:RENDER_DOC_BUDGET]
+    if not doc_ids:
+        return f'No sentence matches "{pattern}".'
+
+    ws.read_ahead(doc_ids)
+    shown: List[str] = []
+    found = 0
+    for did in doc_ids:
+        doc = ws.doc(did)
+        for s in doc.sentences:
+            if where == 'words':
+                hit = [w.text for w in s.words
+                       if _matches(w.text, pattern, regex, whole, case_sensitive)]
+            else:
+                hit = [f'{n.var} {n.concept}' for n in s.nodes
+                       if _matches(n.concept, pattern, regex, whole, case_sensitive)]
+            if not hit:
+                continue
+            found += 1
+            if len(shown) < limit:
+                shown.append(f'"{doc.name}" s{s.index}  {s.text}\n      {", ".join(hit)}')
+    if not shown:
+        return f'No sentence matches "{pattern}".'
+    total = sum(totals.values()) if totals else found
+    head = f'{found} sentence(s) shown from {len(doc_ids)} document(s)'
+    if totals and len(totals) > len(doc_ids):
+        head += f'; the corpus has {total} matching {where} in {len(totals)} documents'
+    out = [head + ':'] + shown
+    if found > len(shown):
+        out.append(f'... and {found - len(shown)} more in the documents read.')
+    return truncate('\n'.join(out) + corpus.clipped_note('sentences'))
+
+
+def _unfinished(doc, kinds: List[str]) -> List[tuple]:
+    """[(sentence, kind, what)] in one document. Each of these is something
+    the editor draws as broken: a sentence nobody has drawn a graph for, a
+    graph with no single root, a node anchored to no words, and a node the
+    root does not reach (which is a fragment the PENMAN text never shows)."""
+    out: List[tuple] = []
+    for s in doc.sentences:
+        if not s.nodes:
+            if 'ungraphed' in kinds:
+                out.append((s, 'ungraphed', s.text))
+            continue
+        if 'unrooted' in kinds and len(s.roots) != 1:
+            out.append((s, 'unrooted', 'no root' if not s.roots
+                        else 'roots ' + ', '.join(n.var for n in s.roots)))
+        if 'unaligned' in kinds:
+            loose = [n.var for n in s.nodes if not n.constant and not n.aligned]
+            if loose:
+                out.append((s, 'unaligned', ', '.join(loose)))
+        if 'disconnected' in kinds and s.roots:
+            reach = reachable_from_root(doc, s)
+            stray = [n.var for n in s.nodes if n.id not in reach and not n.constant]
+            if stray:
+                out.append((s, 'disconnected', ', '.join(stray)))
+    return out
+
+
+def t_worklist(ws: Workspace, kind: str = None, document: str = None, limit: int = None) -> str:
+    """What is unfinished, sentence by sentence, so a session has somewhere to
+    start."""
+    kinds = [kind] if kind else list(WORKLIST_KINDS)
+    for k in kinds:
+        if k not in WORKLIST_KINDS:
+            raise ToolError(f'Unknown kind "{k}". One of: ' + ', '.join(WORKLIST_KINDS))
+    limit = clamp_limit(limit, *READ_LIMITS['worklist'])
+    # Whether a graph is finished is a property of the parsed document: the
+    # query engine indexes the nodes but not what they add up to, so this
+    # reads documents. One when the model names one, and otherwise the first
+    # few, which it says.
+    if document:
+        doc_ids, capped = [ws.resolve_document_id(document)], 0
+    else:
+        ids = [d['id'] for d in ws.documents()]
+        doc_ids, capped = ids[:RENDER_DOC_BUDGET], max(0, len(ids) - RENDER_DOC_BUDGET)
+    if not doc_ids:
+        return 'The project has no documents.'
+    ws.read_ahead(doc_ids)
+    rows: List[tuple] = []
+    for did in doc_ids:
+        doc = ws.doc(did)
+        rows += [(doc, s, k, what) for s, k, what in _unfinished(doc, kinds)]
+    if not rows:
+        where = f' in "{ws.doc(doc_ids[0]).name}"' if document else f' in {len(doc_ids)} document(s)'
+        return f'Nothing is unfinished{where} ({", ".join(kinds)}).'
+    out: List[str] = []
+    for k in kinds:
+        mine = [r for r in rows if r[2] == k]
+        if not mine:
+            continue
+        out.append(f'{k}: {len(mine)} sentence(s)')
+        for doc, s, _k, what in mine[:limit]:
+            out.append(f'  "{doc.name}" s{s.index}  {what}')
+        if len(mine) > limit:
+            out.append(f'  … and {len(mine) - limit} more (raise limit)')
+    if capped:
+        out.append(f'(note) Read the first {len(doc_ids)} documents of {len(doc_ids) + capped}. '
+                   f'Name a document for a complete answer about it.')
+    return truncate('\n'.join(out))
 
 
 def t_frequency_list(ws: Workspace, what: str = 'concept', document: str = None,

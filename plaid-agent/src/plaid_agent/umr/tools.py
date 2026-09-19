@@ -15,15 +15,16 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
-from ..core.limits import (MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS, READ_LIMITS)
+from ..core.limits import (MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
+                           READ_LIMITS, SAMPLE_LINES)
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .penman import parse_attribute_line
-from .plan import KIND, docs_of_op, graphs_of_op
+from .plan import KIND, attrs_scope_targets, docs_of_op, graphs_of_op
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject,
-                      gloss_headers, group_of, load_document, node_ref, render_document,
-                      render_document_graph)
+                      gloss_headers, group_of, load_document, node_ref, place_attributes,
+                      render_document, render_document_graph)
 
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('Replacing a sentence graph counts as one change per node, relation and attribute '
@@ -144,9 +145,9 @@ def t_project_overview(ws: Workspace) -> str:
     try:
         sizes = ws.corpus.sizes()
         out.append(f'Size: {len(docs)} documents, {sizes["sentences"]} sentences, '
-                   f'{sizes["nodes"]} graph nodes, {sizes["relations"]} relations. find_nodes and '
-                   f'frequency_list read the whole corpus at once; read_document reads one '
-                   f'document a page at a time.')
+                   f'{sizes["nodes"]} graph nodes, {sizes["relations"]} relations. search, '
+                   f'find_nodes and frequency_list read the whole corpus at once; read_document '
+                   f'reads one document a page at a time.')
         out.append('')
     except Exception:  # noqa: BLE001 - the overview is worth having without the size
         pass
@@ -226,13 +227,6 @@ def _node(doc: UmrDoc, sentence: Sentence, var: str) -> GNode:
     return node
 
 
-def _next_order(node: GNode) -> int:
-    """The next free position among a node's children: attributes and edges
-    share one order, the file's child order."""
-    orders = [e.order for e in node.out] + [a.get('order') or 0 for a in node.attrs]
-    return max(orders) + 1 if orders else 0
-
-
 # --- planning ------------------------------------------------------------------
 
 def _staged(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -288,20 +282,7 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     attrs, problems = parse_attribute_line(line or '')
     if problems:
         raise ToolError('The attribute line could not be read. ' + problems[0])
-    # An attribute keeps its place among the node's children when one with its
-    # relation was there before; a new one goes after everything. The same rule
-    # the editor writes by, so a graph written back keeps its child order.
-    free = [(a.get('rel'), a.get('order') or 0) for a in node.attrs]
-    tail = _next_order(node)
-    placed: List[dict] = []
-    for a in attrs:
-        at = next((i for i, (rel, _o) in enumerate(free) if rel == a['rel']), None)
-        if at is None:
-            order = tail
-            tail += 1
-        else:
-            order = free.pop(at)[1]
-        placed.append({'rel': a['rel'], 'value': a['value'], 'order': order})
+    placed = place_attributes(node, attrs)
     if [(a.get('rel'), a.get('value')) for a in node.attrs] == [(a['rel'], a['value']) for a in placed]:
         return f'Nothing to change: {node.var} already has those attributes.'
     umr = dict(((node.metadata or {}).get('umr')) or {})
@@ -312,6 +293,43 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
         'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
         'attrs': placed, 'umr': umr, 'label': f'{node.var}: attributes {shown}'}]))
     return f'Planned the attributes of {node.var} in s{s.index}: {shown}.'
+
+
+def t_set_attribute_for_concept(ws: Workspace, document: str = None, concept: str = None,
+                                rel: str = None, value: str = None, regex: bool = False,
+                                whole: bool = False, case_sensitive: bool = False) -> str:
+    """One attribute over every node in a document whose concept matches."""
+    doc = ws.doc(document)
+    concept = (concept or '').strip()
+    if not concept:
+        raise ToolError('Give concept: which nodes to change, e.g. "say-01".')
+    rel = (rel or '').strip()
+    if not rel.startswith(':'):
+        raise ToolError('Give rel: an attribute, which starts with a colon (:aspect, '
+                        ':refer-number, :polarity).')
+    value = (value or '').strip()
+    op: Dict[str, Any] = {
+        'kind': 'attrs_scope', 'document_id': doc.id, 'concept': concept, 'rel': rel,
+        'value': value, 'regex': bool(regex), 'whole': bool(whole),
+        'case_sensitive': bool(case_sensitive)}
+    # The count and the examples come from the same reader the resolver uses,
+    # so the card counts what approval will stage. It is read again at
+    # approval, against the document as it is then.
+    targets = list(attrs_scope_targets(doc, op))
+    what = f'{rel} {value}' if value else f'{rel} removed'
+    if not targets:
+        return (f'Nothing to change: no node in "{doc.name}" with a concept matching "{concept}" '
+                f'would end up different ({what}).')
+    op['count'] = len(targets)
+    op['label'] = f'{what} on {len(targets)} node(s) with concept "{concept}" in "{doc.name}"'
+    ws.add_ops(_staged([op]))
+    out = [f'Planned {what} on {len(targets)} node(s) in "{doc.name}", read again when you '
+           f'approve it:']
+    for s, node, _placed in targets[:SAMPLE_LINES]:
+        out.append(f'  s{s.index}.{node.var}  ({node.concept})')
+    if len(targets) > SAMPLE_LINES:
+        out.append(f'  … and {len(targets) - SAMPLE_LINES} more')
+    return '\n'.join(out)
 
 
 def _end(ws: Workspace, doc: UmrDoc, name: str, side: str) -> Dict[str, Any]:
@@ -457,4 +475,5 @@ def t_drop_planned(ws: Workspace, indexes=None) -> str:
 __all__ = ['PLAN_NOTE', 'Workspace',
            't_add_triple', 't_apply_penman', 't_delete_triple', 't_discard_plan',
            't_document_graph', 't_drop_planned', 't_list_documents', 't_plan_status',
-           't_project_overview', 't_read_document', 't_set_attributes']
+           't_project_overview', 't_read_document', 't_set_attribute_for_concept',
+           't_set_attributes']

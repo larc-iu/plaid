@@ -34,8 +34,17 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'find_nodes':
         what = (a.get('concept') or a.get('role') or a.get('attribute') or '')
         return f'Looked for nodes matching {q(what)}{in_doc(a)}'
+    if name == 'search':
+        where = 'concepts' if a.get('where') == 'concepts' else 'words'
+        return f'Searched the {where} for {q(a.get("pattern"))}{in_doc(a)}'
+    if name == 'worklist':
+        return f'Looked at what is unfinished{in_doc(a)}'
     if name == 'frequency_list':
         return f'Ranked {a.get("what") or "concept"}s by frequency{in_doc(a)}'
+    if name == 'recent_changes':
+        return f'Read the change history{in_doc(a)}'
+    if name == 'comments':
+        return f'Read the comments{in_doc(a)}'
     if name == 'read_guideline':
         return f'Read the guideline {q(a.get("title"))}'
     if name == 'query_help':
@@ -58,6 +67,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
         line = (a.get('line') or '').strip()
         what = q(line) if line else 'no attributes'
         return f'Planned {what} on {a.get("var")}{in_doc(a)}'
+    if name == 'set_attribute_for_concept':
+        rel, value = a.get('rel') or '', (a.get('value') or '').strip()
+        what = f'{rel} {value}' if value else f'{rel} removed'
+        return f'Planned {what} on every {q(a.get("concept"))} node{in_doc(a)}'
     if name == 'add_triple':
         return f'Planned ({a.get("a")} {a.get("rel")} {a.get("b")}){in_doc(a)}'
     if name == 'delete_triple':
@@ -91,13 +104,18 @@ _PROGRESS = {
     'read_document': lambda a: f'Reading "{a.get("document", "")}"…',
     'document_graph': lambda a: 'Reading the document graph…',
     'find_nodes': lambda a: 'Looking for nodes…',
+    'search': lambda a: 'Searching the corpus…',
+    'worklist': lambda a: 'Looking for what is unfinished…',
     'frequency_list': lambda a: 'Counting frequencies…',
+    'recent_changes': lambda a: 'Reading the change history…',
+    'comments': lambda a: 'Reading the comments…',
     'read_guideline': lambda a: f'Reading the guideline "{a.get("title", "")}"…',
     'add_guideline': lambda a: f'Drafting a guideline, "{a.get("title", "")}"…',
     'revise_guideline': lambda a: f'Editing the guideline "{a.get("title", "")}"…',
     'rewrite_guideline': lambda a: f'Rewriting the guideline "{a.get("title", "")}"…',
     'apply_penman': lambda a: 'Working out what the graph would change…',
     'set_attributes': lambda a: 'Setting attributes…',
+    'set_attribute_for_concept': lambda a: 'Working out which nodes that attribute reaches…',
     'add_triple': lambda a: 'Adding a document-level relation…',
     'delete_triple': lambda a: 'Removing a document-level relation…',
     'query': lambda a: 'Running a query…',

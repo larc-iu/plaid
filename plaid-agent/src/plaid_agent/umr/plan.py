@@ -13,6 +13,7 @@ That is the order ``umrImport.js`` writes a document in, and the order
 ``UmrDocument.applyPenman`` writes one sentence in.
 """
 
+import re
 from collections import Counter
 from typing import Any, Dict, List
 
@@ -20,6 +21,7 @@ from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import PlanError, Stamps, TrackingBatcher, applying, created_id, expand_ops
+from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
 
@@ -157,6 +159,76 @@ def _apply_create_triple(ctx: Context, op) -> int:
     return 1
 
 
+# --- what a scope stands for --------------------------------------------------
+#
+# A scope is stored as the predicate the model gave and resolved to per-node
+# ops at approval, reading the document NOW. Each kind declares its own
+# resolver beside everything else it declares, and `resolve_scopes` runs them
+# without naming one.
+
+class Resolution:
+    """What the scopes of one plan resolve with: the client, the project, and
+    the documents read so far, so two scopes over one document read it once."""
+
+    def __init__(self, client, project):
+        self.client = client
+        self.project = project
+        self._docs: Dict[str, Any] = {}
+
+    def document(self, document_id: str):
+        if document_id not in self._docs:
+            self._docs[document_id] = load_document(self.client, self.project, document_id)
+        return self._docs[document_id]
+
+
+def concept_matches(op: Dict[str, Any], concept: str) -> bool:
+    """Whether a node's concept is one this scope names. The pattern is stored
+    as the model wrote it, so the preview and the resolution read it the same
+    way."""
+    pattern = op.get('concept') or ''
+    if not pattern:
+        return False
+    p = pattern if op.get('regex') else re.escape(pattern)
+    if op.get('whole'):
+        p = f'^(?:{p})$'
+    return bool(re.search(p, concept or '', 0 if op.get('case_sensitive') else re.I))
+
+
+def attrs_scope_targets(doc, op: Dict[str, Any]):
+    """The nodes in ``doc`` this scope changes, with the attributes each ends
+    up with. One reader, because the tool previews the count on the card and
+    the resolver stages the changes, and the two have to mean the same set."""
+    rel, value = op.get('rel') or '', op.get('value') or ''
+    for s in doc.sentences:
+        for node in s.nodes:
+            if node.constant or not concept_matches(op, node.concept):
+                continue
+            placed = with_attribute(node, rel, value)
+            if [(a.get('rel'), a.get('value')) for a in node.attrs] \
+                    == [(a['rel'], a['value']) for a in placed]:
+                continue
+            yield s, node, placed
+
+
+def _resolve_attrs_scope(res: Resolution, op):
+    did = op['document_id']
+    doc = res.document(did)
+    rel, value = op.get('rel') or '', op.get('value') or ''
+    for s, node, placed in attrs_scope_targets(doc, op):
+        umr = dict(((node.metadata or {}).get(UMR)) or {})
+        umr['attrs'] = placed
+        shown = f'{rel} {value}' if value else f'{rel} removed'
+        yield {'kind': 'set_attrs', 'document_id': did, 'ref': node_ref(s, node),
+               'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
+               'attrs': placed, UMR: umr, 'label': f'{node.var}: {shown}'}
+
+
+def _attrs_scope_summary(op, n):
+    """A scope counts as the attribute sets its preview found, so the approval
+    line says how many nodes it stands for rather than one scope."""
+    return [(_ATTRS, n)]
+
+
 # --- what a group of like ops reads as ----------------------------------------
 
 def _refs_phrase(members, limit: int = 8) -> str:
@@ -233,6 +305,15 @@ KIND = ok.registry([
            target=lambda op: ('new-triple', op.get('document_id'), op.get('source_var'),
                               op.get('rel'), op.get('target_var')),
            token_keys=('source_span_id', 'target_span_id')),
+    # One attribute over every node in a document whose concept matches,
+    # stored as the predicate the model gave and resolved to one `set_attrs`
+    # per node at approval, so the card carries one row rather than two
+    # hundred and the values written are the ones in the document NOW.
+    OpKind('attrs_scope', _ATTRS, stage=ok.RESOLVED, shape=ok.SCOPE,
+           required=('document_id', 'concept', 'rel'), resolve=_resolve_attrs_scope,
+           summary=_attrs_scope_summary,
+           target=lambda op: ('attrs_scope', op.get('document_id'), op.get('concept'),
+                              op.get('rel'))),
 ])
 
 SCOPES = ok.scopes(KIND)
@@ -325,10 +406,51 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
     stamps = Stamps(stamp_mode, source, contributor)
     ops = expand_ops(ops)
     validate_ops(ops)
-    ops, notes = normalize_ops(ops)
+    ops, notes = resolve_scopes(client, project, ops)
+    ops, superseded = normalize_ops(ops)
+    notes += superseded
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, project, ops, label=label, counts=counts,
                                                   notes=notes, stamps=stamps, tracker=tracker))
+
+
+def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
+    """The per-node ops a scope stands for, read from the document NOW.
+    Returns (ops, notes).
+
+    Each scope kind declares its own resolver and this dispatches on that, so
+    a kind added later is resolved without being named here.
+
+    Approval has already refused the plan if the document's version moved
+    since the model counted, so what is found here is what it counted. Nothing
+    is written: this only reads, and a document that cannot be read refuses the
+    whole plan before any batch opens.
+    """
+    notes: List[str] = []
+    if not any(ok.resolver(KIND, op) for op in ops):
+        return ops, notes
+    if project is None:
+        raise ValueError('a change over a whole document needs the project to read it with')
+    # A change the model made by name beats one a scope finds at approval,
+    # whichever came first: the scope previewed stored attributes, not planned
+    # ones, so last-wins by position would let it override a set_attributes the
+    # user read on the card.
+    named = [op for op in ops if not ok.resolver(KIND, op)]
+    named_targets = {ok.target_of(KIND, op) for op in named} - {None}
+    named_gone = ok.removed_ids(KIND, named, only_certain=True)
+
+    def keep(o) -> bool:
+        if ok.target_of(KIND, o) in named_targets:
+            notes.append(f'dropped: {o.get("label") or o.get("kind")} (the plan already names '
+                         f'that node)')
+            return False
+        if ok.written_to(KIND, o) & named_gone:
+            notes.append(f'dropped: {o.get("label") or o.get("kind")} (the plan deletes what it '
+                         f'writes to)')
+            return False
+        return True
+
+    return ok.resolve_ops(KIND, Resolution(client, project), ops, keep), notes
 
 
 def _run(ctx: Context, ops, stage: str) -> None:
@@ -393,5 +515,6 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
 
 
 __all__ = ['KIND', 'STAGES', 'GRAPH_KINDS', 'SCOPES', 'EXCLUSIVE_KINDS', 'Context',
-           'PlanError', 'docs_of_op', 'graphs_of_op', 'execute_plan', 'normalize_ops',
-           'summarize', 'validate_ops']
+           'PlanError', 'Resolution', 'attrs_scope_targets', 'concept_matches', 'docs_of_op',
+           'graphs_of_op', 'execute_plan', 'normalize_ops', 'resolve_scopes', 'summarize',
+           'validate_ops']

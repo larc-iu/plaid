@@ -153,14 +153,14 @@ def test_a_ud_kind_without_a_target_supersedes_nothing():
     assert out == ops and not notes
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_the_kind_tables_are_not_empty(app):
     """Without this every sweep above is green on an empty registry."""
     mod = __import__(f'plaid_agent.{app}.plan', fromlist=['KIND'])
     assert len(mod.KIND) > 10
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_a_scope_kind_is_one_that_says_how_to_resolve_itself(app):
     """The two halves of being a scope, in both apps. Tagged without a
     resolver, the plan carries the op into the executor, which refuses a kind
@@ -182,13 +182,18 @@ def _scope_fixture(app):
         from fixtures import FakeClient, scan_ws
         ws = scan_ws(FakeClient())
         return ws.client, ws.project
-    from plaid_agent.ud.project import load_project
-    from ud_fixtures import PID, ud_client
-    client = ud_client()
+    if app == 'ud':
+        from plaid_agent.ud.project import load_project
+        from ud_fixtures import PID, ud_client
+        client = ud_client()
+        return client, load_project(client, PID)
+    from plaid_agent.umr.project import load_project
+    from umr_fixtures import PID, umr_client
+    client = umr_client()
     return client, load_project(client, PID)
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_a_new_scope_kind_is_resolved_by_a_loop_that_names_none(app):
     """`resolve_scopes` dispatched on the kind's NAME in both apps, so a scope
     kind added later stayed in the plan and reached the executor, which refuses

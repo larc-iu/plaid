@@ -16,6 +16,7 @@ sys.path.insert(0, 'tests')
 
 from plaid_agent.igt.toolkit import TOOLS as IGT_TOOLS, call_tool as igt_call  # noqa: E402
 from plaid_agent.ud.toolkit import TOOLS as UD_TOOLS, call_tool as ud_call  # noqa: E402
+from plaid_agent.umr.toolkit import call_tool as umr_call  # noqa: E402
 
 # Enough of each tool's other arguments to reach the integer.
 IGT_ARGS = {'document': 'Text 1', 'pattern': 'gam', 'field': 'Gloss', 'ref': 's1', 'refs': ['s1.w1'],
@@ -96,6 +97,16 @@ def _ud_ws():
     return w
 
 
+def _umr_ws():
+    from umr_fixtures import PID, ExtClient, project_raw, document_raw
+    from plaid_agent.umr.project import load_project
+    from plaid_agent.umr.tools import Workspace
+    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
+    w = Workspace(c, load_project(c, PID))
+    w.web = NoWeb()
+    return w
+
+
 def _args(props, values, param, bad=True):
     """Every argument the tool declares, filled with something it accepts, and
     the swept one filled with something that is not a number (or left out, to
@@ -156,15 +167,17 @@ def test_the_sweep_actually_found_the_integers():
     assert ('read_document', 'from_sentence') in [(t, p) for t, p, _ in UD_INTS]
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_a_sentence_range_takes_the_references_a_read_prints(app):
     """The model reads "s3" out of a rendered document and writes it back, so
     a sentence argument arrives written that way as often as as a bare number.
     UD's `sentences` has always accepted it; the range did not, in either app."""
     if app == 'igt':
         ws, call, doc = _igt_ws(), igt_call, 'Text 1'
-    else:
+    elif app == 'ud':
         ws, call, doc = _ud_ws(), ud_call, 'Viaje'
+    else:
+        ws, call, doc = _umr_ws(), umr_call, 'Story'
     plain = call(ws, 'read_document', {'document': doc, 'from_sentence': 2})
     assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': 's2'})
     assert plain == call(ws, 'read_document', {'document': doc, 'from_sentence': '2'})

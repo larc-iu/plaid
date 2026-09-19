@@ -13,7 +13,7 @@ from .project import Sentence, UdDoc, Word, kwic, word_ref
 from ..core.tools import ToolError, server_refused, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
-from ..core.limits import READ_LIMITS
+from ..core.limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
@@ -391,10 +391,6 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
 
 
 # --- history and comments --------------------------------------------------------
-
-AUDIT_PAGE = 200      # entries per page, newest first
-AUDIT_MAX_PAGES = 10  # how far back a filtered read will walk
-
 
 def t_recent_changes(ws: Workspace, document: str = None, limit: int = None,
                      since: str = None, user: str = None) -> str:

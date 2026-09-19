@@ -44,7 +44,7 @@ def test_every_read_the_server_refuses_says_so_the_same_way():
     assert '\n' not in out and len(out) < 260
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
 def test_a_comments_read_the_server_refuses_is_one_sentence(app):
     import sys
     sys.path.insert(0, 'tests')
@@ -52,13 +52,20 @@ def test_a_comments_read_the_server_refuses_is_one_sentence(app):
         from fixtures import FakeClient, scan_ws
         from plaid_agent.igt.toolkit import call_tool
         ws, args = scan_ws(FakeClient()), {'document': 'd1'}
-    else:
+    elif app == 'ud':
         from ud_fixtures import PID, FakeClient, document_raw, project_raw
         from plaid_agent.ud.project import load_project
         from plaid_agent.ud.tools import Workspace
         from plaid_agent.ud.toolkit import call_tool
         c = FakeClient(project=project_raw(), documents={'ud1': document_raw()})
         ws, args = Workspace(c, load_project(c, PID)), {'document': 'Viaje'}
+    else:
+        from umr_fixtures import PID, FakeClient, document_raw, project_raw
+        from plaid_agent.umr.project import load_project
+        from plaid_agent.umr.tools import Workspace
+        from plaid_agent.umr.toolkit import call_tool
+        c = FakeClient(project=project_raw(), documents={'umr1': document_raw()})
+        ws, args = Workspace(c, load_project(c, PID)), {'document': 'Story'}
 
     class Refuses:
         def list(self, *a, **kw):

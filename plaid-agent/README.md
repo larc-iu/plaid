@@ -80,6 +80,11 @@ to the document graph. What it has to know that the others do not:
   the ROOT's graph, so a fragment the root does not reach is left alone. One
   plan replaces a given sentence's graph at most once: a second replacement was
   worked out against the graph the first one replaces.
+- `set_attribute_for_concept` is stored as the predicate the model gave, not as
+  the nodes it found: the card carries one row however many nodes it covers,
+  and the nodes are read again when the plan is approved. A change the model
+  made by name beats one the scope finds, and what the scope loses is said on
+  the applied message.
 - an approved plan writes in three batches, because a batch op cannot name an
   id an earlier op in the same batch minted: the anchor tokens, then the concept
   spans over them, then the relations between those spans. That is the order

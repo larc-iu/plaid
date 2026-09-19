@@ -38,6 +38,14 @@ READ_LIMITS = {
     'query': (50, 500),
 }
 
+# How the audit log is walked: entries per page, newest first, and how many
+# pages a filtered read will go back through before it gives up. The log of a
+# corpus is long (one real project's is six thousand entries and eight
+# megabytes with their ops), so a read stops as soon as it has the rows it was
+# asked for.
+AUDIT_PAGE = 200
+AUDIT_MAX_PAGES = 10
+
 # How many parsed documents this process keeps, across every turn and every
 # user of it. Documents are what a corpus walk re-reads most, and a parsed one
 # is large, so this is a memory budget as much as a hit rate: raising it is
