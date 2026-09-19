@@ -17,6 +17,8 @@ export const UmrNode = React.memo(function UmrNode({
   tabIndex = -1,
   readOnly = true,
   problems = null,
+  chain = null,
+  onChainClick,
 }) {
   const worst = problems?.some((p) => p.level === 'error')
     ? 'error'
@@ -61,6 +63,20 @@ export const UmrNode = React.memo(function UmrNode({
           className={`umr-node-mark umr-node-mark--${worst}`}
           title={problems.map((p) => p.message).join('\n')}
         />
+      )}
+      {chain && (
+        <button
+          type="button"
+          className="umr-chain"
+          style={{ '--chain': chain.color }}
+          title={`Coreference chain ${chain.index + 1}: ${chain.size} mentions. Click for the next.`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onChainClick?.(chain.index, node.id);
+          }}
+        >
+          {chain.index + 1}
+        </button>
       )}
       <div className="umr-node-head">
         {node.var && <span className="umr-node-var">{node.var}</span>}

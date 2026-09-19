@@ -6,7 +6,14 @@
 // By their real paths rather than through `@ui`: the node suite has no alias.
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { getUmrLayerInfo, UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
-import { buildDocumentGraph, toUmrSentences, nextVariable, CYCLE_ROLES } from './sentenceGraph.js';
+import {
+  buildDocumentGraph,
+  toUmrSentences,
+  nextVariable,
+  CYCLE_ROLES,
+  groupOf,
+} from './sentenceGraph.js';
+import { DOC_CONSTANTS } from './format/inventory.js';
 import { serializeUmrFile } from './format/umrFile.js';
 import { parsePenman, serializePenman } from './format/penman.js';
 import { validateDocument } from './format/validate.js';
@@ -617,6 +624,135 @@ export class UmrDocument extends DocumentModel {
         });
       },
       `Make ${node.var} the root`,
+    );
+  }
+
+  // ----- the document graph -----
+
+  // A constant's node (`author`, `root`, `document-creation-time`, ...), or
+  // null when no triple has used it yet.
+  constantNode(name) {
+    return this.graph.constants.find((c) => c.var === name) || null;
+  }
+
+  triple(id) {
+    const rel = (this.layerInfo.documentGraphLayer?.relations || []).find((r) => r.id === id);
+    if (!rel) return null;
+    const source = this.node(rel.source);
+    const target = this.node(rel.target);
+    return source && target
+      ? { id, source: rel.source, target: rel.target, rel: rel.value, group: umrOf(rel).group }
+      : null;
+  }
+
+  // Make a constant's node, the way the importer does: a zero-width token at
+  // the text's start and a span marked constant. Inside a running
+  // operation; resolves to the span id.
+  async _makeConstant(name) {
+    const info = this.layerInfo;
+    const { ids } = await this._client.tokens.bulkCreate([
+      { tokenLayerId: info.nodeTokenLayer.id, text: info.textLayer.text.id, begin: 0, end: 0 },
+    ]);
+    const span = await this._client.spans.create(info.conceptLayer.id, ids, name, {
+      [UMR_NAMESPACE]: { var: name, constant: true },
+    });
+    const spanId = span?.id || span;
+    this._applyRawPatch((next, infoNext) => {
+      const L = this._layers(infoNext);
+      L.tokens.push({ id: ids[0], begin: 0, end: 0 });
+      L.spans.push({
+        id: spanId,
+        tokens: ids,
+        value: name,
+        metadata: { [UMR_NAMESPACE]: { var: name, constant: true } },
+      });
+    });
+    return spanId;
+  }
+
+  /**
+   * A document-level triple: temporal, modal or coreference. Either end is a
+   * node id or a constant's name. `sentenceIndex` says whose block writes a
+   * triple between two constants. Resolves to the triple's id, or false.
+   */
+  async createTriple({ source, target, rel, group = null, sentenceIndex = null }) {
+    const info = this.layerInfo;
+    if (!source || !target || !rel) return false;
+    const isConst = (x) => DOC_CONSTANTS.includes(x);
+    const nodeOf = (x) => (isConst(x) ? this.constantNode(x) : this.node(x));
+    const s = nodeOf(source);
+    const t = nodeOf(target);
+    if (source === target) return false;
+    if (!isConst(source) && !s) return false;
+    if (!isConst(target) && !t) return false;
+    const g = group || groupOf(rel);
+    if (s && t && s.docOut.some((x) => x.target === t.id && x.rel === rel)) {
+      return false;
+    }
+    const meta = { group: g };
+    // A triple between two constants belongs to no sentence by itself: the
+    // one whose block it was made from writes it.
+    if (isConst(source) && isConst(target)) meta.sentences = [sentenceIndex ?? 1];
+    let tripleId = null;
+    const label = `Add ${rel} from ${s?.var || source} to ${t?.var || target}`;
+    const ok = await this._withSaving(
+      'Failed to add the document-level relation',
+      async () => {
+        const sourceId = s ? s.id : await this._makeConstant(source);
+        const targetId = t ? t.id : await this._makeConstant(target);
+        const rel1 = await this._client.relations.create(
+          info.documentGraphLayer.id,
+          sourceId,
+          targetId,
+          rel,
+          { [UMR_NAMESPACE]: meta },
+        );
+        tripleId = rel1?.id || rel1;
+        this._applyRawPatch((next, infoNext) => {
+          this._layers(infoNext).triples.push({
+            id: tripleId,
+            source: sourceId,
+            target: targetId,
+            value: rel,
+            metadata: { [UMR_NAMESPACE]: meta },
+          });
+        });
+      },
+      label,
+    );
+    return ok ? tripleId : false;
+  }
+
+  async setTripleRelation(id, rel) {
+    const t = this.triple(id);
+    if (!t || !rel || t.rel === rel) return false;
+    return this._withSaving(
+      'Failed to change the document-level relation',
+      async () => {
+        this._applyRawPatch((next, infoNext) => {
+          const r = this._layers(infoNext).triples.find((x) => x.id === id);
+          if (r) r.value = rel;
+        });
+        await this._client.relations.update(id, rel);
+      },
+      `Relabel ${t.rel} as ${rel}`,
+    );
+  }
+
+  async deleteTriple(id) {
+    const t = this.triple(id);
+    if (!t) return false;
+    return this._withSaving(
+      'Failed to delete the document-level relation',
+      async () => {
+        await this._client.relations.delete(id);
+        this._applyRawPatch((next, infoNext) => {
+          infoNext.documentGraphLayer.relations = this._layers(infoNext).triples.filter(
+            (x) => x.id !== id,
+          );
+        });
+      },
+      `Delete ${t.rel}`,
     );
   }
 

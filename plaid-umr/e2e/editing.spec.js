@@ -164,6 +164,42 @@ test.describe('editing', () => {
     await expect(block.locator('.umr-edge-label', { hasText: ':time' })).toBeVisible();
     await block.screenshot({ path: process.env.UMR_EDIT_SHOT || 'test-results/editing.png' });
 
+    // The document lane. `o` on a node: a conceiver, then a modal relation,
+    // drawn to the pinned constant in the margin.
+    await nodeByConcept(page, 'today').click();
+    await page.keyboard.press('o');
+    await editor(page).fill('author');
+    await page.keyboard.press('Enter');
+    await editor(page).fill(':full-affirmative');
+    await page.keyboard.press('Enter');
+    // The sample already draws one to leave-02; today's makes two.
+    await expect(block.locator('.umr-doc-label', { hasText: ':full-affirmative' })).toHaveCount(2);
+    await expect(block.locator('.umr-const--used', { hasText: 'author' })).toBeVisible();
+    // `c`: coreference with another node, a chain chip on both.
+    await nodeByConcept(page, 'lunch').click();
+    await page.keyboard.press('c');
+    await editor(page).fill('s1p');
+    await page.keyboard.press('Enter');
+    await editor(page).fill(':same-entity');
+    await page.keyboard.press('Enter');
+    await expect(block.locator('.umr-chain')).toHaveCount(2);
+    // Dragging the grip of eat-01 onto document-creation-time: a temporal one.
+    const eat2 = nodeByConcept(page, 'eat-01');
+    await eat2.hover();
+    const grip2 = await eat2.locator('.umr-grip').boundingBox();
+    const dct = block.locator('[data-const-name="document-creation-time"]');
+    const dctBox = await dct.boundingBox();
+    await page.mouse.move(grip2.x + grip2.width / 2, grip2.y + grip2.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dctBox.x + dctBox.width / 2, dctBox.y + dctBox.height / 2, { steps: 8 });
+    await expect(dct).toHaveClass(/umr-const--drop/);
+    await page.mouse.up();
+    await page.mouse.move(2, 2);
+    await editor(page).fill(':before');
+    await page.keyboard.press('Enter');
+    await expect(block.locator('.umr-doc-label', { hasText: ':before' })).toBeVisible();
+    await block.screenshot({ path: process.env.UMR_LANE_SHOT || 'test-results/lane.png' });
+
     // Every write landed.
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
@@ -173,5 +209,14 @@ test.describe('editing', () => {
     await page.goto(`/#/projects/${ids.projectId}/documents/${ids.documentId}/export`);
     await expect(page.locator('pre, textarea').first()).toContainText(':ARG1 (s1l2 / lunch)');
     await expect(page.locator('pre, textarea').first()).toContainText(':time (s1t / today)');
+    await expect(page.locator('pre, textarea').first()).toContainText(
+      '(author :full-affirmative s1t)',
+    );
+    await expect(page.locator('pre, textarea').first()).toContainText(
+      ':coref ((s1l2 :same-entity s1p))',
+    );
+    await expect(page.locator('pre, textarea').first()).toContainText(
+      '(document-creation-time :before s1e)',
+    );
   });
 });

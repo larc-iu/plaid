@@ -10,6 +10,30 @@ import {
   ATTRIBUTES,
 } from '../../../domain/format/inventory.js';
 import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
+import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
+
+// The relations of one document-level group, the validator's set first.
+export const docRelationOptions = (group, sets = 'validator') => {
+  const byset = DOC_RELATIONS?.[group] || {};
+  const items = byset[sets] || byset.validator || byset.schema || [];
+  return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
+};
+
+// Which group a constant's triples belong to.
+export const groupOfConstant = (name) =>
+  ['root', 'author', 'null-conceiver'].includes(name) ? 'modal' : 'temporal';
+
+export const MODAL_CONSTANTS = ['author', 'root', 'null-conceiver'];
+export const TEMPORAL_CONSTANTS = DOC_CONSTANTS.filter((c) => !MODAL_CONSTANTS.includes(c));
+
+// Every node of the document as an option, `var concept`, sentence by sentence.
+export const nodeOptions = (graph, exceptId = null) =>
+  graph.sentences.map((s) => ({
+    group: `Sentence ${s.index}`,
+    items: s.nodes
+      .filter((n) => n.id !== exceptId && n.var)
+      .map((n) => ({ value: n.var, label: `${n.var} ${n.concept}`, nodeId: n.id })),
+  }));
 
 const flat = (v) => (Array.isArray(v) ? v : Object.values(v || {}).flat());
 

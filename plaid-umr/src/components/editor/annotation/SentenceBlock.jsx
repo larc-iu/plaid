@@ -15,12 +15,36 @@ import {
   attributeLineOptions,
   attrsToLine,
   lineToAttrs,
+  docRelationOptions,
+  groupOfConstant,
+  nodeOptions,
+  MODAL_CONSTANTS,
+  TEMPORAL_CONSTANTS,
 } from './pickers.js';
+import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import './canvas.css';
 
 // Room between rows: lanes for the edges running across, and the label
 // floating above each child.
 const EDGE_ROOM = 66;
+
+// The margin to the left of every graph, where the document graph's
+// constants are pinned, and how the constants stack in it.
+const MARGIN = 172;
+const CONST_STEP = 30;
+const CONST_TOP = 16;
+const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
+
+// A chain's color, from its index: hues spread around the wheel.
+const chainColor = (index) => `hsl(${(index * 137.5) % 360} 62% 42%)`;
+
+// Jump to a node anywhere in the document.
+const goToNode = (nodeId) => {
+  const el = document.querySelector(`[data-node-id="${nodeId}"]`);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.focus({ preventScroll: true });
+};
 
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
 // layout, edges an SVG underlay of the same size, the token row beneath.
@@ -120,6 +144,107 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const active = hoveredId || focusedId;
   const activeNode = active ? nodesById.get(active) : null;
+
+  // The document lane. Constants pinned in the margin: the three every
+  // document has, plus any this sentence's triples name. A triple with a
+  // constant at one end or both ends in this sentence is drawn; the rest
+  // (coreference, a cross-sentence temporal) are listed under the graph.
+  const lane = useMemo(() => {
+    const names = [...ALWAYS_PINNED];
+    const triples = sentence.triples || [];
+    triples.forEach((t) => {
+      [t.source, t.target].forEach((id) => {
+        const n = nodesById.get(id);
+        if (n?.constant && !names.includes(n.var)) names.push(n.var);
+      });
+    });
+    const constants = names.map((name, i) => ({
+      name,
+      node: doc?.constantNode?.(name) || null,
+      y: CONST_TOP + i * CONST_STEP,
+      used: triples.some((t) => {
+        const a = nodesById.get(t.source);
+        const b = nodesById.get(t.target);
+        return (a?.constant && a.var === name) || (b?.constant && b.var === name);
+      }),
+    }));
+    const constY = new Map(constants.map((c) => [c.name, c.y]));
+    const drawn = [];
+    const listed = [];
+    triples.forEach((t) => {
+      const a = nodesById.get(t.source);
+      const b = nodesById.get(t.target);
+      if (!a || !b) return;
+      const here = (n) => !n.constant && n.sentence === sentence.index;
+      if ((a.constant && here(b)) || (b.constant && here(a))) {
+        drawn.push({
+          ...t,
+          kind: 'margin',
+          node: a.constant ? b : a,
+          constant: a.constant ? a : b,
+        });
+      } else if (here(a) && here(b) && t.group !== 'coref') {
+        drawn.push({ ...t, kind: 'inner', a, b });
+      } else {
+        listed.push({ ...t, a, b });
+      }
+    });
+    return { constants, constY, drawn, listed };
+  }, [sentence, nodesById, doc]);
+
+  // The drawn document edges, in STAGE coordinates (the margin's origin).
+  const docEdges = useMemo(() => {
+    if (!measured) return [];
+    const dx = MARGIN + pad;
+    return lane.drawn
+      .map((t) => {
+        if (t.kind === 'margin') {
+          const p = layout.nodes.get(t.node.id);
+          if (!p) return null;
+          const x1 = p.x - p.width / 2 + dx;
+          const y1 = p.y + p.height / 2;
+          const x2 = MARGIN - 8;
+          const y2 = lane.constY.get(t.constant.var) + 11;
+          const k = Math.max(24, (x1 - x2) / 2);
+          // The label near the node's end of the line, but never over the
+          // constants: a node close to the margin pushes it right.
+          const lx = Math.max(x2 + 48, x1 - 56);
+          return {
+            ...t,
+            path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
+            label: { x: lx, y: y1 + (y2 - y1) * ((x1 - lx) / Math.max(1, x1 - x2)) - 10 },
+          };
+        }
+        const pa = layout.nodes.get(t.a.id);
+        const pb = layout.nodes.get(t.b.id);
+        if (!pa || !pb) return null;
+        const x1 = pa.x + dx;
+        const y1 = pa.y;
+        const x2 = pb.x + dx;
+        const y2 = pb.y;
+        const lift = 18 + Math.abs(x2 - x1) / 8;
+        return {
+          ...t,
+          path: `M ${x1} ${y1} C ${x1} ${y1 - lift}, ${x2} ${y2 - lift}, ${x2} ${y2}`,
+          label: { x: (x1 + x2) / 2, y: Math.min(y1, y2) - lift * 0.75 },
+        };
+      })
+      .filter(Boolean);
+  }, [lane, layout, measured, pad]);
+
+  const chainOf = (node) => {
+    if (node.chain == null) return null;
+    const chain = doc?.graph?.chains?.[node.chain];
+    return chain
+      ? { index: chain.index, color: chainColor(chain.index), size: chain.nodes.length }
+      : null;
+  };
+  const onChainClick = (index, nodeId) => {
+    const chain = doc.graph.chains[index];
+    if (!chain) return;
+    const i = chain.nodes.indexOf(nodeId);
+    goToNode(chain.nodes[(i + 1) % chain.nodes.length]);
+  };
   const litWords = useMemo(() => new Set(activeNode?.wordIds || []), [activeNode]);
   const anchoredWords = useMemo(
     () => new Set(sentence.nodes.flatMap((n) => n.wordIds || [])),
@@ -184,9 +309,52 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const askNewNode = (parentId, wordIds, at, initial = '') =>
     setEditor({ kind: 'new', parentId, wordIds, ...at, value: initial });
 
+  // A document-level triple about to exist (`triple: { source, target,
+  // group }`, either end a node id or a constant's name), or an existing one
+  // (`tripleId`).
+  const askDocRole = (pending, at) =>
+    setEditor({ kind: 'docRole', pending, ...at, value: pending.tripleId ? pending.role : '' });
+
+  // Pick the other end of a document-level relation: a constant or a node
+  // anywhere in the document.
+  const askPick = (group, nodeId) =>
+    setEditor({ kind: 'pick', group, nodeId, ...positionBelow(nodeId), value: '' });
+
   const commitEditor = async (text) => {
     const ed = editor;
     if (!ed) return;
+    if (ed.kind === 'docRole') {
+      const rel = normalizeRole(text);
+      const p = ed.pending;
+      closeEditor();
+      if (p.tripleId) await run(() => doc.setTripleRelation(p.tripleId, rel));
+      else {
+        await run(() => doc.createTriple({ ...p.triple, rel, sentenceIndex: sentence.index }));
+      }
+      return;
+    }
+    if (ed.kind === 'pick') {
+      const name = String(text).trim().split(/\s+/)[0];
+      setEditor(null);
+      const at = positionBelow(ed.nodeId);
+      if (DOC_CONSTANTS.includes(name)) {
+        askDocRole({ triple: { source: name, target: ed.nodeId, group: ed.group } }, at);
+        return;
+      }
+      const other = [...nodesById.values()].find((n) => n.var === name && !n.constant);
+      if (!other || other.id === ed.nodeId) {
+        closeEditor();
+        return;
+      }
+      // A coreference or temporal relation runs from this node to the other;
+      // a modal one runs from the conceiver picked to this node.
+      const triple =
+        ed.group === 'modal'
+          ? { source: other.id, target: ed.nodeId, group: 'modal' }
+          : { source: ed.nodeId, target: other.id, group: ed.group };
+      askDocRole({ triple }, at);
+      return;
+    }
     if (ed.kind === 'role') {
       const role = normalizeRole(text);
       const p = ed.pending;
@@ -304,6 +472,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         'node.root',
         'node.delete',
         'node.deleteNode',
+        'node.coref',
+        'node.temporal',
+        'node.modal',
         'canvas.newRoot',
       ],
       e,
@@ -345,6 +516,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       case 'node.deleteNode':
         await deleteIntoFocused(true);
+        break;
+      case 'node.coref':
+        askPick('coref', id);
+        break;
+      case 'node.temporal':
+        askPick('temporal', id);
+        break;
+      case 'node.modal':
+        askPick('modal', id);
         break;
       case 'canvas.newRoot':
         askNewNode(null, [], { x: 16, y: layout.height - 44 });
@@ -411,6 +591,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (nodeEl && canvasRef.current?.contains(nodeEl)) {
       return { kind: 'node', id: nodeEl.dataset.nodeId };
     }
+    if (nodeEl) return { kind: 'foreign', id: nodeEl.dataset.nodeId };
+    const constEl = el?.closest?.('[data-const-name]');
+    if (constEl) return { kind: 'const', name: constEl.dataset.constName };
     const wordEl = el?.closest?.('[data-word-id]');
     if (wordEl && canvasRef.current?.parentElement?.contains(wordEl)) {
       return { kind: 'word', id: wordEl.dataset.wordId };
@@ -423,7 +606,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     e.preventDefault();
     e.stopPropagation();
     const p = graphPoint(e.clientX, e.clientY);
-    const d = { kind, ...ids, x: p.x, y: p.y, over: null };
+    // Ctrl/Cmd, read once as the drag begins, makes the drop a temporal
+    // relation between two events rather than an edge.
+    const d = { kind, ...ids, x: p.x, y: p.y, over: null, doc: e.ctrlKey || e.metaKey };
     dragRef.current = d;
     setDrag(d);
   };
@@ -449,7 +634,25 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const over = under(e.clientX, e.clientY);
       const p = graphPoint(e.clientX, e.clientY);
       if (d.kind === 'edge') {
-        if (over?.kind === 'node' && over.id !== d.sourceId) {
+        if (over?.kind === 'const') {
+          const group = groupOfConstant(over.name);
+          askDocRole(
+            { triple: { source: over.name, target: d.sourceId, group } },
+            positionBelow(d.sourceId),
+          );
+        } else if (over?.kind === 'foreign') {
+          // Onto another sentence's node: temporal with Ctrl/Cmd, else coreference.
+          const group = d.doc ? 'temporal' : 'coref';
+          askDocRole(
+            { triple: { source: d.sourceId, target: over.id, group } },
+            positionBelow(d.sourceId),
+          );
+        } else if (over?.kind === 'node' && over.id !== d.sourceId && d.doc) {
+          askDocRole(
+            { triple: { source: d.sourceId, target: over.id, group: 'temporal' } },
+            positionBelow(over.id),
+          );
+        } else if (over?.kind === 'node' && over.id !== d.sourceId) {
           askRole({ sourceId: d.sourceId, targetId: over.id }, positionBelow(over.id));
         } else if (over?.kind === 'word') {
           const word = sentence.words.find((w) => w.id === over.id);
@@ -496,6 +699,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const overNodeId = drag?.over?.kind === 'node' ? drag.over.id : null;
   const overWordId = drag?.over?.kind === 'word' ? drag.over.id : null;
+  const overConst = drag?.over?.kind === 'const' ? drag.over.name : null;
 
   // The parent whose arguments a role editor lists first.
   const parentConceptOf = (pending) => {
@@ -526,6 +730,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       );
     }
     if (ed.kind === 'attrs') return attributeLineOptions();
+    if (ed.kind === 'docRole') {
+      const group = ed.pending.tripleId ? ed.pending.group : ed.pending.triple.group;
+      return docRelationOptions(group);
+    }
+    if (ed.kind === 'pick') {
+      const constants =
+        ed.group === 'modal' ? MODAL_CONSTANTS : ed.group === 'temporal' ? TEMPORAL_CONSTANTS : [];
+      return [
+        ...(constants.length ? [{ group: 'Constants', items: constants }] : []),
+        ...nodeOptions(doc.graph, ed.nodeId),
+      ];
+    }
     return [];
   };
 
@@ -625,7 +841,78 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         }}
         onMouseLeave={() => setHoveredId(null)}
       >
-        <div className="umr-stage" style={pad ? { paddingLeft: `${pad}px` } : undefined}>
+        <div
+          className="umr-stage"
+          style={{ paddingLeft: `${MARGIN + pad}px`, '--umr-margin': `${MARGIN}px` }}
+        >
+          <div className="umr-margin" aria-label="Document constants">
+            {lane.constants.map((c) => (
+              <span
+                key={c.name}
+                className={[
+                  'umr-const',
+                  c.used ? 'umr-const--used' : '',
+                  overConst === c.name ? 'umr-const--drop' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                style={{ position: 'absolute', top: `${c.y}px`, right: '8px' }}
+                data-const-name={c.name}
+                title={
+                  readOnly
+                    ? undefined
+                    : `Drag a node here for a ${groupOfConstant(c.name)} relation`
+                }
+              >
+                {c.name}
+              </span>
+            ))}
+          </div>
+          <svg
+            className="umr-doc-edges"
+            width={MARGIN + pad + Math.max(width, 1)}
+            height={layout.height}
+            aria-hidden="true"
+          >
+            {docEdges.map((t) => (
+              <path
+                key={t.id}
+                d={t.path}
+                className={[
+                  'umr-doc-edge',
+                  active && (t.source === active || t.target === active) ? 'umr-doc-edge--lit' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            ))}
+          </svg>
+          {docEdges.map((t) => (
+            <span
+              key={`label-${t.id}`}
+              className="umr-doc-label"
+              style={{ position: 'absolute', left: `${t.label.x}px`, top: `${t.label.y}px` }}
+              role={readOnly ? undefined : 'button'}
+              tabIndex={-1}
+              data-triple-id={t.id}
+              onClick={
+                readOnly
+                  ? undefined
+                  : (ev) => {
+                      ev.stopPropagation();
+                      askDocRole(
+                        { tripleId: t.id, role: t.rel, group: t.group },
+                        { x: t.label.x - (MARGIN + pad) - 90, y: t.label.y - 12 },
+                      );
+                    }
+              }
+              title={
+                readOnly ? undefined : 'Click to change. Shift+Backspace in the editor deletes.'
+              }
+            >
+              {t.rel}
+            </span>
+          ))}
           <div
             className="umr-graph"
             ref={canvasRef}
@@ -676,6 +963,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 tabIndex={i === 0 ? 0 : -1}
                 readOnly={readOnly}
                 problems={problemsByNode.get(node.id)}
+                chain={chainOf(node)}
+                onChainClick={onChainClick}
               />
             ))}
             {measured &&
@@ -718,7 +1007,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               ))}
             {editor && (
               <InlineEditor
-                key={`${editor.kind}:${editor.nodeId || editor.pending?.edgeId || 'new'}`}
+                key={`${editor.kind}:${editor.nodeId || editor.pending?.edgeId || editor.pending?.tripleId || 'new'}`}
                 x={editor.x}
                 y={editor.y}
                 width={editor.kind === 'attrs' ? 320 : 220}
@@ -727,6 +1016,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 placeholder={
                   {
                     role: 'Relation',
+                    docRole: 'Relation',
+                    pick: 'Variable or constant',
                     new: 'Word number or concept',
                     concept: 'Concept',
                     variable: 'Variable',
@@ -735,10 +1026,51 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 }
                 onCommit={commitEditor}
                 onCancel={closeEditor}
+                onDelete={
+                  editor.kind === 'role' && editor.pending.edgeId
+                    ? () => {
+                        const id = editor.pending.edgeId;
+                        closeEditor();
+                        run(() => doc.deleteEdge(id, { subtree: false }));
+                      }
+                    : editor.kind === 'docRole' && editor.pending.tripleId
+                      ? () => {
+                          const id = editor.pending.tripleId;
+                          closeEditor();
+                          run(() => doc.deleteTriple(id));
+                        }
+                      : undefined
+                }
                 onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
               />
             )}
           </div>
+          {lane.listed.length > 0 && (
+            <div className="umr-doc-list" aria-label="Document-level relations">
+              {lane.listed.map((t) => (
+                <span
+                  key={t.id}
+                  className="umr-doc-label"
+                  role={readOnly ? undefined : 'button'}
+                  tabIndex={-1}
+                  data-triple-id={t.id}
+                  onClick={
+                    readOnly
+                      ? undefined
+                      : (ev) => {
+                          ev.stopPropagation();
+                          askDocRole(
+                            { tripleId: t.id, role: t.rel, group: t.group },
+                            { x: 16, y: layout.height - 44 },
+                          );
+                        }
+                  }
+                >
+                  {t.a.var} {t.rel} {t.b.var}
+                </span>
+              ))}
+            </div>
+          )}
           <TokenRow
             sentence={sentence}
             wordRef={wordRef}

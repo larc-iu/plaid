@@ -21,6 +21,7 @@ export function InlineEditor({
   renderOption,
   onCommit,
   onCancel,
+  onDelete,
   onTyped,
   className = '',
 }) {
@@ -95,6 +96,11 @@ export function InlineEditor({
           } else if (e.key === 'Escape') {
             e.preventDefault();
             once(onCancel);
+          } else if (e.key === 'Backspace' && e.shiftKey && pristine && onDelete) {
+            // While the label is as it opened: once typed in, Shift is a
+            // shifted character's, not a chord's.
+            e.preventDefault();
+            once(onDelete);
           } else if (e.key === 'Tab') {
             e.preventDefault();
             const trusted = !pristine || navigatedRef.current;

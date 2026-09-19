@@ -124,6 +124,7 @@ export function buildDocumentGraph(layerInfo) {
       aligned: pieces.some((p) => p.end > p.begin),
       metadata: span.metadata || null,
       sentence: null,
+      chain: null,
       out: [],
       in: [],
       docOut: [],
@@ -199,7 +200,62 @@ export function buildDocumentGraph(layerInfo) {
     s.roots = rootsOf(s, nodesById);
   });
 
-  return { sentences, constants, nodesById };
+  const chains = corefChains(docRelations, nodesById);
+
+  return { sentences, constants, nodesById, chains };
+}
+
+// The coreference relations, whichever way they point, join nodes into chains.
+export const COREF_RELATIONS = new Set([':same-entity', ':same-event', ':subset-of', ':subset']);
+
+// Chains as connected components over the coreference triples, numbered in
+// order of first mention, and each node told its chain.
+function corefChains(docRelations, nodesById) {
+  const parent = new Map();
+  const find = (x) => {
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)));
+      x = parent.get(x);
+    }
+    return x;
+  };
+  const union = (a, b) => {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  docRelations.forEach((rel) => {
+    if (!COREF_RELATIONS.has(rel.value)) return;
+    if (nodesById.has(rel.source) && nodesById.has(rel.target)) union(rel.source, rel.target);
+  });
+  const members = new Map();
+  parent.forEach((_, id) => {
+    const root = find(id);
+    if (!members.has(root)) members.set(root, []);
+    members.get(root).push(id);
+  });
+  const position = (id) => {
+    const n = nodesById.get(id);
+    return [n.sentence ?? 0, n.pieces[0]?.begin ?? 0];
+  };
+  const chains = [...members.values()]
+    .map((ids) =>
+      ids.sort((a, b) => {
+        const [sa, ba] = position(a);
+        const [sb, bb] = position(b);
+        return sa - sb || ba - bb;
+      }),
+    )
+    .sort((a, b) => {
+      const [sa, ba] = position(a[0]);
+      const [sb, bb] = position(b[0]);
+      return sa - sb || ba - bb;
+    })
+    .map((ids, i) => ({ index: i, nodes: ids }));
+  chains.forEach((chain) => chain.nodes.forEach((id) => (nodesById.get(id).chain = chain.index)));
+  return chains;
 }
 
 // The roles a graph may cycle through (the validator allows no others): an

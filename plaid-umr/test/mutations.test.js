@@ -292,3 +292,55 @@ test('a quote onto itself is still a cycle', () => {
   const landslide = byVar(doc, 's1l');
   assert.equal(doc.wouldCycle(landslide.id, landslide.id, ':quote'), true);
 });
+
+test('createTriple makes a constant on first use and a chain on coreference', async () => {
+  const { doc, calls } = load();
+  const landslide = byVar(doc, 's1l');
+  const person = byVar(doc, 's1p3');
+  assert.equal(doc.constantNode('null-conceiver'), null);
+  const id = await doc.createTriple({
+    source: 'null-conceiver',
+    target: landslide.id,
+    rel: ':full-affirmative',
+    group: 'modal',
+  });
+  assert.ok(id);
+  assert.ok(doc.constantNode('null-conceiver'));
+  const names = calls.map((c) => c.name);
+  assert.deepEqual(names, ['operation', 'tokens.bulkCreate', 'spans.create', 'relations.create']);
+  assert.equal(calls[1].args[0][0].begin, 0);
+  assert.equal(calls[1].args[0][0].end, 0);
+  // The same triple again is refused.
+  assert.equal(
+    await doc.createTriple({
+      source: 'null-conceiver',
+      target: landslide.id,
+      rel: ':full-affirmative',
+      group: 'modal',
+    }),
+    false,
+  );
+  // A coreference joins two nodes into a chain both know about.
+  const other = byVar(doc, 's1p2');
+  assert.ok(await doc.createTriple({ source: other.id, target: person.id, rel: ':same-entity' }));
+  const a = doc.node(other.id);
+  const b = doc.node(person.id);
+  assert.equal(a.chain, b.chain);
+  assert.ok(doc.graph.chains.some((c) => c.nodes.includes(a.id) && c.nodes.includes(b.id)));
+  assert.match(doc.toUmr(), /:coref \(\(s1p2 :same-entity s1p3\)\)/);
+});
+
+test('deleteTriple and setTripleRelation touch only the document graph', async () => {
+  const { doc, calls } = load();
+  const landslide = byVar(doc, 's1l');
+  const t = landslide.docIn[0] || landslide.docOut[0];
+  assert.ok(t, 'the corpus gives s1l a document-level triple');
+  assert.equal(await doc.setTripleRelation(t.id, ':partial-affirmative'), true);
+  assert.equal(doc.triple(t.id).rel, ':partial-affirmative');
+  assert.equal(await doc.deleteTriple(t.id), true);
+  assert.equal(doc.triple(t.id), null);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ['operation', 'relations.update', 'operation', 'relations.delete'],
+  );
+});
