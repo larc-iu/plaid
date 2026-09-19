@@ -185,6 +185,7 @@ The menu lists every action with the key that does the same thing, and greys out
 
 * Arrows move between nodes: up to the parent, down to the first child, left and right between the nodes of a row.
 * Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order the export and text mode use. The canvas keeps drawing children over their words.
+A node with two parents is written in full and drawn under the parent the written order reaches first. Moving it past a sibling whose subtree also holds it moves it into that subtree, on the canvas and in the file, and the graph stays the same.
 * Shift+Tab leaves the block.
 
 == Making nodes and edges
