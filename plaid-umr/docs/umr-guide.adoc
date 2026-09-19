@@ -161,6 +161,7 @@ Clicking the chip goes to the next mention of the chain, in this sentence or ano
 The official UMR checks run as you edit.
 A sentence's header counts its errors and warnings; clicking the count lists them.
 A node a check names wears a dot and a border in red for an error or amber for a warning, with the message on hover.
+Besides the official checks, an edge whose two nodes have come to be in different sentences (a sentence split in Plaid IGT or UD can do this) is an error on the node it leaves: it stays stored, so merging the sentences back makes it whole, but the export leaves it out.
 The project's **Validation** tab lists every problem in every document.
 
 = Editing

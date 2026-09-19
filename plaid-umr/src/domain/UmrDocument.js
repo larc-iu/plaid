@@ -13,6 +13,7 @@ import {
   toUmrSentences,
   nextVariable,
   CYCLE_ROLES,
+  crossSentenceEdges,
   groupOf,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
@@ -82,9 +83,13 @@ export class UmrDocument extends DocumentModel {
     return this._derived('umr', () => serializeUmrFile({ sentences: toUmrSentences(this.graph) }));
   }
 
-  // What the official checks find, over the same sentences the export writes.
+  // What the official checks find, over the same sentences the export writes,
+  // and the edges the export has to leave out.
   get problems() {
-    return this._derived('problems', () => validateDocument(toUmrSentences(this.graph)));
+    return this._derived('problems', () => [
+      ...validateDocument(toUmrSentences(this.graph)),
+      ...crossSentenceEdges(this.graph),
+    ]);
   }
 
   // The same, by sentence index.

@@ -411,6 +411,34 @@ export const docTagsOf = (node, nodesById) => {
   return tags.sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1]).map((x) => x.tag);
 };
 
+/**
+ * The sentence-level edges whose two ends are in different sentences: what
+ * splitting a sentence in another app makes of an edge between its halves.
+ * They stay stored (merging the sentences back makes them whole) and the
+ * export leaves them out, since a sentence graph cannot reach into another,
+ * so each is reported here as an error on the node it leaves. Before this
+ * the export dropped them and nothing said so.
+ */
+export const crossSentenceEdges = (graph) => {
+  const out = [];
+  graph.sentences.forEach((s) =>
+    s.edges.forEach((e) => {
+      const target = graph.nodesById.get(e.target);
+      if (!target || target.sentence === s.index) return;
+      const where =
+        target.sentence == null ? 'outside every sentence' : `into sentence ${target.sentence}`;
+      out.push({
+        level: 'error',
+        code: 'edge-across-sentences',
+        sentence: s.index,
+        var: graph.nodesById.get(e.source)?.var ?? null,
+        message: `${e.role} to ${target.var} reaches ${where}, and the export leaves it out.`,
+      });
+    }),
+  );
+  return out;
+};
+
 export const groupOf = (rel) => {
   if (/^:(same-entity|same-event|subset-of|subset)$/.test(rel)) return 'coref';
   if (/^:(before|after|contained|overlap|depends-on|contains)$/.test(rel)) return 'temporal';

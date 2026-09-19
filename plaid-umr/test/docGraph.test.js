@@ -1,7 +1,7 @@
 // What a node says about the document-level triples it takes part in.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { docTagText, docTagsOf } from '../src/domain/sentenceGraph.js';
+import { crossSentenceEdges, docTagText, docTagsOf } from '../src/domain/sentenceGraph.js';
 
 // `(author :full-affirmative s1l)`: the constant is the SOURCE, which is
 // nearly every triple with a constant in it.
@@ -78,4 +78,37 @@ test('a constant first, then the same sentence, then the nearest sentence', () =
     docTagsOf(byId.get('e3'), byId).map((t) => t.text),
     ['author :full-affirmative', ':overlap s3p', ':after s2e', ':after s1e'],
   );
+});
+
+// Splitting a sentence in another app can leave a tree edge between the two
+// halves. It stays stored, the export leaves it out, and it is reported.
+test('an edge between two sentences is reported on the node it leaves', () => {
+  const node = (id, v, sentence) => ({ id, var: v, sentence });
+  const nodesById = new Map([
+    ['a', node('a', 's4e', 4)],
+    ['b', node('b', 's4t', 5)],
+    ['c', node('c', 's4p', 4)],
+  ]);
+  const graph = {
+    nodesById,
+    sentences: [
+      {
+        index: 4,
+        edges: [
+          { source: 'a', target: 'b', role: ':ARG0' },
+          { source: 'a', target: 'c', role: ':ARG1' },
+        ],
+      },
+      { index: 5, edges: [] },
+    ],
+  };
+  assert.deepEqual(crossSentenceEdges(graph), [
+    {
+      level: 'error',
+      code: 'edge-across-sentences',
+      sentence: 4,
+      var: 's4e',
+      message: ':ARG0 to s4t reaches into sentence 5, and the export leaves it out.',
+    },
+  ]);
 });
