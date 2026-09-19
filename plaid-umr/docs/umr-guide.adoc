@@ -214,7 +214,9 @@ A node with two parents is written in full and drawn under the parent the writte
 
 == The pickers
 
-Enter commits what a picker shows. An option is taken only when the arrows moved to it or it was clicked; a highlight the pointer left behind is not a choice.
+Enter commits what was typed. An option is taken instead only when the arrows moved to it, it was clicked, or its value is exactly what was typed; a highlight the pointer left behind is not a choice.
+The list also shows options whose description holds the typed text, so an argument can be found by what it means, but Enter never takes one of those on its own: typing `place` gives `:place`, not the `:ARG1` described as "place or thing escaped".
+In the relation pickers, the start of a relation is enough (`ARG` gives `:ARG0`, the colon optional). A concept is any word, so it is never finished for you: `rat` stays `rat`.
 Escape cancels.
 
 == Text mode

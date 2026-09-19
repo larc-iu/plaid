@@ -9,6 +9,12 @@ const options = [
 
 const press = (input, key) =>
   input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+const type = (r, input, text) =>
+  r.step(() => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 
 describe('InlineEditor', () => {
   it('commits the prefilled value on Enter when nothing was typed or highlighted', async () => {
@@ -29,7 +35,10 @@ describe('InlineEditor', () => {
     await r.unmount();
   });
 
-  it('commits the highlighted match once something was typed', async () => {
+  // Typed text is what Enter writes: an option whose label merely holds it is
+  // shown, not taken. `lunch-` was finished as `lunch-01`, and `place` under
+  // escape-01 as :ARG1, whose label reads "place or thing escaped".
+  it('commits what was typed, not an option whose label holds it', async () => {
     const onCommit = vi.fn();
     const r = await renderComponent(
       <InlineEditor
@@ -42,17 +51,92 @@ describe('InlineEditor', () => {
       />,
     );
     const input = r.container.querySelector('input');
-    await r.step(() => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      setter.call(input, 'lunch-');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    await type(r, input, 'food');
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).toHaveBeenCalledWith('food', null);
+    await r.unmount();
+  });
+
+  it('commits an option whose value is exactly what was typed', async () => {
+    const onCommit = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        options={options}
+        onCommit={onCommit}
+        onCancel={() => {}}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'lunch-01');
     await r.step(() => press(input, 'Enter'));
     expect(onCommit).toHaveBeenCalledWith(
       'lunch-01',
       expect.objectContaining({ value: 'lunch-01' }),
     );
     await r.unmount();
+  });
+
+  it('commits the option the arrows moved to', async () => {
+    const onCommit = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        options={options}
+        onCommit={onCommit}
+        onCancel={() => {}}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'lunch-');
+    await r.step(() => press(input, 'ArrowDown'));
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).toHaveBeenCalledWith(
+      'lunch-01',
+      expect.objectContaining({ value: 'lunch-01' }),
+    );
+    await r.unmount();
+  });
+
+  // Relations are a closed list: a value's beginning finishes it, the colon
+  // optional, and a label still never does.
+  it('completes a relation from its value, never from its label', async () => {
+    const roles = [
+      {
+        group: 'escape-01',
+        items: [
+          { value: ':ARG0', label: ':ARG0 escaper' },
+          { value: ':ARG1', label: ':ARG1 place or thing escaped' },
+        ],
+      },
+      { group: 'Non-core', items: [':place', ':purpose'] },
+    ];
+    const run = async (typed) => {
+      const onCommit = vi.fn();
+      const r = await renderComponent(
+        <InlineEditor
+          x={0}
+          y={0}
+          value=""
+          options={roles}
+          complete
+          onCommit={onCommit}
+          onCancel={() => {}}
+        />,
+      );
+      const input = r.container.querySelector('input');
+      await type(r, input, typed);
+      await r.step(() => press(input, 'Enter'));
+      await r.unmount();
+      return onCommit.mock.calls[0][0];
+    };
+    expect(await run('place')).toBe(':place');
+    expect(await run('ARG')).toBe(':ARG0');
+    expect(await run(':purp')).toBe(':purpose');
   });
 
   // A refused value keeps the editor open with the reason under it, so what
@@ -70,18 +154,12 @@ describe('InlineEditor', () => {
       />,
     );
     const input = r.container.querySelector('input');
-    const type = (text) =>
-      r.step(() => {
-        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        setter.call(input, text);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-    await type('s1p');
+    await type(r, input, 's1p');
     await r.step(() => press(input, 'Enter'));
     expect(onCommit).not.toHaveBeenCalled();
     expect(r.container.querySelector('[role="alert"]').textContent).toBe('s1p is already in use.');
     expect(input.value).toBe('s1p');
-    await type('s1lu');
+    await type(r, input, 's1lu');
     expect(r.container.querySelector('[role="alert"]')).toBe(null);
     await r.step(() => press(input, 'Enter'));
     expect(onCommit).toHaveBeenCalledWith('s1lu', null);

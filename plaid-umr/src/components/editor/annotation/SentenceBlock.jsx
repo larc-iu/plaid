@@ -546,6 +546,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     }
   };
 
+  // A new node's word, named by its number: one the sentence has. Typed
+  // before a word was dropped on, a number names a word, never a concept.
+  const missingWord = (ed, text) =>
+    !ed.wordIds.length && /^\d+$/.test(text) && !sentence.words[Number(text) - 1]
+      ? `Sentence ${sentence.index} has no word ${text}.`
+      : null;
+
   // ----- deleting -----
 
   // Shift+Backspace deletes the edge into the focused node, with what only
@@ -1391,10 +1398,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                       : undefined
                 }
                 onTyped={(t) => setEditor((ed) => (ed ? { ...ed, typed: t } : ed))}
+                complete={editor.kind === 'role' || editor.kind === 'docRole'}
                 check={
                   editor.kind === 'variable'
                     ? (text) => doc.variableProblem(editor.nodeId, text)
-                    : undefined
+                    : editor.kind === 'new'
+                      ? (text) => missingWord(editor, text)
+                      : undefined
                 }
               />
             )}
