@@ -1,6 +1,6 @@
 import { isProvKey } from '../utils/provenanceUi.js';
 import { missingUdLayerLabels } from '../utils/udLayerUtils.js';
-import { enhancedEdges, serializeDeps } from './enhancedGraph.js';
+import { enhancedEdges, isSuppressor, serializeDeps } from './enhancedGraph.js';
 
 // CoNLL-U export: the sentence rows and the layer info in, the file out.
 //
@@ -16,6 +16,34 @@ const UNDERSCORE = '_';
  * A document whose project is not configured for UD gets a `#`-prefixed
  * sentinel line rather than a throw, which is what the export screens render.
  */
+/**
+ * What a CoNLL-U file cannot say about these sentences, one line each, or an
+ * empty list when it can say everything.
+ *
+ * A word with no enhanced head writes `_` in its DEPS column, and a sentence
+ * where every word writes `_` is exactly what a sentence nobody annotated for
+ * the enhanced graph writes. So a sentence whose enhanced graph leaves out
+ * every one of its relations, and adds none, comes back from its own file
+ * with every relation in place again. The notation has no way to tell the two
+ * apart, so the export says so rather than losing the decision quietly.
+ */
+export function conlluLosses({ sentences } = {}) {
+  const out = [];
+  (sentences || []).forEach((sentence, i) => {
+    const rows = sentence.enhancedRelations || [];
+    if (!rows.some(isSuppressor)) return;
+    const edges = enhancedEdges(sentence.relations, rows);
+    if (edges.some((e) => e.value)) return;
+    out.push(
+      `Sentence ${i + 1} leaves every relation out of the enhanced graph. ` +
+        'CoNLL-U writes that the same way as a sentence with no enhanced ' +
+        'annotation at all, so reading this file back gives every word its ' +
+        'tree relation again.',
+    );
+  });
+  return out;
+}
+
 export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) {
   if (!info.isConfigured) {
     const missing = missingUdLayerLabels(info.missingLayers);

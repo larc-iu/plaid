@@ -328,11 +328,37 @@ export function diffGraphs(before, after, layerInfo) {
   // A suppressor says the enhanced graph leaves out the basic edge it lies
   // over. Once a rule has removed or moved that edge it says nothing, so it
   // goes in the same write (the editor's own deletes do the same).
+  //
+  // It goes with the relabel it was made for, too. Relabelling an edge for
+  // the enhanced graph is stored as a suppressor over the tree's edge plus an
+  // extra under the new label, so a rule that deletes the extra asked for the
+  // label to go, not for the word to be cut out of the enhanced graph. Left
+  // standing, the suppressor gave the word no enhanced head at all, which
+  // rules cannot see and nothing on screen said.
   const basicPairs = new Set();
   for (const e of after.edges.values())
     if (!isEnhancedLabel(e.label)) basicPairs.add(`${e.src}>${e.tgt}`);
+  // Only a pair that HELD an extra was a relabel. A pair with a suppressor
+  // and nothing else is a plain leaving-out, which a rule that touches
+  // neither must not undo.
+  const extrasBefore = new Set();
+  for (const e of before.edges.values())
+    if (isEnhancedLabel(e.label)) extrasBefore.add(`${e.src}>${e.tgt}`);
+  const extrasAfter = new Set();
+  for (const e of after.edges.values())
+    if (isEnhancedLabel(e.label)) extrasAfter.add(`${e.src}>${e.tgt}`);
   for (const s of before.suppressors || []) {
-    if (touchesDeleted(s) || basicPairs.has(`${s.src}>${s.tgt}`)) continue;
+    const pair = `${s.src}>${s.tgt}`;
+    if (touchesDeleted(s)) continue;
+    const relabelUndone = extrasBefore.has(pair) && !extrasAfter.has(pair);
+    if (basicPairs.has(pair) && !relabelUndone) continue;
+    if (basicPairs.has(pair)) {
+      const label = [...(basicLabels.get(pair) || [])].join(', ');
+      changes.push({
+        kind: 'edge',
+        text: `${formOf(after, s.src)} → ${formOf(after, s.tgt)}: ${label} back in the enhanced graph`,
+      });
+    }
     writes.main.push({ op: 'deleteRelation', id: s.id });
   }
 

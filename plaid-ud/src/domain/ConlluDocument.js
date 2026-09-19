@@ -34,7 +34,7 @@ import {
 import { validateConlluDocument } from './validate.js';
 import { importConlluDocument } from './conlluImport.js';
 import { buildSentenceRows } from './sentenceRows.js';
-import { buildConllu } from './conlluSerialize.js';
+import { buildConllu, conlluLosses } from './conlluSerialize.js';
 import { ensureEnhancedRelationLayer } from './udProjectSetup.js';
 import { basicTokenize, newlineSentenceRanges } from '../utils/basicTokenize.js';
 import { normalizeFeature, featureRefusal } from '../utils/feats.js';
@@ -1557,5 +1557,13 @@ export class ConlluDocument extends DocumentModel {
     const info = this.layerInfo;
     const sentences = info.isConfigured ? this.sentences : null;
     return buildConllu({ name: this.name, layerInfo: info, sentences });
+  }
+
+  // What the file the export writes cannot say (conlluSerialize.js), one line
+  // each. Cached with the text it is about.
+  conlluLosses() {
+    return this._derived('conlluLosses', () =>
+      this.layerInfo.isConfigured ? conlluLosses({ sentences: this.sentences }) : [],
+    );
   }
 }

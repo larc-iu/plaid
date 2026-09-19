@@ -312,12 +312,30 @@ test('relabel and delete an extra edge by its E: label', () => {
     `rule a { pattern { e: X -[E:nsubj]-> Y } commands { e.2 = xsubj } }
      rule b { pattern { X -[E:conj:and]-> Y } commands { del_edge X -[E:conj:and]-> Y } }`,
   );
+  // Deleting the extra of a relabel puts the tree's own relation back in the
+  // enhanced graph: the suppressor under it was made for that relabel, and
+  // left standing it would give the word no enhanced head at all.
   assert.deepEqual(r.changes.map((c) => c.text).sort(), [
     'danced → she: E:nsubj → E:nsubj:xsubj',
     'sang → danced: E:conj:and removed',
+    'sang → danced: conj back in the enhanced graph',
   ]);
   const update = r.writes.main.find((w) => w.op === 'updateRelation');
   assert.equal(update.value, 'nsubj:xsubj');
+});
+
+// A word whose relation is simply left out of the enhanced graph carries a
+// suppressor and no extra. A rule that touches neither must leave it alone.
+test('a relation left out of the enhanced graph stays out', () => {
+  const r = run(ENHANCED, 'rule a { pattern { e: X -[E:nsubj]-> Y } commands { e.2 = xsubj } }');
+  assert.equal(
+    r.changes.some((c) => /back in the enhanced graph/.test(c.text)),
+    false,
+  );
+  assert.equal(
+    r.writes.main.some((w) => w.op === 'deleteRelation'),
+    false,
+  );
 });
 
 test('e.enhanced = yes moves an edge to the other layer', () => {

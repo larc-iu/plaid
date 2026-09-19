@@ -14,6 +14,7 @@ import {
   planEnhancedRow,
   serializeDeps,
 } from '../src/domain/enhancedGraph.js';
+import { conlluLosses } from '../src/domain/conlluSerialize.js';
 
 const rel = (id, source, target, value) => ({ id, source, target, value });
 const suppressor = (id, source, target) => ({
@@ -166,5 +167,38 @@ test('serializeDeps names a head and relation once', () => {
       { head: 4, deprel: 'nsubj' },
     ]),
     '2:nsubj|4:nsubj',
+  );
+});
+
+// A sentence whose enhanced graph leaves out every relation writes `_` in
+// every DEPS column, which is what a sentence with no enhanced annotation
+// writes too. The export says so rather than losing the decision quietly.
+test('conlluLosses names a sentence CoNLL-U cannot carry', () => {
+  const suppressed = {
+    relations: [{ id: 'r1', source: 's1', target: 's2', value: 'nsubj' }],
+    enhancedRelations: [
+      { id: 'e1', source: 's1', target: 's2', value: null, metadata: { suppress: true } },
+    ],
+  };
+  const lines = conlluLosses({ sentences: [suppressed] });
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^Sentence 1 leaves every relation out/);
+
+  // One extra edge is enough for the file to say something, and a sentence
+  // with no suppressor at all says nothing.
+  assert.deepEqual(
+    conlluLosses({
+      sentences: [
+        {
+          ...suppressed,
+          enhancedRelations: [
+            ...suppressed.enhancedRelations,
+            { id: 'e2', source: 's3', target: 's2', value: 'nsubj:pass', metadata: {} },
+          ],
+        },
+        { relations: suppressed.relations, enhancedRelations: [] },
+      ],
+    }),
+    [],
   );
 });

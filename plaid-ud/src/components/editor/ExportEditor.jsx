@@ -14,6 +14,9 @@ export const ExportEditor = () => {
   useDocumentTitle('Export', doc?.name, project?.name);
 
   const conlluContent = doc.toConllu();
+  // What the notation cannot carry, said where the file is taken rather than
+  // discovered when it is read back.
+  const losses = doc.conlluLosses();
 
   const handleCopy = async () => {
     // On a non-secure origin `navigator.clipboard` is undefined, and a denied
@@ -45,6 +48,17 @@ export const ExportEditor = () => {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-xl font-semibold tracking-tight">CoNLL-U</h3>
+
+      {losses.length > 0 && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-medium">This file cannot say everything the document does.</p>
+          <ul className="mt-1 list-disc pl-5">
+            {losses.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleCopy}>
