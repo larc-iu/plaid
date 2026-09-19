@@ -117,8 +117,8 @@ export class UmrDocument extends DocumentModel {
   // the one it was merged into. One batch, so the audit entry names one
   // repair. History keeps what was removed.
   async _reconcile() {
-    const { remove, rebind } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
-    if (!remove.length && !rebind.length) return { findings: [] };
+    const { remove, rebind, move } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
+    if (!remove.length && !rebind.length && !move.length) return { findings: [] };
     try {
       const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
       const spans = this._layers(this.layerInfo).spans;
@@ -128,9 +128,15 @@ export class UmrDocument extends DocumentModel {
           const span = spans.find((x) => x.id === nodeId);
           b.spans.patchMetadata(nodeId, umrPatch(span, { sentence: sentenceTokenId }));
         });
+        move.forEach(({ pieceId, to }) => b.tokens.update(pieceId, to, to));
       });
       await this._reload();
-      return { findings: [], removed: remove.length, rebound: rebind.length };
+      return {
+        findings: [],
+        removed: remove.length,
+        rebound: rebind.length,
+        moved: move.length,
+      };
     } catch (error) {
       return { findings: [], error };
     }
