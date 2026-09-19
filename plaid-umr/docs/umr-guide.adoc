@@ -158,6 +158,16 @@ Every edit is written as it happens and lands in the document's history; there i
 Focus a node by clicking it or with the arrows, then the keys below act on it.
 The default shortcuts are listed here; every one of them can be rebound under your profile.
 
+== With the mouse
+
+Every one of the actions below can be reached without the keyboard.
+
+A click on a node focuses it. Once it is focused, a click on one of its parts edits that part: the concept, the variable, an attribute chip, a document-level tag.
+A relation's label works the same way: click it to change the relation, drag it onto another node to move the subtree there.
+
+Everything else is on the node's own menu, which opens on a right-click anywhere on the node or with the **⋯** button at its top right.
+The menu lists every action with the key that does the same thing, and greys out the ones that do not apply (a root has no relation to a parent).
+
 == Moving around
 
 * Arrows move between nodes: up to the parent, down to the first child, left and right between the nodes of a row.
@@ -169,6 +179,7 @@ The default shortcuts are listed here; every one of them can be rebound under yo
 * **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word (its concept starts as the word), or type a concept for an abstract node. Then the relation.
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
 * **n** makes a node with no parent; so does a double-click on a word or on empty space. Either way the concept picker opens, prefilled with the word when there is one.
+* Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
 * **r** adds a second parent to the focused node: click the parent, then give the relation.
 
 == Changing a node

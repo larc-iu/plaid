@@ -7,6 +7,7 @@ import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
+import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import {
@@ -33,6 +34,25 @@ const MARGIN = 172;
 const CONST_STEP = 30;
 const CONST_TOP = 16;
 const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
+
+// Every action of a node, for the keymap lookup and for the menu.
+const ACTIONS = [
+  'node.relation',
+  'node.attributes',
+  'node.variable',
+  'node.anchor',
+  'node.move',
+  'node.earlier',
+  'node.later',
+  'node.reentrancy',
+  'node.root',
+  'node.delete',
+  'node.deleteNode',
+  'node.coref',
+  'node.temporal',
+  'node.modal',
+  'canvas.newRoot',
+];
 
 // A chain's color, from its index: hues spread around the wheel.
 // Starting away from red, which marks an error.
@@ -84,6 +104,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
+  // The node menu: which node it is about and where it was asked for, in
+  // graph coordinates.
+  const [menu, setMenu] = useState(null);
+  // The node the open menu is about, readable once `menu` itself has been
+  // cleared (the menu closes before it hands focus on).
+  const menuNodeRef = useRef(null);
   // How far the canvas has scrolled sideways. The margin sticks to the
   // visible left edge, so a line to a constant ends where the chip is seen.
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -469,7 +495,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // ----- keys -----
 
   const handleKeyDown = async (e) => {
-    if (readOnly || editor || e.isComposing) return;
+    if (readOnly || editor || menu || e.isComposing) return;
     // A text box inside the block owns its keys. The bare letters below are
     // `outsideText` in the table, and this is where that is kept.
     if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
@@ -492,36 +518,25 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       else if (e.key === 'ArrowLeft') focusNode(rowNeighbor(id, direction === 'rtl' ? 1 : -1));
       else if (e.key === 'ArrowRight') focusNode(rowNeighbor(id, direction === 'rtl' ? -1 : 1));
       else if (e.key === 'Tab') askNewNode(id, [], positionBelow(id));
-      else if (e.key === 'Enter') {
-        const node = nodesById.get(id);
-        setEditor({ kind: 'concept', nodeId: id, ...positionBelow(id), value: node.concept });
-      }
+      else if (e.key === 'Enter') await runAction('node.concept', id);
       return;
     }
-    const action = keys.which(
-      [
-        'node.relation',
-        'node.attributes',
-        'node.variable',
-        'node.anchor',
-        'node.move',
-        'node.earlier',
-        'node.later',
-        'node.reentrancy',
-        'node.root',
-        'node.delete',
-        'node.deleteNode',
-        'node.coref',
-        'node.temporal',
-        'node.modal',
-        'canvas.newRoot',
-      ],
-      e,
-    );
+    const action = keys.which(ACTIONS, e);
     if (!action) return;
     e.preventDefault();
+    await runAction(action, id);
+  };
+
+  // What each action DOES, however it was asked for: a key, or the node's
+  // menu. One definition, so a gesture cannot come to mean two things
+  // depending on which way it was reached.
+  const runAction = async (action, id = focusedId) => {
     const node = nodesById.get(id);
+    if (!node) return;
     switch (action) {
+      case 'node.concept':
+        setEditor({ kind: 'concept', nodeId: id, ...positionBelow(id), value: node.concept });
+        break;
       case 'node.relation': {
         const edge = treeEdgeInto(id);
         if (edge) askRole({ edgeId: edge.id, role: edge.role }, positionAtLabel(edge.id));
@@ -572,6 +587,37 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       default:
     }
   };
+
+  // Right-click a node, or click its ⋯: the menu, about that node, at the
+  // point it was asked for. The node takes focus first, so every action runs
+  // against the same node the keyboard would.
+  const openMenu = (id, clientX, clientY) => {
+    if (readOnly || mode) return;
+    focusNode(id);
+    menuNodeRef.current = id;
+    setMenu({ id, ...graphPoint(clientX, clientY) });
+  };
+
+  // What the menu greys out: an action that has nothing to act on. A root
+  // has no relation to a parent, a first child cannot move earlier.
+  const menuDisabled = (() => {
+    if (!menu) return null;
+    const node = nodesById.get(menu.id);
+    if (!node) return null;
+    const edge = treeEdgeInto(menu.id);
+    const siblings = edge
+      ? [...(nodesById.get(edge.source)?.out || [])].sort((a, b) => a.order - b.order)
+      : [];
+    const at = edge ? siblings.findIndex((x) => x.id === edge.id) : -1;
+    return {
+      'node.relation': !edge,
+      'node.move': !edge,
+      'node.earlier': at <= 0,
+      'node.later': at < 0 || at >= siblings.length - 1,
+      'node.root': !!node.root,
+      'node.delete': !edge,
+    };
+  })();
 
   // ----- clicks in a mode -----
 
@@ -981,6 +1027,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 onGripPointerDown={
                   readOnly ? null : (e) => startDrag('edge', { sourceId: node.id }, e)
                 }
+                // The mouse paths for what a key does. They are off during a
+                // mode, when a click on a node means "this one" instead.
+                onMenu={readOnly || mode ? null : openMenu}
+                onAction={readOnly || mode ? null : runAction}
                 tabIndex={i === 0 ? 0 : -1}
                 readOnly={readOnly}
                 problems={problemsByNode.get(node.id)}
@@ -1036,6 +1086,24 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   {e.role}
                 </span>
               ))}
+            <NodeMenu
+              at={menu}
+              disabled={menuDisabled}
+              onAction={(action) => runAction(action, menu.id)}
+              onClose={() => setMenu(null)}
+              // Once the menu has gone: whatever it opened takes focus, and
+              // failing that the node, so a mode's Escape and the next
+              // shortcut reach the block.
+              onClosed={() =>
+                requestAnimationFrame(() => {
+                  const opened = canvasRef.current?.querySelector(
+                    '.umr-inline-editor input, .umr-attr-popover button',
+                  );
+                  if (opened) opened.focus();
+                  else focusNode(menuNodeRef.current);
+                })
+              }
+            />
             {editor?.kind === 'attrs' && nodesById.has(editor.nodeId) && (
               <AttributePopover
                 x={editor.x}

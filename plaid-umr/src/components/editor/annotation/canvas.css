@@ -649,3 +649,53 @@
   color: hsl(var(--muted-foreground));
   font-size: 0.66rem;
 }
+
+/* The node menu: an invisible anchor the block moves to wherever the menu
+   was asked for, so Radix can flip and shift it against the viewport. */
+.umr-menu-anchor {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* The ⋯ that opens the menu. It is the discoverable half of right-click, so
+   it fades in on hover and whenever the node has focus, and never takes
+   keyboard focus of its own: the keyboard has the shortcuts themselves. */
+.umr-more {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.umr-node:hover .umr-more,
+.umr-node--focused .umr-more,
+.umr-more:focus-visible {
+  opacity: 1;
+}
+.umr-more:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+/* Room for it, so it never sits on the concept. */
+.umr-node-head {
+  padding-inline-end: 14px;
+}
+
+/* What a click edits says so under the pointer. */
+.umr-node-var[role='button']:hover,
+.umr-node-concept[role='button']:hover,
+.umr-chip[role='button']:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
