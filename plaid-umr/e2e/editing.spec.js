@@ -187,6 +187,11 @@ test.describe('editing', () => {
       block.locator('.umr-doc-tag', { hasText: 'author :full-affirmative' }),
     ).toHaveCount(2);
     await expect(block.locator('.umr-const--used', { hasText: 'author' })).toBeVisible();
+    // At rest the document level is tags only. The focused node's own
+    // relations are drawn, and go when focus leaves.
+    await expect(block.locator('.umr-doc-edge')).toHaveCount(1);
+    await nodeByConcept(page, 'lunch').click();
+    await expect(block.locator('.umr-doc-edge')).toHaveCount(0);
     // `c`: coreference with another node, a chain chip on both.
     await nodeByConcept(page, 'lunch').click();
     await page.keyboard.press('c');

@@ -84,6 +84,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
+  // How far the canvas has scrolled sideways. The margin sticks to the
+  // visible left edge, so a line to a constant ends where the chip is seen.
+  const [scrollLeft, setScrollLeft] = useState(0);
   // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy', nodeId }`.
   const [mode, setMode] = useState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
@@ -189,58 +192,72 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     return { constants, constY, drawn, listed };
   }, [sentence, nodesById, doc]);
 
-  // The drawn document edges, in STAGE coordinates (the margin's origin).
+  // The document edges of the ACTIVE node, in STAGE coordinates (the
+  // margin's origin). At rest the document level is tags on the nodes and
+  // nothing else: every triple drawn as a curve, on a long sentence, was the
+  // tangle. Focus or hover a node and its own relations light up, a line to
+  // the margin constant or an arc to the other node, with the label on the
+  // arc.
   const docEdges = useMemo(() => {
-    if (!measured) return [];
+    if (!measured || !active) return [];
     const dx = MARGIN + pad;
     return lane.drawn
       .map((t) => {
         if (t.kind === 'margin') {
+          if (t.node.id !== active) return null;
           const p = layout.nodes.get(t.node.id);
           if (!p) return null;
           const x1 = p.x - p.width / 2 + dx;
           const y1 = p.y + p.height / 2;
-          const x2 = MARGIN - 8;
+          const x2 = MARGIN - 8 + scrollLeft;
           const y2 = lane.constY.get(t.constant.var) + 11;
-          const k = Math.max(24, (x1 - x2) / 2);
-          // No label on the line: the relation is a tag on the node.
+          const k = Math.max(24, Math.abs(x1 - x2) / 2);
           return {
             ...t,
             path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
-            label: null,
           };
         }
+        if (t.a.id !== active && t.b.id !== active) return null;
         const pa = layout.nodes.get(t.a.id);
         const pb = layout.nodes.get(t.b.id);
         if (!pa || !pb) return null;
         const x1 = pa.x + dx;
-        const y1 = pa.y;
         const x2 = pb.x + dx;
-        const y2 = pb.y;
-        const lift = 18 + Math.abs(x2 - x1) / 8;
+        let lift = 18 + Math.abs(x2 - x1) / 8;
+        // The arc rises over the two nodes when there is room above them and
+        // dips under them when there is not (a pair on the top row), so it
+        // is never cut off by the top of the stage.
+        const above = Math.min(pa.y, pb.y) - lift >= 6;
+        const y1 = above ? pa.y : pa.y + pa.height;
+        const y2 = above ? pb.y : pb.y + pb.height;
+        if (!above) lift = -lift;
+        // No label on the arc either: each end wears the relation as a tag,
+        // and a label floating mid-arc landed on whatever node was under it.
         return {
           ...t,
           path: `M ${x1} ${y1} C ${x1} ${y1 - lift}, ${x2} ${y2 - lift}, ${x2} ${y2}`,
-          label: { x: (x1 + x2) / 2, y: Math.min(y1, y2) - lift * 0.75 },
         };
       })
       .filter(Boolean);
-  }, [lane, layout, measured, pad]);
+  }, [lane, layout, measured, pad, active, scrollLeft]);
 
-  // The margin triples of each node, as tags: `author :full-affirmative`.
+  // The document triples of each node, as tags: `author :full-affirmative`
+  // for a margin constant, and for a pair of this sentence's nodes the
+  // triple with the node's own variable left out, `:before s3b` on the
+  // source and `s3d :before` on the target.
   const docTagsByNode = useMemo(() => {
     const map = new Map();
-    lane.drawn
-      .filter((t) => t.kind === 'margin')
-      .forEach((t) => {
-        if (!map.has(t.node.id)) map.set(t.node.id, []);
-        map.get(t.node.id).push({
-          id: t.id,
-          rel: t.rel,
-          group: t.group,
-          text: `${t.constant.var} ${t.rel}`,
-        });
-      });
+    const tag = (nodeId, t, text) => {
+      if (!map.has(nodeId)) map.set(nodeId, []);
+      map.get(nodeId).push({ id: t.id, rel: t.rel, group: t.group, text });
+    };
+    lane.drawn.forEach((t) => {
+      if (t.kind === 'margin') tag(t.node.id, t, `${t.constant.var} ${t.rel}`);
+      else {
+        tag(t.a.id, t, `${t.rel} ${t.b.var}`);
+        tag(t.b.id, t, `${t.a.var} ${t.rel}`);
+      }
+    });
     return map;
   }, [lane]);
 
@@ -867,6 +884,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       <div
         className="umr-canvas"
         hidden={textMode}
+        onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         onMouseOver={(e) => {
           const el = e.target.closest?.('[data-node-id]');
           setHoveredId(el ? el.dataset.nodeId : null);
@@ -875,7 +893,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       >
         <div
           className="umr-stage"
-          style={{ paddingLeft: `${MARGIN + pad}px`, '--umr-margin': `${MARGIN}px` }}
+          style={{
+            paddingLeft: `${MARGIN + pad}px`,
+            '--umr-margin': `${MARGIN}px`,
+            '--umr-pad': `${pad}px`,
+          }}
         >
           <div className="umr-margin" aria-label="Document constants">
             {lane.constants.map((c) => (
@@ -907,46 +929,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             aria-hidden="true"
           >
             {docEdges.map((t) => (
-              <path
-                key={t.id}
-                d={t.path}
-                className={[
-                  'umr-doc-edge',
-                  active && (t.source === active || t.target === active) ? 'umr-doc-edge--lit' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              />
+              <path key={t.id} d={t.path} className="umr-doc-edge" />
             ))}
           </svg>
-          {docEdges
-            .filter((t) => t.label)
-            .map((t) => (
-              <span
-                key={`label-${t.id}`}
-                className={`umr-doc-label${t.label.left ? ' umr-doc-label--left' : ''}`}
-                style={{ position: 'absolute', left: `${t.label.x}px`, top: `${t.label.y}px` }}
-                role={readOnly ? undefined : 'button'}
-                tabIndex={-1}
-                data-triple-id={t.id}
-                onClick={
-                  readOnly
-                    ? undefined
-                    : (ev) => {
-                        ev.stopPropagation();
-                        askDocRole(
-                          { tripleId: t.id, role: t.rel, group: t.group },
-                          { x: t.label.x - (MARGIN + pad) - 90, y: t.label.y - 12 },
-                        );
-                      }
-                }
-                title={
-                  readOnly ? undefined : 'Click to change. Shift+Backspace in the editor deletes.'
-                }
-              >
-                {t.rel}
-              </span>
-            ))}
           <div
             className="umr-graph"
             ref={canvasRef}
@@ -1101,7 +1086,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               {lane.listed.map((t) => (
                 <span
                   key={t.id}
-                  className="umr-doc-label"
+                  className="umr-doc-chip"
                   role={readOnly ? undefined : 'button'}
                   tabIndex={-1}
                   data-triple-id={t.id}
