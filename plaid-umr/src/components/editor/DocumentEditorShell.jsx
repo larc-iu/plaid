@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useLocation, Outlet } from 'react-router-dom';
+import { useParams, useLocation, useSearchParams, Outlet } from 'react-router-dom';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
@@ -195,9 +195,31 @@ export const DocumentEditorShell = () => {
   // reader is looking at either way, and the panel is the app shell's rather
   // than something one tab owns.
   //
-  // No `onFocusHere`: the annotation editor has no per-sentence deep link, so
-  // a citation opens the document rather than scrolling the screen behind the
-  // panel.
+  // A citation into THIS document scrolls the editor instead of opening a
+  // second browser tab: ?sent= (and ?var=) is the deep link the annotation
+  // editor watches. The nonce makes the same citation clicked twice scroll
+  // again, since the editor reacts only to a change.
+  const [, setSearchParams] = useSearchParams();
+  const onAnnotate = pathname.endsWith('/annotate');
+  const [focusNonce, setFocusNonce] = useState(0);
+  const focusHere = useCallback(
+    ({ documentId: cited, focus }) => {
+      if (cited !== documentId || !focus?.sentence || !onAnnotate) return false;
+      setFocusNonce((k) => k + 1);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('sent', String(focus.sentence));
+          if (focus.var) next.set('var', focus.var);
+          else next.delete('var');
+          return next;
+        },
+        { replace: true },
+      );
+      return true;
+    },
+    [documentId, onAnnotate, setSearchParams],
+  );
   useAssistantSubject({
     projectId,
     projectName: project?.name,
@@ -207,6 +229,7 @@ export const DocumentEditorShell = () => {
     canWrite: canEditProject(project, user),
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reload,
+    onFocusHere: focusHere,
     // What `@` offers in the composer: this document's sentences, by the same
     // reference the assistant writes. The hint is what the sentence SAYS,
     // because that is what a reader remembers about it rather than its number.
@@ -270,6 +293,7 @@ export const DocumentEditorShell = () => {
             canComment: canEditProject(project, user),
             canDeleteAnyComment: canManageProject(project, user),
             services,
+            focusNonce,
             writeLockHeld: writeLock.held,
             setChromeOffset,
             setChromeBusy,

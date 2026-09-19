@@ -784,6 +784,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     <section
       className={`umr-block${mode ? ` umr-block--mode-${mode.kind}` : ''}`}
       aria-label={`Sentence ${sentence.index}`}
+      data-sentence-index={sentence.index}
       onKeyDown={handleKeyDown}
     >
       <header className="umr-block-header">

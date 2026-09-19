@@ -16,6 +16,18 @@ test.describe('canvas', () => {
     // Positions come from a measuring pass; once placed, the labels appear.
     await expect(firstBlock.locator('.umr-edge-label').first()).toBeVisible();
 
+    // The deep link: ?sent=2&var=... scrolls to sentence 2 and focuses the node.
+    const secondVar = await page
+      .locator('.umr-block')
+      .nth(1)
+      .locator('.umr-node')
+      .first()
+      .getAttribute('data-node-var');
+    await page.goto(
+      `/#/projects/${projectId}/documents/${documentId}/annotate?sent=2&var=${secondVar}`,
+    );
+    await expect(page.locator(`[data-node-var="${secondVar}"]`)).toBeFocused();
+
     // A writer sees the drafting service's button beside History.
     await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
 

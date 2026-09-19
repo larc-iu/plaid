@@ -43,7 +43,19 @@ describe('CITE_RE', () => {
 describe('parseCitationHref', () => {
   it('reads back the document sentenceHref wrote', () => {
     const href = sentenceHref('', 'p1', { documentId: 'd1', sentence: 3 });
-    expect(parseCitationHref(href)).toEqual({ documentId: 'd1', focus: null });
+    expect(href).toBe('#/projects/p1/documents/d1/annotate?sent=3');
+    expect(parseCitationHref(href)).toEqual({
+      documentId: 'd1',
+      focus: { sentence: '3', var: null },
+    });
+    // With a cited node, the node too.
+    const withNode = sentenceHref('', 'p1', { documentId: 'd1', sentence: 3, focus: ['s3e'] });
+    expect(parseCitationHref(withNode)?.focus).toEqual({ sentence: '3', var: 's3e' });
+    // A link to the document alone names no sentence.
+    expect(parseCitationHref('#/projects/p1/documents/d1/annotate')).toEqual({
+      documentId: 'd1',
+      focus: null,
+    });
   });
 
   it('is null for anything that is not one of this app’s document links', () => {
@@ -64,7 +76,7 @@ describe('changePlace', () => {
         node: 's3e',
       }),
     ).toEqual({
-      href: '#/projects/p1/documents/d1/annotate',
+      href: '#/projects/p1/documents/d1/annotate?sent=3&var=s3e',
       title: 'Story, sentence 3, node s3e',
       name: 's3e',
       detail: 's3.s3e',

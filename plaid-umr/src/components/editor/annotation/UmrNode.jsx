@@ -50,6 +50,7 @@ export const UmrNode = React.memo(function UmrNode({
       role="button"
       aria-label={label}
       data-node-id={node.id}
+      data-node-var={node.var || undefined}
       onFocus={onFocus ? () => onFocus(node.id) : undefined}
       onClick={
         onClick

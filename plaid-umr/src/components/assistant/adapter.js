@@ -16,13 +16,15 @@ import { ExampleCard } from './ExampleCard.jsx';
 const CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.[A-Za-z][\w-]*)?(?:\s*,\s*[A-Za-z][\w-]*)*\s*\}\}?|(?<![\w{.])s\d+\.[A-Za-z][\w-]*\b/g;
 
-// The sentence in the annotation editor. A real anchor, so middle-click and
-// cmd-click open it in a browser tab.
-//
-// The editor has no per-sentence deep link, so this opens the document. The
-// card names the sentence, which is what a reader needs to find it.
+// The sentence in the annotation editor, which scrolls to it and focuses the
+// first cited node. A real anchor, so middle-click and cmd-click open it in a
+// browser tab.
+const deepLink = (sentence, variable) =>
+  sentence ? `?sent=${sentence}${variable ? `&var=${encodeURIComponent(variable)}` : ''}` : '';
+
 export const sentenceHref = (origin, projectId, c) =>
-  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate`;
+  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
+  deepLink(c.sentence, citationFocus(c)[0]);
 
 export const citationTitle = (c) => {
   const focus = citationFocus(c);
@@ -39,8 +41,12 @@ export const citationTitle = (c) => {
 
 const changeHref = (projectId, where) => {
   if (!where) return null;
-  if (where.kind === 'token' || where.kind === 'document')
-    return `#/projects/${projectId}/documents/${where.documentId}/annotate`;
+  if (where.kind === 'token' || where.kind === 'document') {
+    return (
+      `#/projects/${projectId}/documents/${where.documentId}/annotate` +
+      (where.kind === 'token' ? deepLink(where.sentence, where.node) : '')
+    );
+  }
   return null;
 };
 
@@ -104,12 +110,17 @@ const citationToMarkdown = (c, { origin, projectId }) => {
 };
 
 // A link back into a document this app is showing, or null when it points
-// somewhere else. There is no per-sentence deep link, so `focus` is always
-// null and a click opens the document rather than scrolling the screen behind
-// the panel.
+// somewhere else. `focus` is the sentence and node the link names, which the
+// shell's focusHere scrolls to instead of opening a second tab.
 export const parseCitationHref = (href) => {
-  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\/annotate/.exec(href || '');
-  return m ? { documentId: m[1], focus: null } : null;
+  const m = /#\/projects\/[^/]+\/documents\/([^/?#]+)\/annotate(?:\?([^#]*))?/.exec(href || '');
+  if (!m) return null;
+  const params = new URLSearchParams(m[2] || '');
+  const sentence = params.get('sent');
+  return {
+    documentId: m[1],
+    focus: sentence ? { sentence: sentence.replace(/^s/, ''), var: params.get('var') } : null,
+  };
 };
 
 export const UMR_ASSISTANT = {
