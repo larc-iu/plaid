@@ -22,6 +22,7 @@ import {
   nodeOptions,
   MODAL_CONSTANTS,
   TEMPORAL_CONSTANTS,
+  focusValue,
 } from './pickers.js';
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import './canvas.css';
@@ -1343,10 +1344,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   // so they are looked for in different places. Focusing the
                   // node instead would dismiss the picker as an interaction
                   // outside it.
-                  const opened =
-                    canvasRef.current?.querySelector('.umr-inline-editor input') ||
-                    document.querySelector('.umr-attr-popover button');
-                  if (opened) opened.focus();
+                  const input = canvasRef.current?.querySelector('.umr-inline-editor input');
+                  const picker = document.querySelector('.umr-attr-popover');
+                  if (input) input.focus();
+                  else if (picker) focusValue(picker);
                   else focusNode(menuNodeRef.current);
                 })
               }

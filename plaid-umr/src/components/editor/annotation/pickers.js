@@ -143,3 +143,11 @@ export const lineToAttrs = (line) => {
   while ((m = re.exec(line))) attrs.push({ rel: m[1], value: m[2] });
   return attrs;
 };
+
+// The attribute picker's chosen value inside `el`, else its first value:
+// where focus goes in it, never a row's clear button, where Enter clears.
+export const focusValue = (el) =>
+  (
+    el?.querySelector('.umr-attr-value[aria-pressed="true"]') ||
+    el?.querySelector('.umr-attr-value')
+  )?.focus();

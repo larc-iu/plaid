@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ATTRIBUTES } from '../../../domain/format/inventory.js';
 import { latticeFor, linesFor, valuesFor } from '../../../domain/lattices.js';
-import { attrsToLine, lineToAttrs } from './pickers.js';
+import { attrsToLine, focusValue, lineToAttrs } from './pickers.js';
 
 // The attributes with a value set, in the order the picker lists them.
 const PICKED = [
@@ -49,13 +49,30 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   const [otherLine, setOtherLine] = useState(() => attrsToLine(others));
   useEffect(() => setOtherLine(attrsToLine(others)), [others]);
 
-  // Focus lands on the first row's chosen value, or its first value.
+  // Focus lands on the first row's chosen value, or its first value: never
+  // on a row's clear button, where Enter would clear the value.
   useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const first = root.querySelector('[aria-pressed="true"]') || root.querySelector('button');
-    first?.focus();
+    focusValue(rootRef.current);
   }, []);
+
+  // A pointer down anywhere else closes it, and so does Escape wherever focus
+  // is. Focus can leave without a blur: a clear button removes itself when
+  // its row empties, and focus falls to the page, where no key reached this
+  // and a click on another node left it open, writing to the first.
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      if (!rootRef.current?.contains(e.target)) onClose();
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !rootRef.current?.contains(document.activeElement)) onClose();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
 
   // A value replaces the attribute's, keeping the others in their order.
   const set = (rel, value) => {
@@ -139,7 +156,12 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
                 className="umr-attr-clear"
                 tabIndex={-1}
                 aria-label={`Clear ${row.rel.slice(1)}`}
-                onClick={() => set(row.rel, null)}
+                onClick={(e) => {
+                  // The button goes with the value, and so do the finer
+                  // lines under it, so focus goes to the row's first value.
+                  e.currentTarget.closest('[data-rel]')?.querySelector('.umr-attr-value')?.focus();
+                  set(row.rel, null);
+                }}
               >
                 <X size={11} />
               </button>
@@ -210,9 +232,13 @@ function usePlacement(nodeId, width) {
       const below = window.innerHeight - r.bottom - margin;
       const above = r.top - margin;
       const goesBelow = below >= above;
+      // Never past either edge: at a phone's width the right-hand clamp alone
+      // put it at a negative left, cutting off the row names.
+      const room = window.innerWidth - 2 * margin;
       setPlace({
         position: 'fixed',
-        left: `${Math.round(Math.min(Math.max(margin, r.left), window.innerWidth - width - margin))}px`,
+        left: `${Math.round(Math.max(margin, Math.min(r.left, window.innerWidth - Math.min(width, room) - margin)))}px`,
+        maxWidth: `${room}px`,
         [goesBelow ? 'top' : 'bottom']: `${Math.round(
           goesBelow ? r.bottom + gap : window.innerHeight - r.top + gap,
         )}px`,
