@@ -130,8 +130,15 @@ function customFieldWritingSystems(ir, baselineWs, primaryAnalysisWs) {
 }
 
 export function deriveImportConfig(ir, build, opts = {}) {
-  const primaryAnalysisWs = ir.writingSystems.analysis[0] ?? 'en';
   const wsAllowed = opts.analysisWss ? new Set(opts.analysisWss) : null;
+  // The first analysis writing system the person KEPT. Reading the file's own
+  // first one whatever they ticked gave the bare `gloss` key to a language
+  // the import was leaving out: every entry's built-in gloss came back empty,
+  // the kept glosses went to a field declared not to show, and the project
+  // recorded the dropped language as its own.
+  const analysisWss = ir.writingSystems.analysis;
+  const primaryAnalysisWs =
+    analysisWss.find((ws) => !wsAllowed || wsAllowed.has(ws)) ?? analysisWss[0] ?? 'en';
   const perWs = [];
   const addField = (kind, scope, base, wss) => {
     for (const ws of wss) {
@@ -147,7 +154,9 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // its categories in the writing system the file claims, creating a new
   // category when nothing matches.
   // A .flextext says which writing system its categories are in (`posWs`).
-  const posWs = ir.posWs ?? (ir.writingSystems.analysis.includes('en') ? 'en' : primaryAnalysisWs);
+  const posWs =
+    ir.posWs ??
+    (analysisWss.includes('en') && (!wsAllowed || wsAllowed.has('en')) ? 'en' : primaryAnalysisWs);
   addField('wordGloss', 'Word', 'Gloss', ir.wsUsage.wordGloss);
   if (build.documents.some((d) => d.words.some((w) => w.pos))) {
     perWs.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });

@@ -139,6 +139,7 @@ function makeCensus() {
   const unread = new Map();
   const langs = {
     wordFirst: new Map(), // lang of the txt item a word's text comes from
+    phraseText: new Map(), // lang of the txt item a phrase's own line comes from
     wordForms: new Map(),
     wordGloss: new Map(),
     morphGloss: new Map(),
@@ -311,8 +312,17 @@ function readPhrase(ph, census) {
   for (const item of kids(ph, 'item')) {
     const { type, lang } = item.attrs;
     const v = valueOf(item).trim();
-    if (type === 'txt') given = valueOf(item);
-    else if (type === 'gls') {
+    // The first, as a word takes its first `txt` as its own: a phrase given
+    // in two writing systems (an orthographic line and a phonetic one, which
+    // is what ELAN and SayMore write from two transcription tiers) took the
+    // last as the sentence's text, so its words no longer lined up with it
+    // and were dropped.
+    if (type === 'txt') {
+      if (given == null) {
+        given = valueOf(item);
+        census.use('phraseText', lang);
+      }
+    } else if (type === 'gls') {
       if (v) {
         freeTranslation[lang] = v;
         census.use('freeTranslation', lang);

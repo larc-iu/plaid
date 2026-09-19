@@ -183,10 +183,14 @@ export const delimiterName = (d) =>
 // 2. column mapping
 // ---------------------------------------------------------------------------
 
+// Letters and digits in any script: a field named in Cyrillic, Arabic or a
+// CJK script normalized to the empty string when only ASCII was kept, so it
+// never matched its own column, and a header row of such names was read as an
+// entry.
 const normalizeHeader = (s) =>
   String(s ?? '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
+    .replace(/[^\p{L}\p{N}]+/gu, '');
 
 // Header spellings that mean "this is the entry's form".
 const FORM_ALIASES = new Set(
@@ -225,13 +229,15 @@ const EXPORT_ONLY = new Set(['uses', 'id'].map(normalizeHeader));
 export const matchHeader = (cell, fieldNames, humanize = (n) => n) => {
   const n = normalizeHeader(cell);
   if (!n) return null;
-  if (EXPORT_ONLY.has(n)) return IGNORE;
   // A field the vocabulary actually declares comes first: "lexemeForm" is a
   // field here AND a spelling of "this column holds the entry's form", and the
-  // column our own export writes under that name is the field's.
+  // column our own export writes under that name is the field's. Before the
+  // columns our export adds, too: a vocabulary whose own field is called ID
+  // or Uses had that column thrown away.
   for (const field of fieldNames) {
     if (n === normalizeHeader(field) || n === normalizeHeader(humanize(field))) return field;
   }
+  if (EXPORT_ONLY.has(n)) return IGNORE;
   if (FORM_ALIASES.has(n)) return FORM;
   for (const field of fieldNames) {
     if ((FIELD_ALIASES[field] || []).some((a) => normalizeHeader(a) === n)) return field;

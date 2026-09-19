@@ -141,6 +141,25 @@ describe('fieldWorksFieldNames', () => {
     });
   });
 
+  // FLEx writes a text's free translation as `-gls-` and its literal one as
+  // `-lit-`, with one base between them.
+  it('tells two tiers of one base apart by their item code', () => {
+    expect(
+      fieldWorksFieldNames([entry('k1', 'Translation-gls-en'), entry('k2', 'Translation-lit-en')]),
+    ).toEqual({ k1: 'Translation', k2: 'Literal Translation' });
+    expect(
+      fieldWorksFieldNames([
+        entry('k1', 'Translation-gls-en'),
+        entry('k2', 'Translation-lit-en'),
+        entry('k3', 'Translation-gls-pmy'),
+      ]),
+    ).toEqual({
+      k1: 'Translation (en)',
+      k2: 'Literal Translation (en)',
+      k3: 'Translation (pmy)',
+    });
+  });
+
   it('names nothing that is not FieldWorks-shaped', () => {
     expect(fieldWorksFieldNames([entry('k1', 'ft'), entry('k2', 'Gloss')])).toEqual({});
   });

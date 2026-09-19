@@ -66,9 +66,31 @@ export function fieldWorksFieldNames(entries, alsoIn = []) {
     .map((e) => [e.key, parseFlexTierName(e.name)])
     .filter(([, p]) => p);
   const languages = new Set([...parsed.map(([, p]) => p.ws), ...alsoIn.filter(Boolean)]);
-  return Object.fromEntries(
-    parsed.map(([key, p]) => [key, languages.size > 1 ? `${p.base} (${p.ws})` : p.base]),
-  );
+  // Two tiers of one base can differ only in FLEx's item code: a text's free
+  // translation is `-gls-` and its literal one `-lit-`, which is how FLEx
+  // itself writes them. Named by the base alone they were one field, and the
+  // second tier's value was written over the first's, with nothing said.
+  const codes = new Map();
+  parsed.forEach(([, p]) => {
+    const k = fold(p.base);
+    if (!codes.has(k)) codes.set(k, new Set());
+    codes.get(k).add(p.itemType);
+  });
+  const nameOf = (p) => {
+    const base = codes.get(fold(p.base)).size > 1 ? byItemType(p) : p.base;
+    return languages.size > 1 ? `${base} (${p.ws})` : base;
+  };
+  return Object.fromEntries(parsed.map(([key, p]) => [key, nameOf(p)]));
+}
+
+// What to call a tier when its base is shared: the name the FLEx importer
+// gives the same item code, so a text that comes through either door lands in
+// the same field.
+function byItemType({ base, itemType }) {
+  if (itemType === 'gls') return base;
+  if (itemType === 'lit') return `Literal ${base}`;
+  if (itemType === 'note') return `${base} Note`;
+  return `${base} (${itemType})`;
 }
 
 /**
