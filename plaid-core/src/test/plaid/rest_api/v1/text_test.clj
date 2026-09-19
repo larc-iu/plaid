@@ -133,6 +133,31 @@
     (is (= "the cat sat" (-> (get-text admin-request text-id) :body :text/body)))
     (assert-not-found (get-token admin-request kat))))
 
+(deftest text-body-respelling-keeps-the-new-letter-in-every-token
+  ;; Respelling a word's last letter in a whole-body update diffs to a delete
+  ;; and an insert at one index. Applied apart, the delete shrinks every token
+  ;; on the word and the insert at their end joins none of them, so the word
+  ;; token and another app's token on the same word both lost the new letter.
+  ;; The diff path pairs them into one replace op.
+  (let [proj (create-test-project admin-request "TextRespellProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        words (-> (create-token-layer admin-request tl "Words") :body :id)
+        anchors (-> (create-token-layer admin-request tl "Anchors") :body :id)
+        text-id (-> (create-text admin-request tl doc "юкъуз хьана") :body :id)
+        word (-> (create-token admin-request words text-id 0 5) :body :id)
+        next-word (-> (create-token admin-request words text-id 6 11) :body :id)
+        anchor (-> (create-token admin-request anchors text-id 0 5) :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "юкъуь хьана"))
+    (is (= "юкъуь хьана" (-> (get-text admin-request text-id) :body :text/body)))
+    (is (= [0 5 "юкъуь"] (extent word)))
+    (is (= [0 5 "юкъуь"] (extent anchor)))
+    (is (= [6 11 "хьана"] (extent next-word)))))
+
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")
         doc (create-test-document admin-request proj "Doc")

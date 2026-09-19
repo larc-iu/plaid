@@ -174,8 +174,10 @@
   range keeps it (the token is resized by the length difference) instead of
   collapsing when the range is its entire extent. That is what a bulk
   orthography rewrite needs — `kat` -> `cat` must keep the word token and
-  everything hanging off it (morphemes, spans, links), and a diff-based body
-  update can't promise that when every character of a short word changes.
+  everything hanging off it (morphemes, spans, links). A diff-based body
+  update emits it too, for every delete that has an insert beside it (see
+  `pair-replacements`), so respelling a word's last letter keeps the new
+  letter inside the word's tokens.
   Tokens that only partially overlap the range are handled exactly as
   delete+insert (clipped to the outside; the replacement belongs to no token),
   as are zero-width tokens. An empty :value is a delete; a zero :length is an
@@ -428,6 +430,48 @@
         ;; Untouched input when nothing merged: the caller's ops are already
         ;; valid, so don't risk a lossy round trip.
         (if merged? (edits->ops edits) ops)))))
+
+;; ---------------------------------------------------------------------------
+;; Replace pairing
+;;
+;; The diff spells a changed stretch as deletes and inserts, and a token that
+;; ends (or begins) exactly at the stretch loses what was typed there:
+;; respelling `юкъуз` as `юкъуь` is delete `з` then insert `ь` at the same
+;; index, the delete shrinks the word token to `юкъу`, and an insert at a
+;; token's end is taken into no token. A replace op keeps every token that
+;; covers the whole changed stretch, so a body update folds each stretch into
+;; one. Editscript may split one stretch across several ops in either order
+;; (delete then insert, insert then delete, two deletes at one index), so a
+;; stretch is every op that starts where the previous one left off, with no
+;; kept text in between.
+
+(defn- op-end
+  "Running index just past `op`'s effect: an insert ends after its text, a
+  delete leaves the index where it was."
+  [{:keys [type index value]}]
+  (if (= type :insert) (+ index (cp/cp-count value)) index))
+
+(defn pair-replacements
+  "Rewrite `ops` (as produced by `diff`, after `normalize-deletes`) so that
+  every run of adjacent ops holding both a delete and an insert becomes ONE
+  replace op of the run's deleted length and inserted text. A run that is
+  only deletes or only inserts is left as it is, so appending to a word is
+  still an insert at the token's end. The reconstructed string is unchanged."
+  [ops]
+  (let [flush (fn [out run]
+                (let [dels (filter #(= :delete (:type %)) run)
+                      ins (filter #(= :insert (:type %)) run)]
+                  (if (and (seq dels) (seq ins))
+                    (conj out (replace-op (:index (first run))
+                                          (reduce + (map :value dels))
+                                          (apply str (map :value ins))))
+                    (into out run))))]
+    (loop [ops ops run [] at nil out []]
+      (if-let [op (first ops)]
+        (if (and (seq run) (= (:index op) at))
+          (recur (rest ops) (conj run op) (op-end op) out)
+          (recur (rest ops) [op] (op-end op) (flush out run)))
+        (flush out run)))))
 
 (defn apply-text-edits [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}

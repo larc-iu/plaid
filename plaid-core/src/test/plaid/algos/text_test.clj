@@ -8,7 +8,8 @@
       delete a zero-width token at p — only a range that *strictly* contains
       p does."
   (:require [clojure.test :refer [deftest is testing]]
-            [plaid.algos.text :as ta]))
+            [plaid.algos.text :as ta]
+            [plaid.util.codepoint :as cp]))
 
 (defn- tok [id begin end]
   {:token/id id :token/begin begin :token/end end})
@@ -350,3 +351,109 @@
                    (ta/apply-text-edit {:type :replace :index 1 :length 5 :value "X"} text [])))
       (is (thrown? clojure.lang.ExceptionInfo
                    (ta/apply-text-edit {:type :replace :index 1 :value "X"} text []))))))
+
+;; ---------------------------------------------------------------------------
+;; pair-replacements: in a whole-body update, a diffed delete with an insert
+;; beside it becomes one replace op, so a token covering the changed letters
+;; keeps the new ones.
+
+(defn- extents [tokens] (set (map (juxt :token/id :token/begin :token/end) tokens)))
+
+(defn- body-edit
+  "Apply a whole-body edit the way update-body does: diff, snap the deletes,
+  pair them with their inserts."
+  [old new tokens]
+  (-> (ta/diff old new)
+      (ta/normalize-deletes old tokens)
+      ta/pair-replacements
+      (apply-all old tokens)))
+
+(deftest pair-replacements-turns-a-respelled-letter-into-a-replace
+  (testing "the diff spells the respelling as delete then insert at one index"
+    (is (= [(ta/delete-op 4 1) (ta/insert-op 4 "ь")]
+           (ta/diff "юкъуз хьана" "юкъуь хьана"))))
+  (testing "the pair becomes one replace op"
+    (is (= [(ta/replace-op 4 1 "ь")]
+           (ta/pair-replacements (ta/diff "юкъуз хьана" "юкъуь хьана"))))
+    (is (= [(ta/replace-op 0 1 "c")]
+           (ta/pair-replacements (ta/diff "kat sat" "cat sat"))))))
+
+(deftest respelling-a-last-letter-keeps-it-in-the-tokens-over-the-word
+  (let [old "юкъуз хьана"
+        new "юкъуь хьана"
+        tokens [(tok :word 0 5) (tok :next 6 11) (tok :sentence 0 11)]]
+    (testing "the word token covers the new letter, the sentence token still covers all"
+      (let [{:keys [text tokens deleted]} (body-edit old new tokens)]
+        (is (= new (:text/body text)))
+        (is (= [] deleted))
+        (is (= #{[:word 0 5] [:next 6 11] [:sentence 0 11]} (extents tokens)))
+        (is (= "юкъуь" (subs (:text/body text) 0 5)))))
+    (testing "applied as a bare delete and insert, the word loses the letter"
+      (is (contains? (extents (:tokens (apply-all (ta/diff old new) old tokens)))
+                     [:word 0 4])))))
+
+(deftest respelling-a-first-letter-keeps-it-in-the-word
+  (let [{:keys [text tokens]} (body-edit "kat sat" "cat sat" [(tok :kat 0 3) (tok :sat 4 7)])]
+    (is (= "cat sat" (:text/body text)))
+    (is (= #{[:kat 0 3] [:sat 4 7]} (extents tokens)))))
+
+(deftest respelling-next-to-a-zero-width-token-follows-the-replace-op
+  ;; A zero-width token is never covering, so the replace op treats it as a
+  ;; delete plus an insert: the token at the word's end is pulled back to the
+  ;; start of the deleted letter and the insert there leaves it pinned before
+  ;; the new one.
+  (let [old "юкъуз хьана"
+        new "юкъуь хьана"
+        tokens [(tok :word 0 5) (tok :zw 5 5)]
+        {:keys [tokens deleted]} (body-edit old new tokens)]
+    (is (= [] deleted))
+    (is (= #{[:word 0 5] [:zw 4 4]} (extents tokens)))
+    (is (= #{[:zw 4 4]}
+           (extents (:tokens (ta/apply-text-edit (ta/replace-op 4 1 "ь")
+                                                 {:text/body old} [(tok :zw 5 5)])))))))
+
+(deftest pair-replacements-folds-a-split-run
+  (testing "insert then delete at the same place in the old text"
+    (is (= [(ta/replace-op 1 1 "X")]
+           (ta/pair-replacements [(ta/insert-op 1 "X") (ta/delete-op 2 1)]))))
+  (testing "two deletes at one index then an insert are one replace"
+    (is (= [(ta/replace-op 2 6 "X")]
+           (ta/pair-replacements [(ta/delete-op 2 5) (ta/delete-op 2 1) (ta/insert-op 2 "X")]))))
+  (testing "a token wholly inside the replaced stretch is still deleted"
+    (let [old "AABBCCDDEE x"
+          tokens [(tok :aa 0 2) (tok :bb 2 4) (tok :cc 4 6) (tok :dd 6 8) (tok :ee 8 10)]
+          {:keys [text tokens deleted]} (body-edit old "AAXEE x" tokens)]
+      (is (= "AAXEE x" (:text/body text)))
+      (is (= #{:bb :cc :dd} (set deleted)))
+      (is (= #{[:aa 0 2] [:ee 3 5]} (extents tokens)))))
+  (testing "separate edits stay separate"
+    (is (= [(ta/replace-op 1 1 "a") (ta/replace-op 7 1 "a")]
+           (ta/pair-replacements (ta/diff "hello world" "hallo warld"))))))
+
+(deftest pair-replacements-leaves-lone-deletes-and-inserts-alone
+  (testing "a delete with no insert at its position is unchanged"
+    (let [ops (ta/diff "юкъуз хьана" "юкъу хьана")]
+      (is (= [(ta/delete-op 4 1)] ops))
+      (is (= ops (ta/pair-replacements ops)))
+      (is (= #{[:word 0 4]}
+             (extents (:tokens (body-edit "юкъуз хьана" "юкъу хьана" [(tok :word 0 5)])))))))
+  (testing "a delete and an insert with kept text between them are unchanged"
+    (let [ops [(ta/delete-op 1 1) (ta/insert-op 3 "x")]]
+      (is (= ops (ta/pair-replacements ops)))))
+  (testing "appending to a word stays an insert at the token's end"
+    (let [ops (ta/diff "юкъу хьана" "юкъуз хьана")]
+      (is (= [(ta/insert-op 4 "з")] ops))
+      (is (= ops (ta/pair-replacements ops))))))
+
+(deftest pair-replacements-reconstructs-the-body
+  (doseq [[old new] [["юкъуз хьана" "юкъуь хьана"]
+                     ["ea" "ebbbccd"]
+                     ["  acdadabeb " "bc"]
+                     ["ecdcecbb " " babcaee"]
+                     ["hello😀world" "hello😁world"]
+                     ["😀" "🎯"]
+                     ["abc" ""]
+                     ["" "abc"]]]
+    (let [tokens [(tok :t 0 (cp/cp-count old))]]
+      (is (= new (get-in (body-edit old new tokens) [:text :text/body]))
+          (str (pr-str old) " -> " (pr-str new))))))

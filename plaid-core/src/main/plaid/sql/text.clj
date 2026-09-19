@@ -238,9 +238,16 @@
              tokens (mapv row->token token-rows)            ; code-point offsets
              ;; A diffed body gets its deletes snapped to token boundaries
              ;; where the edit script left an equivalent choice open (see
-             ;; ta/normalize-deletes); explicit client ops are applied as sent.
+             ;; ta/normalize-deletes), and then each delete with an insert
+             ;; beside it becomes one replace op, so a token covering the
+             ;; changed letters keeps the new ones (see ta/pair-replacements).
+             ;; The pairing comes second because normalize-deletes reads only
+             ;; deletes and inserts, and it must see where the deletes end up.
+             ;; Explicit client ops are applied as sent.
              ops (if (string? new-body-or-ops)
-                   (ta/normalize-deletes (ta/diff old-body new-body-or-ops) old-body tokens)
+                   (-> (ta/diff old-body new-body-or-ops)
+                       (ta/normalize-deletes old-body tokens)
+                       ta/pair-replacements)
                    (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}
