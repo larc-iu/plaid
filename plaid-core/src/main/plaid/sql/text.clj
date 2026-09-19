@@ -247,7 +247,7 @@
              ops (if (string? new-body-or-ops)
                    (-> (ta/diff old-body new-body-or-ops)
                        (ta/normalize-deletes old-body tokens)
-                       ta/pair-replacements)
+                       (ta/pair-replacements tokens))
                    (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}

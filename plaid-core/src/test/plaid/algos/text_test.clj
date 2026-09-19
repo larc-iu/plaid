@@ -365,7 +365,7 @@
   [old new tokens]
   (-> (ta/diff old new)
       (ta/normalize-deletes old tokens)
-      ta/pair-replacements
+      (ta/pair-replacements tokens)
       (apply-all old tokens)))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
@@ -377,6 +377,19 @@
            (ta/pair-replacements (ta/diff "юкъуз хьана" "юкъуь хьана"))))
     (is (= [(ta/replace-op 0 1 "c")]
            (ta/pair-replacements (ta/diff "kat sat" "cat sat"))))))
+
+(deftest pairing-keeps-a-zero-width-token-between-two-deletes
+  ;; Two lines joined, a quote dropped: the diff deletes the newline and the
+  ;; quote one by one and inserts a space. An unaligned UMR node's zero-width
+  ;; token sat between the two deletes, at the edge of each, and was kept;
+  ;; folded into one replace it was strictly inside, and went.
+  (let [old "Ali went home.\n\"The dog barked.\"\n"
+        new "Ali went home. The dog barked.\n"
+        tokens [(tok :node 15 15)]
+        result (body-edit old new tokens)]
+    (is (= new (:text/body (:text result))))
+    (is (= #{[:node 14 14]} (extents (:tokens result))))
+    (is (empty? (:deleted result)))))
 
 (deftest respelling-a-last-letter-keeps-it-in-the-tokens-over-the-word
   (let [old "юкъуз хьана"

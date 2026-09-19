@@ -456,22 +456,43 @@
   every run of adjacent ops holding both a delete and an insert becomes ONE
   replace op of the run's deleted length and inserted text. A run that is
   only deletes or only inserts is left as it is, so appending to a word is
-  still an insert at the token's end. The reconstructed string is unchanged."
-  [ops]
-  (let [flush (fn [out run]
-                (let [dels (filter #(= :delete (:type %)) run)
-                      ins (filter #(= :insert (:type %)) run)]
-                  (if (and (seq dels) (seq ins))
-                    (conj out (replace-op (:index (first run))
-                                          (reduce + (map :value dels))
-                                          (apply str (map :value ins))))
-                    (into out run))))]
-    (loop [ops ops run [] at nil out []]
-      (if-let [op (first ops)]
-        (if (and (seq run) (= (:index op) at))
-          (recur (rest ops) (conj run op) (op-end op) out)
-          (recur (rest ops) [op] (op-end op) (flush out run)))
-        (flush out run)))))
+  still an insert at the token's end. The reconstructed string is unchanged.
+
+  With `tokens` (old-body code-point offsets), a run is not folded across a
+  zero-width token that stands between two of its deletes. The token sat at
+  the edge of each delete, where a delete keeps it; one replace over both
+  would hold it strictly inside, and delete it. Joining two lines while
+  dropping a quote after the newline deleted an unaligned UMR node that way."
+  ([ops] (pair-replacements ops []))
+  ([ops tokens]
+   (let [pinned (into #{}
+                      (comp (filter #(= (:token/begin %) (:token/end %)))
+                            (map :token/begin))
+                      tokens)
+         flush (fn [out run]
+                 (let [dels (filter #(= :delete (:type %)) run)
+                       ins (filter #(= :insert (:type %)) run)]
+                   (if (and (seq dels) (seq ins))
+                     (conj out (replace-op (:index (first run))
+                                           (reduce + (map :value dels))
+                                           (apply str (map :value ins))))
+                     (into out run))))]
+     ;; `shift` is what the ops so far have changed the length by, so an op's
+     ;; index less it is where it falls in the old body, where tokens are.
+     (loop [ops ops run [] at nil shift 0 out []]
+       (if-let [op (first ops)]
+         (let [old-index (- (:index op) shift)
+               shift' (case (:type op)
+                        :insert (+ shift (cp/cp-count (:value op)))
+                        :delete (- shift (:value op))
+                        shift)
+               apart? (and (= :delete (:type op))
+                           (some #(= :delete (:type %)) run)
+                           (contains? pinned old-index))]
+           (if (and (seq run) (= (:index op) at) (not apart?))
+             (recur (rest ops) (conj run op) (op-end op) shift' out)
+             (recur (rest ops) [op] (op-end op) shift' (flush out run))))
+         (flush out run))))))
 
 (defn apply-text-edits [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}
