@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { rawFromPlan } from './storageRoundTrip.test.js';
+import { rawFromPlan } from './rawFromPlan.js';
 
 const FILE = `################################################################################
 # :: snt1	Lindsay left in order to eat lunch .

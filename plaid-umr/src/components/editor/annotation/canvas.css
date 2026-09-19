@@ -16,6 +16,10 @@
   position: relative;
 }
 .umr-block {
+  /* Positioned, so everything in it paints over the list's cross-sentence
+     lines (CrossLinks.jsx sits first in the list): a line passing a sentence
+     on its way runs behind its words and boxes, not through them. */
+  position: relative;
   border-bottom: 1px solid hsl(var(--border));
   padding: 12px 0 16px;
 }
@@ -133,7 +137,9 @@
     box-shadow 120ms;
 }
 .umr-node--unaligned {
-  background: transparent;
+  /* Hollow by its dashed border alone. A transparent box let every line
+     behind it (a re-entrant edge, a document line) run through its text. */
+  background: var(--umr-node-bg);
   border-style: dashed;
   box-shadow: none;
 }
@@ -182,12 +188,18 @@
   font-size: 0.68rem;
   line-height: 1.1rem;
   white-space: nowrap;
+  /* A long value (a `:wiki` title) wraps inside the node rather than
+     running out of it and under its neighbour. */
+  max-width: 100%;
 }
 .umr-chip-rel {
   color: hsl(var(--muted-foreground));
 }
 .umr-chip-value {
   font-weight: 500;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -518,14 +530,8 @@
   stroke: var(--umr-doc);
   stroke-width: 1.8;
 }
-.umr-doc-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 16px 6px calc(var(--umr-margin) + 16px);
-}
-/* A triple listed under the graph: one between two constants, which
-   belongs to no node. */
+/* A triple between two constants, which belongs to no node, in the margin
+   under the constants. */
 .umr-doc-chip {
   border-radius: 999px;
   background: hsl(var(--background));

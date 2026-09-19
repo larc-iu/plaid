@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { placeRow, layoutSentence } from '../src/domain/umrLayout.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { placeRow, layoutSentence, DEFAULT_OPTIONS } from '../src/domain/umrLayout.js';
+import { parseUmrFile } from '../src/domain/format/umrFile.js';
+import { planImport } from '../src/domain/umrImport.js';
+import { UmrDocument } from '../src/domain/UmrDocument.js';
+import { rawFromPlan } from './rawFromPlan.js';
+
+const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'umr');
 
 const noOverlap = (positions, items, gap) => {
   const sorted = [...items].sort((a, b) => positions.get(a.id) - positions.get(b.id));
@@ -112,4 +121,100 @@ test('layout rows follow tree depth and marks the re-entrant edge', () => {
   assert.equal(byId.e2.tree, true);
   assert.equal(byId.e3.tree, false);
   assert.equal(layout.rows, 2);
+});
+
+test('each row is as tall as its own tallest node', () => {
+  const { sentence, nodesById } = sentenceFixture();
+  const columns = new Map([
+    ['w1', { x: 40 }],
+    ['w2', { x: 120 }],
+    ['w3', { x: 200 }],
+  ]);
+  // A tall leaf does not make the root's row tall: the second row starts
+  // under the root's own box.
+  const sizes = new Map([
+    ['n1', { width: 90, height: 30 }],
+    ['n2', { width: 80, height: 140 }],
+    ['n3', { width: 80, height: 30 }],
+  ]);
+  const layout = layoutSentence(sentence, nodesById, { columns, sizes, sentenceX: 40 });
+  const { marginTop, edgeRoom } = DEFAULT_OPTIONS;
+  assert.equal(layout.nodes.get('n1').y, marginTop);
+  assert.equal(layout.nodes.get('n2').y, marginTop + 30 + edgeRoom);
+});
+
+test('a child under its parent drops straight down', () => {
+  const { sentence, nodesById } = sentenceFixture();
+  // eat-01 five pixels to the right of leave-02: under it, but not centred.
+  const columns = new Map([
+    ['w1', { x: 40 }],
+    ['w2', { x: 120 }],
+    ['w3', { x: 125 }],
+  ]);
+  const sizes = new Map([
+    ['n1', { width: 200, height: 30 }],
+    ['n2', { width: 60, height: 30 }],
+    ['n3', { width: 60, height: 30 }],
+  ]);
+  const layout = layoutSentence(sentence, nodesById, { columns, sizes, sentenceX: 40 });
+  const e2 = layout.edges.find((e) => e.id === 'e2');
+  const eat = layout.nodes.get('n3');
+  const xs = [...e2.path.matchAll(/[ML] ([\d.-]+) /g)].map((m) => Number(m[1]));
+  assert.deepEqual(xs, [eat.x, eat.x]);
+});
+
+// Across every sentence of the seven released corpora, with estimated sizes:
+// no node overlaps another, and a re-entrant edge's label sits on no node
+// and no other label. Before the labels were placed along their curve with
+// these checks, 123 of the 427 sat on a node and 192 on another label. A few
+// of the densest Arapaho and Kukama sentences leave nowhere free at all.
+test('labels clear the boxes and each other in every corpus', () => {
+  const box = (x, y, w, h) => ({ l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2 });
+  const overlap = (a, b) =>
+    Math.max(0, Math.min(a.r, b.r) - Math.max(a.l, b.l)) *
+    Math.max(0, Math.min(a.b, b.b) - Math.max(a.t, b.t));
+  let labels = 0;
+  const colliding = [];
+  for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
+    const text = fs.readFileSync(path.join(FIXTURES, file), 'utf8');
+    const plan = planImport(parseUmrFile(text).sentences, []);
+    const graph = new UmrDocument({ raw: rawFromPlan(plan) }).graph;
+    graph.sentences.forEach((s) => {
+      if (!s.nodes.length) return;
+      let x = 40;
+      const columns = new Map();
+      s.words.forEach((w) => {
+        const width = 14 + 8 * w.text.length;
+        columns.set(w.id, { x: x + width / 2 });
+        x += width + 14;
+      });
+      const layout = layoutSentence(s, graph.nodesById, { columns, sizes: new Map() });
+      const nodes = [...layout.nodes.values()].map((p) => ({
+        l: p.x - p.width / 2,
+        r: p.x + p.width / 2,
+        t: p.y,
+        b: p.y + p.height,
+      }));
+      nodes.forEach((a, i) =>
+        nodes.slice(i + 1).forEach((b) => assert.equal(overlap(a, b), 0, `${file} s${s.index}`)),
+      );
+      const pills = layout.edges.map((e) =>
+        box(e.label.x, e.label.y, DEFAULT_OPTIONS.pillWidth(e.role), DEFAULT_OPTIONS.pillHeight),
+      );
+      layout.edges.forEach((e, i) => {
+        if (e.tree) return;
+        labels++;
+        const hit =
+          nodes.some((n) => overlap(pills[i], n) > 4) ||
+          pills.some((p, j) => j !== i && overlap(pills[i], p) > 4);
+        if (hit) colliding.push(`${file} s${s.index} ${e.role}`);
+      });
+    });
+  }
+  assert.equal(labels, 427);
+  assert.ok(colliding.length <= 8, colliding.join('\n'));
+  assert.ok(
+    colliding.every((c) => /^(arapaho|kukama)/.test(c)),
+    colliding.join('\n'),
+  );
 });

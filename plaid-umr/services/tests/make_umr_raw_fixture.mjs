@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile } from '../../src/domain/format/umrFile.js';
 import { planImport } from '../../src/domain/umrImport.js';
 import { UmrDocument } from '../../src/domain/UmrDocument.js';
-import { rawFromPlan } from '../../test/storageRoundTrip.test.js';
+import { rawFromPlan } from '../../test/rawFromPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE = path.join(HERE, '..', '..', 'test', 'fixtures', 'umr', 'english_umr-0001.umr');

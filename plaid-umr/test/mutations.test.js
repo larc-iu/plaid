@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
-import { rawFromPlan } from './storageRoundTrip.test.js';
+import { rawFromPlan } from './rawFromPlan.js';
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { layoutSentence } from '../../../domain/umrLayout.js';
+import { curvePath, layoutSentence, routeBetween } from '../../../domain/umrLayout.js';
 import { keys } from '../../../lib/keymap.js';
 import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
@@ -24,10 +24,6 @@ import {
 } from './pickers.js';
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import './canvas.css';
-
-// Room between rows: lanes for the edges running across, and the label
-// floating above each child.
-const EDGE_ROOM = 66;
 
 // The margin to the left of every graph, where the document graph's
 // constants are pinned, and how the constants stack in it.
@@ -183,19 +179,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   );
 
   const layout = useMemo(() => {
-    // Rows are as tall as the tallest node plus room for an edge and its label.
-    let tallest = 0;
-    sizes.forEach((s) => {
-      tallest = Math.max(tallest, s.height);
-    });
-    const rowHeight = Math.max(36, tallest) + EDGE_ROOM;
     const first = sentence.words[0];
-    return layoutSentence(
-      sentence,
-      nodesById,
-      { columns, sizes, sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40 },
-      { rowHeight },
-    );
+    return layoutSentence(sentence, nodesById, {
+      columns,
+      sizes,
+      sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40,
+    });
   }, [sentence, nodesById, columns, sizes]);
 
   const measured = columns.size >= sentence.words.length && sentence.words.length > 0;
@@ -275,6 +264,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     return { constants, constY, drawn, listed };
   }, [sentence, nodesById, doc]);
 
+  // The graph is at least as tall as the margin's column: the constants, and
+  // under them the triples between two constants.
+  const listedTop = CONST_TOP + lane.constants.length * CONST_STEP;
+  const stageHeight = Math.max(layout.height, listedTop + lane.listed.length * CONST_STEP + 8);
+
   // The document edges of the ACTIVE node, in STAGE coordinates (the
   // margin's origin). At rest the document level is tags on the nodes and
   // nothing else: every triple drawn as a curve, on a long sentence, was the
@@ -310,37 +304,26 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         const pa = layout.nodes.get(t.a.id);
         const pb = layout.nodes.get(t.b.id);
         if (!pa || !pb) return null;
-        // A quarter in from the right of each box: the middle is where the
-        // tree edges arrive and leave, and a second head there reads as
-        // the tree's.
+        // No label on the line: each end wears the relation as a tag.
+        if (pa.row === pb.row) {
+          // One row: a dip under it, as a re-entrant edge takes.
+          const curve = routeBetween(pa, pb, layout.nodes, {}, [t.a.id, t.b.id]);
+          return { ...t, path: curvePath(curve, dx) };
+        }
+        // Rows apart: the short S from the side facing the other node to the
+        // side facing back, a quarter in from the right, clear of where the
+        // tree edges meet the box. Boxes are opaque, so a box in the way hides
+        // the line rather than being crossed by it, and a detour round every
+        // box made a transient line a long swoop across the whole graph.
         const x1 = pa.x + pa.width / 4 + dx;
         const x2 = pb.x + pb.width / 4 + dx;
-        // No label on the line: each end wears the relation as a tag, and a
-        // label floating mid-arc landed on whatever node was under it.
-        if (pa.row !== pb.row) {
-          // Rows apart: out of the side facing the other node and into the
-          // side facing back, as a relation to another sentence is drawn.
-          // An arc over both from the top dived through every row between.
-          const down = pb.y > pa.y;
-          const y1 = down ? pa.y + pa.height : pa.y;
-          const y2 = down ? pb.y : pb.y + pb.height;
-          const k = Math.max(24, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
-          return {
-            ...t,
-            path: `M ${x1} ${y1} C ${x1} ${y1 + k}, ${x2} ${y2 - k}, ${x2} ${y2}`,
-          };
-        }
-        let lift = 18 + Math.abs(x2 - x1) / 8;
-        // One row: the arc rises over the two nodes when there is room above
-        // them and dips under them when there is not (the top row), so it is
-        // never cut off by the top of the stage.
-        const above = pa.y - lift >= 6;
-        const y1 = above ? pa.y : pa.y + pa.height;
-        const y2 = above ? pb.y : pb.y + pb.height;
-        if (!above) lift = -lift;
+        const down = pb.y > pa.y;
+        const y1 = down ? pa.y + pa.height : pa.y;
+        const y2 = down ? pb.y : pb.y + pb.height;
+        const k = Math.max(24, Math.abs(y2 - y1) / 2) * (down ? 1 : -1);
         return {
           ...t,
-          path: `M ${x1} ${y1} C ${x1} ${y1 - lift}, ${x2} ${y2 - lift}, ${x2} ${y2}`,
+          path: `M ${x1} ${y1} C ${x1} ${y1 + k}, ${x2} ${y2 - k}, ${x2} ${y2}`,
         };
       })
       .filter(Boolean);
@@ -695,7 +678,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         setEditor({ kind: 'docList', nodeId: id, ...positionBelow(id), value: '' });
         break;
       case 'canvas.newRoot':
-        askNewNode(null, [], { x: 16, y: layout.height - 44 });
+        askNewNode(null, [], { x: 16, y: stageHeight - 44 });
         break;
       default:
     }
@@ -763,7 +746,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     askNewNode(
       parentId,
       [wordId],
-      { x: (col?.x ?? 16) - 110, y: layout.height - 44 },
+      { x: (col?.x ?? 16) - 110, y: stageHeight - 44 },
       word?.text || '',
     );
   };
@@ -799,7 +782,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const word = sentence.words.find((w) => w.id === wordId);
     if (!word) return;
     const col = columns.get(wordId);
-    askNewNode(null, [wordId], { x: (col?.x ?? 16) - 110, y: layout.height - 44 }, word.text);
+    askNewNode(null, [wordId], { x: (col?.x ?? 16) - 110, y: stageHeight - 44 }, word.text);
   };
 
   // ----- dragging -----
@@ -1150,11 +1133,41 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 {c.name}
               </span>
             ))}
+            {/* A triple between two constants (`root :modal author`) belongs
+                to no node, so it is written with the constants, under them.
+                Under the graph it floated wherever the words ended. */}
+            {lane.listed.map((t, i) => (
+              <span
+                key={t.id}
+                className="umr-doc-chip"
+                style={{
+                  position: 'absolute',
+                  top: `${listedTop + i * CONST_STEP}px`,
+                  right: `${CONST_GAP}px`,
+                }}
+                role={readOnly ? undefined : 'button'}
+                tabIndex={-1}
+                data-triple-id={t.id}
+                onClick={
+                  readOnly
+                    ? undefined
+                    : (ev) => {
+                        ev.stopPropagation();
+                        askDocRole(
+                          { tripleId: t.id, role: t.rel, group: t.group },
+                          { x: 8, y: listedTop + i * CONST_STEP + 24 },
+                        );
+                      }
+                }
+              >
+                {t.a.var} {t.rel} {t.b.var}
+              </span>
+            ))}
           </div>
           <svg
             className="umr-doc-edges"
             width={MARGIN + pad + Math.max(width, 1)}
-            height={layout.height}
+            height={stageHeight}
             aria-hidden="true"
           >
             <defs>
@@ -1172,7 +1185,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           <div
             className="umr-graph"
             ref={canvasRef}
-            style={{ height: `${layout.height}px`, minWidth: `${width}px` }}
+            style={{ height: `${stageHeight}px`, minWidth: `${width}px` }}
             // Empty space in child mode: a child with no word, where the
             // click was. Only when the press began on empty space too: a drag
             // from a grip or a label ends in a click on this, the common
@@ -1200,7 +1213,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             <svg
               className="umr-edges"
               width={Math.max(width, 1)}
-              height={layout.height}
+              height={stageHeight}
               aria-hidden="true"
             >
               <defs>
@@ -1376,32 +1389,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               />
             )}
           </div>
-          {lane.listed.length > 0 && (
-            <div className="umr-doc-list" aria-label="Document-level relations">
-              {lane.listed.map((t) => (
-                <span
-                  key={t.id}
-                  className="umr-doc-chip"
-                  role={readOnly ? undefined : 'button'}
-                  tabIndex={-1}
-                  data-triple-id={t.id}
-                  onClick={
-                    readOnly
-                      ? undefined
-                      : (ev) => {
-                          ev.stopPropagation();
-                          askDocRole(
-                            { tripleId: t.id, role: t.rel, group: t.group },
-                            { x: 16, y: layout.height - 44 },
-                          );
-                        }
-                  }
-                >
-                  {t.a.var} {t.rel} {t.b.var}
-                </span>
-              ))}
-            </div>
-          )}
           <TokenRow
             sentence={sentence}
             wordRef={wordRef}

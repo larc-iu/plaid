@@ -10,11 +10,16 @@
 // point of the canvas. See docs/umr/CANVAS.md.
 
 export const DEFAULT_OPTIONS = Object.freeze({
-  rowHeight: 64,
+  // The room between the bottom of a row's tallest node and the top of the
+  // next row: the lanes, and the labels floating over the children. Rows are
+  // as tall as their OWN tallest node: one node with five tags used to make
+  // every row of its sentence that tall.
+  edgeRoom: 66,
   nodeHeight: 36,
   gap: 12,
   marginTop: 16,
-  marginBottom: 20,
+  // Below the last row: room for a re-entrant edge dipping under it.
+  marginBottom: 32,
   // How far above a child its tree edge's label floats, and the label's
   // height, which the row gap keeps clear of lanes.
   // Enough that the pill clears the arrowhead at the child's top edge: the
@@ -25,6 +30,10 @@ export const DEFAULT_OPTIONS = Object.freeze({
   laneInset: 6,
   laneStep: 9,
   cornerRadius: 8,
+  // A relation pill's box, estimated, for keeping labels off nodes and off
+  // each other: monospace at 0.72rem, 6px of padding a side.
+  pillWidth: (text) => 14 + 7 * String(text || '').length,
+  pillHeight: 20,
   // What a node measures before the DOM has measured it: enough for the
   // variable, the concept and a chip or two.
   estimateWidth: (node) => Math.max(64, 16 + 7.5 * (node.concept.length + 4)),
@@ -171,6 +180,20 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
   });
   const rowCount = rows.size;
 
+  // Each row's top: the rows above it, each as tall as its own tallest node,
+  // with the edge room under it.
+  const depths = [...rows.keys()].sort((a, b) => a - b);
+  const tallest = new Map();
+  depths.forEach((depth) => {
+    tallest.set(depth, Math.max(...rows.get(depth).map((id) => sizeOf(nodesById.get(id)).height)));
+  });
+  const rowTop = new Map();
+  let top = opt.marginTop;
+  depths.forEach((depth) => {
+    rowTop.set(depth, top);
+    top += tallest.get(depth) + opt.edgeRoom;
+  });
+
   const nodes = new Map();
   rows.forEach((ids, depth) => {
     const items = ids.map((id, i) => ({
@@ -184,7 +207,7 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
       const size = sizeOf(nodesById.get(id));
       nodes.set(id, {
         x: xs.get(id),
-        y: opt.marginTop + depth * opt.rowHeight,
+        y: rowTop.get(depth),
         width: size.width,
         height: size.height,
         row: depth,
@@ -192,17 +215,12 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
     });
   });
 
-  const height = opt.marginTop + Math.max(rowCount, 1) * opt.rowHeight + opt.marginBottom;
-
   // Where the row gaps are: below the tallest node of each row, above the
   // labels floating over the next row's nodes.
-  const tallest = new Map();
-  nodes.forEach((p) => tallest.set(p.row, Math.max(tallest.get(p.row) || 0, p.height)));
-  const gapOf = (row) => {
-    const top = opt.marginTop + row * opt.rowHeight + (tallest.get(row) || opt.nodeHeight);
-    const bottom = opt.marginTop + (row + 1) * opt.rowHeight - opt.labelLift - opt.labelHeight;
-    return { top, bottom };
-  };
+  const gapOf = (row) => ({
+    top: rowTop.get(row) + tallest.get(row),
+    bottom: (rowTop.get(row + 1) ?? top) - opt.labelLift - opt.labelHeight,
+  });
 
   const placed = sentence.edges.filter((e) => nodes.has(e.source) && nodes.has(e.target));
   const lanes = assignLanes(placed, nodes, tree, gapOf, opt);
@@ -211,16 +229,39 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
     const s = nodes.get(edge.source);
     const t = nodes.get(edge.target);
     const isTree = tree.treeEdgeIds.has(edge.id);
+    if (isTree) {
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        role: edge.role,
+        tree: true,
+        path: treePath(s, t, lanes.get(edge.id), opt),
+        label: { x: t.x, y: t.y - opt.labelLift },
+      };
+    }
+    const curve = routeBetween(s, t, nodes, opt, [edge.source, edge.target]);
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       role: edge.role,
-      tree: isTree,
-      path: isTree ? treePath(s, t, lanes.get(edge.id), opt) : reentrantPath(s, t, opt),
-      label: labelPoint(s, t, isTree, opt),
+      tree: false,
+      path: curvePath(curve),
+      curve,
+      label: null,
     };
   });
+  placeLabels(edges, nodes, opt);
+
+  // As tall as the rows, and as whatever dips below the last of them.
+  let bottom = top - opt.edgeRoom + opt.marginBottom;
+  edges.forEach((e) => {
+    if (e.tree) return;
+    bottom = Math.max(bottom, e.label.y + opt.pillHeight / 2 + 8);
+    for (let i = 0; i <= 12; i++) bottom = Math.max(bottom, pointOn(e.curve, i / 12)[1] + 8);
+  });
+  const height = rowCount ? bottom : opt.marginTop + opt.nodeHeight + opt.marginBottom;
 
   return { nodes, edges, height, rows: rowCount, tree };
 }
@@ -236,7 +277,7 @@ function assignLanes(edges, nodes, tree, gapOf, opt) {
     const s = nodes.get(edge.source);
     const t = nodes.get(edge.target);
     const reach = Math.abs(t.x - s.x);
-    if (reach < 2 * opt.cornerRadius) return;
+    if (underParent(s, t, opt)) return;
     if (!byGap.has(s.row)) byGap.set(s.row, []);
     byGap.get(s.row).push({ id: edge.id, reach });
   });
@@ -253,16 +294,22 @@ function assignLanes(edges, nodes, tree, gapOf, opt) {
   return lanes;
 }
 
-// Bottom center of the parent to top center of the child: straight down
-// when the child is beneath, otherwise down to the edge's lane, across, and
-// down again, with rounded corners.
+// Whether a child's middle lies under its parent's box, with room for the
+// corner: then its edge drops straight from the parent's bottom edge.
+const underParent = (s, t, opt) => Math.abs(t.x - s.x) <= s.width / 2 - opt.cornerRadius;
+
+// The parent's bottom edge to the top center of the child. Straight down from
+// right above the child when it lies under the parent: a line from the
+// parent's middle to a child a few pixels aside was drawn slanted, and read
+// as a mistake beside the square lines around it. Otherwise down to the
+// edge's lane, across, and down again, with rounded corners.
 function treePath(s, t, lane, opt) {
   const x1 = s.x;
   const y1 = s.y + s.height;
   const x2 = t.x;
   const y2 = t.y;
-  if (lane == null) {
-    return `M ${r(x1)} ${r(y1)} L ${r(x2)} ${r(y2)}`;
+  if (underParent(s, t, opt) || lane == null) {
+    return `M ${r(x2)} ${r(y1)} L ${r(x2)} ${r(y2)}`;
   }
   const dir = x2 > x1 ? 1 : -1;
   const rad = Math.min(opt.cornerRadius, Math.abs(x2 - x1) / 2, (lane - y1) / 1, (y2 - lane) / 1);
@@ -276,64 +323,170 @@ function treePath(s, t, lane, opt) {
   ].join(' ');
 }
 
-// A re-entrant edge leaves the parent's side and arrives at the child's side,
-// bowing outward, so it reads as another way in rather than a second tree.
-function reentrantPath(s, t, opt) {
-  // Two nodes in one row: a low bow from the side of one to the side of the
-  // other, under the labels and over nothing.
-  if (sameRow(s, t, opt)) {
-    const dir = t.x < s.x ? -1 : 1;
-    const x1 = s.x + (dir * s.width) / 2;
-    const y1 = s.y + s.height / 2;
-    const x2 = t.x - (dir * t.width) / 2;
-    const y2 = t.y + t.height / 2;
-    const bow = dir * Math.max(opt.gap * 2, Math.abs(x2 - x1) / 4);
-    return `M ${r(x1)} ${r(y1)} C ${r(x1 + bow)} ${r(y1)}, ${r(x2 - bow)} ${r(y2)}, ${r(x2)} ${r(y2)}`;
-  }
-  // Rows apart: leave and arrive on the SAME side, bulging out from it. A
-  // side-to-side bow would cut straight through both boxes when the two are
-  // nearly above one another, which is exactly the case a reflexive makes
-  // (one node as two arguments of the node above it, so a tree edge and a
-  // re-entrant edge join the very same pair).
-  const { x1, y1, x2, y2, bow } = reentrantEnds(s, t, opt);
-  const lead = (y2 - y1) / 4;
-  return (
-    `M ${r(x1)} ${r(y1)} C ${r(x1 + bow)} ${r(y1 + lead)}, ` +
-    `${r(x2 + bow)} ${r(y2 - lead)}, ${r(x2)} ${r(y2)}`
-  );
+// A curve between two nodes that are not parent and child in the tree: a
+// re-entrant edge, or a document relation of the focused node. Several shapes
+// are tried and the one crossing the fewest other boxes is taken, the first
+// of those listed when they tie, so a clear path stays as it always was.
+//
+// Two nodes in ONE row: a dip under the row, out of the bottom of one and up
+// into the bottom of the other, deeper than every node between them. A
+// sideways bow between two neighbours looped into both boxes.
+//
+// Rows apart: out of the side of the source and into the same side of the
+// target, bulging out from that side. A side-to-side bow cut straight through
+// both boxes when they were nearly above one another, which is what a
+// reflexive draws (one node as two arguments of the node above it). Then the
+// other side, then wider bows.
+//
+// `exclude` are the ids whose boxes the curve may touch (its own ends).
+// Returns the four points of one cubic.
+export function routeBetween(s, t, nodes, opt = DEFAULT_OPTIONS, exclude = []) {
+  const o = { ...DEFAULT_OPTIONS, ...opt };
+  const others = [...nodes.entries()]
+    .filter(([id]) => !exclude.includes(id))
+    .map(([, p]) => p)
+    .filter((p) => p !== s && p !== t);
+  const candidates = s.row === t.row ? dips(s, t, others) : bulges(s, t, o);
+  let best = null;
+  candidates.forEach((curve, order) => {
+    const hits = crossings(curve, others);
+    if (!best || hits < best.hits) best = { curve, hits, order };
+  });
+  return best.curve;
 }
 
-const sameRow = (s, t, opt) => Math.abs(t.y - s.y) < opt.rowHeight / 2;
+function dips(s, t, others) {
+  const dir = t.x < s.x ? -1 : 1;
+  const lo = Math.min(s.x, t.x);
+  const hi = Math.max(s.x, t.x);
+  // The deepest box in the way, of the same row and between the two.
+  let floor = Math.max(s.y + s.height, t.y + t.height);
+  others.forEach((p) => {
+    if (p.row === s.row && p.x > lo && p.x < hi) floor = Math.max(floor, p.y + p.height);
+  });
+  const x1 = s.x + (dir * s.width) / 4;
+  const y1 = s.y + s.height;
+  const x2 = t.x - (dir * t.width) / 4;
+  const y2 = t.y + t.height;
+  // A cubic with both handles at one depth reaches three quarters of it.
+  return [16, 28, 42].map((depth) => {
+    const low = floor + depth;
+    const handle = (y) => y + ((low - y) * 4) / 3;
+    return [
+      [x1, y1],
+      [x1, handle(y1)],
+      [x2, handle(y2)],
+      [x2, y2],
+    ];
+  });
+}
 
-// Where a re-entrant edge between rows leaves, arrives and bulges to: the
-// side the target lies toward, at the near corner of each box.
-function reentrantEnds(s, t, opt) {
+function bulges(s, t, o) {
   const down = t.y > s.y;
-  const side = t.x < s.x ? -1 : 1;
-  return {
-    x1: s.x + (side * s.width) / 2,
-    y1: down ? s.y + s.height : s.y,
-    x2: t.x + (side * t.width) / 2,
-    y2: down ? t.y : t.y + t.height,
-    bow: side * Math.max(opt.gap * 3, Math.abs(t.y - s.y) / 3),
-  };
+  const toward = t.x < s.x ? -1 : 1;
+  const out = [];
+  [toward, -toward].forEach((side) =>
+    [1, 1.6, 2.4].forEach((wide) => {
+      const x1 = s.x + (side * s.width) / 2;
+      const y1 = down ? s.y + s.height : s.y;
+      const x2 = t.x + (side * t.width) / 2;
+      const y2 = down ? t.y : t.y + t.height;
+      const bow = side * Math.max(o.gap * 3, Math.abs(t.y - s.y) / 3) * wide;
+      const lead = (y2 - y1) / 4;
+      out.push([
+        [x1, y1],
+        [x1 + bow, y1 + lead],
+        [x2 + bow, y2 - lead],
+        [x2, y2],
+      ]);
+    }),
+  );
+  return out;
 }
 
-// A tree edge's label sits just above its child: children of a row never
-// overlap, so neither do their labels, however many edges cross the gap.
-function labelPoint(s, t, isTree, opt) {
-  if (isTree) {
-    return { x: t.x, y: t.y - opt.labelLift };
+/** A point on a cubic, at `u` from 0 to 1. */
+export const pointOn = ([p0, p1, p2, p3], u) => {
+  const v = 1 - u;
+  const a = v * v * v;
+  const b = 3 * v * v * u;
+  const c = 3 * v * u * u;
+  const d = u * u * u;
+  return [
+    a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+    a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
+  ];
+};
+
+// How many of 24 points along the curve fall inside another box.
+function crossings(curve, boxes) {
+  let hits = 0;
+  for (let i = 1; i < 24; i++) {
+    const [x, y] = pointOn(curve, i / 24);
+    if (boxes.some((p) => inside(x, y, p, 3))) hits++;
   }
-  if (sameRow(s, t, opt)) {
-    const dir = t.x < s.x ? -1 : 1;
-    const x1 = s.x + (dir * s.width) / 2;
-    const x2 = t.x - (dir * t.width) / 2;
-    return { x: (x1 + x2) / 2, y: (s.y + t.y) / 2 + opt.nodeHeight / 2 };
-  }
-  // On the bulge, clear of both boxes and of the tree edge to the same node.
-  const { x1, y1, x2, y2, bow } = reentrantEnds(s, t, opt);
-  return { x: (x1 + x2) / 2 + bow * 0.75, y: (y1 + y2) / 2 };
+  return hits;
+}
+
+const inside = (x, y, p, pad = 0) =>
+  x > p.x - p.width / 2 - pad &&
+  x < p.x + p.width / 2 + pad &&
+  y > p.y - pad &&
+  y < p.y + p.height + pad;
+
+/** A cubic's points as an SVG path, shifted by `dx`. */
+export const curvePath = ([p0, p1, p2, p3], dx = 0) =>
+  `M ${r(p0[0] + dx)} ${r(p0[1])} C ${r(p1[0] + dx)} ${r(p1[1])}, ` +
+  `${r(p2[0] + dx)} ${r(p2[1])}, ${r(p3[0] + dx)} ${r(p3[1])}`;
+
+// Every re-entrant edge's label, somewhere along its own curve where it
+// covers no node and no other label: the middle first, then further out
+// each way. A label on a box hid the variable or concept under it, and one on
+// a tree label hid the relation that label names. Where nothing along the
+// curve is free, the spot covering the least wins.
+function placeLabels(edges, nodes, o) {
+  const boxes = [...nodes.values()].map((p) => ({
+    left: p.x - p.width / 2 - 2,
+    right: p.x + p.width / 2 + 2,
+    top: p.y - 2,
+    bottom: p.y + p.height + 2,
+  }));
+  const pill = (x, y, text) => {
+    const w = o.pillWidth(text);
+    return {
+      left: x - w / 2,
+      right: x + w / 2,
+      top: y - o.pillHeight / 2,
+      bottom: y + o.pillHeight / 2,
+    };
+  };
+  const taken = edges.filter((e) => e.tree).map((e) => pill(e.label.x, e.label.y, e.role));
+  const overlap = (a, b) =>
+    Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+    Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  // Along the curve first. Only when nowhere along it is free, just off it,
+  // above or below: still beside its own line, and readable.
+  const along = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82];
+  const spots = [
+    ...along.map((u) => [u, 0]),
+    ...along.flatMap((u) => [
+      [u, -(o.pillHeight + 2)],
+      [u, o.pillHeight + 2],
+    ]),
+  ];
+  edges.forEach((e) => {
+    if (e.tree) return;
+    let best = null;
+    for (const [u, dy] of spots) {
+      const [x, cy] = pointOn(e.curve, u);
+      const y = cy + dy;
+      const box = pill(x, y, e.role);
+      const cost = [...boxes, ...taken].reduce((sum, b) => sum + overlap(box, b), 0);
+      if (!best || cost < best.cost) best = { x, y, box, cost };
+      if (cost === 0) break;
+    }
+    e.label = { x: best.x, y: best.y };
+    taken.push(best.box);
+  });
 }
 
 const r = (n) => Math.round(n * 10) / 10;
