@@ -1,10 +1,12 @@
 (ns plaid.rest-api.v1.project
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.media.storage :as media]
             [reitit.coercion.malli]
             [taoensso.timbre :as log]
+            [plaid.sql.operation :as op]
             [plaid.sql.project :as prj]))
 
 (defonce ^{:doc "When true, a project delete fires a background sweep to purge
@@ -70,14 +72,19 @@
                                (prj/delete db id user-id)]
                            (if success
                              (do
-                               (let [{:keys [deleted failed]}
-                                     (media/delete-media-files! deleted-document-ids)]
-                                 (when (pos? deleted)
-                                   (log/info "Deleted project media files"
-                                             {:project-id id :deleted deleted}))
-                                 (when (pos? failed)
-                                   (log/warn "Some project media files could not be deleted"
-                                             {:project-id id :failed failed})))
+                               ;; After the commit: inside an atomic batch the
+                               ;; delete may still roll back, and a file is not
+                               ;; brought back with the project.
+                               (op/after-commit!
+                                (fn []
+                                  (let [{:keys [deleted failed]}
+                                        (media/delete-media-files! deleted-document-ids)]
+                                    (when (pos? deleted)
+                                      (log/info "Deleted project media files"
+                                                {:project-id id :deleted deleted}))
+                                    (when (pos? failed)
+                                      (log/warn "Some project media files could not be deleted"
+                                                {:project-id id :failed failed})))))
                                ;; Delete stays fast (it doesn't audit descendants).
                                ;; Reclaim the project's op/audit history in the
                                ;; background. Best-effort; gated so tests don't race.
@@ -169,9 +176,13 @@
       :delete {:summary "Unlink a vocabulary to a project."
                :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
                :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
-                          (let [{:keys [success code error]} (prj/remove-vocab db id vocab-id user-id)]
+                          (let [{:keys [success code error documents]}
+                                (prj/remove-vocab db id vocab-id user-id)]
                             (if success
-                              {:status 204}
+                              ;; Unlinking drops the vocabulary's links in this
+                              ;; project's documents and bumps their versions.
+                              (prm/assoc-document-versions-in-header
+                               {:status 204} db documents)
                               {:status (or code 500) :body {:error error}})))}}]]
 
    ;; Config endpoints

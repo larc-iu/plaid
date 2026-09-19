@@ -122,7 +122,11 @@
             ;; write listeners can't read back (and that may roll back
             ;; entirely). Flushed below AFTER commit; a throw out of
             ;; with-transaction simply discards the buffer.
-            deferred-events (atom [])]
+            deferred-events (atom [])
+            ;; A file a sub-op deletes is not brought back by a rollback, so
+            ;; the work waits here for the commit too. Run below, or dropped
+            ;; with the buffer when the batch throws.
+            deferred-files (atom [])]
         (try
           (let [result
                 ;; psd/with-tx* rather than jdbc/with-transaction directly: it
@@ -132,6 +136,7 @@
                 (psd/with-tx [tx db]
                   (binding [op/*current-batch-id* batch-id
                             op/*deferred-events* deferred-events
+                            op/*deferred-files* deferred-files
                             psaw/*batch-validated-document-versions* (atom {})]
                     (loop [remaining operations responses []]
                       (if (empty? remaining)
@@ -165,6 +170,7 @@
               (op/flush-deferred-events! @deferred-events)
               (catch Throwable t
                 (log/warn t "post-commit batch event flush failed:" (ex-message t))))
+            (op/run-deferred-files! @deferred-files)
             result)
           (catch clojure.lang.ExceptionInfo e
             (if-let [f (:plaid.batch/failure (ex-data e))]

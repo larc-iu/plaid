@@ -236,8 +236,17 @@
                 delta (- (cp/cp-count value) length)
                 covers? (fn [{:token/keys [begin end]}]
                           (and (< begin end) (<= begin index) (>= end end-index)))
+                ;; A zero-width token at the end of the range stands at the
+                ;; end of what is replaced, as the covering tokens' ends do.
+                ;; Delete-then-insert would pull it back to the range's
+                ;; start, which on a non-overlapping layer puts it strictly
+                ;; inside the word the range belongs to, a place the layer
+                ;; refuses and a restore of that moment cannot rebuild.
+                at-end? (fn [{:token/keys [begin end]}]
+                          (and (= begin end) (= end end-index)))
                 covering (filterv covers? tokens)
-                others (filterv (complement covers?) tokens)
+                trailing (filterv at-end? tokens)
+                others (filterv #(not (or (covers? %) (at-end? %))) tokens)
                 ;; Everything that doesn't cover the range behaves as if the
                 ;; range were deleted and the value inserted in its place.
                 {text* :text tokens* :tokens deleted :deleted}
@@ -245,7 +254,12 @@
                 {text** :text tokens** :tokens}
                 (apply-text-edit (insert-op index value) text* tokens*)]
             {:text text**
-             :tokens (into tokens** (map #(update % :token/end + delta) covering))
+             :tokens (-> tokens**
+                         (into (map #(update % :token/end + delta) covering))
+                         (into (map #(-> %
+                                         (update :token/begin + delta)
+                                         (update :token/end + delta))
+                                    trailing)))
              :deleted deleted}))
 
         ;; three cases:
@@ -442,8 +456,17 @@
 ;; covers the whole changed stretch, so a body update folds each stretch into
 ;; one. Editscript may split one stretch across several ops in either order
 ;; (delete then insert, insert then delete, two deletes at one index), so a
-;; stretch is every op that starts where the previous one left off, with no
-;; kept text in between.
+;; stretch is every op that starts where the previous one left off.
+;;
+;; A stretch also reaches over kept text when a letter each side of it
+;; changed: `dancde` respelled `danced` is delete `d`, keep `e`, insert `d`,
+;; and folding only what touches leaves the word token over `dance`. Such a
+;; stretch is folded only when a token holds it with room to spare, so the
+;; whole of it is one word being respelled.
+;;
+;; A stretch over the whole body is NOT folded: a text typed over from
+;; scratch is a new text, and the tokens of the old one, with their spans,
+;; relations and vocabulary links, do not belong to it.
 
 (defn- op-end
   "Running index just past `op`'s effect: an insert ends after its text, a
@@ -451,48 +474,116 @@
   [{:keys [type index value]}]
   (if (= type :insert) (+ index (cp/cp-count value)) index))
 
-(defn pair-replacements
-  "Rewrite `ops` (as produced by `diff`, after `normalize-deletes`) so that
-  every run of adjacent ops holding both a delete and an insert becomes ONE
-  replace op of the run's deleted length and inserted text. A run that is
-  only deletes or only inserts is left as it is, so appending to a word is
-  still an insert at the token's end. The reconstructed string is unchanged.
+;; A run holds the ops of one stretch, and `:keep` entries for text the ops
+;; reach over. A keep is old text that comes through unchanged, so it counts
+;; to both sides of a replace: its length to what the replace takes out, its
+;; text to what the replace puts back.
+(defn- old-width [{:keys [type value]}]
+  (case type :delete value :keep (cp/cp-count value) 0))
 
-  With `tokens` (old-body code-point offsets), a run is not folded across a
-  zero-width token that stands between two of its deletes. The token sat at
-  the edge of each delete, where a delete keeps it; one replace over both
-  would hold it strictly inside, and delete it. Joining two lines while
-  dropping a quote after the newline deleted an unaligned UMR node that way."
-  ([ops] (pair-replacements ops []))
-  ([ops tokens]
-   (let [pinned (into #{}
+(defn- new-text [{:keys [type value]}]
+  (case type (:insert :keep) value nil))
+
+(defn- holds-with-room?
+  "A token that holds [s e) and reaches past it on one side at least, so the
+  stretch is a change inside the token and not the whole of it."
+  [tokens s e]
+  (boolean (some (fn [{:token/keys [begin end]}]
+                   (and (< begin end) (<= begin s) (<= e end)
+                        (or (< begin s) (< e end))))
+                 tokens)))
+
+(defn- token-inside?
+  "A token the stretch would swallow: inside [s e) without holding it. A
+  replace deletes such a token, where a delete and an insert clip it and
+  keep it."
+  [tokens s e]
+  (boolean (some (fn [{:token/keys [begin end]}]
+                   (and (<= s begin) (<= end e)
+                        (not (and (<= begin s) (<= e end)))))
+                 tokens)))
+
+(defn pair-replacements
+  "Rewrite `ops` (as produced by `diff` for `old`, after `normalize-deletes`)
+  so that every run of adjacent ops holding both a delete and an insert
+  becomes ONE replace op of the run's deleted length and inserted text. A run
+  that is only deletes or only inserts is left as it is, so appending to a
+  word is still an insert at the token's end. The reconstructed string is
+  unchanged.
+
+  A delete and an insert with kept text between them are folded too, together
+  with that text, when a token of `tokens` (old-body code-point offsets) holds
+  the whole stretch with room to spare and no token sits inside it: that is
+  one word being respelled, and the letters typed belong in it.
+
+  A run that covers the whole of `old` is never folded. Tokens hold a text
+  they no longer share a letter with, and everything hanging off them.
+
+  A run is not folded across a zero-width token that stands between two of its
+  deletes. The token sat at the edge of each delete, where a delete keeps it;
+  one replace over both would hold it strictly inside, and delete it. Joining
+  two lines while dropping a quote after the newline deleted an unaligned UMR
+  node that way."
+  ([ops old] (pair-replacements ops old []))
+  ([ops old tokens]
+   (let [whole (cp/cp-count old)
+         pinned (into #{}
                       (comp (filter #(= (:token/begin %) (:token/end %)))
                             (map :token/begin))
                       tokens)
-         flush (fn [out run]
-                 (let [dels (filter #(= :delete (:type %)) run)
-                       ins (filter #(= :insert (:type %)) run)]
-                   (if (and (seq dels) (seq ins))
+         kind-of (fn [run] (set (map :type run)))
+         flush (fn [out run start]
+                 (let [width (reduce + (map old-width run))
+                       kinds (kind-of run)]
+                   (if (and (contains? kinds :delete)
+                            (contains? kinds :insert)
+                            (not (and (zero? start) (= width whole))))
                      (conj out (replace-op (:index (first run))
-                                           (reduce + (map :value dels))
-                                           (apply str (map :value ins))))
-                     (into out run))))]
+                                           width
+                                           (apply str (keep new-text run))))
+                     (into out (remove #(= :keep (:type %)) run)))))]
      ;; `shift` is what the ops so far have changed the length by, so an op's
      ;; index less it is where it falls in the old body, where tokens are.
-     (loop [ops ops run [] at nil shift 0 out []]
+     ;; `start` is where the run began there, and `width` how much of the old
+     ;; body it has taken in.
+     (loop [ops ops run [] at nil start 0 width 0 shift 0 out []]
        (if-let [op (first ops)]
          (let [old-index (- (:index op) shift)
                shift' (case (:type op)
                         :insert (+ shift (cp/cp-count (:value op)))
                         :delete (- shift (:value op))
                         shift)
+               taken (old-width op)
                apart? (and (= :delete (:type op))
                            (some #(= :delete (:type %)) run)
-                           (contains? pinned old-index))]
-           (if (and (seq run) (= (:index op) at) (not apart?))
-             (recur (rest ops) (conj run op) (op-end op) shift' out)
-             (recur (rest ops) [op] (op-end op) shift' (flush out run))))
-         (flush out run))))))
+                           (contains? pinned old-index))
+               touching? (and (seq run) (= (:index op) at) (not apart?))
+               ;; The run is all of one kind and this op is the other: the
+               ;; kept text between them is part of one respelling when a
+               ;; token holds the lot with room to spare.
+               gap-start (+ start width)
+               reach (+ old-index (old-width op))
+               over-kept? (and (seq run)
+                               (not touching?)
+                               (not apart?)
+                               (< gap-start old-index)
+                               (= #{(if (= :delete (:type op)) :insert :delete)}
+                                  (kind-of run))
+                               (holds-with-room? tokens start reach)
+                               (not (token-inside? tokens start reach)))]
+           (cond
+             touching?
+             (recur (rest ops) (conj run op) (op-end op) start (+ width taken) shift' out)
+
+             over-kept?
+             (let [kept {:type :keep :value (cp/cp-subs old gap-start old-index)}]
+               (recur (rest ops) (conj run kept op) (op-end op) start
+                      (+ width (old-width kept) taken) shift' out))
+
+             :else
+             (recur (rest ops) [op] (op-end op) old-index taken shift'
+                    (flush out run start))))
+         (flush out run start))))))
 
 (defn apply-text-edits [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}

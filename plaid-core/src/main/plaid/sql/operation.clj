@@ -164,6 +164,34 @@
   (doseq [{:keys [op-record user-id]} events]
     (publish-op-event! op-record user-id)))
 
+(def ^:dynamic *deferred-files*
+  "Bound (to an atom holding a vector) by the atomic batch handler, for the
+  work a rollback cannot undo: deleting a document's media file. A sub-op's
+  success is not a commit, so a batch that deletes three documents and 404s
+  on the third used to bring the other two back without their recordings.
+  When bound, `after-commit!` buffers the work here and the batch handler
+  runs it once the outer tx commits, or drops it on rollback."
+  nil)
+
+(defn after-commit!
+  "Run `f` once the write it belongs to is durable: at once outside an atomic
+  batch, where each write commits on its own, and after the outer tx commits
+  inside one."
+  [f]
+  (if *deferred-files*
+    (swap! *deferred-files* conj f)
+    (f)))
+
+(defn run-deferred-files!
+  "Run the work buffered under *deferred-files*. Called by the atomic batch
+  handler after its outer tx commits — never call with the tx still open."
+  [fs]
+  (doseq [f fs]
+    (try
+      (f)
+      (catch Throwable t
+        (log/warn t "Deferred file work failed:" (ex-message t))))))
+
 (defn- post-submit! [op-record user-id]
   (if *deferred-events*
     (swap! *deferred-events* conj {:op-record op-record :user-id user-id})

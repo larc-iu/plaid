@@ -877,10 +877,12 @@
                                     (cascade-delete! tx eid)
                                     eid))]
     (when (and (:success result) (media/media-exists? eid))
-      (try
-        (media/delete-media-file! eid)
-        (catch Exception e
-          (log/warn e "Failed to delete media file for" eid))))
+      (op/after-commit!
+       (fn []
+         (try
+           (media/delete-media-file! eid)
+           (catch Exception e
+             (log/warn e "Failed to delete media file for" eid))))))
     result))
 
 ;; ============================================================

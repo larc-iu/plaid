@@ -1,5 +1,6 @@
 (ns plaid.rest-api.v1.vocab-layer
   (:require [plaid.rest-api.v1.auth :as pra]
+            [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
@@ -66,9 +67,14 @@
               :handler (fn [{{{:keys [id]} :path} :parameters
                              db :db
                              user-id :user/id :as req}]
-                         (let [{:keys [success code error]} (vocab/delete db id user-id)]
+                         (let [{:keys [success code error documents]} (vocab/delete db id user-id)]
                            (if success
-                             {:status 204}
+                             ;; Deleting a vocabulary unlinks it from the
+                             ;; documents that used it, which bumps their
+                             ;; versions: a client told nothing here is
+                             ;; refused on its own next write.
+                             (prm/assoc-document-versions-in-header
+                              {:status 204} db documents)
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
 

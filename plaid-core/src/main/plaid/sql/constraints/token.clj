@@ -299,11 +299,17 @@
   (validate-partition-range! tokens 0 text-length))
 
 (defn- check-no-intra-batch-overlaps!
-  "Throw 400 if any two tokens in `tokens` overlap each other."
+  "Throw 400 if any two tokens in `tokens` overlap each other. Two tokens
+  overlap on the same terms as `find-overlapping-tokens`: begin < end AND
+  end > begin, so a zero-width token never overlaps anything, whatever order
+  the batch lists it in. Sorting by end as well as begin puts a zero-width
+  token before the wider one that starts where it stands, which a comparison
+  of neighbours needs to see them as apart."
   [tokens]
-  (let [sorted (sort-by :token/begin tokens)]
+  (let [sorted (sort-by (juxt :token/begin :token/end) tokens)]
     (doseq [[a b] (partition 2 1 sorted)]
-      (when (> (:token/end a) (:token/begin b))
+      (when (and (< (:token/begin a) (:token/end b))
+                 (> (:token/end a) (:token/begin b)))
         (throw (ex-info "Tokens in batch overlap each other"
                         {:code 400
                          :token-a-end (:token/end a)

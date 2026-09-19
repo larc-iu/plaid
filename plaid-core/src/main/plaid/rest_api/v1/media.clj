@@ -3,6 +3,7 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.media.storage :as media]
             [plaid.sql.document :as doc]
+            [plaid.sql.operation :as op]
             [ring.util.response :as response]
             [taoensso.timbre :as log])
   (:import [java.io FileInputStream InputStream]))
@@ -206,7 +207,10 @@
      :delete {:summary "Delete media file for a document"
               :middleware [[pra/wrap-writer-required get-project-id-from-document]]
               :handler (fn [{{{:keys [document-id]} :path} :parameters}]
-                         (let [result (media/delete-media-file! document-id)]
-                           (if (:success result)
-                             {:status 204}
-                             (error-response result))))}}]])
+                         ;; The file goes once the request it belongs to is
+                         ;; durable: in an atomic batch a later failure rolls
+                         ;; the batch back, and nothing brings a file back.
+                         (if (media/media-exists? document-id)
+                           (do (op/after-commit! (fn [] (media/delete-media-file! document-id)))
+                               {:status 204})
+                           (error-response (media/delete-media-file! document-id))))}}]])

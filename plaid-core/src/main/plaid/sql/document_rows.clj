@@ -100,7 +100,14 @@
   onto spans and vocab links and metadata folded onto everything."
   [db doc-id]
   (let [doc (psc/fetch-by-id db :documents doc-id)
-        by-doc (fn [table] (psc/q db {:select [:*] :from [table] :where [:= :document_id doc-id]}))
+        ;; By id, not by insertion order: a copy mints its fresh ids in the
+        ;; order it reads these rows, and every read orders by id, so two
+        ;; annotations on one token must be read here in the same order the
+        ;; source serves them. A restore re-inserts resurrected rows under
+        ;; their old ids, which leaves rowid order saying something else.
+        by-doc (fn [table] (psc/q db {:select [:*] :from [table]
+                                      :where [:= :document_id doc-id]
+                                      :order-by [[:id :asc]]}))
         spans (by-doc :spans)
         links (by-doc :vocab_links)
         span-tokens (token-lists db :span_tokens :span_id (map :id spans))
