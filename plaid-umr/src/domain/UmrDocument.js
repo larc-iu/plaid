@@ -602,7 +602,9 @@ export class UmrDocument extends DocumentModel {
     // Two edges written with one order would not swap: give the pair
     // distinct places, keeping their neighbours where they are.
     const [lo, hi] =
-      edge.order === other.order ? [edge.order, edge.order + 1] : [edge.order, other.order];
+      edge.order === other.order
+        ? [edge.order, edge.order + 1]
+        : [Math.min(edge.order, other.order), Math.max(edge.order, other.order)];
     const swapped = new Map(
       dir < 0
         ? [

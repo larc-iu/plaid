@@ -267,6 +267,11 @@ test('shiftEdge swaps the written order with a sibling and stops at the ends', a
   const at = text.indexOf('(s1l / landslide-01');
   const roleOf = (e) => `${e.role} `;
   assert.ok(text.indexOf(roleOf(second), at) < text.indexOf(roleOf(first), at));
+  // And earlier puts it back: each edge had its own order handed back to it.
+  assert.equal(await doc.shiftEdge(first.id, -1), true);
+  const back = [...byVar(doc, 's1l').out].sort((a, b) => a.order - b.order);
+  assert.equal(back[0].id, first.id);
+  assert.equal(back[1].id, second.id);
 });
 
 test('setRoot moves the mark and the export follows it', async () => {
