@@ -39,14 +39,6 @@ const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
 // Starting away from red, which marks an error.
 const chainColor = (index) => `hsl(${(210 + index * 137.5) % 360} 62% 42%)`;
 
-// Jump to a node anywhere in the document.
-const goToNode = (nodeId) => {
-  const el = document.querySelector(`[data-node-id="${nodeId}"]`);
-  if (!el) return;
-  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  el.focus({ preventScroll: true });
-};
-
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
 // layout, edges an SVG underlay of the same size, the token row beneath.
 //
@@ -58,6 +50,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   doc,
   sentence,
   nodesById,
+  // Jump to a node anywhere in the document. The canvas owns it, because the
+  // node may be on a page that is not in the DOM yet.
+  goToNode,
   dataVersion,
   direction = 'ltr',
   readOnly = true,

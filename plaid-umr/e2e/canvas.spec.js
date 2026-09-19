@@ -49,3 +49,39 @@ test.describe('canvas', () => {
     expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
   });
 });
+
+// The corpus has 28 sentences and a page holds 25, so the pager is on and the
+// last sentences are on page 2. Reaching one of them by deep link turns the
+// page first, and the page a reader was on is where the document reopens.
+test.describe('paging', () => {
+  test('turns the page for a deep link and remembers it', async ({ page }) => {
+    const { projectId, documentId } = await getFixture();
+    await seedAuth(page);
+    const diag = collectClientErrors(page);
+    await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
+    await expect(page.locator('.umr-block').first()).toBeVisible();
+    expect(await page.locator('.umr-block').count()).toBe(25);
+    await expect(page.locator('.umr-block[data-sentence-index="27"]')).toHaveCount(0);
+
+    // Sentence 27 is on page 2, and its first node is focused once the page
+    // has turned.
+    await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate?sent=27`);
+    const block = page.locator('.umr-block[data-sentence-index="27"]');
+    await expect(block).toBeVisible();
+    await expect(block.locator('.umr-node').first()).toBeFocused();
+    expect(await page.locator('.umr-block').count()).toBe(3);
+
+    // The page is remembered: a bare URL reopens on page 2.
+    await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
+    await expect(block).toBeVisible();
+
+    // The pager goes back to page 1.
+    await page.getByRole('button', { name: 'First page' }).first().click();
+    await expect(page.locator('.umr-block[data-sentence-index="1"]')).toBeVisible();
+    expect(await page.locator('.umr-block').count()).toBe(25);
+
+    const clean = cleanDiagnostics(diag);
+    expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+    expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+  });
+});

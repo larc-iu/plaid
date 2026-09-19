@@ -36,24 +36,11 @@ export const AnnotationEditor = () => {
     focusNonce = 0,
   } = useDocumentEditor();
   const { getClient, logout, user } = useAuth();
-  // The deep link: ?sent=<sentence number> scrolls to that sentence's block
-  // and focuses one of its nodes, the one ?var= names or the first. The
-  // assistant's citations and the shell's focusHere use it, and the nonce
-  // makes a repeat of the same link scroll again.
+  // The deep link: ?sent=<sentence number>, and ?var= for one of its nodes.
+  // The canvas answers it, since the block may be on another page.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
   const varParam = searchParams.get('var');
-  useEffect(() => {
-    if (!sentParam || !doc) return;
-    const index = String(sentParam).replace(/^s/, '');
-    const block = window.document.querySelector(`.umr-block[data-sentence-index="${index}"]`);
-    if (!block) return;
-    block.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    const node = varParam
-      ? block.querySelector(`[data-node-var="${CSS.escape(varParam)}"]`)
-      : block.querySelector('.umr-node');
-    node?.focus({ preventScroll: true });
-  }, [sentParam, varParam, focusNonce, doc]);
 
   useDocumentTitle('Annotate', doc?.name, project?.name);
 
@@ -64,7 +51,6 @@ export const AnnotationEditor = () => {
     closeHistory,
     selectedEntry,
     selectEntry,
-    isViewingHistorical,
     asOf,
     snapshot,
     loadingSnapshot,
@@ -247,7 +233,13 @@ export const AnnotationEditor = () => {
 
             {/* The canvas goes here. It reads the same `shown` document, so it
                 draws a past state as readily as the live one. */}
-            <UmrCanvas doc={shown} readOnly={readOnly} historical={isViewingHistorical} />
+            <UmrCanvas
+              doc={shown}
+              readOnly={readOnly}
+              sentParam={sentParam}
+              varParam={varParam}
+              focusNonce={focusNonce}
+            />
           </>
         )}
       </div>
