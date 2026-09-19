@@ -69,6 +69,22 @@ Requirements on top of `plaid-client`: `litellm` (`pip install litellm`, which n
 Python 3.11 or newer). The service parses the model's PENMAN with its own reader, so
 nothing else has to be installed.
 
+## A skeleton from glosses, with no model
+
+`services/umr_bootstrap_igt.py` registers a second drafting method for the same **Draft**
+spot: from the vocabulary links and glosses the project already has, it writes one anchored
+node per word, the entry's headword or the gloss's lexical part as the concept and the
+grammatical abbreviations as attributes (`3SG`, `NEG`, `HAB`), and marks the word carrying
+tense or aspect as the root. It draws no relations: those are the annotator's, on the canvas.
+
+```bash
+python services/umr_bootstrap_igt.py --url http://localhost:8085
+# A language whose glosses go beyond the Leipzig rules: a JSON table of abbreviations
+python services/umr_bootstrap_igt.py --url http://localhost:8085 --abbreviations arapaho.json
+```
+
+No requirements beyond `plaid-client`.
+
 ## Testing
 
 - `npm test` is lint plus both JS suites. `npm run test:unit` is `node --test` over
