@@ -336,7 +336,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const askPick = (group, nodeId) =>
     setEditor({ kind: 'pick', group, nodeId, ...positionBelow(nodeId), value: '' });
 
-  const commitEditor = async (text) => {
+  const commitEditor = async (text, option = null) => {
     const ed = editor;
     if (!ed) return;
     if (ed.kind === 'docRole') {
@@ -357,7 +357,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         askDocRole({ triple: { source: name, target: ed.nodeId, group: ed.group } }, at);
         return;
       }
-      const other = [...nodesById.values()].find((n) => n.var === name && !n.constant);
+      // The option picked carries its node; typed text names a variable,
+      // which is unique by convention only.
+      let other = option?.nodeId ? nodesById.get(option.nodeId) : null;
+      if (!other) {
+        const named = [...nodesById.values()].filter((n) => n.var === name && !n.constant);
+        if (named.length > 1) {
+          doc.setError(`${name} names ${named.length} nodes. Pick one from the list.`);
+          closeEditor();
+          return;
+        }
+        other = named[0] || null;
+      }
       if (!other || other.id === ed.nodeId) {
         closeEditor();
         return;

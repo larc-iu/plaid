@@ -691,7 +691,13 @@ export class UmrDocument extends DocumentModel {
     if (!isConst(source) && !s) return false;
     if (!isConst(target) && !t) return false;
     const g = group || groupOf(rel);
-    if (s && t && s.docOut.some((x) => x.target === t.id && x.rel === rel)) {
+    // Already there, in this direction, or in either for a coreference.
+    const same = (x, from, to) => x.rel === rel && x.target === to && x.source === from;
+    const there =
+      (s && t && s.docOut.some((x) => same(x, s.id, t.id))) ||
+      (g === 'coref' && s && t && t.docOut.some((x) => same(x, t.id, s.id)));
+    if (there) {
+      this.setError(`${s?.var || source} ${rel} ${t?.var || target} is already there.`);
       return false;
     }
     const meta = { group: g };

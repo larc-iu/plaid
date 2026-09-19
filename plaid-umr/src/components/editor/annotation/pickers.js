@@ -19,11 +19,10 @@ export const docRelationOptions = (group, sets = 'validator') => {
   return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
 };
 
-// Which group a constant's triples belong to.
-export const groupOfConstant = (name) =>
-  ['root', 'author', 'null-conceiver'].includes(name) ? 'modal' : 'temporal';
-
-export const MODAL_CONSTANTS = ['author', 'root', 'null-conceiver'];
+// The conceivers: a triple to one of these is modal, to any other constant
+// temporal.
+export const MODAL_CONSTANTS = ['author', 'root', 'null-conceiver', 'have-condition-91'];
+export const groupOfConstant = (name) => (MODAL_CONSTANTS.includes(name) ? 'modal' : 'temporal');
 export const TEMPORAL_CONSTANTS = DOC_CONSTANTS.filter((c) => !MODAL_CONSTANTS.includes(c));
 
 // Every node of the document as an option, `var concept`, sentence by sentence.

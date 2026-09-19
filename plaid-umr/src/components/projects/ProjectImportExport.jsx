@@ -236,12 +236,31 @@ export const ProjectImportExport = () => {
         // file's graphs onto its own words (an IGT document, say); otherwise
         // the file becomes a new document. One audit-log operation either way,
         // labeled with the document name.
-        const existing = (existingDocs || []).find((d) => d.name === name);
-        const into = existing ? await annotatable(client, existing.id) : null;
-        const { warnings, attached } = await client.withOperation(
-          `Import UMR document "${name}"`,
-          () => importUmrDocument(client, projectId, name, text, layerInfo, { into }),
-        );
+        const matches = (existingDocs || []).filter((d) => d.name === name);
+        if (matches.length > 1) {
+          throw new Error(
+            `${matches.length} documents are named "${name}". Rename the file, or the documents.`,
+          );
+        }
+        const into = matches.length ? await annotatable(client, matches[0].id) : null;
+        let result;
+        try {
+          result = await client.withOperation(`Import UMR document "${name}"`, () =>
+            importUmrDocument(client, projectId, name, text, layerInfo, { into }),
+          );
+        } catch (err) {
+          // Words that differ from the document of that name: the file is a
+          // document of its own, and the row says why.
+          if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
+          result = await client.withOperation(`Import UMR document "${name}"`, () =>
+            importUmrDocument(client, projectId, name, text, layerInfo),
+          );
+          result.warnings = [
+            `Imported as a new document: ${err.message}`,
+            ...(result.warnings || []),
+          ];
+        }
+        const { warnings, attached } = result;
         push({
           key: `${i}`,
           file: file.name,

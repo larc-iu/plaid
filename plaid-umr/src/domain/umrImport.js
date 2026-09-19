@@ -61,6 +61,9 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
   }
 
   const plan = planImport(parsed.sentences, warnings, existing ? { existing: existing.graph } : {});
+  // What an attach makes, for the rollback below: the anchors, whose
+  // deletion cascades to the spans and relations made on them.
+  let createdTokenIds = [];
 
   let documentId = existing ? existing.raw.id : null;
   try {
@@ -117,14 +120,17 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     // sentence metadata patches.
     const pieceIndex = (sentenceOps.length ? 1 : 0) + (wordOps.length ? 1 : 0);
     const pieceIds = pieceOps.length ? tokenResults[pieceIndex]?.body?.ids || [] : [];
+    createdTokenIds = pieceIds;
     if (pieceIds.length !== pieceOps.length) {
       throw new Error(
         `The server returned ${pieceIds.length} anchor ids for ${pieceOps.length} anchors.`,
       );
     }
 
-    // Nodes: one span per graph node and per constant in use.
-    const spanOps = plan.nodes.map((n) => ({
+    // Nodes: one span per graph node and per constant in use. A constant the
+    // document already has (an attach onto one with triples) is reused.
+    const toCreate = plan.nodes.filter((n) => !n.existingId);
+    const spanOps = toCreate.map((n) => ({
       spanLayerId: layerInfo.conceptLayer.id,
       tokens: n.pieceIndexes.map((i) => pieceIds[i]),
       value: n.concept,
@@ -142,7 +148,11 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
         `The server returned ${spanIds.length} node ids for ${spanOps.length} nodes.`,
       );
     }
-    const spanOf = (key) => spanIds[plan.nodeIndex.get(key)];
+    const createdIndex = new Map(toCreate.map((n, i) => [n.key, i]));
+    const spanOf = (key) => {
+      const node = plan.nodes[plan.nodeIndex.get(key)];
+      return node?.existingId || spanIds[createdIndex.get(key)];
+    };
 
     // Edges and triples: two layers, so two bulk creates in one batch.
     const edgeOps = plan.edges.map((e) => ({
@@ -168,6 +178,14 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
 
     return { document: { id: documentId, name }, warnings, attached: !!existing };
   } catch (err) {
+    if (existing && createdTokenIds.length) {
+      // Take back what this run put on the document, so a retry is possible.
+      try {
+        await client.tokens.bulkDelete(createdTokenIds);
+      } catch (delErr) {
+        console.error('Failed to take back the anchors after an attach failure:', delErr);
+      }
+    }
     if (documentId && !existing) {
       try {
         await client.documents.delete(documentId);
@@ -218,10 +236,21 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   const varToKey = new Map();
   const pendingTriples = [];
 
-  const addNode = (key, concept, meta, pieceIndexes) => {
+  const addNode = (key, concept, meta, pieceIndexes, existingId = null) => {
     nodeIndex.set(key, nodes.length);
-    nodes.push({ key, concept, meta, pieceIndexes });
+    nodes.push({ key, concept, meta, pieceIndexes, existingId });
   };
+  // Constants the document already has, and the triples it already holds
+  // (by the variables' names), when attaching.
+  const existingConstants = new Map((existing?.constants || []).map((c) => [c.var, c.id]));
+  const existingTriples = new Set(
+    (existing?.sentences || []).flatMap((s) =>
+      s.triples.map((t) => {
+        const name = (id) => existing.nodesById.get(id)?.var;
+        return `${name(t.source)} ${t.rel} ${name(t.target)}`;
+      }),
+    ),
+  );
   const addPiece = (begin, end) => {
     pieces.push({ begin, end });
     return pieces.length - 1;
@@ -316,8 +345,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   pendingTriples.forEach(({ index, dg }) => {
     const resolve = (name) => {
       if (DOC_CONSTANTS.includes(name)) {
-        if (!nodeIndex.has(name))
-          addNode(name, name, { var: name, constant: true }, [addPiece(0, 0)]);
+        if (!nodeIndex.has(name)) {
+          const had = existingConstants.get(name);
+          if (had) addNode(name, name, { var: name, constant: true }, [], had);
+          else addNode(name, name, { var: name, constant: true }, [addPiece(0, 0)]);
+        }
         return name;
       }
       const key = varToKey.get(name);
@@ -334,6 +366,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         const target = resolve(b);
         if (!source || !target) return;
         const sig = `${source} ${rel} ${target}`;
+        if (existingTriples.has(`${a} ${rel} ${b}`)) return;
         const constantOnly = DOC_CONSTANTS.includes(a) && DOC_CONSTANTS.includes(b);
         const seen = tripleBySig.get(sig);
         if (seen) {

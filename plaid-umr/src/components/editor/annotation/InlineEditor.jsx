@@ -38,7 +38,9 @@ export function InlineEditor({
     doneRef.current = true;
     fn();
   };
-  const commit = (v) => {
+  // What is committed, and the option it came from when one was chosen, so
+  // a caller can act on what the option carries rather than on its text.
+  const commit = (v, option = null) => {
     const text = String(v ?? '').trim();
     if (!text) {
       onCancel();
@@ -48,7 +50,7 @@ export function InlineEditor({
       onCancel();
       return;
     }
-    onCommit(text);
+    onCommit(text, option);
   };
   const filter = ({ options: all, search }) => {
     const q = String(search || '').trim();
@@ -82,7 +84,7 @@ export function InlineEditor({
           setTimeout(() => e.target.select?.(), 0);
         }}
         onBlur={() => once(() => commit(value))}
-        onSubmit={(v) => once(() => commit(v))}
+        onSubmit={(v, option) => once(() => commit(v, option))}
         onKeyDown={(e, combo) => {
           // The canvas listens for keys too: none of these are its.
           e.stopPropagation();
@@ -92,7 +94,9 @@ export function InlineEditor({
             e.preventDefault();
             const trusted = !pristine || navigatedRef.current;
             const picked = trusted ? combo.activeValue : null;
-            once(() => commit(picked != null ? picked : value));
+            once(() =>
+              commit(picked != null ? picked : value, picked != null ? combo.activeOption : null),
+            );
           } else if (e.key === 'Escape') {
             e.preventDefault();
             once(onCancel);

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { proposeIlg, resolveIlg, ilgLinesFor } from '../src/domain/ilg.js';
+import { proposeIlg, resolveIlg, ilgLinesFor, languageCode } from '../src/domain/ilg.js';
 
 // An IGT-shaped project: morphemes under words, a morpheme gloss field, a
 // word-level part of speech, and a translation on the sentence.
@@ -93,4 +93,47 @@ test('a stored line the layers also produce is not written twice', () => {
   const lines = ilgLinesFor(s, info, resolveIlg(null, info));
   assert.equal(lines.filter((l) => l.key === 'morphemes').length, 1);
   assert.equal(lines.find((l) => l.key === 'morphemes').items.join(' '), 'dog -s bark');
+});
+
+test('an empty layer neither pushes out a stored line nor writes placeholders', () => {
+  const info = layerInfo();
+  info.glossLayers.forEach((g) => (g.layer.spans = []));
+  const s = sentence();
+  s.morphemes = [];
+  s.storedIlg.push({
+    header: 'Morphemes',
+    key: 'morphemes',
+    lang: null,
+    items: ['dog', '-s', 'bark'],
+  });
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  assert.deepEqual(
+    lines.map((l) => [l.key, l.lang, l.items.join(' ')]),
+    [
+      ['word-gloss', 'es', 'perros ladran'],
+      ['morphemes', null, 'dog -s bark'],
+    ],
+  );
+});
+
+test('a word with no morphemes keeps its slot, a gloss with a space is one item', () => {
+  const info = layerInfo();
+  info.glossLayers[0].layer.spans.push({ tokens: ['m3'], value: 'bark loudly' });
+  info.glossLayers[0].layer.spans = info.glossLayers[0].layer.spans.filter(
+    (sp) => sp.tokens[0] !== 'm3' || sp.value === 'bark loudly',
+  );
+  const s = sentence();
+  s.words.push({ id: 'w3', index: 3, begin: 10, end: 11, text: '.' });
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const morphemes = lines.find((l) => l.key === 'morphemes');
+  assert.deepEqual(morphemes.items, ['dog', '-s', 'bark', '_']);
+  const gloss = lines.find((l) => l.key === 'morpheme-gloss');
+  assert.deepEqual(gloss.items, ['dog', 'PL', 'bark_loudly', '_']);
+});
+
+test('language codes are two or three lowercase letters, else und', () => {
+  assert.equal(languageCode('pt-BR'), 'pt');
+  assert.equal(languageCode('qaa-x-eng'), 'qaa');
+  assert.equal(languageCode('English'), 'und');
+  assert.equal(languageCode(''), 'und');
 });

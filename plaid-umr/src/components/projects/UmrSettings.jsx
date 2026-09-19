@@ -49,8 +49,24 @@ export const UmrSettings = () => {
     return out;
   }, [layerInfo]);
 
+  // A row that stops being "stored" needs a header; the first that fits its
+  // source's scope is a start.
   const update = (i, patch) =>
-    setRows((r) => r.map((row, k) => (k === i ? { ...row, ...patch } : row)));
+    setRows((r) =>
+      r.map((row, k) => {
+        if (k !== i) return row;
+        const next = { ...row, ...patch };
+        if (next.source !== STORED && !next.header) {
+          const scope =
+            next.source === 'morphemes'
+              ? 'morpheme'
+              : layerInfo.glossLayers.find((g) => `layer:${g.layer.id}` === next.source)?.scope;
+          next.header = (HEADERS.find((h) => h.scope === scope) || HEADERS[3]).key;
+        }
+        return next;
+      }),
+    );
+  const incomplete = rows.some((r) => r.source !== STORED && !r.header);
   const move = (i, d) =>
     setRows((r) => {
       const j = i + d;
@@ -195,7 +211,7 @@ export const UmrSettings = () => {
           <Button type="button" variant="outline" onClick={propose} disabled={saving}>
             Propose from layers
           </Button>
-          <Button type="button" onClick={save} disabled={saving}>
+          <Button type="button" onClick={save} disabled={saving || incomplete}>
             {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>

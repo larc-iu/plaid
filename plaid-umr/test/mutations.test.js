@@ -310,7 +310,11 @@ test('createTriple makes a constant on first use and a chain on coreference', as
   assert.deepEqual(names, ['operation', 'tokens.bulkCreate', 'spans.create', 'relations.create']);
   assert.equal(calls[1].args[0][0].begin, 0);
   assert.equal(calls[1].args[0][0].end, 0);
-  // The same triple again is refused.
+  // The same triple again is refused, and says so.
+  let refused = null;
+  doc.onError = (msg) => {
+    refused = msg;
+  };
   assert.equal(
     await doc.createTriple({
       source: 'null-conceiver',
@@ -320,6 +324,10 @@ test('createTriple makes a constant on first use and a chain on coreference', as
     }),
     false,
   );
+  assert.match(refused, /already there/);
+  doc.onError = (msg) => {
+    throw new Error(msg);
+  };
   // A coreference joins two nodes into a chain both know about.
   const other = byVar(doc, 's1p2');
   assert.ok(await doc.createTriple({ source: other.id, target: person.id, rel: ':same-entity' }));

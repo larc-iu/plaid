@@ -231,7 +231,11 @@ function corefChains(docRelations, nodesById) {
     if (ra !== rb) parent.set(ra, rb);
   };
   docRelations.forEach((rel) => {
-    if (!COREF_RELATIONS.has(rel.value)) return;
+    // The stored group first: `:contains` is temporal in one group and
+    // coreference in the other, and the import records which.
+    const group = umrMeta(rel).group;
+    const isCoref = group ? group === 'coref' : COREF_RELATIONS.has(rel.value);
+    if (!isCoref) return;
     if (nodesById.has(rel.source) && nodesById.has(rel.target)) union(rel.source, rel.target);
   });
   const members = new Map();

@@ -49,7 +49,7 @@ export function proposeIlg(layerInfo) {
     }
     if (!header) return;
     const h = headerOf(header);
-    out.push({ header, lang: h.lang ? lang || 'und' : null, source: `layer:${layer.id}` });
+    out.push({ header, lang: h.lang ? languageCode(lang) : null, source: `layer:${layer.id}` });
   });
   out.push({ header: null, lang: null, source: 'stored' });
   return out;
@@ -82,19 +82,32 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
       .sort((a, b) => a.begin - b.begin || (a.precedence ?? 0) - (b.precedence ?? 0)),
   );
   const glossLayers = new Map((layerInfo?.glossLayers || []).map((g) => [g.layer.id, g]));
+  // What the layers produced, by header and language, so a stored line the
+  // layers cover is not written twice while one they do not is kept.
   const produced = new Set();
   const lines = [];
   const stored = sentence.storedIlg || [];
+  const slot = (key, lang) => `${key}|${lang || ''}`;
+  // A line is a line only with something in it: an empty layer (a document
+  // imported into a glossed project, not yet glossed) must not push out the
+  // stored line and must not be written as `_ _ _`.
+  const push = (line) => {
+    if (!line.items.length || line.items.every((x) => x === '_')) return;
+    lines.push(line);
+    produced.add(slot(line.key, line.lang));
+  };
 
   mapping.forEach((entry) => {
     if (entry.source === 'stored') return;
     const h = headerOf(entry.header);
     if (!h) return;
-    const base = { header: h.header, key: h.key, lang: h.lang ? entry.lang || 'und' : null };
+    const base = { header: h.header, key: h.key, lang: h.lang ? languageCode(entry.lang) : null };
     if (entry.source === 'morphemes') {
-      const perWord = morphemesByWord.map((ms) => ms.map((m) => m.text || '_'));
-      lines.push({ ...base, items: perWord.flat(), perWord });
-      produced.add(h.key);
+      // A word with no morphemes (IGT's unanalyzed word) keeps its place.
+      const perWord = morphemesByWord.map((ms) =>
+        ms.length ? ms.map((m) => item(m.text)) : ['_'],
+      );
+      push({ ...base, items: perWord.flat(), perWord });
       return;
     }
     const id = String(entry.source).replace(/^layer:/, '');
@@ -102,28 +115,47 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
     if (!g) return;
     const valueOf = valueByToken(g.layer);
     if (g.scope === 'morpheme') {
-      const perWord = morphemesByWord.map((ms) => ms.map((m) => valueOf(m.id) ?? '_'));
-      lines.push({ ...base, items: perWord.flat(), perWord });
+      const perWord = morphemesByWord.map((ms) =>
+        ms.length ? ms.map((m) => item(valueOf(m.id))) : ['_'],
+      );
+      push({ ...base, items: perWord.flat(), perWord });
     } else if (g.scope === 'word') {
-      const perWord = words.map((w) => [valueOf(w.id) ?? '_']);
-      lines.push({ ...base, items: perWord.flat(), perWord });
+      const perWord = words.map((w) => [item(valueOf(w.id))]);
+      push({ ...base, items: perWord.flat(), perWord });
     } else {
       const text = valueOf(sentence.tokenId) ?? '';
       const items = String(text).split(/\s+/).filter(Boolean);
-      if (items.length) lines.push({ ...base, items, perWord: null });
+      push({ ...base, items, perWord: null });
     }
-    produced.add(h.key);
   });
 
   if (mapping.some((e) => e.source === 'stored')) {
     stored.forEach((line) => {
-      if (STORED_KEYS.has(line.key) && produced.has(line.key)) return;
+      if (STORED_KEYS.has(line.key) && produced.has(slot(line.key, line.lang))) return;
       const perWord = line.items.length === words.length ? line.items.map((x) => [x]) : null;
       lines.push({ ...line, perWord });
     });
   }
   return lines;
 }
+
+// One item of a gloss line: the file has no quoting, so a value with a
+// space in it (`give birth`) is one item with the spaces made visible.
+const item = (value) => {
+  const v = value == null ? '' : String(value).trim().replace(/\s+/g, '_');
+  return v || '_';
+};
+
+// The two- or three-letter code a gloss header takes, from whatever a
+// layer or a person wrote (`en`, `pt-BR`, `qaa-x-eng`): `und` when there is
+// none to be had.
+export const languageCode = (lang) => {
+  const base = String(lang || '')
+    .trim()
+    .toLowerCase()
+    .split(/[-_]/)[0];
+  return /^[a-z]{2,3}$/.test(base) ? base : 'und';
+};
 
 // A span layer's value by the first token of each span.
 function valueByToken(layer) {

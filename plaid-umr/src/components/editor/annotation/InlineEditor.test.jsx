@@ -25,7 +25,7 @@ describe('InlineEditor', () => {
     );
     const input = r.container.querySelector('input');
     await r.step(() => press(input, 'Enter'));
-    expect(onCommit).toHaveBeenCalledWith('lunch');
+    expect(onCommit).toHaveBeenCalledWith('lunch', null);
     await r.unmount();
   });
 
@@ -48,7 +48,10 @@ describe('InlineEditor', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await r.step(() => press(input, 'Enter'));
-    expect(onCommit).toHaveBeenCalledWith('lunch-01');
+    expect(onCommit).toHaveBeenCalledWith(
+      'lunch-01',
+      expect.objectContaining({ value: 'lunch-01' }),
+    );
     await r.unmount();
   });
 
