@@ -10,16 +10,21 @@ import { configNamespace } from './uiConfig.js';
 
 const keymapDataKey = () => `${configNamespace()}:keymap`;
 
-/** The person's overrides, or {} when they have none. */
+/**
+ * The person's overrides, or {} when they have none. Read as a listing: most
+ * people never save a binding, and a get of a key never saved is a 404, which
+ * the browser logs as an error on every page load. A listing of none is an
+ * empty page.
+ */
 export async function loadUserKeymap(client, userId) {
-  try {
-    const entry = await client.userData.get(userId, keymapDataKey());
-    const map = entry?.value?.metadata;
-    return map && typeof map === 'object' ? map : {};
-  } catch (e) {
-    if (e?.status === 404) return {};
-    throw e;
-  }
+  const key = keymapDataKey();
+  const { entries } = await client.userData.listPage(userId, {
+    prefix: key,
+    includeValues: true,
+    limit: 10,
+  });
+  const map = entries.find((e) => e.key === key)?.value?.metadata;
+  return map && typeof map === 'object' ? map : {};
 }
 
 /** Replace them. Nothing changed is nothing stored. */
