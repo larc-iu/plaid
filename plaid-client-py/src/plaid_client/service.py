@@ -76,6 +76,9 @@ def progress_heartbeat(response_helper, percent, message, interval_s=20.0):
         yield
     finally:
         done.set()
+        # A beat already past its wait would otherwise land after the block,
+        # over whatever the work reports next, and put the old words back.
+        thread.join()
 
 
 def check_unchanged(client, document_id, version, current=None) -> None:
