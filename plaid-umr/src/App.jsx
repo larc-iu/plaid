@@ -29,6 +29,10 @@ const ProjectGuidelinesPage = lazyNamed(
   () => import('./components/projects/ProjectGuidelinesPage.jsx'),
   'ProjectGuidelinesPage',
 );
+const ProjectAssistantPage = lazyNamed(
+  () => import('./components/projects/ProjectAssistantPage.jsx'),
+  'ProjectAssistantPage',
+);
 const ProjectActivity = lazyNamed(
   () => import('./components/projects/ProjectActivity.jsx'),
   'ProjectActivity',
@@ -113,6 +117,17 @@ function App() {
               element={
                 <Suspended>
                   <ProjectGuidelinesPage />
+                </Suspended>
+              }
+            />
+            {/* The Assistant tab is hidden while no assistant is online, but
+                the ROUTE always works: a link to a past conversation opens
+                whether or not one is running. */}
+            <Route
+              path="projects/:projectId/assistant"
+              element={
+                <Suspended>
+                  <ProjectAssistantPage />
                 </Suspended>
               }
             />

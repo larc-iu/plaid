@@ -1,16 +1,41 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { canManageProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
+import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { UMR_ASSISTANT } from '../assistant/adapter.js';
 
 // The top tab bar for the project-level views, mirroring the per-document
 // DocumentTabs. Each tab is route-backed and renders its own body. `project`
 // may be null mid-load, which the gating tolerates.
+//
+// It is also where the shell's assistant panel learns which project the reader
+// is on. Every project-level screen renders this strip and is already handed
+// the project, so this is the ONE place that fact exists for all of them. A
+// document has a subject of its own (see DocumentEditorShell) and does not
+// render this.
 export const ProjectTabs = ({ projectId, project }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, getClient } = useAuth();
+  // The tab is offered only when an assistant is online. The ROUTE still
+  // works, so a link to a past conversation opens whether or not one is
+  // running: this hides the invitation, not the conversations.
+  const assistantAvailable = useAssistantAvailable(getClient(), projectId, UMR_ASSISTANT.app);
+
+  // The panel is about the PROJECT here. No subject of its own: what a reader
+  // is looking at on these screens is the project at large, and naming a screen
+  // the assistant has no tool for (the importer, the access list) would invite
+  // it to claim it can act there.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    canWrite: canEditProject(project, user),
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+  });
 
   const canManage = canManageProject(project, user);
   const configured = getUmrLayerInfo(project).isConfigured;
@@ -23,19 +48,22 @@ export const ProjectTabs = ({ projectId, project }) => {
   const p = location.pathname;
   const active = p.endsWith('/guidelines')
     ? 'guidelines'
-    : p.endsWith('/import-export')
-      ? 'import-export'
-      : p.endsWith('/activity')
-        ? 'activity'
-        : p.endsWith('/validate')
-          ? 'validate'
-          : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
-            ? 'settings'
-            : 'documents';
+    : p.endsWith('/assistant')
+      ? 'assistant'
+      : p.endsWith('/import-export')
+        ? 'import-export'
+        : p.endsWith('/activity')
+          ? 'activity'
+          : p.endsWith('/validate')
+            ? 'validate'
+            : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
+              ? 'settings'
+              : 'documents';
 
   const routes = {
     documents: `/projects/${projectId}/documents`,
     guidelines: `/projects/${projectId}/guidelines`,
+    assistant: `/projects/${projectId}/assistant`,
     activity: `/projects/${projectId}/activity`,
     validate: `/projects/${projectId}/validate`,
     settings: settingsTo,
@@ -63,6 +91,11 @@ export const ProjectTabs = ({ projectId, project }) => {
           <TabsTrigger value="guidelines" to={routes.guidelines}>
             Guidelines
           </TabsTrigger>
+          {(assistantAvailable || active === 'assistant') && (
+            <TabsTrigger value="assistant" to={routes.assistant}>
+              Assistant
+            </TabsTrigger>
+          )}
           {canManage && (
             <TabsTrigger value="validate" to={routes.validate}>
               Validation

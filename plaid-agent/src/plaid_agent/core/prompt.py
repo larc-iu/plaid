@@ -70,7 +70,7 @@ on. The doc attribute is the document name or id exactly as the tools print it{a
 citation as the {shown_as} with a link to it in the editor, so never paste {never_paste} yourself: cite \
 instead. Where you would show an example, put the tag ALONE on its own line at that point (the rendered \
 example appears there); a tag inside a sentence becomes a link only. Always give doc: never write a bare \
-reference like "s3.w2" on its own. For instance:\n\n{example}'''
+reference like "{bare}" on its own. For instance:\n\n{example}'''
 
 # Appended to an app's system prompt only where the sandbox binary is there,
 # like the web half: a model that cannot run code is never told that it can.
@@ -164,7 +164,8 @@ def be_concise() -> str:
     return BE_CONCISE
 
 
-def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, aside: str = '') -> str:
+def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, aside: str = '',
+                  bare: str = 's3.w2') -> str:
     """How to cite, which is the same rule everywhere and a different syntax
     in each app.
 
@@ -172,10 +173,11 @@ def cite_evidence(*, refs: str, shown_as: str, never_paste: str, example: str, a
     in a full stop. ``shown_as`` is what the user sees a citation drawn as and
     ``never_paste`` what the model must therefore not paste instead: both are
     what the app renders. ``example`` is a worked one, and ``aside`` an
-    optional clause after "exactly as the tools print it".
+    optional clause after "exactly as the tools print it". ``bare`` is one of
+    this app's own references, shown as the thing not to write on its own.
     """
     return filled(CITE_EVIDENCE, {'refs': refs, 'aside': aside, 'shown_as': shown_as,
-                                  'never_paste': never_paste, 'example': example})
+                                  'never_paste': never_paste, 'example': example, 'bare': bare})
 
 
 def code_section(*, triggers: str, outright: str) -> str:

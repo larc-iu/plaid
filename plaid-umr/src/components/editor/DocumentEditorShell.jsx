@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useLocation, Outlet } from 'react-router-dom';
+import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
@@ -188,8 +190,35 @@ export const DocumentEditorShell = () => {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [doc]);
 
-  // The assistant panel and the per-turn subject it is opened on land here when
-  // the UMR assistant does, the way plaid-ud and plaid-igt mount theirs.
+  // What the shell's assistant panel is about while this screen is open. The
+  // document is the subject on EVERY tab, not just Annotate: it is what the
+  // reader is looking at either way, and the panel is the app shell's rather
+  // than something one tab owns.
+  //
+  // No `onFocusHere`: the annotation editor has no per-sentence deep link, so
+  // a citation opens the document rather than scrolling the screen behind the
+  // panel.
+  useAssistantSubject({
+    projectId,
+    projectName: project?.name,
+    kind: 'document',
+    id: documentId,
+    name: doc?.raw?.name,
+    canWrite: canEditProject(project, user),
+    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
+    onApplied: reload,
+    // What `@` offers in the composer: this document's sentences, by the same
+    // reference the assistant writes. The hint is what the sentence SAYS,
+    // because that is what a reader remembers about it rather than its number.
+    mentions: () => {
+      const items = (doc?.sentences || []).map((sentence) => ({
+        value: `s${sentence.index}`,
+        label: `s${sentence.index}`,
+        hint: sentence.text,
+      }));
+      return items.length ? [{ group: 'Sentences', items }] : [];
+    },
+  });
 
   const wide = isWideRoute(pathname);
 

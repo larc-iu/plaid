@@ -16,13 +16,14 @@ dependencies = ["larc-plaid-client", "litellm>=1.70", "regex", "httpx", "pydanti
 [project.optional-dependencies]
 dev = ["pytest"]
 
-# One distribution, two services. The harness they share is subtle enough
-# (the request lifecycle, the record's ownership, the batching) to want a
-# single copy that moves with both, and an operator installing Plaid gets the
-# assistant for whichever app they run.
+# One distribution, one service per app. The harness they share is subtle
+# enough (the request lifecycle, the record's ownership, the batching) to want
+# a single copy that moves with all of them, and an operator installing Plaid
+# gets the assistant for whichever app they run.
 [project.scripts]
 plaid-igt-agent = "plaid_agent.igt.service:main"
 plaid-ud-agent = "plaid_agent.ud.service:main"
+plaid-umr-agent = "plaid_agent.umr.service:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plaid_agent"]

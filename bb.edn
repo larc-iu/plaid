@@ -20,7 +20,7 @@
              (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
 
   sample-prompts
-  {:doc "Regenerate both assistants' prompt snapshots (plaid-agent/docs/igt/SAMPLE_PROMPT.md and docs/ud/SAMPLE_PROMPT.md) from the real prompt builders and tool tables. Run it in the same change as any tool or prompt edit: the test gate fails while a snapshot is stale. Uses the `plaid-agent` mamba env's interpreter (or PLAID_AGENT_PYTHON), so no activation is needed."
+  {:doc "Regenerate every assistant's prompt snapshot (plaid-agent/docs/igt/, docs/ud/ and docs/umr/SAMPLE_PROMPT.md) from the real prompt builders and tool tables. Run it in the same change as any tool or prompt edit: the test gate fails while a snapshot is stale. Uses the `plaid-agent` mamba env's interpreter (or PLAID_AGENT_PYTHON), so no activation is needed."
    :requires ([pipeline :as pl])
    :task (pl/write-sample-prompts!)}
 

@@ -13,12 +13,13 @@ src/plaid_agent/
   igt/    the IGT assistant: the project model, the tools, the prompt, the
           citation renderer, the plan executor.
   ud/     the UD assistant, the same seven answers for a treebank.
+  umr/    the UMR assistant, the same seven for a corpus of meaning graphs.
 ```
 
 One distribution (`larc-plaid-agent`) ships all of it, with a console script
 per assistant. The harness and the assistants move together: the request
 lifecycle is subtle enough to want one copy of it rather than a version skew
-between two installs.
+between separate installs.
 
 An app's assistant is a subclass of `core.service.BaseAssistantService` that
 answers seven questions: the project it loads, the workspace its tools run
@@ -46,7 +47,46 @@ columns and to the dependency tree. What it has to know that IGT does not:
   self-relation. A word with no lemma gets one before it can take a head.
 
 `docs/ud/SAMPLE_PROMPT.md` is what the model sees. `bb sample-prompts` (from
-the repo root) regenerates it and IGT's together.
+the repo root) regenerates it with the other two.
+
+## The UMR assistant
+
+A chat assistant for [Plaid UMR](../plaid-umr) corpora, run the same way:
+
+```sh
+plaid-umr-agent --url http://localhost:8080 --model openai/gpt-4o
+```
+
+It reads a project as sentence graphs in PENMAN and plans changes to them and
+to the document graph. What it has to know that the others do not:
+
+- a sentence carries ONE graph. A node is a variable, a concept and any number
+  of attributes; a relation joins two nodes; and one node is the ROOT, which is
+  the node the text is written from. Storage is a span per node in the concept
+  layer, with the variable and the attributes in its metadata, so the
+  attributes are the one thing the query engine cannot count.
+- addressing is the sentence and the variable (`s3`, `s3.s3e`), so the numbers
+  and names the model uses are the ones it read in the graph. A UMR variable
+  carries its own sentence number, which is why a bare `s3e` still says where
+  it is.
+- a node's ANCHOR is which words it covers, and a node with no words is
+  unaligned, which is normal. A node the assistant creates is unaligned until
+  somebody anchors it on the canvas, and the prompt tells it to say so.
+- `apply_penman` replaces a sentence's graph with a text, and the difference is
+  taken the way the app takes it (`UmrDocument.planPenman`): **nodes are matched
+  by variable and relations by role and target**. So a node written back with
+  the same variable is kept, a renamed variable is a new node and the old one
+  goes, and a changed role is a new relation and the old one goes. The text is
+  the ROOT's graph, so a fragment the root does not reach is left alone. One
+  plan replaces a given sentence's graph at most once: a second replacement was
+  worked out against the graph the first one replaces.
+- an approved plan writes in three batches, because a batch op cannot name an
+  id an earlier op in the same batch minted: the anchor tokens, then the concept
+  spans over them, then the relations between those spans. That is the order
+  `umrImport.js` writes a document in.
+
+`docs/umr/SAMPLE_PROMPT.md` is what the model sees. `bb sample-prompts` (from
+the repo root) regenerates it with the other two.
 
 ## The IGT assistant
 
@@ -247,8 +287,8 @@ lives elsewhere.
 
 `docs/igt/SAMPLE_PROMPT.md` shows the system prompt and the tool list as the
 model receives them, rendered over the test fixture project. `bb
-sample-prompts` (from the repo root) regenerates it and UD's together; the
-test suite fails while either is stale.
+sample-prompts` (from the repo root) regenerates all three; the test suite
+fails while any of them is stale.
 
 The modules below are `igt/` unless they say otherwise.
 

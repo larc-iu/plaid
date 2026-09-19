@@ -144,16 +144,18 @@
     (step "Run the Python test suite (plaid-client-py)")
     (p/shell {:dir "plaid-client-py"} (python-exe) "-m" "pytest" "-q")))
 
-;; The two SAMPLE_PROMPT.md files are snapshots of what the model is actually
+;; The SAMPLE_PROMPT.md files are snapshots of what the model is actually
 ;; sent, and they rot silently: a tool changes and the file goes on describing
-;; the tool as it was. `bb test` fails while either is stale, so this is the
-;; one command that puts them right, rather than two scripts to remember.
+;; the tool as it was. `bb test` fails while any of them is stale, so this is
+;; the one command that puts them right, rather than a script per app to
+;; remember.
 (defn write-sample-prompts! []
   (ensure-repo-root!)
   (let [py (agent-python-exe)]
     (step "Regenerate the assistant prompt snapshots")
     (p/shell {:dir "plaid-agent"} py "tests/sample_prompt.py")
-    (p/shell {:dir "plaid-agent"} py "tests/ud_sample_prompt.py")))
+    (p/shell {:dir "plaid-agent"} py "tests/ud_sample_prompt.py")
+    (p/shell {:dir "plaid-agent"} py "tests/umr_sample_prompt.py")))
 
 ;; Boot the jar unattended and assert /health reports the release version
 ;; (proves version.edn + the SPAs/services were bundled). Runs in a throwaway
