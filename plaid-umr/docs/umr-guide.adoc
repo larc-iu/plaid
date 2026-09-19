@@ -245,6 +245,13 @@ A project's **Services** settings name which service each task runs with by defa
 The **Draft** button on the Annotate tab runs a drafting service over the document or one sentence: a language model proposes a sentence graph from the words and their glosses, written as machine annotation for you to correct.
 Sentences that already have a graph are skipped unless the run is told to overwrite them.
 
+== Compare
+
+A document's **Compare** tab scores its graphs against another document of the same text, two annotators' copies or a draft against its corrected version, with the AnCast metric (the comparison service, `services/umr_ancast.py`).
+Pick the other document and run Compare.
+The report is written on the document and the tab shows it: the document scores (sentence graphs, modal, temporal, coreference and the comprehensive score), and sentence by sentence both graphs side by side, with the nodes that found no counterpart in the other graph marked and the matched pairs listed under them.
+A copy of a document for a second annotator is made on the document's Details tab.
+
 = The Assistant
 
 When an assistant service is connected to the server, a project's **Assistant** tab and the panel on every screen let you ask about the project's annotation and have changes proposed.

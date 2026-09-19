@@ -29,7 +29,7 @@ import { notifyError } from '../../utils/feedback.jsx';
 
 // The annotation editor is full-bleed and supplies its own padding; the others
 // sit in `Layout`'s centered container, which already pads them.
-const isWideRoute = (pathname) => pathname.includes('/annotate');
+const isWideRoute = (pathname) => pathname.includes('/annotate') || pathname.includes('/compare');
 
 export const DocumentEditorShell = () => {
   const { projectId, documentId } = useParams();

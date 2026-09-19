@@ -57,6 +57,10 @@ const ExportEditor = lazyNamed(
   () => import('./components/editor/ExportEditor.jsx'),
   'ExportEditor',
 );
+const CompareEditor = lazyNamed(
+  () => import('./components/editor/CompareEditor.jsx'),
+  'CompareEditor',
+);
 
 // Bound at module scope: App renders the AuthProvider, so there is no auth
 // state above it to read.
@@ -192,6 +196,14 @@ function App() {
                 element={
                   <Suspended>
                     <ExportEditor />
+                  </Suspended>
+                }
+              />
+              <Route
+                path="compare"
+                element={
+                  <Suspended>
+                    <CompareEditor />
                   </Suspended>
                 }
               />

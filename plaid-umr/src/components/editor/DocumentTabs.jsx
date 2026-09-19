@@ -9,16 +9,19 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
   const currentPath = location.pathname;
   const active = currentPath.includes('/export')
     ? 'export'
-    : currentPath.includes('/details')
-      ? 'details'
-      : currentPath.includes('/comments')
-        ? 'comments'
-        : 'annotate';
+    : currentPath.includes('/compare')
+      ? 'compare'
+      : currentPath.includes('/details')
+        ? 'details'
+        : currentPath.includes('/comments')
+          ? 'comments'
+          : 'annotate';
   const base = `/projects/${projectId}/documents/${documentId}`;
 
   const routes = {
     annotate: `${base}/annotate`,
     export: `${base}/export`,
+    compare: `${base}/compare`,
     details: `${base}/details`,
     comments: `${base}/comments`,
   };
@@ -61,6 +64,9 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
           </TabsTrigger>
           <TabsTrigger value="comments" {...target('comments')}>
             Comments
+          </TabsTrigger>
+          <TabsTrigger value="compare" {...target('compare')}>
+            Compare
           </TabsTrigger>
           <TabsTrigger value="export" {...target('export')}>
             Export

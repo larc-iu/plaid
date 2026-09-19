@@ -1332,6 +1332,7 @@ export const TASKS: {
   readonly TRANSLATE: "translate";
   readonly ASSIST: "assist";
   readonly DETECT_SPEECH: "detect-speech";
+  readonly COMPARE: "compare";
 };
 /** Whether a service serves a task (declared `extras.tasks`, legacy id-prefix fallback). */
 export function servesTask(service: DiscoveredService, task: string): boolean;

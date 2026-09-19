@@ -43,6 +43,11 @@ class TASKS:
     DETECT_SPEECH = 'detect-speech'
     # A conversational assistant over a project (chat turns; see plaid-agent).
     ASSIST = 'assist'
+    # Score one document's annotation against another document's of the same
+    # text (two annotators' copies), writing a report on the scored document's
+    # metadata and never an annotation. The request names the other document
+    # as ``against``. See plaid-umr's AnCast service.
+    COMPARE = 'compare'
 
 
 def _normalize_options(options):

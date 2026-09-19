@@ -9,11 +9,11 @@ import { TASKS } from '@larc-iu/plaid-client';
 // and a graph is either drawn by hand on the canvas or drafted by a service,
 // so every spot below carries an empty `builtins` list.
 
-// The localStorage namespace the Draft spot remembers its chosen method and
-// its options under.
+// The localStorage namespaces the spots remember their chosen method and
+// options under.
 export const DRAFT_STORAGE_ID = 'draft';
 
-// The editor's one integration spot, keyed by the task vocabulary a service
+// The editor's integration spots, keyed by the task vocabulary a service
 // declares in its extras. Read by the Draft dialog and by the project's
 // Services settings, so the two cannot describe it differently.
 export const DRAFT_SPOT = {
@@ -25,4 +25,15 @@ export const DRAFT_SPOT = {
   builtins: [],
 };
 
-export const UMR_SPOTS = [DRAFT_SPOT];
+export const COMPARE_STORAGE_ID = 'compare';
+
+export const COMPARE_SPOT = {
+  key: TASKS.COMPARE,
+  label: 'Compare',
+  description:
+    'Scores a document against another document of the same text and writes the report ' +
+    'on the document. The Compare tab of a document.',
+  builtins: [],
+};
+
+export const UMR_SPOTS = [DRAFT_SPOT, COMPARE_SPOT];
