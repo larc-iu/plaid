@@ -74,6 +74,29 @@ test('a mapping is proposed from what the layers are named and scoped', () => {
   ]);
 });
 
+// An archive import, a copy and a restore all make the layers afresh, and the
+// mapping names them by id. The line used to be dropped, on the canvas and in
+// the file, with nothing said.
+test('a line whose layer is gone takes the layer of the same line in the proposal', () => {
+  const stored = [
+    { header: 'morphemes', lang: null, source: 'morphemes' },
+    { header: 'morpheme-gloss', lang: 'en', source: 'layer:GONE' },
+    { header: 'pos', lang: null, source: 'layer:p1' },
+    { header: null, lang: null, source: 'stored' },
+  ];
+  assert.deepEqual(resolveIlg(stored, layerInfo()), [
+    { header: 'morphemes', lang: null, source: 'morphemes' },
+    { header: 'morpheme-gloss', lang: 'en', source: 'layer:g1' },
+    { header: 'pos', lang: null, source: 'layer:p1' },
+    { header: null, lang: null, source: 'stored' },
+  ]);
+  // Nothing to heal it with: the line is left as it was rather than guessed.
+  assert.deepEqual(
+    resolveIlg([{ header: 'sentence-gloss', lang: 'fr', source: 'layer:GONE' }], layerInfo()),
+    [{ header: 'sentence-gloss', lang: 'fr', source: 'layer:GONE' }],
+  );
+});
+
 test('lines come from the layers, grouped under the words, stored lines after', () => {
   const info = layerInfo();
   const lines = ilgLinesFor(sentence(), info, resolveIlg(null, info));

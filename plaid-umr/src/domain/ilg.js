@@ -55,9 +55,30 @@ export function proposeIlg(layerInfo) {
   return out;
 }
 
-/** The project's mapping when it has one, else the proposal. */
+/**
+ * The project's mapping when it has one, else the proposal. A line whose
+ * layer is gone takes the layer the proposal names for the same line: an
+ * archive import, a project copy and a restore all give a layer a new id, and
+ * the mapping, which names layers by id, then drew and wrote nothing for that
+ * line, with nothing said about why.
+ */
 export function resolveIlg(config, layerInfo) {
-  return Array.isArray(config) && config.length ? config : proposeIlg(layerInfo);
+  if (!Array.isArray(config) || !config.length) return proposeIlg(layerInfo);
+  const live = new Set((layerInfo?.glossLayers || []).map((g) => g.layer.id));
+  const isLayer = (source) => String(source ?? '').startsWith('layer:');
+  const slot = (entry) => `${entry.header}|${entry.lang || ''}`;
+  const proposed = new Map(
+    proposeIlg(layerInfo)
+      .filter((e) => isLayer(e.source))
+      .map((e) => [slot(e), e.source]),
+  );
+  return config.map((entry) => {
+    if (!isLayer(entry.source) || live.has(String(entry.source).replace(/^layer:/, ''))) {
+      return entry;
+    }
+    const source = proposed.get(slot(entry));
+    return source ? { ...entry, source } : entry;
+  });
 }
 
 // The stored key of a line an import kept, as umrFile.js normalizes headers.
