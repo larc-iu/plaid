@@ -397,7 +397,15 @@ export const docTagsOf = (node, nodesById) => {
         group: t.group,
         text: docTagText(t, node.id, other.var),
         otherId,
+        otherVar: other.var,
         cross: rank === 2,
+        // The modality nearly every event carries, `(author
+        // :full-affirmative x)`: the one tag that says least.
+        isDefault:
+          !!other.constant &&
+          other.var === 'author' &&
+          t.rel === ':full-affirmative' &&
+          t.target === node.id,
       },
     });
   });

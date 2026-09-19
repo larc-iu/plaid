@@ -785,3 +785,91 @@
   border-color: hsl(var(--destructive) / 0.5);
   color: hsl(var(--destructive));
 }
+
+/* TEMPORARY: the options of the visual review's second batch, each under its
+   switch on the list (src/lib/look.js), off unless set. What is chosen moves
+   into the rules above; the rest is deleted. */
+.umr-doc-tag-end[role='button']:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+[data-look~='pills-quiet'] .umr-edge-label {
+  border-color: transparent;
+  color: hsl(var(--foreground));
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+[data-look~='pills-quiet'] .umr-edge-label[role='button']:hover {
+  border-color: var(--umr-node-border);
+}
+[data-look~='pills-quiet'] .umr-edge-label--lit {
+  color: var(--umr-edge-lit);
+  border-color: var(--umr-edge-lit);
+}
+[data-look~='edges-light'] .umr-block {
+  --umr-edge: hsl(215 16% 62%);
+}
+[data-look~='edges-light'] .umr-edge {
+  stroke-width: 1.25;
+}
+[data-look~='edges-light'] .umr-edge--reentrant {
+  stroke-dasharray: 4 3;
+  opacity: 1;
+}
+[data-look~='edges-light'] .umr-edge--lit {
+  stroke-width: 2;
+}
+[data-look~='errors-tint'] .umr-node:has(> .umr-node-mark--error) {
+  border-color: hsl(0 72% 62%);
+}
+[data-look~='errors-tint'] .umr-node:has(> .umr-node-mark--warning) {
+  border-color: hsl(38 92% 55%);
+}
+[data-look] .umr-doc-tag {
+  --tag: var(--umr-doc);
+}
+[data-look~='tags-family'] .umr-doc-tag[data-group='temporal'] {
+  --tag: hsl(185 70% 30%);
+}
+[data-look~='tags-family'] .umr-doc-tag[data-group='coref'] {
+  --tag: hsl(30 85% 38%);
+}
+[data-look~='tags-family'] .umr-doc-tag {
+  color: var(--tag);
+  border-color: color-mix(in srgb, var(--tag) 40%, transparent);
+}
+[data-look~='tags-quiet'] .umr-doc-tag {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--tag) 8%, transparent);
+  color: color-mix(in srgb, var(--tag) 78%, white);
+}
+[data-look~='tags-quiet'] .umr-node--focused .umr-doc-tag,
+[data-look~='tags-quiet'] .umr-node:hover .umr-doc-tag {
+  border-color: color-mix(in srgb, var(--tag) 40%, transparent);
+  background: none;
+  color: var(--tag);
+}
+[data-look~='tags-default-quiet'] .umr-doc-tag[data-default] {
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+  background: none;
+}
+[data-look~='chips-text'] .umr-chip,
+[data-look~='chips-text'] .umr-doc-tag {
+  border: none;
+  border-radius: 0;
+  background: none;
+  padding: 0;
+}
+[data-look~='chips-text'] .umr-chip + .umr-chip::before,
+[data-look~='chips-text'] .umr-doc-tag + .umr-doc-tag::before {
+  content: '·';
+  margin-right: 5px;
+  color: hsl(var(--muted-foreground));
+}
+[data-look~='chips-text'] .umr-node-attrs,
+[data-look~='chips-text'] .umr-node-doc {
+  column-gap: 5px;
+  row-gap: 0;
+}

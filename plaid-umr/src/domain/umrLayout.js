@@ -279,17 +279,22 @@ function assignLanes(edges, nodes, tree, gapOf, opt) {
     const reach = Math.abs(t.x - s.x);
     if (underParent(s, t, opt)) return;
     if (!byGap.has(s.row)) byGap.set(s.row, []);
-    byGap.get(s.row).push({ id: edge.id, reach });
+    // With `trunks`, every run of one parent shares a lane: one horizontal,
+    // a drop to each child. Without, each run has its own.
+    byGap.get(s.row).push({ id: edge.id, reach, key: opt.trunks ? edge.source : edge.id });
   });
   const lanes = new Map();
   byGap.forEach((list, row) => {
     const { top, bottom } = gapOf(row);
     const first = top + opt.laneInset;
     const last = Math.max(first, bottom - opt.laneInset);
-    const step = list.length > 1 ? Math.min(opt.laneStep, (last - first) / (list.length - 1)) : 0;
-    list
-      .sort((a, b) => b.reach - a.reach)
-      .forEach((item, i) => lanes.set(item.id, first + i * step));
+    // The widest reach of each key decides its place, nearest the row.
+    const reachOf = new Map();
+    list.forEach((item) => reachOf.set(item.key, Math.max(reachOf.get(item.key) || 0, item.reach)));
+    const keys = [...reachOf.keys()].sort((a, b) => reachOf.get(b) - reachOf.get(a));
+    const step = keys.length > 1 ? Math.min(opt.laneStep, (last - first) / (keys.length - 1)) : 0;
+    const laneOf = new Map(keys.map((key, i) => [key, first + i * step]));
+    list.forEach((item) => lanes.set(item.id, laneOf.get(item.key)));
   });
   return lanes;
 }

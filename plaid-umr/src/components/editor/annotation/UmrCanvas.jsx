@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
+import { LOOK_ATTR } from '../../../lib/look.js';
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
@@ -170,7 +171,7 @@ export const UmrCanvas = ({
     );
   }
   return (
-    <div className="umr-canvas-list" ref={listTopRef}>
+    <div className="umr-canvas-list" ref={listTopRef} data-look={LOOK_ATTR || undefined}>
       <CrossLinks
         listRef={listTopRef}
         graph={graph}

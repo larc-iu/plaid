@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { LOOK } from '../../../lib/look.js';
 
 // The most document tags a node wears. Past it, one fewer and a `+k` that
 // lists them all: nearly every node has five or fewer, and the one that
@@ -57,8 +58,37 @@ export const UmrNode = React.memo(function UmrNode({
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
     : { left: 0, top: 0, visibility: 'hidden' };
   const label = [node.var, node.concept].filter(Boolean).join(' ');
-  const shownTags = docTags?.length > MAX_TAGS ? docTags.slice(0, MAX_TAGS - 1) : docTags;
-  const hiddenTags = (docTags?.length || 0) - (shownTags?.length || 0);
+  // The tags as drawn: one per triple, or (look `tags-grouped`) one per
+  // relation and direction, the other ends listed in it.
+  const tagItems = (() => {
+    if (!docTags?.length) return [];
+    if (!LOOK.has('tags-grouped')) return docTags.map((t) => ({ key: t.id, tags: [t] }));
+    const byKey = new Map();
+    docTags.forEach((t) => {
+      const key = `${t.source === node.id ? 'out' : 'in'} ${t.rel}`;
+      if (!byKey.has(key)) byKey.set(key, { key, tags: [] });
+      byKey.get(key).tags.push(t);
+    });
+    return [...byKey.values()];
+  })();
+  const shownItems = tagItems.length > MAX_TAGS ? tagItems.slice(0, MAX_TAGS - 1) : tagItems;
+  const hiddenList = tagItems.slice(shownItems.length).flatMap((i) => i.tags);
+  const clickable = !!onDocTagClick && focused;
+  const clickTag = (t) =>
+    clickable
+      ? (e) => {
+          e.stopPropagation();
+          if (wasFocused.current) onDocTagClick(t);
+        }
+      : undefined;
+  // A tag's words, with (look `tags-self`) a mark where this node stands.
+  const selfMark = LOOK.has('tags-self');
+  const tagText = (t) =>
+    !selfMark
+      ? t.text
+      : t.source === node.id
+        ? `● ${t.rel} ${t.otherVar}`
+        : `${t.otherVar} ${t.rel} ●`;
   return (
     <div
       ref={nodeRef}
@@ -162,46 +192,74 @@ export const UmrNode = React.memo(function UmrNode({
           ))}
         </div>
       )}
-      {docTags?.length > 0 && (
+      {tagItems.length > 0 && (
         <div className="umr-node-doc">
-          {shownTags.map((t) => (
-            <span
-              key={t.id}
-              className="umr-doc-tag"
-              role={onDocTagClick && focused ? 'button' : undefined}
-              tabIndex={-1}
-              data-triple-id={t.id}
-              title={
-                onDocTagClick && focused
-                  ? 'Click to change. Shift+Backspace in the editor deletes.'
-                  : undefined
-              }
-              onClick={
-                onDocTagClick && focused
-                  ? (e) => {
-                      e.stopPropagation();
-                      if (wasFocused.current) onDocTagClick(t);
-                    }
-                  : undefined
-              }
-            >
-              {t.text}
-            </span>
-          ))}
-          {hiddenTags > 0 && (
+          {shownItems.map(({ key, tags }) => {
+            const [t] = tags;
+            if (tags.length === 1) {
+              return (
+                <span
+                  key={key}
+                  className="umr-doc-tag"
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={-1}
+                  data-triple-id={t.id}
+                  data-group={t.group}
+                  data-default={t.isDefault || undefined}
+                  title={
+                    clickable
+                      ? 'Click to change. Shift+Backspace in the editor deletes.'
+                      : undefined
+                  }
+                  onClick={clickTag(t)}
+                >
+                  {tagText(t)}
+                </span>
+              );
+            }
+            // Several triples of one relation and direction: one tag, each
+            // other end its own click.
+            const out = t.source === node.id;
+            const ends = tags.map((one, i) => (
+              <React.Fragment key={one.id}>
+                {i > 0 && ' '}
+                <span
+                  className="umr-doc-tag-end"
+                  role={clickable ? 'button' : undefined}
+                  data-triple-id={one.id}
+                  onClick={clickTag(one)}
+                >
+                  {one.otherVar}
+                </span>
+              </React.Fragment>
+            ));
+            return (
+              <span key={key} className="umr-doc-tag" data-group={t.group}>
+                {out ? (
+                  <>
+                    {selfMark && '● '}
+                    {t.rel} {ends}
+                  </>
+                ) : (
+                  <>
+                    {ends} {t.rel}
+                    {selfMark && ' ●'}
+                  </>
+                )}
+              </span>
+            );
+          })}
+          {hiddenList.length > 0 && (
             <span
               className="umr-doc-tag umr-doc-tag--more"
               role={live ? 'button' : undefined}
               tabIndex={-1}
               // Read-only, or before the node is focused, the rest are
               // read off the tooltip.
-              title={docTags
-                .slice(shownTags.length)
-                .map((t) => t.text)
-                .join('\n')}
+              title={hiddenList.map((t) => t.text).join('\n')}
               onClick={live ? act('node.docRelations') : undefined}
             >
-              +{hiddenTags}
+              +{hiddenList.length}
             </span>
           )}
         </div>
