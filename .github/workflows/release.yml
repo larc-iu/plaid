@@ -75,6 +75,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ./plaid-client-py
           pip install -e './plaid-agent[dev]'
+          # plaid-umr's comparison service scores with the ancast package, and
+          # its tests run the real metric.
+          pip install ancast
       - name: Run tests
         run: bb test
 

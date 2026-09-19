@@ -193,7 +193,7 @@
           (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
           ;; First boot must also have extracted the bundled services next to data/.
           (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"
-                     "umr_draft_llm.py"]]
+                     "umr_draft_llm.py" "umr_bootstrap_igt.py" "umr_ancast.py"]]
             (when-not (fs/exists? (fs/path tmp "services" f))
               (throw (ex-info (str "services/" f " was not extracted on first run") {}))))
           (println "  bundled services extracted on first run"))

@@ -1,0 +1,47 @@
+# :: snt1	Lindsay left in order to eat lunch .
+
+# sentence level graph:
+(s1x0 / leave-11
+    :ARG0 (s1x1 / person
+        :name (s1x2 / name
+            :op1 "Lindsay")
+        :wiki "Lindsay_Rappaport")
+    :purpose (s1x3 / lunch-01
+        :ARG0 s1x1))
+
+# alignment:
+s1x1: 0-0
+s1x0: 1-1
+s1x3: 6-6
+
+# document level annotation:
+(s1s0 / sentence
+    :modal ((author :full-affirmative s1x0))
+    :temporal ((document-creation-time :before s1x0)))
+
+
+# :: snt2	If it rains , Alana won't water the plants .
+
+# sentence level graph:
+(s2x0 / water-01
+    :ARG0 (s2x1 / state
+        :name (s2x2 / name
+            :op1 "Alaska")
+        :wiki "Alaska")
+    :ARG1 (s2x3 / plant)
+    :condition (s2x4 / rain-01)
+    :polarity -)
+
+# alignment:
+s2x4: 2-2
+s2x5: 4-4
+s2x1: 5-5
+s2x0: 6-6
+s2x3: 8-8
+
+# document level annotation:
+(s2s0 / sentence
+    :modal ((author :neutral-affirmative s2x4)
+      (author :full-negative s2x0))
+    :temporal ((document-creation-time :before s2x4)
+      (document-creation-time :after s2x0)))

@@ -1,0 +1,56 @@
+# :: snt1	  Lindsay left in order to eat lunch .
+
+# sentence level graph:
+(s1l / leave-02
+    :ARG0 (s1p / person
+        :name (s1n / name :op1 "Lindsay"))
+    :aspect performance
+    :purpose (s1e / eat-01
+        :ARG0 s1p
+        :ARG1 (s1l2 / lunch)
+        :aspect performance))
+
+# alignment:
+s1l: 2-2
+s1p: 1-1
+s1n: 0-0
+s1e: 6-6
+s1l2: 7-7
+
+# document level annotation:
+(s1s0 / sentence
+    :temporal ((document-creation-time :before s1l)
+            (s1l :after s1e))
+    :modal ((root :modal author)
+            (author :full-affirmative s1l)
+            (author :full-negative s1e)))
+
+
+# :: snt2	  If it rains , Alana won't water the plants .
+
+# sentence level graph:
+(s2w / water-01
+    :ARG0 (s2p / person
+        :name (s2n / name :op1 "Alana"))
+    :ARG1 (s2p2 / plant
+        :refer-number plural)
+    :condition (s2r / rain-01
+        :aspect process)
+    :aspect performance)
+
+# alignment:
+s2w: 7-7
+s2p: 5-5
+s2n: 0-0
+s2p2: 9-9
+s2r: 3-3
+
+# document level annotation:
+(s2s0 / sentence
+    :temporal ((document-creation-time :after s2w)
+            (document-creation-time :after s2r))
+    :modal ((root :modal author)
+            (author :full-affirmative s2r)
+            (author :full-negative s2w)))
+
+

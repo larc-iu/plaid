@@ -85,6 +85,20 @@ python services/umr_bootstrap_igt.py --url http://localhost:8085 --abbreviations
 
 No requirements beyond `plaid-client`.
 
+## Adjudicating with AnCast
+
+`services/umr_ancast.py` registers the service behind the **Compare** tab: it scores this
+document's UMR against another document of the same project with the AnCast++ metric (Sun
+and Xue 2024), and writes the report on the scored document under
+`metadata.umr.adjudication`. Nothing is annotated. The usual pair is one text annotated
+twice, which is what Copy document makes.
+
+```bash
+python services/umr_ancast.py --url http://localhost:8085
+```
+
+Requirements on top of `plaid-client`: `ancast` (`pip install ancast`, which brings numpy).
+
 ## Testing
 
 - `npm test` is lint plus both JS suites. `npm run test:unit` is `node --test` over
