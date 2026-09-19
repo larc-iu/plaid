@@ -3,9 +3,11 @@
 // for a dry run and lists what would change, in the linguist's terms, and the
 // toast that confirms the restore offers Undo.
 //
-// The only thing each app says differently is what it calls a token layer, so
-// `roleWords` (role -> [singular, plural]) is a prop. Everything else, down to
-// the wording of the toasts, is the same in both.
+// What each app says differently is what it calls a token layer, so
+// `roleWords` (role -> [singular, plural]) is a prop, and, for an app with
+// layers of its own, `layerWords` (a layer's config -> [singular, plural], or
+// null to leave it out; see `indexLayers`). Everything else, down to the
+// wording of the toasts, is the same in every app.
 
 import { useEffect, useRef, useState } from 'react';
 import { readRole } from '@larc-iu/plaid-client';
@@ -35,6 +37,7 @@ export const RestoreDialog = ({
   documentId,
   raw,
   roleWords,
+  layerWords,
   entry,
   onRestored,
 }) => {
@@ -65,7 +68,7 @@ export const RestoreDialog = ({
     };
   }, [open, asOf, client, documentId]);
 
-  const layers = indexLayers(raw, readRole);
+  const layers = indexLayers(raw, readRole, layerWords);
   const lines = changeLines(preview, layers, roleWords);
   const gaps = skippedLines(preview?.skipped);
 

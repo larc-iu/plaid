@@ -12,7 +12,7 @@ import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
-import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
+import { TOKEN_ROLE_WORDS, UMR_LAYER_WORDS } from '../../domain/restoreSummary.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
 import { DraftDialog } from './services/DraftDialog.jsx';
 
@@ -202,6 +202,7 @@ export const AnnotationEditor = () => {
         documentId={documentId}
         raw={doc?.raw}
         roleWords={TOKEN_ROLE_WORDS}
+        layerWords={UMR_LAYER_WORDS}
         entry={restoreEntry}
         onRestored={handleRestored}
       />

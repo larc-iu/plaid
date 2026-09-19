@@ -32,14 +32,25 @@ const SKIPPED_WORDS = {
 // carry their role so the lines can use the app's words for them; a layer from
 // another app sharing the substrate has no role this app knows, and falls back
 // to its own name.
-export const indexLayers = (raw, readRole) => {
+//
+// `layerWords`, for an app with words of its own for its own layers, takes a
+// layer's config to its [singular, plural], or to null to leave the layer out
+// of the list, or to undefined for the general words. UMR counts a node once,
+// as a node, and not again by the token that anchors it.
+export const indexLayers = (raw, readRole, layerWords) => {
   const out = {};
+  const entry = (layer, extra) => {
+    const e = { name: layer.name, ...extra };
+    const words = layerWords?.(layer.config);
+    if (words !== undefined) e.words = words;
+    return e;
+  };
   for (const tl of raw?.textLayers || []) {
     for (const tkl of tl.tokenLayers || []) {
-      out[tkl.id] = { name: tkl.name, role: readRole(tkl.config) };
+      out[tkl.id] = entry(tkl, { role: readRole(tkl.config) });
       for (const sl of tkl.spanLayers || []) {
-        out[sl.id] = { name: sl.name };
-        for (const rl of sl.relationLayers || []) out[rl.id] = { name: rl.name };
+        out[sl.id] = entry(sl);
+        for (const rl of sl.relationLayers || []) out[rl.id] = entry(rl);
       }
     }
   }
@@ -59,20 +70,32 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
   if (changed(summary.texts)) lines.push('The text, and the words read from it');
   for (const e of summary.tokens?.byLayer || []) {
     const n = changed(e);
-    if (!n) continue;
     const layer = layers[e.layerId];
-    const words = roleWords[layer?.role];
+    if (!n || layer?.words === null) continue;
+    const words = layer?.words || roleWords[layer?.role];
     lines.push(
       words ? plural(n, ...words) : `${plural(n, 'token')} in ${layer?.name ?? 'a layer'}`,
     );
   }
   for (const e of summary.spans?.byLayer || []) {
     const n = changed(e);
-    if (n) lines.push(`${plural(n, 'annotation')} in ${layers[e.layerId]?.name ?? 'a field'}`);
+    const layer = layers[e.layerId];
+    if (!n || layer?.words === null) continue;
+    lines.push(
+      layer?.words
+        ? plural(n, ...layer.words)
+        : `${plural(n, 'annotation')} in ${layer?.name ?? 'a field'}`,
+    );
   }
   for (const e of summary.relations?.byLayer || []) {
     const n = changed(e);
-    if (n) lines.push(`${plural(n, 'relation')} in ${layers[e.layerId]?.name ?? 'a layer'}`);
+    const layer = layers[e.layerId];
+    if (!n || layer?.words === null) continue;
+    lines.push(
+      layer?.words
+        ? plural(n, ...layer.words)
+        : `${plural(n, 'relation')} in ${layer?.name ?? 'a layer'}`,
+    );
   }
   if (changed(summary.vocabLinks)) {
     lines.push(plural(changed(summary.vocabLinks), 'vocabulary link'));

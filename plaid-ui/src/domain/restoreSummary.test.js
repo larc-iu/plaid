@@ -39,6 +39,61 @@ describe('indexLayers', () => {
     expect(layers.dep).toEqual({ name: 'Dependencies' });
   });
 
+  // UMR's own layers: the node tokens are left out (a node is counted once,
+  // by its concept span), the rest named in the app's words.
+  it("takes an app's own words for its own layers, null leaving one out", () => {
+    const umr = {
+      textLayers: [
+        {
+          id: 'text',
+          tokenLayers: [
+            {
+              id: 'nodes',
+              name: 'UMR nodes',
+              config: { umr: { nodes: true } },
+              spanLayers: [
+                {
+                  id: 'concepts',
+                  name: 'UMR concepts',
+                  config: { umr: { concepts: true } },
+                  relationLayers: [
+                    { id: 'edges', name: 'UMR relations', config: { umr: { relations: true } } },
+                  ],
+                },
+              ],
+            },
+            { id: 'word', name: 'Words', config: { plaid: { role: 'word' } } },
+          ],
+        },
+      ],
+    };
+    const layerWords = (config) =>
+      config?.umr?.nodes
+        ? null
+        : config?.umr?.concepts
+          ? ['node', 'nodes']
+          : config?.umr?.relations
+            ? ['edge', 'edges']
+            : undefined;
+    const layers = indexLayers(umr, readRole, layerWords);
+    expect(layers.word).toEqual({ name: 'Words', role: 'word' });
+    const summary = {
+      tokens: {
+        byLayer: [
+          { layerId: 'nodes', inserted: 2 },
+          { layerId: 'word', updated: 1 },
+        ],
+      },
+      spans: { byLayer: [{ layerId: 'concepts', inserted: 2 }] },
+      relations: { byLayer: [{ layerId: 'edges', inserted: 1, deleted: 2 }] },
+    };
+    expect(changeLines(summary, layers, { word: ['word', 'words'] })).toEqual([
+      '1 word',
+      '2 nodes',
+      '3 edges',
+    ]);
+  });
+
   it('reads a document with no layers as an empty index', () => {
     expect(indexLayers(null, readRole)).toEqual({});
   });
