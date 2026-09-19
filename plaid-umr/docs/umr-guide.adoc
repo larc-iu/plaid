@@ -137,6 +137,7 @@ Which layers feed which lines is set in **Project Settings, UMR settings** (see 
 == The margin
 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
+Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
 A relation between a node and a constant reads on the node as a tag in the document graph's own color (`author :full-affirmative`), and a temporal relation between two nodes of the sentence as a tag on each (`:before s3b`, `s3d :before`).
 Focusing or hovering a node draws its own relations: a line to the constant, an arc to the other node. Nothing is drawn for the others, so a long sentence stays readable.
 

@@ -485,6 +485,14 @@
   color: var(--umr-doc);
   border-color: color-mix(in srgb, var(--umr-doc) 50%, transparent);
 }
+/* Held in place, so it does not move when it comes back. */
+.umr-const--idle {
+  opacity: 0;
+  pointer-events: none;
+}
+.umr-const {
+  transition: opacity 120ms;
+}
 .umr-const--drop {
   outline: 2px solid var(--umr-doc);
   outline-offset: 2px;

@@ -30,7 +30,11 @@ const EDGE_ROOM = 66;
 
 // The margin to the left of every graph, where the document graph's
 // constants are pinned, and how the constants stack in it.
-const MARGIN = 172;
+// The margin column, and the air between its constants and the graph: a
+// chip sitting flush against the root node was the whole of what made the
+// top left of a block dense.
+const MARGIN = 208;
+const CONST_GAP = 28;
 const CONST_STEP = 30;
 const CONST_TOP = 16;
 const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
@@ -235,7 +239,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           if (!p) return null;
           const x1 = p.x - p.width / 2 + dx;
           const y1 = p.y + p.height / 2;
-          const x2 = MARGIN - 8 + scrollLeft;
+          const x2 = MARGIN - CONST_GAP + scrollLeft;
           const y2 = lane.constY.get(t.constant.var) + 11;
           const k = Math.max(24, Math.abs(x1 - x2) / 2);
           return {
@@ -972,10 +976,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   'umr-const',
                   c.used ? 'umr-const--used' : '',
                   overConst === c.name ? 'umr-const--drop' : '',
+                  // A constant this sentence does not use is ink on every
+                  // block for a target nobody is aiming at. It comes back
+                  // when a node is focused or a drag is under way, which is
+                  // when one might be. Its place is held either way, so
+                  // nothing moves as it appears.
+                  c.used || active || drag ? '' : 'umr-const--idle',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                style={{ position: 'absolute', top: `${c.y}px`, right: '8px' }}
+                style={{ position: 'absolute', top: `${c.y}px`, right: `${CONST_GAP}px` }}
                 data-const-name={c.name}
                 title={
                   readOnly
