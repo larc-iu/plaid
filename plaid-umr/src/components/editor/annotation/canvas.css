@@ -238,11 +238,46 @@
   padding-top: 8px;
 }
 .umr-word-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 14px;
   width: max-content;
   min-width: 100%;
+}
+/* The names of the gloss lines, just left of where the lines start. The
+   column is built like a word's (a number, the word, a line each), so each
+   name is level with its line. */
+.umr-legend {
+  position: absolute;
+  right: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding: 2px 12px 2px 0;
+  pointer-events: none;
+}
+.umr-legend-index,
+.umr-legend-word {
+  visibility: hidden;
+}
+.umr-legend-index {
+  font-size: 0.65rem;
+}
+.umr-legend-word {
+  font-size: 0.95rem;
+  padding-bottom: 1px;
+  border-bottom: 2px solid transparent;
+}
+.umr-tier-label {
+  font-family: inherit;
+  font-size: 0.62rem;
+  line-height: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground) / 0.8);
+  white-space: nowrap;
 }
 .umr-word {
   display: flex;
@@ -255,7 +290,7 @@
   transition: background 120ms;
 }
 .umr-word--anchored .umr-word-text {
-  border-bottom: 2px solid var(--umr-node-border);
+  border-bottom-color: var(--umr-node-border);
 }
 .umr-word--lit {
   background: hsl(221 83% 53% / 0.12);
@@ -272,25 +307,31 @@
   font-size: 0.95rem;
   white-space: nowrap;
   padding-bottom: 1px;
+  /* Held by every word, so the lines under anchored and unanchored words
+     stay level. */
+  border-bottom: 2px solid transparent;
 }
 .umr-word-gloss {
   font-size: 0.75rem;
+  /* Set, so a line's name in the margin (smaller type) stays level. */
+  line-height: 1.1rem;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
 }
 .umr-ilg-row {
+  position: relative;
   display: flex;
-  gap: 10px;
   padding: 2px 6px;
   font-size: 0.8rem;
   color: hsl(var(--muted-foreground));
 }
+/* In the margin, like the names of the lines under the words. */
 .umr-ilg-header {
-  flex: none;
-  min-width: 9rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  position: absolute;
+  right: 100%;
+  top: 2px;
+  padding-right: 6px;
+  line-height: 1.2rem;
 }
 
 /* Editing. */

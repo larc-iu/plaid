@@ -23,6 +23,7 @@
 import { cpSlice } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 import { treeEdges } from './format/penman.js';
+import { perWordStored } from './ilg.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
@@ -266,15 +267,13 @@ function corefChains(docRelations, nodesById) {
   return chains;
 }
 
-// Without a mapping, the stored lines as they were, grouped under the words
-// when there is one item per word.
+// Without a mapping, the stored lines as they were, laid under the words
+// wherever the file lets that be told (ilg.js, perWordStored).
 const storedLines = (s) =>
-  (s.storedIlg || [])
-    .filter((line) => line.key !== 'index' && line.key !== 'words')
-    .map((line) => ({
-      ...line,
-      perWord: line.items.length === s.words.length ? line.items.map((x) => [x]) : null,
-    }));
+  perWordStored(
+    (s.storedIlg || []).filter((line) => line.key !== 'index' && line.key !== 'words'),
+    s.words.length,
+  );
 
 // The roles a graph may cycle through (the validator allows no others): an
 // edge with one of these into a node does not make it a child, so the root

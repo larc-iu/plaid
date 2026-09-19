@@ -134,6 +134,9 @@ The children of one parent that lie beyond its box share one line across the gap
 
 The words carry their number.
 Under them, the project's gloss lines: the morphemes and their glosses grouped under the word they belong to, a part of speech per word, and a translation as a row.
+Each line is named to its left.
+The lines of an imported file go under the words wherever the file lets that be told: a line with one item per word, a line whose hyphens and equals signs join its items into as many words as the sentence has (`’a- ní- dz- oo- d- záa =go` is one word), or a gloss line that pairs item for item with such a Morphemes line.
+Any other line, and a translation, runs as a row of its own.
 Which layers feed which lines is set in **Project Settings, UMR settings** (see <<Gloss lines>>).
 
 == The margin

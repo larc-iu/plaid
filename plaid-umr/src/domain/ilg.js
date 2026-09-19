@@ -130,13 +130,61 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
   });
 
   if (mapping.some((e) => e.source === 'stored')) {
-    stored.forEach((line) => {
+    perWordStored(stored, words.length).forEach((line) => {
       if (STORED_KEYS.has(line.key) && produced.has(slot(line.key, line.lang))) return;
-      const perWord = line.items.length === words.length ? line.items.map((x) => [x]) : null;
-      lines.push({ ...line, perWord });
+      lines.push(line);
     });
   }
   return lines;
+}
+
+// Whether an item of a line joins the one after it (a prefix or proclitic,
+// `neseihiin-`, `ma=`) or the one before it (a suffix or enclitic, `-3i'`,
+// `=go`): the Leipzig convention that writes the morphemes of one word
+// joined by hyphens, and a clitic by an equals sign.
+const joinsNext = (item) => item.length > 1 && /[-=]$/.test(item);
+const joinsPrevious = (item) => item.length > 1 && /^[-=]/.test(item);
+
+/** A line's item indexes grouped into words by those joiners. */
+export const wordGroups = (items) => {
+  const groups = [];
+  items.forEach((item, i) => {
+    if (i > 0 && (joinsPrevious(item) || joinsNext(items[i - 1]))) {
+      groups[groups.length - 1].push(i);
+    } else groups.push([i]);
+  });
+  return groups;
+};
+
+const SENTENCE_KEYS = new Set(['sentence-gloss', 'sentence']);
+
+/**
+ * The lines an imported file carried, laid under the words wherever the
+ * file lets that be told: a line with one item per word; a line whose own
+ * joiners group it into as many words as there are (`’a- ní- dz- oo- d- záa
+ * =go` is one word); or a line paired item for item with the Morphemes line
+ * when that one groups into the words (its glosses). Whitespace alone cannot
+ * say which word a morpheme belongs to, and a file's column alignment is not
+ * a reliable guide (Sanapaná's corpus aligns its lines item by item). Any
+ * other line, and a translation always, runs as a row of its own.
+ */
+export function perWordStored(lines, wordCount) {
+  const morphemes = lines.find((l) => l.key === 'morphemes');
+  const morphemeGroups = morphemes ? wordGroups(morphemes.items) : null;
+  const fits = (groups) => !!groups && groups.length === wordCount;
+  return lines.map((line) => {
+    const { items } = line;
+    let groups = null;
+    if (wordCount && items.length && !SENTENCE_KEYS.has(line.key)) {
+      const own = wordGroups(items);
+      if (items.length === wordCount) groups = items.map((_, i) => [i]);
+      else if (fits(own)) groups = own;
+      else if (fits(morphemeGroups) && items.length === morphemes.items.length) {
+        groups = morphemeGroups;
+      }
+    }
+    return { ...line, perWord: groups ? groups.map((g) => g.map((i) => items[i])) : null };
+  });
 }
 
 // One item of a gloss line: the file has no quoting, so a value with a

@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { proposeIlg, resolveIlg, ilgLinesFor, languageCode } from '../src/domain/ilg.js';
+import {
+  proposeIlg,
+  resolveIlg,
+  ilgLinesFor,
+  languageCode,
+  perWordStored,
+  wordGroups,
+} from '../src/domain/ilg.js';
 
 // An IGT-shaped project: morphemes under words, a morpheme gloss field, a
 // word-level part of speech, and a translation on the sentence.
@@ -136,4 +143,34 @@ test('language codes are two or three lowercase letters, else und', () => {
   assert.equal(languageCode('qaa-x-eng'), 'qaa');
   assert.equal(languageCode('English'), 'und');
   assert.equal(languageCode(''), 'und');
+});
+
+// The Leipzig convention: a prefix or proclitic ends in a joiner and takes
+// the next item, a suffix or enclitic starts with one and joins the last.
+test('morphemes group into words by their hyphens and equals signs', () => {
+  const navajo = ['yah', '’a-', 'ní-', 'dz-', 'oo-', 'd-', 'záa', '=go', 'Ńléí'];
+  assert.deepEqual(wordGroups(navajo), [[0], [1, 2, 3, 4, 5, 6, 7], [8]]);
+  // A bare hyphen or equals sign is an item of its own.
+  assert.deepEqual(wordGroups(['a', '-', 'b']), [[0], [1], [2]]);
+});
+
+test('stored lines go under the words wherever the file lets that be told', () => {
+  // Arapaho: two words, the first of three morphemes.
+  const lines = [
+    { key: 'morphemes', header: 'Morphemes', items: ['neseihiin-', "iine'etii", "-3i'", '.'] },
+    { key: 'morpheme-gloss', header: 'Morphemes(English)', items: ['wild-', 'live', '-3PL', '.'] },
+    { key: 'pos', header: 'Part of Speech', items: ['prefix', 'vai', 'infl', '.'] },
+    { key: 'sentence-gloss', header: 'Translation(English)', items: ['they', 'lived'] },
+    { key: 'word-gloss', header: 'Word Gloss', items: ['a', 'b', 'c'] },
+  ];
+  const laid = perWordStored(lines, 2);
+  // Its own joiners.
+  assert.deepEqual(laid[0].perWord, [['neseihiin-', "iine'etii", "-3i'"], ['.']]);
+  assert.deepEqual(laid[1].perWord, [['wild-', 'live', '-3PL'], ['.']]);
+  // No joiners of its own, but item for item with the Morphemes line.
+  assert.deepEqual(laid[2].perWord, [['prefix', 'vai', 'infl'], ['.']]);
+  // A translation is a row even when its count matches the words.
+  assert.equal(laid[3].perWord, null);
+  // Nothing tells which word each of three items belongs to.
+  assert.equal(laid[4].perWord, null);
 });
