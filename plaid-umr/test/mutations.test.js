@@ -48,6 +48,7 @@ function recordingClient() {
         return { id: id() };
       },
       update: async (relId, value) => record('relations.update', relId, value),
+      patchMetadata: async (relId, patch) => record('relations.patchMetadata', relId, patch),
       delete: async (relId) => record('relations.delete', relId),
     },
     withOperation: async (label, fn) => {
@@ -202,6 +203,35 @@ test('moveEdge re-parents in one batch and keeps the role', async () => {
     calls.map((c) => c.name),
     ['operation', 'relations.delete', 'relations.create'],
   );
+});
+
+test('shiftEdge swaps the written order with a sibling and stops at the ends', async () => {
+  const { doc, calls } = load();
+  const landslide = byVar(doc, 's1l');
+  const edges = [...landslide.out].sort((a, b) => a.order - b.order);
+  assert.ok(edges.length >= 2);
+  const first = edges[0];
+  const second = edges[1];
+  // Already first: nothing to do, nothing sent.
+  assert.equal(await doc.shiftEdge(first.id, -1), false);
+  assert.equal(calls.length, 0);
+  assert.equal(await doc.shiftEdge(first.id, 1), true);
+  const after = [...byVar(doc, 's1l').out].sort((a, b) => a.order - b.order);
+  assert.equal(after[0].id, second.id);
+  assert.equal(after[1].id, first.id);
+  // Two patches in one batch, each the relation's umr namespace whole.
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ['operation', 'relations.patchMetadata', 'relations.patchMetadata'],
+  );
+  assert.deepEqual(calls[1].args[1], {
+    umr: { order: after.find((e) => e.id === calls[1].args[0]).order },
+  });
+  // The export writes the children in the new order.
+  const text = doc.toUmr();
+  const at = text.indexOf('(s1l / landslide-01');
+  const roleOf = (e) => `${e.role} `;
+  assert.ok(text.indexOf(roleOf(second), at) < text.indexOf(roleOf(first), at));
 });
 
 test('setRoot moves the mark and the export follows it', async () => {

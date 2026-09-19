@@ -68,6 +68,20 @@ export const KEY_ACTIONS = [
     outsideText: true,
   },
   {
+    id: 'node.earlier',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Move earlier among its siblings',
+    keys: ['Alt+ArrowLeft'],
+  },
+  {
+    id: 'node.later',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Move later among its siblings',
+    keys: ['Alt+ArrowRight'],
+  },
+  {
     id: 'node.reentrancy',
     scope: 'canvas',
     group: 'node',

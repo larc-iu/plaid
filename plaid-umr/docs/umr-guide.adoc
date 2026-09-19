@@ -160,6 +160,7 @@ The default shortcuts are listed here; every one of them can be rebound under yo
 == Moving around
 
 * Arrows move between nodes: up to the parent, down to the first child, left and right between the nodes of a row.
+* Alt+Left and Alt+Right move the focused node earlier or later among its siblings in the written order, the order the export and text mode use. The canvas keeps drawing children over their words.
 * Shift+Tab leaves the block.
 
 == Making nodes and edges
@@ -265,6 +266,7 @@ The defaults. Every shortcut can be rebound under your profile, Keyboard.
 | v | Rename the variable
 | u | Change the anchor
 | m | Move under another node
+| Alt+Left, Alt+Right | Move earlier or later among its siblings
 | r | Add a second parent
 | c | Coreference with another node
 | t | Temporal relation

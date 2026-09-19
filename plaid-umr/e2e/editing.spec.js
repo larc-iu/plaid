@@ -214,6 +214,15 @@ test.describe('editing', () => {
     ).toBeVisible();
     await block.screenshot({ path: process.env.UMR_LANE_SHOT || 'test-results/lane.png' });
 
+    // Alt+Right moves a child later in the written order. eat-01 was typed
+    // with :time first; afterwards :ARG0 comes first in text mode.
+    await nodeByConcept(page, 'today').click();
+    await page.keyboard.press('Alt+ArrowRight');
+    await block.locator('.umr-text-toggle').click();
+    const area2 = block.locator('textarea.umr-penman-text');
+    await expect(area2).toHaveValue(/eat-01[^()]*:ARG0 s1p[^()]*:time \(s1t \/ today\)/);
+    await block.locator('.umr-text-toggle').click();
+
     // Every write landed.
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);

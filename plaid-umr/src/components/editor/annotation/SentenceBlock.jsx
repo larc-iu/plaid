@@ -488,6 +488,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         'node.variable',
         'node.anchor',
         'node.move',
+        'node.earlier',
+        'node.later',
         'node.reentrancy',
         'node.root',
         'node.delete',
@@ -520,6 +522,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.move':
         if (treeEdgeInto(id)) setMode({ kind: 'move', nodeId: id });
         break;
+      case 'node.earlier':
+      case 'node.later': {
+        const edge = treeEdgeInto(id);
+        if (edge) await run(() => doc.shiftEdge(edge.id, action === 'node.earlier' ? -1 : 1));
+        break;
+      }
       case 'node.reentrancy':
         setMode({ kind: 'reentrancy', nodeId: id });
         break;

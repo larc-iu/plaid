@@ -513,6 +513,55 @@ export class UmrDocument extends DocumentModel {
     );
   }
 
+  // Move an edge one place earlier (dir -1) or later (+1) among its head's
+  // edges, in the written order: the two swap their orders, and an
+  // attribute between them stays between them. The canvas draws children by
+  // anchor, so this shows on the export, in text mode, and where siblings
+  // have no anchor to draw by. False at either end.
+  async shiftEdge(edgeId, dir) {
+    const edge = this.edge(edgeId);
+    const source = edge ? this.node(edge.source) : null;
+    if (!source) return false;
+    const siblings = [...source.out].sort((a, b) => a.order - b.order);
+    const at = siblings.findIndex((e) => e.id === edgeId);
+    const other = siblings[at + dir];
+    if (at < 0 || !other) return false;
+    // Two edges written with one order would not swap: give the pair
+    // distinct places, keeping their neighbours where they are.
+    const [lo, hi] =
+      edge.order === other.order ? [edge.order, edge.order + 1] : [edge.order, other.order];
+    const swapped = new Map(
+      dir < 0
+        ? [
+            [edge.id, lo],
+            [other.id, hi],
+          ]
+        : [
+            [edge.id, hi],
+            [other.id, lo],
+          ],
+    );
+    const target = this.node(edge.target);
+    return this._withSaving(
+      'Failed to reorder the edge',
+      async () => {
+        const patches = [];
+        this._applyRawPatch((next, infoNext) => {
+          this._layers(infoNext).relations.forEach((rel) => {
+            if (!swapped.has(rel.id)) return;
+            const patch = umrPatch(rel, { order: swapped.get(rel.id) });
+            rel.metadata = { ...(rel.metadata || {}), ...patch };
+            patches.push([rel.id, patch]);
+          });
+        });
+        await this._client.batched(async (b) => {
+          patches.forEach(([id, patch]) => b.relations.patchMetadata(id, patch));
+        });
+      },
+      `Move ${edge.role} ${target?.var || ''} ${dir < 0 ? 'earlier' : 'later'} under ${source.var}`,
+    );
+  }
+
   // Delete an edge. With `subtree`, the nodes only it kept reachable go too
   // (their anchors are deleted and the server's cascade takes the rest).
   // Resolves to the number of nodes deleted, or false.
