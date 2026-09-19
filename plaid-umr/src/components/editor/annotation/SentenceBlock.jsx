@@ -127,6 +127,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [showProblems, setShowProblems] = useState(false);
   // Text mode: the graph as PENMAN in place of the canvas until applied.
   const [textMode, setTextMode] = useState(false);
+  // Out of text mode, focus goes to the graph: the node focused before, else
+  // the root. The textarea it was in is gone.
+  const leaveTextMode = () => {
+    setTextMode(false);
+    requestAnimationFrame(() => {
+      const id = (focusedId && nodesById.has(focusedId) && focusedId) || sentence.roots[0]?.id;
+      if (id) nodeRefs.current.get(id)?.focus();
+    });
+  };
   // Text mode is an editor, so a read-only view has none: the History drawer's
   // past state kept one open, and its Apply wrote the past's plan into the
   // current document.
@@ -169,6 +178,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [mode, setMode] = useState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
   const [editor, setEditor] = useState(null);
+  // A mode waits for a click in THIS sentence: focus arriving in another
+  // block ends it, or a later click here carried out a move asked for before
+  // the annotator went elsewhere.
+  useEffect(() => {
+    if (!mode) return undefined;
+    const onFocusIn = (e) => {
+      const block = e.target?.closest?.('.umr-block');
+      if (block && block !== sectionRef.current) setMode(null);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, [mode]);
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
@@ -579,7 +600,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         confirmLabel: 'Delete',
         destructive: true,
       });
-      if (!ok) return;
+      // The dialog had nothing to hand focus back to.
+      if (!ok) {
+        requestAnimationFrame(() => focusNode(node.id));
+        return;
+      }
     }
     if (edge) await run(() => doc.deleteEdge(edge.id));
     else await run(() => doc.deleteNode(node.id));
@@ -772,6 +797,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (mode?.kind !== 'anchor') return;
     const node = nodesById.get(mode.nodeId);
     if (!node) return;
+    // A word takes no focus, so a click on one left it on the page, where
+    // Escape and the arrows never reach the block: back to the node.
+    nodeRefs.current.get(node.id)?.focus({ preventScroll: true });
     await run(() => {
       // Read at run time: an earlier click in the queue may have moved it.
       const current = doc.node(node.id);
@@ -1083,7 +1111,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             setApplying(true);
             const changes = await run(() => doc.applyPenman(sentence.index, text));
             setApplying(false);
-            if (changes !== false) setTextMode(false);
+            if (changes !== false) leaveTextMode();
           }}
           onCancel={async (dirty) => {
             if (dirty) {
@@ -1093,9 +1121,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 confirmLabel: 'Leave',
                 destructive: true,
               });
-              if (!ok) return;
+              if (!ok) {
+                requestAnimationFrame(() =>
+                  sectionRef.current?.querySelector('.umr-penman-text')?.focus(),
+                );
+                return;
+              }
             }
-            setTextMode(false);
+            leaveTextMode();
           }}
         />
       )}
@@ -1387,16 +1420,20 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 onCancel={closeEditor}
                 onDelete={
                   editor.kind === 'role' && editor.pending.edgeId
-                    ? () => {
+                    ? async () => {
                         const id = editor.pending.edgeId;
+                        const from = doc.edge(id)?.source;
                         closeEditor();
-                        run(() => doc.deleteEdge(id, { subtree: false }));
+                        await run(() => doc.deleteEdge(id, { subtree: false }));
+                        focusNode(from);
                       }
                     : editor.kind === 'docRole' && editor.pending.tripleId
-                      ? () => {
+                      ? async () => {
                           const id = editor.pending.tripleId;
+                          const at = editor.nodeId || focusedId;
                           closeEditor();
-                          run(() => doc.deleteTriple(id));
+                          await run(() => doc.deleteTriple(id));
+                          focusNode(at);
                         }
                       : undefined
                 }

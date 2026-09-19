@@ -151,6 +151,11 @@ export const UmrNode = React.memo(function UmrNode({
             e.stopPropagation();
             onChainClick?.(chain.index, node.id);
           }}
+          // Enter and Space are the chip's own: they click it. Reaching the
+          // node, Enter opened the concept picker instead.
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') e.stopPropagation();
+          }}
         >
           {chain.index + 1}
         </button>

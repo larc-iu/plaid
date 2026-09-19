@@ -295,6 +295,9 @@ test('setVariable refuses a taken or malformed variable', async () => {
   assert.equal(await doc.setVariable(landslide.id, 's1c'), false);
   assert.match(refused, /in use/);
   assert.equal(await doc.setVariable(landslide.id, 'x1'), false);
+  // A variable carries its sentence's number.
+  assert.equal(await doc.setVariable(landslide.id, 's3zz'), false);
+  assert.match(refused, /names sentence 3, and the node is in sentence 1/);
   assert.equal(await doc.setVariable(landslide.id, 's1z9'), true);
   assert.equal(byVar(doc, 's1z9').concept, 'landslide-01');
 });

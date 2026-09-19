@@ -63,12 +63,12 @@ test.describe('paging', () => {
     expect(await page.locator('.umr-block').count()).toBe(25);
     await expect(page.locator('.umr-block[data-sentence-index="27"]')).toHaveCount(0);
 
-    // Sentence 27 is on page 2, and its first node is focused once the page
-    // has turned.
+    // Sentence 27 is on page 2, and its root is focused once the page has
+    // turned.
     await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate?sent=27`);
     const block = page.locator('.umr-block[data-sentence-index="27"]');
     await expect(block).toBeVisible();
-    await expect(block.locator('.umr-node').first()).toBeFocused();
+    await expect(block.locator('.umr-node--root')).toBeFocused();
     expect(await page.locator('.umr-block').count()).toBe(3);
 
     // The page is remembered: a bare URL reopens on page 2.

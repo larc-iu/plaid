@@ -429,17 +429,18 @@ export class UmrDocument extends DocumentModel {
   variableProblem(nodeId, variable) {
     const node = this.node(nodeId);
     if (!node || node.var === variable) return null;
+    return this._newVariableProblem(variable, node.sentence);
+  }
+
+  // Why `variable` cannot name a new node of sentence `sentenceIndex`, or null
+  // when it can: the canvas's rename and text mode's new nodes ask the same.
+  _newVariableProblem(variable, sentenceIndex) {
     if (!VARIABLE.test(variable)) {
       return `${variable} is not a variable: s, the sentence number, letters, a number.`;
     }
-    if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
-    return null;
-  }
-
-  // Why `variable` cannot name a node text mode makes, or null when it can.
-  _newVariableProblem(variable) {
-    if (!VARIABLE.test(variable)) {
-      return `${variable} is not a variable: s, the sentence number, letters, a number.`;
+    const n = Number(variable.match(/^s([0-9]+)/)[1]);
+    if (sentenceIndex != null && n !== sentenceIndex) {
+      return `${variable} names sentence ${n}, and the node is in sentence ${sentenceIndex}.`;
     }
     if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
     return null;
@@ -1022,7 +1023,7 @@ export class UmrDocument extends DocumentModel {
     // cycle through anything but a quote.
     const errors = [];
     plan.create.forEach((c) => {
-      const why = this._newVariableProblem(c.var);
+      const why = this._newVariableProblem(c.var, sentenceIndex);
       if (why) errors.push({ message: why });
     });
     const reaches = (from, to) => {

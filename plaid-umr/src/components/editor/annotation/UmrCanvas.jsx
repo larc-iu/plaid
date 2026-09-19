@@ -122,7 +122,8 @@ export const UmrCanvas = ({
   );
 
   // The deep link: ?sent=<sentence number> scrolls to that sentence's block
-  // and focuses one of its nodes, the one ?var= names or the first. The
+  // and focuses one of its nodes, the one ?var= names or the root (the first
+  // in the page's order was often an unaligned leaf). The
   // assistant's citations and the shell's focusHere use it, and the nonce
   // makes a repeat of the same link scroll again.
   const answered = useRef(null);
@@ -133,9 +134,11 @@ export const UmrCanvas = ({
     answered.current = asked;
     const index = String(sentParam).replace(/^s/, '');
     const block = `.umr-block[data-sentence-index="${index}"]`;
-    const node = varParam ? `[data-node-var="${CSS.escape(varParam)}"]` : '.umr-node';
+    const root = doc.sentence(Number(index))?.roots[0]?.var;
+    const named = varParam || root;
+    const node = named ? `[data-node-var="${CSS.escape(named)}"]` : '.umr-node';
     reveal(index, `${block} ${node}`);
-  }, [sentParam, varParam, focusNonce, reveal]);
+  }, [sentParam, varParam, focusNonce, reveal, doc]);
 
   // The node whose cross-sentence relations are drawn. Each block says which
   // of its nodes is active, and at most two are at once (one hovered, one
