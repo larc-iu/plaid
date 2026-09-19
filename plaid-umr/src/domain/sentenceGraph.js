@@ -7,7 +7,9 @@
 //   node   = a span in the concept layer, value = concept, tokens = the anchor
 //            pieces in the UMR node layer (zero-width when unaligned),
 //            metadata.umr = { var, attrs: [{ rel, value, order }], constant?,
-//            root? } where `root` marks the sentence's root
+//            root?, sentence? } where `root` marks the sentence's root and
+//            `sentence`, on an unaligned node only, is its sentence token's
+//            id (see umrReconcile.js)
 //   edge   = a relation in the relation layer, value = role,
 //            metadata.umr = { order }
 //   triple = a relation in the document-graph layer, value = the relation,

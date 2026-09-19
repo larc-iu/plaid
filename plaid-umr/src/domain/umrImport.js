@@ -129,12 +129,18 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
 
     // Nodes: one span per graph node and per constant in use. A constant the
     // document already has (an attach onto one with triples) is reused.
+    // The sentence tokens by number, for the unaligned nodes to record.
+    const sentenceIds = existing
+      ? existing.graph.sentences.map((s) => s.tokenId)
+      : tokenResults[0]?.body?.ids || [];
     const toCreate = plan.nodes.filter((n) => !n.existingId);
     const spanOps = toCreate.map((n) => ({
       spanLayerId: layerInfo.conceptLayer.id,
       tokens: n.pieceIndexes.map((i) => pieceIds[i]),
       value: n.concept,
-      metadata: { [UMR_NAMESPACE]: n.meta },
+      metadata: {
+        [UMR_NAMESPACE]: n.home ? { ...n.meta, sentence: sentenceIds[n.home - 1] } : n.meta,
+      },
     }));
     let spanIds = [];
     if (spanOps.length) {
@@ -236,9 +242,12 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
   const varToKey = new Map();
   const pendingTriples = [];
 
-  const addNode = (key, concept, meta, pieceIndexes, existingId = null) => {
+  // `home` is the sentence an UNALIGNED node belongs to, by number: its
+  // anchor is a point, so it records its sentence's token once that exists
+  // (see umrReconcile.js).
+  const addNode = (key, concept, meta, pieceIndexes, existingId = null, home = null) => {
     nodeIndex.set(key, nodes.length);
-    nodes.push({ key, concept, meta, pieceIndexes, existingId });
+    nodes.push({ key, concept, meta, pieceIndexes, existingId, home });
   };
   // Constants the document already has, and the triples it already holds
   // (by the variables' names), when attaching.
@@ -311,7 +320,8 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           }
           pieceIndexes.push(addPiece(first.begin, last.end));
         });
-        if (!pieceIndexes.length) pieceIndexes.push(addPiece(begin, begin));
+        const unaligned = !pieceIndexes.length;
+        if (unaligned) pieceIndexes.push(addPiece(begin, begin));
         const attrs = [];
         node.children.forEach((child, order) => {
           if (child.kind === 'node') {
@@ -332,7 +342,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
         // The file's root is data: a graph with a cycle no :quote explains
         // has no root by derivation, and the file says which node it is.
         if (v === ps.graph.root) meta.root = true;
-        addNode(key, node.concept, meta, pieceIndexes);
+        addNode(key, node.concept, meta, pieceIndexes, null, unaligned ? index : null);
       });
     }
 

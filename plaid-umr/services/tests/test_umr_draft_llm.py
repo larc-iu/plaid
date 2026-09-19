@@ -255,6 +255,11 @@ def test_an_alignment_lands_on_the_words_it_names_and_0_0_is_unaligned():
                           _ops(service.client, 'tokens.bulk_create')))
     assert (by_concept['dog']['begin'], by_concept['dog']['end']) == (4, 7)
     assert (by_concept['now']['begin'], by_concept['now']['end']) == (0, 0)
+    # The unaligned node records its sentence, as the app does, and an
+    # aligned one does not.
+    meta = {n['value']: n['metadata']['umr'] for n in _ops(service.client, 'spans.bulk_create')}
+    assert meta['now']['sentence'] == 's1'
+    assert 'sentence' not in meta['dog']
 
 
 def test_a_discontiguous_alignment_becomes_one_anchor_per_run_of_words():

@@ -58,8 +58,11 @@ def test_a_new_node_is_a_create_and_the_edge_that_reaches_it(ws):
     create = next(op for op in diff.ops if op['kind'] == 'create_node')
     assert (create['var'], create['concept']) == ('s1y', 'yard')
     # Unaligned: a node made here has a zero-width anchor at the start of its
-    # sentence until somebody anchors it on the canvas.
+    # sentence until somebody anchors it on the canvas, and it records that
+    # sentence, which is how the editor tells it from a stray once another
+    # app deletes the sentence.
     assert create['begin'] == 0
+    assert create['sentence_id'] == ws.doc('Story').sentences[0].id
     edge = next(op for op in diff.ops if op['kind'] == 'create_edge')
     assert (edge['source_var'], edge['role'], edge['target_var']) == ('s1b', ':place', 's1y')
     # The source exists, so the executor needs no id for it; the target does
@@ -137,7 +140,9 @@ def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(clie
     span = next(e for e in log if e[0] == 'spans')
     assert span[2][0] == 'm-concept' and span[2][2] == 'yard'
     assert span[2][1] == ['new-tokens-0']          # the token the first batch made
-    assert span[2][3]['umr'] == {'var': 's1y', 'attrs': []}
+    # Unaligned, so it records its sentence.
+    assert span[2][3]['umr'] == {
+        'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
     relation = next(e for e in log if e[0] == 'relations')
     assert relation[2][:4] == ('m-rel', 'mc-b', 'new-spans-0', ':place')
 

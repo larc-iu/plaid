@@ -282,6 +282,11 @@ try {
 
   // ---- 4. UMR reads it again ------------------------------------------------
 
+  // Opening it heals first, as the editor does (reconcile-on-open).
+  umr = await loadUmr();
+  const healed = await umr.reconcileOnOpen();
+  check(!healed.error, 'the repair on open ran', String(healed.error));
+  console.log(`   repair: ${umr.describeReconcile(healed) || 'nothing to do'}`);
   umr = await loadUmr();
   const nodes = [...umr.graph.nodesById.values()].filter((n) => !n.constant);
   const node = (c) => byConcept(umr, c);
@@ -349,6 +354,13 @@ try {
     ['ev5-01', 'thing5', 'person5', 'ev6-01', 'thing6', 'person6'].every(node) &&
       sentenceOfNode('ev5-01') === sentenceOfNode('ev6-01'),
     'two merged sentences keep both graphs, in one sentence',
+  );
+  // The merged-away sentence's unaligned node is bound to the one it joined.
+  const merged = umr.sentence(sentenceOfNode('ev5-01'));
+  check(
+    node('person6')?.metadata?.umr?.sentence === merged?.tokenId,
+    "the merged sentence's unaligned node records the sentence it joined",
+    JSON.stringify(node('person6')?.metadata?.umr),
   );
   // Sentence 7, deleted.
   check(!node('ev7-01') && !node('thing7'), "a deleted sentence's anchored nodes go with it");

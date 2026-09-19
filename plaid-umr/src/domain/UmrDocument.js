@@ -17,6 +17,7 @@ import {
   groupOf,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
+import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
 import { serializeUmrFile } from './format/umrFile.js';
 import { parsePenman, serializePenman } from './format/penman.js';
 import { validateDocument } from './format/validate.js';
@@ -106,6 +107,37 @@ export class UmrDocument extends DocumentModel {
 
   _patchContext(next) {
     return [getUmrLayerInfo(next)];
+  }
+
+  // ----- reconcile on open -----
+
+  // What another app's edit to the sentences left of an unaligned node
+  // (umrReconcile.js): the stray a deleted sentence leaves goes, with its
+  // edges and triples, and a node whose sentence was merged away is bound to
+  // the one it was merged into. One batch, so the audit entry names one
+  // repair. History keeps what was removed.
+  async _reconcile() {
+    const { remove, rebind } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
+    if (!remove.length && !rebind.length) return { findings: [] };
+    try {
+      const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
+      const spans = this._layers(this.layerInfo).spans;
+      await this._client.batched(async (b) => {
+        if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
+        rebind.forEach(({ nodeId, sentenceTokenId }) => {
+          const span = spans.find((x) => x.id === nodeId);
+          b.spans.patchMetadata(nodeId, umrPatch(span, { sentence: sentenceTokenId }));
+        });
+      });
+      await this._reload();
+      return { findings: [], removed: remove.length, rebound: rebind.length };
+    } catch (error) {
+      return { findings: [], error };
+    }
+  }
+
+  describeReconcile(result) {
+    return describeUmrReconcile(result);
   }
 
   // ----- reading helpers -----
@@ -292,6 +324,9 @@ export class UmrDocument extends DocumentModel {
     // fragment until it is connected, and the graph keeps its root.
     const meta = { var: variable, attrs };
     if (!parent && sentence.nodes.length === 0) meta.root = true;
+    // An unaligned node records its sentence: its anchor is a point, and a
+    // point at a sentence's start outlives the sentence (see _reconcile).
+    if (!wordIds.length) meta.sentence = sentence.tokenId;
     const textId = info.textLayer.text.id;
     let result = null;
     const ok = await this._withSaving(
@@ -427,6 +462,13 @@ export class UmrDocument extends DocumentModel {
     const oldIds = node.pieces.map((p) => p.id);
     const textId = info.textLayer.text.id;
     const words = sentence.words.filter((w) => wordIds.includes(w.id)).map((w) => w.text);
+    // The sentence an unaligned node records (see _reconcile), set when it
+    // loses its words and dropped when it gains some.
+    const span = this._layers(info).spans.find((s) => s.id === nodeId);
+    const { sentence: home, ...rest } = umrOf(span);
+    const meta = wordIds.length ? rest : { ...rest, sentence: sentence.tokenId };
+    // Written only when it changes: dropped when words come, set when they go.
+    const recordChanges = wordIds.length ? home !== undefined : home !== sentence.tokenId;
     return this._withSaving(
       'Failed to change the anchor',
       async () => {
@@ -442,6 +484,7 @@ export class UmrDocument extends DocumentModel {
         ).ids;
         await this._client.batched(async (b) => {
           b.spans.setTokens(nodeId, tokenIds);
+          if (recordChanges) b.spans.patchMetadata(nodeId, { [UMR_NAMESPACE]: meta });
           b.tokens.bulkDelete(oldIds);
         });
         this._applyRawPatch((next, infoNext) => {
@@ -452,7 +495,10 @@ export class UmrDocument extends DocumentModel {
             infoNext.nodeTokenLayer.tokens.push({ id: tokenIds[i], begin: p.begin, end: p.end }),
           );
           const span = L.spans.find((s) => s.id === nodeId);
-          if (span) span.tokens = tokenIds;
+          if (span) {
+            span.tokens = tokenIds;
+            if (recordChanges) span.metadata = { ...(span.metadata || {}), [UMR_NAMESPACE]: meta };
+          }
         });
       },
       words.length ? `Anchor ${node.var} to ${words.join(' ')}` : `Unanchor ${node.var}`,
@@ -984,7 +1030,9 @@ export class UmrDocument extends DocumentModel {
               end: sentence.begin,
             },
           ]);
-          const meta = { var: c.var, attrs: c.attrs };
+          // Unaligned, like every node text mode makes: it records its
+          // sentence (see _reconcile).
+          const meta = { var: c.var, attrs: c.attrs, sentence: sentence.tokenId };
           if (plan.root === c.var) meta.root = true;
           const span = await client.spans.create(info.conceptLayer.id, ids, c.concept, {
             [UMR_NAMESPACE]: meta,

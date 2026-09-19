@@ -429,6 +429,12 @@ def plan_sentence(graph, alignment, sentence, taken):
         meta = {'var': variables[var], 'attrs': attrs}
         if var == graph['root']:
             meta['root'] = True
+        # An unaligned node records its sentence, as the app does: its anchor
+        # is a point at the sentence's start, which outlives the sentence when
+        # another app deletes it, and the app's reconcile tells the stray by
+        # the record (plaid-umr src/domain/umrReconcile.js).
+        if all(begin == end for begin, end in extents) and sentence.get('token_id'):
+            meta['sentence'] = sentence['token_id']
         index_of_var[var] = len(nodes)
         nodes.append({'concept': node['concept'], 'meta': meta,
                       'piece_indexes': list(range(first_piece, len(pieces)))})

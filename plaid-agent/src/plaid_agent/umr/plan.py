@@ -491,6 +491,12 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
                 meta['constant'] = True
             if op.get('root'):
                 meta['root'] = True
+            # A node made here is unaligned, so it records its sentence, as
+            # the editor does: its anchor is a point at the sentence's start,
+            # which outlives the sentence when another app deletes it, and the
+            # editor's reconcile tells the stray by the record.
+            if op.get('sentence_id') and not op.get('constant'):
+                meta['sentence'] = op['sentence_id']
             ctx.span_at[(op['document_id'], op['var'])] = b.add(
                 lambda batch, o=op, t=token, m=meta: batch.spans.create(
                     o['concept_layer_id'], [t], o.get('concept') or '',
