@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { notifyError } from '../lib/notify.js';
 import { isExpiredSession, useDocumentHistory } from './useDocumentHistory.js';
 
@@ -46,10 +46,18 @@ export function useHistoryView({ documentId, client, doc, reload, onExpired }) {
 
   const history = useDocumentHistory({ documentId, client, onExpired });
 
+  // Read on every open, and again when the live document changes under an
+  // open rail: read once, the list never showed an edit made after it, so the
+  // state just before one could not be viewed or restored without a reload.
   const openHistory = () => {
     setDrawerOpen(true);
-    if (!history.hasLoadedAudit) history.fetchAuditLog();
+    history.fetchAuditLog();
   };
+  const dataVersion = doc?.dataVersion;
+  useEffect(() => {
+    if (drawerOpen && !selectedEntry) history.fetchAuditLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataVersion]);
 
   const selectEntry = async (entry) => {
     const mine = ++selection.current;

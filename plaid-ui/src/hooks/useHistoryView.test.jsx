@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderComponent } from '../test/renderComponent.jsx';
+import { useState } from 'react';
 
 // The audit read and the snapshot read are the network, so the document model
 // and the client are the seam. What is under test is the STATE MACHINE around
@@ -54,7 +55,12 @@ const deferReads = () => {
   return pending;
 };
 
+// `rerender` stands for the screen re-rendering on a document change, which
+// is when the hook reads the document's data version.
+let rerender;
 const Probe = () => {
+  const [, force] = useState(0);
+  rerender = () => force((n) => n + 1);
   api = useHistoryView({ documentId: 'doc-1', client, doc, reload, onExpired });
   return null;
 };
@@ -79,7 +85,9 @@ beforeEach(() => {
 });
 
 describe('the history view', () => {
-  it('reads the entry list the first time the rail opens, and not again', async () => {
+  // Read once, the list never showed an edit made after it, so the state just
+  // before that edit could not be viewed or restored without a reload.
+  it('reads the entry list on every open, keeping the one on screen meanwhile', async () => {
     await mount();
     await view.step(() => api.openHistory());
     await settle();
@@ -88,9 +96,34 @@ describe('the history view', () => {
     expect(audit).toHaveBeenCalledTimes(1);
 
     await view.step(() => api.closeHistory());
+    const later = deferred();
+    audit.mockImplementationOnce(() => later.promise);
+    await view.step(() => api.openHistory());
+    expect(audit).toHaveBeenCalledTimes(2);
+    expect(api.loadingAudit).toBe(false);
+    expect(api.auditEntries).toEqual([ENTRY_B, ENTRY_A]);
+    const ENTRY_C = { time: '2026-09-03T00:00:00Z' };
+    await view.step(() => later.resolve([ENTRY_C, ENTRY_B, ENTRY_A]));
+    await settle();
+    expect(api.auditEntries).toEqual([ENTRY_C, ENTRY_B, ENTRY_A]);
+    await view.unmount();
+  });
+
+  it('reads it again when the document changes under the open rail', async () => {
+    await mount();
     await view.step(() => api.openHistory());
     await settle();
     expect(audit).toHaveBeenCalledTimes(1);
+    doc.dataVersion = 1;
+    await view.step(() => rerender());
+    await settle();
+    expect(audit).toHaveBeenCalledTimes(2);
+    // Closed, a change reads nothing.
+    await view.step(() => api.closeHistory());
+    doc.dataVersion = 2;
+    await view.step(() => rerender());
+    await settle();
+    expect(audit).toHaveBeenCalledTimes(2);
     await view.unmount();
   });
 
