@@ -161,9 +161,13 @@ export const EnhancedArcs = forwardRef(
                 setFocusedId(relation.id);
               }}
               onDelete={() => {
+                // The next arc along takes the focus, rather than the page
+                // body, where no key reaches this band.
+                const i = sorted.findIndex((r) => r.id === relation.id);
+                const next = sorted[i + 1] || sorted[i - 1] || null;
                 onRelationDelete(relation.id);
                 setEditingId(null);
-                setFocusedId(null);
+                setFocusedId(next?.id || null);
               }}
               onTab={(v, shiftKey, typed) => {
                 commitLabel(relation, v, typed);

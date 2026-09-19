@@ -171,10 +171,12 @@ export function parseCoNLLU(text) {
 
     // DEPS, the enhanced graph's incoming edges (see domain/enhancedGraph.js).
     let deps = null;
+    let depsUnreadable = false;
     try {
       deps = parseDeps(depsColumn);
     } catch {
       unreadableDeps += 1;
+      depsUnreadable = true;
     }
     if (deps) droppedEmptyNodeDeps += deps.emptyHeads;
 
@@ -194,6 +196,10 @@ export function parseCoNLLU(text) {
       head: headNum,
       deprel: deprel === '_' ? null : deprel,
       deps,
+      // Told apart from a bare `_`: a value nobody could read says nothing
+      // about the enhanced graph, where `_` says this word has no enhanced
+      // head, and reading one as the other suppressed the word's relation.
+      depsUnreadable,
     });
   }
 

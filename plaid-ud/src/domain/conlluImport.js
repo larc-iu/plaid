@@ -107,7 +107,9 @@ export async function importConlluDocument(
       // Whether this sentence is annotated for the enhanced graph at all,
       // which is what a bare `_` on one of its words means (enhancedGraph.js).
       const hasDeps = s.tokens.some((t) => t.deps);
-      return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps));
+      // A DEPS value that could not be read is dropped with a warning, and
+      // says nothing: the word keeps the relation its tree gives it.
+      return s.tokens.map((t) => planEnhancedRow(t, t.deps, hasDeps && !t.depsUnreadable));
     });
     if (!enhancedRelationLayer) {
       const lost = enhancedPlans

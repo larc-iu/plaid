@@ -62,6 +62,25 @@ export function compileGrew(ast, layerInfo, opts = {}) {
   return c.compile(ast);
 }
 
+// Whether an edge label could stand for a root relation, whose head is the
+// anchor node and no word. A label read off another edge, or none at all,
+// could be anything.
+const labelCanBeRoot = (label) => {
+  if (!label) return true;
+  if (label.type === 'list') {
+    const names = label.labels.some((x) => bareLabel(x) === 'root');
+    return label.negated ? !names : names;
+  }
+  if (label.type === 'regex') {
+    try {
+      return new RegExp(label.pattern, normalizeFlags(label.flags)).test('root');
+    } catch {
+      return true;
+    }
+  }
+  return true;
+};
+
 class Compiler {
   constructor(layerInfo, opts) {
     this.li = layerInfo || {};
@@ -168,6 +187,12 @@ class Compiler {
       query,
       warnings: this.warnings,
       impossible: this.impossible,
+      // What this query cannot find, although the local matcher can: an edge
+      // whose named head could be the root's, since the root hangs off the
+      // anchor and no word, and a form stored beside a multiword token's own
+      // word rather than read off the text. A rewrite reads every document
+      // rather than the ones this query names.
+      partialDocs: Boolean(this.rootsMayBeMissed || this.formsMayBeMissed),
       // What the pattern named, so a caller can offer "count by" over it
       // without parsing the query text again.
       nodes: [...this.topNodeIds].sort(),
@@ -469,20 +494,27 @@ class Compiler {
         'Matching tokens with no surface form is not supported.',
       );
     }
-    if (fi.op === '<>') {
-      this.warnFormMwt();
-      ctx.list.push(['token', tv, { value: { regex: notExactlyRegex(this.litValue(fi.value)) } }]);
-      return;
-    }
+    // A word's form is its Form span where it has one, and its slice of the
+    // text otherwise: the span is stored only while the two differ, which is
+    // what the words inside a multiword token do. The query reads the slice,
+    // so those words are not found by it, which the warning says and which
+    // `formsMayBeMissed` keeps a rewrite from trusting.
     this.warnFormMwt();
-    ctx.list.push(['token', tv, { value: this.valueConstraint(fi.value, ctx) }]);
+    this.formsMayBeMissed = true;
+    ctx.list.push([
+      'token',
+      tv,
+      fi.op === '<>'
+        ? { value: { regex: notExactlyRegex(this.litValue(fi.value)) } }
+        : { value: this.valueConstraint(fi.value, ctx) },
+    ]);
   }
 
   warnFormMwt() {
     if (this._formWarned) return;
     this._formWarned = true;
     this.warnings.push(
-      "`form` matches the token's text slice. For multiword tokens the surface form may differ.",
+      "`form` matches the token's text slice. For a multiword token's own words the form is stored beside it, and this does not read it.",
     );
   }
 
@@ -578,6 +610,14 @@ class Compiler {
     // matcher finds every sentence. Refused, which sends a rewrite to read
     // every document, and tells a search the spelling that works.
     const l = item.label;
+    // A named head bound to a word cannot be the anchor the root hangs off,
+    // so a clause that asks for one finds nothing here while the local
+    // matcher, which does bind the anchor, finds every sentence. A positive
+    // list naming `root` is refused outright, with the spelling that works.
+    // Every other label that could stand for a root is compiled as it is and
+    // noted, so that a rewrite reads every document rather than trusting a
+    // list of them (`rootsMayBeMissed`).
+    if (!item.src.wild && labelCanBeRoot(l)) this.rootsMayBeMissed = true;
     if (
       !item.src.wild &&
       l?.type === 'list' &&

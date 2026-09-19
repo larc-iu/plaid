@@ -41,6 +41,11 @@ async function findDocs(client, grs, layerInfo, projectId) {
       throw e;
     }
     if (compiled.impossible) continue;
+    // A rule whose query cannot find everything the matcher can (a root from
+    // a named head, a form inside a multiword token): the list of documents
+    // it gives is short of the ones whose only match is one of those. Read
+    // them all.
+    if (compiled.partialDocs) return null;
     const r = await client.query({
       where: [...compiled.query.where, ['token', '?S', { doc: { var: '?d' } }]],
       return: { group: ['?d'], aggregates: [['count']] },

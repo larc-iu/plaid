@@ -528,7 +528,17 @@ export const DependencyTree = forwardRef(
     // Per-label navigation (arrows / Tab / Enter) is handled element-scoped on the
     // focused <text> below, so it doesn't fight this listener or fire once per
     // mounted sentence.
+    // Whose sentence the key belongs to: every mounted tree listens on the
+    // document, so without this the last one to bind won the chord and
+    // Ctrl+D from a cell of sentence 1 jumped into sentence 25.
+    const inThisSentence = (e) => {
+      const row = svgRef.current?.closest('[data-sentence-row]');
+      if (!row) return true;
+      const where = e.target instanceof Node && e.target !== document ? e.target : null;
+      return row.contains(where) || row.contains(document.activeElement);
+    };
     const handleKeyDown = (e) => {
+      if (!inThisSentence(e)) return;
       if (e.key === 'd' && (e.ctrlKey || e.metaKey) && !focusedRelation && !editingRelation) {
         e.preventDefault();
         focusFirstRelation();
@@ -798,9 +808,14 @@ export const DependencyTree = forwardRef(
                   relabeling === relation.id
                     ? undefined
                     : () => {
+                        // The next label along takes the focus: focus on the
+                        // page body leaves every key here dead until the
+                        // annotator clicks.
+                        const i = sortedRelations.findIndex((r) => r.id === relation.id);
+                        const next = sortedRelations[i + 1] || sortedRelations[i - 1] || null;
                         onRelationDelete(relation.id);
                         closeEditor();
-                        setFocusedRelation(null);
+                        setFocusedRelation(next?.id || null);
                       }
                 }
                 onTab={(v, shiftKey, typed) => {
