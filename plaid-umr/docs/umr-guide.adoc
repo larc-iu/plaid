@@ -117,17 +117,18 @@ The **Annotate** tab draws every sentence of the document as a block: the graph 
 
 == Nodes
 
-A node shows its variable, its concept, and its attributes as chips (`aspect performance`, `polarity -`).
+A node shows its variable, its concept, and its attributes as a line of text (`aspect performance · polarity -`).
 A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
 The root's concept is underlined.
 
 == Edges
 
-Tree edges run down from a parent to its children, the relation floating above the child.
+Tree edges run down from a parent to its children, the relation floating above the child, straight down when the child is under its parent.
 Every edge carries a head at the end it points to, which is the only thing that says which way a re-entrant or a document-level relation runs.
-A node with a second way in (a re-entrancy) shows the second edge as a bowed curve with a dashed label, leaving and arriving at the same side of the two nodes so it never crosses the tree edge to the same node.
-An edge to a node far along the sentence runs across the gap between rows in a lane of its own, so a parent with many children fans out into distinct lines.
+A node with a second way in (a re-entrancy) shows the second edge as a dashed curve, the only dashed line on the canvas, with its relation beside it where it covers no node and no other label.
+Between rows it leaves and arrives at the same side of the two nodes, and between two nodes of one row it dips under the row.
+The children of one parent that lie beyond its box share one line across the gap between rows, with a drop to each.
 
 == Words and glosses
 
@@ -139,9 +140,11 @@ Which layers feed which lines is set in **Project Settings, UMR settings** (see 
 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
 Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
-A relation between a node and a constant reads on the node as a tag in the document graph's own color (`author :full-affirmative`), and a relation between two nodes as a tag on each (`:before s3b`, `s3d :before`), in this sentence or another.
-The tag reads the triple in its own order with the node left out, so `s3d :before` on `s3b` says that `s3d` is before it.
-A node wears at most five tags. Past that it shows four and a count (`+22`), which lists them all when clicked on a focused node.
+A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in purple, temporal ones in teal, coreference in amber.
+The tag reads the triple in its own order, with a dot where the node itself stands: `● :before s3b` on the node that is before `s3b`, and `s3d :before ●` on the node `s3d` is before.
+The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
+`author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
+A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked on a focused node.
 Focusing or hovering a node draws its own relations: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
 Nothing is drawn for the others, so a long sentence stays readable.
 
@@ -154,7 +157,7 @@ Clicking the chip goes to the next mention of the chain, in this sentence or ano
 
 The official UMR checks run as you edit.
 A sentence's header counts its errors and warnings; clicking the count lists them.
-A node a check names wears a dot, red for an error and amber for a warning, with the message on hover.
+A node a check names wears a dot and a border in red for an error or amber for a warning, with the message on hover.
 The project's **Validation** tab lists every problem in every document.
 
 = Editing

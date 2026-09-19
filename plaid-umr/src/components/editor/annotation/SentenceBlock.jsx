@@ -23,7 +23,6 @@ import {
   TEMPORAL_CONSTANTS,
 } from './pickers.js';
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
-import { LOOK } from '../../../lib/look.js';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -181,12 +180,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const layout = useMemo(() => {
     const first = sentence.words[0];
-    return layoutSentence(
-      sentence,
-      nodesById,
-      { columns, sizes, sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40 },
-      { trunks: LOOK.has('trunks') },
-    );
+    return layoutSentence(sentence, nodesById, {
+      columns,
+      sizes,
+      sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40,
+    });
   }, [sentence, nodesById, columns, sizes]);
 
   const measured = columns.size >= sentence.words.length && sentence.words.length > 0;

@@ -6,11 +6,15 @@
    the list. */
 .umr-canvas-list,
 .umr-block {
-  --umr-edge: hsl(215 16% 47%);
+  /* Lighter than the text in the boxes, so lines stop competing with it. */
+  --umr-edge: hsl(215 16% 62%);
   --umr-edge-lit: hsl(221 83% 53%);
   --umr-node-bg: hsl(0 0% 100%);
   --umr-node-border: hsl(214 32% 82%);
+  /* The document graph, a hue per family of relation. */
   --umr-doc: hsl(292 60% 45%);
+  --umr-doc-temporal: hsl(185 70% 30%);
+  --umr-doc-coref: hsl(30 85% 38%);
 }
 .umr-canvas-list {
   position: relative;
@@ -79,12 +83,12 @@
 .umr-edge {
   fill: none;
   stroke: var(--umr-edge);
-  stroke-width: 1.5;
+  stroke-width: 1.25;
   transition: stroke 120ms;
 }
+/* A second parent is dashed, and dashes mean nothing else on the canvas. */
 .umr-edge--reentrant {
-  stroke-width: 1.2;
-  opacity: 0.75;
+  stroke-dasharray: 4 3;
 }
 .umr-edge--lit {
   stroke: var(--umr-edge-lit);
@@ -92,15 +96,20 @@
   opacity: 1;
 }
 
+/* The relation is the text most often corrected, so it is set dark. Its
+   pill has no outline until it is pointed at or lit: one outline per child
+   on top of one per box was half the canvas's rectangles. The background
+   stays, to part the lines running under it. */
 .umr-edge-label {
   position: absolute;
   transform: translate(-50%, -50%);
   border-radius: 999px;
   background: hsl(var(--background));
-  border: 1px solid var(--umr-node-border);
-  color: var(--umr-edge);
+  border: 1px solid transparent;
+  color: hsl(var(--foreground));
+  font-weight: 500;
   padding: 0 6px;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.25rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
@@ -108,8 +117,8 @@
     left 150ms,
     top 150ms;
 }
-.umr-edge-label--reentrant {
-  border-style: dashed;
+.umr-edge-label[role='button']:hover {
+  border-color: var(--umr-node-border);
 }
 .umr-edge-label--lit {
   color: var(--umr-edge-lit);
@@ -150,7 +159,15 @@
 .umr-node:hover {
   border-color: var(--umr-edge);
 }
-.umr-node--focused,
+/* A problem colours the border as well as the corner dot, so it shows from
+   across a large graph. */
+.umr-node:has(> .umr-node-mark--warning) {
+  border-color: hsl(38 92% 55%);
+}
+.umr-node:has(> .umr-node-mark--error) {
+  border-color: hsl(0 72% 62%);
+}
+.umr-node.umr-node--focused,
 .umr-node:focus-visible {
   border-color: var(--umr-edge-lit);
   box-shadow: 0 0 0 3px hsl(221 83% 53% / 0.2);
@@ -175,22 +192,28 @@
 .umr-node-attrs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  column-gap: 5px;
   max-width: 260px;
 }
 .umr-chip {
   display: inline-flex;
   align-items: baseline;
   gap: 3px;
-  border-radius: 999px;
-  background: hsl(var(--muted));
-  padding: 0 6px;
   font-size: 0.68rem;
   line-height: 1.1rem;
   white-space: nowrap;
   /* A long value (a `:wiki` title) wraps inside the node rather than
      running out of it and under its neighbour. */
   max-width: 100%;
+}
+/* Attributes and document tags are lines of text, not chips: the boxes and
+   the edges are the only shapes left. An attribute's separator ends it, so
+   a line that wraps never starts with one. Document tags need none: each
+   has its node's dot at one end, and a separator beside it read as two. */
+.umr-chip:not(:last-child)::after {
+  content: '·';
+  margin-left: 5px;
+  color: hsl(var(--muted-foreground));
 }
 .umr-chip-rel {
   color: hsl(var(--muted-foreground));
@@ -549,25 +572,39 @@
 .umr-node-doc {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  column-gap: 12px;
   max-width: 260px;
 }
 .umr-doc-tag {
-  display: inline-block;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--umr-doc) 40%, transparent);
-  color: var(--umr-doc);
-  padding: 0 6px;
+  --tag: var(--umr-doc);
+  color: var(--tag);
   font-size: 0.66rem;
   line-height: 1.1rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
 }
-.umr-doc-tag[role='button'] {
+.umr-doc-tag[data-group='temporal'] {
+  --tag: var(--umr-doc-temporal);
+}
+.umr-doc-tag[data-group='coref'] {
+  --tag: var(--umr-doc-coref);
+}
+/* `author :full-affirmative`, on nearly every event, says the least: grey,
+   so the exceptions stand out. */
+.umr-doc-tag[data-default] {
+  color: hsl(var(--muted-foreground));
+}
+.umr-doc-tag[role='button'],
+.umr-doc-tag-end[role='button'] {
   cursor: pointer;
 }
+.umr-doc-tag[role='button']:hover,
+.umr-doc-tag-end[role='button']:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .umr-doc-tag--more {
-  border-style: dashed;
+  color: hsl(var(--muted-foreground));
 }
 /* A relation to another sentence, drawn across the blocks between. */
 .umr-cross-links {
@@ -784,92 +821,4 @@
 .umr-inline-delete:hover {
   border-color: hsl(var(--destructive) / 0.5);
   color: hsl(var(--destructive));
-}
-
-/* TEMPORARY: the options of the visual review's second batch, each under its
-   switch on the list (src/lib/look.js), off unless set. What is chosen moves
-   into the rules above; the rest is deleted. */
-.umr-doc-tag-end[role='button']:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-[data-look~='pills-quiet'] .umr-edge-label {
-  border-color: transparent;
-  color: hsl(var(--foreground));
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-[data-look~='pills-quiet'] .umr-edge-label[role='button']:hover {
-  border-color: var(--umr-node-border);
-}
-[data-look~='pills-quiet'] .umr-edge-label--lit {
-  color: var(--umr-edge-lit);
-  border-color: var(--umr-edge-lit);
-}
-[data-look~='edges-light'] .umr-block {
-  --umr-edge: hsl(215 16% 62%);
-}
-[data-look~='edges-light'] .umr-edge {
-  stroke-width: 1.25;
-}
-[data-look~='edges-light'] .umr-edge--reentrant {
-  stroke-dasharray: 4 3;
-  opacity: 1;
-}
-[data-look~='edges-light'] .umr-edge--lit {
-  stroke-width: 2;
-}
-[data-look~='errors-tint'] .umr-node:has(> .umr-node-mark--error) {
-  border-color: hsl(0 72% 62%);
-}
-[data-look~='errors-tint'] .umr-node:has(> .umr-node-mark--warning) {
-  border-color: hsl(38 92% 55%);
-}
-[data-look] .umr-doc-tag {
-  --tag: var(--umr-doc);
-}
-[data-look~='tags-family'] .umr-doc-tag[data-group='temporal'] {
-  --tag: hsl(185 70% 30%);
-}
-[data-look~='tags-family'] .umr-doc-tag[data-group='coref'] {
-  --tag: hsl(30 85% 38%);
-}
-[data-look~='tags-family'] .umr-doc-tag {
-  color: var(--tag);
-  border-color: color-mix(in srgb, var(--tag) 40%, transparent);
-}
-[data-look~='tags-quiet'] .umr-doc-tag {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--tag) 8%, transparent);
-  color: color-mix(in srgb, var(--tag) 78%, white);
-}
-[data-look~='tags-quiet'] .umr-node--focused .umr-doc-tag,
-[data-look~='tags-quiet'] .umr-node:hover .umr-doc-tag {
-  border-color: color-mix(in srgb, var(--tag) 40%, transparent);
-  background: none;
-  color: var(--tag);
-}
-[data-look~='tags-default-quiet'] .umr-doc-tag[data-default] {
-  color: hsl(var(--muted-foreground));
-  border-color: hsl(var(--border));
-  background: none;
-}
-[data-look~='chips-text'] .umr-chip,
-[data-look~='chips-text'] .umr-doc-tag {
-  border: none;
-  border-radius: 0;
-  background: none;
-  padding: 0;
-}
-[data-look~='chips-text'] .umr-chip + .umr-chip::before,
-[data-look~='chips-text'] .umr-doc-tag + .umr-doc-tag::before {
-  content: '·';
-  margin-right: 5px;
-  color: hsl(var(--muted-foreground));
-}
-[data-look~='chips-text'] .umr-node-attrs,
-[data-look~='chips-text'] .umr-node-doc {
-  column-gap: 5px;
-  row-gap: 0;
 }

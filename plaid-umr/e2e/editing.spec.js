@@ -474,8 +474,8 @@ test.describe('editing', () => {
 
       // The earlier node wears the relation as much as the later one. Under
       // the graphs is left only what belongs to no node.
-      await expect(byVar('s1c2').locator('.umr-doc-tag')).toHaveText(['s2c :same-entity']);
-      await expect(byVar('s2c').locator('.umr-doc-tag')).toHaveText([':same-entity s1c2']);
+      await expect(byVar('s1c2').locator('.umr-doc-tag')).toHaveText(['s2c :same-entity ●']);
+      await expect(byVar('s2c').locator('.umr-doc-tag')).toHaveText(['● :same-entity s1c2']);
       await expect(one.locator('.umr-doc-chip')).toHaveText(['root :modal author']);
       await expect(two.locator('.umr-doc-chip')).toHaveCount(0);
 
@@ -505,7 +505,7 @@ test.describe('editing', () => {
         .click();
       await page.locator('[role="option"]', { hasText: /^s1c chase-01/ }).click();
       await page.locator('[role="option"]', { hasText: /^:after/ }).click();
-      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText([':after s1c']);
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['● :after s1c']);
       await expect(byVar('s1c').locator('.umr-doc-tag')).toContainText(['s2e :after']);
       await expect(links).toHaveCount(1);
 
@@ -514,7 +514,7 @@ test.describe('editing', () => {
       await byVar('s1c').locator('.umr-doc-tag', { hasText: 's2e :after' }).click();
       await expect(editor(page)).toHaveValue(':after');
       await page.locator('[role="option"]', { hasText: /^:overlap/ }).click();
-      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText([':overlap s1c']);
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['● :overlap s1c']);
 
       const clean = cleanDiagnostics(diag);
       expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);

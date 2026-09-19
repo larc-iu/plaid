@@ -267,9 +267,9 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
 }
 
 // A tree edge that reaches sideways runs horizontally across its row gap. In
-// one gap every such run gets a lane of its own, the longest reach nearest
-// the parent, so a parent with many far children fans out into distinct
-// lines rather than one band. A short reach needs no lane.
+// one gap each PARENT gets a lane, the widest reach nearest the row, and its
+// runs share it: one horizontal with a drop to each child. Parents crossing
+// the same gap keep apart. A child under its parent needs no lane.
 function assignLanes(edges, nodes, tree, gapOf, opt) {
   const byGap = new Map();
   edges.forEach((edge) => {
@@ -279,9 +279,9 @@ function assignLanes(edges, nodes, tree, gapOf, opt) {
     const reach = Math.abs(t.x - s.x);
     if (underParent(s, t, opt)) return;
     if (!byGap.has(s.row)) byGap.set(s.row, []);
-    // With `trunks`, every run of one parent shares a lane: one horizontal,
-    // a drop to each child. Without, each run has its own.
-    byGap.get(s.row).push({ id: edge.id, reach, key: opt.trunks ? edge.source : edge.id });
+    // Every run of one parent shares a lane: one horizontal, a drop to each
+    // child. A lane per run drew a node with five far children as a ribbon.
+    byGap.get(s.row).push({ id: edge.id, reach, key: edge.source });
   });
   const lanes = new Map();
   byGap.forEach((list, row) => {

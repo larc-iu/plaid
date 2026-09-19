@@ -10,46 +10,108 @@ const node = {
   aligned: true,
   constant: false,
 };
-const tags = (n) =>
-  Array.from({ length: n }, (_, i) => ({
-    id: `t${i}`,
-    rel: ':subset-of',
-    group: 'coref',
-    text: `s${i + 3}x :subset-of`,
-  }));
 const position = { x: 100, y: 10, width: 120, height: 40 };
 
+// A triple with this node at one end, as docTagsOf hands it over.
+const tag = (id, rel, otherVar, { out = false, group = 'coref', isDefault = false } = {}) => ({
+  id,
+  rel,
+  group,
+  otherVar,
+  isDefault,
+  source: out ? 'n1' : `x${id}`,
+  target: out ? `x${id}` : 'n1',
+  text: out ? `${rel} ${otherVar}` : `${otherVar} ${rel}`,
+});
+
+// A pointer-down on the node records it as focused, which a part's click
+// then reads.
+const pressAndClick = async (r, el) =>
+  r.step(() => {
+    r.container
+      .querySelector('.umr-node')
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    el.click();
+  });
+
 describe('UmrNode document tags', () => {
-  it('wears five tags as they are', async () => {
-    const r = await renderComponent(<UmrNode node={node} position={position} docTags={tags(5)} />);
-    expect(all(r.container, '.umr-doc-tag')).toHaveLength(5);
-    expect(all(r.container, '.umr-doc-tag--more')).toHaveLength(0);
+  it('marks which end of the triple the node is', async () => {
+    const tags = [
+      tag('a', ':before', 's3b', { out: true, group: 'temporal' }),
+      tag('b', ':full-affirmative', 'author', { group: 'modal', isDefault: true }),
+    ];
+    const r = await renderComponent(<UmrNode node={node} position={position} docTags={tags} />);
+    expect(texts(r.container, '.umr-doc-tag')).toEqual([
+      '● :before s3b',
+      'author :full-affirmative ●',
+    ]);
+    const [temporal, modal] = all(r.container, '.umr-doc-tag');
+    expect(temporal.dataset.group).toBe('temporal');
+    expect(modal.hasAttribute('data-default')).toBe(true);
     await r.unmount();
   });
 
-  // The node 26 others are a subset of: four tags and a count, which names
-  // the rest in its tooltip and, once the node is focused, lists them all.
-  it('past five, four and a count of the rest', async () => {
-    const onAction = vi.fn();
+  it('merges the triples of one relation and direction into one tag', async () => {
+    const onDocTagClick = vi.fn();
+    const tags = [
+      tag('a', ':full-affirmative', 's3b', { group: 'modal' }),
+      tag('b', ':full-affirmative', 's3m', { group: 'modal' }),
+      tag('c', ':same-entity', 's1p'),
+    ];
     const r = await renderComponent(
-      <UmrNode node={node} position={position} docTags={tags(26)} focused onAction={onAction} />,
+      <UmrNode
+        node={node}
+        position={position}
+        docTags={tags}
+        focused
+        onAction={() => {}}
+        onDocTagClick={onDocTagClick}
+      />,
     );
     expect(texts(r.container, '.umr-doc-tag')).toEqual([
-      's3x :subset-of',
-      's4x :subset-of',
-      's5x :subset-of',
-      's6x :subset-of',
-      '+22',
+      's3b s3m :full-affirmative ●',
+      's1p :same-entity ●',
     ]);
-    const more = r.container.querySelector('.umr-doc-tag--more');
-    expect(more.title.split('\n')).toHaveLength(22);
-    await r.step(() => {
-      r.container
-        .querySelector('.umr-node')
-        .dispatchEvent(new Event('pointerdown', { bubbles: true }));
-      more.click();
-    });
+    // Each end of the merged tag is its own click.
+    const second = r.container.querySelector('.umr-doc-tag-end[data-triple-id="b"]');
+    await pressAndClick(r, second);
+    expect(onDocTagClick).toHaveBeenCalledWith(tags[1]);
+    await r.unmount();
+  });
+
+  // The node 26 others are a subset of: one tag, three of the ends and a
+  // count of the rest, which lists them all once the node is focused.
+  it('caps the ends one tag lists', async () => {
+    const onAction = vi.fn();
+    const tags = Array.from({ length: 26 }, (_, i) => tag(`t${i}`, ':subset-of', `s${i + 3}x`));
+    const r = await renderComponent(
+      <UmrNode node={node} position={position} docTags={tags} focused onAction={onAction} />,
+    );
+    expect(texts(r.container, '.umr-doc-tag')).toEqual(['s3x s4x s5x +23 :subset-of ●']);
+    const more = r.container.querySelector('.umr-doc-more');
+    expect(more.title.split('\n')).toHaveLength(23);
+    await pressAndClick(r, more);
     expect(onAction).toHaveBeenCalledWith('node.docRelations', 'n1');
+    await r.unmount();
+  });
+
+  it('shows five tags, and past five four and a count', async () => {
+    const rels = [':before', ':after', ':overlap', ':contains', ':depends-on', ':contained'];
+    const five = rels.slice(0, 5).map((rel, i) => tag(`t${i}`, rel, `s${i}e`, { out: true }));
+    let r = await renderComponent(<UmrNode node={node} position={position} docTags={five} />);
+    expect(all(r.container, '.umr-doc-tag')).toHaveLength(5);
+    expect(all(r.container, '.umr-doc-more')).toHaveLength(0);
+    await r.unmount();
+
+    const six = rels.map((rel, i) => tag(`t${i}`, rel, `s${i}e`, { out: true }));
+    r = await renderComponent(<UmrNode node={node} position={position} docTags={six} />);
+    expect(texts(r.container, '.umr-doc-tag')).toEqual([
+      '● :before s0e',
+      '● :after s1e',
+      '● :overlap s2e',
+      '● :contains s3e',
+      '+2',
+    ]);
     await r.unmount();
   });
 });
