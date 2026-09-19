@@ -376,23 +376,19 @@ export function prepareRequest(
     requestBody = transformRequest(body);
   }
 
-  // Strict mode: append document-version for non-GET requests. On a batch,
-  // stamp ONLY the first queued write: batches run atomically server-side, so
-  // a version check on the first op gives whole-batch OCC semantics, while
-  // stamping every op would 409 the second op against the version bump the
-  // first op itself caused (every queued op captures the same pre-batch
-  // version).
-  if (
-    client.strictModeDocumentId &&
-    method !== "GET" &&
-    !(batch && batch.versionStamped)
-  ) {
+  // Strict mode: append document-version for non-GET requests, on EVERY
+  // queued write of a batch. The server validates the first write it can
+  // (one whose route resolves a document) and skips the rest of that
+  // document's, so the version bump a sub-op causes does not 409 the next
+  // one. Stamping only the first write was silently no check at all
+  // whenever that write was one the route ignores, such as a vocabulary
+  // entry's metadata, which is exactly what the igt editor queues first.
+  if (client.strictModeDocumentId && method !== "GET") {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
       const separator = url.includes("?") ? "&" : "?";
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
-      if (batch) batch.versionStamped = true;
     }
   }
 

@@ -128,7 +128,6 @@ function openBatch(client) {
   const batch = Object.create(client);
   batch.client = client;
   batch.operations = [];
-  batch.versionStamped = false;
   batch.open = true;
   batch._request = (method, path, options = {}) =>
     queueRequest(batch, method, path, options);

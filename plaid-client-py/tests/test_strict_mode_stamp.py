@@ -68,10 +68,15 @@ def test_a_bypassing_call_does_not_spend_the_batch_stamp():
 
     assert len(sent) == 2, "the query and the client's write went over the wire"
     assert [_version_of(op['path']) for op in queued] == ['7'], \
-        'the first queued write must carry the document version'
+        'the queued write must carry the document version'
 
 
-def test_the_first_queued_write_takes_the_stamp_and_the_rest_go_without():
+def test_every_queued_write_carries_the_stamp():
+    # The server validates the first write whose route names a document and
+    # skips the rest of that document's, so the bump a sub-op causes does not
+    # refuse the next one. Stamping the first write alone was no check at all
+    # whenever that write was one its route ignores, such as a vocabulary
+    # entry's metadata.
     client = _strict_client()
     _stub_session(client)
     b = client.batch()
@@ -81,7 +86,7 @@ def test_the_first_queued_write_takes_the_stamp_and_the_rest_go_without():
     queued = list(b.operations)
     b.abort()
 
-    assert [_version_of(op['path']) for op in queued] == ['7', None, None]
+    assert [_version_of(op['path']) for op in queued] == ['7', '7', '7']
 
 
 def test_a_write_outside_a_batch_always_carries_the_stamp():

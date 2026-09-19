@@ -389,20 +389,19 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     elif body is not None:
         request_body = transform_request(body)
 
-    # Strict mode: stamp the expected document-version on a write. On a batch,
-    # stamp ONLY the first queued write: batches run atomically server-side,
-    # so a version check on the first op gives whole-batch OCC semantics,
-    # while stamping every op would 409 the second against the version bump
-    # the first op itself caused.
-    if (client.strict_mode_document_id and method != 'GET'
-            and not (batch is not None and batch.version_stamped)):
+    # Strict mode: stamp the expected document-version on a write, on EVERY
+    # queued write of a batch. The server validates the first write it can
+    # (one whose route resolves a document) and skips the rest of that
+    # document's, so the version bump a sub-op causes does not 409 the next
+    # one. Stamping only the first write was silently no check at all
+    # whenever that write was one the route ignores, such as a vocabulary
+    # entry's metadata.
+    if client.strict_mode_document_id and method != 'GET':
         doc_id = client.strict_mode_document_id
         doc_version = client.document_versions.get(doc_id)
         if doc_version:
             separator = '&' if '?' in url else '?'
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
-            if batch is not None:
-                batch.version_stamped = True
 
     # Per-call custom audit-log message. Unlike document-version this has no
     # OCC self-conflict, so it is stamped on every queued op, not just the

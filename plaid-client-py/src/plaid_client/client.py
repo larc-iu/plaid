@@ -3599,9 +3599,6 @@ class PlaidBatch:
     def __init__(self, client: PlaidClient):
         self.client = client
         self.operations: list[dict] = []
-        # Strict mode stamps the expected document-version on the FIRST queued
-        # write only (see http.prepare_request).
-        self.version_stamped = False
         self.open = True
         self.results: list[Any] = []
         _install_resources(self)

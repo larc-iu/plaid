@@ -56,12 +56,17 @@ test("a call that goes over the wire on its own does not spend the batch's stamp
   assert.deepEqual(
     b.operations.map((op) => versionOf(op.path)),
     ["7"],
-    "the first queued write must carry the document version",
+    "the queued write must carry the document version",
   );
   b.abort();
 });
 
-test("the first queued write takes the stamp and the rest go without", async () => {
+test("every queued write carries the stamp", async () => {
+  // The server validates the first write whose route names a document and
+  // skips the rest of that document's, so the bump a sub-op causes does not
+  // refuse the next one. Stamping the first write alone was no check at all
+  // whenever that write was one its route ignores, such as a vocabulary
+  // entry's metadata.
   const client = strictClient();
   const b = client.batch();
   await b.spans.update("s1", "NOUN");
@@ -69,7 +74,7 @@ test("the first queued write takes the stamp and the rest go without", async () 
   await b.relations.delete("r1");
   assert.deepEqual(
     b.operations.map((op) => versionOf(op.path)),
-    ["7", null, null],
+    ["7", "7", "7"],
   );
   b.abort();
 });
