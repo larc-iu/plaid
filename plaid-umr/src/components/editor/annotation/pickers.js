@@ -1,6 +1,5 @@
-// What the canvas's editors offer: roles for a relation, concepts for a node,
-// attribute lines for a node. The lexicon (frame files, the project
-// vocabulary) joins the concept options in a later phase.
+// What the canvas's editors offer: roles for a relation, concepts for a node
+// (the frame files and the project's vocabularies join in), the rest.
 import {
   ARG_ROLES,
   ROLES,
@@ -10,6 +9,7 @@ import {
   ATTRIBUTES,
 } from '../../../domain/format/inventory.js';
 import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
+import { EMPTY_LEXICON, entriesStartingWith, entryLabel } from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 
 // The relations of one document-level group, the validator's set first.
@@ -37,6 +37,10 @@ export const nodeOptions = (graph, exceptId = null) =>
 const flat = (v) => (Array.isArray(v) ? v : Object.values(v || {}).flat());
 
 const uniq = (list) => [...new Set(list.filter(Boolean))];
+const uniqEntries = (list) => {
+  const seen = new Set();
+  return list.filter((e) => e && !seen.has(e.id) && seen.add(e.id));
+};
 
 // Roles for an edge out of `parentConcept`: the parent's own arguments
 // first, with what each means, when the frame file knows the roleset.
@@ -84,13 +88,25 @@ const STATIC_CONCEPT_GROUPS = [
   },
 ];
 
-export const conceptOptions = (words = [], frames = null, typed = '') => {
+//
+// `vocab` is the project's vocabularies: the entries linked from the node's
+// words (`linked`, offered first, the annotator chose them once already)
+// and the lexicon the typed text searches.
+export const conceptOptions = (words = [], frames = null, typed = '', vocab = null) => {
   const senses = uniq(words.flatMap((w) => sensesFor(frames, w.text).map((x) => x.id)));
   const byPrefix = typed && !words.length ? rolesetsStartingWith(frames, typed) : [];
   const senseItem = (id) => ({ value: id, label: `${id} ${argSummary(frames?.[id])}` });
   const surface = uniq(words.map((w) => w.text));
+  const entries = vocab
+    ? uniqEntries([
+        ...(vocab.linked || []),
+        ...(typed ? entriesStartingWith(vocab.lexicon || EMPTY_LEXICON, typed) : []),
+      ])
+    : [];
+  const entryItem = (e) => ({ value: e.concept, label: entryLabel(e), entryId: e.id });
   return [
     ...(senses.length ? [{ group: 'Senses', items: senses.map(senseItem) }] : []),
+    ...(entries.length ? [{ group: 'Vocabulary', items: entries.map(entryItem) }] : []),
     ...(byPrefix.length
       ? [{ group: 'Rolesets', items: byPrefix.map((x) => senseItem(x.id)) }]
       : []),

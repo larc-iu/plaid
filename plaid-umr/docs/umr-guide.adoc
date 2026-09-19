@@ -83,6 +83,12 @@ A project with no text at all is set up in Plaid IGT or Plaid UD first.
 **Project Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
 It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
 
+== Vocabulary
+
+A vocabulary linked to the project in Plaid IGT is a lexicon here.
+A word that IGT has linked to an entry offers that entry's headword as its concept, with the entry's gloss beside it, and typing in the concept picker finds any entry by its form.
+An entry that stands for a roleset says so in its metadata: `umr.roleset` is the concept it offers (`lunch-01`) and `umr.args` describes the arguments the way a frame file does (`{"ARG0": "eater"}`).
+
 = Importing and Exporting
 
 == Importing a `.umr` file
@@ -165,7 +171,7 @@ The default shortcuts are listed here; every one of them can be rebound under yo
 
 == Changing a node
 
-* **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the word itself, then the abstract concepts, rolesets and discourse concepts.
+* **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the vocabulary entries the word is linked to, then the word itself, then the abstract concepts, rolesets and discourse concepts.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
 * **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
 * **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document.

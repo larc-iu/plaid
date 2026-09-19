@@ -5,6 +5,7 @@
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
+import { vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
 import {
@@ -50,6 +51,12 @@ export class UmrDocument extends DocumentModel {
 
   get layerInfo() {
     return this._derived('layerInfo', () => getUmrLayerInfo(this._raw));
+  }
+
+  // The vocabulary entries the document's words and morphemes are linked
+  // to, by token id. The concept picker offers them first.
+  get vocabLinks() {
+    return this._derived('vocabLinks', () => vocabLinksByToken(this.layerInfo));
   }
 
   get body() {

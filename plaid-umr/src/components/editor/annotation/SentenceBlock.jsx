@@ -7,6 +7,7 @@ import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
+import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import {
   roleOptions,
@@ -55,6 +56,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   direction = 'ltr',
   readOnly = true,
   frames = null,
+  // The project's vocabularies as a lexicon (vocabLexicon.js).
+  lexicon = null,
   problems = [],
 }) {
   const confirm = useConfirm();
@@ -721,6 +724,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     return id ? nodesById.get(id)?.concept : null;
   };
 
+  // The vocabulary entries the given words are linked to, on the words
+  // themselves or on their morphemes, and the lexicon for what is typed.
+  const vocabFor = (words) => {
+    if (!lexicon || !lexicon.entries.length) return null;
+    const within = (m) => words.some((w) => m.begin >= w.begin && m.end <= w.end);
+    const tokenIds = [
+      ...words.map((w) => w.id),
+      ...(sentence.morphemes || []).filter(within).map((m) => m.id),
+    ];
+    return { linked: linkedEntries(lexicon, doc?.vocabLinks, tokenIds), lexicon };
+  };
+
   const editorOptions = (ed) => {
     if (!ed) return [];
     if (ed.kind === 'role') return roleOptions(frames, parentConceptOf(ed.pending));
@@ -730,16 +745,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         : [];
       return [
         ...(ed.wordIds.length ? [] : [{ group: 'Words', items: wordOptions(sentence.words) }]),
-        ...conceptOptions(words, frames, ed.typed || ''),
+        ...conceptOptions(words, frames, ed.typed || '', vocabFor(words)),
       ];
     }
     if (ed.kind === 'concept') {
       const node = nodesById.get(ed.nodeId);
-      return conceptOptions(
-        sentence.words.filter((w) => node?.wordIds.includes(w.id)),
-        frames,
-        ed.typed || '',
-      );
+      const words = sentence.words.filter((w) => node?.wordIds.includes(w.id));
+      return conceptOptions(words, frames, ed.typed || '', vocabFor(words));
     }
     if (ed.kind === 'docRole') {
       const group = ed.pending.tripleId ? ed.pending.group : ed.pending.triple.group;

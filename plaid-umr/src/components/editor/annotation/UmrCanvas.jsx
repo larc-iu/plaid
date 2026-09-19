@@ -4,6 +4,7 @@ import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
 import { loadFrames } from '../../../domain/lexicon.js';
+import { EMPTY_LEXICON, loadVocabularies } from '../../../domain/vocabLexicon.js';
 
 // The frame file of the project's language, once it has loaded; null for a
 // language without one, or until it arrives.
@@ -20,6 +21,24 @@ const useFrames = (languageTag) => {
     };
   }, [languageTag]);
   return frames;
+};
+
+// The project's vocabularies as a lexicon, read once per project. Live
+// even under a past state: what the vocabulary says now is the lexicon.
+const useLexicon = (client, project) => {
+  const [lexicon, setLexicon] = useState(EMPTY_LEXICON);
+  const key = (project?.vocabs || []).map((v) => v.id).join(',');
+  useEffect(() => {
+    let live = true;
+    setLexicon(EMPTY_LEXICON);
+    if (!client || !key) return undefined;
+    loadVocabularies(client, project).then((l) => live && setLexicon(l));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, key]);
+  return lexicon;
 };
 
 // Scroll a rendered node into view and focus it.
@@ -46,6 +65,7 @@ export const UmrCanvas = ({
   focusNonce = 0,
 }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
+  const lexicon = useLexicon(doc.client, doc.project);
   const graph = doc.graph;
   const problems = doc.problemsBySentence;
   const sentences = graph.sentences;
@@ -148,6 +168,7 @@ export const UmrCanvas = ({
           direction={doc.textDirection}
           readOnly={readOnly}
           frames={frames}
+          lexicon={lexicon}
           problems={problems.get(sentence.index) || NO_PROBLEMS}
           goToNode={goToNode}
         />
