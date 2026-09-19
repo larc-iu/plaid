@@ -189,6 +189,22 @@ test('deleteEdge takes the nodes only that edge reached, and spares a re-entrant
   assert.equal(del.args[0].length, 2);
 });
 
+// A document read at a past time is a snapshot: a write through it would put
+// a plan made against the past into the current document.
+test('a document read at an earlier time refuses every write', async () => {
+  const text = fs.readFileSync(FIXTURE, 'utf8');
+  const plan = planImport(parseUmrFile(text).sentences, []);
+  const { client, calls } = recordingClient();
+  const doc = new UmrDocument({ raw: rawFromPlan(plan), client, asOf: '2026-09-19T12:00:00Z' });
+  const errors = [];
+  doc.onError = (msg) => errors.push(msg);
+  const landslide = byVar(doc, 's1l');
+  assert.equal(await doc.setConcept(landslide.id, 'slide-01'), false);
+  assert.equal(await doc.applyPenman(1, doc.penmanOf(1).replace('landslide-01', 'x')), false);
+  assert.deepEqual(calls, []);
+  assert.match(errors[0], /earlier state of the document cannot be edited/);
+});
+
 // A reported-speech sentence's root is re-entered by :quote from the quoted
 // clause. Deleting that edge, as "Delete relation to parent" on the root
 // does, took the root out of the roots kept and so the whole graph with it.

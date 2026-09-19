@@ -125,6 +125,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [showProblems, setShowProblems] = useState(false);
   // Text mode: the graph as PENMAN in place of the canvas until applied.
   const [textMode, setTextMode] = useState(false);
+  // Text mode is an editor, so a read-only view has none: the History drawer's
+  // past state kept one open, and its Apply wrote the past's plan into the
+  // current document.
+  useEffect(() => {
+    if (readOnly) setTextMode(false);
+  }, [readOnly]);
   const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
@@ -1059,7 +1065,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           ))}
         </ul>
       )}
-      {textMode && (
+      {textMode && !readOnly && (
         <PenmanEditor
           initial={doc.penmanOf(sentence.index)}
           applying={applying}
@@ -1085,7 +1091,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       )}
       <div
         className="umr-canvas"
-        hidden={textMode}
+        hidden={textMode && !readOnly}
         onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         onMouseOver={(e) => {
           const el = e.target.closest?.('[data-node-id]');

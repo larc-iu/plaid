@@ -198,6 +198,16 @@ export class DocumentModel {
   // Nested mutations flatten into the outer operation.
   async _withSaving(label, fn, operation = operationLabel(label)) {
     if (this._isSaving) return false;
+    // A document read at `asOf` is a past state: nothing writes through it. A
+    // screen that let an edit reach one would otherwise write a plan made
+    // against the past into the current document.
+    if (this._asOf) {
+      const err = new Error('An earlier state of the document cannot be edited.');
+      this._error = `${label}: ${err.message}`;
+      if (this.onError) this.onError(this._error, err, label);
+      this._emit();
+      return false;
+    }
     this._isSaving = true;
     this._error = '';
     this._emit();
