@@ -58,6 +58,25 @@ const ACTIONS = [
   'canvas.newRoot',
 ];
 
+// The head on an edge, as a marker on its own path. Defined inside the
+// block's SVG rather than once for the page, because the colors are custom
+// properties of `.umr-block` and a marker elsewhere would not see them;
+// hence ids carrying the block's own key.
+const Arrow = ({ id, color }) => (
+  <marker
+    id={id}
+    viewBox="0 0 8 8"
+    refX="7"
+    refY="4"
+    markerWidth="5"
+    markerHeight="5"
+    orient="auto-start-reverse"
+    markerUnits="strokeWidth"
+  >
+    <path d="M 0 1 L 7 4 L 0 7 z" fill={color} />
+  </marker>
+);
+
 // A chain's color, from its index: hues spread around the wheel.
 // Starting away from red, which marks an error.
 const chainColor = (index) => `hsl(${(210 + index * 137.5) % 360} 62% 42%)`;
@@ -845,6 +864,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     return [];
   };
 
+  // Unique to this block, so two blocks' markers cannot collide.
+  const arrows = `umr-arrow-${sentence.tokenId}`;
+
   const modeHint = mode
     ? {
         anchor: 'Click words to anchor to them.',
@@ -1003,8 +1025,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             height={layout.height}
             aria-hidden="true"
           >
+            <defs>
+              <Arrow id={`${arrows}-doc`} color="var(--umr-doc)" />
+            </defs>
             {docEdges.map((t) => (
-              <path key={t.id} d={t.path} className="umr-doc-edge" />
+              <path
+                key={t.id}
+                d={t.path}
+                className="umr-doc-edge"
+                markerEnd={`url(#${arrows}-doc)`}
+              />
             ))}
           </svg>
           <div
@@ -1024,20 +1054,31 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               height={layout.height}
               aria-hidden="true"
             >
+              <defs>
+                <Arrow id={`${arrows}-edge`} color="var(--umr-edge)" />
+                <Arrow id={`${arrows}-lit`} color="var(--umr-edge-lit)" />
+              </defs>
               {measured &&
-                layout.edges.map((e) => (
-                  <path
-                    key={e.id}
-                    d={e.path}
-                    className={[
-                      'umr-edge',
-                      e.tree ? '' : 'umr-edge--reentrant',
-                      active && (e.source === active || e.target === active) ? 'umr-edge--lit' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  />
-                ))}
+                layout.edges.map((e) => {
+                  const lit = active && (e.source === active || e.target === active);
+                  return (
+                    <path
+                      key={e.id}
+                      d={e.path}
+                      className={[
+                        'umr-edge',
+                        e.tree ? '' : 'umr-edge--reentrant',
+                        lit ? 'umr-edge--lit' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      // Which way the relation runs. A tree edge's direction
+                      // is legible from the rows alone; a re-entrant one's is
+                      // not, since it can point anywhere.
+                      markerEnd={`url(#${arrows}-${lit ? 'lit' : 'edge'})`}
+                    />
+                  );
+                })}
               {handPath && <path d={handPath} className="umr-edge umr-edge--hand" />}
             </svg>
             {sentence.nodes.map((node, i) => (

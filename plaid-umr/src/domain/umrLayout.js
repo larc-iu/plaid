@@ -17,7 +17,9 @@ export const DEFAULT_OPTIONS = Object.freeze({
   marginBottom: 20,
   // How far above a child its tree edge's label floats, and the label's
   // height, which the row gap keeps clear of lanes.
-  labelLift: 13,
+  // Enough that the pill clears the arrowhead at the child's top edge: the
+  // pill is ~20px tall and centred on this, and the head is ~8px long.
+  labelLift: 22,
   labelHeight: 12,
   // Lanes: the first sits this far below the row, the next this far apart.
   laneInset: 6,
@@ -277,14 +279,44 @@ function treePath(s, t, lane, opt) {
 // A re-entrant edge leaves the parent's side and arrives at the child's side,
 // bowing outward, so it reads as another way in rather than a second tree.
 function reentrantPath(s, t, opt) {
-  const leftward = t.x < s.x;
-  const dir = leftward ? -1 : 1;
-  const x1 = s.x + (dir * s.width) / 2;
-  const y1 = s.y + s.height / 2;
-  const x2 = t.x - (dir * t.width) / 2;
-  const y2 = t.y + t.height / 2;
-  const bow = dir * Math.max(opt.gap * 2, Math.abs(x2 - x1) / 4);
-  return `M ${r(x1)} ${r(y1)} C ${r(x1 + bow)} ${r(y1)}, ${r(x2 - bow)} ${r(y2)}, ${r(x2)} ${r(y2)}`;
+  // Two nodes in one row: a low bow from the side of one to the side of the
+  // other, under the labels and over nothing.
+  if (sameRow(s, t, opt)) {
+    const dir = t.x < s.x ? -1 : 1;
+    const x1 = s.x + (dir * s.width) / 2;
+    const y1 = s.y + s.height / 2;
+    const x2 = t.x - (dir * t.width) / 2;
+    const y2 = t.y + t.height / 2;
+    const bow = dir * Math.max(opt.gap * 2, Math.abs(x2 - x1) / 4);
+    return `M ${r(x1)} ${r(y1)} C ${r(x1 + bow)} ${r(y1)}, ${r(x2 - bow)} ${r(y2)}, ${r(x2)} ${r(y2)}`;
+  }
+  // Rows apart: leave and arrive on the SAME side, bulging out from it. A
+  // side-to-side bow would cut straight through both boxes when the two are
+  // nearly above one another, which is exactly the case a reflexive makes
+  // (one node as two arguments of the node above it, so a tree edge and a
+  // re-entrant edge join the very same pair).
+  const { x1, y1, x2, y2, bow } = reentrantEnds(s, t, opt);
+  const lead = (y2 - y1) / 4;
+  return (
+    `M ${r(x1)} ${r(y1)} C ${r(x1 + bow)} ${r(y1 + lead)}, ` +
+    `${r(x2 + bow)} ${r(y2 - lead)}, ${r(x2)} ${r(y2)}`
+  );
+}
+
+const sameRow = (s, t, opt) => Math.abs(t.y - s.y) < opt.rowHeight / 2;
+
+// Where a re-entrant edge between rows leaves, arrives and bulges to: the
+// side the target lies toward, at the near corner of each box.
+function reentrantEnds(s, t, opt) {
+  const down = t.y > s.y;
+  const side = t.x < s.x ? -1 : 1;
+  return {
+    x1: s.x + (side * s.width) / 2,
+    y1: down ? s.y + s.height : s.y,
+    x2: t.x + (side * t.width) / 2,
+    y2: down ? t.y : t.y + t.height,
+    bow: side * Math.max(opt.gap * 3, Math.abs(t.y - s.y) / 3),
+  };
 }
 
 // A tree edge's label sits just above its child: children of a row never
@@ -293,11 +325,15 @@ function labelPoint(s, t, isTree, opt) {
   if (isTree) {
     return { x: t.x, y: t.y - opt.labelLift };
   }
-  const leftward = t.x < s.x;
-  const dir = leftward ? -1 : 1;
-  const x1 = s.x + (dir * s.width) / 2;
-  const x2 = t.x - (dir * t.width) / 2;
-  return { x: (x1 + x2) / 2, y: (s.y + t.y) / 2 + opt.nodeHeight / 2 };
+  if (sameRow(s, t, opt)) {
+    const dir = t.x < s.x ? -1 : 1;
+    const x1 = s.x + (dir * s.width) / 2;
+    const x2 = t.x - (dir * t.width) / 2;
+    return { x: (x1 + x2) / 2, y: (s.y + t.y) / 2 + opt.nodeHeight / 2 };
+  }
+  // On the bulge, clear of both boxes and of the tree edge to the same node.
+  const { x1, y1, x2, y2, bow } = reentrantEnds(s, t, opt);
+  return { x: (x1 + x2) / 2 + bow * 0.75, y: (y1 + y2) / 2 };
 }
 
 const r = (n) => Math.round(n * 10) / 10;

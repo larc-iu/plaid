@@ -125,7 +125,8 @@ The root's concept is underlined.
 == Edges
 
 Tree edges run down from a parent to its children, the relation floating above the child.
-A node with a second way in (a re-entrancy) shows the second edge as a bowed curve with a dashed label.
+Every edge carries a head at the end it points to, which is the only thing that says which way a re-entrant or a document-level relation runs.
+A node with a second way in (a re-entrancy) shows the second edge as a bowed curve with a dashed label, leaving and arriving at the same side of the two nodes so it never crosses the tree edge to the same node.
 An edge to a node far along the sentence runs across the gap between rows in a lane of its own, so a parent with many children fans out into distinct lines.
 
 == Words and glosses
