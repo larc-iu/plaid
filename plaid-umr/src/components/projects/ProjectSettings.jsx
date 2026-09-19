@@ -5,6 +5,7 @@ import { ProjectManagement } from './ProjectManagement.jsx';
 import { ProjectAccessTokens } from '@ui/components/shared/ProjectAccessTokens.jsx';
 import { ProjectGeneralSettings } from './ProjectGeneralSettings.jsx';
 import { UmrSettings } from './UmrSettings.jsx';
+import { ProjectServicesSettings } from './ProjectServicesSettings.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useLatestCall } from '@ui/hooks/useLatestCall.js';
@@ -15,20 +16,19 @@ import { cn } from '@ui/lib/utils';
 const SECTIONS = [
   ['management', 'Users & Permissions'],
   ['customization', 'UMR settings'],
+  ['services', 'Services'],
   ['tokens', 'Access Tokens'],
   ['general', 'General'],
 ];
 
-// Single settings view: user/permission management, the UMR settings, API
-// access tokens, and general project settings (name, language, text direction,
-// delete). Each section is route-backed (`/management`, `/customization`,
-// `/tokens`, `/general`) so deep links keep working; the active one is derived
-// from the path. Only the active section mounts, so each child fetches lazily.
-// The layer setup form (ProjectConfiguration) is a separate standalone page at
+// Single settings view: user/permission management, the UMR settings, the
+// service each integration spot uses, API access tokens, and general project
+// settings (name, language, text direction, delete). Each section is
+// route-backed (`/management`, `/customization`, `/services`, `/tokens`,
+// `/general`) so deep links keep working; the active one is derived from the
+// path. Only the active section mounts, so each child fetches lazily. The
+// layer setup form (ProjectConfiguration) is a separate standalone page at
 // `/configuration`, used by the document list's missing-layers redirect.
-//
-// `/services` is registered as a route and is not a section: this app registers
-// no service yet, so it lands on the first section rather than on nothing.
 //
 // The section list is a plain list of links rather than a tab widget: each
 // section IS a page with its own URL, so a link is what it is.
@@ -67,6 +67,7 @@ export const ProjectSettings = () => {
   const body = {
     management: <ProjectManagement />,
     customization: <UmrSettings />,
+    services: <ProjectServicesSettings />,
     tokens: <ProjectAccessTokens profileHref="/profile" />,
     general: <ProjectGeneralSettings onProjectUpdate={loadProject} />,
   }[active];

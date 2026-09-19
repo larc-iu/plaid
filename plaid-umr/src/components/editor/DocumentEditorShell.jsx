@@ -9,6 +9,7 @@ import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
+import { useUmrServices } from './hooks/useUmrServices.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { humanizeError } from '@ui/lib/errors.js';
@@ -86,6 +87,17 @@ export const DocumentEditorShell = () => {
   // A run this page did not finish, picked back up: the service kept working
   // while the tab was away, and the result is still waiting.
   useResumedRun(client, doc, writeLock.acquire);
+
+  // The editor's one integration spot, Draft. One instance for the whole
+  // shell, so a run started on the Annotate tab keeps its lock, its banner and
+  // its progress when the linguist moves to another tab.
+  const services = useUmrServices({
+    client,
+    projectId,
+    doc,
+    project,
+    acquireWriteLock: writeLock.acquire,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +240,7 @@ export const DocumentEditorShell = () => {
             comments,
             canComment: canEditProject(project, user),
             canDeleteAnyComment: canManageProject(project, user),
+            services,
             writeLockHeld: writeLock.held,
             setChromeOffset,
             setChromeBusy,

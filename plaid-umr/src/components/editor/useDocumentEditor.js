@@ -2,7 +2,8 @@ import { useOutletContext } from 'react-router-dom';
 
 // Everything DocumentEditorShell provides to the document tabs:
 // `{ projectId, documentId, doc, project, reload, comments, canComment,
-// canDeleteAnyComment, writeLockHeld, setChromeOffset, setChromeBusy }`. The
+// canDeleteAnyComment, services, writeLockHeld, setChromeOffset,
+// setChromeBusy }`. The
 // shell only renders its Outlet once `doc` and `project` are loaded, so tabs
 // can use both without a null check.
 //

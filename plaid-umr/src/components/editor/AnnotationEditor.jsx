@@ -14,6 +14,7 @@ import { useDocumentEditor } from './useDocumentEditor.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
+import { DraftDialog } from './services/DraftDialog.jsx';
 
 // The document's annotation page: the frame around the graph editor. The
 // canvas replaces SentenceList below; everything else here (history, restore,
@@ -28,6 +29,7 @@ export const AnnotationEditor = () => {
     doc,
     project,
     reload,
+    services,
     writeLockHeld,
     setChromeOffset,
     setChromeBusy,
@@ -96,10 +98,21 @@ export const AnnotationEditor = () => {
 
   const toolbar = (
     <div className="mt-4 flex items-center justify-between gap-3">
-      <Button variant="secondary" className="gap-2" onClick={openHistory}>
-        <History className="h-4 w-4" />
-        History
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" className="gap-2" onClick={openHistory}>
+          <History className="h-4 w-4" />
+          History
+        </Button>
+        {/* A draft rewrites the document, so it is offered only to someone who
+            may write and only over the live state. */}
+        {canEdit && !selectedEntry && (
+          <DraftDialog
+            draft={services.draft}
+            isDiscovering={services.isDiscovering}
+            writeLockHeld={writeLockHeld}
+          />
+        )}
+      </div>
 
       <div className="flex items-center gap-3">
         {selectedEntry && <Button onClick={closeHistory}>Return to current</Button>}

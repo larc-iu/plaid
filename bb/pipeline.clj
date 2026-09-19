@@ -135,6 +135,10 @@
     ;; Same: the Stanza parser's handler test stands stanza itself in at import,
     ;; so it needs no model, no download and no env of its own.
     (p/shell {:dir "plaid-ud"} (python-exe) "-m" "pytest" "-q" "services/tests")
+    (step "Run the Python test suite (plaid-umr services)")
+    ;; Same again: the drafting service's handler test stands the chat model in
+    ;; at `service.model`, so it needs no provider, no key and no litellm.
+    (p/shell {:dir "plaid-umr"} (python-exe) "-m" "pytest" "-q" "services/tests")
     ;; The Python client's own suite: BaseService, cancellation, the idle
     ;; deadline, batch bypass and the three workflows. It was never in the gate.
     (step "Run the Python test suite (plaid-client-py)")
@@ -186,7 +190,8 @@
                 (throw (ex-info (str path " did not serve its SPA from the jar") {:path path})))))
           (println "  bundled SPAs served at /ud/, /igt/, /dict/, /umr/")
           ;; First boot must also have extracted the bundled services next to data/.
-          (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"]]
+          (doseq [f ["ud_parse_stanza.py" "igt_tokenize_punkt.py" "igt_transcribe_whisper.py"
+                     "umr_draft_llm.py"]]
             (when-not (fs/exists? (fs/path tmp "services" f))
               (throw (ex-info (str "services/" f " was not extracted on first run") {}))))
           (println "  bundled services extracted on first run"))
@@ -291,7 +296,8 @@
       (rm-rf "plaid-core/resources/services")
       (fs/create-dirs "plaid-core/resources/services")
       (doseq [f (concat (fs/glob "plaid-ud/services" "*.py")
-                        (fs/glob "plaid-igt/services" "*.py"))]
+                        (fs/glob "plaid-igt/services" "*.py")
+                        (fs/glob "plaid-umr/services" "*.py"))]
         (fs/copy f (fs/path "plaid-core/resources/services" (fs/file-name f))))
       (let [names    (sort (map (comp str fs/file-name)
                                 (fs/glob "plaid-core/resources/services" "*.py")))
@@ -351,7 +357,8 @@
    ["query.html"     "plaid-core/docs/query.adoc"]
    ["dev.html"       "plaid-core/docs/dev.adoc"]
    ["ud-guide.html"  "plaid-ud/docs/ud-guide.adoc"]
-   ["igt-guide.html" "plaid-igt/docs/igt-guide.adoc"]])
+   ["igt-guide.html" "plaid-igt/docs/igt-guide.adoc"]
+   ["umr-guide.html" "plaid-umr/docs/umr-guide.adoc"]])
 
 ;; Build the documentation site into _site/ exactly the way docs.yml does, for a
 ;; local preview (no publishing — that's GitHub Pages' job). _site/ is gitignored.
