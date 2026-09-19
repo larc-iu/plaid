@@ -314,8 +314,14 @@ export const vocabPopover = {
     // ×3" on the highlighted row, Shift+Enter). Once it is linked they are the
     // "Link every…" row at the bottom. Never the default: see _linkEverywhere.
     const others = isMwe ? [] : sameFormUnlinked(this.doc.sentences, kind, formText, tokenId);
-    const canTakeAll = others.length > 0 && !currentItem;
-    const allTitle = `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`;
+    // A token that already has a link can still take the others along: the
+    // gesture used to fall through to the plain toggle there, which deleted
+    // the link it was pressed on.
+    const canTakeAll = others.length > 0;
+    const allCount = others.length + (currentItem ? 0 : 1);
+    const allTitle = currentItem
+      ? `Link the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`
+      : `Link this and the ${others.length} other unlinked “${formText}” in this text · Shift+click or ${keys.words('popover.linkAll')}`;
     // The actions, routed by mode: a word's or morpheme's own link, or the
     // multi-word expression's. `all` takes the others along.
     const act = {
@@ -324,8 +330,8 @@ export const vocabPopover = {
       toggle: (it, linked, rf, all = false) =>
         isMwe
           ? this._toggleMwe(it, linked, rf)
-          : all && canTakeAll && !linked
-            ? this._linkAll(tokenId, formText, it, others, rf)
+          : all && canTakeAll
+            ? this._linkAll(tokenId, formText, it, others, rf, allCount)
             : this._toggleVocab(tokenId, it, linked, rf),
       create: (form, rf, all = false) =>
         isMwe

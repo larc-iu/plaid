@@ -101,7 +101,14 @@ export const comments = {
           if (e.key === 'Escape') {
             e.stopPropagation();
             this._closePopover(true);
+            return;
           }
+          // Every other key belongs to what is being typed. The grid's own
+          // chords read anything that reached it from a cell: Shift+Right in
+          // a draft started gathering a multi-word expression, and the Enter
+          // meant as a newline then closed the popover and threw the draft
+          // away.
+          e.stopPropagation();
         }}
       >
         <header class="igt-cmt-pop__head">

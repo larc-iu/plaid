@@ -47,9 +47,6 @@ export function diffGraphs(before, after, layerInfo) {
     if (a.deleted) {
       deleted.add(id);
       changes.push({ kind: 'node', node: id, text: `${b.form}: word deleted` });
-      // A one-word token goes with its word; a multi-word token keeps its
-      // other words and loses just this one.
-      writes.tokens.push({ op: 'deleteToken', id: b.wordId && !b.wordHasMultiple ? b.wordId : id });
       continue;
     }
     for (const col of ['form', 'lemma', 'upos', 'xpos']) {
@@ -60,7 +57,17 @@ export function diffGraphs(before, after, layerInfo) {
         text: `${b.form}: ${col} ${describe(b[col])} → ${describe(a[col])}`,
       });
       if (col === 'lemma' && a.lemma === undefined) {
-        writes.main.push({ op: 'deleteSpan', id: b.spanIds.lemma });
+        // A cleared lemma keeps its span, with no value. The span is the
+        // tree's node, so deleting it takes the word's relations with it on
+        // the server, and the writes that follow name relations that are
+        // already gone, or hang a new edge on a span that is. The editor's
+        // own cell does the same (ConlluDocument.setColumn).
+        writes.main.push({
+          op: 'updateSpan',
+          id: b.spanIds.lemma,
+          value: null,
+          metadata: b.spanMeta.lemma,
+        });
         continue;
       }
       if (col === 'lemma' && !b.spanIds.lemma) continue; // created below, with its value
@@ -92,6 +99,30 @@ export function diffGraphs(before, after, layerInfo) {
           metadata: b.spanMeta.features.get(key),
         });
       }
+    }
+  }
+
+  // A word token goes when the last of its syntactic words does: left
+  // standing it holds a stretch of text with nothing said about it, and the
+  // next open seeds a bare word back into the grid. One syntactic word of a
+  // multi-word token going leaves the token, and its other words, alone.
+  {
+    const wordCounts = new Map();
+    for (const id of before.order) {
+      const b = before.nodes.get(id);
+      if (b.deleted || b.anchor || !b.wordId) continue;
+      wordCounts.set(b.wordId, (wordCounts.get(b.wordId) || 0) + 1);
+    }
+    const goneCounts = new Map();
+    for (const id of deleted) {
+      const wordId = before.nodes.get(id)?.wordId;
+      if (wordId) goneCounts.set(wordId, (goneCounts.get(wordId) || 0) + 1);
+    }
+    for (const id of deleted) {
+      const b = before.nodes.get(id);
+      const wholeWord = b.wordId && goneCounts.get(b.wordId) === wordCounts.get(b.wordId);
+      if (wholeWord && writes.tokens.some((w) => w.id === b.wordId)) continue;
+      writes.tokens.push({ op: 'deleteToken', id: wholeWord ? b.wordId : id });
     }
   }
 

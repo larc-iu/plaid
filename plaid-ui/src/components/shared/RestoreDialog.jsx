@@ -29,6 +29,7 @@ import {
   notifyWithAction,
 } from '../../lib/notify.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
+import { useConfirm } from './ConfirmProvider.jsx';
 
 export const RestoreDialog = ({
   open,
@@ -68,6 +69,7 @@ export const RestoreDialog = ({
     };
   }, [open, asOf, client, documentId]);
 
+  const confirm = useConfirm();
   const layers = indexLayers(raw, readRole, layerWords);
   const lines = changeLines(preview, layers, roleWords);
   const gaps = skippedLines(preview?.skipped);
@@ -78,8 +80,22 @@ export const RestoreDialog = ({
   };
 
   // Back to the state from just before the restore: itself a restore, to the
-  // history entry that was newest when the restore began.
-  const undo = (before) => {
+  // history entry that was newest when the restore began. Anything written
+  // between the restore and this click would go with it, so it asks first:
+  // the toast stays on screen long enough for someone to type a word, press
+  // Enter and then reach for Undo.
+  const undo = async (before, after) => {
+    const now = await latestState(client, documentId).catch(() => null);
+    if (now && after && now.time !== after.time) {
+      const ok = await confirm({
+        title: 'Undo the restore?',
+        description:
+          'The document has been edited since the restore. Going back to the state before it takes those edits too. History keeps them.',
+        confirmLabel: 'Undo the restore',
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     const run = client.documents.restore(
       documentId,
       before.time,
@@ -117,7 +133,14 @@ export const RestoreDialog = ({
       const title = res?.skipped?.length ? 'Restored, with gaps' : 'Restored';
       const kind = res?.skipped?.length ? 'warning' : 'success';
       if (before) {
-        notifyWithAction(message, title, { label: 'Undo', onClick: () => undo(before), kind });
+        // What the restore itself left as the newest entry: an undo compares
+        // against it to see whether anything has been written since.
+        const after = await latestState(client, documentId).catch(() => null);
+        notifyWithAction(message, title, {
+          label: 'Undo',
+          onClick: () => undo(before, after),
+          kind,
+        });
       } else if (res?.skipped?.length) {
         notifyWarning(message, title);
       } else {

@@ -82,18 +82,28 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     // above) so it doesn't double-emit, and the reserved provenance keys
     // (the parser stamps sentence tokens too; `# prov = inferred` /
     // `# provDetail = [object Object]` are not CoNLL-U content).
+    // A `# text` from the file it was imported from is kept while it still
+    // says what the sentence says, letters for letters: it carries the
+    // original spacing, which the substring cannot. Once the text under it
+    // has been edited, merged or split, it says something else, and writing
+    // it put a line in the file that its own token rows contradicted, one
+    // that blanked the sentence when the file was read back.
+    const own = (sentence.text || '').trim();
+    const bare = (v) => String(v ?? '').replace(/\s+/gu, '');
+    const staleText =
+      sentMeta.text !== undefined && bare(sentMeta.text) !== bare(own) ? 'text' : null;
     let hasTextMetadata = false;
     Object.keys(sentMeta)
       .sort()
       .forEach((key) => {
-        if (key === 'sent_id' || isProvKey(key)) return;
+        if (key === 'sent_id' || key === staleText || isProvKey(key)) return;
         const value = sentMeta[key];
         if (key === 'text') hasTextMetadata = true;
         if (value === true) output.push(`# ${flat(key)}`);
         else output.push(`# ${flat(key)} = ${flat(value)}`);
       });
     if (!hasTextMetadata) {
-      output.push(`# text = ${flat((sentence.text || '').trim())}`);
+      output.push(`# text = ${flat(own)}`);
     }
 
     let i = 0;

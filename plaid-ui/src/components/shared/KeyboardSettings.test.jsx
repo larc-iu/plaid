@@ -28,7 +28,21 @@ afterEach(async () => {
 
 const mount = async () => {
   const keymap = createKeymap(actions());
-  const userData = { put: vi.fn(async () => {}), delete: vi.fn(async () => {}) };
+  // The account's own map: a save reads it first, so that a screen holding a
+  // stale copy writes only what it changed.
+  const stored = { map: null };
+  const userData = {
+    listPage: vi.fn(async () => ({
+      entries: stored.map ? [{ key: 'igt:keymap', value: { metadata: stored.map } }] : [],
+      nextCursor: null,
+    })),
+    put: vi.fn(async (userId, key, value) => {
+      stored.map = { ...value.metadata };
+    }),
+    delete: vi.fn(async () => {
+      stored.map = null;
+    }),
+  };
   const auth = { user: { id: 'u@x' }, client: { userData } };
   view = await renderComponent(
     <AuthContext.Provider value={auth}>
@@ -46,7 +60,7 @@ const mount = async () => {
         .dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })),
     );
   const change = (label) => view.step(() => button(`Change the shortcut for ${label}`).click());
-  return { keymap, userData, button, press, change };
+  return { keymap, userData, stored, button, press, change };
 };
 
 describe('KeyboardSettings', () => {
@@ -108,6 +122,19 @@ describe('KeyboardSettings', () => {
     await view.step(() => button('Reset the shortcut for Discard the word').click());
     expect(keymap.chords('discard')).toEqual(['Mod+Backspace']);
     expect(userData.delete).toHaveBeenCalledWith('u@x', 'igt:keymap');
+  });
+
+  it("writes only what it changed, over the account's other bindings", async () => {
+    const { keymap, userData, press, change, stored } = await mount();
+    // Another tab bound this one while this screen was open.
+    stored.map = { discard: ['Alt+z'] };
+    await change('Accept the word');
+    await press({ key: 'F9' });
+    expect(userData.put).toHaveBeenCalledWith('u@x', 'igt:keymap', {
+      metadata: { discard: ['Alt+z'], accept: ['F9'] },
+    });
+    // And this screen learns the other tab's binding from the answer.
+    expect(keymap.chords('discard')).toEqual(['Alt+z']);
   });
 
   it('puts a binding back when the save fails', async () => {

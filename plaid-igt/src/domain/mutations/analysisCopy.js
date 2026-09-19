@@ -19,6 +19,7 @@
 
 import { stampInferred, mergeMetadata, PROV } from '@larc-iu/plaid-client';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
+import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 
 // The server caps a single atomic batch at 1000 ops (plaid-core
 // rest_api/v1/batch.clj). A copy emits several ops per word, so pack words into
@@ -107,8 +108,13 @@ export const analysisCopyMutations = {
       // ---- phase 1: strip. Deleting a morpheme cascades its own spans and
       // links server-side, so only the word's and the surviving first
       // morpheme's are queued explicitly (a double delete fails the batch).
-      const strip = []; // thunks taking the batch to queue on, one op each
+      // Thunks taking the batch to queue on, one op each, grouped by word: a
+      // chunk boundary inside a word's ops would leave that word half
+      // stripped if a later chunk failed.
+      const byWord = [];
       for (const { token } of targets) {
+        const strip = [];
+        byWord.push(strip);
         const queueAttached = (t) => {
           if (t.vocabItem?.linkId) strip.push((b) => b.vocabLinks.delete(t.vocabItem.linkId));
           for (const span of Object.values(t.annotations || {})) {
@@ -124,6 +130,11 @@ export const analysisCopyMutations = {
             strip.push((b) => b.tokens.delete(m.id));
             return;
           }
+          // An unanalyzed word's morpheme is derived, with nothing stored to
+          // strip and an id the server has never seen. Queued, it refused the
+          // whole batch, and the batches already sent had taken the analyses
+          // off every word before it.
+          if (isVirtualMorphemeId(m.id)) return;
           queueAttached(m);
           // patch semantics: null deletes the key
           strip.push((b) =>
@@ -143,11 +154,16 @@ export const analysisCopyMutations = {
             strip.push((b) => b.tokens.update(m.id, undefined, undefined, 1));
         });
       }
-      for (let i = 0; i < strip.length; i += STRIP_CHUNK) {
-        const part = strip.slice(i, i + STRIP_CHUNK);
-        await this._client.batched(async (b) => {
-          part.forEach((op) => op(b));
-        });
+      let part = [];
+      for (const word of [...byWord, null]) {
+        if ((word === null || part.length + word.length > STRIP_CHUNK) && part.length) {
+          const ops = part;
+          part = [];
+          await this._client.batched(async (b) => {
+            ops.forEach((op) => op(b));
+          });
+        }
+        if (word) part.push(...word);
       }
       await this._reload();
 

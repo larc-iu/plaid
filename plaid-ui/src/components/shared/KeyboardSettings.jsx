@@ -49,12 +49,16 @@ export const KeyboardSettings = ({ keymap, groups }) => {
   const [problem, setProblem] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const apply = async (next) => {
+  // A change is saved as a change, not as this screen's whole map: another
+  // tab's bindings, and any this one has not read yet, stay as they are. What
+  // comes back is the account's map, so this screen learns them too.
+  const apply = async (next, { replace = false } = {}) => {
     const before = keymap.overrides();
     keymap.setOverrides(next);
     setSaving(true);
     try {
-      await saveUserKeymap(client, user.id, keymap.overrides());
+      const stored = await saveUserKeymap(client, user.id, { before, next, replace });
+      keymap.setOverrides(stored);
     } catch (e) {
       keymap.setOverrides(before);
       notifyError(humanizeError(e), 'Shortcut not saved');
@@ -175,7 +179,12 @@ export const KeyboardSettings = ({ keymap, groups }) => {
         ))}
         {Object.keys(overrides).length > 0 && (
           <div>
-            <Button variant="outline" size="sm" disabled={saving} onClick={() => apply({})}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saving}
+              onClick={() => apply({}, { replace: true })}
+            >
               Reset all
             </Button>
           </div>

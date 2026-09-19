@@ -51,16 +51,16 @@ export const linking = {
 
   // The same, asked before this token has a link: it and the others go to the
   // entry in one operation ("all ×4" on a popover row, Shift+Enter).
-  _linkAll(tokenId, formText, item, others, returnFocus = false) {
+  // `count` is how many of them have no link yet: a token that already has
+  // one keeps it (linkVocabMany leaves a linked token alone), and the others
+  // go with the gesture.
+  _linkAll(tokenId, formText, item, others, returnFocus = false, count = others.length + 1) {
     this._closePopover(returnFocus);
     this._runThenFocus({ vocabOpener: tokenId }, () =>
       this.doc.linkVocabMany([tokenId, ...others], item.id),
     ).then((ok) => {
       if (ok) {
-        notifyInfo(
-          `Linked ${others.length + 1} “${formText}” to ${item.form}`,
-          'Linked in this text',
-        );
+        notifyInfo(`Linked ${count} “${formText}” to ${item.form}`, 'Linked in this text');
       }
     });
   },
