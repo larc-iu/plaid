@@ -424,6 +424,15 @@ export class UmrDocument extends DocumentModel {
     return null;
   }
 
+  // Why `variable` cannot name a node text mode makes, or null when it can.
+  _newVariableProblem(variable) {
+    if (!VARIABLE.test(variable)) {
+      return `${variable} is not a variable: s, the sentence number, letters, a number.`;
+    }
+    if (this.takenVariables().has(variable)) return `${variable} is already in use.`;
+    return null;
+  }
+
   async setVariable(nodeId, variable) {
     const node = this.node(nodeId);
     if (!node || node.var === variable) return false;
@@ -943,8 +952,11 @@ export class UmrDocument extends DocumentModel {
       }
       if (old.concept !== node.concept)
         plan.concept.push({ nodeId: old.id, concept: node.concept });
-      const oldAttrs = old.attrs.map((a) => `${a.rel} ${a.value}`).join('\n');
-      const nextAttrs = attrs.map((a) => `${a.rel} ${a.value}`).join('\n');
+      // With their places among the children: an attribute moved past an edge
+      // is a change, and was once counted as applied without being stored.
+      const attrKey = (a) => `${a.rel} ${a.value} @${a.order ?? 0}`;
+      const oldAttrs = old.attrs.map(attrKey).join('\n');
+      const nextAttrs = attrs.map(attrKey).join('\n');
       if (oldAttrs !== nextAttrs) plan.attrs.push({ nodeId: old.id, attrs });
       // Edges by (role, target variable): an edge with a new target or role
       // is a new edge, and the old one goes.
@@ -989,6 +1001,56 @@ export class UmrDocument extends DocumentModel {
     });
     const oldRoot = sentence.roots[0]?.var;
     if (parsed.root !== oldRoot) plan.root = parsed.root;
+
+    // What the canvas refuses, text mode refuses too: a new node's variable
+    // malformed or taken elsewhere in the document, and a new edge closing a
+    // cycle through anything but a quote.
+    const errors = [];
+    plan.create.forEach((c) => {
+      const why = this._newVariableProblem(c.var);
+      if (why) errors.push({ message: why });
+    });
+    const reaches = (from, to) => {
+      const seen = new Set();
+      const stack = [from];
+      while (stack.length) {
+        const v = stack.pop();
+        if (v === to) return true;
+        if (seen.has(v)) continue;
+        seen.add(v);
+        parsed.nodes.get(v)?.children.forEach((c) => {
+          if (c.kind === 'node' && !CYCLE_ROLES.has(c.rel)) stack.push(c.value);
+        });
+      }
+      return false;
+    };
+    const added = [
+      ...plan.edgesAdd,
+      ...plan.create.flatMap((c) =>
+        c.edges.map((e) => ({ sourceVar: c.var, role: e.role, targetVar: e.target })),
+      ),
+    ];
+    added.forEach((e) => {
+      if (!CYCLE_ROLES.has(e.role) && reaches(e.targetVar, e.sourceVar)) {
+        errors.push({
+          message: `${e.role} from ${e.sourceVar} to ${e.targetVar} would close a cycle.`,
+        });
+      }
+    });
+    if (errors.length) return { errors };
+
+    // What a deletion takes that the text does not show: a node's anchor and
+    // its document-level relations. A variable renamed in the text is a new
+    // node, so it loses them too.
+    plan.losses = plan.delete
+      .map((id) => this.node(id))
+      .filter((n) => n && (n.aligned || n.docOut?.length || n.docIn?.length))
+      .map((n) => ({
+        var: n.var,
+        anchored: !!n.aligned,
+        relations: (n.docOut?.length || 0) + (n.docIn?.length || 0),
+      }));
+
     const changes =
       plan.create.length +
       plan.delete.length +
@@ -1022,6 +1084,19 @@ export class UmrDocument extends DocumentModel {
       'Failed to apply the text',
       async () => {
         const idByVar = new Map(sentence.nodes.map((n) => [n.var, n.id]));
+        // Each span's umr namespace as written so far. A patch replaces the
+        // namespace whole, so one built from the state read before any write
+        // put back what an earlier patch took off: the old root's attribute
+        // change restored its root mark, and the new root's mark reverted its
+        // attributes.
+        const written = new Map();
+        const patchUmr = async (spanId, changes) => {
+          const span = this._layers(info).spans.find((x) => x.id === spanId);
+          const next = { ...(written.get(spanId) ?? umrOf(span)), ...changes };
+          Object.keys(next).forEach((k) => next[k] === undefined && delete next[k]);
+          written.set(spanId, next);
+          await client.spans.patchMetadata(spanId, { [UMR_NAMESPACE]: next });
+        };
         const gone = new Set(plan.delete);
         // Deletes first, so a variable given to a new node is free.
         if (plan.delete.length) {
@@ -1039,11 +1114,7 @@ export class UmrDocument extends DocumentModel {
           const olds = sentence.nodes.filter(
             (n) => n.root && n.var !== plan.root && !gone.has(n.id),
           );
-          for (const o of olds) {
-            const span = this._layers(info).spans.find((s) => s.id === o.id);
-            const { root: _r, ...rest } = umrOf(span);
-            await client.spans.patchMetadata(o.id, { [UMR_NAMESPACE]: rest });
-          }
+          for (const o of olds) await patchUmr(o.id, { root: undefined });
         }
         for (const c of plan.create) {
           const { ids } = await client.tokens.bulkCreate([
@@ -1064,10 +1135,7 @@ export class UmrDocument extends DocumentModel {
           idByVar.set(c.var, span?.id || span);
         }
         for (const c of plan.concept) await client.spans.update(c.nodeId, c.concept);
-        for (const a of plan.attrs) {
-          const span = this._layers(info).spans.find((s) => s.id === a.nodeId);
-          await client.spans.patchMetadata(a.nodeId, umrPatch(span, { attrs: a.attrs }));
-        }
+        for (const a of plan.attrs) await patchUmr(a.nodeId, { attrs: a.attrs });
         const edgesAdd = [
           ...plan.edgesAdd,
           ...plan.create.flatMap((c) =>
@@ -1095,10 +1163,7 @@ export class UmrDocument extends DocumentModel {
         }
         if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
           const newId = idByVar.get(plan.root);
-          if (newId) {
-            const span = this._layers(info).spans.find((s) => s.id === newId);
-            await client.spans.patchMetadata(newId, umrPatch(span, { root: true }));
-          }
+          if (newId) await patchUmr(newId, { root: true });
         }
         await this._reload();
       },

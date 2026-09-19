@@ -1076,6 +1076,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       {textMode && !readOnly && (
         <PenmanEditor
           initial={doc.penmanOf(sentence.index)}
+          plan={(text) => doc.planPenman(sentence.index, text)}
           applying={applying}
           onApply={async (text) => {
             setApplying(true);

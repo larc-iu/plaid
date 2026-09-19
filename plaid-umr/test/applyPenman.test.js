@@ -178,3 +178,76 @@ test('applyPenman deletes a node the text no longer has and re-roots', async () 
   // The old root was deleted with its subtree, so no mark to clear.
   assert.ok(!rootPatches.some((c) => c[2].umr.root === undefined && c[2].umr.var === 's1l'));
 });
+
+// Every metadata patch replaces the umr namespace whole. Built from the state
+// read before any write, the old root's attribute change put its root mark
+// back (two roots), and the new root's mark reverted its attribute change.
+test('moving the root and changing either root attribute keeps both changes', async () => {
+  const { doc, calls } = load();
+  const text = `(s1e / eat-01
+    :ARG0 (s1p / person
+        :name (s1n / name :op1 "Lindsay"))
+    :aspect activity
+    :purpose-of (s1l / leave-02 :ARG0 s1p :aspect state))`;
+  await doc.applyPenman(1, text);
+  // The last patch of each span is what it ends up as.
+  const last = new Map();
+  calls
+    .filter((c) => c[0] === 'spans.patchMetadata')
+    .forEach(([, spanId, patch]) => last.set(spanId, patch.umr));
+  const byVar = (v) => [...last.values()].find((m) => m.var === v);
+  assert.equal(byVar('s1l').root, undefined);
+  assert.deepEqual(
+    byVar('s1l').attrs.map((a) => a.value),
+    ['state'],
+  );
+  assert.equal(byVar('s1e').root, true);
+  assert.deepEqual(
+    byVar('s1e').attrs.map((a) => a.value),
+    ['activity'],
+  );
+});
+
+test('an attribute moved past an edge is stored where it was moved', async () => {
+  const { doc } = load();
+  const text = doc.penmanOf(1).replace(
+    `    :aspect performance
+    :purpose`,
+    `    :purpose`,
+  );
+  const moved = text.replace(
+    ':aspect performance))',
+    ':aspect performance)\n    :aspect performance)',
+  );
+  const plan = doc.planPenman(1, moved);
+  assert.equal(plan.attrs.length, 1);
+  assert.deepEqual(
+    plan.attrs[0].attrs.map((a) => [a.rel, a.order]),
+    [[':aspect', 2]],
+  );
+});
+
+// What the canvas refuses, text mode refuses: a variable taken or malformed,
+// and a new edge that closes a cycle.
+test('text mode refuses what the canvas refuses', () => {
+  const { doc } = load();
+  const base = doc.penmanOf(1);
+  const withChild = (child) => base.replace(':ARG0 s1p', `:ARG0 s1p\n        :ARG1 ${child}`);
+  assert.match(
+    doc.planPenman(1, withChild('(x / thing)')).errors[0].message,
+    /x is not a variable/,
+  );
+  assert.match(
+    doc.planPenman(1, withChild('(s1l2 / thing :mod s1l)')).errors[0].message,
+    /would close a cycle/,
+  );
+  assert.equal(doc.planPenman(1, withChild('(s1l2 / thing)')).errors, undefined);
+});
+
+// A variable renamed in the text is a new node: the plan says what the old
+// one takes with it.
+test('the plan names what a deletion takes that the text does not show', () => {
+  const { doc } = load();
+  const plan = doc.planPenman(1, doc.penmanOf(1).replaceAll('s1l', 's1g'));
+  assert.deepEqual(plan.losses, [{ var: 's1l', anchored: true, relations: 0 }]);
+});

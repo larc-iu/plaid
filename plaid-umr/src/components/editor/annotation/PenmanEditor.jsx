@@ -6,7 +6,12 @@ import { parsePenman } from '../../../domain/format/penman.js';
 // as one operation on Apply. A half-typed graph is not a state to keep, so
 // nothing is written until then, and the parser's first complaint shows
 // under the text as it is typed.
-export function PenmanEditor({ initial, onApply, onCancel, applying = false }) {
+//
+// `plan(text)` is the document's plan for the text: its `errors` are the
+// checks the canvas makes (a variable taken, a new edge closing a cycle),
+// shown like a parse error, and its `losses` what Apply would delete that the
+// text cannot show, a node's anchor and document-level relations.
+export function PenmanEditor({ initial, onApply, onCancel, plan, applying = false }) {
   const [text, setText] = useState(initial);
   // What the text is compared against. When the stored graph changes under an
   // untouched editor (another writer, a failed apply's reload), the text
@@ -20,12 +25,17 @@ export function PenmanEditor({ initial, onApply, onCancel, applying = false }) {
     setBase(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
-  const problem = useMemo(() => {
+  const { problem, losses } = useMemo(() => {
     const parsed = parsePenman(text);
-    if (parsed.errors.length) return parsed.errors[0];
-    if (!parsed.root && text.trim()) return { message: 'The text has no graph.' };
-    return null;
-  }, [text]);
+    if (parsed.errors.length) return { problem: parsed.errors[0], losses: [] };
+    if (!parsed.root && text.trim()) {
+      return { problem: { message: 'The text has no graph.' }, losses: [] };
+    }
+    if (!plan || !dirty) return { problem: null, losses: [] };
+    const p = plan(text);
+    return { problem: p.errors?.[0] || null, losses: p.losses || [] };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, base]);
 
   useEffect(() => {
     ref.current?.focus();
@@ -73,7 +83,7 @@ export function PenmanEditor({ initial, onApply, onCancel, applying = false }) {
           {problem
             ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
             : dirty
-              ? 'Changed. Apply writes it as one operation.'
+              ? `Changed. Apply writes it as one operation.${lossNote(losses)}`
               : 'As stored.'}
         </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onCancel(dirty)}>
@@ -90,4 +100,18 @@ export function PenmanEditor({ initial, onApply, onCancel, applying = false }) {
       </div>
     </div>
   );
+}
+
+// What Apply deletes that the text does not show, as a sentence: " It deletes
+// s1p with its anchor and 1 document-level relation."
+function lossNote(losses) {
+  if (!losses.length) return '';
+  const one = ({ var: v, anchored, relations }) => {
+    const what = [
+      anchored && 'its anchor',
+      relations && `${relations} document-level relation${relations === 1 ? '' : 's'}`,
+    ].filter(Boolean);
+    return `${v} with ${what.join(' and ')}`;
+  };
+  return ` It deletes ${losses.map(one).join(', ')}.`;
 }

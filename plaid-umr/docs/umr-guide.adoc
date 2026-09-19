@@ -224,6 +224,8 @@ Escape cancels.
 **Text** in a sentence's header shows the sentence's graph as PENMAN in place of the canvas.
 The text is parsed as you type, and the first problem shows under it.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
+Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, and a new edge that closes a cycle through anything but `:quote`.
+A variable renamed in the text is a new node, and the old one goes with its anchor and its document-level relations; the line under the text names what Apply would delete that way. Rename a variable on the canvas to keep them.
 A node the text never showed (a fragment not reached from the root) is left alone.
 Cancel with unapplied changes asks first.
 
