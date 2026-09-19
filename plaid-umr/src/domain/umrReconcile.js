@@ -15,6 +15,13 @@
 //   inside a sentence   rebound to that sentence (a merge)
 //   at a sentence start, or in none   removed (its sentence was deleted)
 // A node that never recorded a sentence is left alone: there is no telling.
+//
+// And when NO record names a sentence of this document, the records came from
+// somewhere else, not from deletions: a copy or an import that gave the rows
+// new ids and did not rewrite the references to them. A deletion takes some
+// sentences, never every one that holds an unaligned node while leaving the
+// nodes. So then every node is bound to the sentence it is in, and nothing is
+// removed.
 
 const isUnaligned = (node) => !node.constant && !node.aligned;
 
@@ -25,17 +32,19 @@ const isUnaligned = (node) => !node.constant && !node.aligned;
  */
 export function planUnalignedHeal(graph, namespace) {
   const alive = new Set(graph.sentences.map((s) => s.tokenId));
+  const recorded = [...graph.nodesById.values()].filter(
+    (n) => isUnaligned(n) && n.metadata?.[namespace]?.sentence,
+  );
+  const foreign = !recorded.some((n) => alive.has(n.metadata[namespace].sentence));
   const remove = [];
   const rebind = [];
-  graph.nodesById.forEach((node) => {
-    if (!isUnaligned(node)) return;
-    const home = node.metadata?.[namespace]?.sentence;
-    if (!home || alive.has(home)) return;
+  recorded.forEach((node) => {
+    if (alive.has(node.metadata[namespace].sentence)) return;
     const at = node.pieces[0]?.begin;
     const containing = node.sentence == null ? null : graph.sentences[node.sentence - 1];
-    if (containing && at !== containing.begin) {
+    if (containing && (foreign || at !== containing.begin)) {
       rebind.push({ nodeId: node.id, sentenceTokenId: containing.tokenId });
-    } else {
+    } else if (!foreign) {
       remove.push(node.id);
     }
   });
@@ -51,7 +60,9 @@ export function describeUmrReconcile({ removed = 0, rebound = 0 } = {}) {
     );
   }
   if (rebound) {
-    parts.push(`rebound ${rebound} unaligned node${rebound === 1 ? '' : 's'} to a merged sentence`);
+    parts.push(
+      `rebound ${rebound} unaligned node${rebound === 1 ? '' : 's'} to the sentence ${rebound === 1 ? 'it is' : 'they are'} in`,
+    );
   }
   return parts.length ? `Reconcile: ${parts.join(', ')}` : null;
 }

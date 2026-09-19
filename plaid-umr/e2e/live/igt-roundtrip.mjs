@@ -11,7 +11,9 @@
 //      sentence: respell a word, split a word, merge two words, split a
 //      sentence, merge two sentences, delete a sentence's text.
 //   4. UMR reads the document again, and each check says what survived.
-//   5. IGT's archive takes the project out and into a new one, and UMR's own
+//   5. A copy of the document (what UMR's copy for a second annotator
+//      makes) opens with nothing lost.
+//   6. IGT's archive takes the project out and into a new one, and UMR's own
 //      export of the document there must be the same, byte for byte.
 //
 // Run from plaid-umr, through IGT's module aliases:
@@ -405,7 +407,23 @@ try {
     `   validation after the edits: ${umr.problems.length} problems (${codes.join(', ')})`,
   );
 
-  // ---- 5. through IGT's archive -------------------------------------------
+  // ---- 5. a copy -----------------------------------------------------------
+
+  const copied = await client.documents.copy(documentId, 'second annotator');
+  const copyId = copied?.id || copied;
+  const loadCopy = () => UmrDocument.load({ client, documentId: copyId, projectId, project });
+  let copy = await loadCopy();
+  const healedCopy = await copy.reconcileOnOpen();
+  console.log(`   repair of the copy: ${copy.describeReconcile(healedCopy) || 'nothing to do'}`);
+  copy = await loadCopy();
+  check(
+    copy.graph.nodesById.size === umr.graph.nodesById.size && copy.toUmr() === umr.toUmr(),
+    'a copy opens with every node, and exports the same',
+    `${copy.graph.nodesById.size} of ${umr.graph.nodesById.size} nodes`,
+  );
+  await client.documents.delete(copyId);
+
+  // ---- 6. through IGT's archive -------------------------------------------
 
   const source = await client.projects.get(projectId);
   const exported = await runExport({

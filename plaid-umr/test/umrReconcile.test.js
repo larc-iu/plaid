@@ -31,8 +31,12 @@ test("a deleted sentence's unaligned node goes, and the next sentence's stays", 
 });
 
 // The last sentence deleted: its node is now past the end, in no sentence.
+// (A's own node keeps a record alive: see the next test for when none is.)
 test('a node left in no sentence goes', () => {
-  const graph = graphOf(sentences(['A', 0, 10]), [unaligned('z1', 10, null, 'Z')]);
+  const graph = graphOf(sentences(['A', 0, 10]), [
+    unaligned('a1', 0, 1, 'A'),
+    unaligned('z1', 10, null, 'Z'),
+  ]);
   assert.deepEqual(planUnalignedHeal(graph, 'umr').remove, ['z1']);
 });
 
@@ -49,6 +53,23 @@ test("a merged sentence's unaligned node is bound to the sentence it joined", ()
   });
 });
 
+// A copy or an import that gave the rows new ids: every record names a
+// sentence of some other document. Nothing is removed, and each node is bound
+// to the sentence it sits in.
+test('when no record names a sentence here, every node is rebound and none removed', () => {
+  const graph = graphOf(sentences(['A2', 0, 10], ['B2', 10, 20]), [
+    unaligned('a1', 0, 1, 'A'),
+    unaligned('b1', 10, 2, 'B'),
+  ]);
+  assert.deepEqual(planUnalignedHeal(graph, 'umr'), {
+    remove: [],
+    rebind: [
+      { nodeId: 'a1', sentenceTokenId: 'A2' },
+      { nodeId: 'b1', sentenceTokenId: 'B2' },
+    ],
+  });
+});
+
 test('an aligned node, a constant and a node with no record are left alone', () => {
   const graph = graphOf(sentences(['C', 10, 20]), [
     { ...unaligned('w', 12, 1, 'B'), aligned: true },
@@ -62,6 +83,6 @@ test('the audit label names what the pass changed', () => {
   assert.equal(describeUmrReconcile({}), null);
   assert.equal(
     describeUmrReconcile({ removed: 1, rebound: 2 }),
-    'Reconcile: removed 1 unaligned node of a deleted sentence, rebound 2 unaligned nodes to a merged sentence',
+    'Reconcile: removed 1 unaligned node of a deleted sentence, rebound 2 unaligned nodes to the sentence they are in',
   );
 });
