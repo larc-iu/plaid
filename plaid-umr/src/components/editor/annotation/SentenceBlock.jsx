@@ -607,14 +607,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     });
   };
 
-  const doubleClickWord = async (wordId) => {
+  // A parentless node over a word. The concept picker opens prefilled with
+  // the word, the same as dropping a grip on it: an inflected surface form
+  // is almost never the concept, and the frame file's senses of the word are
+  // the first thing the picker offers. Enter takes the word as typed.
+  const doubleClickWord = (wordId) => {
     if (readOnly || mode) return;
     const word = sentence.words.find((w) => w.id === wordId);
     if (!word) return;
-    const r = await run(() =>
-      doc.createNode({ sentenceIndex: sentence.index, concept: word.text, wordIds: [wordId] }),
-    );
-    if (r) focusNode(r.nodeId);
+    const col = columns.get(wordId);
+    askNewNode(null, [wordId], { x: (col?.x ?? 16) - 110, y: layout.height - 44 }, word.text);
   };
 
   // ----- dragging -----

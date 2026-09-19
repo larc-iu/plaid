@@ -79,6 +79,16 @@ test.describe('editing', () => {
     const block = page.locator('.umr-block').first();
     await expect(block.locator('.umr-edge-label').first()).toBeVisible();
 
+    // Double-clicking a word asks for the concept rather than writing the
+    // word itself: the picker opens prefilled, with the frame file's senses
+    // of that word above it, and Escape leaves the document alone.
+    await block.locator('.umr-word').nth(3).dblclick();
+    await expect(editor(page)).toHaveValue('order');
+    await expect(page.locator('[role="option"]', { hasText: /^order-01 / }).first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(editor(page)).toHaveCount(0);
+    await expect(nodeByConcept(page, 'order')).toHaveCount(0);
+
     // Tab from the root: word 7 (lunch) as :ARG1 of eat-01... from leave-02.
     const leave = nodeByConcept(page, 'leave-02');
     await leave.click();

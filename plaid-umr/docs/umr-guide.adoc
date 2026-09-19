@@ -168,7 +168,7 @@ The default shortcuts are listed here; every one of them can be rebound under yo
 
 * **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word (its concept starts as the word), or type a concept for an abstract node. Then the relation.
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
-* **n** makes a node with no parent; so does a double-click on a word or on empty space.
+* **n** makes a node with no parent; so does a double-click on a word or on empty space. Either way the concept picker opens, prefilled with the word when there is one.
 * **r** adds a second parent to the focused node: click the parent, then give the relation.
 
 == Changing a node
