@@ -36,7 +36,8 @@ const CONST_TOP = 16;
 const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
 
 // A chain's color, from its index: hues spread around the wheel.
-const chainColor = (index) => `hsl(${(index * 137.5) % 360} 62% 42%)`;
+// Starting away from red, which marks an error.
+const chainColor = (index) => `hsl(${(210 + index * 137.5) % 360} 62% 42%)`;
 
 // Jump to a node anywhere in the document.
 const goToNode = (nodeId) => {
@@ -206,13 +207,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           const x2 = MARGIN - 8;
           const y2 = lane.constY.get(t.constant.var) + 11;
           const k = Math.max(24, (x1 - x2) / 2);
-          // The label near the node's end of the line, but never over the
-          // constants: a node close to the margin pushes it right.
-          const lx = Math.max(x2 + 48, x1 - 56);
+          // The label, left-aligned, near the node's end of the line but never
+          // over the constants: a node close to the margin pushes it right.
+          const lx = Math.max(x2 + 14, x1 - 120);
           return {
             ...t,
             path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
-            label: { x: lx, y: y1 + (y2 - y1) * ((x1 - lx) / Math.max(1, x1 - x2)) - 10 },
+            label: {
+              x: lx,
+              y: y1 + (y2 - y1) * ((x1 - lx) / Math.max(1, x1 - x2)) - 10,
+              left: true,
+            },
           };
         }
         const pa = layout.nodes.get(t.a.id);
@@ -890,7 +895,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           {docEdges.map((t) => (
             <span
               key={`label-${t.id}`}
-              className="umr-doc-label"
+              className={`umr-doc-label${t.label.left ? ' umr-doc-label--left' : ''}`}
               style={{ position: 'absolute', left: `${t.label.x}px`, top: `${t.label.y}px` }}
               role={readOnly ? undefined : 'button'}
               tabIndex={-1}
