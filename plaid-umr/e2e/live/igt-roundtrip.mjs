@@ -414,7 +414,14 @@ try {
   const loadCopy = () => UmrDocument.load({ client, documentId: copyId, projectId, project });
   let copy = await loadCopy();
   const healedCopy = await copy.reconcileOnOpen();
-  console.log(`   repair of the copy: ${copy.describeReconcile(healedCopy) || 'nothing to do'}`);
+  // Core's copy rewrites the ids the rows' metadata names, so the copy has
+  // nothing to repair. A rebind here would mean the safety net in
+  // umrReconcile.js is hiding a copy that stopped doing so.
+  check(
+    !copy.describeReconcile(healedCopy),
+    'a copy has nothing to repair',
+    copy.describeReconcile(healedCopy),
+  );
   copy = await loadCopy();
   check(
     copy.graph.nodesById.size === umr.graph.nodesById.size && copy.toUmr() === umr.toUmr(),
@@ -459,7 +466,13 @@ try {
     });
   let umrB = await loadB();
   const healedB = await umrB.reconcileOnOpen();
-  console.log(`   repair after import: ${umrB.describeReconcile(healedB) || 'nothing to do'}`);
+  // IGT's archive rewrites the ids the rows' metadata names, so the import
+  // has nothing to repair either.
+  check(
+    !umrB.describeReconcile(healedB),
+    'an import has nothing to repair',
+    umrB.describeReconcile(healedB),
+  );
   umrB = await loadB();
   check(
     umrB.graph.nodesById.size === umr.graph.nodesById.size,
