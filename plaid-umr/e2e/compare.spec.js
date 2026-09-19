@@ -19,13 +19,14 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
     copy = { id: made?.id || made };
   }
   const original = await client.documents.get(documentId, true);
-  const firstVar = original.textLayers[0].tokenLayers
+  const firstNodes = original.textLayers[0].tokenLayers
     .find((l) => l.config?.umr?.nodes)
-    .spanLayers[0].spans.map((s) => s.metadata?.umr?.var)
-    .find((v) => v && v.startsWith('s1'));
+    .spanLayers[0].spans.filter((s) => s.metadata?.umr?.var?.startsWith('s1'));
+  const [firstVar, secondVar] = firstNodes.map((s) => s.metadata.umr.var);
+  const [firstConcept, secondConcept] = firstNodes.map((s) => s.value);
   const current = (await client.documents.get(copy.id, false)).metadata?.umr || {};
   const report = {
-    version: 1,
+    version: 2,
     tool: 'ancast 0.1.1',
     against: { id: documentId, name: original.name },
     at: '2026-09-19T20:00:00Z',
@@ -39,7 +40,24 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
         unlabeled: 0.85,
         weighted: 0.8,
         smatch: 0.7,
-        matches: [[firstVar, firstVar]],
+        // One pair that agrees, and one paired from the leftovers with a node
+        // of another concept.
+        matches: [
+          {
+            this: firstVar,
+            other: firstVar,
+            thisConcept: firstConcept,
+            otherConcept: firstConcept,
+            leftover: false,
+          },
+          {
+            this: secondVar,
+            other: secondVar,
+            thisConcept: secondConcept,
+            otherConcept: 'something-else-01',
+            leftover: true,
+          },
+        ],
         unmatched: [],
         unmatchedOther: [firstVar],
         skipped: null,
@@ -62,8 +80,15 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
   const pres = first.locator('pre');
   await expect(pres.nth(0)).toContainText('(s1');
   await expect(pres.nth(1)).toContainText('(s1');
-  await expect(pres.nth(1).locator('mark')).toHaveText(firstVar);
-  await expect(first).toContainText(`${firstVar} = ${firstVar}`);
+  await expect(pres.nth(1).locator('mark[data-mark="missing"]')).toHaveText(firstVar);
+  // The pair of two concepts is marked on both sides and listed with both.
+  await expect(pres.nth(0).locator('mark[data-mark="differs"]')).toHaveText(secondVar);
+  await expect(pres.nth(1).locator('mark[data-mark="differs"]')).toHaveText(secondVar);
+  await expect(first.locator('[data-pairs="differ"]')).toContainText(
+    `${secondVar} ${secondConcept} = ${secondVar} something-else-01`,
+  );
+  await expect(first.locator('[data-pairs="differ"]')).toContainText('left over');
+  await expect(first.locator('[data-pairs="same"]')).toContainText(`${firstVar} = ${firstVar}`);
   // A sentence the report does not cover says so rather than inventing scores.
   await expect(page.locator('[data-compare-sentence="2"]')).toContainText('Not in the report');
 

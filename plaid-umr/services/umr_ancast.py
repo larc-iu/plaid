@@ -60,8 +60,9 @@ UMR_NAMESPACE = 'umr'
 #: does not.
 TASK_COMPARE = 'compare'
 
-#: The report's shape, so a reader can refuse one it does not understand.
-REPORT_VERSION = 1
+#: The report's shape, so a reader can refuse one it does not understand. 2:
+#: a match is an object carrying both concepts and whether it was a leftover.
+REPORT_VERSION = 2
 
 SUMMARY = """\
 **Adjudicate with AnCast** scores this document's UMR annotation against
@@ -647,6 +648,17 @@ def split_blocks(text: str) -> List[str]:
     return [block for block in (text or '').split(BLOCK_DELIMITER) if block]
 
 
+#: A node in PENMAN: an opening paren, the variable, a slash, the concept.
+_NODE = re.compile(r'\(\s*([^\s/()]+)\s*/\s*([^\s()]+)')
+
+
+def concepts_of(block: str) -> Dict[str, str]:
+    """Every node's concept in one block, by variable, exactly as written.
+    ancast keeps a concept as a lower-cased name and a sense number, which does
+    not always spell it back the way the annotator did."""
+    return dict(_NODE.findall(block or ''))
+
+
 #: An alignment line whose node takes more than one range, and nothing else. It
 #: must not match a sentence header, which carries commas of its own
 #: (`# :: snt2  If it rains , Alana won't water the plants .`), so the whole
@@ -717,7 +729,7 @@ def _f(value) -> Optional[float]:
     return None if value is None else round(float(value), 4)
 
 
-def _sentence_report(match_res) -> Dict[str, Any]:
+def _sentence_report(match_res, this_concepts=None, other_concepts=None) -> Dict[str, Any]:
     """One sentence's entry, from what the metric resolved.
 
     `match_list01` maps this document's variables to the other's, and
@@ -726,12 +738,25 @@ def _sentence_report(match_res) -> Dict[str, Any]:
     what `Match.gname` asserts on, so a `NULL` prefix is the way a node with no
     counterpart is spelled. The keys on both sides are plain variables, taken
     from each sentence's `var2node`, which is what the report carries.
+
+    A match carries both concepts, so a pair that differs in concept reads as
+    the disagreement it is, and whether it is a LEFTOVER: `quality_list01` is
+    0 for a pair anchored by a concept found once in both graphs and in the
+    text, 1 to 5 for one found by mutual best similarity with the neighbours
+    counted, and -1 for one `greedy_match_list` made from the nodes left over,
+    which pairs a `dog` with a `cat` sooner than leave either alone.
     """
     def is_null(value):
         return str(value).startswith('NULL')
 
-    matches = [[key, value] for key, value in match_res.match_list01.items()
-               if not is_null(value)]
+    this_concepts = this_concepts or {}
+    other_concepts = other_concepts or {}
+    quality = match_res.quality_list01
+    matches = [{'this': key, 'other': value,
+                'thisConcept': this_concepts.get(key),
+                'otherConcept': other_concepts.get(value),
+                'leftover': quality.get(key) == -1}
+               for key, value in match_res.match_list01.items() if not is_null(value)]
     unmatched = [key for key, value in match_res.match_list01.items() if is_null(value)]
     unmatched_other = [key for key, value in match_res.match_list10.items() if is_null(value)]
     return {
@@ -776,18 +801,32 @@ def score_umr(this_text: str, other_text: str, scope: str = 'doc'):
     with _quiet_ancast():
         match.compute_scores(pred_inputs=this_blocks, gold_inputs=other_blocks)
 
+    def group(name, value):
+        # A group neither document annotates has no score: ancast divides
+        # nothing by nothing and says 0, which reads as total disagreement.
+        if not (match.doc_annotations_test.get(name) or match.doc_annotations_gold.get(name)):
+            return None
+        return _f(value)
+
     scores = {
         'sentence': _f(match.sent_fscore),
-        'modal': _f(match.modal_fscore) if doc_scope else None,
-        'temporal': _f(match.temporal_fscore) if doc_scope else None,
-        'coref': _f(match.coref_fscore) if doc_scope else None,
+        'modal': group('modal', match.modal_fscore) if doc_scope else None,
+        'temporal': group('temporal', match.temporal_fscore) if doc_scope else None,
+        'coref': group('coref', match.coref_fscore) if doc_scope else None,
         'comprehensive': _f(match.comp_fscore) if doc_scope else None,
     }
 
     # ancast numbers a block from 1 as it walks them and skips a sentence whose
     # graph it cannot read, saying so only in its log. A skipped sentence is
     # reported as skipped rather than going missing from the list.
-    scored = {r['index']: r for r in (_sentence_report(m) for m in match.resolutions)}
+    def report_of(m):
+        i = m.umr0.sent_num - 1
+        return _sentence_report(
+            m,
+            concepts_of(this_blocks[i]) if i < len(this_blocks) else None,
+            concepts_of(other_blocks[i]) if i < len(other_blocks) else None)
+
+    scored = {r['index']: r for r in (report_of(m) for m in match.resolutions)}
     sentences = [scored.get(i + 1) or _skipped_report(i + 1) for i in range(len(this_blocks))]
     return scores, sentences
 
@@ -830,9 +869,10 @@ def build_notice(report, scored: int, skipped: int):
         return {'level': 'warning', 'title': 'Nothing scored',
                 'message': f'AnCast could not read a graph in any of the '
                            f'{skipped} sentence{s(skipped)}.'}
-    parts = [f"Sentence graphs {scores['sentence']:.2f}"]
+    # In whole percents, as the Compare tab prints them.
+    parts = [f"Sentence graphs {round(scores['sentence'] * 100)}%"]
     if scores['comprehensive'] is not None:
-        parts.append(f"comprehensive {scores['comprehensive']:.2f}")
+        parts.append(f"comprehensive {round(scores['comprehensive'] * 100)}%")
     tail = f'Scored {scored} sentence{s(scored)}.'
     if skipped:
         tail += f' AnCast could not read {skipped} sentence{s(skipped)}.'

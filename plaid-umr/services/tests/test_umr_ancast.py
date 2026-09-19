@@ -112,7 +112,9 @@ def test_a_discontiguous_alignment_is_collapsed_and_nothing_else_is_touched():
 # below are what
 #     python -m ancast -p umr_test.txt -g umr_gold.txt -s doc
 # reports: Sent 41.03%, Modality 50.00%, Temporal 54.55%, Coref 0.00%,
-# Comprehensive 45.24%.
+# Comprehensive 45.24%. Neither file has a coreference triple, so the
+# command line's 0.00% there is nothing divided by nothing, and the report
+# carries no score for it rather than a zero.
 
 def _samples():
     return ((FIXTURES / 'umr_test.txt').read_text(),
@@ -123,9 +125,47 @@ def test_the_document_scope_reproduces_the_command_lines_numbers():
     scores, sentences = umr.score_umr(*_samples(), 'doc')
 
     assert scores == {'sentence': 0.4103, 'modal': 0.5, 'temporal': 0.5455,
-                      'coref': 0.0, 'comprehensive': 0.4524}
+                      'coref': None, 'comprehensive': 0.4524}
     assert [s['index'] for s in sentences] == [1, 2]
     assert all(s['skipped'] is None for s in sentences)
+
+
+def _one_sentence(graph):
+    words = 'the dog barked at a tree near the house'
+    index = ' '.join(str(i + 1) for i in range(len(words.split())))
+    return (f'# :: snt1\t{words}\nIndex: {index}\nWords: {words}\n\n'
+            f'# sentence level graph:\n{graph}\n\n# alignment:\ns1b: 3-3\n\n'
+            '# document level annotation:\n(s1s0 / sentence)\n\n')
+
+
+def test_a_pair_made_of_leftovers_says_so():
+    """Once the anchored and the structurally best pairs are taken, ancast
+    pairs what is left greedily rather than leave it: here a `tree` with a
+    `night`. The report marks such a pair a leftover, so it does not read as
+    a counterpart found."""
+    this = _one_sentence('(s1b / bark-01 :ARG0 (s1d / dog) :ARG1 (s1t / tree)'
+                         ' :location (s1h / house))')
+    other = _one_sentence('(s1b / bark-01 :ARG0 (s1d / dog)'
+                          ' :ARG1 (s1t / house :mod (s1r / red)) :time (s1h / night))')
+    _, [sentence] = umr.score_umr(this, other, 'snt')
+
+    by_var = {m['this']: m for m in sentence['matches']}
+    assert by_var['s1t'] == {'this': 's1t', 'other': 's1h', 'thisConcept': 'tree',
+                             'otherConcept': 'night', 'leftover': True}
+    assert by_var['s1h']['leftover'] is False
+    assert by_var['s1h']['thisConcept'] == by_var['s1h']['otherConcept'] == 'house'
+    assert sentence['unmatchedOther'] == ['s1r']
+
+
+def test_a_concept_is_read_as_written():
+    """ancast keeps a concept as a lower-cased name and a sense number. The
+    report reads it off the graph instead, so it names what was annotated."""
+    block = ('# sentence level graph:\n'
+             '(s1x / Have-Rel-Role-91\n'
+             '    :ARG0 (s1p/person)\n'
+             '    :ARG1 (s1n / name :op1 "Ana (B)"))\n')
+    assert umr.concepts_of(block) == {
+        's1x': 'Have-Rel-Role-91', 's1p': 'person', 's1n': 'name'}
 
 
 def test_the_sentence_scope_scores_the_graphs_and_nothing_else():
@@ -147,7 +187,19 @@ def test_a_sentence_carries_its_own_scores_and_its_node_matches():
     assert first == {
         'index': 1, 'concept': 0.95, 'labeled': 0.4214, 'unlabeled': 0.4214,
         'weighted': 0.382, 'smatch': 0.48,
-        'matches': [['s1x3', 's1l2'], ['s1x0', 's1l'], ['s1x1', 's1p'], ['s1x2', 's1n']],
+        # Each pair carries both concepts as written. Three of the four are
+        # pairs whose concepts differ, which a list of variable pairs alone
+        # reported as agreement.
+        'matches': [
+            {'this': 's1x3', 'other': 's1l2', 'thisConcept': 'lunch-01',
+             'otherConcept': 'lunch', 'leftover': False},
+            {'this': 's1x0', 'other': 's1l', 'thisConcept': 'leave-11',
+             'otherConcept': 'leave-02', 'leftover': False},
+            {'this': 's1x1', 'other': 's1p', 'thisConcept': 'person',
+             'otherConcept': 'person', 'leftover': False},
+            {'this': 's1x2', 'other': 's1n', 'thisConcept': 'name',
+             'otherConcept': 'name', 'leftover': False},
+        ],
         'unmatched': [],
         # The gold graph has a node the test graph has nothing for.
         'unmatchedOther': ['s1e'],
@@ -155,12 +207,16 @@ def test_a_sentence_carries_its_own_scores_and_its_node_matches():
     }
     assert second['unmatched'] == [] and second['unmatchedOther'] == []
     assert len(second['matches']) == 5
+    # Paired on structure, not on concept: the metric's best counterpart for
+    # the other graph's `person` is a `state`.
+    assert {'this': 's2x1', 'other': 's2p', 'thisConcept': 'state',
+            'otherConcept': 'person', 'leftover': False} in second['matches']
     # Both sides of a match are plain variables, of the sentence they belong
     # to. ancast's own `Match.gname` formats them as `var / concept`, which is
     # a display string, and the report carries the variables.
-    for mine, theirs in first['matches'] + second['matches']:
-        assert mine.startswith('s') and theirs.startswith('s')
-        assert '/' not in mine and '/' not in theirs
+    for m in first['matches'] + second['matches']:
+        assert m['this'].startswith('s') and m['other'].startswith('s')
+        assert '/' not in m['this'] and '/' not in m['other']
 
 
 # --- documents ----------------------------------------------------------------
@@ -337,7 +393,7 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     document_id, body = _patch(service.client)
     assert document_id == DOC
     report = body['umr']['adjudication']
-    assert report['version'] == 1
+    assert report['version'] == 2
     assert report['tool'].startswith('ancast ')
     assert report['against'] == {'id': OTHER, 'name': 'Bo'}
     assert report['scope'] == 'doc'
@@ -351,11 +407,17 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert sentence['skipped'] is None
     assert set(sentence) == {'index', 'concept', 'labeled', 'unlabeled', 'weighted',
                              'smatch', 'matches', 'unmatched', 'unmatchedOther', 'skipped'}
-    # bark-01 is in both. ancast's greedy pass pairs the leftovers too, so
-    # `dog` and `cat` come back as a match of poor quality rather than as two
-    # unmatched nodes. The other document's third node has nothing to pair
-    # with and is the one reported unmatched.
-    assert sentence['matches'] == [['s1b', 's1b'], ['s1d', 's1d']]
+    # bark-01 is in both, and `dog` and `cat` are each its :ARG0, so the
+    # metric pairs them on structure rather than leaving two nodes unmatched.
+    # The report says what the pair is: two different concepts. The other
+    # document's third node has nothing to pair with and is the one reported
+    # unmatched.
+    assert sentence['matches'] == [
+        {'this': 's1b', 'other': 's1b', 'thisConcept': 'bark-01',
+         'otherConcept': 'bark-01', 'leftover': False},
+        {'this': 's1d', 'other': 's1d', 'thisConcept': 'dog',
+         'otherConcept': 'cat', 'leftover': False},
+    ]
     assert sentence['unmatched'] == []
     assert sentence['unmatchedOther'] == ['s1n']
     for key in ('concept', 'labeled', 'unlabeled', 'weighted', 'smatch'):
@@ -373,7 +435,7 @@ def test_two_identical_annotations_score_one_and_the_notice_says_so():
     assert result['scores']['sentence'] == 1.0
     assert result['notice'] == {
         'level': 'success',
-        'title': 'Sentence graphs 1.00, comprehensive 1.00 against Bo',
+        'title': 'Sentence graphs 100%, comprehensive 100% against Bo',
         'message': 'Scored 1 sentence.',
     }
 

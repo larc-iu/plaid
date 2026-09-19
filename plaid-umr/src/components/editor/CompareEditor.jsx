@@ -18,11 +18,13 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useDocumentEditor } from './useDocumentEditor.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
 import {
+  conceptsDiffer,
   markVariables,
   percent,
   readAdjudication,
   scoreRows,
   SENTENCE_SCORE_LABELS,
+  sentenceMarks,
   sentenceReport,
 } from '../../domain/adjudication.js';
 import { humanizeError } from '../../utils/feedback.jsx';
@@ -31,7 +33,14 @@ import { humanizeError } from '../../utils/feedback.jsx';
 // annotators' copies, or a draft against a corrected one. The score is
 // AnCast's, computed by the Compare service, and the report it leaves on the
 // document is what this tab shows: the scores, and sentence by sentence the
-// two graphs with the nodes that found no counterpart marked.
+// two graphs with the disagreements marked, a node with no counterpart and a
+// node paired with one of another concept.
+
+// The two marks, one class each, shared by the graphs and the legend.
+const MARK_CLASS = {
+  missing: 'rounded bg-amber-200 px-0.5 text-amber-950',
+  differs: 'rounded bg-rose-200 px-0.5 text-rose-950',
+};
 export const CompareEditor = () => {
   const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();
   const { getClient, user } = useAuth();
@@ -126,10 +135,20 @@ export const CompareEditor = () => {
               {rows.map((row) => (
                 <div key={row.key} data-score={row.key}>
                   <dt className="text-xs text-muted-foreground">{row.label}</dt>
-                  <dd className="text-2xl font-semibold tabular-nums">{percent(row.value)}</dd>
+                  <dd
+                    className="text-2xl font-semibold tabular-nums"
+                    title={row.value == null ? 'Neither document has any' : undefined}
+                  >
+                    {percent(row.value)}
+                  </dd>
                 </div>
               ))}
             </dl>
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>Marked in the graphs:</span>
+              <mark className={MARK_CLASS.missing}>No counterpart</mark>
+              <mark className={MARK_CLASS.differs}>Paired with another concept</mark>
+            </p>
           </div>
 
           {otherError && (
@@ -162,11 +181,14 @@ const formatWhen = (iso) => {
 };
 
 // One sentence: its scores, and the two graphs side by side. On each side
-// the variables of the nodes that found no counterpart are marked, and the
-// matched pairs are listed under them.
+// the variables of the nodes that disagree are marked, and the pairs are
+// listed under them, the ones whose concepts differ first and with both
+// concepts.
 function SentenceComparison({ sentence, row, left, right, otherName }) {
-  const unmatched = row?.unmatched || [];
-  const unmatchedOther = row?.unmatchedOther || [];
+  const { mine, theirs } = sentenceMarks(row);
+  const pairs = row?.matches || [];
+  const differ = pairs.filter(conceptsDiffer);
+  const same = pairs.filter((m) => !conceptsDiffer(m));
   return (
     <section className="rounded-md border" data-compare-sentence={sentence.index}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b px-4 py-2">
@@ -187,38 +209,72 @@ function SentenceComparison({ sentence, row, left, right, otherName }) {
         )}
       </header>
       <div className="grid gap-4 p-4 md:grid-cols-2">
-        <GraphColumn title="This document" text={left} marked={unmatched} />
+        <GraphColumn title="This document" text={left} marks={mine} />
         <GraphColumn
           title={otherName}
           text={right}
-          marked={unmatchedOther}
+          marks={theirs}
           placeholder={right == null ? 'Loading…' : undefined}
         />
       </div>
-      {row?.matches?.length > 0 && (
-        <p className="border-t px-4 py-2 text-xs text-muted-foreground">
-          Matched:{' '}
-          {row.matches.map(([a, b], i) => (
-            <span key={i} className="mr-3 whitespace-nowrap font-mono">
-              {a} = {b}
-            </span>
-          ))}
-        </p>
+      {pairs.length > 0 && (
+        <div className="flex flex-col gap-1 border-t px-4 py-2 text-xs text-muted-foreground">
+          {differ.length > 0 && (
+            <p data-pairs="differ">
+              Paired with another concept:{' '}
+              {differ.map((m) => (
+                <Pair key={m.this} match={m} withConcepts />
+              ))}
+            </p>
+          )}
+          {same.length > 0 && (
+            <p data-pairs="same">
+              Same concept:{' '}
+              {same.map((m) => (
+                <Pair key={m.this} match={m} />
+              ))}
+            </p>
+          )}
+        </div>
       )}
     </section>
   );
 }
 
-function GraphColumn({ title, text, marked, placeholder }) {
-  const segments = markVariables(text || '', marked);
+// One pair, `s1x = s1l`, with both concepts when they differ. A pair AnCast
+// made only because both nodes were left over says so: it is no evidence the
+// two nodes are the same node.
+function Pair({ match, withConcepts = false }) {
+  return (
+    <span
+      className={`mr-3 inline-block whitespace-nowrap font-mono ${withConcepts ? 'text-rose-900' : ''}`}
+      data-pair={match.this}
+    >
+      {match.this}
+      {withConcepts && ` ${match.thisConcept}`} = {match.other}
+      {withConcepts && ` ${match.otherConcept}`}
+      {match.leftover && (
+        <span
+          className="ml-1 font-sans italic text-muted-foreground"
+          title="Paired from the nodes left once the rest were paired"
+        >
+          left over
+        </span>
+      )}
+    </span>
+  );
+}
+
+function GraphColumn({ title, text, marks, placeholder }) {
+  const segments = markVariables(text || '', marks);
   return (
     <div className="min-w-0">
       <p className="mb-1 text-xs text-muted-foreground">{title}</p>
       <pre className="overflow-x-auto rounded-md bg-muted/40 p-3 font-mono text-xs leading-relaxed">
         {text ? (
           segments.map((seg, i) =>
-            seg.marked ? (
-              <mark key={i} className="rounded bg-amber-200 px-0.5 text-amber-950">
+            seg.mark ? (
+              <mark key={i} className={MARK_CLASS[seg.mark]} data-mark={seg.mark}>
                 {seg.text}
               </mark>
             ) : (
