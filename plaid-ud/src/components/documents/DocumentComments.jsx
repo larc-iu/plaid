@@ -32,7 +32,7 @@ export const DocumentComments = () => {
   const anchors = useMemo(() => buildAnchorIndex(doc), [doc, version]);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 pb-8">
+    <div className="w-full max-w-4xl">
       <CommentsBrowser
         store={comments}
         anchors={anchors}

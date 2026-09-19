@@ -35,9 +35,11 @@ const Shell = () => {
     navigate('/login');
   };
 
-  // The annotation editor wants the full viewport width; every other screen is
-  // constrained to a centered container.
-  const isAnnotationEditor = location.pathname.includes('/annotate');
+  // A document's tabs want the full viewport width: the annotation editor's
+  // grid does, and the tab row stays in one place only if every tab has it
+  // (DocumentEditorShell holds the others to a readable width). Every other
+  // screen is constrained to a centered container.
+  const isDocument = /^\/projects\/[^/]+\/documents\/[^/]+/.test(location.pathname);
 
   return (
     <AssistantChrome
@@ -90,12 +92,12 @@ const Shell = () => {
           <main className="flex-1">
             {/* One container that changes shape, never a `cond ? <Outlet/> :
                 <div><Outlet/></div>`. Swapping the element AT this position would
-                unmount everything below it when you move into or out of /annotate:
+                unmount everything below it when you move into or out of a document:
                 which is exactly the remount DocumentEditorShell exists to prevent,
                 since the shell renders through this Outlet. */}
             {/* Preflight is global now, so nothing here scopes it. Every screen
                 and each migrated one brings its own. */}
-            <div className={isAnnotationEditor ? 'w-full' : 'mx-auto max-w-[1320px] px-4 py-8'}>
+            <div className={isDocument ? 'w-full' : 'mx-auto max-w-[1320px] px-4 py-8'}>
               <Outlet />
             </div>
           </main>

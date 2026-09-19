@@ -38,9 +38,11 @@ const Shell = () => {
     navigate('/login');
   };
 
-  // The annotation editor wants the full viewport width. Every other screen
-  // is constrained to a centered container.
-  const isAnnotationEditor = location.pathname.includes('/annotate');
+  // A document's tabs want the full viewport width: the annotation editor's
+  // canvas does, and the tab row stays in one place only if every tab has it
+  // (DocumentEditorShell holds the others to a readable width). Every other
+  // screen is constrained to a centered container.
+  const isDocument = /^\/projects\/[^/]+\/documents\/[^/]+/.test(location.pathname);
 
   return (
     <AssistantChrome
@@ -84,9 +86,9 @@ const Shell = () => {
           <main className="flex-1">
             {/* One container that changes shape, never a swapped element:
                 swapping at this position would unmount everything below it when
-                moving into or out of /annotate, which is the remount
+                moving into or out of a document, which is the remount
                 DocumentEditorShell exists to prevent. */}
-            <div className={isAnnotationEditor ? 'w-full' : 'mx-auto max-w-[1320px] px-4 py-8'}>
+            <div className={isDocument ? 'w-full' : 'mx-auto max-w-[1320px] px-4 py-8'}>
               <Outlet />
             </div>
           </main>

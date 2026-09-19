@@ -27,8 +27,10 @@ import { notifyError } from '../../utils/feedback.jsx';
 // unmount the chrome on every switch, flash a bare spinner where the whole page
 // had been, and re-download the document.
 
-// The annotation editor is full-bleed and supplies its own padding; the others
-// sit in `Layout`'s centered container, which already pads them.
+// Every document tab is full width in `Layout`, so the breadcrumb and the tab
+// row stand in one place whichever tab is open. The annotation editor is
+// full-bleed and supplies its own padding; the others are held to a readable
+// width under the tabs.
 const isWideRoute = (pathname) => pathname.includes('/annotate') || pathname.includes('/compare');
 
 export const DocumentEditorShell = () => {
@@ -251,7 +253,7 @@ export const DocumentEditorShell = () => {
           That is what stops the tab switch from blanking the page. */}
       <div
         style={{ marginLeft: chromeOffset, transition: 'margin-left 300ms ease' }}
-        className={wide ? 'px-6 pt-4' : undefined}
+        className="px-6 pt-4"
       >
         <DocumentTabs
           projectId={projectId}
@@ -263,7 +265,7 @@ export const DocumentEditorShell = () => {
       </div>
 
       {writeLock.held && (
-        <div className={wide ? 'px-6' : undefined}>
+        <div className="px-6">
           <RunBanner {...writeLock.held} />
         </div>
       )}
@@ -271,7 +273,7 @@ export const DocumentEditorShell = () => {
       {loading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
 
       {!loading && (loadError || !doc || !project) && (
-        <div className={wide ? 'px-6' : undefined}>
+        <div className="px-6">
           <div
             role="alert"
             className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -282,23 +284,27 @@ export const DocumentEditorShell = () => {
       )}
 
       {!loading && !loadError && doc && project && (
-        <Outlet
-          context={{
-            projectId,
-            documentId,
-            doc,
-            project,
-            reload,
-            comments,
-            canComment: canEditProject(project, user),
-            canDeleteAnyComment: canManageProject(project, user),
-            services,
-            focusNonce,
-            writeLockHeld: writeLock.held,
-            setChromeOffset,
-            setChromeBusy,
-          }}
-        />
+        // Always this div, its class alone changing with the tab: a
+        // wrapper that came and went would remount the tab under it.
+        <div className={wide ? undefined : 'max-w-[1320px] px-6 pb-8'}>
+          <Outlet
+            context={{
+              projectId,
+              documentId,
+              doc,
+              project,
+              reload,
+              comments,
+              canComment: canEditProject(project, user),
+              canDeleteAnyComment: canManageProject(project, user),
+              services,
+              focusNonce,
+              writeLockHeld: writeLock.held,
+              setChromeOffset,
+              setChromeBusy,
+            }}
+          />
+        </div>
       )}
     </div>
   );

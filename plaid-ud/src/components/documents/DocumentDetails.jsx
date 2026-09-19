@@ -105,7 +105,7 @@ export const DocumentDetails = () => {
   );
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+    <div className="flex max-w-2xl flex-col gap-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Details</CardTitle>
