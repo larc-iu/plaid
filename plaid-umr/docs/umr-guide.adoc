@@ -1,0 +1,271 @@
+= Plaid UMR Guide
+:lang: en
+:encoding: UTF-8
+:doctype: book
+:toc: left
+:toclevels: 3
+:sectlinks:
+:sectanchors:
+:leveloffset: 1
+:sectnums:
+:hide-uri-scheme: 1
+:source-highlighter: coderay
+
+// Mobile-friendliness: shrink code blocks and let them wrap instead of
+// scrolling horizontally on narrow screens.
+++++
+<style>
+.listingblock pre, .literalblock pre { font-size: 0.8em; }
+@media screen and (max-width: 640px) {
+  .listingblock pre, .literalblock pre {
+    font-size: 0.72em;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+</style>
+++++
+
+= Introduction
+
+**Plaid UMR** is a web-based editor for https://umr4nlp.github.io/web/[Uniform Meaning Representation] annotation.
+This guide is written for annotators.
+It covers the everyday loop (import a `.umr` file or open a document another Plaid app glossed, annotate its sentence graphs and its document graph on the canvas, export it as `.umr`) and then the rest of the editor.
+
+Plaid UMR is one of the apps built on the Plaid platform, beside Plaid IGT and Plaid UD.
+It shares a project's text, sentences and words with them: a document glossed in Plaid IGT can be annotated for UMR in this app, with its glosses shown under the words.
+You do not need to know anything about Plaid itself to use the editor.
+For the platform, or for scripting against your data, see link:manual.html[the Plaid manual] and the link:api-py.html[Python] / link:api-js.html[JavaScript] client references.
+
+[NOTE]
+====
+Text and tokenization are not edited in Plaid UMR.
+A project's text, sentences and words are made and changed in Plaid IGT or Plaid UD, or come from a `.umr` import.
+This app annotates over them.
+====
+
+= Getting Started
+
+Plaid UMR is served by your Plaid server.
+Open it in your browser at the `/umr/` path on that server.
+Running Plaid locally with the default settings, that is:
+
+----
+http://localhost:8080/umr/
+----
+
+Sign in with the email address and password your project administrator gave you.
+Your name at the top right opens your account, with your profile (where the keyboard shortcuts are rebound) and **Logout**.
+
+The editor has three levels:
+
+* **Projects**: the list of projects you can open.
+* **Documents**: a project's documents, with the project's tabs (Guidelines, Validation, Activity, Project Settings, Import & Export).
+* **A document**: its Annotate, Details, Comments and Export tabs.
+
+= Projects
+
+== Creating a project
+
+**New UMR project** on the Projects page makes a project with a text layer, a sentence layer, a word layer, and the four layers UMR annotation lives in.
+Documents come in through **Import & Export**.
+
+== A project from Plaid IGT or Plaid UD
+
+A project made in another Plaid app opens here once a maintainer has set it up for UMR: opening its documents sends a maintainer to the setup page, where **Set up for UMR** adds the UMR layers beside the existing ones.
+Nothing already in the project changes.
+Everyone else sees a notice asking for a maintainer.
+
+A project with no text at all is set up in Plaid IGT or Plaid UD first.
+
+== Language
+
+**Project Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
+It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
+
+= Importing and Exporting
+
+== Importing a `.umr` file
+
+**Import & Export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker.
+Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
+
+When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
+This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
+Words that differ, or a graph already there, refuse the import before anything is written.
+
+A sentence whose graph the parser cannot read is kept as text and written back unchanged on export; the sentence's header says so.
+Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
+
+== Exporting
+
+A document's **Export** tab shows it as `.umr`, to copy or download.
+**Import & Export** exports every document of the project as a zip.
+
+The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
+A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
+
+= The Canvas
+
+The **Annotate** tab draws every sentence of the document as a block: the graph above, the words below.
+
+== Nodes
+
+A node shows its variable, its concept, and its attributes as chips (`aspect performance`, `polarity -`).
+A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
+A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
+The root's concept is underlined.
+
+== Edges
+
+Tree edges run down from a parent to its children, the relation floating above the child.
+A node with a second way in (a re-entrancy) shows the second edge as a bowed curve with a dashed label.
+An edge to a node far along the sentence runs across the gap between rows in a lane of its own, so a parent with many children fans out into distinct lines.
+
+== Words and glosses
+
+The words carry their number.
+Under them, the project's gloss lines: the morphemes and their glosses grouped under the word they belong to, a part of speech per word, and a translation as a row.
+Which layers feed which lines is set in **Project Settings, UMR settings** (see <<Gloss lines>>).
+
+== The margin
+
+The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
+A relation between a node and a constant is drawn as a line to the margin and reads on the node as a tag in the document graph's own color (`author :full-affirmative`).
+
+== Coreference
+
+Nodes in one coreference chain wear a numbered chip in the chain's color.
+Clicking the chip goes to the next mention of the chain, in this sentence or another.
+
+== Validation marks
+
+The official UMR checks run as you edit.
+A sentence's header counts its errors and warnings; clicking the count lists them.
+A node a check names wears a dot, red for an error and amber for a warning, with the message on hover.
+The project's **Validation** tab lists every problem in every document.
+
+= Editing
+
+Every edit is written as it happens and lands in the document's history; there is no save button.
+Focus a node by clicking it or with the arrows, then the keys below act on it.
+The default shortcuts are listed here; every one of them can be rebound under your profile.
+
+== Moving around
+
+* Arrows move between nodes: up to the parent, down to the first child, left and right between the nodes of a row.
+* Shift+Tab leaves the block.
+
+== Making nodes and edges
+
+* **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word (its concept starts as the word), or type a concept for an abstract node. Then the relation.
+* Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
+* **n** makes a node with no parent; so does a double-click on a word or on empty space.
+* **r** adds a second parent to the focused node: click the parent, then give the relation.
+
+== Changing a node
+
+* **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the word itself, then the abstract concepts, rolesets and discourse concepts.
+* **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
+* **a** edits the attributes as one line, `:aspect state :refer-number singular`, with completion from the value sets.
+* **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document.
+* **u** changes the anchor: click words to add or remove them, Escape when done.
+* **m** moves the node under another parent: click the new parent. Dragging an edge's label onto a node does the same.
+* **Ctrl+Shift+R** (Cmd+Shift+R) makes the focused node the sentence's root.
+
+== Deleting
+
+* **Shift+Backspace** deletes the edge into the focused node, and with it whatever only that edge reached. More than one node going asks first; a leaf goes without a question, since history keeps it.
+* **Ctrl+Shift+Backspace** (Cmd+Shift+Backspace) deletes the node and everything under it.
+* In a relation editor, Shift+Backspace before anything is typed deletes that edge or triple.
+
+== The pickers
+
+Enter commits what a picker shows. An option is taken only when the arrows moved to it or it was clicked; a highlight the pointer left behind is not a choice.
+Escape cancels.
+
+== Text mode
+
+**Text** in a sentence's header shows the sentence's graph as PENMAN in place of the canvas.
+The text is parsed as you type, and the first problem shows under it.
+**Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
+A node the text never showed (a fragment not reached from the root) is left alone.
+Cancel with unapplied changes asks first.
+
+= The Document Graph
+
+Temporal, modal and coreference relations are UMR's document-level annotation.
+In this editor they are made from the same canvas as the sentence graph.
+
+* Drag a node's grip onto a constant in the margin: a modal relation for `author`, `root` or `null-conceiver`, a temporal one for `document-creation-time` and the reference constants. The relation is asked at the drop and appears as a tag on the node.
+* Hold Ctrl (Cmd) while dragging from a node onto another node for a temporal relation between two events.
+* Drag onto a node of another sentence for a coreference (without Ctrl) or a temporal relation (with Ctrl).
+* **c** on the focused node starts a coreference: pick the other node by its variable, then the relation (`:same-entity`, `:same-event`, `:subset-of`).
+* **t** starts a temporal relation: pick a constant or another node's variable, then the relation.
+* **o** starts a modal relation: pick the conceiver (`author`, `root`, `null-conceiver`, or a node), then the relation.
+
+A tag on a node opens its relation to change it; Shift+Backspace there deletes it.
+Triples the canvas cannot draw (coreference, a temporal relation to another sentence) are listed under the graph and open the same way.
+
+= Gloss lines
+
+**Project Settings, UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
+A line's source is the morpheme layer (written as `Morphemes`), one of the substrate's annotation layers (Plaid IGT's fields, which say their scope: a morpheme-scoped field is written as `Morpheme Gloss` or `Morpheme Category`, a word-scoped one as `Word Gloss` or `Part of Speech`, a sentence-scoped one as `Sentence Gloss`), or the lines an import stored that nothing else covers.
+**Propose from layers** fills the list from the layers' names and scopes.
+`Index` and `Words` are always written.
+
+= History
+
+**History** on the Annotate tab opens the document's history: every operation, who made it and when.
+Selecting an entry shows the document as it was then, read-only; **Restore** returns the document to that state as a new operation, so nothing is lost.
+
+= Validation
+
+The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, and the rest.
+The same checks mark the canvas as you edit.
+
+The value sets the pickers offer and the checks accept are the official validator's.
+
+= Comments, Activity, Sharing
+
+A document's **Comments** tab holds comments on the document and on its sentences.
+**Activity** shows who has been working on the project and on what.
+**Project Settings, Users & Permissions** manages the project's members and invitation links; **Access Tokens** makes named tokens for scripts and services.
+
+= Services
+
+A project's **Services** settings name which service each task runs with by default.
+The **Draft** button on the Annotate tab runs a drafting service over the document or one sentence: a language model proposes a sentence graph from the words and their glosses, written as machine annotation for you to correct.
+Sentences that already have a graph are skipped unless the run is told to overwrite them.
+
+= The Assistant
+
+When an assistant service is connected to the server, a project's **Assistant** tab and the panel on every screen let you ask about the project's annotation and have changes proposed.
+A proposed change is shown before it is applied and lands in history like any other edit.
+
+= Keyboard reference
+
+The defaults. Every shortcut can be rebound under your profile, Keyboard.
+
+[cols="1,3"]
+|===
+| Key | Action
+
+| Arrows | Move between nodes
+| Tab | New child of the focused node
+| Enter | Edit the concept
+| : | Edit the relation to the parent
+| a | Edit the attributes
+| v | Rename the variable
+| u | Change the anchor
+| m | Move under another node
+| r | Add a second parent
+| c | Coreference with another node
+| t | Temporal relation
+| o | Modal relation
+| n | New node with no parent
+| Ctrl+Shift+R | Make the node the root
+| Shift+Backspace | Delete the edge to the parent, with what only it reached
+| Ctrl+Shift+Backspace | Delete the node and everything under it
+| Escape | Leave a mode or cancel a picker
+|===

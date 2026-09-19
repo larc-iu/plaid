@@ -19,7 +19,7 @@ Some distinguishing features of Plaid:
 
 == Official Apps
 
-Plaid comes with two official annotation apps.
+Plaid comes with three official annotation apps.
 Read more:
 
 +++
@@ -31,6 +31,10 @@ Read more:
   <a href="igt-guide.html">
     <span class="ico"><svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="9.5" x2="14" y2="9.5"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="3" y1="18.5" x2="11" y2="18.5"/></svg></span>
     <div class="txt"><b>IGT Editor Guide</b><span>Get started building interlinear glossed text in the bundled IGT editor.</span></div>
+  </a>
+  <a href="umr-guide.html">
+    <span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.2"/><circle cx="6" cy="12" r="2.2"/><circle cx="18" cy="12" r="2.2"/><circle cx="12" cy="19" r="2.2"/><path d="M10.5 6.8L7.5 10.2"/><path d="M13.5 6.8L16.5 10.2"/><path d="M7.5 13.8L10.5 17.2"/><path d="M16.5 13.8L13.5 17.2"/></svg></span>
+    <div class="txt"><b>UMR Editor Guide</b><span>Get started annotating Uniform Meaning Representation graphs in the bundled UMR editor.</span></div>
   </a>
 </div>
 +++
