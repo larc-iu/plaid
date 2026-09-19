@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ATTRIBUTES } from '../../../domain/format/inventory.js';
 import { latticeFor, linesFor, valuesFor } from '../../../domain/lattices.js';
@@ -26,8 +27,9 @@ const PICKED = [
 // Keys: arrows move between values and lines, Enter or Space picks the
 // focused one, Backspace clears the focused row, Escape closes. Focus leaving
 // the picker closes it too.
-export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onClose }) {
+export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, onClose }) {
   const rootRef = useRef(null);
+  const place = usePlacement(nodeId, width);
   const byRel = useMemo(() => new Map(attrs.map((a) => [a.rel, a])), [attrs]);
   const rows = useMemo(
     () =>
@@ -47,6 +49,14 @@ export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onC
   const [otherLine, setOtherLine] = useState(() => attrsToLine(others));
   useEffect(() => setOtherLine(attrsToLine(others)), [others]);
 
+  // Focus lands on the first row's chosen value, or its first value.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const first = root.querySelector('[aria-pressed="true"]') || root.querySelector('button');
+    first?.focus();
+  }, []);
+
   // A value replaces the attribute's, keeping the others in their order.
   const set = (rel, value) => {
     const kept = attrs.filter((a) => a.rel !== rel);
@@ -58,14 +68,6 @@ export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onC
     if (attrsToLine(next) === attrsToLine(others)) return;
     onChange([...attrs.filter((a) => PICKED.includes(a.rel)), ...next]);
   };
-
-  // Focus lands on the first row's chosen value, or its first value.
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const first = root.querySelector('[aria-pressed="true"]') || root.querySelector('button');
-    first?.focus();
-  }, []);
 
   // Roving focus over the value buttons, by the line they sit on.
   const move = (from, dLine, dCol) => {
@@ -103,13 +105,23 @@ export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onC
     }
   };
 
-  return (
+  // In a PORTAL: the canvas scrolls sideways, so it clips anything taller
+  // than the graph, and this is taller than a node near the foot of a
+  // sentence. Fixed to the node's place on screen, above it when there is no
+  // room below, and never taller than the room it has.
+  //
+  // Hand-placed rather than through the shared Popover: this opens from the
+  // node's menu as often as not, and two focus managers in one gesture had
+  // the menu's closing dismiss the picker before it could be used.
+  return createPortal(
     <div
       ref={rootRef}
-      className="umr-inline-editor umr-attr-popover"
-      style={{ left: `${x}px`, top: `${y}px`, width: `${width}px` }}
+      className="umr-attr-popover"
+      style={{ ...place, width: `${width}px` }}
       role="dialog"
       aria-label="Attributes"
+      // A portal's events still bubble through the React tree, so the canvas
+      // below would see these.
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={onKeyDown}
@@ -175,6 +187,46 @@ export function AttributePopover({ x, y, width = 470, attrs, sets, onChange, onC
       <div className="umr-attr-hint">
         Arrows move, Enter picks, Backspace clears the row, Escape closes.
       </div>
-    </div>
+    </div>,
+    document.body,
   );
+}
+
+// Where the picker sits: under the node it is about, or over it when the
+// room below is the smaller half, capped to the space it has either way.
+// Recomputed while it is open, since the page and the canvas both scroll.
+function usePlacement(nodeId, width) {
+  // Measured in a LAYOUT effect, so the placeholder below never paints.
+  // It must not be hidden in the meantime: a hidden element cannot take
+  // focus, and the picker focuses a value of its first row as it opens.
+  const [place, setPlace] = useState({ position: 'fixed', left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = nodeId && document.querySelector(`[data-node-id="${CSS.escape(nodeId)}"]`);
+      const r = el?.getBoundingClientRect();
+      if (!r) return;
+      const gap = 6;
+      const margin = 8;
+      const below = window.innerHeight - r.bottom - margin;
+      const above = r.top - margin;
+      const goesBelow = below >= above;
+      setPlace({
+        position: 'fixed',
+        left: `${Math.round(Math.min(Math.max(margin, r.left), window.innerWidth - width - margin))}px`,
+        [goesBelow ? 'top' : 'bottom']: `${Math.round(
+          goesBelow ? r.bottom + gap : window.innerHeight - r.top + gap,
+        )}px`,
+        maxHeight: `${Math.round(Math.max(160, (goesBelow ? below : above) - gap))}px`,
+        overflowY: 'auto',
+      });
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [nodeId, width]);
+  return place;
 }

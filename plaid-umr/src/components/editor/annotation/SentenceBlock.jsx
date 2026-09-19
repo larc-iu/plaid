@@ -1113,9 +1113,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               // shortcut reach the block.
               onClosed={() =>
                 requestAnimationFrame(() => {
-                  const opened = canvasRef.current?.querySelector(
-                    '.umr-inline-editor input, .umr-attr-popover button',
-                  );
+                  // The inline editor is in place, the attribute picker is
+                  // portaled out of the canvas (it would be clipped there),
+                  // so they are looked for in different places. Focusing the
+                  // node instead would dismiss the picker as an interaction
+                  // outside it.
+                  const opened =
+                    canvasRef.current?.querySelector('.umr-inline-editor input') ||
+                    document.querySelector('.umr-attr-popover button');
                   if (opened) opened.focus();
                   else focusNode(menuNodeRef.current);
                 })
@@ -1123,8 +1128,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             />
             {editor?.kind === 'attrs' && nodesById.has(editor.nodeId) && (
               <AttributePopover
-                x={editor.x}
-                y={editor.y}
+                nodeId={editor.nodeId}
                 attrs={nodesById.get(editor.nodeId).attrs}
                 onChange={(attrs) => run(() => doc.setAttrs(editor.nodeId, attrs))}
                 onClose={closeEditor}

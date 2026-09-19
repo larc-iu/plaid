@@ -563,6 +563,7 @@
 /* The attribute picker. A pressed value is the attribute's, an outlined one
    is a coarser value on the way to it. */
 .umr-attr-popover {
+  z-index: 50;
   display: flex;
   flex-direction: column;
   gap: 4px;

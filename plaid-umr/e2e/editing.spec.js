@@ -273,8 +273,9 @@ test.describe('editing', () => {
     // click on a part edits that part. So a click on a chip cannot swallow
     // the click that was only meant to focus the node.
     const leave = nodeByConcept(page, 'leave-02');
+    const picker = page.getByRole('dialog', { name: 'Attributes' });
     await leave.locator('.umr-chip').first().click();
-    await expect(page.getByRole('dialog', { name: 'Attributes' })).toHaveCount(0);
+    await expect(picker).toHaveCount(0);
     await expect(leave).toHaveClass(/umr-node--focused/);
 
     // Focused, the variable renames.
@@ -286,10 +287,28 @@ test.describe('editing', () => {
 
     // And the chip opens the attribute picker at that node.
     await leave.locator('.umr-chip').first().click();
-    const picker = page.getByRole('dialog', { name: 'Attributes' });
     await expect(picker).toBeVisible();
     await expect(picker.locator('[aria-pressed="true"]')).toHaveText('performance');
     await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+
+    // The picker opens from the menu too, and is placed against the WINDOW:
+    // the canvas clips (it scrolls sideways), and the picker is taller than
+    // a node near the foot of a sentence.
+    await leave.click({ button: 'right' });
+    await page
+      .getByRole('menu')
+      .getByRole('menuitem', { name: /^Attributes/ })
+      .click();
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('button:focus')).toHaveCount(1);
+    expect(
+      await picker.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.top >= -1 && r.bottom <= window.innerHeight + 1;
+      }),
+    ).toBe(true);
+    await block.locator('.umr-block-text').click();
     await expect(picker).toHaveCount(0);
 
     // The concept takes a click to focus and a second one to edit, so a
