@@ -225,3 +225,93 @@
     (assert-created resp)
     (is (= "Still nothing" (:document/name (doc/get-with-layer-data db new-id))))
     (is (empty? (row-ids new-id)))))
+
+;; ============================================================
+;; Metadata that names the document's own rows
+;;
+;; Apps keep ids of a document's own rows inside metadata (UMR records,
+;; on an unaligned node's span, the id of its sentence token). In the
+;; copy such a value must name the copy's row, or the copy points back
+;; into the source and an app reads the reference as dangling.
+;; ============================================================
+
+(deftest metadata-naming-the-documents-own-rows-names-the-copys-rows
+  (let [proj (create-test-project admin-request "CopyRefs")
+        doc-id (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "Text") :body :id)
+        text-id (-> (create-text admin-request tl doc-id "one two") :body :id)
+        tkl (-> (create-token-layer admin-request tl "Words") :body :id)
+        sl (-> (create-span-layer admin-request tkl "Nodes") :body :id)
+        rl (-> (create-relation-layer admin-request sl "Edges") :body :id)
+        one (-> (create-token admin-request tkl text-id 0 3) :body :id)
+        two (-> (create-token admin-request tkl text-id 4 7) :body :id)
+        a (-> (create-span admin-request sl [one] "a") :body :id)
+        b (-> (create-span admin-request sl [two] "b") :body :id)
+        rel (-> (create-relation admin-request rl a b "arg" {"from" (str a)}) :body :id)
+        vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
+        _ (assert-status 204 (link-vocab-to-project admin-request proj vocab))
+        item (-> (create-vocab-item admin-request vocab "one") :body :id)
+        link (-> (create-vocab-link admin-request item [one] {"doc" (str doc-id)}) :body :id)
+        b-meta {"umr" {"sentence" (str one)
+                       "path" [(str one) [(str two)] {"at" (str text-id)}]}
+                "edge" (str rel)
+                "note" (str "see " one)
+                "by-token" {(str one) "first"}
+                "layer" (str tkl)
+                "count" 2}]
+    ;; A token naming a span is a forward reference: tokens are written
+    ;; before spans. The text names a vocab link, written last of all.
+    (assert-ok (update-token-metadata admin-request one {"node" (str b)}))
+    (assert-ok (update-span-metadata admin-request b b-meta))
+    (assert-ok (update-text-metadata admin-request text-id {"first-link" (str link)}))
+    (assert-ok (update-document-metadata admin-request doc-id {"self" (str doc-id) "genre" "fable"}))
+    (let [before (live doc-id)
+          resp (copy! admin-request doc-id {:name "Copy"})
+          new-id (-> resp :body :id)
+          rows (drows/read-rows db new-id)
+          only (fn [k] (let [rs (get rows k)] (is (= 1 (count rs))) (first rs)))
+          token-at (into {} (map (juxt :begin identity)) (:tokens rows))
+          span-over (into {} (map (juxt (comp first drows/tokens-of) identity)) (:spans rows))
+          id-of (comp str :id)
+          c-text (only :texts)
+          c-rel (only :relations)
+          c-link (only :vocab-links)
+          c-one (token-at 0)
+          c-two (token-at 4)
+          c-a (span-over (:id c-one))
+          c-b (span-over (:id c-two))]
+      (assert-created resp)
+
+      (testing "a span naming a token, nested in a map and in a vector, names the copy's token"
+        (is (= {"umr" {"sentence" (id-of c-one)
+                       "path" [(id-of c-one) [(id-of c-two)] {"at" (id-of c-text)}]}
+                "edge" (id-of c-rel)}
+               (select-keys (:metadata c-b) ["umr" "edge"]))))
+
+      (testing "a token naming a span, a forward reference, names the copy's span"
+        (is (= {"node" (id-of c-b)} (:metadata c-one))))
+
+      (testing "relations, links and texts are rewritten and referred to alike"
+        (is (= {"from" (id-of c-a)} (:metadata c-rel)))
+        (is (= {"doc" (str new-id)} (:metadata c-link)))
+        (is (= {"first-link" (id-of c-link)} (:metadata c-text))))
+
+      (testing "the document's metadata naming itself names the copy"
+        (is (= {"self" (str new-id) "genre" "fable"}
+               (:metadata (doc/get-with-layer-data db new-id)))))
+
+      (testing "a string that contains an id, a key that is an id, an outside id and a number are kept"
+        (is (= {"note" (str "see " one)
+                "by-token" {(str one) "first"}
+                "layer" (str tkl)
+                "count" 2}
+               (select-keys (:metadata c-b) ["note" "by-token" "layer" "count"]))))
+
+      (testing "the source's metadata still names the source's rows"
+        (is (= before (live doc-id)))
+        (is (= b-meta (:metadata (first (filter #(= (str b) (str (:id %)))
+                                                (:spans (drows/read-rows db doc-id))))))))
+
+      (testing "history reads the rewritten metadata back"
+        (is (= (live new-id)
+               (comparable (hread/get-with-layer-data-at db new-id (latest-op-ts)))))))))

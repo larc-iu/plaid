@@ -655,6 +655,17 @@
                          (crud/update-by-id! tx :documents eid attrs)
                          eid))))
 
+(defn- rewrite-refs
+  "`v` with every string that is exactly a key of `ids` replaced by its
+  value, through nested maps and vectors. Only whole strings count: map
+  keys, a string that merely contains an id, and non-strings are kept."
+  [ids v]
+  (cond
+    (string? v) (clojure.core/get ids v v)
+    (map? v) (update-vals v #(rewrite-refs ids %))
+    (sequential? v) (mapv #(rewrite-refs ids %) v)
+    :else v))
+
 (defn copy
   "Copy `src-id` and everything in it into a new document of the same
   project, named `new-name`, as one operation.
@@ -667,6 +678,14 @@
   lists and their metadata, as does the document's own metadata, each
   under one :insert audit row carrying a full post-image, so the copy
   reads back through history like any other document.
+
+  Apps keep ids of the document's own rows inside metadata (a span that
+  names its sentence token, say). In the copy's metadata, a value that is
+  exactly the id of a copied row, or of the source document, becomes the
+  id of the copy's row or of the copy, so it names the same thing in the
+  copy that it named in the source. Nested maps and vectors are walked.
+  Map keys, strings that merely contain an id, and ids of rows outside
+  the document (layers, vocabulary entries) are left as they are.
 
   What does not come across: comments (the copy's entities are new, so
   an old thread has nothing to be about) and, unless `include-media?`,
@@ -700,12 +719,27 @@
                                     ;; One fresh id per source row, minted up
                                     ;; front: everything that points at a row
                                     ;; (a token at its text, a span at its
-                                    ;; tokens, a relation at its spans) is
+                                    ;; tokens, a relation at its spans, a
+                                    ;; metadata value naming any of them) is
                                     ;; rewritten through these maps.
                                     fresh (fn [rs] (into {} (map (fn [r] [(:id r) (psc/new-uuid)])) rs))
                                     text-ids (fresh (:texts rows))
                                     token-ids (fresh (:tokens rows))
-                                    span-ids (fresh (:spans rows))]
+                                    span-ids (fresh (:spans rows))
+                                    relation-ids (fresh (:relations rows))
+                                    link-ids (fresh (:vocab-links rows))
+                                    ;; Metadata is JSON, so an id in it is a
+                                    ;; string. Forward references (a token
+                                    ;; naming a span) work because every id
+                                    ;; is minted before any row is written.
+                                    ref-ids (into {(str (:id src)) (str new-id)}
+                                                  (map (fn [[old new]] [(str old) (str new)]))
+                                                  (concat text-ids token-ids span-ids relation-ids link-ids))
+                                    with-refs (fn [r]
+                                                (cond-> r
+                                                  (seq (:metadata r))
+                                                  (update :metadata #(rewrite-refs ref-ids %))))
+                                    doc-metadata (rewrite-refs ref-ids (:metadata (:document rows)))]
                                 (crud/insert! tx :documents
                                               {:id new-id
                                                :name new-name
@@ -713,36 +747,35 @@
                                                :version 1
                                                :created_at now
                                                :modified_at now})
-                                (when (seq (:metadata (:document rows)))
-                                  (metadata/insert-metadata! tx "document" new-id
-                                                             (:metadata (:document rows))))
+                                (when (seq doc-metadata)
+                                  (metadata/insert-metadata! tx "document" new-id doc-metadata))
                                 (drows/insert-rows!
                                  tx :texts
-                                 (mapv (fn [r] (assoc r :id (text-ids (:id r))
+                                 (mapv (fn [r] (assoc (with-refs r) :id (text-ids (:id r))
                                                       :document_id new-id))
                                        (:texts rows)))
                                 (drows/insert-rows!
                                  tx :tokens
-                                 (mapv (fn [r] (assoc r :id (token-ids (:id r))
+                                 (mapv (fn [r] (assoc (with-refs r) :id (token-ids (:id r))
                                                       :document_id new-id
                                                       :text_id (text-ids (:text_id r))))
                                        (:tokens rows)))
                                 (drows/insert-rows!
                                  tx :spans
-                                 (mapv (fn [r] (assoc r :id (span-ids (:id r))
+                                 (mapv (fn [r] (assoc (with-refs r) :id (span-ids (:id r))
                                                       :document_id new-id
                                                       :tokens (mapv token-ids (drows/tokens-of r))))
                                        (:spans rows)))
                                 (drows/insert-rows!
                                  tx :relations
-                                 (mapv (fn [r] (assoc r :id (psc/new-uuid)
+                                 (mapv (fn [r] (assoc (with-refs r) :id (relation-ids (:id r))
                                                       :document_id new-id
                                                       :source_span_id (span-ids (:source_span_id r))
                                                       :target_span_id (span-ids (:target_span_id r))))
                                        (:relations rows)))
                                 (drows/insert-rows!
                                  tx :vocab_links
-                                 (mapv (fn [r] (assoc r :id (psc/new-uuid)
+                                 (mapv (fn [r] (assoc (with-refs r) :id (link-ids (:id r))
                                                       :document_id new-id
                                                       :tokens (mapv token-ids (drows/tokens-of r))))
                                        (:vocab-links rows)))

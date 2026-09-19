@@ -242,7 +242,9 @@
                            "project, named <body>name</body>, as one operation. Every layer and every "
                            "vocabulary entry the source points at is shared with the copy, whose texts, "
                            "tokens, spans, relations and vocab links are the source's under fresh ids, "
-                           "with their metadata. Comments do not travel. The media file does, unless "
+                           "with their metadata. A metadata value that is exactly the id of a copied row, "
+                           "or of the source document, is rewritten to the copy's id for it. "
+                           "Comments do not travel. The media file does, unless "
                            "<body>include-media</body> is false; if it cannot be copied the response "
                            "carries <body>media-error</body> and the copy is otherwise complete. "
                            "Requires writer privileges.")
