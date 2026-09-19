@@ -167,7 +167,7 @@ The default shortcuts are listed here; every one of them can be rebound under yo
 
 * **Enter** edits the concept. The picker lists the frame file's senses of the anchored word first, with their arguments, then the word itself, then the abstract concepts, rolesets and discourse concepts.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
-* **a** edits the attributes as one line, `:aspect state :refer-number singular`, with completion from the value sets.
+* **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
 * **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document.
 * **u** changes the anchor: click words to add or remove them, Escape when done.
 * **m** moves the node under another parent: click the new parent. Dragging an edge's label onto a node does the same.

@@ -6,15 +6,13 @@ import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
 import { InlineEditor } from './InlineEditor.jsx';
+import { AttributePopover } from './AttributePopover.jsx';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import {
   roleOptions,
   normalizeRole,
   conceptOptions,
   wordOptions,
-  attributeLineOptions,
-  attrsToLine,
-  lineToAttrs,
   docRelationOptions,
   groupOfConstant,
   nodeOptions,
@@ -414,9 +412,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     } else if (ed.kind === 'variable') {
       closeEditor();
       await run(() => doc.setVariable(ed.nodeId, text));
-    } else if (ed.kind === 'attrs') {
-      closeEditor();
-      await run(() => doc.setAttrs(ed.nodeId, lineToAttrs(text)));
     }
   };
 
@@ -511,12 +506,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         break;
       }
       case 'node.attributes':
-        setEditor({
-          kind: 'attrs',
-          nodeId: id,
-          ...positionBelow(id),
-          value: attrsToLine(node.attrs),
-        });
+        setEditor({ kind: 'attrs', nodeId: id, ...positionBelow(id) });
         break;
       case 'node.variable':
         setEditor({ kind: 'variable', nodeId: id, ...positionBelow(id), value: node.var });
@@ -751,7 +741,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         ed.typed || '',
       );
     }
-    if (ed.kind === 'attrs') return attributeLineOptions();
     if (ed.kind === 'docRole') {
       const group = ed.pending.tripleId ? ed.pending.group : ed.pending.triple.group;
       return docRelationOptions(group);
@@ -1040,12 +1029,20 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   {e.role}
                 </span>
               ))}
-            {editor && (
+            {editor?.kind === 'attrs' && nodesById.has(editor.nodeId) && (
+              <AttributePopover
+                x={editor.x}
+                y={editor.y}
+                attrs={nodesById.get(editor.nodeId).attrs}
+                onChange={(attrs) => run(() => doc.setAttrs(editor.nodeId, attrs))}
+                onClose={closeEditor}
+              />
+            )}
+            {editor && editor.kind !== 'attrs' && (
               <InlineEditor
                 key={`${editor.kind}:${editor.nodeId || editor.pending?.edgeId || editor.pending?.tripleId || 'new'}`}
                 x={editor.x}
                 y={editor.y}
-                width={editor.kind === 'attrs' ? 320 : 220}
                 value={editor.value || ''}
                 options={editorOptions(editor)}
                 placeholder={
@@ -1056,7 +1053,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     new: 'Word number or concept',
                     concept: 'Concept',
                     variable: 'Variable',
-                    attrs: ':aspect performance :polarity -',
                   }[editor.kind]
                 }
                 onCommit={commitEditor}

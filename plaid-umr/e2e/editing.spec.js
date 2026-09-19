@@ -105,11 +105,21 @@ test.describe('editing', () => {
     await page.keyboard.press('Enter');
     await expect(nodeByConcept(page, 'lunch-01')).toBeVisible();
 
-    // `a` sets the attributes as one line.
+    // `a` opens the attribute picker. A coarse aspect value reveals the finer
+    // ones under it, every pick writes at once, and Escape closes it.
     await page.keyboard.press('a');
-    await editor(page).fill(':aspect state :refer-number singular');
-    await page.keyboard.press('Enter');
-    await expect(nodeByConcept(page, 'lunch-01').locator('.umr-chip')).toHaveCount(2);
+    const picker = page.getByRole('dialog', { name: 'Attributes' });
+    await expect(picker).toBeVisible();
+    await picker.getByRole('button', { name: 'imperfective', exact: true }).click();
+    await picker.getByRole('button', { name: 'state', exact: true }).click();
+    await picker.getByRole('button', { name: 'singular', exact: true }).click();
+    await expect(nodeByConcept(page, 'lunch-01').locator('.umr-chip-value')).toHaveText([
+      'state',
+      'singular',
+    ]);
+    await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+    await expect(nodeByConcept(page, 'lunch-01')).toBeFocused();
 
     // Shift+Backspace deletes the edge and the leaf it reached, no question.
     await page.keyboard.press('Shift+Backspace');

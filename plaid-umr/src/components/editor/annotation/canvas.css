@@ -569,3 +569,93 @@
   padding: 0 3px;
   cursor: pointer;
 }
+
+/* The attribute picker. A pressed value is the attribute's, an outlined one
+   is a coarser value on the way to it. */
+.umr-attr-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--popover));
+  box-shadow: 0 4px 16px hsl(0 0% 0% / 0.12);
+  padding: 8px 10px;
+  font-size: 0.72rem;
+}
+.umr-attr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.umr-attr-label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 96px;
+  padding-top: 3px;
+  color: hsl(var(--muted-foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.umr-attr-clear {
+  display: inline-flex;
+  color: hsl(var(--muted-foreground));
+  border-radius: 999px;
+}
+.umr-attr-clear:hover {
+  color: hsl(var(--foreground));
+}
+.umr-attr-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.umr-attr-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.umr-attr-line + .umr-attr-line {
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid hsl(var(--border));
+}
+.umr-attr-value {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 1px 7px;
+  line-height: 1.1rem;
+  background: hsl(var(--muted));
+  white-space: nowrap;
+}
+.umr-attr-value:hover {
+  border-color: hsl(var(--muted-foreground) / 0.5);
+}
+.umr-attr-value:focus-visible {
+  outline: 2px solid hsl(221 83% 53%);
+  outline-offset: 1px;
+}
+.umr-attr-value[data-on-path] {
+  border-color: hsl(221 83% 53%);
+}
+.umr-attr-value[aria-pressed='true'] {
+  background: hsl(221 83% 53%);
+  border-color: hsl(221 83% 53%);
+  color: white;
+  font-weight: 500;
+}
+.umr-attr-other {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  padding: 0 6px;
+  background: hsl(var(--background));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.umr-attr-hint {
+  margin-top: 2px;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.66rem;
+}
