@@ -347,6 +347,21 @@ export function alignmentOf(node, words) {
 // Which document-level group a relation belongs to, for a relation written
 // by a path that did not record it. `:contains` is in two groups, which is
 // why the import records the group rather than leaving it to this.
+/**
+ * The tag a node wears for a document-level triple it takes part in: the
+ * triple read in its OWN order with the node itself left out, so
+ * `(author :full-affirmative s1l)` reads `author :full-affirmative` on s1l
+ * and `(s1l :before document-creation-time)` reads `:before
+ * document-creation-time` on s1l. Direction is the whole of what the
+ * relation says, and a tag that always put the other end first reversed it.
+ *
+ * @param {{source: string, target: string, rel: string}} triple
+ * @param {string} selfId the node wearing the tag
+ * @param {string} otherVar what the other end is called
+ */
+export const docTagText = (triple, selfId, otherVar) =>
+  triple.source === selfId ? `${triple.rel} ${otherVar}` : `${otherVar} ${triple.rel}`;
+
 export const groupOf = (rel) => {
   if (/^:(same-entity|same-event|subset-of|subset)$/.test(rel)) return 'coref';
   if (/^:(before|after|contained|overlap|depends-on|contains)$/.test(rel)) return 'temporal';

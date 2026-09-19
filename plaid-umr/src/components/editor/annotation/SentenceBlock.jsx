@@ -9,6 +9,7 @@ import { InlineEditor } from './InlineEditor.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
 import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
+import { docTagText } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import {
   roleOptions,
@@ -261,9 +262,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           const x2 = MARGIN - CONST_GAP + scrollLeft;
           const y2 = lane.constY.get(t.constant.var) + 11;
           const k = Math.max(24, Math.abs(x1 - x2) / 2);
+          // Drawn in the triple's own direction, so the head at the far end
+          // points where the relation does. Nearly every one of these runs
+          // FROM the constant (`author :full-affirmative x`).
+          const fromNode = t.source === t.node.id;
           return {
             ...t,
-            path: `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`,
+            path: fromNode
+              ? `M ${x1} ${y1} C ${x1 - k} ${y1}, ${x2 + k} ${y2}, ${x2} ${y2}`
+              : `M ${x2} ${y2} C ${x2 + k} ${y2}, ${x1 - k} ${y1}, ${x1} ${y1}`,
           };
         }
         if (t.a.id !== active && t.b.id !== active) return null;
@@ -301,10 +308,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       map.get(nodeId).push({ id: t.id, rel: t.rel, group: t.group, text });
     };
     lane.drawn.forEach((t) => {
-      if (t.kind === 'margin') tag(t.node.id, t, `${t.constant.var} ${t.rel}`);
+      if (t.kind === 'margin') tag(t.node.id, t, docTagText(t, t.node.id, t.constant.var));
       else {
-        tag(t.a.id, t, `${t.rel} ${t.b.var}`);
-        tag(t.b.id, t, `${t.a.var} ${t.rel}`);
+        tag(t.a.id, t, docTagText(t, t.a.id, t.b.var));
+        tag(t.b.id, t, docTagText(t, t.b.id, t.a.var));
       }
     });
     return map;
