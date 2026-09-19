@@ -1,5 +1,5 @@
-// What reconcile-on-open does with an unaligned node another app's edit to
-// the sentences has moved.
+// What reconcile-on-open does with a node aligned to no word, after another
+// app's edit to the sentences it stands in.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { describeUmrReconcile, planUnalignedHeal } from '../src/domain/umrReconcile.js';
@@ -8,86 +8,72 @@ import { describeUmrReconcile, planUnalignedHeal } from '../src/domain/umrReconc
 // and their nodes (filled in by graphOf).
 const sentences = (...list) =>
   list.map(([tokenId, begin, end], i) => ({ index: i + 1, tokenId, begin, end, nodes: [] }));
-const node = (id, { at, sentence, home = null, aligned = false }) => ({
+// A node aligned to no word: it records its sentence, and its anchor covers
+// the stretch of text given, which is its sentence's extent once reconcile
+// has run.
+const unaligned = (id, [begin, end], sentence, home) => ({
   id,
   constant: false,
-  aligned,
-  pieces: [{ id: `p-${id}`, begin: at, end: aligned ? at + 1 : at }],
+  aligned: false,
+  pieces: [{ id: `p-${id}`, begin, end }],
   sentence,
   metadata: home ? { umr: { sentence: home } } : null,
   in: [],
   out: [],
 });
-const unaligned = (id, at, sentence, home) => node(id, { at, sentence, home });
-const anchored = (id, at, sentence) => node(id, { at, sentence, aligned: true });
-// An edge of the sentence graph, from `a` to `b`.
-const edge = (a, b) => {
-  const e = { id: `${a.id}-${b.id}`, source: a.id, target: b.id };
-  a.out.push(e);
-  b.in.push(e);
-};
+const anchored = (id, at, sentence) => ({
+  id,
+  constant: false,
+  aligned: true,
+  pieces: [{ id: `p-${id}`, begin: at, end: at + 1 }],
+  sentence,
+  metadata: null,
+  in: [],
+  out: [],
+});
 const graphOf = (list, nodes) => {
   nodes.forEach((n) => n.sentence && list[n.sentence - 1].nodes.push(n));
   return { sentences: list, nodesById: new Map(nodes.map((n) => [n.id, n])) };
 };
 const plan = (graph) => planUnalignedHeal(graph, 'umr');
+const nothing = { remove: [], rebind: [], resize: [] };
 
-// Sentence B's text was deleted: its unaligned node kept its point, which is
-// now the start of C, among C's own graph. Its aligned neighbours went with
-// B's words.
-test("a deleted sentence's unaligned node goes, and the next sentence's stays", () => {
-  const c1 = unaligned('c1', 10, 2, 'C');
-  const ce = anchored('ce', 12, 2);
-  edge(ce, c1);
-  const graph = graphOf(sentences(['A', 0, 10], ['C', 10, 20]), [
-    unaligned('b1', 10, 2, 'B'),
-    c1,
-    ce,
+test('a node standing over the sentence it records is left alone', () => {
+  const graph = graphOf(sentences(['A', 0, 10], ['B', 10, 20]), [
+    unaligned('a1', [0, 10], 1, 'A'),
+    unaligned('b1', [10, 20], 2, 'B'),
+    anchored('be', 12, 2),
   ]);
-  assert.deepEqual(plan(graph), { remove: ['b1'], rebind: [], move: [] });
+  assert.deepEqual(plan(graph), nothing);
 });
 
-// The one sentence with unaligned nodes deleted: no record anywhere names a
-// live sentence, which is no reason to keep a stray among C's own graph.
-test('a stray goes even when no record left names a live sentence', () => {
-  const b1 = unaligned('b1', 10, 2, 'B');
-  const b2 = unaligned('b2', 10, 2, 'B');
-  edge(b1, b2);
-  const graph = graphOf(sentences(['A', 0, 10], ['C', 10, 20]), [b1, b2, anchored('ce', 12, 2)]);
-  assert.deepEqual(plan(graph).remove, ['b1', 'b2']);
-});
-
-// The last sentence deleted: its node is now past the end, in no sentence.
-test('a node left in no sentence goes', () => {
-  const graph = graphOf(sentences(['A', 0, 10]), [
-    unaligned('a1', 0, 1, 'A'),
-    unaligned('z1', 10, null, 'Z'),
+// The old shape: a point at the sentence's start. The first open of an older
+// document puts every one of them over its sentence.
+test('a node anchored to a point is put back over its sentence', () => {
+  const graph = graphOf(sentences(['A', 0, 10], ['B', 10, 20]), [
+    unaligned('b1', [10, 10], 2, 'B'),
   ]);
-  assert.deepEqual(plan(graph).remove, ['z1']);
-});
-
-// B merged into A: B's token is gone, but its node is joined to B's words,
-// which are in A now.
-test("a merged sentence's unaligned node is bound to the sentence it joined", () => {
-  const b1 = unaligned('b1', 10, 1, 'B');
-  const be = anchored('be', 12, 1);
-  edge(be, b1);
-  const graph = graphOf(sentences(['A', 0, 20]), [unaligned('a1', 0, 1, 'A'), b1, be]);
   assert.deepEqual(plan(graph), {
     remove: [],
-    rebind: [{ nodeId: 'b1', sentenceTokenId: 'A' }],
-    move: [],
+    rebind: [],
+    resize: [{ nodeId: 'b1', pieceId: 'p-b1', begin: 10, end: 20 }],
   });
 });
 
-// Sentence B joined to A, B's graph anchored to no word (typed in text mode,
-// or imported with no alignment) and A holding a graph of its own. B's nodes
-// stand where B began, inside A: their words came through the join, so the
-// graph stays.
-test("a joined sentence's unanchored graph stays, beside the graph it joined", () => {
-  const b1 = unaligned('b1', 10, 1, 'B');
-  const b2 = unaligned('b2', 10, 1, 'B');
-  edge(b1, b2);
+// Text typed at the start of B: the sentence grew, so the anchor is grown
+// with it.
+test('an anchor that no longer covers its sentence is put back over it', () => {
+  const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 30]), [
+    unaligned('b1', [18, 25], 2, 'B'),
+  ]);
+  assert.deepEqual(plan(graph).resize, [{ nodeId: 'b1', pieceId: 'p-b1', begin: 15, end: 30 }]);
+});
+
+// B joined to A: the merged sentence keeps A's token, so B's record names a
+// token that is gone. Its words are in A now, and so is it.
+test("a joined sentence's node is bound to the sentence it joined", () => {
+  const b1 = unaligned('b1', [10, 20], 1, 'B');
+  const b2 = unaligned('b2', [10, 20], 1, 'B');
   const graph = graphOf(sentences(['A', 0, 20]), [anchored('ae', 2, 1), b1, b2]);
   assert.deepEqual(plan(graph), {
     remove: [],
@@ -95,93 +81,68 @@ test("a joined sentence's unanchored graph stays, beside the graph it joined", (
       { nodeId: 'b1', sentenceTokenId: 'A' },
       { nodeId: 'b2', sentenceTokenId: 'A' },
     ],
-    move: [],
+    resize: [
+      { nodeId: 'b1', pieceId: 'p-b1', begin: 0, end: 20 },
+      { nodeId: 'b2', pieceId: 'p-b2', begin: 0, end: 20 },
+    ],
   });
 });
 
 // A boundary taken away and put back: the sentence is where it was, under a
-// new token C, and its node at C's start is joined to C's words. The old
-// rule took it for a deleted sentence's stray, since it sits at a start.
-test('a boundary removed and put back keeps the sentence its node', () => {
-  const b1 = unaligned('b1', 10, 2, 'B');
-  const be = anchored('be', 12, 2);
-  edge(be, b1);
+// new token C.
+test('a boundary removed and put back keeps the sentence its nodes', () => {
   const graph = graphOf(sentences(['A', 0, 10], ['C', 10, 20]), [
-    unaligned('a1', 0, 1, 'A'),
-    b1,
-    be,
+    unaligned('a1', [0, 10], 1, 'A'),
+    unaligned('b1', [10, 20], 2, 'B'),
   ]);
   assert.deepEqual(plan(graph), {
     remove: [],
     rebind: [{ nodeId: 'b1', sentenceTokenId: 'C' }],
-    move: [],
+    resize: [],
   });
 });
 
-// The same, for a graph made in text mode and never anchored: every node of
-// the sentence records the old token, so they are that sentence's graph,
-// fragments and all.
-test('an unanchored graph that is all its sentence has is bound to it', () => {
-  const b1 = unaligned('b1', 10, 2, 'B');
-  const b2 = unaligned('b2', 10, 2, 'B');
-  edge(b1, b2);
-  const graph = graphOf(sentences(['A', 0, 10], ['C', 10, 20]), [
-    b1,
-    b2,
-    unaligned('b3', 10, 2, 'B'),
-  ]);
-  assert.deepEqual(
-    plan(graph).rebind.map((r) => r.nodeId),
-    ['b1', 'b2', 'b3'],
-  );
-  assert.deepEqual(plan(graph).remove, []);
-});
-
-// A copy or an import that gave the rows new ids and kept the old records:
-// every node is still joined to its own sentence's words, so all are bound
-// and none removed.
+// A copy or an import that gave the rows new ids and kept the old records.
 test('records naming sentences of another document rebind, and remove nothing', () => {
-  const a1 = unaligned('a1', 0, 1, 'A');
-  const ae = anchored('ae', 2, 1);
-  const b1 = unaligned('b1', 10, 2, 'B');
-  const be = anchored('be', 12, 2);
-  edge(ae, a1);
-  edge(be, b1);
-  const graph = graphOf(sentences(['A2', 0, 10], ['B2', 10, 20]), [a1, ae, b1, be]);
+  const graph = graphOf(sentences(['A2', 0, 10], ['B2', 10, 20]), [
+    unaligned('a1', [0, 10], 1, 'A'),
+    unaligned('b1', [10, 20], 2, 'B'),
+  ]);
   assert.deepEqual(plan(graph), {
     remove: [],
     rebind: [
       { nodeId: 'a1', sentenceTokenId: 'A2' },
       { nodeId: 'b1', sentenceTokenId: 'B2' },
     ],
-    move: [],
+    resize: [],
   });
 });
 
-// Text typed at the start of B goes to A, and B's node, left where it was, is
-// inside A now. Its record names B, alive: it goes back to B's start.
-test('a node an insert left in the sentence before goes back to its own', () => {
-  const graph = graphOf(sentences(['A', 0, 15], ['B', 15, 25]), [unaligned('b1', 10, 1, 'B')]);
-  assert.deepEqual(plan(graph), {
-    remove: [],
-    rebind: [],
-    move: [{ nodeId: 'b1', pieceId: 'p-b1', to: 15 }],
-  });
+// The last sentence's text deleted: core takes the anchor with the text it
+// covers, so the node is gone before reconcile sees it. One left outside
+// every sentence has no sentence to belong to and shows nowhere.
+test('a node left outside every sentence goes', () => {
+  const graph = graphOf(sentences(['A', 0, 10]), [
+    unaligned('a1', [0, 10], 1, 'A'),
+    unaligned('z1', [10, 10], null, 'Z'),
+  ]);
+  assert.deepEqual(plan(graph).remove, ['z1']);
+  assert.deepEqual(plan(graph).rebind, []);
 });
 
 test('an aligned node, a constant and a node with no record are left alone', () => {
   const graph = graphOf(sentences(['C', 10, 20]), [
-    { ...anchored('w', 12, 1), metadata: { umr: { sentence: 'B' } } },
-    { ...unaligned('k', 0, null, 'B'), constant: true },
-    unaligned('old', 10, 1, null),
+    anchored('w', 12, 1),
+    { ...unaligned('k', [0, 0], null, 'B'), constant: true },
+    unaligned('old', [10, 10], 1, null),
   ]);
-  assert.deepEqual(plan(graph), { remove: [], rebind: [], move: [] });
+  assert.deepEqual(plan(graph), nothing);
 });
 
 test('the audit label names what the pass changed', () => {
   assert.equal(describeUmrReconcile({}), null);
   assert.equal(
-    describeUmrReconcile({ removed: 1, rebound: 2, moved: 1 }),
-    'Reconcile: removed 1 unaligned node of a deleted sentence, rebound 2 unaligned nodes to the sentence they are in, moved 1 unaligned node back to the start of its sentence',
+    describeUmrReconcile({ removed: 1, rebound: 2, resized: 1 }),
+    'Reconcile: removed 1 unaligned node left outside every sentence, rebound 2 unaligned nodes to the sentence they are in, put 1 unaligned node back over its sentence',
   );
 });

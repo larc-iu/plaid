@@ -283,6 +283,11 @@ def read_document_graph(info):
         node = {'id': span['id'], 'var': meta.get('var'), 'concept': span.get('value') or '',
                 'attrs': attrs, 'constant': meta.get('constant') is True,
                 'root': meta.get('root') is True, 'pieces': pieces,
+                # Aligned to words, which is what the absence of a sentence
+                # record says. A node aligned to nothing stands over its whole
+                # sentence, so reading the anchor would align it to every word
+                # (see plaid-umr src/domain/sentenceGraph.js).
+                'aligned': not meta.get('sentence') and any(p['end'] > p['begin'] for p in pieces),
                 'sentence': None, 'out': [], 'in': [], 'alignment': []}
         nodes_by_id[span['id']] = node
         if node['constant']:
@@ -330,7 +335,7 @@ def read_document_graph(info):
 
     for s in sentences:
         for node in s['nodes']:
-            node['alignment'] = alignment_of(node, s['words'])
+            node['alignment'] = alignment_of(node, s['words']) if node['aligned'] else []
         s['nodes'].sort(key=_node_order)
         s['edges'].sort(key=lambda e: e['order'])
         s['roots'] = roots_of(s, nodes_by_id)

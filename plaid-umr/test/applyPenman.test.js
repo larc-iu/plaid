@@ -117,8 +117,10 @@ test('applyPenman adds a node with its edge, changes a concept and an attribute,
     'spans.patchMetadata',
     'relations.create',
   ]);
-  // The new node is unaligned: a zero-width anchor at the sentence start.
-  assert.equal(calls[1][1][0].begin, calls[1][1][0].end);
+  // The new node is aligned to no word, so it stands over its whole sentence
+  // and records it (umrReconcile.js).
+  assert.equal(calls[1][1][0].begin, doc.sentence(1).begin);
+  assert.equal(calls[1][1][0].end, doc.sentence(1).end);
   assert.equal(calls[2][1], 'lunch');
   assert.equal(calls[4][3], ':ARG1');
   assert.match(calls[0][1], /3 changes/);

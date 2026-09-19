@@ -18,11 +18,19 @@ export function rawFromPlan(plan) {
     s.words.map((w) => ({ id: id(), begin: w.begin, end: w.end })),
   );
   const pieceTokens = plan.pieces.map((p) => ({ id: id(), begin: p.begin, end: p.end }));
+  // `home` is the sentence a node aligned to no word belongs to, which the
+  // import records as that sentence's token id (umrImport.js). The record is
+  // what says the node is aligned to nothing, so a raw document without it
+  // reads every such node as covering its whole sentence's words.
   const spans = plan.nodes.map((node) => ({
     id: id(),
     tokens: node.pieceIndexes.map((i) => pieceTokens[i].id),
     value: node.concept,
-    metadata: { [UMR_NAMESPACE]: node.meta },
+    metadata: {
+      [UMR_NAMESPACE]: node.home
+        ? { ...node.meta, sentence: sentenceTokens[node.home - 1].id }
+        : node.meta,
+    },
   }));
   const spanOf = (key) => spans[plan.nodeIndex.get(key)].id;
   const relations = plan.edges.map((e) => ({

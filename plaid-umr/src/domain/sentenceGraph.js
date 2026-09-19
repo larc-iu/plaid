@@ -5,11 +5,13 @@
 //
 // Storage (see docs/umr/DESIGN.md):
 //   node   = a span in the concept layer, value = concept, tokens = the anchor
-//            pieces in the UMR node layer (zero-width when unaligned),
-//            metadata.umr = { var, attrs: [{ rel, value, order }], constant?,
-//            root?, sentence? } where `root` marks the sentence's root and
-//            `sentence`, on an unaligned node only, is its sentence token's
-//            id (see umrReconcile.js)
+//            pieces in the UMR node layer (the whole sentence when the node is
+//            aligned to no word), metadata.umr = { var, attrs: [{ rel, value,
+//            order }], constant?, root?, sentence? } where `root` marks the
+//            sentence's root and `sentence` is its sentence token's id. A node
+//            RECORDS a sentence exactly when it is aligned to no word: the
+//            record is what says so, and the anchor is only where the node
+//            stands (see umrReconcile.js)
 //   edge   = a relation in the relation layer, value = role,
 //            metadata.umr = { order }
 //   triple = a relation in the document-graph layer, value = the relation,
@@ -128,7 +130,11 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       constant: meta.constant === true,
       root: meta.root === true,
       pieces,
-      aligned: pieces.some((p) => p.end > p.begin),
+      // Aligned to words, which is what the absence of a sentence record
+      // says. Reading the anchor's width instead was only true while an
+      // unaligned node stood on a point of text, which a deletion across
+      // that point took away with the node on it.
+      aligned: !meta.sentence && pieces.some((p) => p.end > p.begin),
       metadata: span.metadata || null,
       sentence: null,
       chain: null,
@@ -203,10 +209,15 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
   // Anchors as 1-based word indices, per piece, once the words are known.
   sentences.forEach((s) => {
     s.nodes.forEach((node) => {
-      node.alignment = alignmentOf(node, s.words);
-      node.wordIds = node.pieces
-        .flatMap((p) => s.words.filter((w) => overlaps(p, w)).map((w) => w.id))
-        .filter((id, i, arr) => arr.indexOf(id) === i);
+      // A node aligned to no word covers its whole sentence, which is where
+      // it stands and not what it is about: it aligns to nothing and lights
+      // up no word.
+      node.alignment = node.aligned ? alignmentOf(node, s.words) : [];
+      node.wordIds = node.aligned
+        ? node.pieces
+            .flatMap((p) => s.words.filter((w) => overlaps(p, w)).map((w) => w.id))
+            .filter((id, i, arr) => arr.indexOf(id) === i)
+        : [];
     });
     s.nodes.sort(nodeOrder);
     s.edges.sort((a, b) => a.order - b.order);

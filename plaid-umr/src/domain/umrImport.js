@@ -329,8 +329,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
           }
           pieceIndexes.push(addPiece(first.begin, last.end));
         });
+        // A node the file aligns to no word stands over its whole sentence,
+        // which is what keeps it alive through an edit to the text around it
+        // (UmrDocument.piecesFor). Its record is what says it is unaligned.
         const unaligned = !pieceIndexes.length;
-        if (unaligned) pieceIndexes.push(addPiece(begin, begin));
+        if (unaligned) pieceIndexes.push(addPiece(begin, end));
         const attrs = [];
         node.children.forEach((child, order) => {
           if (child.kind === 'node') {

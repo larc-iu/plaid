@@ -16,8 +16,8 @@ sets, the aspect lattice, the PENMAN shape and the alignment block.
 
 The model answers with ONE PENMAN graph and an `# alignment:` block, which is
 read here into the same storage the `.umr` importer writes: one node token per
-contiguous anchor piece (zero-width at the sentence's start when the concept
-is not overtly realized), one concept span per node carrying
+contiguous anchor piece (the whole sentence when the concept is not overtly
+realized), one concept span per node carrying
 `metadata.umr = {var, attrs, root?}`, and one relation per edge carrying
 `metadata.umr = {order}`. Variables are re-generated under the project's own
 rule (`s{N}{initial}{counter}`, unique per document), so a model that invents
@@ -382,10 +382,11 @@ def next_variable(sentence_index: int, concept: str, taken) -> str:
     return f'{base}{n}'
 
 
-def anchor_pieces(ranges, words, sentence_begin):
-    """The anchor tokens for one node: one piece per aligned word range, or a
-    single zero-width piece at the sentence's begin when the concept is not
-    overtly realized (which is how the importer stores an unaligned node)."""
+def anchor_pieces(ranges, words, sentence_extent):
+    """The anchor tokens for one node: one piece per aligned word range, or one
+    piece over the whole sentence when the concept is not overtly realized
+    (which is how the importer stores a node aligned to no word: what says it
+    is unaligned is its sentence record, not the anchor)."""
     pieces = []
     for begin, end in ranges or []:
         first = words[begin - 1] if 0 < begin <= len(words) else None
@@ -393,7 +394,7 @@ def anchor_pieces(ranges, words, sentence_begin):
         if first is None or last is None:
             continue
         pieces.append((first['begin'], last['end']))
-    return pieces or [(sentence_begin, sentence_begin)]
+    return pieces or [tuple(sentence_extent)]
 
 
 def plan_sentence(graph, alignment, sentence, taken):
@@ -420,7 +421,8 @@ def plan_sentence(graph, alignment, sentence, taken):
     for var in order_of_var:
         node = nodes_by_var[var]
         first_piece = len(pieces)
-        extents = anchor_pieces(alignment.get(var), sentence['words'], sentence['begin'])
+        unaligned_extent = (sentence['begin'], sentence['end'])
+        extents = anchor_pieces(alignment.get(var), sentence['words'], unaligned_extent)
         pieces.extend(extents)
         attrs = []
         for order, child in enumerate(node['children']):
@@ -429,11 +431,11 @@ def plan_sentence(graph, alignment, sentence, taken):
         meta = {'var': variables[var], 'attrs': attrs}
         if var == graph['root']:
             meta['root'] = True
-        # An unaligned node records its sentence, as the app does: its anchor
-        # is a point at the sentence's start, which outlives the sentence when
-        # another app deletes it, and the app's reconcile tells the stray by
-        # the record (plaid-umr src/domain/umrReconcile.js).
-        if all(begin == end for begin, end in extents) and sentence.get('token_id'):
+        # A node aligned to no word records its sentence, as the app does: the
+        # record is what says so, and the anchor covers the whole sentence, so
+        # an edit to the text around it resizes the anchor rather than taking
+        # the node with it (plaid-umr src/domain/umrReconcile.js).
+        if list(extents) == [unaligned_extent] and sentence.get('token_id'):
             meta['sentence'] = sentence['token_id']
         index_of_var[var] = len(nodes)
         nodes.append({'concept': node['concept'], 'meta': meta,

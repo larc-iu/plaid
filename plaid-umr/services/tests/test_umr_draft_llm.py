@@ -202,7 +202,7 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
 
     # Three anchors, one per node, in the order the graph was written.
     anchors = _ops(service.client, 'tokens.bulk_create')
-    assert [(a['begin'], a['end']) for a in anchors] == [(8, 13), (4, 7), (0, 0)]
+    assert [(a['begin'], a['end']) for a in anchors] == [(8, 13), (4, 7), (0, 14)]
     assert {a['token_layer_id'] for a in anchors} == {'nodeL'}
     assert {a['text'] for a in anchors} == {'text-1'}
 
@@ -246,15 +246,16 @@ def test_a_good_answer_becomes_anchors_nodes_and_relations():
 
 def test_an_alignment_lands_on_the_words_it_names_and_0_0_is_unaligned():
     """`2-2` is the second word's own offsets; `0-0` (not overtly realized) is
-    a zero-width anchor at the sentence's start, which is how the importer
-    stores an unaligned node."""
+    an anchor over the whole sentence, which is how the importer stores a node
+    aligned to no word: the sentence record is what says so, and an anchor
+    that covers the sentence survives an edit to the text around it."""
     service = _service()
     servicetest.run(service, REQUEST)
 
     by_concept = dict(zip([n['value'] for n in _ops(service.client, 'spans.bulk_create')],
                           _ops(service.client, 'tokens.bulk_create')))
     assert (by_concept['dog']['begin'], by_concept['dog']['end']) == (4, 7)
-    assert (by_concept['now']['begin'], by_concept['now']['end']) == (0, 0)
+    assert (by_concept['now']['begin'], by_concept['now']['end']) == (0, 14)
     # The unaligned node records its sentence, as the app does, and an
     # aligned one does not.
     meta = {n['value']: n['metadata']['umr'] for n in _ops(service.client, 'spans.bulk_create')}

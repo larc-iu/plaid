@@ -119,14 +119,15 @@ export class UmrDocument extends DocumentModel {
 
   // ----- reconcile on open -----
 
-  // What another app's edit to the sentences left of an unaligned node
-  // (umrReconcile.js): the stray a deleted sentence leaves goes, with its
-  // edges and triples, and a node whose sentence was merged away is bound to
-  // the one it was merged into. One batch, so the audit entry names one
-  // repair. History keeps what was removed.
+  // What another app's edit to the sentences left of a node aligned to no
+  // word (umrReconcile.js): a node whose sentence token is gone is bound to
+  // the sentence it stands in, an anchor that no longer covers its sentence
+  // is put back over it, and a node left outside every sentence goes. One
+  // batch, so the audit entry names one repair. History keeps what was
+  // removed.
   async _reconcile() {
-    const { remove, rebind, move } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
-    if (!remove.length && !rebind.length && !move.length) return { findings: [] };
+    const { remove, rebind, resize } = planUnalignedHeal(this.graph, UMR_NAMESPACE);
+    if (!remove.length && !rebind.length && !resize.length) return { findings: [] };
     try {
       const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
       const spans = this._layers(this.layerInfo).spans;
@@ -136,14 +137,14 @@ export class UmrDocument extends DocumentModel {
           const span = spans.find((x) => x.id === nodeId);
           b.spans.patchMetadata(nodeId, umrPatch(span, { sentence: sentenceTokenId }));
         });
-        move.forEach(({ pieceId, to }) => b.tokens.update(pieceId, to, to));
+        resize.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
       });
       await this._reload();
       return {
         findings: [],
         removed: remove.length,
         rebound: rebind.length,
-        moved: move.length,
+        resized: resize.length,
       };
     } catch (error) {
       return { findings: [], error };
@@ -182,13 +183,20 @@ export class UmrDocument extends DocumentModel {
   }
 
   // The anchor pieces for a set of words of one sentence: one piece per run
-  // of adjacent words, none for no words (a zero-width piece at the
-  // sentence's start stands for unaligned).
+  // of adjacent words, and the whole sentence for no words. A node aligned to
+  // nothing still has to stand somewhere, and standing over its sentence is
+  // what keeps it alive: an edit anywhere in the text resizes the anchor
+  // instead of destroying it, and the node goes only when its sentence's text
+  // does, which is when it should. It stood on a POINT at the sentence's
+  // start before, and core deletes a zero-width token a deletion spans, so
+  // joining two sentences by deleting across the boundary took the node with
+  // it. What says the node is aligned to nothing is its sentence record, not
+  // the anchor (sentenceGraph.js).
   piecesFor(sentence, wordIds) {
     const chosen = sentence.words
       .filter((w) => wordIds.includes(w.id))
       .sort((a, b) => a.index - b.index);
-    if (!chosen.length) return [{ begin: sentence.begin, end: sentence.begin }];
+    if (!chosen.length) return [{ begin: sentence.begin, end: sentence.end }];
     const pieces = [];
     chosen.forEach((w) => {
       const last = pieces[pieces.length - 1];
@@ -345,8 +353,8 @@ export class UmrDocument extends DocumentModel {
     // fragment until it is connected, and the graph keeps its root.
     const meta = { var: variable, attrs };
     if (!parent && sentence.nodes.length === 0) meta.root = true;
-    // An unaligned node records its sentence: its anchor is a point, and a
-    // point at a sentence's start outlives the sentence (see _reconcile).
+    // A node aligned to no word records its sentence, which is what says so
+    // (see _reconcile): its anchor covers the whole sentence.
     if (!wordIds.length) meta.sentence = sentence.tokenId;
     const textId = info.textLayer.text.id;
     let result = null;
@@ -1174,7 +1182,7 @@ export class UmrDocument extends DocumentModel {
             const last = sentence.words[b - 1];
             if (first && last && a <= b) pieces.push({ begin: first.begin, end: last.end });
           });
-          return pieces.length ? pieces : [{ begin: sentence.begin, end: sentence.begin }];
+          return pieces.length ? pieces : this.piecesFor(sentence, []);
         };
         for (const c of plan.create) {
           const { ids } = await client.tokens.bulkCreate(

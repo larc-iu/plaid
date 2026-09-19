@@ -1,44 +1,35 @@
 // What reconcile-on-open heals in a UMR document: what another app's edit to
-// the shared sentences left of an UNALIGNED node.
+// the shared sentences left of a node aligned to no word.
 //
-// An unaligned node's anchor is a zero-width token at its sentence's start,
-// and it records the sentence it belongs to (`umr.sentence`, the sentence
-// token's id). Three edits in another app move it or orphan it:
+// Such a node records the sentence it belongs to (`umr.sentence`, the
+// sentence token's id), and that record is what says it is aligned to
+// nothing. Its anchor is one token over the whole of that sentence, which is
+// only where it stands: an edit anywhere in the text resizes the anchor with
+// the sentence, and the node goes only when its sentence's text does, which
+// is when it should. (It stood on a POINT at the sentence's start before, and
+// core deletes a zero-width token a deletion spans, so joining two sentences
+// by deleting across the boundary took the node with it.)
 //
-//   Text typed at the start of a sentence goes to the sentence before (core
-//   gives an insert at a boundary to the sentence ending there), and the
-//   node, left where it was, is now inside that one. Its record still names a
-//   live sentence: it goes back to that sentence's start.
-//
-//   A sentence's text deleted: core deletes a zero-width token only when a
-//   deletion straddles it, so the node outlives its sentence and lands at the
-//   start of the next one, or past the end of the text. Its aligned
-//   neighbours went with the words, so nothing of its graph is anchored in
-//   the sentence it now sits in, and that sentence has a graph of its own. It
-//   is removed.
+// Two things still need putting right after another app's edit, because a
+// sentence token is not the same token afterwards:
 //
 //   A boundary taken away and put back (a merge and a split, a reset and a
 //   re-split, a boundary toggled twice) leaves the sentence where it was
-//   under a NEW token, so the record names a dead sentence here too. But the
-//   node's graph came through whole, anchored in the sentence it sits in, or
-//   it is the only graph that sentence has. It is bound to that sentence.
+//   under a NEW token, and a sentence joined to the one before it keeps the
+//   first sentence's token and drops the second's. Either way the record
+//   names a token that is gone, and the node is bound to the sentence it
+//   stands in.
 //
-//   A sentence joined to the one before it keeps the first sentence's token
-//   and drops the second's, so the second's nodes record a dead sentence
-//   while every word they belong to is still there. They stand where that
-//   sentence began, which is now INSIDE the joined sentence: a node away
-//   from a sentence's start is a node whose text came through a join, and it
-//   is bound to the sentence it is in.
+//   A sentence's own extent changes as the text around it is edited, so an
+//   anchor that no longer covers exactly the sentence it belongs to is put
+//   back over it. That is also what turns an old point-anchored node into
+//   the shape above, the first time its document is opened.
 //
-// So a node whose record is dead is removed only when all three hold: it
-// stands at the start of the sentence it is in, no aligned node of its own
-// graph is in that sentence, and that sentence has nodes of another graph
-// (not joined to it, and not recording the same dead sentence). When in
-// doubt it is kept: a stray kept is a fragment the annotator sees and
-// deletes, a node removed is gone. A node that never recorded a sentence is
-// left alone, there being no telling.
-
-const isUnaligned = (node) => !node.constant && !node.aligned;
+// A node left outside every sentence is removed: there is no sentence for it
+// to belong to and nothing on screen would show it. Nothing else is removed.
+// A stray kept is a fragment the annotator sees and deletes; a node removed
+// is gone. A node that records no sentence is aligned to words, or was made
+// by something that did not say, and is left alone either way.
 
 /**
  * @param {{ sentences: Array, nodesById: Map }} graph from buildDocumentGraph
@@ -46,7 +37,7 @@ const isUnaligned = (node) => !node.constant && !node.aligned;
  * @returns {{
  *   remove: string[],
  *   rebind: { nodeId: string, sentenceTokenId: string }[],
- *   move: { nodeId: string, pieceId: string, to: number }[],
+ *   resize: { nodeId: string, pieceId: string, begin: number, end: number }[],
  * }}
  */
 export function planUnalignedHeal(graph, namespace) {
@@ -55,77 +46,41 @@ export function planUnalignedHeal(graph, namespace) {
   const recordOf = (node) => node.metadata?.[namespace]?.sentence || null;
   const remove = [];
   const rebind = [];
-  const move = [];
-
-  // A node's graph: every node an edge of its sentence graph joins it to,
-  // whichever way the edge runs.
-  const graphOf = (start) => {
-    const seen = new Set([start.id]);
-    const stack = [start];
-    while (stack.length) {
-      const n = stack.pop();
-      [...n.out.map((e) => e.target), ...n.in.map((e) => e.source)].forEach((id) => {
-        const next = nodesById.get(id);
-        if (next && !next.constant && !seen.has(id)) {
-          seen.add(id);
-          stack.push(next);
-        }
-      });
-    }
-    return seen;
-  };
+  const resize = [];
 
   nodesById.forEach((node) => {
-    if (!isUnaligned(node)) return;
+    if (node.constant) return;
     const record = recordOf(node);
     if (!record) return;
     const piece = node.pieces[0];
-    const home = byToken.get(record);
-    if (home) {
-      // Its sentence is alive: the node belongs at its start, and is moved
-      // back there when an edit elsewhere left it in another sentence.
-      if (node.sentence !== home.index && piece) {
-        move.push({ nodeId: node.id, pieceId: piece.id, to: home.begin });
-      }
-      return;
-    }
-    const here = node.sentence == null ? null : sentences[node.sentence - 1];
-    if (!here) {
+    // The sentence it belongs to: the one it records while that token is
+    // alive, else the one it stands in.
+    const home = byToken.get(record) || (node.sentence ? sentences[node.sentence - 1] : null);
+    if (!home) {
       remove.push(node.id);
       return;
     }
-    const own = graphOf(node);
-    const anchoredHere = [...own].some((id) => {
-      const n = nodesById.get(id);
-      return !isUnaligned(n) && n.sentence === here.index;
-    });
-    // Away from the start: the sentence it belongs to was joined to this one,
-    // and its words are here.
-    const atStart = piece ? piece.begin === here.begin : true;
-    // Of another graph: not joined to this one, nor a node that records the
-    // same sentence (a fragment of the same graph, come through the same way).
-    const others = here.nodes.some(
-      (n) => !n.constant && !own.has(n.id) && !(isUnaligned(n) && recordOf(n) === record),
-    );
-    if (atStart && !anchoredHere && others) remove.push(node.id);
-    else rebind.push({ nodeId: node.id, sentenceTokenId: here.tokenId });
+    if (!byToken.has(record)) rebind.push({ nodeId: node.id, sentenceTokenId: home.tokenId });
+    if (piece && (piece.begin !== home.begin || piece.end !== home.end)) {
+      resize.push({ nodeId: node.id, pieceId: piece.id, begin: home.begin, end: home.end });
+    }
   });
-  return { remove, rebind, move };
+  return { remove, rebind, resize };
 }
 
 /** The audit label for what a pass changed, or null when it changed nothing. */
-export function describeUmrReconcile({ removed = 0, rebound = 0, moved = 0 } = {}) {
+export function describeUmrReconcile({ removed = 0, rebound = 0, resized = 0 } = {}) {
   const nodes = (n) => `${n} unaligned node${n === 1 ? '' : 's'}`;
   const parts = [];
-  if (removed) parts.push(`removed ${nodes(removed)} of a deleted sentence`);
+  if (removed) parts.push(`removed ${nodes(removed)} left outside every sentence`);
   if (rebound) {
     parts.push(
       `rebound ${nodes(rebound)} to the sentence ${rebound === 1 ? 'it is' : 'they are'} in`,
     );
   }
-  if (moved) {
+  if (resized) {
     parts.push(
-      `moved ${nodes(moved)} back to the start of ${moved === 1 ? 'its' : 'their'} sentence`,
+      `put ${nodes(resized)} back over ${resized === 1 ? 'its sentence' : 'their sentences'}`,
     );
   }
   return parts.length ? `Reconcile: ${parts.join(', ')}` : null;
