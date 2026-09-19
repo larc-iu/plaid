@@ -779,6 +779,16 @@
   background: hsl(var(--background));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.umr-attr-problem {
+  margin-top: 4px;
+  color: hsl(var(--destructive));
+  font-size: 0.7rem;
+  line-height: 1rem;
+}
+.umr-attr-other[aria-invalid='true'] {
+  border-color: hsl(var(--destructive) / 0.6);
+}
+
 .umr-attr-hint {
   margin-top: 2px;
   color: hsl(var(--muted-foreground));

@@ -79,7 +79,13 @@ export function InlineEditor({
     const all = flatOptions(options);
     const exact = all.find((o) => o.value === t || bare(o.value) === bare(t));
     if (exact || !complete) return exact || null;
-    return all.find((o) => bare(o.value).startsWith(bare(t))) || null;
+    // A relation is one name however it is typed, so `arg0` is `:ARG0`, as
+    // the list it is picked from has it. A lone colon is the beginning of
+    // every relation and so of none: it takes the first option otherwise.
+    const typed_ = bare(t).toLowerCase();
+    if (!typed_) return null;
+    const same = all.find((o) => bare(o.value).toLowerCase() === typed_);
+    return same || all.find((o) => bare(o.value).toLowerCase().startsWith(typed_)) || null;
   };
   // Whether `check` refuses the value, saying why when it does.
   const refuse = (v) => {

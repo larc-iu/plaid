@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { ATTRIBUTES } from '../../../domain/format/inventory.js';
 import { latticeFor, linesFor, valuesFor } from '../../../domain/lattices.js';
-import { attrsToLine, focusValue, lineToAttrs } from './pickers.js';
+import { attrsToLine, focusValue, readAttrLine } from './pickers.js';
 
 // The attributes with a value set, in the order the picker lists them.
 const PICKED = [
@@ -47,6 +47,7 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // The attributes outside the rows, as one editable line.
   const others = useMemo(() => attrs.filter((a) => !PICKED.includes(a.rel)), [attrs]);
   const [otherLine, setOtherLine] = useState(() => attrsToLine(others));
+  const [problem, setProblem] = useState(null);
   useEffect(() => setOtherLine(attrsToLine(others)), [others]);
 
   // Focus lands on the first row's chosen value, or its first value: never
@@ -79,9 +80,16 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
     const kept = attrs.filter((a) => a.rel !== rel);
     onChange(value == null ? kept : [...kept, { rel, value }]);
   };
+  // Nothing is written from a line the file cannot hold, and the line stays
+  // as it was typed with the reason under it. Silently keeping what a scanner
+  // could pick out of it dropped half of `:wiki Barack Obama`, and read
+  // `quant 4`, a forgotten colon, as no attributes at all, which deleted the
+  // one it was typed over.
   const commitOthers = () => {
     const line = otherLine.trim();
-    const next = lineToAttrs(line);
+    const { attrs: next, problem: why } = readAttrLine(line);
+    setProblem(why || null);
+    if (why) return;
     if (attrsToLine(next) === attrsToLine(others)) return;
     onChange([...attrs.filter((a) => PICKED.includes(a.rel)), ...next]);
   };
@@ -196,7 +204,11 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
           value={otherLine}
           placeholder=':quant 3 :wiki "Q42"'
           spellCheck={false}
-          onChange={(e) => setOtherLine(e.target.value)}
+          aria-invalid={problem ? true : undefined}
+          onChange={(e) => {
+            setOtherLine(e.target.value);
+            setProblem(null);
+          }}
           onBlur={commitOthers}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -206,6 +218,11 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
           }}
         />
       </div>
+      {problem && (
+        <div className="umr-attr-problem" role="alert">
+          {problem}
+        </div>
+      )}
       <div className="umr-attr-hint">
         Arrows move, Enter picks, Backspace clears the row, Escape closes.
       </div>

@@ -88,6 +88,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
     };
   });
   const sentenceOf = (piece) => sentences.find((s) => beginsIn(piece, s));
+  const byTokenId = new Map(sentences.map((s) => [s.tokenId, s]));
 
   wordTokens.forEach((token) => {
     const s = sentenceOf(token);
@@ -141,7 +142,13 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       constants.push(node);
       return;
     }
-    const s = pieces.length ? sentenceOf(pieces[0]) : null;
+    // An unaligned node belongs to the sentence it records, while that
+    // sentence is alive: another app's edit at a sentence's start moves its
+    // anchor into the sentence before, and reading position alone drew it,
+    // and wrote it to the file, under that one. Reconcile brings the anchor
+    // back; the canvas, the export and the Export tab agree before it runs.
+    const recorded = node.aligned ? null : byTokenId.get(meta.sentence);
+    const s = recorded || (pieces.length ? sentenceOf(pieces[0]) : null);
     if (s) {
       node.sentence = s.index;
       s.nodes.push(node);

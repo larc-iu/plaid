@@ -80,6 +80,25 @@ test("a merged sentence's unaligned node is bound to the sentence it joined", ()
   });
 });
 
+// Sentence B joined to A, B's graph anchored to no word (typed in text mode,
+// or imported with no alignment) and A holding a graph of its own. B's nodes
+// stand where B began, inside A: their words came through the join, so the
+// graph stays.
+test("a joined sentence's unanchored graph stays, beside the graph it joined", () => {
+  const b1 = unaligned('b1', 10, 1, 'B');
+  const b2 = unaligned('b2', 10, 1, 'B');
+  edge(b1, b2);
+  const graph = graphOf(sentences(['A', 0, 20]), [anchored('ae', 2, 1), b1, b2]);
+  assert.deepEqual(plan(graph), {
+    remove: [],
+    rebind: [
+      { nodeId: 'b1', sentenceTokenId: 'A' },
+      { nodeId: 'b2', sentenceTokenId: 'A' },
+    ],
+    move: [],
+  });
+});
+
 // A boundary taken away and put back: the sentence is where it was, under a
 // new token C, and its node at C's start is joined to C's words. The old
 // rule took it for a deleted sentence's stray, since it sits at a start.

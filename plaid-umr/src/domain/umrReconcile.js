@@ -23,12 +23,20 @@
 //   node's graph came through whole, anchored in the sentence it sits in, or
 //   it is the only graph that sentence has. It is bound to that sentence.
 //
-// So a node whose record is dead is removed only when both hold: no aligned
-// node of its own graph is in the sentence it sits in, and that sentence has
-// nodes of another graph (not joined to it, and not recording the same dead
-// sentence). When in doubt it is kept: a stray kept is
-// a fragment the annotator sees and deletes, a node removed is gone. A node
-// that never recorded a sentence is left alone, there being no telling.
+//   A sentence joined to the one before it keeps the first sentence's token
+//   and drops the second's, so the second's nodes record a dead sentence
+//   while every word they belong to is still there. They stand where that
+//   sentence began, which is now INSIDE the joined sentence: a node away
+//   from a sentence's start is a node whose text came through a join, and it
+//   is bound to the sentence it is in.
+//
+// So a node whose record is dead is removed only when all three hold: it
+// stands at the start of the sentence it is in, no aligned node of its own
+// graph is in that sentence, and that sentence has nodes of another graph
+// (not joined to it, and not recording the same dead sentence). When in
+// doubt it is kept: a stray kept is a fragment the annotator sees and
+// deletes, a node removed is gone. A node that never recorded a sentence is
+// left alone, there being no telling.
 
 const isUnaligned = (node) => !node.constant && !node.aligned;
 
@@ -91,12 +99,15 @@ export function planUnalignedHeal(graph, namespace) {
       const n = nodesById.get(id);
       return !isUnaligned(n) && n.sentence === here.index;
     });
+    // Away from the start: the sentence it belongs to was joined to this one,
+    // and its words are here.
+    const atStart = piece ? piece.begin === here.begin : true;
     // Of another graph: not joined to this one, nor a node that records the
     // same sentence (a fragment of the same graph, come through the same way).
     const others = here.nodes.some(
       (n) => !n.constant && !own.has(n.id) && !(isUnaligned(n) && recordOf(n) === record),
     );
-    if (!anchoredHere && others) remove.push(node.id);
+    if (atStart && !anchoredHere && others) remove.push(node.id);
     else rebind.push({ nodeId: node.id, sentenceTokenId: here.tokenId });
   });
   return { remove, rebind, move };

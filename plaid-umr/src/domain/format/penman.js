@@ -43,6 +43,35 @@ const RELATION = /^:[-A-Za-z0-9]+/;
 
 const STRING = /^"(?:\\.|[^"\\])*"/;
 
+/** Why `relation` cannot be written, or null when it can. */
+export const relationProblem = (relation) => {
+  const text = String(relation ?? '').trim();
+  const bare = text.startsWith(':') ? text.slice(1) : text;
+  if (!bare) return 'A relation needs a name after its colon.';
+  return /^[-A-Za-z0-9]+$/.test(bare)
+    ? null
+    : `A relation holds letters, digits and hyphens only: :${bare}`;
+};
+
+/**
+ * Why `value`, the value of an attribute, cannot be written, or null when it
+ * can. A quoted string may hold anything; a bare atom stops where a token
+ * stops, so what it cannot hold is what would be read back as something else.
+ */
+export const attrValueProblem = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return 'An attribute needs a value.';
+  if (text.startsWith('"')) {
+    return STRING.test(text) && STRING.exec(text)[0] === text
+      ? null
+      : `A quoted value needs its closing quote: ${text}`;
+  }
+  if (text.includes('"')) return `A value holds a quote only around the whole of it: ${text}`;
+  return NOT_IN_CONCEPT.test(text)
+    ? `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`
+    : null;
+};
+
 /** Whether a token has the shape of a UMR variable. */
 export function isVariableToken(token) {
   return VARIABLE.test(token);

@@ -11,6 +11,7 @@ import {
 import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
 import { EMPTY_LEXICON, entriesStartingWith, entryLabel } from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
+import { relationProblem, attrValueProblem } from '../../../domain/format/penman.js';
 
 // The relations of one document-level group, the validator's set first.
 export const docRelationOptions = (group, sets = 'validator') => {
@@ -136,12 +137,34 @@ export const attributeLineOptions = (sets = 'validator') => {
 // its quotes, which is what the raw PENMAN token carries.
 export const attrsToLine = (attrs) => attrs.map((a) => `${a.rel} ${a.value}`).join(' ');
 
-export const lineToAttrs = (line) => {
+export const lineToAttrs = (line) => readAttrLine(line).attrs;
+
+/**
+ * One line of attributes, and why it cannot be read, rather than what a
+ * scanner could pick out of it: `:wiki Barack Obama` dropped Obama, and
+ * `quant 4`, a forgotten colon, read as nothing and deleted the attribute it
+ * was typed over.
+ *
+ * @returns {{ attrs: {rel: string, value: string}[], problem: string|null }}
+ */
+export const readAttrLine = (line) => {
   const attrs = [];
-  const re = /(:[^\s]+)\s+("(?:[^"\\]|\\.)*"|[^\s:][^\s]*)/g;
-  let m;
-  while ((m = re.exec(line))) attrs.push({ rel: m[1], value: m[2] });
-  return attrs;
+  let rest = String(line ?? '').trim();
+  const fail = (problem) => ({ attrs, problem });
+  while (rest) {
+    const rel = /^(:[^\s]*)(\s+|$)/.exec(rest);
+    if (!rel) return fail(`An attribute starts with its relation, after a colon: ${rest}`);
+    const relProblem = relationProblem(rel[1]);
+    if (relProblem) return fail(relProblem);
+    rest = rest.slice(rel[0].length);
+    const value = /^("(?:[^"\\]|\\.)*"|[^\s]+)(\s+|$)/.exec(rest);
+    if (!value) return fail(`${rel[1]} has no value.`);
+    const valueProblem = attrValueProblem(value[1]);
+    if (valueProblem) return fail(valueProblem);
+    attrs.push({ rel: rel[1], value: value[1] });
+    rest = rest.slice(value[0].length);
+  }
+  return { attrs, problem: null };
 };
 
 // The attribute picker's chosen value inside `el`, else its first value:

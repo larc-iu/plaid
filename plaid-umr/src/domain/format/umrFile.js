@@ -141,6 +141,42 @@ function parseAlignmentValue(text, warn, variable) {
   return spans;
 }
 
+/**
+ * The alignment block: each line a variable, a colon and the word ranges it
+ * covers. Exported so that mending a sentence the parser kept as text can
+ * anchor the nodes it writes to the words the file named.
+ *
+ * @param {string[]|string} block the block's lines, or its text
+ * @param {(code: string, message: string) => void} [warn]
+ * @returns {Map<string, Array<[number, number]>>}
+ */
+export function readAlignment(block, warn = () => {}) {
+  const lines = Array.isArray(block) ? block : String(block ?? '').split('\n');
+  const alignment = new Map();
+  for (const line of lines) {
+    if (isBlank(line)) continue;
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#')) continue;
+    const colon = trimmed.indexOf(':');
+    if (colon === -1) {
+      warn('invalid-alignment', `Alignment line without a colon: '${trimmed}'.`);
+      continue;
+    }
+    const variable = trimmed.slice(0, colon).trim();
+    if (/\s/.test(trimmed.slice(0, colon))) {
+      warn(
+        'alignment-space-before-colon',
+        `Alignment of '${variable}' has a space before the colon.`,
+      );
+    }
+    if (alignment.has(variable)) {
+      warn('duplicate-alignment', `Repeated alignment of node '${variable}'.`);
+    }
+    alignment.set(variable, parseAlignmentValue(trimmed.slice(colon + 1), warn, variable));
+  }
+  return alignment;
+}
+
 // The triples inside one relation group. Read by brackets rather than by
 // position, because Kukama writes '(past-reference / past-reference
 // :contained s2m)' — a triple carrying a concept it does not need. Taking the
@@ -385,28 +421,7 @@ function parseSentence(chunk, index, warn, error) {
     );
   }
 
-  const alignment = new Map();
-  for (const line of blocks.alignment) {
-    if (isBlank(line)) continue;
-    const trimmed = line.trim();
-    if (trimmed.startsWith('#')) continue;
-    const colon = trimmed.indexOf(':');
-    if (colon === -1) {
-      warn('invalid-alignment', `Alignment line without a colon: '${trimmed}'.`);
-      continue;
-    }
-    const variable = trimmed.slice(0, colon).trim();
-    if (/\s/.test(trimmed.slice(0, colon))) {
-      warn(
-        'alignment-space-before-colon',
-        `Alignment of '${variable}' has a space before the colon.`,
-      );
-    }
-    if (alignment.has(variable)) {
-      warn('duplicate-alignment', `Repeated alignment of node '${variable}'.`);
-    }
-    alignment.set(variable, parseAlignmentValue(trimmed.slice(colon + 1), warn, variable));
-  }
+  const alignment = readAlignment(blocks.alignment, warn);
 
   const docText = trimBlankEnds(blocks.doc.filter((line) => !line.trim().startsWith('#'))).join(
     '\n',

@@ -12,7 +12,7 @@ import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
-import { conceptProblem } from '../../../domain/format/penman.js';
+import { conceptProblem, relationProblem } from '../../../domain/format/penman.js';
 import {
   roleOptions,
   normalizeRole,
@@ -187,8 +187,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const block = e.target?.closest?.('.umr-block');
       if (block && block !== sectionRef.current) setMode(null);
     };
+    // A word takes no focus, so a click on another sentence's word left this
+    // mode on with focus on the page body, where Escape never reached it and
+    // only Done could end it.
+    const onPointerDown = (e) => {
+      if (!sectionRef.current?.contains(e.target)) setMode(null);
+    };
     document.addEventListener('focusin', onFocusIn);
-    return () => document.removeEventListener('focusin', onFocusIn);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
   }, [mode]);
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
   const [drag, setDrag] = useState(null);
@@ -399,7 +409,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const treeEdgeInto = (id) => {
     const node = nodesById.get(id);
-    return node?.in.find((e) => layout.tree.treeEdgeIds.has(e.id)) || node?.in[0] || null;
+    if (!node) return null;
+    // Inside this block only. After another app splits a sentence, a node's
+    // one remaining parent can be in the other half, and following it moved
+    // focus to a node this block does not draw while the ring stayed here:
+    // the next key then edited that far node.
+    const here = (e) => layout.nodes.has(e.source);
+    return (
+      node.in.find((e) => layout.tree.treeEdgeIds.has(e.id) && here(e)) ||
+      node.in.find(here) ||
+      null
+    );
   };
   const treeChildren = (id) =>
     (nodesById.get(id)?.out || [])
@@ -608,7 +628,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     }
     if (edge) await run(() => doc.deleteEdge(edge.id));
     else await run(() => doc.deleteNode(node.id));
+    // A root has no parent to hand focus to, and focus on the page body
+    // leaves every key dead until the annotator clicks. The sentence's own
+    // first node takes it, and the block itself when nothing is left.
+    const gone = new Set(doomed.map((d) => d.id));
+    const left = sentence.nodes.find((n) => !gone.has(n.id));
     if (next) focusNode(next);
+    else if (left) focusNode(left.id);
+    else sectionRef.current?.focus();
   };
 
   // ----- keys -----
@@ -628,7 +655,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       return;
     }
     const id = focusedId;
-    if (!id || !nodesById.has(id)) return;
+    // This block's own nodes: `nodesById` is the whole document's.
+    if (!id || !layout.nodes.has(id)) return;
     const fixedKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'];
     if (fixedKeys.includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
@@ -1025,6 +1053,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       ref={sectionRef}
       className={`umr-block${mode ? ` umr-block--mode-${mode.kind}` : ''}`}
       aria-label={`Sentence ${sentence.index}`}
+      // Somewhere for focus to land when the node that had it is deleted.
+      tabIndex={-1}
       data-sentence-index={sentence.index}
       onKeyDown={handleKeyDown}
       onFocus={() => setFocusWithin(true)}
@@ -1446,7 +1476,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                       ? (text) => missingWord(editor, text) || conceptProblem(text)
                       : editor.kind === 'concept'
                         ? conceptProblem
-                        : undefined
+                        : editor.kind === 'role' || editor.kind === 'docRole'
+                          ? relationProblem
+                          : undefined
                 }
               />
             )}

@@ -19,8 +19,14 @@ import {
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
-import { serializeUmrFile } from './format/umrFile.js';
-import { conceptProblem, parsePenman, serializePenman } from './format/penman.js';
+import { serializeUmrFile, readAlignment } from './format/umrFile.js';
+import {
+  conceptProblem,
+  relationProblem,
+  attrValueProblem,
+  parsePenman,
+  serializePenman,
+} from './format/penman.js';
 import { validateDocument } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
@@ -890,6 +896,17 @@ export class UmrDocument extends DocumentModel {
   async setTripleRelation(id, rel) {
     const t = this.triple(id);
     if (!t || !rel || t.rel === rel) return false;
+    // The same pair under the same relation, as createTriple refuses it: the
+    // node wore the tag twice and the file wrote the triple twice.
+    const source = this.node(t.source) || this.constantNode(t.source);
+    const twin = (source?.docOut || []).find(
+      (x) => x.id !== id && x.rel === rel && x.target === t.target,
+    );
+    if (twin) {
+      const name = (x) => this.node(x)?.var || x;
+      this.setError(`${name(t.source)} ${rel} ${name(t.target)} is already there.`);
+      return false;
+    }
     return this._withSaving(
       'Failed to change the document-level relation',
       async () => {
@@ -1019,12 +1036,23 @@ export class UmrDocument extends DocumentModel {
     if (parsed.root !== oldRoot) plan.root = parsed.root;
 
     // What the canvas refuses, text mode refuses too: a new node's variable
-    // malformed or taken elsewhere in the document, and a new edge closing a
-    // cycle through anything but a quote.
+    // malformed or taken elsewhere in the document, a concept, relation or
+    // value the file cannot hold, and a new edge closing a cycle through
+    // anything but a quote.
     const errors = [];
     plan.create.forEach((c) => {
       const why = this._newVariableProblem(c.var, sentenceIndex);
       if (why) errors.push({ message: why });
+    });
+    parsed.nodes.forEach((node, v) => {
+      const why = conceptProblem(node.concept);
+      if (why) errors.push({ message: `${v}: ${why}` });
+      node.children.forEach((child) => {
+        const bad =
+          relationProblem(child.rel) ||
+          (child.kind === 'node' ? null : attrValueProblem(child.value));
+        if (bad) errors.push({ message: `${v}: ${bad}` });
+      });
     });
     const reaches = (from, to) => {
       const seen = new Set();
@@ -1132,17 +1160,34 @@ export class UmrDocument extends DocumentModel {
           );
           for (const o of olds) await patchUmr(o.id, { root: undefined });
         }
+        // A sentence the import kept as text keeps its alignment block too.
+        // Mending the graph here is the first time anything can be anchored
+        // to it, and the block is written no longer once the sentence has
+        // nodes, so its words would be lost with it.
+        const kept = sentence.nodes.length ? null : sentence.rawAlignment;
+        const keptWords = kept ? readAlignment(kept) : null;
+        const anchorFor = (v) => {
+          const ranges = keptWords?.get(v) || [];
+          const pieces = [];
+          ranges.forEach(([a, b]) => {
+            const first = sentence.words[a - 1];
+            const last = sentence.words[b - 1];
+            if (first && last && a <= b) pieces.push({ begin: first.begin, end: last.end });
+          });
+          return pieces.length ? pieces : [{ begin: sentence.begin, end: sentence.begin }];
+        };
         for (const c of plan.create) {
-          const { ids } = await client.tokens.bulkCreate([
-            {
+          const { ids } = await client.tokens.bulkCreate(
+            anchorFor(c.var).map((piece) => ({
               tokenLayerId: info.nodeTokenLayer.id,
               text: textId,
-              begin: sentence.begin,
-              end: sentence.begin,
-            },
-          ]);
-          // Unaligned, like every node text mode makes: it records its
-          // sentence (see _reconcile).
+              begin: piece.begin,
+              end: piece.end,
+            })),
+          );
+          // Unaligned, like every node text mode makes unless the file it is
+          // mending said which words it covers: it records its sentence (see
+          // _reconcile).
           const meta = { var: c.var, attrs: c.attrs, sentence: sentence.tokenId };
           if (plan.root === c.var) meta.root = true;
           const span = await client.spans.create(info.conceptLayer.id, ids, c.concept, {
