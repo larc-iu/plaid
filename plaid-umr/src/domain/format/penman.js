@@ -16,6 +16,18 @@
 // the start of a comment (validate.py:390).
 const TOKEN = /^[^\s():#]+/;
 
+// What a concept cannot hold, then: what ends TOKEN, and a quote, which
+// starts a string. Written anyway, `10:30` read back as `10` and `C#` as `C`
+// with no error. The picker offers a word's form as its concept, and forms
+// hold all of these.
+const NOT_IN_CONCEPT = /[\s():#"]/u;
+
+/** Why `concept` cannot be written, or null when it can. */
+export const conceptProblem = (concept) =>
+  NOT_IN_CONCEPT.test(concept)
+    ? `A concept cannot hold spaces, brackets, colons, quotes or #: ${concept}`
+    : null;
+
 // The UMR variable convention, ÚFAL's regex (validate.py:142). The letter run
 // may be non-ASCII, so the Unicode property escape is load-bearing.
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;

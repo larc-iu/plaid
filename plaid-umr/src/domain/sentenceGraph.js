@@ -284,45 +284,114 @@ export const CYCLE_ROLES = new Set([':quote', ':modal-predicate']);
 
 // The sentence's roots. A node marked as the root (the file's own, kept at
 // import) is one whatever reaches it, since a graph may cycle back into its
-// root through more than :quote in the released data. Otherwise: nodes no
-// in-sentence edge reaches, cycle roles aside. A graph with neither still
-// needs a root to draw and write from, so the node that reaches the most
-// others stands in, ties to the first in anchor order.
+// root through more than :quote in the released data. Then one root for each
+// part of the sentence no root reaches, a FRAGMENT: a node of it nothing
+// reaches but a cycle role (the :quote back into a reported-speech root),
+// the largest part first; and for a cycle with no way in, the node that
+// reaches the most of it, ties to the first in anchor order. A node the
+// marked root reaches is never a root, so a quoted clause made the root does
+// not turn the old root (re-entered only by :quote) into a second one.
+//
+// The export writes the first root's graph only; `unreachedByRoot` reports
+// the rest.
 function rootsOf(sentence, nodesById) {
+  if (!sentence.nodes.length) return [];
   const inSentence = (id) => nodesById.get(id)?.sentence === sentence.index;
-  const marked = sentence.nodes.filter((n) => n.root);
-  const derived = sentence.nodes.filter(
-    (n) => !n.root && !n.in.some((e) => inSentence(e.source) && !CYCLE_ROLES.has(e.role)),
-  );
-  // The marked root first, then any fragment: a node nothing reaches while
-  // the graph has its root elsewhere.
-  const roots = [...marked, ...derived];
-  if (roots.length || !sentence.nodes.length) return roots;
-  const reach = (start) => {
-    const seen = new Set([start.id]);
-    const stack = [start];
+  const reach = (starts, into = new Set()) => {
+    const stack = [...starts];
     while (stack.length) {
       const n = stack.pop();
+      if (!n || into.has(n.id)) continue;
+      into.add(n.id);
       n.out.forEach((e) => {
-        if (inSentence(e.target) && !seen.has(e.target)) {
-          seen.add(e.target);
-          stack.push(nodesById.get(e.target));
-        }
+        if (inSentence(e.target)) stack.push(nodesById.get(e.target));
       });
     }
-    return seen.size;
+    return into;
   };
-  let best = sentence.nodes[0];
-  let bestReach = -1;
-  sentence.nodes.forEach((n) => {
-    const r = reach(n);
-    if (r > bestReach) {
-      best = n;
-      bestReach = r;
-    }
+  const roots = sentence.nodes.filter((n) => n.root);
+  const reached = reach(roots);
+  const newReach = (n) => [...reach([n])].filter((id) => !reached.has(id)).length;
+  const unreached = () => sentence.nodes.filter((n) => !reached.has(n.id));
+  const entries = unreached()
+    .filter((n) => !n.in.some((e) => inSentence(e.source) && !CYCLE_ROLES.has(e.role)))
+    .map((n) => ({ n, size: newReach(n) }))
+    .sort((a, b) => b.size - a.size);
+  entries.forEach(({ n }) => {
+    if (reached.has(n.id)) return;
+    roots.push(n);
+    reach([n], reached);
   });
-  return [best];
+  for (let left = unreached(); left.length; left = unreached()) {
+    let best = left[0];
+    let bestSize = -1;
+    left.forEach((n) => {
+      const size = newReach(n);
+      if (size > bestSize) {
+        best = n;
+        bestSize = size;
+      }
+    });
+    roots.push(best);
+    reach([best], reached);
+  }
+  return roots;
 }
+
+// The ids of the nodes the export writes for a sentence: what its first root
+// reaches.
+function writtenIds(sentence, nodesById) {
+  const seen = new Set();
+  const stack = sentence.roots.slice(0, 1);
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n || seen.has(n.id)) continue;
+    seen.add(n.id);
+    n.out.forEach((e) => {
+      const t = nodesById.get(e.target);
+      if (t?.sentence === sentence.index) stack.push(t);
+    });
+  }
+  return seen;
+}
+
+/**
+ * The parts of each sentence its root does not reach: the export writes one
+ * graph a sentence, the first root's, and leaves them out. Reported as errors
+ * on each part's root. Before this a part left out could go without a word:
+ * an edge deleted into a cycle, a leaf in a cycle made the root.
+ */
+export const unreachedByRoot = (graph) => {
+  const out = [];
+  graph.sentences.forEach((s) => {
+    if (s.roots.length < 2) return;
+    const written = writtenIds(s, graph.nodesById);
+    const root = s.roots[0].var;
+    s.roots.slice(1).forEach((r) => {
+      const part = new Set();
+      const stack = [r];
+      while (stack.length) {
+        const n = stack.pop();
+        if (!n || part.has(n.id) || written.has(n.id)) continue;
+        part.add(n.id);
+        n.out.forEach((e) => {
+          const t = graph.nodesById.get(e.target);
+          if (t?.sentence === s.index) stack.push(t);
+        });
+      }
+      const n = part.size - 1;
+      const what = n ? `${r.var} and ${n} node${n === 1 ? '' : 's'} under it are` : `${r.var} is`;
+      out.push({
+        level: 'error',
+        code: 'unreached-by-root',
+        sentence: s.index,
+        var: r.var,
+        message: `${what} not reached from the root ${root}, and the export leaves ${n ? 'them' : 'it'} out.`,
+      });
+    });
+  });
+  return out;
+};
 
 // Nodes in a sentence read by anchor position, then by variable, so a list
 // of them is stable across reloads.
@@ -460,10 +529,19 @@ export const groupOf = (rel) => {
  */
 export function toUmrSentences(graph) {
   const { sentences, nodesById } = graph;
+  // What the file will hold, across the document: a triple naming a node the
+  // export leaves out is left out with it, as its alignment line is.
+  const written = new Set();
+  sentences.forEach((s) => writtenIds(s, nodesById).forEach((id) => written.add(id)));
+  const inFile = (id) => nodesById.get(id)?.constant || written.has(id);
 
   return sentences.map((s) => {
+    // Only the nodes the file writes: the alignment block and the checks read
+    // this map, and a node left out still wrote its line (`0-0`, for want of
+    // one) and failed the official checks.
     const nodes = new Map();
     s.nodes.forEach((node) => {
+      if (!written.has(node.id)) return;
       const children = [
         ...node.attrs.map((a) => ({
           rel: a.rel,
@@ -493,11 +571,17 @@ export function toUmrSentences(graph) {
     }
 
     const alignment = new Map();
-    s.nodes.forEach((node) => alignment.set(node.var, node.alignment));
+    s.nodes.forEach((node) => {
+      if (written.has(node.id)) alignment.set(node.var, node.alignment);
+    });
 
     const groups = { temporal: [], modal: [], coref: [] };
     const nameOf = (id) => nodesById.get(id)?.var;
-    s.triples.forEach((t) => groups[t.group].push([nameOf(t.source), t.rel, nameOf(t.target)]));
+    s.triples.forEach((t) => {
+      if (inFile(t.source) && inFile(t.target)) {
+        groups[t.group].push([nameOf(t.source), t.rel, nameOf(t.target)]);
+      }
+    });
     const hasTriples = groups.temporal.length || groups.modal.length || groups.coref.length;
 
     return {
@@ -506,20 +590,29 @@ export function toUmrSentences(graph) {
       sentenceText: s.text,
       meta: s.meta,
       ilg: ilgLines(s),
-      words: s.words.map((w) => w.text),
+      words: s.words.map(wordForFile),
       graph: penman,
-      rawGraph: s.rawGraph,
-      rawAlignment: s.rawAlignment,
+      // A graph kept as text is written back only while the sentence has no
+      // nodes: once one is made, on the canvas or in text mode, the graph the
+      // annotator sees is the one written.
+      rawGraph: s.nodes.length ? undefined : s.rawGraph,
+      rawAlignment: s.nodes.length ? undefined : s.rawAlignment,
       alignment,
       docGraph: hasTriples ? { var: `s${s.index}s0`, ...groups } : null,
     };
   });
 }
 
+// A word as the file's Words line holds it. The line is split on spaces, so
+// a word with one inside (two merged in IGT, "in order") is written with `_`:
+// kept whole, it was two items against one index, and every alignment after
+// it pointed one word early.
+export const wordForFile = (w) => w.text.trim().replace(/\s+/g, '_');
+
 // The gloss lines to write: Index and Words regenerated from the word layer
 // so they can never drift from the text, then the sentence's resolved lines.
 function ilgLines(s) {
-  const words = s.words.map((w) => w.text);
+  const words = s.words.map(wordForFile);
   return [
     { header: 'Index', key: 'index', lang: null, items: words.map((_, i) => String(i + 1)) },
     { header: 'Words', key: 'words', lang: null, items: words },

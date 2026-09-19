@@ -12,6 +12,7 @@ import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
+import { conceptProblem } from '../../../domain/format/penman.js';
 import {
   roleOptions,
   normalizeRole,
@@ -1036,7 +1037,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {sentence.nodes.length === 0 && !sentence.rawGraph && (
           <span className="umr-block-note">No graph</span>
         )}
-        {sentence.rawGraph && (
+        {sentence.rawGraph && sentence.nodes.length === 0 && (
           <span className="umr-block-note">Graph kept as text, could not be read</span>
         )}
         {!readOnly && (
@@ -1405,8 +1406,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   editor.kind === 'variable'
                     ? (text) => doc.variableProblem(editor.nodeId, text)
                     : editor.kind === 'new'
-                      ? (text) => missingWord(editor, text)
-                      : undefined
+                      ? (text) => missingWord(editor, text) || conceptProblem(text)
+                      : editor.kind === 'concept'
+                        ? conceptProblem
+                        : undefined
                 }
               />
             )}

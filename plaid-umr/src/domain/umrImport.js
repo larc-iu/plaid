@@ -7,7 +7,7 @@ import { cpLength } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
-import { buildDocumentGraph } from './sentenceGraph.js';
+import { buildDocumentGraph, wordForFile } from './sentenceGraph.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -222,8 +222,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       );
     }
     parsedSentences.forEach((ps, i) => {
-      const have = existing.sentences[i].words.map((w) => w.text);
-      if (have.join(' ') !== ps.words.join(' ')) {
+      // Word by word, as the export writes them: joined, the words of a
+      // document with a merged word ("in order") matched a file that split
+      // it, and every anchor after it landed one word late.
+      const have = existing.sentences[i].words.map(wordForFile);
+      if (have.length !== ps.words.length || have.some((w, k) => w !== ps.words[k])) {
         throw new Error(
           `Sentence ${i + 1} differs: the file has "${ps.words.join(' ')}", the document "${have.join(' ')}".`,
         );
@@ -316,6 +319,12 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
             warnings.push(
               `Sentence ${index}: ${v} aligns to words ${a}-${b}, outside the sentence.`,
             );
+            return;
+          }
+          // A range written backwards made a token that ends before it
+          // begins, and the whole import failed on it.
+          if (a > b) {
+            warnings.push(`Sentence ${index}: ${v} aligns to words ${a}-${b}, a range backwards.`);
             return;
           }
           pieceIndexes.push(addPiece(first.begin, last.end));

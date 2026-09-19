@@ -14,12 +14,13 @@ import {
   nextVariable,
   CYCLE_ROLES,
   crossSentenceEdges,
+  unreachedByRoot,
   groupOf,
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
 import { serializeUmrFile } from './format/umrFile.js';
-import { parsePenman, serializePenman } from './format/penman.js';
+import { conceptProblem, parsePenman, serializePenman } from './format/penman.js';
 import { validateDocument } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
@@ -90,6 +91,7 @@ export class UmrDocument extends DocumentModel {
     return this._derived('problems', () => [
       ...validateDocument(toUmrSentences(this.graph)),
       ...crossSentenceEdges(this.graph),
+      ...unreachedByRoot(this.graph),
     ]);
   }
 
@@ -324,6 +326,11 @@ export class UmrDocument extends DocumentModel {
     const sentence = this.sentence(sentenceIndex);
     if (!sentence || !concept) return false;
     if (parentId && !role) return false;
+    const refused = conceptProblem(concept);
+    if (refused) {
+      this.setError(refused);
+      return false;
+    }
     const pieces = this.piecesFor(sentence, wordIds);
     const variable = nextVariable(sentenceIndex, concept, this.takenVariables());
     const parent = parentId ? this.node(parentId) : null;
@@ -394,6 +401,11 @@ export class UmrDocument extends DocumentModel {
   async setConcept(nodeId, concept) {
     const node = this.node(nodeId);
     if (!node || !concept || node.concept === concept) return false;
+    const refused = conceptProblem(concept);
+    if (refused) {
+      this.setError(refused);
+      return false;
+    }
     return this._withSaving(
       'Failed to change the concept',
       async () => {
@@ -912,7 +924,10 @@ export class UmrDocument extends DocumentModel {
   // The sentence's graph as PENMAN, the text mode's starting point.
   penmanOf(sentenceIndex) {
     const sent = toUmrSentences(this.graph)[sentenceIndex - 1];
-    return sent?.graph ? serializePenman(sent.graph) : '';
+    if (sent?.graph) return serializePenman(sent.graph);
+    // A graph the import could not read, kept as text: text mode opens on it
+    // so it can be mended and applied, where it opened empty.
+    return typeof sent?.rawGraph === 'string' ? sent.rawGraph : '';
   }
 
   /**

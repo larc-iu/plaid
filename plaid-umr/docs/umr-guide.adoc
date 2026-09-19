@@ -100,7 +100,7 @@ When the project already has a document of the file's name whose words match the
 This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
 Words that differ, or a graph already there, refuse the import before anything is written.
 
-A sentence whose graph the parser cannot read is kept as text and written back unchanged on export; the sentence's header says so.
+A sentence whose graph the parser cannot read is kept as text and written back unchanged on export; the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
 Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
 
 == Exporting
@@ -110,6 +110,8 @@ A document's **Export** tab shows it as `.umr`, to copy or download.
 
 The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
 A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
+The file holds one graph a sentence, the root's. A part of the sentence the root does not reach (a node made with no parent, or what a deleted edge cut off) is shown on the canvas and marked as an error, and the export leaves it out, with its alignment and its document-level relations.
+The Words line is split on spaces, so a word holding one (two words merged in IGT) is written with `_` in its place.
 
 = The Canvas
 
