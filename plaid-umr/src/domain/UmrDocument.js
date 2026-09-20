@@ -956,9 +956,59 @@ export class UmrDocument extends DocumentModel {
     return typeof sent?.rawGraph === 'string' ? sent.rawGraph : '';
   }
 
+  // The nodes the text is answerable for: what the sentence's first root
+  // reaches. A fragment the text never showed is none of its business.
+  _writtenFrom(sentence) {
+    const written = new Set();
+    const stack = [...sentence.roots.slice(0, 1)];
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n || written.has(n.id)) continue;
+      written.add(n.id);
+      n.out.forEach((e) => {
+        if (this.node(e.target)?.sentence === sentence.index) stack.push(this.node(e.target));
+      });
+    }
+    return written;
+  }
+
+  /**
+   * One node renamed in the text, or null. A variable typed over is a rename
+   * when exactly one goes and one arrives and they are plainly the same node:
+   * the same concept, hanging under the same parents by the same relations,
+   * or both the sentence's root. Anything less clear-cut stays a delete and a
+   * create, which is what the status line warns about.
+   */
+  _renameIn(sentence, parsed, written) {
+    const gone = sentence.nodes.filter((n) => written.has(n.id) && !parsed.nodes.has(n.var));
+    const fresh = [...parsed.nodes.keys()].filter((v) => !sentence.nodes.some((n) => n.var === v));
+    if (gone.length !== 1 || fresh.length !== 1) return null;
+    const node = gone[0];
+    const to = fresh[0];
+    if (parsed.nodes.get(to)?.concept !== node.concept) return null;
+    const oldParents = new Set(
+      node.in
+        .filter((e) => this.node(e.source)?.sentence === sentence.index)
+        .map((e) => `${e.role} ${this.node(e.source).var}`),
+    );
+    const newParents = new Set();
+    parsed.nodes.forEach((parent, v) => {
+      parent.children.forEach((child) => {
+        if (child.kind === 'node' && child.value === to) newParents.add(`${child.rel} ${v}`);
+      });
+    });
+    const same =
+      oldParents.size === newParents.size && [...oldParents].every((k) => newParents.has(k));
+    if (!same) return null;
+    // A parentless node is the root or nothing: renaming the root is a
+    // rename, renaming a loose fragment's head is a guess.
+    if (!oldParents.size && !(node.root && parsed.root === to)) return null;
+    return { nodeId: node.id, from: node.var, to };
+  }
+
   /**
    * What applying a PENMAN text to a sentence would change: nodes matched by
-   * variable, so a renamed variable is a new node and the old one goes.
+   * variable, and one variable typed over read as a rename (`_renameIn`).
    * Returns `{ errors }` when the text does not parse, else the plan.
    */
   planPenman(sentenceIndex, text) {
@@ -967,7 +1017,12 @@ export class UmrDocument extends DocumentModel {
     const parsed = parsePenman(text);
     if (parsed.errors.length) return { errors: parsed.errors };
     if (!parsed.root) return { errors: [{ message: 'The text has no graph.' }] };
-    const oldByVar = new Map(sentence.nodes.map((n) => [n.var, n]));
+    const written = this._writtenFrom(sentence);
+    const rename = this._renameIn(sentence, parsed, written);
+    // The renamed node answers to its new name everywhere below, so the rest
+    // of the plan reads as though it had always been called that.
+    const nameOf = (node) => (node && rename && node.id === rename.nodeId ? rename.to : node?.var);
+    const oldByVar = new Map(sentence.nodes.map((n) => [nameOf(n), n]));
     const newVars = new Set(parsed.nodes.keys());
     const plan = {
       create: [],
@@ -977,6 +1032,7 @@ export class UmrDocument extends DocumentModel {
       edgesAdd: [],
       edgesDelete: [],
       orders: [],
+      rename: rename ? [rename] : [],
       root: null,
     };
     parsed.nodes.forEach((node, v) => {
@@ -1003,7 +1059,11 @@ export class UmrDocument extends DocumentModel {
       // is a new edge, and the old one goes.
       const oldEdges = old.out
         .filter((e) => this.node(e.target)?.sentence === sentenceIndex)
-        .map((e) => ({ id: e.id, key: `${e.role} ${this.node(e.target).var}`, order: e.order }));
+        .map((e) => ({
+          id: e.id,
+          key: `${e.role} ${nameOf(this.node(e.target))}`,
+          order: e.order,
+        }));
       const nextKeys = new Map(edges.map((e) => [`${e.role} ${e.target}`, e]));
       oldEdges.forEach((e) => {
         if (!nextKeys.has(e.key)) plan.edgesDelete.push(e.id);
@@ -1020,18 +1080,8 @@ export class UmrDocument extends DocumentModel {
     });
     // The text is the root's graph, so only what the root reaches is the
     // text's to delete: a fragment the text never showed stays.
-    const written = new Set();
-    const stack = [...sentence.roots.slice(0, 1)];
-    while (stack.length) {
-      const n = stack.pop();
-      if (!n || written.has(n.id)) continue;
-      written.add(n.id);
-      n.out.forEach((e) => {
-        if (this.node(e.target)?.sentence === sentenceIndex) stack.push(this.node(e.target));
-      });
-    }
     sentence.nodes.forEach((n) => {
-      if (written.has(n.id) && !newVars.has(n.var)) plan.delete.push(n.id);
+      if (written.has(n.id) && !newVars.has(nameOf(n))) plan.delete.push(n.id);
     });
     // An edge into or out of a deleted node goes with it (the server's
     // cascade), and a second delete would be a 404.
@@ -1040,7 +1090,7 @@ export class UmrDocument extends DocumentModel {
       const e = this.edge(id);
       return e && !gone.has(e.source) && !gone.has(e.target);
     });
-    const oldRoot = sentence.roots[0]?.var;
+    const oldRoot = nameOf(sentence.roots[0]);
     if (parsed.root !== oldRoot) plan.root = parsed.root;
 
     // What the canvas refuses, text mode refuses too: a new node's variable
@@ -1048,8 +1098,8 @@ export class UmrDocument extends DocumentModel {
     // value the file cannot hold, and a new edge closing a cycle through
     // anything but a quote.
     const errors = [];
-    plan.create.forEach((c) => {
-      const why = this._newVariableProblem(c.var, sentenceIndex);
+    [...plan.create.map((c) => c.var), ...plan.rename.map((r) => r.to)].forEach((v) => {
+      const why = this._newVariableProblem(v, sentenceIndex);
       if (why) errors.push({ message: why });
     });
     parsed.nodes.forEach((node, v) => {
@@ -1106,6 +1156,7 @@ export class UmrDocument extends DocumentModel {
     const changes =
       plan.create.length +
       plan.delete.length +
+      plan.rename.length +
       plan.concept.length +
       plan.attrs.length +
       plan.edgesAdd.length +
@@ -1150,7 +1201,14 @@ export class UmrDocument extends DocumentModel {
           await client.spans.patchMetadata(spanId, { [UMR_NAMESPACE]: next });
         };
         const gone = new Set(plan.delete);
-        // Deletes first, so a variable given to a new node is free.
+        // A variable typed over: the node keeps its anchor, its edges and its
+        // document-level relations, and answers to the new name from here on.
+        for (const r of plan.rename) {
+          await patchUmr(r.nodeId, { var: r.to });
+          idByVar.delete(r.from);
+          idByVar.set(r.to, r.nodeId);
+        }
+        // Deletes next, so a variable given to a new node is free.
         if (plan.delete.length) {
           const tokenIds = plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id));
           await client.tokens.bulkDelete(tokenIds);
@@ -1163,8 +1221,9 @@ export class UmrDocument extends DocumentModel {
         // The root moves: the old marks come off first, so no two nodes wear
         // one, whether the new root is made below or was there already.
         if (plan.root) {
+          const renamed = new Map(plan.rename.map((r) => [r.nodeId, r.to]));
           const olds = sentence.nodes.filter(
-            (n) => n.root && n.var !== plan.root && !gone.has(n.id),
+            (n) => n.root && (renamed.get(n.id) ?? n.var) !== plan.root && !gone.has(n.id),
           );
           for (const o of olds) await patchUmr(o.id, { root: undefined });
         }

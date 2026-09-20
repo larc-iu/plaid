@@ -25,15 +25,15 @@ export function PenmanEditor({ initial, onApply, onCancel, plan, applying = fals
     setBase(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
-  const { problem, losses } = useMemo(() => {
+  const { problem, losses, rename } = useMemo(() => {
     const parsed = parsePenman(text);
-    if (parsed.errors.length) return { problem: parsed.errors[0], losses: [] };
+    if (parsed.errors.length) return { problem: parsed.errors[0], losses: [], rename: [] };
     if (!parsed.root && text.trim()) {
-      return { problem: { message: 'The text has no graph.' }, losses: [] };
+      return { problem: { message: 'The text has no graph.' }, losses: [], rename: [] };
     }
-    if (!plan || !dirty) return { problem: null, losses: [] };
+    if (!plan || !dirty) return { problem: null, losses: [], rename: [] };
     const p = plan(text);
-    return { problem: p.errors?.[0] || null, losses: p.losses || [] };
+    return { problem: p.errors?.[0] || null, losses: p.losses || [], rename: p.rename || [] };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, base]);
 
@@ -83,7 +83,7 @@ export function PenmanEditor({ initial, onApply, onCancel, plan, applying = fals
           {problem
             ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
             : dirty
-              ? `Changed. Apply writes it as one operation.${lossNote(losses)}`
+              ? `Changed. Apply writes it as one operation.${renameNote(rename)}${lossNote(losses)}`
               : 'As stored.'}
         </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onCancel(dirty)}>
@@ -104,6 +104,14 @@ export function PenmanEditor({ initial, onApply, onCancel, plan, applying = fals
 
 // What Apply deletes that the text does not show, as a sentence: " It deletes
 // s1p with its anchor and 1 document-level relation."
+// A variable typed over keeps its node, so the line says which name changes
+// rather than leaving the annotator to wonder what became of the old one.
+function renameNote(rename) {
+  if (!rename.length) return '';
+  const one = (r) => `${r.from} is now ${r.to}`;
+  return ` ${rename.map(one).join(', ')}.`;
+}
+
 function lossNote(losses) {
   if (!losses.length) return '';
   const one = ({ var: v, anchored, relations }) => {

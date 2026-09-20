@@ -246,10 +246,39 @@ test('text mode refuses what the canvas refuses', () => {
   assert.equal(doc.planPenman(1, withChild('(s1l2 / thing)')).errors, undefined);
 });
 
-// A variable renamed in the text is a new node: the plan says what the old
-// one takes with it.
-test('the plan names what a deletion takes that the text does not show', () => {
+// A variable typed over is the same node under a new name: it keeps its
+// anchor, its edges and its document-level relations.
+test('a variable typed over is read as a rename', () => {
   const { doc } = load();
   const plan = doc.planPenman(1, doc.penmanOf(1).replaceAll('s1l', 's1g'));
+  assert.deepEqual(plan.rename, [
+    { nodeId: doc.sentence(1).nodes.find((n) => n.var === 's1l').id, from: 's1l', to: 's1g' },
+  ]);
+  assert.deepEqual(plan.delete, []);
+  assert.deepEqual(plan.create, []);
+  assert.deepEqual(plan.losses, []);
+  assert.deepEqual(plan.edgesAdd, []);
+  assert.deepEqual(plan.edgesDelete, []);
+  assert.equal(plan.changes, 1);
+  // A child renamed the same way keeps the edge into it, too.
+  const child = doc.planPenman(1, doc.penmanOf(1).replaceAll('s1e', 's1x'));
+  assert.equal(child.rename.length, 1);
+  assert.deepEqual(
+    [child.delete, child.create, child.edgesAdd, child.edgesDelete],
+    [[], [], [], []],
+  );
+});
+
+// Anything less clear-cut is what it was: a node gone and a node arrived,
+// and the plan says what the old one takes with it.
+test('the plan names what a deletion takes that the text does not show', () => {
+  const { doc } = load();
+  // The concept changed as well, so the two are not plainly the same node.
+  const plan = doc.planPenman(1, doc.penmanOf(1).replace('s1l / leave-02', 's1g / depart-01'));
+  assert.deepEqual(plan.rename, []);
   assert.deepEqual(plan.losses, [{ var: 's1l', anchored: true, relations: 0 }]);
+  // Two variables typed over at once: no telling which became which.
+  const two = doc.planPenman(1, doc.penmanOf(1).replaceAll('s1l', 's1g').replaceAll('s1e', 's1x'));
+  assert.deepEqual(two.rename, []);
+  assert.deepEqual(two.losses.map((l) => l.var).sort(), ['s1e', 's1l']);
 });

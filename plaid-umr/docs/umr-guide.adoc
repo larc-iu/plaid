@@ -237,7 +237,8 @@ Escape cancels.
 The text is parsed as you type, and the first problem shows under it.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
 Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, and a new edge that closes a cycle through anything but `:quote`.
-A variable renamed in the text is a new node, and the old one goes with its anchor and its document-level relations; the line under the text names what Apply would delete that way. Rename a variable on the canvas to keep them.
+A variable typed over is read as a rename when one variable goes and one arrives and they are plainly the same node: the same concept, under the same parents by the same relations, or both the sentence's root. The node keeps its anchor, its edges and its document-level relations, and the line under the text says which name changed.
+Anything less clear-cut, two variables typed over at once or a concept changed along with the name, is a node deleted and a node made, and the line names what Apply would delete that way.
 A node the text never showed (a fragment not reached from the root) is left alone.
 Cancel with unapplied changes asks first.
 
