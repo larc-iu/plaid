@@ -1092,9 +1092,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {sentence.roots.length > 1 && (
           <span className="umr-block-note">{sentence.roots.length} unconnected graphs</span>
         )}
-        {sentence.nodes.length === 0 && !sentence.rawGraph && (
-          <span className="umr-block-note">No graph</span>
-        )}
+        {/* A sentence with no graph says so by being empty, so it carries no
+            note. The one below is the opposite case and matters more for it:
+            a sentence whose graph could not be READ looks just as empty, and
+            that note is the only thing between an annotator and starting it
+            again over the top of one that is already there. */}
         {sentence.rawGraph && sentence.nodes.length === 0 && (
           <span className="umr-block-note">Graph kept as text, could not be read</span>
         )}

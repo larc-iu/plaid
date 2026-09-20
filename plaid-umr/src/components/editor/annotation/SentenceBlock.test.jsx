@@ -89,7 +89,7 @@ describe('SentenceBlock', () => {
     await r.unmount();
   });
 
-  it('names an unconnected sentence', async () => {
+  it('says nothing about a sentence with no graph, which says so by being empty', async () => {
     const { sentence, nodesById } = fixture();
     const r = await renderComponent(
       <SentenceBlock
@@ -98,7 +98,24 @@ describe('SentenceBlock', () => {
         dataVersion={1}
       />,
     );
-    expect(texts(r.container, '.umr-block-note')).toEqual(['No graph']);
+    expect(texts(r.container, '.umr-block-note')).toEqual([]);
+    await r.unmount();
+  });
+
+  // The opposite case, and the reason the one above is safe to drop: this
+  // sentence looks just as empty and is not.
+  it('says when a graph is there but could not be read', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock
+        sentence={{ ...sentence, nodes: [], edges: [], roots: [], rawGraph: '(s1x / broken' }}
+        nodesById={nodesById}
+        dataVersion={1}
+      />,
+    );
+    expect(texts(r.container, '.umr-block-note')).toEqual([
+      'Graph kept as text, could not be read',
+    ]);
     await r.unmount();
   });
 });
