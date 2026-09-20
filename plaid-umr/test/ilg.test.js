@@ -60,10 +60,12 @@ test('a mapping is proposed from what the layers are named and scoped', () => {
   const proposal = proposeIlg(layerInfo());
   assert.deepEqual(
     proposal.map((e) => [e.header, e.lang, e.source]),
+    // Word lines, then morpheme lines, then sentence lines: the order an
+    // interlinear text is read in, whatever order the layers come in.
     [
+      ['pos', null, 'layer:p1'],
       ['morphemes', null, 'morphemes'],
       ['morpheme-gloss', 'en', 'layer:g1'],
-      ['pos', null, 'layer:p1'],
       ['sentence-gloss', 'en', 'layer:t1'],
       [null, null, 'stored'],
     ],
@@ -85,9 +87,9 @@ test('a line whose layer is gone takes the layer of the same line in the proposa
     { header: null, lang: null, source: 'stored' },
   ];
   assert.deepEqual(resolveIlg(stored, layerInfo()), [
+    { header: 'pos', lang: null, source: 'layer:p1' },
     { header: 'morphemes', lang: null, source: 'morphemes' },
     { header: 'morpheme-gloss', lang: 'en', source: 'layer:g1' },
-    { header: 'pos', lang: null, source: 'layer:p1' },
     { header: null, lang: null, source: 'stored' },
   ]);
   // Nothing to heal it with: the line is left as it was rather than guessed.
@@ -102,18 +104,21 @@ test('lines come from the layers, grouped under the words, stored lines after', 
   const lines = ilgLinesFor(sentence(), info, resolveIlg(null, info));
   assert.deepEqual(
     lines.map((l) => [l.header, l.lang, l.items.join(' ')]),
+    // Word scope, then morpheme, then sentence. A STORED line obeys it too:
+    // an imported word gloss belongs beside the other word lines, and within
+    // one scope a stored line still follows the line the layers produced.
     [
+      ['Part of Speech', null, 'N _'],
+      ['Word Gloss (es)', 'es', 'perros ladran'],
       ['Morphemes', null, 'dog -s bark'],
       ['Morpheme Gloss', 'en', 'dog PL bark'],
-      ['Part of Speech', null, 'N _'],
       ['Sentence Gloss', 'en', 'Dogs bark.'],
-      ['Word Gloss (es)', 'es', 'perros ladran'],
     ],
   );
-  assert.deepEqual(lines[0].perWord, [['dog', '-s'], ['bark']]);
-  assert.deepEqual(lines[1].perWord, [['dog', 'PL'], ['bark']]);
-  assert.equal(lines[3].perWord, null);
-  assert.deepEqual(lines[4].perWord, [['perros'], ['ladran']]);
+  assert.deepEqual(lines[1].perWord, [['perros'], ['ladran']]);
+  assert.deepEqual(lines[2].perWord, [['dog', '-s'], ['bark']]);
+  assert.deepEqual(lines[3].perWord, [['dog', 'PL'], ['bark']]);
+  assert.equal(lines[4].perWord, null);
 });
 
 test('a stored line the layers also produce is not written twice', () => {

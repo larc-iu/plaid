@@ -22,6 +22,27 @@ export const HEADERS = [
 
 const headerOf = (key) => HEADERS.find((h) => h.key === key) || null;
 
+// Word lines, then morpheme lines, then sentence lines, whatever order a
+// mapping was written in. That is the order an interlinear text is read in,
+// and it is what lets a word's morpheme lines share their columns: the canvas
+// lays them out as one grid, which wants them together.
+//
+// STABLE within a scope, so the Settings screen's arrows still order the lines
+// of one scope against each other. The `stored` entry names no header and
+// keeps its place at the end.
+const SCOPE_RANK = { word: 0, morpheme: 1, sentence: 2 };
+const scopeRank = (entry) => {
+  const h = headerOf(entry?.header);
+  if (!h) return 4;
+  return SCOPE_RANK[h.scope] ?? 3;
+};
+
+export const sortIlg = (mapping) =>
+  (mapping || [])
+    .map((entry, i) => [entry, i])
+    .sort(([a, ai], [b, bi]) => scopeRank(a) - scopeRank(b) || ai - bi)
+    .map(([entry]) => entry);
+
 // A layer's name says what it holds, often enough to propose a mapping.
 const looksLike = (name, re) => re.test(String(name || ''));
 
@@ -52,7 +73,7 @@ export function proposeIlg(layerInfo) {
     out.push({ header, lang: h.lang ? languageCode(lang) : null, source: `layer:${layer.id}` });
   });
   out.push({ header: null, lang: null, source: 'stored' });
-  return out;
+  return sortIlg(out);
 }
 
 /**
@@ -72,13 +93,15 @@ export function resolveIlg(config, layerInfo) {
       .filter((e) => isLayer(e.source))
       .map((e) => [slot(e), e.source]),
   );
-  return config.map((entry) => {
-    if (!isLayer(entry.source) || live.has(String(entry.source).replace(/^layer:/, ''))) {
-      return entry;
-    }
-    const source = proposed.get(slot(entry));
-    return source ? { ...entry, source } : entry;
-  });
+  return sortIlg(
+    config.map((entry) => {
+      if (!isLayer(entry.source) || live.has(String(entry.source).replace(/^layer:/, ''))) {
+        return entry;
+      }
+      const source = proposed.get(slot(entry));
+      return source ? { ...entry, source } : entry;
+    }),
+  );
 }
 
 // The stored key of a line an import kept, as umrFile.js normalizes headers.
@@ -156,8 +179,22 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
       lines.push(line);
     });
   }
-  return lines;
+  // Sorted here as well as in the mapping, so a line an IMPORT carried obeys
+  // the reading order too: a stored word gloss belongs beside the other word
+  // lines, not under the sentence. Stable, so a stored line still follows the
+  // produced line of its own scope.
+  return sortLines(lines);
 }
+
+// The rendered lines in reading order. Keyed on the line rather than a mapping
+// entry, since a stored line has no entry.
+const sortLines = (lines) =>
+  lines
+    .map((line, i) => [line, i])
+    .sort(
+      ([a, ai], [b, bi]) => scopeRank({ header: a.key }) - scopeRank({ header: b.key }) || ai - bi,
+    )
+    .map(([line]) => line);
 
 // Whether an item of a line joins the one after it (a prefix or proclitic,
 // `neseihiin-`, `ma=`) or the one before it (a suffix or enclitic, `-3i'`,

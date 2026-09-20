@@ -318,6 +318,16 @@
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
 }
+/* A word's morpheme lines, a column per morpheme, so a form sits above its
+   gloss. The row gap matches the word column's own gap and each cell keeps
+   the ordinary line height, so the names in the margin stay level with the
+   rows they name. */
+.umr-morphemes {
+  display: grid;
+  gap: 1px 8px;
+  justify-items: center;
+  align-items: start;
+}
 .umr-ilg-row {
   position: relative;
   display: flex;
