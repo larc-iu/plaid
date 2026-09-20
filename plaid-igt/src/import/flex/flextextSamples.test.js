@@ -6,7 +6,7 @@
 // backup has. The .flextext is the later of the two, and holds analyses made
 // in between, which is why the comparison runs one way. Skipped when either
 // file is absent (CI).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { parseFlextextFiles } from './flextextParser.js';
 import { readFwbackup } from './fwbackup.js';
@@ -32,11 +32,18 @@ const morphs = (w) => {
 };
 
 describe.skipIf(!existsSync(FLEXTEXT) || !existsSync(BACKUP))('lezgi.flextext', () => {
-  const ir = parseFlextextFiles([{ name: 'lezgi.flextext', xml: readFileSync(FLEXTEXT, 'utf8') }]);
-  const build = buildDocuments(ir);
-  const backup = buildDocuments(parseFwdata(readFwbackup(readFileSync(BACKUP)).xml));
-  const fromBackup = new Map(backup.documents.map((d) => [d.guid, d]));
-  const pairs = build.documents.map((d) => [d, fromBackup.get(d.guid)]);
+  // Read in beforeAll, as every other sample test in this directory does:
+  // `skipIf` skips the TESTS, but vitest still runs the describe body to
+  // collect them, so a read out here throws on a machine without the files
+  // and takes the whole suite with it.
+  let ir, build, pairs;
+  beforeAll(() => {
+    ir = parseFlextextFiles([{ name: 'lezgi.flextext', xml: readFileSync(FLEXTEXT, 'utf8') }]);
+    build = buildDocuments(ir);
+    const backup = buildDocuments(parseFwdata(readFwbackup(readFileSync(BACKUP)).xml));
+    const fromBackup = new Map(backup.documents.map((d) => [d.guid, d]));
+    pairs = build.documents.map((d) => [d, fromBackup.get(d.guid)]);
+  });
 
   it('reads every text and aligns every word', () => {
     expect(build.stats).toMatchObject({
