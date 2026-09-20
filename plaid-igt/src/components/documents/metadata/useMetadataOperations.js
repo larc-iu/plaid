@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
@@ -56,6 +56,15 @@ export const useMetadataOperations = () => {
     setSaving(false);
     if (ok) setIsEditing(false);
   };
+
+  // The same for this tab's own drafts: the name and the fields being edited.
+  const nameChanged = isEditing && editedName !== (document.name || '');
+  const fieldsChanged =
+    isEditing &&
+    metadataFields.some(
+      (field) => (editedMetadata[field.name] ?? '') !== (document.metadata[field.name] || ''),
+    );
+  useUnsavedDraft(nameChanged || fieldsChanged ? 'What you have typed here' : null);
 
   const handleCopyClick = () => {
     setCopyName(`${document.name || ''} (copy)`);

@@ -12,7 +12,13 @@ import { cn } from '../../lib/utils.js';
 // extra Back press. Both calls can land before React re-renders, so comparing
 // against `value` alone is not enough: what was forwarded is remembered until
 // the controlled value catches up.
-const Tabs = React.forwardRef(({ value, onValueChange, ...props }, ref) => {
+// `guard`, where a group has one, is asked before the group leaves the tab it
+// is on: it resolves to false to stay. The value is the caller's, so a change
+// it never forwards is a change that never happens, and the anchor under a
+// trigger has its click prevented either way, so nothing navigates behind the
+// question. Both the mouse (Radix acts on mousedown) and the keyboard come
+// through here.
+const Tabs = React.forwardRef(({ value, onValueChange, guard, ...props }, ref) => {
   const sentRef = React.useRef(null);
   React.useEffect(() => {
     sentRef.current = null;
@@ -22,9 +28,18 @@ const Tabs = React.forwardRef(({ value, onValueChange, ...props }, ref) => {
     (next) => {
       if (!onValueChange || next === value || next === sentRef.current) return;
       sentRef.current = next;
-      onValueChange(next);
+      if (!guard) {
+        onValueChange(next);
+        return;
+      }
+      Promise.resolve(guard(next, value)).then((ok) => {
+        // Asked and refused: the group stays where it is, and the next click
+        // on the same tab asks again.
+        if (ok) onValueChange(next);
+        else if (sentRef.current === next) sentRef.current = null;
+      });
     },
-    [onValueChange, value],
+    [guard, onValueChange, value],
   );
 
   return (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
+import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -58,6 +58,10 @@ export const useBaselineOperations = () => {
       setIsEditing(false);
     }
   };
+
+  // Leaving the tab with text typed and not saved asks first: this tab holds
+  // a whole document's baseline, and it used to go without a word.
+  useUnsavedDraft(isEditing && editedText !== body ? 'The baseline text you have typed' : null);
 
   const updateEditedText = (text) => setEditedText(text);
 

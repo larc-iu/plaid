@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -121,6 +122,26 @@ const DocumentEditor = () => {
   // A code bound under Settings applies in the grid and every other field here.
   useComposeProject(doc?.project);
   const [activeTab, setActiveTab, tabHref] = useDocumentTabs({ doc, asOf });
+  // What the tab showing says it would lose (`useUnsavedDraft`), and the
+  // question the strip asks before leaving it. A tab that saves as you go, the
+  // Analyze island and every other, says nothing and is never asked about.
+  const confirm = useConfirm();
+  const unsavedRef = useRef(null);
+  const reportUnsaved = useCallback((what) => {
+    unsavedRef.current = what || null;
+  }, []);
+  const guardLeavingTab = useCallback(async () => {
+    const what = unsavedRef.current;
+    if (!what) return true;
+    const ok = await confirm({
+      title: 'Leave without saving?',
+      description: `${what} is not saved. Leaving this tab loses it.`,
+      confirmLabel: 'Leave',
+      destructive: true,
+    });
+    if (ok) unsavedRef.current = null;
+    return ok;
+  }, [confirm]);
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is here.
   const focusHere = useSentenceFocus({ documentId, focusParam, focusWordParam, activeTab });
@@ -441,6 +462,7 @@ const DocumentEditor = () => {
               // the island uses stays the island's: it is not React and has no
               // context to read.
               goToTab: setActiveTab,
+              reportUnsaved,
             }}
           >
             {/* The initial repair takes the tab strip's place rather than
@@ -450,7 +472,7 @@ const DocumentEditor = () => {
             {showReconcileSpinner && <Spinner label="Checking this document…" />}
 
             {!reconciling && (
-              <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <Tabs value={activeTab} onValueChange={setActiveTab} guard={guardLeavingTab}>
                 {/* Pinned under the app header: the way back to the project
                     and the way across the document stay in reach however far
                     down a long text you are. Asked for by the first real user
