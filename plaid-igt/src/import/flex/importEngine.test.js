@@ -265,7 +265,7 @@ function makeFakeClient({
     vocabItems: {
       bulkCreate: (body) =>
         record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
-      patchMetadata: (itemId, body) => record('vocabItems.patchMetadata', { itemId, body }, {}),
+      bulkUpdate: (body) => record('vocabItems.bulkUpdate', { body }, { count: body.length }),
     },
     vocabLinks: {
       create: (itemId, tokens, metadata) =>
@@ -276,6 +276,14 @@ function makeFakeClient({
   };
   return client;
 }
+
+// Every entry the bulk updates carried, flattened back to [id, metadata] pairs
+// in the order they were sent: what the senses were placed with.
+const itemPatches = (client) =>
+  client.calls
+    .filter((c) => c.kind === 'vocabItems.bulkUpdate')
+    .flatMap((c) => c.args.body)
+    .map((e) => [e.id, e.metadata]);
 
 // A vocab bulkCreate carries many entries in one call; flatten them back to
 // per-item records so the assertions below stay item-shaped.
@@ -418,10 +426,7 @@ describe('importLexicon', () => {
     expect(container.form).toBe('махъ');
     expect(container.metadata).not.toHaveProperty('gloss');
     expect(container.metadata).toMatchObject({ morphType: 'root', Plural: 'махар' });
-    const placed = client.calls
-      .filter((c) => c.kind === 'vocabItems.patchMetadata')
-      .map((c) => [c.args.itemId, c.args.body]);
-    expect(placed).toEqual([
+    expect(itemPatches(client)).toEqual([
       [map.get('s2'), { parent: map.get('e2'), senseOrder: 1 }],
       [map.get('s3'), { parent: map.get('e2'), senseOrder: 2 }],
       [map.get('s3a'), { parent: map.get('s3'), senseOrder: 1 }],
@@ -458,11 +463,7 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       variants: true,
     });
-    const patches = new Map(
-      client.calls
-        .filter((c) => c.kind === 'vocabItems.patchMetadata')
-        .map((c) => [c.args.itemId, c.args.body]),
-    );
+    const patches = new Map(itemPatches(client));
     // A one-sense entry IS its sense's item; a multi-sense one is its container.
     expect(patches.get(map.get('s4'))).toEqual({
       variantOf: [map.get('s1')],
@@ -506,9 +507,7 @@ describe('importLexicon', () => {
       lexicon: withRefs,
       baselineWs: BASE_WS,
     });
-    const bodies = client.calls
-      .filter((c) => c.kind === 'vocabItems.patchMetadata')
-      .map((c) => c.args.body);
+    const bodies = itemPatches(client).map(([, metadata]) => metadata);
     expect(bodies.some((b) => 'variantOf' in b)).toBe(false);
     const fields = client.calls
       .filter((c) => c.kind === 'vocabLayers.setConfig' && c.args.key === 'fields')
@@ -542,10 +541,7 @@ describe('importLexicon', () => {
     });
     // Nothing to create: every sense is already there.
     expect(createdItems(client)).toHaveLength(0);
-    const placed = client.calls
-      .filter((c) => c.kind === 'vocabItems.patchMetadata')
-      .map((c) => [c.args.itemId, c.args.body]);
-    expect(placed).toEqual([
+    expect(itemPatches(client)).toEqual([
       ['old-s2', { parent: 'old-e2', senseOrder: 1 }],
       ['old-s3', { parent: 'old-e2', senseOrder: 2 }],
     ]);
@@ -566,7 +562,7 @@ describe('importLexicon', () => {
     });
     await importLexicon({ client, vocabId: 'v1', lexicon, baselineWs: BASE_WS });
     expect(createdItems(client)).toHaveLength(0);
-    expect(client.calls.filter((c) => c.kind === 'vocabItems.patchMetadata')).toHaveLength(0);
+    expect(itemPatches(client)).toHaveLength(0);
   });
 
   it('creates one item per sense with flex guids and skips existing', async () => {

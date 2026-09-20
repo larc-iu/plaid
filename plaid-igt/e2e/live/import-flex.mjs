@@ -145,10 +145,13 @@ try {
   );
 
   const vocab = await client.vocabLayers.get(vocabId, true);
-  const expectItems =
-    ir.lexicon.reduce((n, e) => n + Math.max(1, e.senses.length), 0) -
-    ir.lexicon.filter((e) => !(e.forms?.[build.baselineWs] ?? Object.values(e.forms ?? {})[0]))
-      .length;
+  // One item per sense, PLUS a container item for a multi-sense entry: a
+  // one-sense entry IS its sense's item, a multi-sense one is their headword.
+  // Entries with no form in the baseline writing system are not imported.
+  const formless = (e) => !(e.forms?.[build.baselineWs] ?? Object.values(e.forms ?? {})[0]);
+  const expectItems = ir.lexicon
+    .filter((e) => !formless(e))
+    .reduce((n, e) => n + Math.max(1, e.senses.length) + (e.senses.length > 1 ? 1 : 0), 0);
   check(
     Math.abs((vocab.items?.length ?? 0) - expectItems) <= 2,
     `lexicon items ≈ ${expectItems}`,
@@ -241,8 +244,16 @@ try {
 
   // the IGT invariant should hold without healing
   const heal = await doc.reconcileOnOpen();
+  // Every counter it reports, and no findings: `heal.created` was asked for
+  // here long after reconcileOnOpen stopped returning one, so the check could
+  // only ever fail.
   check(
-    heal.created === 0 && heal.deleted === 0,
+    heal.deleted === 0 &&
+      heal.deletedAnnotatedOrphans === 0 &&
+      heal.dedupedSpans === 0 &&
+      heal.dedupedLinks === 0 &&
+      heal.syncedMorphTypes === 0 &&
+      (heal.findings ?? []).length === 0,
     'reconcileOnOpen heals nothing',
     JSON.stringify(heal),
   );

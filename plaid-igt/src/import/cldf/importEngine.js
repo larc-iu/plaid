@@ -234,17 +234,16 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
   const placed = places.filter(
     (p) => byEntry.has(p.key) && byEntry.has(p.parentKey) && !parented.has(byEntry.get(p.key)),
   );
+  // One bulk update per chunk: a batch would re-dispatch the whole REST stack
+  // per sense inside the held write lock.
   for (let i = 0; i < placed.length; i += CHUNK) {
     check();
-    const slice = placed.slice(i, i + CHUNK);
-    await client.batched(async (b) => {
-      for (const p of slice) {
-        b.vocabItems.patchMetadata(byEntry.get(p.key), {
-          parent: byEntry.get(p.parentKey),
-          senseOrder: p.senseOrder,
-        });
-      }
-    });
+    await client.vocabItems.bulkUpdate(
+      placed.slice(i, i + CHUNK).map((p) => ({
+        id: byEntry.get(p.key),
+        metadata: { parent: byEntry.get(p.parentKey), senseOrder: p.senseOrder },
+      })),
+    );
   }
 
   // The vocab's field schema drives the management table and the item modal.

@@ -759,7 +759,7 @@ describe('round trip through the exporter', () => {
           created.push(...rows);
           return { ids: rows.map((_, i) => `n${i}`) };
         },
-        patchMetadata: async () => {},
+        bulkUpdate: async (body) => ({ count: body.length }),
       },
       // A batch is a view of the client with the same bundles, and this fake
       // writes the same way on either.

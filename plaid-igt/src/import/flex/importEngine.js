@@ -486,14 +486,17 @@ async function placeSenses({ client, lexicon, senseToItem, existing, only = null
     (existing.items || []).filter((it) => it.metadata?.parent).map((it) => it.id),
   );
   const fresh = patches.filter((p) => !placedAlready.has(p.id) && (!only || only.has(p.id)));
+  // One bulk update per chunk, not a batch of one patch per sense: a batch
+  // re-dispatches the whole REST stack per op inside the held write lock, and a
+  // FLEx lexicon has as many of these as it has senses.
   for (let i = 0; i < fresh.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = fresh.slice(i, i + CHUNK);
-    await client.batched(async (b) => {
-      for (const p of chunk) {
-        b.vocabItems.patchMetadata(p.id, { parent: p.parent, senseOrder: p.senseOrder });
-      }
-    });
+    await client.vocabItems.bulkUpdate(
+      fresh.slice(i, i + CHUNK).map((p) => ({
+        id: p.id,
+        metadata: { parent: p.parent, senseOrder: p.senseOrder },
+      })),
+    );
   }
 }
 
@@ -582,10 +585,9 @@ async function placeVariants({
   const entries = [...patches.entries()];
   for (let i = 0; i < entries.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = entries.slice(i, i + CHUNK);
-    await client.batched(async (b) => {
-      for (const [id, patch] of chunk) b.vocabItems.patchMetadata(id, patch);
-    });
+    await client.vocabItems.bulkUpdate(
+      entries.slice(i, i + CHUNK).map(([id, metadata]) => ({ id, metadata })),
+    );
   }
 }
 

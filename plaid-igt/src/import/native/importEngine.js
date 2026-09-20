@@ -26,6 +26,7 @@
 import { documentProgress } from '../progress.js';
 import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../bulk.js';
+import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import {
   hasOtherTokens,
@@ -1085,10 +1086,18 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
 }
 
 /**
- * The item metadata that refers to other things, as `[{id, metadata}]` with
- * every reference mapped onto the ids the import made: `parent`, each
- * Entry-typed field, and the `examples` list's {document, token} pairs.
- * A reference to something that did not survive is dropped, and said.
+ * The item metadata that refers to other things, as `[{id, metadata}]` bulk-
+ * update entries with every reference mapped onto the ids the import made:
+ * `parent`, each Entry-typed field, and the `examples` list's {document, token}
+ * pairs. A reference to something that did not survive is dropped, and said.
+ *
+ * `metadata` is a PATCH against the map the item was created with (the
+ * archive's, plus this run's stamp — see the create above), so a reference that
+ * did not survive comes out as an explicit null, which is how a key is deleted.
+ * It used to be the whole map, written with a PUT. The patch is also what lets a
+ * resume run over items an earlier run already relinked: setting a key to what
+ * it holds and nulling one already gone are both no-ops, and a key somebody has
+ * added by hand since is no longer swept away with them.
  */
 export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) {
   const refFields = (vocabData.fields || []).filter((f) => f.type === 'item');
@@ -1146,11 +1155,17 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
       next = rewritten;
       changed = true;
     }
-    // The write below replaces the whole map, and `meta` is the ARCHIVE's copy,
-    // which carries no stamp of this run (and may carry the stale one of the
-    // run that produced the archive). Restamping here is what lets a resume
-    // still recognize these items instead of creating them a second time.
-    if (changed) out.push({ id: newId, metadata: { ...next, [ITEM_SOURCE_KEY]: it.id } });
+    // `meta` is the ARCHIVE's copy, which carries no stamp of this run (and may
+    // carry the stale one of the run that produced the archive), while the item
+    // was created with that copy plus this run's stamp. Both sides carry the
+    // stamp, so the diff never touches it and the resume keeps recognizing
+    // these items.
+    if (!changed) continue;
+    const patch = metadataPatchTo(
+      { ...meta, [ITEM_SOURCE_KEY]: it.id },
+      { ...next, [ITEM_SOURCE_KEY]: it.id },
+    );
+    if (Object.keys(patch).length) out.push({ id: newId, metadata: patch });
   }
   return { patches: out, dropped };
 }
@@ -1165,12 +1180,12 @@ async function relinkVocabStructure({
   shouldStop,
 }) {
   const { patches, dropped } = planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap);
+  // One bulk update per chunk, not a batch of one write per entry: a batch
+  // re-dispatches the whole REST stack per op inside the held write lock, and an
+  // archive's lexicon has as many of these as it has cross-references.
   for (let i = 0; i < patches.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
-    const chunk = patches.slice(i, i + CHUNK);
-    await client.batched(async (b) => {
-      for (const p of chunk) b.vocabItems.setMetadata(p.id, p.metadata);
-    });
+    await client.vocabItems.bulkUpdate(patches.slice(i, i + CHUNK));
   }
   if (dropped.length) {
     warnings.push(

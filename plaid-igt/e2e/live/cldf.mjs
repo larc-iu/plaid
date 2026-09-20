@@ -142,7 +142,16 @@ try {
   eq(liveMorphemes, first.build.stats.morphemes, 'morpheme count');
 
   const items = Object.values(live.vocabularies).reduce((n, v) => n + (v.items || []).length, 0);
-  eq(items, first.build.stats.lexiconEntries, 'lexicon item count');
+  // One item per sense, PLUS a container item for a multi-sense entry: a
+  // one-sense entry IS its sense's item. `stats.lexiconEntries` counts the
+  // dataset's ENTRIES, which is the same number only when every entry has
+  // exactly one sense, so it was never the right thing to compare against.
+  const senseCount = (e) => (e.senses || []).length;
+  const expectItems = first.build.lexicon.reduce(
+    (n, e) => n + Math.max(1, senseCount(e)) + (senseCount(e) > 1 ? 1 : 0),
+    0,
+  );
+  eq(items, expectItems, 'lexicon item count');
 
   const langs = readLanguages(live.project.config);
   check(

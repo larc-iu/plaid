@@ -110,13 +110,18 @@ function stubClient({ existingDocs = [], existingItems = [], vocabConfig = {} } 
     vocabItems: {
       bulkCreate: (body) =>
         record('vocabItems.bulkCreate', { body }, { ids: body.map(() => id('item')) }),
-      patchMetadata: (itemId, body) => record('vocabItems.patchMetadata', { itemId, body }, {}),
+      bulkUpdate: (body) => record('vocabItems.bulkUpdate', { body }, { count: body.length }),
     },
   };
   return client;
 }
 
 const callsOf = (client, kind) => client.calls.filter((c) => c.kind === kind);
+// Every entry the bulk updates carried, flattened back in the order sent: the
+// sense placements.
+const itemPatches = (client) =>
+  callsOf(client, 'vocabItems.bulkUpdate').flatMap((c) => c.args.body);
+
 const tokenCalls = (client) => callsOf(client, 'tokens.bulkCreate').map((c) => c.args);
 
 describe('deriveSetupData', () => {
@@ -343,9 +348,9 @@ describe('runCldfImport', () => {
     ]);
     expect(items[0].metadata).not.toHaveProperty('definition');
     expect(items[0].metadata.pos).toBe('N');
-    expect(callsOf(client, 'vocabItems.patchMetadata').map((c) => c.args)).toEqual([
-      { itemId: map.get('e1/s1'), body: { parent: map.get('e1'), senseOrder: 1 } },
-      { itemId: map.get('e1/s2'), body: { parent: map.get('e1'), senseOrder: 2 } },
+    expect(itemPatches(client)).toEqual([
+      { id: map.get('e1/s1'), metadata: { parent: map.get('e1'), senseOrder: 1 } },
+      { id: map.get('e1/s2'), metadata: { parent: map.get('e1'), senseOrder: 2 } },
     ]);
   });
 
@@ -391,9 +396,9 @@ describe('runCldfImport', () => {
       ],
     });
     expect(callsOf(client, 'vocabItems.bulkCreate')).toHaveLength(0);
-    expect(callsOf(client, 'vocabItems.patchMetadata').map((c) => c.args)).toEqual([
-      { itemId: 'old-s1', body: { parent: 'old-e1', senseOrder: 1 } },
-      { itemId: 'old-s2', body: { parent: 'old-e1', senseOrder: 2 } },
+    expect(itemPatches(client)).toEqual([
+      { id: 'old-s1', metadata: { parent: 'old-e1', senseOrder: 1 } },
+      { id: 'old-s2', metadata: { parent: 'old-e1', senseOrder: 2 } },
     ]);
   });
 
@@ -421,7 +426,7 @@ describe('runCldfImport', () => {
     });
     const created = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
     expect(created.map((it) => it.metadata.cldfEntry)).toEqual(['e1/s1', 'e1/s2']);
-    expect(callsOf(client, 'vocabItems.patchMetadata')).toHaveLength(2);
+    expect(itemPatches(client)).toHaveLength(2);
   });
 
   it('leaves a one-sense entry as one item, its meaning its own', async () => {
@@ -441,7 +446,7 @@ describe('runCldfImport', () => {
     const items = callsOf(client, 'vocabItems.bulkCreate').flatMap((c) => c.args.body);
     expect(items).toHaveLength(1);
     expect(items[0].metadata).toMatchObject({ gloss: 'dog', definition: 'hound' });
-    expect(callsOf(client, 'vocabItems.patchMetadata')).toHaveLength(0);
+    expect(itemPatches(client)).toHaveLength(0);
   });
 
   it('reuses a lexicon item already stamped with the same entry id', async () => {
