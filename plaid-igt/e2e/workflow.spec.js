@@ -149,7 +149,7 @@ test('C5-09: Copy as IGT puts the interlinear text on the clipboard', async ({ p
   expect(text).toContain('Adiós');
 });
 
-test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text edit confirms and drops affected annotations', async ({
+test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text edit confirms and carries its annotations', async ({
   page,
 }) => {
   const morph = (await layerOf(ROLES.MORPHEME)).tokens;
@@ -181,17 +181,27 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
   await expect
     .poll(async () => (await rawDoc()).textLayers[0].text.body)
     .toBe(`a ${FORMS[1]}, ${FORMS[2]}. Adiós! equal`);
-  const spans = (await rawDoc()).textLayers[0].tokenLayers
-    .find((l) => roleOf(l) === ROLES.MORPHEME)
-    .spanLayers.find((s) => s.id === glossLayerId).spans;
-  expect(
-    spans.some((s) => s.value === 'HUMAN'),
-    'gloss on an untouched word kept',
-  ).toBe(true);
-  expect(
-    spans.some((s) => s.value === 'DET'),
-    'gloss on the removed word gone',
-  ).toBe(false);
+  const raw = await rawDoc();
+  const morphemes = raw.textLayers[0].tokenLayers.find((l) => roleOf(l) === ROLES.MORPHEME);
+  const spans = morphemes.spanLayers.find((s) => s.id === glossLayerId).spans;
+  const newBody = [...raw.textLayers[0].text.body];
+  const wordUnder = (value) => {
+    const span = spans.find((s) => s.value === value);
+    const token = span && morphemes.tokens.find((t) => t.id === span.tokens[0]);
+    return token ? newBody.slice(token.begin, token.end).join('') : null;
+  };
+  expect(wordUnder('HUMAN'), 'gloss on an untouched word kept').toBe(FORMS[1]);
+  // The first word was replaced OUTRIGHT, zork… by "a", and its gloss rides
+  // along onto the new word. That is what the core diff does since it began
+  // folding a delete-and-insert pair into one replace (ffb9005f, dfd44160),
+  // which is what keeps a RESPELLING's annotations: the server sees the same
+  // shape either way. A word deleted outright still loses its gloss, and
+  // retyping the whole body still loses everything.
+  //
+  // Whether a replace that consumes a whole token should be read as a
+  // respelling (keep) or as a new word (drop) is Luke's to settle. Pinned
+  // here as what happens, not as what ought to.
+  expect(wordUnder('DET'), 'gloss on the replaced word rides onto its replacement').toBe('a');
 });
 
 test('C2-02: rename and delete from the Metadata tab', async ({ page }) => {
