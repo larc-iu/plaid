@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDocumentGraph } from '../src/domain/sentenceGraph.js';
-import { ilgLinesFor, proposeIlg } from '../src/domain/ilg.js';
+import { ilgLinesFor, morphemeJoinersFor, proposeIlg } from '../src/domain/ilg.js';
 
 // "mə́maŋŋəydə wala ." with the first word cut into four morphemes, each of
 // them over the whole word, as IGT leaves them.
@@ -102,4 +102,25 @@ test('a line with nothing on it is not written, which is the existing rule', () 
     { id: 'm-blank', ...WORD_1, precedence: 1, metadata: { form: '' } },
   ];
   assert.equal(morphemeLine(info), undefined);
+});
+
+test('the joint before each morpheme comes from the morph types', () => {
+  const info = layerInfo();
+  info.morphemeTokenLayer.tokens = [
+    { id: 'm-0', ...WORD_1, precedence: 1, metadata: { form: 'mə́', morphType: 'prefix' } },
+    { id: 'm-1', ...WORD_1, precedence: 2, metadata: { form: 'maŋ', morphType: 'stem' } },
+    { id: 'm-2', ...WORD_1, precedence: 3, metadata: { form: 'ŋəy', morphType: 'enclitic' } },
+    { id: 'm-3', ...WORD_1, precedence: 4, metadata: { form: 'də', morphType: 'suffix' } },
+  ];
+  const graph = buildDocumentGraph(info);
+  // Nothing before the first, '=' on either side of the clitic, '-' elsewhere.
+  assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[0], ['', '-', '=', '=']);
+  // A word nobody segmented has no joints at all.
+  assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[1], []);
+});
+
+test('a morpheme with no type joins with the default', () => {
+  // Every hand-entered morpheme, which carries no morphType at all.
+  const graph = buildDocumentGraph(layerInfo());
+  assert.deepEqual(morphemeJoinersFor(graph.sentences[0])[0], ['', '-', '-', '-']);
 });

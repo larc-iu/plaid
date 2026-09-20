@@ -122,6 +122,9 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       begin: token.begin,
       end: token.end,
       text: typeof form === 'string' ? form : cpSlice(body, token.begin, token.end),
+      // The FLEx morph-type name, which says how this morpheme joins the one
+      // before it when the word is drawn. Absent on every hand-entered one.
+      morphType: token.metadata?.morphType ?? null,
       precedence: token.precedence ?? null,
     });
   });

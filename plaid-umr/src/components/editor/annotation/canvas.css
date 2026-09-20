@@ -323,10 +323,25 @@
    the ordinary line height, so the names in the margin stay level with the
    rows they name. */
 .umr-morphemes {
-  display: grid;
-  gap: 1px 8px;
-  justify-items: center;
-  align-items: start;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.umr-morph-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* The word column's own gap, so the names in the margin stay level. */
+  gap: 1px;
+}
+/* The joint between two morphemes, '-' or '=' by their morph types. Level
+   with the forms, which is the line it joins, and quiet enough not to read
+   as a morpheme of its own. */
+.umr-morph-joiner {
+  font-size: 0.75rem;
+  line-height: 1.1rem;
+  color: hsl(var(--muted-foreground) / 0.55);
+  user-select: none;
 }
 .umr-ilg-row {
   position: relative;

@@ -10,6 +10,10 @@
 //           'stored' (every imported line no other entry covers)
 // Index and Words are always written and never configured.
 
+// By its real path rather than through `@ui`: the node suite, which runs
+// this file, has no alias (see sentenceGraph.js).
+import { morphemeJoiner } from '../../../plaid-ui/src/domain/morphemes.js';
+
 export const HEADERS = [
   { key: 'morphemes', header: 'Morphemes', scope: 'morpheme', lang: false },
   { key: 'morpheme-gloss', header: 'Morpheme Gloss', scope: 'morpheme', lang: true },
@@ -120,11 +124,7 @@ const STORED_KEYS = new Set(HEADERS.map((h) => h.key));
  */
 export function ilgLinesFor(sentence, layerInfo, mapping) {
   const words = sentence.words;
-  const morphemesByWord = words.map((w) =>
-    (sentence.morphemes || [])
-      .filter((m) => m.begin >= w.begin && m.end <= w.end)
-      .sort((a, b) => a.begin - b.begin || (a.precedence ?? 0) - (b.precedence ?? 0)),
-  );
+  const morphemesByWord = morphemesPerWord(sentence);
   const glossLayers = new Map((layerInfo?.glossLayers || []).map((g) => [g.layer.id, g]));
   // What the layers produced, by header and language, so a stored line the
   // layers cover is not written twice while one they do not is kept.
@@ -247,6 +247,24 @@ export function perWordStored(lines, wordCount) {
 
 // One item of a gloss line: the file has no quoting, so a value with a
 // space in it (`give birth`) is one item with the spaces made visible.
+// The morphemes of each word, in their order within it.
+const morphemesPerWord = (sentence) =>
+  (sentence.words || []).map((w) =>
+    (sentence.morphemes || [])
+      .filter((m) => m.begin >= w.begin && m.end <= w.end)
+      .sort((a, b) => a.begin - b.begin || (a.precedence ?? 0) - (b.precedence ?? 0)),
+  );
+
+/**
+ * The joint to draw BEFORE each morpheme of each word, '' for the first of a
+ * word: `[['', '-'], ['', '=', '-']]`. A display concern only, which is why
+ * it is not on the lines themselves: an exported file writes the forms bare.
+ */
+export const morphemeJoinersFor = (sentence) =>
+  morphemesPerWord(sentence).map((ms) =>
+    ms.map((m, i) => (i === 0 ? '' : morphemeJoiner(ms[i - 1]?.morphType, m.morphType))),
+  );
+
 const item = (value) => {
   const v = value == null ? '' : String(value).trim().replace(/\s+/g, '_');
   return v || '_';

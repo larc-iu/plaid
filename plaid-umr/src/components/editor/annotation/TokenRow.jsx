@@ -1,5 +1,5 @@
 import React from 'react';
-import { HEADERS } from '../../../domain/ilg.js';
+import { HEADERS, morphemeJoinersFor } from '../../../domain/ilg.js';
 
 // The words of a sentence as columns, with the gloss lines beneath. A line
 // that can be told word by word (ilg.js) is laid under the words column by
@@ -29,6 +29,9 @@ export const TokenRow = React.memo(function TokenRow({
   // Runs of adjacent lines, so a word's morpheme lines can be drawn as one
   // grid and everything else stays a line of its own.
   const blocks = groupByScope(perWord);
+  // The joint before each morpheme, '-' or '=' by its morph type, as
+  // plaid-igt's grid draws it. Display only: a file writes the forms bare.
+  const joiners = morphemeJoinersFor(sentence);
   // A line with nothing on it carries nothing, and the export drops it too.
   const rows = (sentence.ilg || []).filter((line) => !line.perWord && line.items.length);
   return (
@@ -67,23 +70,28 @@ export const TokenRow = React.memo(function TokenRow({
             </span>
             {blocks.map((block, bi) =>
               block.morpheme ? (
-                <div
-                  key={bi}
-                  className="umr-morphemes"
-                  style={{ gridTemplateColumns: `repeat(${columnsOf(block, i)}, auto)` }}
-                >
-                  {block.lines.map((line) =>
-                    padded(line.perWord[i], columnsOf(block, i)).map((value, ci) => (
-                      <span
-                        key={`${line.key}-${ci}`}
-                        className="umr-word-gloss"
-                        dir="auto"
-                        title={line.header}
-                      >
-                        {value}
-                      </span>
-                    )),
-                  )}
+                <div key={bi} className="umr-morphemes">
+                  {Array.from({ length: columnsOf(block, i) }, (_, ci) => (
+                    <React.Fragment key={ci}>
+                      {ci > 0 && (
+                        <span className="umr-morph-joiner" aria-hidden="true">
+                          {joiners[i]?.[ci] || '-'}
+                        </span>
+                      )}
+                      <div className="umr-morph-col">
+                        {block.lines.map((line) => (
+                          <span
+                            key={line.key}
+                            className="umr-word-gloss"
+                            dir="auto"
+                            title={line.header}
+                          >
+                            {line.perWord[i][ci] ?? ''}
+                          </span>
+                        ))}
+                      </div>
+                    </React.Fragment>
+                  ))}
                 </div>
               ) : (
                 block.lines.map((line) => (
@@ -129,6 +137,3 @@ const groupByScope = (lines) => {
 // than left to slide its neighbours across.
 const columnsOf = (block, wordIndex) =>
   Math.max(1, ...block.lines.map((line) => line.perWord[wordIndex].length));
-
-const padded = (items, width) =>
-  items.length >= width ? items : [...items, ...Array(width - items.length).fill('')];

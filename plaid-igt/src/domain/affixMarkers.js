@@ -53,8 +53,12 @@ export const morphTypeLabel = (t) =>
 export const morphTypeOptions = (current = null) =>
   FLEX_MORPH_TYPES.filter((t) => t !== 'discontiguous phrase' || t === current);
 
-export const isClitic = (morphType) =>
-  typeof morphType === 'string' && morphType.toLowerCase().includes('clitic');
+// The two every app that draws a word needs live in the shared package, so
+// plaid-umr's canvas joins a chain the same way this app's grid does rather
+// than by a second copy of the rule. Re-exported, so this file stays the one
+// place morph types are reasoned about here.
+export { isClitic, morphemeJoiner } from '@ui/domain/morphemes.js';
+import { isClitic, morphemeJoiner } from '@ui/domain/morphemes.js';
 
 /**
  * Is this morph type a bound form (an affix or a clitic)? Bound forms only
@@ -62,13 +66,6 @@ export const isClitic = (morphType) =>
  */
 export const isBoundType = (morphType) =>
   typeof morphType === 'string' && (isClitic(morphType) || /fix$/.test(morphType.toLowerCase()));
-
-/**
- * The joint between two adjacent morphemes in a word, given their
- * metadata.morphType values: "=" when either side is a clitic, else "-".
- */
-export const morphemeJoiner = (prevMorphType, morphType) =>
-  isClitic(prevMorphType) || isClitic(morphType) ? '=' : '-';
 
 // --- Per-type markers, for talking to FLEx ---------------------------------
 // The Prefix/Postfix of each MoMorphType, read off the factory objects in real
