@@ -88,9 +88,22 @@ export function createKeymap(actionList) {
       const pressed = chordsOf(e);
       return pressed.some((c) => keys.includes(c));
     },
-    /** The first of `ids` this keydown is bound to, or null. */
+    /**
+     * Which of `ids` this keydown fires, or null. A keydown under Alt answers
+     * to two chords, the character it types and the physical key under it
+     * (see chordsOf), and the character is the one the person can see: on a
+     * German keyboard `=` is Shift+0, so Alt+= is also Alt+0, and asking in
+     * the order the ids happen to be written typed a zero morph for somebody
+     * who asked for an equals sign. Resolved by chord, then by the order of
+     * `ids` among the actions bound to the same chord.
+     */
     which(ids, e) {
-      return ids.find((id) => keymap.is(id, e)) ?? null;
+      const pressed = chordsOf(e);
+      for (const chord of pressed) {
+        const hit = ids.find((id) => chords(id).includes(chord));
+        if (hit) return hit;
+      }
+      return null;
     },
 
     /** Keycaps for the action's first chord, for a legend. */

@@ -71,11 +71,15 @@ export const morphForm = {
         if (this._navMove(e.target, e.shiftKey ? 'prev' : 'next')) e.preventDefault();
         return;
       }
-      if (e.key === 'ArrowDown') {
+      // A chord bound to one of this cell's own actions is answered below,
+      // not read as a move: rebinding the zero morph to Alt+Up left it dead,
+      // because the cursor took the key first.
+      const boundHere = keys.which(['morph.literalHyphen', 'morph.literalEquals', 'morph.zero'], e);
+      if (e.key === 'ArrowDown' && !boundHere) {
         if (this._navMove(e.target, 'down')) e.preventDefault();
         return;
       }
-      if (e.key === 'ArrowUp') {
+      if (e.key === 'ArrowUp' && !boundHere) {
         if (this._navMove(e.target, 'up')) e.preventDefault();
         return;
       }
@@ -111,7 +115,11 @@ export const morphForm = {
       // data, common enough that a student meets it on their first text.
       // The chord answers to the physical key as well as the character, since
       // macOS rewrites the character under Option (see @ui/lib/chords.js).
-      if (keys.is('morph.zero', e)) {
+      // Asked for together, so the chord the person typed decides rather than
+      // the order these are written in: on a layout where `=` is Shift+0,
+      // Alt+= is also Alt+0, and the zero morph used to win.
+      const inserts = boundHere;
+      if (inserts === 'morph.zero') {
         e.preventDefault();
         this._insertLiteral(el, ZERO_MORPH);
         return;
@@ -124,7 +132,7 @@ export const morphForm = {
       // tone bars). Falling through lets beforeinput compose them.
       // Alt+- / Alt+= inserts the literal character (reduplication forms, forms
       // that contain a hyphen) rather than splitting the morpheme.
-      const literal = keys.which(['morph.literalHyphen', 'morph.literalEquals'], e);
+      const literal = inserts === 'morph.zero' ? null : inserts;
       if (literal && !composePendingOn(el)) {
         e.preventDefault();
         this._insertLiteral(el, literal === 'morph.literalHyphen' ? '-' : '=');

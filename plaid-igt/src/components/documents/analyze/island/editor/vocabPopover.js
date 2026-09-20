@@ -426,7 +426,7 @@ export const vocabPopover = {
       if (e.key === 'Enter' || keys.is('popover.linkAll', e)) {
         e.preventDefault();
         const v = (e.target.value || '').trim();
-        if (v) act.create(v, true, e.shiftKey || keys.is('popover.linkAll', e));
+        if (v) act.create(v, true, keys.is('popover.linkAll', e));
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this._cancelCreateEdit();
@@ -468,16 +468,20 @@ export const vocabPopover = {
       // keydown would then be read as "Enter on a focused chip" (a stray
       // confirm + focus hop to the next suggestion).
       e.stopPropagation();
+      // A bound chord is asked about BEFORE the arrows and Enter this panel
+      // reads by position: rebinding one of these actions to Alt+Down left it
+      // dead, because the row cursor took the key first.
+      const bound = keys.which(['popover.linkAll', 'popover.createNow'], e);
       if (e.key === 'Escape') {
         e.preventDefault();
         this._closePopover(true);
-      } else if (e.key === 'ArrowDown') {
+      } else if (!bound && e.key === 'ArrowDown') {
         e.preventDefault();
         this._movePopoverActive(1, total);
-      } else if (e.key === 'ArrowUp') {
+      } else if (!bound && e.key === 'ArrowUp') {
         e.preventDefault();
         this._movePopoverActive(-1, total);
-      } else if (e.key === 'Enter' || keys.which(['popover.linkAll', 'popover.createNow'], e)) {
+      } else if (e.key === 'Enter' || bound) {
         e.preventDefault();
         // Ctrl/Cmd+Shift+Enter is both at once, and stays where it is.
         const both = e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.shiftKey;

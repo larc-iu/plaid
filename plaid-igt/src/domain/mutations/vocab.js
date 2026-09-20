@@ -666,72 +666,88 @@ export const vocabMutations = {
       if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
+      // An entry is made before anything can point at it, so a failure in the
+      // writes below used to leave it behind: the person tried again and the
+      // lexicon grew a homonym. Nothing else can have reached it yet, so it is
+      // taken back out on the way past.
+      try {
+        // A brand-new entry has no headword to inherit from, so its type is
+        // whatever `metadata` carried. Today's caller carries none and this is a
+        // no-op, but the cache rule holds on every link path, not just the ones
+        // that exercise it now.
+        const newType =
+          typeof metadata?.morphType === 'string' && metadata.morphType !== ''
+            ? metadata.morphType
+            : null;
+        const isMorpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).some(
+          (m) => m.id === targetTokenId,
+        );
+        const cachedType = isMorpheme ? newType : null;
 
-      // A brand-new entry has no headword to inherit from, so its type is
-      // whatever `metadata` carried. Today's caller carries none and this is a
-      // no-op, but the cache rule holds on every link path, not just the ones
-      // that exercise it now.
-      const newType =
-        typeof metadata?.morphType === 'string' && metadata.morphType !== ''
-          ? metadata.morphType
-          : null;
-      const isMorpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).some(
-        (m) => m.id === targetTokenId,
-      );
-      const cachedType = isMorpheme ? newType : null;
+        let newLinkId;
+        if (priorLink || cachedType) {
+          const createAt = priorLink ? 1 : 0;
+          const results = await this._client.batched(async (b) => {
+            if (priorLink) b.vocabLinks.delete(priorLink.id);
+            b.vocabLinks.create(newItemId, [targetTokenId], stamp);
+            if (cachedType) {
+              b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+            }
+          });
+          newLinkId = results[createAt]?.body?.id;
+        } else {
+          const linkResult = await this._client.vocabLinks.create(
+            newItemId,
+            [targetTokenId],
+            stamp,
+          );
+          newLinkId = linkResult?.id || linkResult;
+        }
 
-      let newLinkId;
-      if (priorLink || cachedType) {
-        const createAt = priorLink ? 1 : 0;
-        const results = await this._client.batched(async (b) => {
-          if (priorLink) b.vocabLinks.delete(priorLink.id);
-          b.vocabLinks.create(newItemId, [targetTokenId], stamp);
+        const newItem = {
+          id: newItemId,
+          form,
+          metadata: metadata || {},
+        };
+
+        this._applyRawPatch((next, info, vocabs) => {
+          if (priorLink && priorVocabId && vocabs[priorVocabId]) {
+            vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+              (l) => l.id !== priorLink.id,
+            );
+          }
+          const tv = vocabs[vocabId];
+          if (tv) {
+            if (!Array.isArray(tv.items)) tv.items = [];
+            tv.items.push(newItem);
+            if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+            tv.vocabLinks.push({
+              id: newLinkId,
+              tokens: [targetTokenId],
+              vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
+              ...(stamp ? { metadata: stamp } : {}),
+            });
+          }
           if (cachedType) {
-            b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+            const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
+            if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
           }
         });
-        newLinkId = results[createAt]?.body?.id;
-      } else {
-        const linkResult = await this._client.vocabLinks.create(newItemId, [targetTokenId], stamp);
-        newLinkId = linkResult?.id || linkResult;
+
+        // "Create and link every ‹roa› in this text": the others that read the
+        // same and have no link, in the same operation as the create.
+        const others = [...new Set(alsoLink)].filter(
+          (id) => id !== tokenId && !findPriorLink(this._vocabularies, id).link,
+        );
+        if (others.length) await this._linkManyImpl(others, this._vocabularies[vocabId], newItem);
+      } catch (err) {
+        try {
+          await this._client.vocabItems.delete(newItemId);
+        } catch (e) {
+          console.error('Could not remove the entry a failed link left behind:', e);
+        }
+        throw err;
       }
-
-      const newItem = {
-        id: newItemId,
-        form,
-        metadata: metadata || {},
-      };
-
-      this._applyRawPatch((next, info, vocabs) => {
-        if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-            (l) => l.id !== priorLink.id,
-          );
-        }
-        const tv = vocabs[vocabId];
-        if (tv) {
-          if (!Array.isArray(tv.items)) tv.items = [];
-          tv.items.push(newItem);
-          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-          tv.vocabLinks.push({
-            id: newLinkId,
-            tokens: [targetTokenId],
-            vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
-            ...(stamp ? { metadata: stamp } : {}),
-          });
-        }
-        if (cachedType) {
-          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
-          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-        }
-      });
-
-      // "Create and link every ‹roa› in this text": the others that read the
-      // same and have no link, in the same operation as the create.
-      const others = [...new Set(alsoLink)].filter(
-        (id) => id !== tokenId && !findPriorLink(this._vocabularies, id).link,
-      );
-      if (others.length) await this._linkManyImpl(others, this._vocabularies[vocabId], newItem);
     });
   },
 };
