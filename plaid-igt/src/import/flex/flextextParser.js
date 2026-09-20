@@ -181,10 +181,11 @@ function readMorph(m, census) {
         census.use('morphGloss', lang);
       }
     } else if (type === 'msa') {
-      if (v && pos == null) {
+      if (!v) continue;
+      if (pos == null) {
         pos = v;
         census.use('pos', lang);
-      }
+      } else census.skip('Parts of speech in another writing system');
     } else if (type === 'cf' || type === 'hn') lexical = true;
     else if (type === 'variantTypes') census.skip('Variant Types');
     else census.skip(`“${type}” on morphemes`);
@@ -206,11 +207,15 @@ function readMorph(m, census) {
 
 /**
  * One <word> as a piece of text and an analysis, or null when it has neither
- * a word form nor punctuation. The text comes from its first txt or punct
- * item, which is the one FieldWorks builds the phrase from.
+ * a word form nor punctuation. Its text is the form in the first writing
+ * system the text declares as vernacular, and its first txt item otherwise:
+ * a word given in an orthographic AND a phonetic line used to take whichever
+ * came first, so a file that writes the phonetic one first put that spelling
+ * in the baseline and dropped the form the rest of the text is written in.
  */
-function readWord(w, census) {
+function readWord(w, census, vernaculars = []) {
   let first = null;
+  let firstLang = null;
   const forms = {};
   const gloss = {};
   let pos = null;
@@ -226,7 +231,7 @@ function readWord(w, census) {
       if (!v) continue;
       if (!first) {
         first = { kind: 'word', text: v };
-        census.use('wordFirst', lang);
+        firstLang = lang;
       }
       if (forms[lang] == null) {
         forms[lang] = v;
@@ -240,13 +245,29 @@ function readWord(w, census) {
         census.use('wordGloss', lang);
       }
     } else if (type === 'pos') {
-      if (v && pos == null) {
+      if (!v) continue;
+      // One part of speech a word, in the writing system the file names them
+      // in first. A second one is another writing system's name for the same
+      // category, and it is counted as unread rather than dropped in silence.
+      if (pos == null) {
         pos = v;
         census.use('pos', lang);
-      }
+      } else census.skip('Parts of speech in another writing system');
     } else census.skip(`“${type}” on words`);
   }
   if (!first) return null;
+  // The word reads in the text's own baseline where it offers it, and in the
+  // writing system of its first txt item otherwise: a word given in an
+  // orthographic AND a phonetic line took whichever came first, so a file
+  // that writes the phonetic one first put that spelling in the baseline.
+  // Counted under the writing system it ends up reading in, which is what
+  // decides the project's baseline.
+  if (first.kind === 'word') {
+    const preferred = vernaculars.find((ws) => forms[ws] != null) ?? firstLang;
+    if (preferred != null && forms[preferred] != null)
+      first = { kind: 'word', text: forms[preferred] };
+    if (preferred != null) census.use('wordFirst', preferred);
+  }
   if (first.kind === 'punct') {
     return { piece: first, analysis: { kind: 'punct', form: first.text } };
   }
@@ -302,8 +323,9 @@ function readWord(w, census) {
   };
 }
 
-function readPhrase(ph, census) {
+function readPhrase(ph, census, vernaculars = []) {
   let given = null;
+  const givenByLang = {};
   let segnum = '';
   const freeTranslation = {};
   const literalTranslation = {};
@@ -312,12 +334,14 @@ function readPhrase(ph, census) {
   for (const item of kids(ph, 'item')) {
     const { type, lang } = item.attrs;
     const v = valueOf(item).trim();
-    // The first, as a word takes its first `txt` as its own: a phrase given
-    // in two writing systems (an orthographic line and a phonetic one, which
-    // is what ELAN and SayMore write from two transcription tiers) took the
-    // last as the sentence's text, so its words no longer lined up with it
-    // and were dropped.
+    // A phrase given in two writing systems (an orthographic line and a
+    // phonetic one, which is what ELAN and SayMore write from two
+    // transcription tiers) used to take the LAST as the sentence's text, so
+    // its words no longer lined up with it and were dropped. It reads in the
+    // text's own baseline where it offers it, and in the writing system of
+    // its first txt item otherwise, which is what its words do too.
     if (type === 'txt') {
+      if (givenByLang[lang ?? ''] == null) givenByLang[lang ?? ''] = valueOf(item);
       if (given == null) {
         given = valueOf(item);
         census.use('phraseText', lang);
@@ -359,7 +383,7 @@ function readPhrase(ph, census) {
   const analyses = [];
   let empty = 0;
   for (const w of kids(wordsEl, 'word')) {
-    const r = readWord(w, census);
+    const r = readWord(w, census, vernaculars);
     if (!r) {
       empty += 1;
       continue;
@@ -367,7 +391,9 @@ function readPhrase(ph, census) {
     pieces.push(r.piece);
     analyses.push(r.analysis);
   }
-  const text = (given != null ? given : joinPhrase(pieces)).trim();
+  const inBaseline = vernaculars.map((ws) => givenByLang[ws]).find((v) => v != null);
+  const line = inBaseline ?? given;
+  const text = (line != null ? line : joinPhrase(pieces)).trim();
   return {
     text,
     segnum,
@@ -393,7 +419,7 @@ const byLang = (items) => {
   return Object.keys(out).length ? out : null;
 };
 
-function readText(it, census, warnings, fileLabel) {
+function readText(it, census, warnings, fileLabel, vernaculars = []) {
   const items = kids(it, 'item');
   const ofType = (...types) => items.filter((i) => types.includes(i.attrs.type));
   const names = byLang(ofType('title'));
@@ -429,7 +455,7 @@ function readText(it, census, warnings, fileLabel) {
     const segments = [];
     for (const ph of kids(kid(p, 'phrases'), 'phrase')) {
       sentence += 1;
-      const r = readPhrase(ph, census);
+      const r = readPhrase(ph, census, vernaculars);
       const where = `sentence ${r.segnum || sentence}`;
       if (r.empty) {
         warnings.push(
@@ -473,13 +499,22 @@ export function parseFlextext(xml, fileName = '', census = makeCensus()) {
   const warnings = [];
   const languages = [];
   const texts = kids(doc, 'interlinear-text').map((it, i, all) => {
+    // This text's own declared writing systems, read before its phrases: the
+    // vernacular ones, in the order the file declares them, are which line a
+    // phrase and its words are read in when they offer several.
+    const vernaculars = [];
     for (const l of kids(kid(it, 'languages'), 'language')) {
       if (l.attrs.lang) {
-        languages.push({ lang: l.attrs.lang, vernacular: l.attrs.vernacular === 'true' });
+        const vernacular = l.attrs.vernacular === 'true';
+        languages.push({ lang: l.attrs.lang, vernacular });
+        if (vernacular) vernaculars.push(l.attrs.lang);
       }
     }
     const label = all.length > 1 ? `${fileName} (text ${i + 1})` : fileName;
-    return { guid: it.attrs.guid ?? null, ...readText(it, census, warnings, label) };
+    return {
+      guid: it.attrs.guid ?? null,
+      ...readText(it, census, warnings, label, vernaculars),
+    };
   });
   return { texts, languages, census, warnings };
 }
