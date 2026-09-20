@@ -712,6 +712,9 @@ Respelling and replacing ask how to match, with the same three kinds the Search 
 Contains ignores case.
 Is exactly and matches a regular expression do not, and here a match is a write.
 
+A long preview is paged.
+A document's heading ticks every match in that document, not only the ones on the page.
+
 Bulk Edit respects tagsets.
 A replacement a closed tagset refuses is skipped, and the preview says so.
 
