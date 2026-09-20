@@ -386,12 +386,22 @@ def parse_document(raw: dict, project: UmrProject) -> UmrDoc:
             continue
         s.words.append(Word(id=token['id'], index=len(s.words) + 1, begin=token['begin'],
                             end=token['end'], text=slice_text(token['begin'], token['end'])))
+    # A morpheme token covers the WHOLE of its word, by the shared token
+    # hierarchy: the segmentation is in `metadata.form` and the extent says
+    # only which word the morpheme belongs to. Reading the baseline between
+    # its offsets gave every morpheme of a word the word itself, so a
+    # four-morpheme word read as that word four times over.
+    #
+    # An empty form is IGT's "emptied by hand" and stays empty rather than
+    # falling back to the word.
     for token in morpheme_tokens:
         s = sentence_of(token['begin'])
         if s is None:
             continue
-        s.morphemes.append(Morpheme(id=token['id'], begin=token['begin'], end=token['end'],
-                                    text=slice_text(token['begin'], token['end'])))
+        form = (token.get('metadata') or {}).get('form')
+        s.morphemes.append(Morpheme(
+            id=token['id'], begin=token['begin'], end=token['end'],
+            text=form if isinstance(form, str) else slice_text(token['begin'], token['end'])))
 
     nodes_by_id: Dict[str, GNode] = {}
     constants: List[GNode] = []

@@ -104,14 +104,24 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
       metadata: token.metadata || null,
     });
   });
+  // A morpheme token covers the WHOLE of its word, by the shared token
+  // hierarchy: the segmentation lives in `metadata.form` and the extent says
+  // only which word the morpheme belongs to. Reading the baseline between its
+  // offsets therefore gave every morpheme of a word the same text, the word
+  // itself, once per morpheme, on the canvas and in an exported file alike.
+  //
+  // An empty form is IGT's "emptied by hand" and is left empty rather than
+  // falling back to the word: the gloss line writes it as `_`, which is what
+  // a morpheme with no form is.
   morphemeTokens.forEach((token) => {
     const s = sentenceOf(token);
     if (!s) return;
+    const form = token.metadata?.form;
     s.morphemes.push({
       id: token.id,
       begin: token.begin,
       end: token.end,
-      text: cpSlice(body, token.begin, token.end),
+      text: typeof form === 'string' ? form : cpSlice(body, token.begin, token.end),
       precedence: token.precedence ?? null,
     });
   });
