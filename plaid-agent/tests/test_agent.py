@@ -23,8 +23,10 @@ def test_ping_asks_the_configured_model_with_the_operators_base_and_key(monkeypa
     monkeypatch.setattr(agent.litellm, 'completion', fake)
     ping_model(cfg(api_base='http://gpu-box:8000/v1', api_key='k'), timeout=5)
     assert (seen['model'], seen['api_base'], seen['api_key']) == ('openai/x', 'http://gpu-box:8000/v1', 'k')
-    # Small and bounded: this is a knock on the door, not a conversation.
-    assert seen['timeout'] == 5 and seen['max_tokens'] == 8 and len(seen['messages']) == 1
+    # Bounded, but not so tight that a reasoning model spends the whole budget
+    # thinking and answers with nothing: at 8 tokens gpt-oss-120b comes back
+    # finish_reason 'length' and no content, so the ping proves nothing.
+    assert seen['timeout'] == 5 and seen['max_tokens'] == 64 and len(seen['messages']) == 1
 
     # Nothing configured: litellm reads the provider's own environment.
     seen.clear()
@@ -38,6 +40,20 @@ def test_ping_fails_on_a_provider_error_or_an_empty_answer(monkeypatch):
         ping_model(cfg())
     monkeypatch.setattr(agent.litellm, 'completion', lambda **kw: SimpleNamespace(choices=[]))
     with pytest.raises(RuntimeError, match='without a completion'):
+        ping_model(cfg())
+
+
+def test_a_ping_that_times_out_is_told_apart_from_a_misconfigured_one(monkeypatch):
+    """A timeout says nothing about --model, --api-base or the key, so it is
+    its own exception and the service goes on to serve. The reallms endpoint
+    takes about a minute to answer for a model it has not loaded recently,
+    which took the assistant off the air with a message naming three things
+    that were all correct."""
+    def slow(**kw):
+        raise agent.litellm.Timeout('Request timed out.', model='x', llm_provider='openai')
+
+    monkeypatch.setattr(agent.litellm, 'completion', slow)
+    with pytest.raises(agent.ModelTooSlow):
         ping_model(cfg())
 
 

@@ -58,6 +58,20 @@ class ModelConfig:
 
 
 PING_TIMEOUT_S = 30
+# The ping's own token budget. A REASONING model spends its first tokens
+# thinking, so a budget of a handful comes back with finish_reason 'length'
+# and no content at all: the ping then proves only that the provider answers,
+# not that it can finish a sentence. Measured on gpt-oss-120b, which returns
+# nothing at 8 and "pong" at 64.
+PING_MAX_TOKENS = 64
+
+
+class ModelTooSlow(Exception):
+    """The provider did not answer the startup ping inside PING_TIMEOUT_S.
+
+    Kept apart from every other failure because it says nothing about the
+    configuration: a model the operator has to wait for is not a model the
+    operator has typed wrong."""
 # How often the text so far is sent while the model writes. Every send is a
 # request to the Plaid server that relays it to whoever is watching.
 STREAM_INTERVAL_S = 0.15
@@ -81,10 +95,16 @@ def ping_model(cfg: ModelConfig, timeout: float = PING_TIMEOUT_S) -> None:
     nothing: each of them looks the same to a user, as a chat that fails on
     every question. The operator is watching at startup and is not watching
     then, so ask the model one question here and let the provider's own
-    complaint reach the operator. Raises whatever litellm raises.
+    complaint reach the operator. Raises whatever litellm raises, except a
+    timeout, which becomes :class:`ModelTooSlow` so the caller can tell a
+    provider that is slow from one that is misconfigured.
     """
-    resp = litellm.completion(**_provider_kwargs(cfg), timeout=timeout, max_tokens=8,
-                              messages=[{'role': 'user', 'content': 'ping'}])
+    try:
+        resp = litellm.completion(**_provider_kwargs(cfg), timeout=timeout,
+                                  max_tokens=PING_MAX_TOKENS,
+                                  messages=[{'role': 'user', 'content': 'ping'}])
+    except litellm.Timeout as e:
+        raise ModelTooSlow(str(e)) from e
     if not getattr(resp, 'choices', None):
         raise RuntimeError('the provider answered without a completion')
 

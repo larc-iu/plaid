@@ -55,7 +55,8 @@ from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 
-from .agent import ModelConfig, Toolkit, TurnCancelled, context_window, ping_model, run_turn
+from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled,
+                    context_window, ping_model, run_turn)
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
@@ -216,12 +217,20 @@ class BaseAssistantService(BaseService):
         started = time.monotonic()
         try:
             ping_model(self.cfg)
+        except ModelTooSlow:
+            # A timeout is not evidence of a mistake. Refusing to start on one
+            # takes an assistant off the air for a provider that is merely
+            # loading a model, and the operator cannot tell that from a typo
+            # because the message named the same three things either way.
+            print(f'  No answer within {PING_TIMEOUT_S}s. Serving anyway: a slow provider is '
+                  f'not a misconfigured one, and the first question will wait for it.')
         except Exception as e:  # noqa: BLE001 - whatever the provider says, the operator needs to read it
             print(f'  The model did not answer: {e}')
             print('  Check --model (a litellm model string), --api-base, and the provider key '
                   '(--api-key or the provider\'s environment variable).')
             raise SystemExit(1)
-        print(f'  Answered in {time.monotonic() - started:.1f}s.')
+        else:
+            print(f'  Answered in {time.monotonic() - started:.1f}s.')
         self.web_cfg = build_web_config(args)
         if self.web_cfg is None:
             print('Web lookup: off (--web-search to turn it on)')
