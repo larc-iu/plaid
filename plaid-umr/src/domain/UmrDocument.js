@@ -37,6 +37,10 @@ const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 // metadata PATCH replaces a nested namespace wholesale.
 const umrPatch = (entity, changes) => ({ [UMR_NAMESPACE]: { ...umrOf(entity), ...changes } });
 
+// Findings the Validation tab reports and a sentence's own badge does not.
+// See problemsBySentence.
+const QUIET_ON_CANVAS = new Set(['unaligned-token']);
+
 export class UmrDocument extends DocumentModel {
   constructor({ raw, client = null, projectId = null, project = null, user = null, asOf = null }) {
     super({ raw, client, projectId, project, user, asOf });
@@ -101,11 +105,21 @@ export class UmrDocument extends DocumentModel {
     ]);
   }
 
-  // The same, by sentence index.
+  // The same, by sentence index, MINUS the checks that are for the Validation
+  // tab rather than for the canvas.
+  //
+  // `unaligned-token` warns about every word with no node on it, which in a
+  // normally annotated sentence is every determiner, auxiliary, preposition
+  // and case marker: on the walkthrough project it was eight warnings across
+  // four sentences, and every warning there was this one. Beside a sentence
+  // that reads as noise and buries the count of things to act on. It is a
+  // real umrtools/validate.py test, so `problems` keeps it and the Validation
+  // tab still answers "what would the official validator say".
   get problemsBySentence() {
     return this._derived('problemsBySentence', () => {
       const map = new Map();
       this.problems.forEach((p) => {
+        if (QUIET_ON_CANVAS.has(p.code)) return;
         if (!map.has(p.sentence)) map.set(p.sentence, []);
         map.get(p.sentence).push(p);
       });
