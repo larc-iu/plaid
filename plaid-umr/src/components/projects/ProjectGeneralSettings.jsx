@@ -188,7 +188,8 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
             ) : savedLanguage ? (
               <>
                 No bundled rolesets for <code>{savedLanguage}</code>. Rolesets come from the
-                project&rsquo;s vocabularies. Bundled: {BUNDLED_NAMES}.
+                project&rsquo;s vocabularies, written on an entry in Plaid IGT. Bundled:{' '}
+                {BUNDLED_NAMES}.
               </>
             ) : (
               <>No language, so no bundled rolesets. Bundled: {BUNDLED_NAMES}.</>
