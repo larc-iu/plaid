@@ -7,6 +7,7 @@ import { morphTypeLabel, morphTypeOptions } from '@/domain/affixMarkers';
 import { fieldLabel, FIELD_TYPES } from '@/domain/vocabFields';
 import { TagsetField } from '@/components/shared/TagsetField.jsx';
 import { ItemRefField, EntryPlace, HomographNumber } from './DictionaryPanels';
+import { RolesetBand } from './RolesetBand';
 import { FormLabel } from './FormLabel';
 
 // A titled band of the entry form. The grid is three across when the pane is
@@ -43,6 +44,7 @@ export const EntryEditor = ({
   tagsetFor,
   statusKey,
   formGroups,
+  umrLinked,
   homographs,
   usageCounts,
   usageKinds,
@@ -256,6 +258,14 @@ export const EntryEditor = ({
           <FormGroup title="References">
             {formGroups.refs.map((f) => renderField(f, draft.fields, setFields, !canManage))}
           </FormGroup>
+        )}
+        {umrLinked && (
+          <RolesetBand
+            uid={uid}
+            fields={draft.fields}
+            setFields={setFields}
+            disabled={!canManage}
+          />
         )}
       </div>
       {canManage && (

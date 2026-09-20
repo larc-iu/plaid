@@ -72,6 +72,7 @@ import { useEntryList } from './useEntryList';
 import { EntryList } from './EntryList';
 import { FormLabel } from './FormLabel';
 import { soleProjectLinking } from '@/domain/vocabProject';
+import { linksUmrProject } from '@/domain/vocabUmr';
 import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
@@ -250,6 +251,11 @@ export const VocabularyItems = ({
   // about the PROJECT (a writer there may edit the corpus the assistant plans
   // over) and not about who maintains this vocabulary.
   const [assistantProject, setAssistantProject] = useState(null);
+  // Whether a project that links this vocabulary annotates UMR, which is
+  // what puts the roleset band on an entry. Read from the same call: ANY
+  // linking project counts, unlike the assistant above, because a roleset
+  // belongs to the entry rather than to one project's thread.
+  const [umrLinked, setUmrLinked] = useState(false);
   useEffect(() => {
     if (!client || !vocabularyId) return undefined;
     let alive = true;
@@ -259,10 +265,14 @@ export const VocabularyItems = ({
         if (!alive) return;
         const id = soleProjectLinking(projects, vocabularyId);
         setAssistantProject(id ? (projects || []).find((p) => p.id === id) || null : null);
+        setUmrLinked(linksUmrProject(projects, vocabularyId));
       })
       .catch(() => {
         // Discovery of the project failed, so the pane is simply not offered.
-        if (alive) setAssistantProject(null);
+        if (alive) {
+          setAssistantProject(null);
+          setUmrLinked(false);
+        }
       });
     return () => {
       alive = false;
@@ -883,6 +893,7 @@ export const VocabularyItems = ({
       tagsetFor={tagsetFor}
       statusKey={statusKey}
       formGroups={formGroups}
+      umrLinked={umrLinked}
       homographs={homographs}
       usageCounts={usageCounts}
       usageKinds={usageKinds}

@@ -29,12 +29,27 @@ export const cleanMeta = (obj) => {
   return out;
 };
 
+// A value as it compares: a string by its text, anything else by its shape
+// with its keys in a fixed order. Every field used to hold a string, and
+// `String(value)` was enough; an entry's `umr` object is one value that is
+// not, and `String({...})` is "[object Object]" whatever is inside, so the
+// roleset could be edited and the draft still call itself clean.
+const sameAs = (v) => {
+  if (v === null || typeof v !== 'object') return String(v);
+  if (Array.isArray(v)) return JSON.stringify(v.map(sameAs));
+  return JSON.stringify(
+    Object.keys(v)
+      .sort()
+      .map((k) => [k, sameAs(v[k])]),
+  );
+};
+
 export const metaEqual = (a, b) => {
   const ca = cleanMeta(a);
   const cb = cleanMeta(b);
   const ka = Object.keys(ca);
   if (ka.length !== Object.keys(cb).length) return false;
-  return ka.every((k) => String(ca[k]) === String(cb[k]));
+  return ka.every((k) => sameAs(ca[k]) === sameAs(cb[k]));
 };
 
 // Does the draft differ from what it would be saved over? A new entry is

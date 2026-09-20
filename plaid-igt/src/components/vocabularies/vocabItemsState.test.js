@@ -47,6 +47,38 @@ describe('the draft', () => {
   });
 });
 
+// A field used to hold only a string, and an entry's `umr` object (its UMR
+// roleset, written on the entry form) is one that does not. String(obj) is
+// "[object Object]" whatever is inside, so comparing that way called every
+// roleset edit clean and the Save button stayed grey.
+describe('a field holding an object', () => {
+  const withRoleset = (roleset) => ({ gloss: 'go away', umr: { roleset } });
+
+  it('sees a change inside it', () => {
+    expect(metaEqual(withRoleset('leave-02'), withRoleset('leave-11'))).toBe(false);
+    expect(
+      isDirty(
+        { form: 'leave', fields: withRoleset('leave-11') },
+        { form: 'leave', metadata: withRoleset('leave-02') },
+      ),
+    ).toBe(true);
+  });
+
+  it('calls two equal ones equal, whatever order their keys are in', () => {
+    expect(
+      metaEqual(
+        { umr: { roleset: 'a', args: { ARG0: 'x' } } },
+        { umr: { args: { ARG0: 'x' }, roleset: 'a' } },
+      ),
+    ).toBe(true);
+  });
+
+  it('still compares plain fields by their text', () => {
+    expect(metaEqual({ gloss: 'dog' }, { gloss: 'dog' })).toBe(true);
+    expect(metaEqual({ gloss: 'dog' }, { gloss: 'cat' })).toBe(false);
+  });
+});
+
 describe('isDirty', () => {
   const item = { id: 'e1', form: 'kai', metadata: { gloss: 'sun', parent: 'p' } };
   it('ignores the structure the form does not edit', () => {
