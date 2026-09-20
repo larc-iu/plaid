@@ -57,6 +57,9 @@ class Context:
         # span's result index, then the span id once the batch has landed.
         self.token_at: Dict[tuple, Any] = {}
         self.span_at: Dict[tuple, Any] = {}
+        # span id -> the `umr` namespace this run has written on it, so a
+        # second op on the same node builds on the first (see _apply_span_meta).
+        self.umr_now: Dict[str, Dict[str, Any]] = {}
 
     def _resolved(self, table: Dict[tuple, Any], key: tuple, what: str):
         at = table.get(key)
@@ -118,9 +121,27 @@ def _apply_set_concept(ctx: Context, op) -> int:
 
 def _apply_span_meta(ctx: Context, op) -> int:
     """A node's ``umr`` metadata, whole: a metadata patch replaces a namespace
-    wholesale, so the op carries the whole object rather than the one key that
-    changed."""
-    ctx.b.update('spans', op['span_id'], metadata={**ctx.restamp(), UMR: op.get('umr') or {}})
+    wholesale, so the write carries the whole object rather than the one key
+    that changed.
+
+    An op therefore carries its DELTA (``umr_set`` / ``umr_unset``) over the
+    namespace as it was READ (``umr_base``), and the whole object is composed
+    here. Carrying the composed object instead was wrong whenever one plan held
+    two ops for one node: attributes and the root mark each snapshotted the node
+    before the plan ran, so whichever landed second restored what the first had
+    changed, and the node came out with its old root mark or no attributes. The
+    two can arrive from different places (a graph diff and an attribute scope
+    resolved at approval), so they are composed here, at the one funnel every
+    namespace write reaches, and not where either is built."""
+    sid = op['span_id']
+    base = ctx.umr_now.get(sid)
+    if base is None:
+        base = dict(op.get('umr_base') or {})
+    drop = set(op.get('umr_unset') or ())
+    meta = {k: v for k, v in base.items() if k not in drop}
+    meta.update(op.get('umr_set') or {})
+    ctx.umr_now[sid] = meta
+    ctx.b.update('spans', sid, metadata={**ctx.restamp(), UMR: meta})
     return 1
 
 
@@ -215,12 +236,11 @@ def _resolve_attrs_scope(res: Resolution, op):
     doc = res.document(did)
     rel, value = op.get('rel') or '', op.get('value') or ''
     for s, node, placed in attrs_scope_targets(doc, op):
-        umr = dict(((node.metadata or {}).get(UMR)) or {})
-        umr['attrs'] = placed
         shown = f'{rel} {value}' if value else f'{rel} removed'
         yield {'kind': 'set_attrs', 'document_id': did, 'ref': node_ref(s, node),
                'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
-               'attrs': placed, UMR: umr, 'label': f'{node.var}: {shown}'}
+               'attrs': placed, 'umr_base': dict(((node.metadata or {}).get(UMR)) or {}),
+               'umr_set': {'attrs': placed}, 'label': f'{node.var}: {shown}'}
 
 
 def _attrs_scope_summary(op, n):
@@ -277,7 +297,7 @@ KIND = ok.registry([
            compact_each=('span_id', 'var', 'concept', 'ref', 'label'), compact_label=_group_label),
     OpKind('set_attrs', _ATTRS, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('attrs', op.get('span_id')), token_keys=('span_id',),
-           compact_each=('span_id', 'var', 'attrs', 'umr', 'ref', 'label'),
+           compact_each=('span_id', 'var', 'attrs', 'umr_base', 'umr_set', 'ref', 'label'),
            compact_label=_group_label),
     OpKind('set_root', _ROOT, required=('span_id',), apply=_apply_span_meta,
            target=lambda op: ('root-on', op.get('span_id')), token_keys=('span_id',)),

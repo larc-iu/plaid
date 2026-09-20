@@ -101,7 +101,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
             updates.append({
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs,
-                'umr': {**_umr_meta(old), 'attrs': attrs},
+                'umr_base': _umr_meta(old), 'umr_set': {'attrs': attrs},
                 'label': (f'{var}: attributes {_attr_line(attrs)}' if attrs
                           else f'{var}: no attributes')})
 
@@ -162,11 +162,10 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
     if parsed.root != old_root:
         for node in sentence.nodes:
             if node.root and node.var != parsed.root and node.id not in gone_ids:
-                meta = _umr_meta(node)
-                meta.pop('root', None)
                 root_ops.append({
                     'kind': 'unset_root', 'document_id': did,
-                    'ref': f's{sentence.index}.{node.var}', 'span_id': node.id, 'umr': meta,
+                    'ref': f's{sentence.index}.{node.var}', 'span_id': node.id,
+                    'umr_base': _umr_meta(node), 'umr_unset': ('root',),
                     'label': f'{node.var} is no longer the root'})
         new_root = old_by_var.get(parsed.root)
         if new_root is None:
@@ -178,7 +177,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
             root_ops.append({
                 'kind': 'set_root', 'document_id': did,
                 'ref': f's{sentence.index}.{parsed.root}', 'span_id': new_root.id,
-                'umr': {**_umr_meta(new_root), 'root': True},
+                'umr_base': _umr_meta(new_root), 'umr_set': {'root': True},
                 'label': f'{parsed.root} becomes the root of s{sentence.index}'})
 
     # Deletes first, so a variable a new node takes is free; then the marks

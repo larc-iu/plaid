@@ -83,9 +83,11 @@ def test_an_attribute_change_rewrites_the_whole_attribute_set(ws):
     assert kinds(diff) == ['set_attrs']
     op = diff.ops[0]
     assert [(a['rel'], a['value']) for a in op['attrs']] == [(':refer-number', 'plural')]
-    # The whole `umr` object, because a metadata patch replaces a namespace
-    # wholesale: the variable restated here is what keeps it from being lost.
-    assert op['umr']['var'] == 's1d'
+    # The op carries its delta over the namespace as it was read, and the
+    # executor composes the whole object, because a metadata patch replaces a
+    # namespace wholesale. The variable is in the base and so survives.
+    assert op['umr_set'] == {'attrs': op['attrs']}
+    assert op['umr_base']['var'] == 's1d'
 
 
 def test_a_dropped_edge_deletes_the_relation_and_the_node_it_orphaned(ws):
@@ -104,7 +106,7 @@ def test_a_re_root_moves_the_mark_off_the_old_root(ws):
     assert kinds(diff) == ['create_edge', 'create_node', 'unset_root']
     off = next(op for op in diff.ops if op['kind'] == 'unset_root')
     assert off['span_id'] == 'mc-b'
-    assert 'root' not in off['umr']
+    assert off['umr_unset'] == ('root',) and off['umr_base']['root'] is True
     # The new root is created with the mark on it rather than patched after.
     create = next(op for op in diff.ops if op['kind'] == 'create_node')
     assert create['root'] is True
@@ -187,6 +189,25 @@ def test_a_re_root_takes_the_mark_off_before_the_new_root_wears_one(client, ws):
     # no two nodes wear it, whichever way a failure falls.
     assert client.batches[0][-1][1] == 'patch_metadata'
     assert client.batches[1][0][1] == 'create'
+
+
+def test_a_node_re_rooted_and_re_attributed_at_once_keeps_both(client, ws):
+    """One plan, two ops on one node. Each is built from the node as it was
+    BEFORE the plan ran, so the attribute write used to restate the namespace
+    without the root mark the root op had just put on, and a node came out of
+    its own re-root not being the root. The executor composes them instead."""
+    text = ('(s1d / dog\n    :refer-number plural\n'
+            '    :ARG0-of (s1b / bark-01\n        :aspect performance))')
+    call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
+    kinds_on_d = sorted(op['kind'] for op in ws.ops if op.get('span_id') == 'mc-d')
+    assert kinds_on_d == ['set_attrs', 'set_root']
+    log = applied(client, ws)
+    written = [e[2][1]['umr'] for e in log
+               if e[0] == 'spans' and e[1] == 'patch_metadata' and e[2][0] == 'mc-d']
+    assert written, 'the node was never patched'
+    assert written[-1]['root'] is True
+    assert [(a['rel'], a['value']) for a in written[-1]['attrs']] \
+        == [(':refer-number', 'plural')]
 
 
 def test_the_same_sentence_cannot_be_rewritten_twice_in_one_plan(ws):
