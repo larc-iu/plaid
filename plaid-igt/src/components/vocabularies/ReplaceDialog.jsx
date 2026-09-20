@@ -29,8 +29,10 @@ import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 
-// One write is one batch op, and plaid-core caps a batch at 1000.
-const CHUNK = 200;
+// Entries per bulk update. One request is one transaction holding the
+// vocabulary's write lock, so this bounds that hold, and it gives the progress
+// line something to say on a lexicon of thousands.
+const CHUNK = 500;
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the
@@ -136,8 +138,7 @@ export const ReplaceDialog = ({
   };
 
   const doApply = async () => {
-    const itemsById = new Map(items.map((it) => [it.id, it]));
-    const writes = replaceWrites(chosen, { field: target.name, itemsById });
+    const writes = replaceWrites(chosen, { field: target.name });
     if (!writes.length) return;
     setBusy(true);
     let done = 0;
@@ -148,13 +149,7 @@ export const ReplaceDialog = ({
       await client.withOperation(label, async () => {
         for (let i = 0; i < writes.length; i += CHUNK) {
           const chunk = writes.slice(i, i + CHUNK);
-          await client.batched(async (b) => {
-            for (const w of chunk) {
-              if (w.form != null) b.vocabItems.update(w.id, w.form);
-              else if (Object.keys(w.metadata).length) b.vocabItems.setMetadata(w.id, w.metadata);
-              else b.vocabItems.deleteMetadata(w.id);
-            }
-          });
+          await client.vocabItems.bulkUpdate(chunk);
           done += chunk.length;
           setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
         }

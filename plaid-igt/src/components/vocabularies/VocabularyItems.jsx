@@ -42,6 +42,7 @@ import {
   statusFieldKey,
   itemLabel,
 } from '@/domain/vocabDictionary';
+import { metadataUpdates } from '@/domain/metadataPatch';
 import {
   HomographDialog,
   ReferencedByPanel,
@@ -80,9 +81,10 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
-// How many repairs ride in one batch. A batch is one transaction holding the
-// vocabulary's write lock, so it is sized by how long that lock is held.
-const REPAIR_CHUNK = 100;
+// How many repairs ride in one bulk update. One request is one transaction
+// holding the vocabulary's write lock, so it is sized by how long that lock is
+// held.
+const REPAIR_CHUNK = 500;
 
 // The Entries screen of a vocabulary. This component owns the data (the
 // entries, their usage counts) and every write; the selection lives in the
@@ -419,17 +421,13 @@ export const VocabularyItems = ({
     const { patches, findings } = validateVocabRefs(fetched, fields);
     if (!patches.length) return;
     try {
+      // A vocabulary that has lost a pile of entries has as many writes as it
+      // has references to them, so they go out in bulk: the plans are whole
+      // maps, and the write is each one's patch against what the entry carries.
+      const updates = metadataUpdates(patches, new Map(fetched.map((it) => [it.id, it.metadata])));
       await client.withOperation('Repair entry references', async () => {
-        // Batched rather than one request each: a vocabulary that has lost a
-        // pile of entries has as many writes as it has references to them.
-        // Chunked, since one batch is one transaction holding the write lock.
-        for (let i = 0; i < patches.length; i += REPAIR_CHUNK) {
-          await client.batched(async (b) => {
-            for (const p of patches.slice(i, i + REPAIR_CHUNK)) {
-              if (Object.keys(p.metadata).length) b.vocabItems.setMetadata(p.id, p.metadata);
-              else b.vocabItems.deleteMetadata(p.id);
-            }
-          });
+        for (let i = 0; i < updates.length; i += REPAIR_CHUNK) {
+          await client.vocabItems.bulkUpdate(updates.slice(i, i + REPAIR_CHUNK));
         }
       });
       // The repair lands a round trip after the draft was seeded, so an entry

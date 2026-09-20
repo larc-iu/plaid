@@ -23,7 +23,11 @@ import {
   planMerge,
   applyMerge,
 } from '../../src/components/projects/bulk/bulkRunner.js';
-import { metadataUpdates } from '../../src/components/projects/bulk/bulkPlan.js';
+import { metadataUpdates } from '../../src/domain/metadataPatch.js';
+import { planVocabReplace, replaceWrites } from '../../src/domain/vocabReplace.js';
+import { fieldPruneWrites } from '../../src/domain/vocabFieldPrune.js';
+import { validateVocabRefs } from '../../src/domain/vocabDictionary.js';
+import { FIELD_TYPES } from '../../src/domain/vocabFields.js';
 import { getIgtLayerInfo } from '../../src/domain/layerInfo.js';
 import { searchDomains } from '../../src/components/projects/search/searchQueries.js';
 import { readToken } from '../fixtures.js';
@@ -287,6 +291,105 @@ try {
     }
     check(two === 3, 'every occurrence carries the two-morpheme analysis', `${two}`);
     check(glossed === 3, 'and both glosses, written by bulk span create', `${glossed}`);
+  }
+
+  // ============ the vocabulary screens' own bulk writes ============
+  // Not Bulk Edit, but the same endpoint and the same shape of mistake: a write
+  // that names the whole metadata map replaces it, and a patch that forgets to
+  // null a key it dropped leaves that key behind.
+  section('vocabulary screens');
+  {
+    const field = { name: 'gloss', type: FIELD_TYPES.TEXT, many: false };
+    const ids = (
+      await client.vocabItems.bulkCreate([
+        { vocabLayerId: VID, form: 'r1', metadata: { gloss: 'old dog', pos: 'n' } },
+        { vocabLayerId: VID, form: 'r2', metadata: { gloss: 'old cat', pos: 'n' } },
+        { vocabLayerId: VID, form: 'r3', metadata: { gloss: 'wolf', pos: 'n' } },
+      ])
+    ).ids;
+    const itemsNow = async () =>
+      (await loadProjectVocabularies(client, await project2())).vocabularies[VID]?.items || [];
+
+    // The vocabulary's Replace dialog: one field of every entry.
+    {
+      const { apply } = buildReplacer('old ', 'contains', '');
+      const rows = planVocabReplace(await itemsNow(), { field: 'gloss', apply });
+      const writes = replaceWrites(rows, { field: 'gloss' });
+      await client.vocabItems.bulkUpdate(writes);
+      const after = await itemsNow();
+      const by = new Map(after.map((it) => [it.id, it.metadata || {}]));
+      check(
+        by.get(ids[0]).gloss === 'dog' && by.get(ids[1]).gloss === 'cat',
+        'Replace rewrites the field it was pointed at',
+        JSON.stringify([by.get(ids[0]), by.get(ids[1])]),
+      );
+      check(
+        by.get(ids[0]).pos === 'n' && by.get(ids[2]).gloss === 'wolf',
+        'and leaves the other fields and the other entries alone',
+      );
+    }
+
+    // Replace emptying a value has to DELETE the key, not write an empty one.
+    {
+      const { apply } = buildReplacer('wolf', 'exact', '');
+      const rows = planVocabReplace(await itemsNow(), { field: 'gloss', apply });
+      await client.vocabItems.bulkUpdate(replaceWrites(rows, { field: 'gloss' }));
+      const meta = (await itemsNow()).find((it) => it.id === ids[2])?.metadata || {};
+      check(!('gloss' in meta), 'an emptied value leaves no key behind', JSON.stringify(meta));
+      check(meta.pos === 'n', 'and the rest of that entry survives');
+    }
+
+    // A field type change: Entry -> Text drops the ids it can no longer show.
+    {
+      await client.vocabItems.bulkUpdate([
+        { id: ids[0], metadata: { seeAlso: ids[1] } },
+        { id: ids[1], metadata: { seeAlso: 'not-an-entry' } },
+      ]);
+      const before = await itemsNow();
+      const writes = fieldPruneWrites(before, {
+        name: 'seeAlso',
+        type: FIELD_TYPES.TEXT,
+        many: false,
+      });
+      // Every entry holding a reference, and no other: the merge above left one
+      // of its own behind, so this is counted from the data, not assumed.
+      const holding = before.filter((it) => it.metadata?.seeAlso != null).map((it) => it.id);
+      check(
+        holding.length > 1 &&
+          writes.length === holding.length &&
+          writes.every((w) => holding.includes(w.id)),
+        'a type change plans a write for every value and no more',
+        `${writes.length} writes, ${holding.length} values`,
+      );
+      await client.vocabItems.bulkUpdate(writes);
+      const after = await itemsNow();
+      check(
+        after.every((it) => !('seeAlso' in (it.metadata || {}))),
+        'leaving Entry drops every reference',
+        JSON.stringify(after.map((it) => it.metadata)),
+      );
+      check(
+        (after.find((it) => it.id === ids[0])?.metadata || {}).gloss === 'dog',
+        'and touches nothing else on those entries',
+      );
+    }
+
+    // The entry list's load-time repair: a reference to a deleted entry goes.
+    {
+      await client.vocabItems.bulkUpdate([{ id: ids[0], metadata: { seeAlso: ids[2] } }]);
+      await client.vocabItems.delete(ids[2]);
+      const items = await itemsNow();
+      const { patches } = validateVocabRefs(items, [
+        field,
+        { ...field, name: 'seeAlso', type: FIELD_TYPES.ITEM },
+      ]);
+      const updates = metadataUpdates(patches, new Map(items.map((it) => [it.id, it.metadata])));
+      check(updates.length === 1, 'the repair plans one write', JSON.stringify(updates));
+      await client.vocabItems.bulkUpdate(updates);
+      const meta = (await itemsNow()).find((it) => it.id === ids[0])?.metadata || {};
+      check(!('seeAlso' in meta), 'the dangling reference is gone', JSON.stringify(meta));
+      check(meta.gloss === 'dog' && meta.pos === 'n', 'and the entry keeps everything else');
+    }
   }
 } finally {
   await client.projects.delete(PID).catch(() => {});

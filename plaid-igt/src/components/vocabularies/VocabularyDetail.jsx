@@ -37,13 +37,8 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
-import {
-  refIds,
-  withRefIds,
-  statusTagset,
-  statusFieldSeed,
-  STATUS_TAGSET,
-} from '@/domain/vocabDictionary';
+import { refIds, statusTagset, statusFieldSeed, STATUS_TAGSET } from '@/domain/vocabDictionary';
+import { fieldPruneWrites } from '@/domain/vocabFieldPrune';
 import { readTagsets, byTagsetName } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
@@ -77,7 +72,9 @@ const TYPE_CHOICES = [
 ];
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
-const FIELD_CLEAR_CHUNK = 100;
+// Entries per bulk update. One request is one transaction holding the
+// vocabulary's write lock, so this bounds that hold.
+const FIELD_CLEAR_CHUNK = 500;
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -487,34 +484,13 @@ export const VocabularyDetail = () => {
    * dialog has just said how many values go, and a promise kept only once a
    * writer next opens that screen is not kept.
    */
-  const pruneFieldValues = async (fieldName, after, label) => {
+  const pruneFieldValues = async (after, label) => {
     const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
-    const live = new Set(items.map((it) => it.id));
-    const writes = [];
-    for (const it of items) {
-      const raw = it.metadata?.[fieldName];
-      if (raw == null || raw === '') continue;
-      let metadata;
-      if (after.type !== FIELD_TYPES.ITEM) {
-        metadata = { ...it.metadata };
-        delete metadata[fieldName];
-      } else {
-        const ids = refIds(it, after).filter((x) => x !== it.id && live.has(x));
-        metadata = withRefIds(it.metadata, after, ids);
-      }
-      const now = metadata[fieldName];
-      if (JSON.stringify(now ?? null) !== JSON.stringify(raw)) writes.push({ id: it.id, metadata });
-    }
+    const writes = fieldPruneWrites(items, after);
     if (!writes.length) return;
     await client.withOperation(`Change "${label}"`, async () => {
       for (let i = 0; i < writes.length; i += FIELD_CLEAR_CHUNK) {
-        const chunk = writes.slice(i, i + FIELD_CLEAR_CHUNK);
-        await client.batched(async (b) => {
-          for (const w of chunk) {
-            if (Object.keys(w.metadata).length) b.vocabItems.setMetadata(w.id, w.metadata);
-            else b.vocabItems.deleteMetadata(w.id);
-          }
-        });
+        await client.vocabItems.bulkUpdate(writes.slice(i, i + FIELD_CLEAR_CHUNK));
       }
     });
   };
@@ -582,7 +558,6 @@ export const VocabularyDetail = () => {
       if (!(await saveFields(next))) return;
       try {
         await pruneFieldValues(
-          fieldName,
           next.find((f) => f.name === fieldName),
           label,
         );

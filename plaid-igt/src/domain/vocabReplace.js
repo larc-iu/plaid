@@ -29,24 +29,18 @@ export function planVocabReplace(items, { field, apply, tagset = null }) {
 }
 
 /**
- * The writes for the chosen rows, as `{id, form}` for a form change or
- * `{id, metadata}` for a field change. A field change carries the entry's
- * WHOLE metadata: the API's patch cannot remove a key, and a replacement that
- * empties a value must leave no key behind (the entry form never stores one).
+ * The writes for the chosen rows, as bulk-update entries: `{id, form}` for a
+ * form change, `{id, metadata}` for a field change. A field change patches the
+ * ONE key it touches, with a null where the replacement empties the value,
+ * since the entry form never stores an empty one and a null is how a key is
+ * deleted. Nothing else on the entry is named, so nothing else can be lost.
  */
-export function replaceWrites(rows, { field, itemsById }) {
+export function replaceWrites(rows, { field }) {
   const out = [];
   for (const row of rows) {
     if (row.invalid) continue;
-    if (field === 'form') {
-      out.push({ id: row.id, form: row.new.trim() });
-      continue;
-    }
-    const item = itemsById.get(row.id);
-    const metadata = { ...(item?.metadata || {}) };
-    if (row.new.trim() === '') delete metadata[field];
-    else metadata[field] = row.new;
-    out.push({ id: row.id, metadata });
+    if (field === 'form') out.push({ id: row.id, form: row.new.trim() });
+    else out.push({ id: row.id, metadata: { [field]: row.new.trim() === '' ? null : row.new } });
   }
   return out;
 }

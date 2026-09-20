@@ -48,8 +48,9 @@ const NO_TAGSETS = () => null;
 // 10MB, and a few hundred KB per request also gives the progress line
 // something to say during a long import.
 const CREATE_CHUNK = 500;
-// One metadata patch is one batch op, and plaid-core caps a batch at 1000.
-const UPDATE_CHUNK = 200;
+// Entries per bulk update, the same bound as the create above: one request is
+// one transaction holding the vocabulary's write lock.
+const UPDATE_CHUNK = 500;
 
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.
@@ -465,9 +466,7 @@ export const BulkAddDialog = ({
           }
           for (let i = 0; i < updates.length; i += UPDATE_CHUNK) {
             const chunk = updates.slice(i, i + UPDATE_CHUNK);
-            await client.batched(async (b) => {
-              for (const u of chunk) b.vocabItems.patchMetadata(u.id, u.patch);
-            });
+            await client.vocabItems.bulkUpdate(chunk.map((u) => ({ id: u.id, metadata: u.patch })));
             updated += chunk.length;
             setProgress({ done: created + updated, total, phase: 'updating' });
           }

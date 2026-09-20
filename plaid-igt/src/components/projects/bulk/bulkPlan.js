@@ -311,28 +311,6 @@ export function groupByDoc(rows) {
   return [...groups.values()];
 }
 
-// Whole-map metadata plans — `[{id, metadata}]`, the shape the entry editor
-// writes and `planMergeRefs` returns — as bulk-update entries. The server
-// merges a patch one top-level key at a time and deletes a key whose value is
-// null, so the patch is every key whose value changed plus a null for every
-// key that went away. `metaById` is the metadata each entry carries NOW.
-//
-// A plan that turns out to change nothing is dropped: the walk that produced
-// it decides from the sense tree, which can name an entry whose map comes out
-// identical.
-export function metadataUpdates(plans, metaById) {
-  const out = [];
-  for (const p of plans || []) {
-    const from = metaById.get(p.id) || {};
-    const to = p.metadata || {};
-    const metadata = {};
-    for (const [k, v] of Object.entries(to)) if (v !== from[k]) metadata[k] = v;
-    for (const k of Object.keys(from)) if (!(k in to)) metadata[k] = null;
-    if (Object.keys(metadata).length) out.push({ id: p.id, metadata });
-  }
-  return out;
-}
-
 export function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));

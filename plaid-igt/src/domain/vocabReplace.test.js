@@ -8,7 +8,6 @@ const items = [
   { id: 'c', form: 'gato', metadata: { gloss: 'cat', pos: 'noun' } },
   { id: 'd', form: 'x', metadata: {} },
 ];
-const itemsById = new Map(items.map((it) => [it.id, it]));
 const closedPos = {
   name: 'POS',
   mode: 'closed',
@@ -60,20 +59,20 @@ describe('planVocabReplace', () => {
 describe('replaceWrites', () => {
   it('writes a form change as the trimmed new form', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'perro', new: ' Perro ', invalid: null }];
-    expect(replaceWrites(rows, { field: 'form', itemsById })).toEqual([{ id: 'a', form: 'Perro' }]);
+    expect(replaceWrites(rows, { field: 'form' })).toEqual([{ id: 'a', form: 'Perro' }]);
   });
 
-  it('writes a field change as the whole metadata, so nothing else is lost', () => {
+  it('patches only the field it touches, so nothing else can be lost', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'dog', new: 'hound', invalid: null }];
-    expect(replaceWrites(rows, { field: 'gloss', itemsById })).toEqual([
-      { id: 'a', metadata: { gloss: 'hound', pos: 'n' } },
+    expect(replaceWrites(rows, { field: 'gloss' })).toEqual([
+      { id: 'a', metadata: { gloss: 'hound' } },
     ]);
   });
 
-  it('drops the key when the replacement empties the value', () => {
+  it('nulls the key when the replacement empties the value, which deletes it', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'dog', new: '', invalid: null }];
-    expect(replaceWrites(rows, { field: 'gloss', itemsById })).toEqual([
-      { id: 'a', metadata: { pos: 'n' } },
+    expect(replaceWrites(rows, { field: 'gloss' })).toEqual([
+      { id: 'a', metadata: { gloss: null } },
     ]);
   });
 
@@ -82,8 +81,8 @@ describe('replaceWrites', () => {
       { id: 'a', form: 'perro', old: 'n', new: 'noun', invalid: 'tagset' },
       { id: 'd', form: 'x', old: 'x', new: '', invalid: 'empty' },
     ];
-    expect(replaceWrites(rows, { field: 'pos', itemsById })).toEqual([]);
-    expect(replaceWrites(rows, { field: 'form', itemsById })).toEqual([]);
+    expect(replaceWrites(rows, { field: 'pos' })).toEqual([]);
+    expect(replaceWrites(rows, { field: 'form' })).toEqual([]);
   });
 });
 
@@ -115,13 +114,9 @@ describe('planVocabReplace, filling a blank', () => {
     ]);
   });
 
-  it('writes the whole metadata map, keeping what was already there', () => {
-    const writes = replaceWrites(plan('published'), {
-      field: 'status',
-      itemsById: new Map(unpublished.map((it) => [it.id, it])),
-    });
-    expect(writes).toEqual([
-      { id: 'a', metadata: { gloss: 'dog', status: 'published' } },
+  it('writes the field it fills and names nothing else', () => {
+    expect(replaceWrites(plan('published'), { field: 'status' })).toEqual([
+      { id: 'a', metadata: { status: 'published' } },
       { id: 'c', metadata: { status: 'published' } },
     ]);
   });
@@ -129,7 +124,7 @@ describe('planVocabReplace, filling a blank', () => {
   it('flags a value the tagset refuses rather than writing it', () => {
     const rows = plan('printed', statusTagset);
     expect(rows.map((r) => r.invalid)).toEqual(['tagset', 'tagset']);
-    expect(replaceWrites(rows, { field: 'status', itemsById: new Map() })).toEqual([]);
+    expect(replaceWrites(rows, { field: 'status' })).toEqual([]);
   });
 
   it('finds nothing to do on a field every entry already has', () => {

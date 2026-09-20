@@ -21,8 +21,8 @@ import {
   FIELD_TYPES,
 } from '@/domain/vocabFields';
 import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
+import { metadataUpdates } from '@/domain/metadataPatch';
 import { readVocabFields } from '@/domain/igtConfig';
-import { metadataUpdates } from './bulkPlan.js';
 import { planMerge, applyMerge } from './bulkRunner.js';
 import { plural, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
