@@ -214,6 +214,9 @@ export class IgtEditor {
     // when staleness would otherwise be noticed.
     this._onVisibility = () => {
       if (document.visibilityState !== 'visible' || this.readOnly) return;
+      // The lexicon goes the same way as the precedent tally: entries added
+      // elsewhere while this page stayed open are read again here.
+      this._refreshVocabularies();
       if (Date.now() - (this._precedentFetchedAt || 0) < PRECEDENT_REFRESH_MIN_MS) return;
       this._ensurePrecedent(true);
     };

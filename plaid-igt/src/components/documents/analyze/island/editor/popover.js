@@ -58,6 +58,23 @@ export const popover = {
     this._focusPopover();
   },
 
+  // Every lexicon this editor can show, read again in the background: entries
+  // somebody else has added, or this person has added in another tab, are not
+  // in the copy this page loaded with, and the popover offered to make a
+  // second entry of a headword it could not see. Asked for when the tab
+  // regains focus (see `_onVisibility`), never while a popover is open, so no
+  // row moves under the hand reaching for it. One read in flight at a time.
+  _refreshVocabularies() {
+    if (this.readOnly || this._vocabRefresh || this._popover) return;
+    const ids = Object.keys(this.doc.vocabularies || {});
+    if (!ids.length) return;
+    this._vocabRefresh = Promise.all(ids.map((id) => this.doc.refreshVocabulary?.(id))).finally(
+      () => {
+        this._vocabRefresh = null;
+      },
+    );
+  },
+
   // Move the highlighted popover row. `total` includes the virtual "create" row
   // when present, so ↓ past the last item lands on Create (keyboard-reachable).
   _movePopoverActive(delta, total) {

@@ -278,6 +278,32 @@ export class IgtDocument extends DocumentModel {
     this._vocabularies = nextVocabs;
   }
 
+  /**
+   * Read one vocabulary's entries again, keeping this document's links to
+   * them. The editor asks when it opens the lexicon popover: two people, or
+   * one person in two tabs, add entries to a shared lexicon, and a list from
+   * the page load showed neither, so the same headword was made twice with
+   * nothing said. Quiet on failure: the list stays as it was.
+   */
+  async refreshVocabulary(vocabId) {
+    const current = this._vocabularies?.[vocabId];
+    if (!current || this._asOf) return false;
+    try {
+      const fresh = await this._client.vocabLayers.get?.(vocabId, true);
+      // Only a read that actually brought entries back replaces them: a stub
+      // or a half-answer must not empty the list the editor is showing.
+      if (!fresh || !Array.isArray(fresh.items)) return false;
+      this._vocabularies = {
+        ...this._vocabularies,
+        [vocabId]: { ...current, ...fresh, vocabLinks: current.vocabLinks || [] },
+      };
+      this._emit();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // A reload refreshes the project vocabularies with the document, at the same
   // snapshot. The document itself is kept even when the vocabularies cannot
   // be: the user is told the links may be stale rather than shown old ones
