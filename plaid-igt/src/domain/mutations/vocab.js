@@ -137,15 +137,16 @@ export const vocabMutations = {
           creates.map((c) => ({ vocabItem: c.item.id, tokens: [c.tokenId], metadata })),
         );
       }
-      // Replacements (2 ops each: delete stale link + create new) packed into
-      // atomic batches under the server's 1000-op cap.
+      // Replacements: the stale links go in one bulk delete and the new ones in
+      // one bulk create, both in the same batch so a token is never left with
+      // two links or none. Two ops a chunk rather than two per replacement.
       for (let i = 0; i < replaces.length; i += REPLACE_CHUNK) {
         const chunk = replaces.slice(i, i + REPLACE_CHUNK);
         await this._client.batched(async (b) => {
-          for (const r of chunk) {
-            b.vocabLinks.delete(r.priorLinkId);
-            b.vocabLinks.create(r.item.id, [r.tokenId], metadata);
-          }
+          b.vocabLinks.bulkDelete(chunk.map((r) => r.priorLinkId));
+          b.vocabLinks.bulkCreate(
+            chunk.map((r) => ({ vocabItem: r.item.id, tokens: [r.tokenId], metadata })),
+          );
         });
       }
       // The morph-type caches those links just made stale, chunked like the
@@ -158,12 +159,11 @@ export const vocabMutations = {
         if (type) cachePatches.push({ tokenId: x.tokenId, type });
       }
       for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
-        const chunk = cachePatches.slice(i, i + REPLACE_CHUNK);
-        await this._client.batched(async (b) => {
-          for (const c of chunk) {
-            b.tokens.patchMetadata(c.tokenId, { morphType: c.type });
-          }
-        });
+        await this._client.tokens.bulkUpdate(
+          cachePatches
+            .slice(i, i + REPLACE_CHUNK)
+            .map((c) => ({ id: c.tokenId, metadata: { morphType: c.type } })),
+        );
       }
       await this._reload();
     });
@@ -304,12 +304,22 @@ export const vocabMutations = {
     const typeFor = morphTypeCache(this);
     const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
     const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
+    // One bulk create for the links and one bulk update for the caches: two ops
+    // however many tokens were selected. The create goes FIRST so its ids are
+    // always results[0], and they come back in the order they were sent.
     const results = await this._client.batched(async (b) => {
-      for (const id of targetIds) b.vocabLinks.create(vocabItemId, [id], stamp);
-      // After the creates, so the link result indices below stay positional.
-      for (const id of cacheIds) b.tokens.patchMetadata(id, { morphType: cachedType });
+      b.vocabLinks.bulkCreate(
+        targetIds.map((id) => ({
+          vocabItem: vocabItemId,
+          tokens: [id],
+          ...(stamp ? { metadata: stamp } : {}),
+        })),
+      );
+      if (cacheIds.length) {
+        b.tokens.bulkUpdate(cacheIds.map((id) => ({ id, metadata: { morphType: cachedType } })));
+      }
     });
-    const newIds = results.map((r) => r?.body?.id ?? r?.id ?? null);
+    const newIds = results[0]?.body?.ids ?? [];
     const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
     this._applyRawPatch((next, info, vocabs) => {
       const tv = vocabs[targetVocab.id];

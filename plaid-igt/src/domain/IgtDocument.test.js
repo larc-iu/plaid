@@ -831,9 +831,15 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       vocabularies: vocabs,
     });
     expect(await doc.linkVocabMany(['w-1', 'w-2', 'w-2'], 'vi-1')).toBe(true);
-    const creates = doc.client.calls.filter((c) => c.kind === 'vocabLinks.create');
-    expect(creates.map((c) => c.args[1])).toEqual([['w-2']]);
+    // One bulk create carrying every token that needed a link, deduped.
+    const creates = doc.client.calls.filter((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(creates).toHaveLength(1);
+    expect(creates[0].args[0].map((e) => e.tokens)).toEqual([['w-2']]);
     expect(doc.sentences[0].tokens.map((t) => t.vocabItem?.form)).toEqual(['CAT', 'CAT']);
+    // A bulk create answers ONE `{ids: [...]}` rather than one result per op, so
+    // the optimistic patch reads the ids out of that. Read wrong, every link it
+    // draws carries `undefined` and the next write to one goes nowhere.
+    expect(doc.sentences[0].tokens[1].vocabItem?.linkId).toMatch(/^link-\d+$/);
     // Nothing left to link is not an operation.
     expect(await doc.linkVocabMany(['w-1'], 'vi-1')).toBe(false);
   });
@@ -850,9 +856,17 @@ describe('vocab links (read path must reflect optimistic write)', () => {
       await doc.createAndLinkVocabItem('w-1', 'v1', 'the', {}, { alsoLink: ['w-1', 'w-2'] }),
     ).toBe(true);
     expect(doc.sentences[0].tokens.map((t) => t.vocabItem?.form)).toEqual(['the', 'the']);
-    const created = doc.client.calls.filter((c) => c.kind === 'vocabLinks.create');
-    expect(created.map((c) => c.args[1])).toEqual([['w-1'], ['w-2']]);
-    expect(new Set(created.map((c) => c.args[0])).size).toBe(1);
+    // The anchor token is linked on its own — one gesture, one link — and the
+    // rest ride in one bulk create. Both name the entry just made.
+    const single = doc.client.calls.filter((c) => c.kind === 'vocabLinks.create');
+    const bulk = doc.client.calls
+      .filter((c) => c.kind === 'vocabLinks.bulkCreate')
+      .flatMap((c) => c.args[0]);
+    expect(single.map((c) => c.args[1])).toEqual([['w-1']]);
+    expect(bulk.map((e) => e.tokens)).toEqual([['w-2']]);
+    expect(new Set([...single.map((c) => c.args[0]), ...bulk.map((e) => e.vocabItem)]).size).toBe(
+      1,
+    );
   });
 
   // The morph-type cache: a morpheme linked to a typed entry takes the entry's
@@ -930,8 +944,9 @@ describe('vocab links (read path must reflect optimistic write)', () => {
     expect(await doc.linkVocabMany(['m-1', 'm-2'], 'vi-1')).toBe(true);
 
     const patched = doc.client.calls
-      .filter((c) => c.kind === 'tokens.patchMetadata')
-      .map((c) => c.args[0]);
+      .filter((c) => c.kind === 'tokens.bulkUpdate')
+      .flatMap((c) => c.args[0])
+      .map((e) => e.id);
     expect(patched.sort()).toEqual(['m-1', 'm-2']);
     expect(planMorphTypeSync(doc.sentences)).toEqual([]);
   });
