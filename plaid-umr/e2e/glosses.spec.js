@@ -10,10 +10,18 @@ test("glosses from the project's layers show under the words and export", async 
   await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
   const block = page.locator('.umr-block').first();
   await expect(block.locator('.umr-node').first()).toBeVisible();
-  // "left" is leav-e: two morphemes, two glosses, under one word.
+  // "left" is lef-t: two morphemes, each its own column, its gloss under it,
+  // and the joiner between the columns, as the igt grid draws a word.
   const left = block.locator('.umr-word').nth(1);
-  await expect(left.locator('.umr-word-gloss').nth(0)).toHaveText('lef t');
-  await expect(left.locator('.umr-word-gloss').nth(1)).toHaveText('leave PST');
+  await expect(left.locator('.umr-morph-form')).toHaveText(['lef', 't']);
+  await expect(left.locator('.umr-morph-joiner')).toHaveText(['-']);
+  const morphemeGloss = (col) => left.locator('.umr-morph-col').nth(col).locator('.umr-word-gloss');
+  await expect(morphemeGloss(0).nth(1)).toHaveText('leave');
+  await expect(morphemeGloss(1).nth(1)).toHaveText('PST');
+  // A word of one morpheme has one column and no joiner.
+  const lindsay = block.locator('.umr-word').nth(0);
+  await expect(lindsay.locator('.umr-morph-form')).toHaveText(['Lindsay']);
+  await expect(lindsay.locator('.umr-morph-joiner')).toHaveCount(0);
   await expect(block.locator('.umr-ilg-items')).toHaveText('Lindsay went off to have lunch.');
   await block.screenshot({ path: process.env.UMR_GLOSS_SHOT || 'test-results/glosses.png' });
 

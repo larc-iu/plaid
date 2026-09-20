@@ -248,7 +248,7 @@ jobs:
           - PyPI: \`pip install --pre larc-plaid-client==$PYVER\`
 
           ## Assistants (optional)
-          A bring-your-own-model chat assistant, for IGT projects and for UD treebanks: the **Assistant** tab on a project page, and a panel beside a document. Users ask questions about the corpus, the lexicon or the annotation, or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
+          A bring-your-own-model chat assistant, for IGT projects, UD treebanks and UMR documents: the **Assistant** tab on a project page, and a panel beside a document. Users ask questions about the corpus, the lexicon or the annotation, or ask for edits; edits come back as a plan the user approves, then are applied under that user's own account. Nothing runs unless the instance operator starts the service:
 
           1. On any machine that can reach the server, with Python 3.11+. Not on PyPI yet, so install it from the source tree at this tag:
              \`\`\`
@@ -261,6 +261,7 @@ jobs:
              export OPENAI_API_KEY=…            # or ANTHROPIC_API_KEY, GEMINI_API_KEY, …
              plaid-igt-agent --url https://plaid.example.org --model openai/gpt-4o    # IGT projects
              plaid-ud-agent  --url https://plaid.example.org --model openai/gpt-4o    # UD treebanks
+             plaid-umr-agent --url https://plaid.example.org --model openai/gpt-4o    # UMR documents
              plaid-igt-agent --url https://plaid.example.org --model ollama/llama3.1
              plaid-igt-agent --url https://plaid.example.org --model openai/my-model --api-base http://gpu-box:8000/v1
              \`\`\`
