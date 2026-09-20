@@ -47,10 +47,15 @@ test('every tab renders, and none of them reports an error', async ({ page }) =>
     // The panel has to draw SOMETHING: a table, or the sentence a panel shows
     // when it legitimately holds nothing. Asserting on text length rather than
     // on a particular element keeps this from caring which of the two it is.
+    //
+    // The budget is generous because Server is: it waits on a COUNT(*) per
+    // table, so it takes as long as the database is big (14s against a 13GB
+    // one with 10.9M audit rows). This test is here to catch a tab that draws
+    // nothing or throws, not to police that.
     const panel = page.getByRole('tabpanel');
     await expect
       .poll(async () => (await panel.innerText()).replace(/Loading…/g, '').trim().length, {
-        timeout: 20000,
+        timeout: 60000,
       })
       .toBeGreaterThan(20);
   }
