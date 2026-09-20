@@ -13,6 +13,7 @@ import {
   analysisLabel,
   collectLinksToMove,
   groupByDoc,
+  metadataUpdates,
 } from './bulkPlan.js';
 
 const docOf = (opts) => new IgtDocument({ raw: buildRawDoc(opts), client: makeFakeClient() });
@@ -294,6 +295,66 @@ describe('groupByDoc', () => {
     expect(groupByDoc(rows).map((g) => [g.docName, g.rows.map((r) => r.id)])).toEqual([
       ['Two', ['c', 'a']],
       ['One', ['d', 'b']],
+    ]);
+  });
+});
+
+// The merge writes the vocabulary's repointed references as ONE bulk update, so
+// the whole maps planMergeRefs returns have to become patches against what each
+// entry carries now. A key the plan dropped must come out as an explicit null —
+// the server deletes a key that way and leaves an absent one alone, so getting
+// this wrong leaves a sense parented to an entry that no longer exists.
+describe('metadataUpdates', () => {
+  const metaById = (entries) => new Map(Object.entries(entries));
+
+  it('sends only the keys that changed', () => {
+    const plans = [{ id: 'a', metadata: { gloss: 'cat', pos: 'N' } }];
+    expect(metadataUpdates(plans, metaById({ a: { gloss: 'dog', pos: 'N' } }))).toEqual([
+      { id: 'a', metadata: { gloss: 'cat' } },
+    ]);
+  });
+
+  it('nulls a key the plan dropped', () => {
+    const plans = [{ id: 'a', metadata: { gloss: 'cat' } }];
+    expect(
+      metadataUpdates(plans, metaById({ a: { gloss: 'cat', parent: 'b', senseOrder: 2 } })),
+    ).toEqual([{ id: 'a', metadata: { parent: null, senseOrder: null } }]);
+  });
+
+  it('clears an entry whose map the plan emptied', () => {
+    expect(metadataUpdates([{ id: 'a', metadata: {} }], metaById({ a: { parent: 'b' } }))).toEqual([
+      { id: 'a', metadata: { parent: null } },
+    ]);
+  });
+
+  it('adds a key the entry did not have', () => {
+    expect(metadataUpdates([{ id: 'a', metadata: { parent: 'b' } }], metaById({ a: {} }))).toEqual([
+      { id: 'a', metadata: { parent: 'b' } },
+    ]);
+  });
+
+  it('drops a plan that changes nothing', () => {
+    const plans = [
+      { id: 'a', metadata: { gloss: 'cat' } },
+      { id: 'b', metadata: { gloss: 'dog' } },
+    ];
+    expect(metadataUpdates(plans, metaById({ a: { gloss: 'cat' }, b: { gloss: 'cow' } }))).toEqual([
+      { id: 'b', metadata: { gloss: 'dog' } },
+    ]);
+  });
+
+  // A reference list is rebuilt as a new array whichever way it changed, so it
+  // is always written: cheap, and never wrong.
+  it('writes a rewritten reference list', () => {
+    const plans = [{ id: 'a', metadata: { seeAlso: ['x', 'y'] } }];
+    expect(metadataUpdates(plans, metaById({ a: { seeAlso: ['x', 'y'] } }))).toEqual([
+      { id: 'a', metadata: { seeAlso: ['x', 'y'] } },
+    ]);
+  });
+
+  it('treats an entry with no metadata at all as empty', () => {
+    expect(metadataUpdates([{ id: 'a', metadata: { parent: 'b' } }], new Map())).toEqual([
+      { id: 'a', metadata: { parent: 'b' } },
     ]);
   });
 });

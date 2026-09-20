@@ -21,6 +21,8 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
+import { ListPager } from '@ui/components/shared/list-search';
+import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList';
 import { cn } from '@ui/lib/utils';
 import { MATCH_TYPES } from '../search/searchQueries.js';
 import { MarkedText } from '@/components/shared/MarkedText.jsx';
@@ -56,59 +58,77 @@ export const Change = ({ from, to }) => (
 
 // The document-grouped match list. `renderRow(row)` fills the cell after the
 // checkbox; the sentence context is the same for every operation.
+//
+// PAGED, because a sweep over a corpus previews thousands of matches and every
+// row carries a change grid, a sentence with its marks and a link into Analyze:
+// drawing them all is what made the tab stop answering. A page is a fixed
+// number of ROWS, so a document with two matches and one with two thousand cost
+// the same to draw, and a document heading appears wherever its rows begin on
+// the page. The heading's tick and count still speak for the WHOLE document,
+// not for the part of it on screen: selection is what gets applied, and it must
+// not depend on where the reader happened to be standing.
 export const MatchGroups = ({ projectId, rows, selected, toggle, toggleMany, renderRow, dim }) => {
   const groups = useMemo(() => groupByDoc(rows), [rows]);
+  const flat = useMemo(() => groups.flatMap((g) => g.rows.map((r) => ({ g, r }))), [groups]);
+  const paged = usePagedList(flat, {
+    pageSize: TALL_LIST_PAGE_SIZE,
+    // A fresh preview is a different list, so it opens at the first page. Two
+    // previews with the same matches in the same order are the same list (a
+    // changed replacement over the same hits), and the reader keeps their place.
+    resetKey: `${flat.length}|${flat[0]?.r.id ?? ''}|${flat[flat.length - 1]?.r.id ?? ''}`,
+  });
+  if (!flat.length) return null;
   return (
-    <div className="flex flex-col gap-3">
-      {groups.map((g) => {
-        const ids = g.rows.map((r) => r.id);
-        const on = ids.filter((id) => selected.has(id)).length;
-        return (
-          <div key={g.docId} className="rounded-lg border bg-card">
-            <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
-              <Checkbox
-                checked={on === ids.length && ids.length > 0}
-                indeterminate={on > 0 && on < ids.length}
-                onChange={(v) => toggleMany(ids, v)}
-                aria-label={`Select all in ${g.docName}`}
-              />
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{g.docName}</span>
-              <span className="text-xs text-muted-foreground">
-                {on} of {plural(ids.length, 'match', 'matches')} selected
-              </span>
-            </div>
-            <div className="divide-y">
-              {g.rows.map((r) => (
-                <div
-                  key={r.id}
-                  className={cn('flex items-start gap-3 px-3 py-2', dim?.(r) && 'opacity-60')}
-                >
-                  <div className="pt-0.5">
-                    <Checkbox checked={selected.has(r.id)} onChange={(v) => toggle(r.id, v)} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      {renderRow(r)}
-                    </div>
-                    {r.sentenceId && (
-                      <Link
-                        to={hitTo(projectId, r.docId, r.sentenceId)}
-                        onClick={() => rememberCaret(r.docId, r.sentenceId, r.hitBegin ?? null)}
-                        className="mt-0.5 block text-sm text-muted-foreground hover:text-foreground"
-                        title="Open in Analyze"
-                      >
-                        <span className="mr-2 text-xs">#{r.sentenceIndex + 1}</span>
-                        <MarkedText text={r.text} marks={r.marks} />
-                      </Link>
-                    )}
-                  </div>
+    <div className="rounded-lg border bg-card">
+      <ListPager {...paged} onPage={paged.setPage} position="top" />
+      <div className="divide-y">
+        {paged.pageItems.map(({ g, r }, i) => {
+          // A document heading opens the page it continues onto, so a reader
+          // who turns the page mid-document still sees which one they are in.
+          const head = i === 0 || paged.pageItems[i - 1].g !== g;
+          const ids = head ? g.rows.map((x) => x.id) : null;
+          const on = ids ? ids.filter((id) => selected.has(id)).length : 0;
+          return (
+            <Fragment key={r.id}>
+              {head && (
+                <div className="flex items-center gap-2 bg-muted/50 px-3 py-2">
+                  <Checkbox
+                    checked={on === ids.length && ids.length > 0}
+                    indeterminate={on > 0 && on < ids.length}
+                    onChange={(v) => toggleMany(ids, v)}
+                    aria-label={`Select all in ${g.docName}`}
+                  />
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{g.docName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {on} of {plural(ids.length, 'match', 'matches')} selected
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+              )}
+              <div className={cn('flex items-start gap-3 px-3 py-2', dim?.(r) && 'opacity-60')}>
+                <div className="pt-0.5">
+                  <Checkbox checked={selected.has(r.id)} onChange={(v) => toggle(r.id, v)} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">{renderRow(r)}</div>
+                  {r.sentenceId && (
+                    <Link
+                      to={hitTo(projectId, r.docId, r.sentenceId)}
+                      onClick={() => rememberCaret(r.docId, r.sentenceId, r.hitBegin ?? null)}
+                      className="mt-0.5 block text-sm text-muted-foreground hover:text-foreground"
+                      title="Open in Analyze"
+                    >
+                      <span className="mr-2 text-xs">#{r.sentenceIndex + 1}</span>
+                      <MarkedText text={r.text} marks={r.marks} />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </Fragment>
+          );
+        })}
+      </div>
+      <ListPager {...paged} onPage={paged.setPage} />
     </div>
   );
 };

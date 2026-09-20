@@ -22,6 +22,7 @@ import {
 } from '@/domain/vocabFields';
 import { itemLabel, planMergeRefs, refIds } from '@/domain/vocabDictionary';
 import { readVocabFields } from '@/domain/igtConfig';
+import { metadataUpdates } from './bulkPlan.js';
 import { planMerge, applyMerge } from './bulkRunner.js';
 import { plural, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
@@ -178,12 +179,19 @@ export const MergePanel = ({ project, client }) => {
   const doApply = async () => {
     const survivorItem = itemById.get(survivor);
     // The vocabulary's own references to the losers (senses, reference
-    // fields) follow the links to the survivor.
-    const refPatches = planMergeRefs(items || [], fields, survivor, losers);
+    // fields) follow the links to the survivor. planMergeRefs returns the
+    // whole map each entry ends up with; the write is the patch against what
+    // it carries now, so a vocabulary with a thousand references to a merged
+    // entry repoints them in one request.
+    const refPlans = planMergeRefs(items || [], fields, survivor, losers);
+    const refUpdates = metadataUpdates(
+      refPlans,
+      new Map((items || []).map((it) => [it.id, it.metadata])),
+    );
     const res = await r.run('Apply', () =>
       applyMerge(
         client,
-        { links: plan.links, refPatches },
+        { links: plan.links, refUpdates },
         {
           survivorId: survivor,
           loserIds: losers,
@@ -201,7 +209,9 @@ export const MergePanel = ({ project, client }) => {
           : ''),
       'Merged',
     );
-    const patched = new Map(refPatches.map((p) => [p.id, p.metadata]));
+    // The maps the plan ends at, for the list on screen; the WRITE was the
+    // patch against what each entry carried.
+    const patched = new Map(refPlans.map((p) => [p.id, p.metadata]));
     setItems((prev) =>
       (prev || [])
         .filter((it) => !chosen.has(it.id) || it.id === survivor)

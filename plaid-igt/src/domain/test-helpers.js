@@ -167,6 +167,7 @@ export function makeFakeClient(opts = {}) {
           ids: (body || []).map(() => nextId('tok')),
         })),
         bulkDelete: op('tokens.bulkDelete', () => ({})),
+        bulkUpdate: op('tokens.bulkUpdate', (body) => ({ count: (body || []).length })),
         setMetadata: op('tokens.setMetadata', () => ({})),
         patchMetadata: op('tokens.patchMetadata', () => ({})),
         deleteMetadata: op('tokens.deleteMetadata', () => ({})),
@@ -175,6 +176,11 @@ export function makeFakeClient(opts = {}) {
         create: op('spans.create', () => ({ id: nextId('span') })),
         update: op('spans.update', () => ({})),
         delete: op('spans.delete', () => ({})),
+        bulkCreate: op('spans.bulkCreate', (body) => ({
+          ids: (body || []).map(() => nextId('span')),
+        })),
+        bulkDelete: op('spans.bulkDelete', () => ({})),
+        bulkUpdate: op('spans.bulkUpdate', (body) => ({ count: (body || []).length })),
         setMetadata: op('spans.setMetadata', () => ({})),
         patchMetadata: op('spans.patchMetadata', () => ({})),
       },
@@ -189,6 +195,11 @@ export function makeFakeClient(opts = {}) {
       },
       vocabItems: {
         create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
+        update: op('vocabItems.update', () => ({})),
+        bulkUpdate: op('vocabItems.bulkUpdate', (body) => ({ count: (body || []).length })),
+        bulkDelete: op('vocabItems.bulkDelete', () => ({})),
+        setMetadata: op('vocabItems.setMetadata', () => ({})),
+        deleteMetadata: op('vocabItems.deleteMetadata', () => ({})),
         patchMetadata: op('vocabItems.patchMetadata', () => ({})),
       },
       texts: {

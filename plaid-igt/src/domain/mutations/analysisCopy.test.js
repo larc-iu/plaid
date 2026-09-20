@@ -75,37 +75,46 @@ describe('bulkReplaceAnalyses', () => {
     expect(kinds.filter((k) => k === 'beginOperation')).toHaveLength(1);
 
     // Strip phase: the word's span, the first morpheme's link + span, the
-    // second morpheme deleted outright (its span cascades), first reset.
+    // second morpheme deleted outright (its span cascades), first reset — all
+    // through the bulk endpoints, one op per kind however many words.
     const strip = client.calls.slice(0, kinds.indexOf('batch.submit'));
     expect(strip.map((c) => c.kind)).toEqual([
       'beginOperation',
-      'spans.delete', // p-2 on the word
-      'vocabLinks.delete', // l-1 on m-2
-      'spans.delete', // g-2 on m-2
-      'tokens.patchMetadata', // reset m-2
-      'tokens.delete', // m-3
+      'vocabLinks.bulkDelete',
+      'spans.bulkDelete',
+      'tokens.bulkDelete',
+      'tokens.bulkUpdate',
     ]);
-    expect(strip[1].args).toEqual(['p-2']);
-    expect(strip[2].args).toEqual(['l-1']);
-    expect(strip[3].args).toEqual(['g-2']);
-    expect(strip[4].args[0]).toBe('m-2');
-    expect(strip[4].args[1]).toMatchObject({ form: null, morphType: null, prov: null });
-    expect(strip[5].args).toEqual(['m-3']);
-    // g-3 (on the deleted morpheme) is NOT queued: a double delete fails the batch.
-    expect(strip.some((c) => c.kind === 'spans.delete' && c.args[0] === 'g-3')).toBe(false);
+    expect(strip[1].args[0]).toEqual(['l-1']); // on m-2
+    expect(strip[2].args[0]).toEqual(['p-2', 'g-2']); // the word's, then m-2's
+    expect(strip[3].args[0]).toEqual(['m-3']);
+    expect(strip[4].args[0]).toHaveLength(1);
+    expect(strip[4].args[0][0].id).toBe('m-2'); // reset m-2
+    expect(strip[4].args[0][0].metadata).toMatchObject({
+      form: null,
+      morphType: null,
+      prov: null,
+    });
+    // g-3 (on the deleted morpheme) is NOT sent: a double delete fails the batch.
+    expect(strip[2].args[0]).not.toContain('g-3');
 
     // Apply phase (after the reload): the link, the gloss and the POS, with
-    // NO provenance stamp.
+    // NO provenance stamp. Spans go one bulk create per LAYER.
     const apply = client.calls.slice(kinds.indexOf('batch.submit') + 1);
     const applyKinds = apply.map((c) => c.kind).filter((k) => k !== 'batch.submit');
-    expect(applyKinds).toEqual(['vocabLinks.create', 'spans.create', 'spans.create']);
-    expect(apply.find((c) => c.kind === 'vocabLinks.create').args).toEqual(['i-kat', ['m-2'], {}]);
-    const gloss = apply.find((c) => c.kind === 'spans.create' && c.args[0] === 'msl-0');
-    expect(gloss.args).toEqual(['msl-0', ['m-2'], 'cat', {}]);
-    const pos = apply.find((c) => c.kind === 'spans.create' && c.args[0] === 'wsl-0');
-    expect(pos.args).toEqual(['wsl-0', ['w-2'], 'N', {}]);
-    // The first morpheme's form equals the word surface, so no metadata patch.
-    expect(apply.some((c) => c.kind === 'tokens.patchMetadata')).toBe(false);
+    expect(applyKinds).toEqual(['vocabLinks.bulkCreate', 'spans.bulkCreate', 'spans.bulkCreate']);
+    expect(apply.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0]).toEqual([
+      { vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
+    ]);
+    const spanSpecs = apply.filter((c) => c.kind === 'spans.bulkCreate').flatMap((c) => c.args[0]);
+    expect(spanSpecs).toEqual([
+      { spanLayerId: 'msl-0', tokens: ['m-2'], value: 'cat', metadata: {} },
+      { spanLayerId: 'wsl-0', tokens: ['w-2'], value: 'N', metadata: {} },
+    ]);
+    // The first morpheme's form equals the word surface, so no metadata patch,
+    // and the analysis has one slot, so no morpheme is created.
+    expect(applyKinds).not.toContain('tokens.bulkUpdate');
+    expect(applyKinds).not.toContain('tokens.bulkCreate');
   });
 
   it('skips words that already carry exactly the target analysis', async () => {
@@ -130,10 +139,8 @@ describe('bulkReplaceAnalyses', () => {
     const doc = docFor(strippedRaw(), client);
     expect(await doc.applyAnalysisToWords(['w-2'], targetAnalysis)).toBe(1);
     expect(client.calls[0]).toEqual({ kind: 'beginOperation', args: ['Analyze words'] });
-    expect(client.calls.find((c) => c.kind === 'vocabLinks.create').args).toEqual([
-      'i-kat',
-      ['m-2'],
-      {},
+    expect(client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate').args[0]).toEqual([
+      { vocabItem: 'i-kat', tokens: ['m-2'], metadata: {} },
     ]);
 
     const busy = clientFor();
@@ -171,8 +178,11 @@ describe('bulkReplaceAnalyses', () => {
       'rule:test',
     );
     expect(n).toBe(1);
-    const link = client.calls.find((c) => c.kind === 'vocabLinks.create');
-    expect(link.args[2]).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
+    const link = client.calls.find((c) => c.kind === 'vocabLinks.bulkCreate');
+    expect(link.args[0][0].metadata).toMatchObject({
+      prov: 'inferred',
+      provSource: 'rule:test',
+    });
     expect(client.calls[0]).toEqual({
       kind: 'beginOperation',
       args: ['Copy previous analyses'],
@@ -198,18 +208,28 @@ describe('analysis prediction extras', () => {
     expect(
       await doc.bulkApplyAnalyses([{ wordTokenId: 'w-2', analysis: twoMorphs }], 'rule:test'),
     ).toBe(1);
-    const spans = client.calls.filter((c) => c.kind === 'spans.create');
-    expect(spans.map((c) => [c.args[2], c.args[3].provDetail])).toEqual([
+    const spans = client.calls
+      .filter((c) => c.kind === 'spans.bulkCreate')
+      .flatMap((c) => c.args[0]);
+    expect(spans.map((s) => [s.value, s.metadata.provDetail])).toEqual([
       ['cat', { value: 'cat' }],
       ['N', { value: 'N' }],
       ['PL', { value: 'PL' }],
     ]);
-    for (const c of spans)
-      expect(c.args[3]).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
-    const m0 = client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(m0.args[1]).toMatchObject({ form: 'ka', prov: 'inferred', provDetail: { form: 'ka' } });
-    const m1 = client.calls.find((c) => c.kind === 'tokens.create');
-    expect(m1.args[5]).toMatchObject({ form: 't', morphType: 'suffix', provDetail: { form: 't' } });
+    for (const s of spans)
+      expect(s.metadata).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
+    const m0 = client.calls.find((c) => c.kind === 'tokens.bulkUpdate').args[0][0];
+    expect(m0.metadata).toMatchObject({
+      form: 'ka',
+      prov: 'inferred',
+      provDetail: { form: 'ka' },
+    });
+    const m1 = client.calls.find((c) => c.kind === 'tokens.bulkCreate').args[0][0];
+    expect(m1.metadata).toMatchObject({
+      form: 't',
+      morphType: 'suffix',
+      provDetail: { form: 't' },
+    });
   });
 
   it('bulkReplaceAnalyses (a human choice) records no provenance at all', async () => {
@@ -217,11 +237,15 @@ describe('analysis prediction extras', () => {
     const doc = docFor(strippedRaw(), client);
     expect(await doc.bulkReplaceAnalyses([{ wordTokenId: 'w-2', analysis: twoMorphs }])).toBe(1);
     // (the strip phase resets prov keys to null, which is not a stamp)
-    const provKeyed = client.calls.filter((c) =>
-      c.args.some(
-        (a) => a && typeof a === 'object' && !Array.isArray(a) && (a.prov || a.provDetail),
-      ),
-    );
-    expect(provKeyed).toEqual([]);
+    // Walks INTO the bulk bodies: every write here hands the client an array of
+    // entries, so a check that only looked at top-level args would pass by
+    // seeing nothing at all.
+    const stamped = (v) => {
+      if (Array.isArray(v)) return v.some(stamped);
+      if (!v || typeof v !== 'object') return false;
+      if (v.prov || v.provDetail) return true;
+      return Object.values(v).some(stamped);
+    };
+    expect(client.calls.filter((c) => stamped(c.args))).toEqual([]);
   });
 });

@@ -24,13 +24,15 @@ import {
   chunk,
 } from './bulkPlan.js';
 
-// Ops per atomic batch: comfortably under plaid-core's 1000-op cap.
-// Ops per batch. A batch is ONE server transaction holding the single SQLite
-// write lock until it commits, and every sub-op re-dispatches the whole REST
-// stack inside that hold — so this bounds how long a concurrent writer waits
-// before the server's busy_timeout refuses it with a 503, not just the number
-// of round trips.
-const BATCH_CHUNK = 200;
+// Entities per bulk request. Every write here goes to a bulk endpoint, which
+// dispatches the REST stack ONCE and does the work set-wise, rather than a
+// batch of one op per entity — a batch re-dispatches routing, auth, the ACL
+// lookup and an operation per sub-op, all while holding the single SQLite
+// write lock. What this bounds is that hold: a request is one transaction, and
+// a writer arriving mid-request waits, then is refused with a 503 once the
+// server's busy_timeout runs out. Same number and same reason as the
+// importers' `CHUNK` (src/import/bulk.js).
+const BULK_CHUNK = 500;
 
 // Documents with at least one server-side match for `domain`/`spec`, busiest
 // first: [[docId, count], ...].
@@ -91,9 +93,11 @@ export async function planRespell(
 }
 
 // Apply selected respell rows. Per document: one text update carrying every
-// selected whole-token replace (plus that document's morpheme-form patches)
-// in one atomic batch. Lexicon entries follow in their own batches. Returns
-// { docsChanged, wordsChanged, morphemesChanged, entriesChanged }.
+// selected whole-token replace, and the morpheme forms it renames, in one
+// atomic batch of two ops however many morphemes there are — the text edit
+// and the forms that spell the same words must land together or the document
+// reads as half respelled. Lexicon entries follow in their own requests.
+// Returns { docsChanged, wordsChanged, morphemesChanged, entriesChanged }.
 export async function applyRespell(
   client,
   { rows, lexiconRows },
@@ -105,30 +109,28 @@ export async function applyRespell(
     byDoc.get(r.docId).push(r);
   }
   const out = { docsChanged: 0, wordsChanged: 0, morphemesChanged: 0, entriesChanged: 0 };
+  const formPatches = (part) => part.map((m) => ({ id: m.id, metadata: { form: m.new } }));
 
   await client.withOperation(label, async () => {
     for (const docRows of byDoc.values()) {
       const textId = docRows[0].textId;
       const morphPatches = includeMorphemes ? docRows.flatMap((r) => r.morphemes) : [];
-      // The text update is one op; morpheme patches fill the rest of the
-      // first batch and spill into further batches for a huge document.
-      const parts = chunk(morphPatches, BATCH_CHUNK - 1);
-      if (!parts.length) parts.push([]);
-      for (let i = 0; i < parts.length; i++) {
-        await client.batched(async (b) => {
-          if (i === 0) b.texts.update(textId, respellOps(docRows));
-          parts[i].forEach((m) => b.tokens.patchMetadata(m.id, { form: m.new }));
-        });
-      }
+      // A document with more morpheme forms than one request should carry
+      // sends the rest after: the first chunk is the one that has to be
+      // atomic with the text edit.
+      const [first, ...rest] = chunk(morphPatches, BULK_CHUNK);
+      await client.batched(async (b) => {
+        b.texts.update(textId, respellOps(docRows));
+        if (first?.length) b.tokens.bulkUpdate(formPatches(first));
+      });
+      for (const part of rest) await client.tokens.bulkUpdate(formPatches(part));
       out.docsChanged += 1;
       out.wordsChanged += docRows.length;
       out.morphemesChanged += morphPatches.length;
     }
     if (includeLexicon) {
-      for (const part of chunk(lexiconRows, BATCH_CHUNK)) {
-        await client.batched(async (b) => {
-          part.forEach((r) => b.vocabItems.update(r.id, r.new));
-        });
+      for (const part of chunk(lexiconRows, BULK_CHUNK)) {
+        await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
         out.entriesChanged += part.length;
       }
     }
@@ -145,17 +147,20 @@ export async function planField(client, project, target, { find, matchType, appl
   return { rows, docs };
 }
 
-// Span value updates (or morpheme-form patches) in atomic batches.
+// Span values, or morpheme forms, in bulk. Both bulk updates reach across
+// documents within the project, so a replace touching a thousand values in
+// fifty documents is a couple of requests rather than a couple of hundred.
 export async function applyField(client, { rows }, { label }) {
   let changed = 0;
+  const morphRows = rows.filter((r) => r.kind === 'morphForm');
+  const spanRows = rows.filter((r) => r.kind !== 'morphForm');
   await client.withOperation(label, async () => {
-    for (const part of chunk(rows, BATCH_CHUNK)) {
-      await client.batched(async (b) => {
-        for (const r of part) {
-          if (r.kind === 'morphForm') b.tokens.patchMetadata(r.id, { form: r.new });
-          else b.spans.update(r.id, r.new);
-        }
-      });
+    for (const part of chunk(spanRows, BULK_CHUNK)) {
+      await client.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
+      changed += part.length;
+    }
+    for (const part of chunk(morphRows, BULK_CHUNK)) {
+      await client.tokens.bulkUpdate(part.map((r) => ({ id: r.id, metadata: { form: r.new } })));
       changed += part.length;
     }
   });
@@ -242,22 +247,36 @@ export async function planMerge(client, project, vocabId, loserIds, onProgress) 
 // Recreate each link on the survivor, repoint every entry that referred to a
 // loser (a dictionary's senses and reference fields, see planMergeRefs),
 // then delete the losing entries (their old links cascade away server-side).
-// Under one operation. `refPatches` is `[{id, metadata}]`, whole metadata
-// maps, written the way the entry editor writes them.
+// Under one operation. `refUpdates` is `[{id, metadata}]` where the metadata
+// is a PATCH, as `metadataUpdates` builds it from planMergeRefs' whole maps.
+//
+// Link creates go per document: a bulk vocab-link create takes tokens from
+// one document, and a merge harvests links from every document that used the
+// losing entries.
 export async function applyMerge(
   client,
-  { links, refPatches = [] },
+  { links, refUpdates = [] },
   { survivorId, loserIds, label },
 ) {
+  const byDoc = new Map();
+  for (const l of links) {
+    if (!byDoc.has(l.docId)) byDoc.set(l.docId, []);
+    byDoc.get(l.docId).push(l);
+  }
   await client.withOperation(label, async () => {
-    for (const part of chunk(links, BATCH_CHUNK)) {
-      await client.batched(async (b) => {
-        part.forEach((l) => b.vocabLinks.create(survivorId, l.tokens, l.metadata || undefined));
-      });
+    for (const docLinks of byDoc.values()) {
+      for (const part of chunk(docLinks, BULK_CHUNK)) {
+        await client.vocabLinks.bulkCreate(
+          part.map((l) => ({
+            vocabItem: survivorId,
+            tokens: l.tokens,
+            ...(l.metadata ? { metadata: l.metadata } : {}),
+          })),
+        );
+      }
     }
-    for (const p of refPatches) {
-      if (Object.keys(p.metadata).length) await client.vocabItems.setMetadata(p.id, p.metadata);
-      else await client.vocabItems.deleteMetadata(p.id);
+    for (const part of chunk(refUpdates, BULK_CHUNK)) {
+      await client.vocabItems.bulkUpdate(part);
     }
     await client.vocabItems.bulkDelete(loserIds);
   });
@@ -266,6 +285,6 @@ export async function applyMerge(
     entriesRemoved: loserIds.length,
     // The survivor can be in here too, when its own parent was one of the
     // losers. It does not point at itself, so it is not counted.
-    entriesRepointed: refPatches.filter((p) => p.id !== survivorId).length,
+    entriesRepointed: refUpdates.filter((p) => p.id !== survivorId).length,
   };
 }
