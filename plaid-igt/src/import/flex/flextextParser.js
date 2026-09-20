@@ -411,9 +411,14 @@ function readText(it, census, warnings, fileLabel) {
     if (known.has(type) || SILENT_TEXT_ITEMS.has(type)) continue;
     census.skip(type === 'notebook-record' ? 'Notebook records' : `“${type}” on texts`);
   }
-  const genres = ofType('genre')
-    .map((i) => valueOf(i).trim())
-    .filter(Boolean);
+  // FLEx names a genre once per writing system, so reading every item made a
+  // genre per language rather than per genre ("Narrative" and "Récit" as two).
+  // One language's list is the list, and the first one seen is that language.
+  const genreItems = ofType('genre').filter((i) => valueOf(i).trim());
+  const genreLang = genreItems[0]?.attrs?.lang ?? null;
+  const genres = genreItems
+    .filter((i) => (i.attrs.lang ?? null) === genreLang)
+    .map((i) => valueOf(i).trim());
   const media = kids(kid(it, 'media-files'), 'media').length;
   if (media) census.skip('Media files', media);
 

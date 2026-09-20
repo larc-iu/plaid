@@ -140,6 +140,19 @@ async function executeProjectSetupImpl({
   if (textLayerId) {
     const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
 
+    // A layer an interrupted run left behind: made, but not yet told what it
+    // is (the create landed and its answer did not). Nothing else makes a
+    // layer of this name here, so it is adopted and tagged rather than made
+    // a second time.
+    const untagged = (name, overlapMode, parentId) =>
+      existingTokenLayers.find(
+        (l) =>
+          l.name === name &&
+          !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY] &&
+          (l.overlapMode ?? null) === (overlapMode ?? null) &&
+          (l.parentTokenLayer ?? l.parentTokenLayerId ?? null) === (parentId ?? null),
+      ) || null;
+
     const ensureTokenLayer = async (
       found,
       role,
@@ -150,18 +163,27 @@ async function executeProjectSetupImpl({
       pct,
       msg,
     ) => {
-      if (found) return found.id;
-      updateProgress(pct, msg);
-      const layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-      resources[resourceKey] = layer;
-      await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
+      let layer = found || untagged(name, overlapMode, parentId);
+      if (!layer) {
+        updateProgress(pct, msg);
+        layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
+        resources[resourceKey] = layer;
+      }
+      const config = layer.config?.[PLAID_NAMESPACE] || {};
+      if (config[ROLE_KEY] !== role) {
+        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, ROLE_KEY, role);
+      }
       // Provenance survives a split, including one made by another app that
       // has never heard of these keys. See the manual's "Metadata Preserved
       // Across a Split" for why the layer has to say so rather than each app
-      // remembering at each call site.
-      await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
-        ...PROVENANCE_KEYS,
-      ]);
+      // remembering at each call site. Written whenever it is missing, so a
+      // run that stopped between the two config writes is put right rather
+      // than leaving the layer without it for good.
+      if (!Array.isArray(config[PRESERVE_ON_SPLIT_KEY])) {
+        await client.tokenLayers.setConfig(layer.id, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+          ...PROVENANCE_KEYS,
+        ]);
+      }
       return layer.id;
     };
 
