@@ -82,7 +82,9 @@ export const TokenRow = React.memo(function TokenRow({
                         {block.lines.map((line) => (
                           <span
                             key={line.key}
-                            className="umr-word-gloss"
+                            className={`umr-word-gloss${
+                              line.key === 'morphemes' ? ' umr-morph-form' : ''
+                            }`}
                             dir="auto"
                             title={line.header}
                           >

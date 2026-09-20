@@ -325,23 +325,43 @@
 .umr-morphemes {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
+  /* Half the gap each side of the zero-width joiner below. */
+  gap: 5px;
 }
 .umr-morph-col {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   /* The word column's own gap, so the names in the margin stay level. */
   gap: 1px;
 }
-/* The joint between two morphemes, '-' or '=' by their morph types. Level
-   with the forms, which is the line it joins, and quiet enough not to read
-   as a morpheme of its own. */
+/* The form itself, on a chip, so a word reads as the pieces it is made of
+   rather than as text with dashes in it. plaid-igt's grid shades the form
+   and leaves the lines under it plain, and this follows it. */
+.umr-morph-form {
+  background: hsl(var(--muted) / 0.7);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+/* The joint between two morphemes, '-' or '=' by their morph types. Zero
+   width and centered, so the glyph straddles the gap between the two chips
+   it joins rather than belonging to either, and lifted above the next chip's
+   background, which would otherwise paint over half of it. Level with the
+   forms, which is the line it joins. */
 .umr-morph-joiner {
+  flex: none;
+  width: 0;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.1rem;
   font-size: 0.75rem;
   line-height: 1.1rem;
-  color: hsl(var(--muted-foreground) / 0.55);
+  color: hsl(var(--muted-foreground) / 0.7);
   user-select: none;
+  pointer-events: none;
 }
 .umr-ilg-row {
   position: relative;
