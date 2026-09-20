@@ -59,11 +59,16 @@ class ModelConfig:
 
 PING_TIMEOUT_S = 30
 # The ping's own token budget. A REASONING model spends its first tokens
-# thinking, so a budget of a handful comes back with finish_reason 'length'
-# and no content at all: the ping then proves only that the provider answers,
-# not that it can finish a sentence. Measured on gpt-oss-120b, which returns
-# nothing at 8 and "pong" at 64.
-PING_MAX_TOKENS = 64
+# thinking, so a small budget comes back with finish_reason 'length' and no
+# content at all: the ping then proves only that the provider answers, not
+# that it can finish a sentence. Measured on the word "ping": gpt-oss-120b
+# answers at 8 and up, glm-5.2 spends 191 tokens thinking about it and
+# returns nothing until 256.
+#
+# An answer with no content is still accepted, because no budget is proof
+# against a model that thinks for longer. This one is only large enough that
+# an ordinary one gets a word out.
+PING_MAX_TOKENS = 256
 
 
 class ModelTooSlow(Exception):

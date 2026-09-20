@@ -24,9 +24,9 @@ def test_ping_asks_the_configured_model_with_the_operators_base_and_key(monkeypa
     ping_model(cfg(api_base='http://gpu-box:8000/v1', api_key='k'), timeout=5)
     assert (seen['model'], seen['api_base'], seen['api_key']) == ('openai/x', 'http://gpu-box:8000/v1', 'k')
     # Bounded, but not so tight that a reasoning model spends the whole budget
-    # thinking and answers with nothing: at 8 tokens gpt-oss-120b comes back
-    # finish_reason 'length' and no content, so the ping proves nothing.
-    assert seen['timeout'] == 5 and seen['max_tokens'] == 64 and len(seen['messages']) == 1
+    # thinking and answers with nothing: on the word "ping" glm-5.2 uses 191
+    # tokens thinking and says nothing at all below 256.
+    assert seen['timeout'] == 5 and seen['max_tokens'] == 256 and len(seen['messages']) == 1
 
     # Nothing configured: litellm reads the provider's own environment.
     seen.clear()
