@@ -19,6 +19,10 @@ const ir = {
     literalTranslation: [],
     note: ['en'],
   },
+  // A category is named in each analysis writing system. This file names
+  // its categories in English, whatever its glosses are in.
+  posWss: ['en'],
+  posWs: 'en',
 };
 
 const build = {
@@ -61,13 +65,13 @@ const build = {
           end: 2,
           forms: { [BASE_WS]: 'за', [TRANS_WS]: 'za' },
           gloss: { en: 'I-ERG' },
-          pos: 'pro',
+          pos: { en: 'pro' },
           approved: true,
           morphemes: [
             {
               forms: { [BASE_WS]: 'за' },
               gloss: { en: '1sg' },
-              pos: 'pers',
+              pos: { en: 'pers' },
               morphType: 'stem',
               senseGuid: 's1',
               entryGuid: 'e1',
@@ -90,7 +94,7 @@ const build = {
           end: 10,
           forms: { [BASE_WS]: 'мах' },
           gloss: { en: 'tale?' },
-          pos: 'n',
+          pos: { en: 'n' },
           approved: false,
           machineAgents: ['M3Parser'],
           morphemes: [
@@ -117,7 +121,7 @@ const lexicon = [
     citationForm: null,
     morphType: 'stem',
     homograph: 0,
-    senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: 'pers' }],
+    senses: [{ guid: 's1', gloss: { en: '1sg' }, definition: null, pos: { en: 'pers' } }],
   },
   {
     guid: 'e2',
@@ -133,13 +137,19 @@ const lexicon = [
         senseIndex: 0,
         gloss: { en: 'tale', ru: 'сказка' },
         definition: { en: 'a traditional tale' },
-        pos: 'n',
+        pos: { en: 'n' },
         custom: { 'Parsing Note': 'check' },
         extra: { GeneralNote: { en: 'rare', ru: 'редко' } },
         examples: [{ text: { [BASE_WS]: 'мах ава' }, translations: [{ en: 'there is a tale' }] }],
       },
-      { guid: 's3', gloss: { en: 'story' }, pos: 'n', senseIndex: 1 },
-      { guid: 's3a', gloss: { en: 'short story' }, pos: 'n', parentSense: 's3', senseIndex: 0 },
+      { guid: 's3', gloss: { en: 'story' }, pos: { en: 'n' }, senseIndex: 1 },
+      {
+        guid: 's3a',
+        gloss: { en: 'short story' },
+        pos: { en: 'n' },
+        parentSense: 's3',
+        senseIndex: 0,
+      },
     ],
   },
 ];
@@ -283,11 +293,36 @@ describe('deriveImportConfig', () => {
     const withEn = deriveImportConfig(ir, build);
     expect(withEn.fields.find((f) => f.kind === 'wordPos').ws).toBe('en');
     expect(withEn.fields.find((f) => f.kind === 'morphPos').ws).toBe('en');
-    const noEn = deriveImportConfig(
+    // The categories' own language, not the glosses': a file glossed in ru
+    // alone still gets an English POS field when that is what its categories
+    // are named in.
+    const ruOnly = deriveImportConfig(
       { ...ir, writingSystems: { ...ir.writingSystems, analysis: ['ru'] } },
       build,
     );
-    expect(noEn.fields.find((f) => f.kind === 'wordPos').ws).toBe('ru');
+    expect(ruOnly.fields.find((f) => f.kind === 'wordPos').ws).toBe('en');
+  });
+
+  // One FLEx category wears a name in every analysis writing system, so the
+  // import reads one of them and the review screen says which.
+  it('reads the parts of speech in the language it is asked for', () => {
+    const bilingual = {
+      ...ir,
+      posWss: ['en', 'ru'],
+      posWs: 'en',
+    };
+    const ruBuild = {
+      ...build,
+      documents: build.documents.map((d) => ({
+        ...d,
+        words: d.words.map((w) => (w.pos ? { ...w, pos: { ...w.pos, ru: 'мест' } } : w)),
+      })),
+    };
+    const config = deriveImportConfig(bilingual, ruBuild, { posWs: 'ru' });
+    expect(config.posWs).toBe('ru');
+    expect(config.fields.find((f) => f.kind === 'wordPos').ws).toBe('ru');
+    // A language the file does not name its categories in is ignored.
+    expect(deriveImportConfig(bilingual, ruBuild, { posWs: 'de' }).posWs).toBe('en');
   });
 
   // No analysis language is the default one. With en and ru both in use,

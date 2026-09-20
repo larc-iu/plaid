@@ -80,6 +80,9 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const [orthoNames, setOrthoNames] = useState({}); // ws → display name
   const [selectedTexts, setSelectedTexts] = useState(new Set()); // doc guids
   const [selectedWss, setSelectedWss] = useState(new Set()); // analysis ws tags
+  // A FLEx category is one thing named in each analysis writing system, so
+  // one of those names is imported rather than all of them.
+  const [posWs, setPosWs] = useState(null);
   const [selectedLexFields, setSelectedLexFields] = useState(new Set()); // FLEx field names
   // Where the lexicon goes: a new vocab (named here; null = the default name
   // until edited) or one of the existing vocabs this user maintains.
@@ -161,6 +164,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       setOrthoNames(Object.fromEntries(build.orthographyWss.map((ws) => [ws, ws])));
       setSelectedTexts(new Set(build.documents.map((d) => d.guid)));
       setSelectedWss(new Set(analysisWssAvailable));
+      setPosWs(ir.posWs ?? null);
       // Every other lexicon field the file has values for starts ticked. The
       // parser only reports fields with non-empty text, so this is "keep what
       // is there": an unticked default cost the CLDF importer its POS tier
@@ -200,6 +204,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       known(resumeChoices.texts, new Set(parsed.build.documents.map((d) => d.guid))),
     );
     setSelectedWss(known(resumeChoices.analysisWss, new Set(parsed.analysisWssAvailable)));
+    if ((parsed.ir.posWss ?? []).includes(resumeChoices.posWs)) setPosWs(resumeChoices.posWs);
     setSelectedLexFields(
       known(resumeChoices.lexiconFields, new Set(parsed.ir.lexiconFields.map((f) => f.name))),
     );
@@ -224,12 +229,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       parsed &&
       deriveImportConfig(parsed.ir, filteredBuild, {
         analysisWss: [...selectedWss],
+        posWs,
         lexiconFields: [...selectedLexFields],
         // A resume heals what an earlier run left unplaced; a fresh import
         // into a lexicon already arranged leaves that arrangement alone.
         resume: !!resumeId,
       }),
-    [parsed, filteredBuild, selectedWss, selectedLexFields, resumeId],
+    [parsed, filteredBuild, selectedWss, posWs, selectedLexFields, resumeId],
   );
 
   // Entries FLEx marks as a variant of, or a complex form built from, others.
@@ -267,6 +273,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       choices: {
         texts: [...selectedTexts],
         analysisWss: [...selectedWss],
+        posWs,
         lexiconFields: [...selectedLexFields],
         orthoNames,
         importVariants,
@@ -721,6 +728,30 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                             return next;
                           })
                         }
+                      />
+                      <code className="text-xs">{ws}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(parsed.ir.posWss?.length ?? 0) > 1 && (
+              <div className="rounded-lg border bg-card p-4">
+                <p className="mb-1 font-medium">Part-of-speech language</p>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Categories are named in these languages. Words, morphemes and entries take the
+                  name in the one selected.
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {parsed.ir.posWss.map((ws) => (
+                    <label key={ws} className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="posWs"
+                        checked={posWs === ws}
+                        disabled={locked}
+                        onChange={() => setPosWs(ws)}
                       />
                       <code className="text-xs">{ws}</code>
                     </label>

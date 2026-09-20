@@ -245,7 +245,7 @@ export const pickEn = (m) => (m == null ? null : (m.en ?? Object.values(m)[0] ??
  * Returns {
  *   version, writingSystems: {vernacular, analysis},
  *   wsUsage: {wordForms, wordGloss, morphGloss, freeTranslation, literalTranslation, note},
- *   texts, lexicon, lexiconFields, customFields, warnings
+ *   posWss, posWs, texts, lexicon, lexiconFields, customFields, warnings
  * }
  */
 export function parseFwdata(xml) {
@@ -270,10 +270,21 @@ export function parseFwdata(xml) {
   };
 
   // Shared lookups
+  // A category is ONE object with a name in each analysis writing system, so
+  // its label is kept per writing system and the import reads the one it is
+  // told to, as a .flextext's repeated `pos` items are. FLEx shows the
+  // abbreviation in interlinear and the name where there is no abbreviation.
+  const posWsSeen = new Set();
   const posAbbrev = (guid) => {
     const p = get(guid, guid && 'PartOfSpeech');
     if (!p) return null;
-    return pickEn(multiUni(p, 'Abbreviation')) ?? pickEn(multiUni(p, 'Name'));
+    const out = {};
+    for (const m of [multiUni(p, 'Name'), multiUni(p, 'Abbreviation')]) {
+      for (const [ws, v] of Object.entries(m ?? {})) if (v) out[ws] = v;
+    }
+    if (!Object.keys(out).length) return null;
+    for (const ws of Object.keys(out)) posWsSeen.add(ws);
+    return out;
   };
   const morphTypeName = (guid) => {
     const m = guid == null ? null : byGuid.get(guid);
@@ -606,9 +617,19 @@ export function parseFwdata(xml) {
     .map((st) => ({ ...st, wss: [...st.wss] }))
     .sort((a, b) => b.entries + b.senses - (a.entries + a.senses) || a.name.localeCompare(b.name));
 
+  // The writing systems the categories are named in, the project's own
+  // analysis order first. English is the default because a FLEx category's
+  // abbreviation is usually written in it, whatever the glosses are in.
+  const posWss = [
+    ...writingSystems.analysis.filter((ws) => posWsSeen.has(ws)),
+    ...[...posWsSeen].filter((ws) => !writingSystems.analysis.includes(ws)),
+  ];
+
   return {
     version,
     writingSystems,
+    posWss,
+    posWs: posWss.includes('en') ? 'en' : (posWss[0] ?? null),
     wsUsage: Object.fromEntries(Object.entries(usage).map(([k, v]) => [k, [...v]])),
     texts,
     lexicon,

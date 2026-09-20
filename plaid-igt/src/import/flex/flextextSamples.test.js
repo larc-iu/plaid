@@ -65,7 +65,11 @@ describe.skipIf(!existsSync(FLEXTEXT) || !existsSync(BACKUP))('lezgi.flextext', 
       d.words.forEach((w, i) => {
         const was = o.words[i];
         if (was.gloss?.en) expect([w.gloss?.en, d.name]).toEqual([expect.any(String), d.name]);
-        if (was.pos) expect(w.pos).toBe(was.pos);
+        // A category is named per writing system on both sides. The backup
+        // holds every name FieldWorks has for it, the .flextext only the
+        // ones it was exported with, so the backup contains what the file
+        // read and agrees on each.
+        if (was.pos && w.pos) expect(was.pos).toMatchObject(w.pos);
         if (was.morphemes?.length && morphs(w) !== morphs(was)) revised += 1;
       });
     }

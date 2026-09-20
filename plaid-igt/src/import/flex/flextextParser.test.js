@@ -206,7 +206,7 @@ describe('parseFlextext', () => {
       surface: 'Kici',
       forms: { xx: 'Kici', 'xx-Latn': 'Kitsi' },
       gloss: { en: 'dog' },
-      pos: 'n',
+      pos: { en: 'n' },
       approved: true,
       machineAgents: [],
     });
@@ -214,7 +214,7 @@ describe('parseFlextext', () => {
       {
         forms: { xx: 'kic' },
         gloss: { en: 'dog' },
-        pos: 'n',
+        pos: { en: 'n' },
         morphType: 'stem',
         senseGuid: null,
         entryGuid: null,
@@ -365,8 +365,8 @@ describe('a .flextext Plaid wrote, read back', () => {
     expect(doc.body).toBe('perros corren.');
     expect(doc.name).toBe('Test & Doc');
     expect(doc.words.map((x) => [x.forms.spa, x.pos])).toEqual([
-      ['perros', 'NOUN'],
-      ['corren', 'VERB'],
+      ['perros', { en: 'NOUN' }],
+      ['corren', { en: 'VERB' }],
     ]);
     expect(doc.words[0].forms['spa-x-translit']).toBe('perros-translit');
     expect(doc.words[0].morphemes.map((m) => [m.forms.spa, m.morphType, m.gloss?.en])).toEqual([
@@ -380,5 +380,75 @@ describe('a .flextext Plaid wrote, read back', () => {
 
   it('counts the lexical entries it leaves behind', () => {
     expect(ir.unread).toEqual([{ label: 'Lex. Entries', count: 1 }]);
+  });
+});
+
+// A FLEx category is ONE thing with a name in each analysis writing system,
+// and an export writes out every one the project has turned on. Both names
+// are read so the import can be told which to take, and the one it leaves is
+// counted as unread.
+describe('a category named in more than one writing system', () => {
+  const XML = `<?xml version="1.0" encoding="utf-8"?>
+<document version="2">
+  <interlinear-text guid="t-1">
+    <item type="title" lang="en">Two names</item>
+    <paragraphs><paragraph><phrases><phrase>
+      <words>
+        <word>
+          <item type="txt" lang="pmy">makan</item>
+          <item type="gls" lang="en">eat</item>
+          <item type="pos" lang="en">v</item>
+          <item type="pos" lang="id">kt.kerja</item>
+          <morphemes>
+            <morph type="stem">
+              <item type="txt" lang="pmy">makan</item>
+              <item type="gls" lang="en">eat</item>
+              <item type="msa" lang="en">v</item>
+              <item type="msa" lang="id">kt.kerja</item>
+            </morph>
+          </morphemes>
+        </word>
+      </words>
+      <item type="gls" lang="en">eat</item>
+    </phrase></phrases></paragraph></paragraphs>
+    <languages>
+      <language lang="pmy" vernacular="true" />
+      <language lang="en" />
+      <language lang="id" />
+    </languages>
+  </interlinear-text>
+</document>`;
+  const ir = parseFlextextFiles([{ name: 'two.flextext', xml: XML }]);
+  const build = buildDocuments(ir);
+  const [word] = build.documents[0].words;
+
+  it('keeps every name, and offers them most used first', () => {
+    expect(word.pos).toEqual({ en: 'v', id: 'kt.kerja' });
+    expect(word.morphemes[0].pos).toEqual({ en: 'v', id: 'kt.kerja' });
+    expect(ir.posWss).toEqual(['en', 'id']);
+    expect(ir.posWs).toBe('en');
+  });
+
+  it('counts the name it does not read as unread', () => {
+    expect(ir.unread).toContainEqual({
+      label: 'Parts of speech in another writing system',
+      count: 2,
+    });
+  });
+
+  it('reads the one the import is told to, on words and morphemes alike', () => {
+    for (const [ws, value] of [
+      ['en', 'v'],
+      ['id', 'kt.kerja'],
+    ]) {
+      const config = deriveImportConfig(ir, build, { posWs: ws });
+      expect(config.posWs).toBe(ws);
+      expect(config.fields.filter((f) => f.kind.endsWith('Pos')).map((f) => f.ws)).toEqual([
+        ws,
+        ws,
+      ]);
+      expect(word.pos[ws]).toBe(value);
+      expect(word.morphemes[0].pos[ws]).toBe(value);
+    }
   });
 });

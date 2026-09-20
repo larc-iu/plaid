@@ -162,7 +162,7 @@ function readMorph(m, census) {
   let raw = null;
   let formLang = null;
   const gloss = {};
-  let pos = null;
+  const pos = {};
   let lexical = false;
   let guessed = null;
   for (const item of kids(m, 'item')) {
@@ -182,10 +182,12 @@ function readMorph(m, census) {
       }
     } else if (type === 'msa') {
       if (!v) continue;
-      if (pos == null) {
-        pos = v;
+      // Each writing system's name for the one category, as on words.
+      if (Object.keys(pos).length) census.skip('Parts of speech in another writing system');
+      if (pos[lang] == null) {
+        pos[lang] = v;
         census.use('pos', lang);
-      } else census.skip('Parts of speech in another writing system');
+      }
     } else if (type === 'cf' || type === 'hn') lexical = true;
     else if (type === 'variantTypes') census.skip('Variant Types');
     else census.skip(`“${type}” on morphemes`);
@@ -196,7 +198,7 @@ function readMorph(m, census) {
     morph: {
       forms: form ? { [formLang ?? '']: form } : null,
       gloss: Object.keys(gloss).length ? gloss : null,
-      pos,
+      pos: Object.keys(pos).length ? pos : null,
       morphType,
       senseGuid: null,
       entryGuid: null,
@@ -218,7 +220,7 @@ function readWord(w, census, vernaculars = []) {
   let firstLang = null;
   const forms = {};
   const gloss = {};
-  let pos = null;
+  const pos = {};
   const guesses = new Set();
   for (const item of kids(w, 'item')) {
     const { type, lang } = item.attrs;
@@ -246,13 +248,15 @@ function readWord(w, census, vernaculars = []) {
       }
     } else if (type === 'pos') {
       if (!v) continue;
-      // One part of speech a word, in the writing system the file names them
-      // in first. A second one is another writing system's name for the same
-      // category, and it is counted as unread rather than dropped in silence.
-      if (pos == null) {
-        pos = v;
+      // One part of speech a word. A second item is another writing system's
+      // name for the same FLEx category, so each is kept under its own tag
+      // and the import reads whichever the review screen was set to. The
+      // ones it leaves are counted as unread.
+      if (Object.keys(pos).length) census.skip('Parts of speech in another writing system');
+      if (pos[lang] == null) {
+        pos[lang] = v;
         census.use('pos', lang);
-      } else census.skip('Parts of speech in another writing system');
+      }
     } else census.skip(`“${type}” on words`);
   }
   if (!first) return null;
@@ -315,7 +319,7 @@ function readWord(w, census, vernaculars = []) {
       surface: first.text,
       forms,
       gloss: Object.keys(gloss).length ? gloss : null,
-      pos,
+      pos: Object.keys(pos).length ? pos : null,
       approved: machineAgents.length === 0,
       machineAgents,
       morphemes: morphemes ?? (machineAgents.length ? [] : null),
@@ -624,6 +628,9 @@ export function parseFlextextFiles(files) {
     lexicon: [],
     lexiconFields: [],
     customFields: [],
+    // The writing systems the file names its categories in, most used first,
+    // and the one the import reads unless the review screen is set otherwise.
+    posWss: byCount(langs.pos),
     posWs: byCount(langs.pos)[0] ?? null,
     unread: [...census.unread].map(([label, count]) => ({ label, count })),
     warnings,

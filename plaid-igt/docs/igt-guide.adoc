@@ -846,6 +846,10 @@ Five formats are supported:
 * **ELAN** (`.eaf`): a set of annotation files that share one tier structure. Each file becomes a document, with its tiers, speakers, time alignment, and its recording when you choose that alongside.
 * **Plaid IGT archive** (`.zip`): recreates a project exactly, including its vocabularies, media, comments, and guidelines.
 
+A FLEx category is one thing with a name in each of the project's analysis languages, `v` in English and `kt.kerja` in Indonesian, so one of those names is imported and not both.
+Where a file carries more than one, the review screen of either FLEx import lists them under **Part-of-speech language**, and the words, morphemes and entries take the name in the one selected.
+The rest are listed as not imported.
+
 The review screen of an ELAN import has three parts, in the order you work.
 **Files** lists each `.eaf` with the document it becomes and its recording under it.
 Each document takes the name its file gives it, even when two files give the same one.

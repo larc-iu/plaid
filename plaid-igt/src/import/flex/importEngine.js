@@ -111,6 +111,8 @@ const entryKey = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} ($
  * opts.lexiconFields — names of the other FLEx lexicon fields (Comment,
  * GeneralNote, …; see ir.lexiconFields) to import as vocab item fields
  * (default: none).
+ * opts.posWs — which of ir.posWss the parts of speech are read in (default:
+ * the one the file names its own categories in).
  */
 // FLEx pins each custom field to one writing system in <CustomField
 // wsSelector>: -1 analysis, -2 vernacular, and the plural -3..-6 forms of the
@@ -153,16 +155,21 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // her categories in English only, and FLEx matches an imported `pos` against
   // its categories in the writing system the file claims, creating a new
   // category when nothing matches.
-  // A .flextext says which writing system its categories are in (`posWs`).
+  // A file says which writing systems it names its categories in (`posWss`,
+  // most used first) and which of them it reads as its own (`posWs`). The two
+  // are the same category, so exactly one is read, and `opts.posWs` is the
+  // review screen's answer to which.
+  const posWss = ir.posWss ?? (ir.posWs ? [ir.posWs] : []);
   const posWs =
+    (opts.posWs && posWss.includes(opts.posWs) ? opts.posWs : null) ??
     ir.posWs ??
     (analysisWss.includes('en') && (!wsAllowed || wsAllowed.has('en')) ? 'en' : primaryAnalysisWs);
   addField('wordGloss', 'Word', 'Gloss', ir.wsUsage.wordGloss);
-  if (build.documents.some((d) => d.words.some((w) => w.pos))) {
+  if (build.documents.some((d) => d.words.some((w) => w.pos?.[posWs]))) {
     perWs.push({ kind: 'wordPos', scope: 'Word', ws: posWs, name: 'POS' });
   }
   addField('morphGloss', 'Morpheme', 'Gloss', ir.wsUsage.morphGloss);
-  if (build.documents.some((d) => d.words.some((w) => w.morphemes?.some((m) => m.pos)))) {
+  if (build.documents.some((d) => d.words.some((w) => w.morphemes?.some((m) => m.pos?.[posWs])))) {
     perWs.push({ kind: 'morphPos', scope: 'Morpheme', ws: posWs, name: 'POS' });
   }
   addField('freeTranslation', 'Sentence', 'Translation', ir.wsUsage.freeTranslation);
@@ -215,6 +222,7 @@ export function deriveImportConfig(ir, build, opts = {}) {
     fields,
     documentMetadata,
     primaryAnalysisWs,
+    posWs,
     analysisWss: opts.analysisWss ?? null,
     lexiconFields: opts.lexiconFields ?? [],
     baselineWs: build.baselineWs,
@@ -280,6 +288,7 @@ export async function importLexicon({
   lexicon,
   baselineWs,
   primaryAnalysisWs = 'en',
+  posWs = 'en',
   analysisWss = null,
   lexiconFields = [],
   customFieldWs = {},
@@ -363,7 +372,9 @@ export async function importLexicon({
         // first metadata value.
         ...perWs('gloss', sense.gloss),
         ...perWs('definition', sense.definition),
-        ...(sense.pos != null && { pos: sense.pos }),
+        // One category, named in each analysis writing system: the entry
+        // takes it in the one the import reads, as the words do.
+        ...(sense.pos?.[posWs] != null && { pos: sense.pos[posWs] }),
         ...(examples.length ? { examples } : {}),
         ...entryMeta(sense),
       };
@@ -802,14 +813,14 @@ async function importDocument({
     });
     doc.words.forEach((w, wi) => {
       for (const f of fieldsBy('wordGloss')) addSpan(f, wordIds[wi], w.gloss?.[f.ws], w);
-      for (const f of fieldsBy('wordPos')) addSpan(f, wordIds[wi], w.pos, w);
+      for (const f of fieldsBy('wordPos')) addSpan(f, wordIds[wi], w.pos?.[f.ws], w);
     });
     morphSpecs.forEach((s, i) => {
       if (!s.morpheme) return;
       const word = doc.words[s.wordIndex];
       for (const f of fieldsBy('morphGloss'))
         addSpan(f, morphIds[i], s.morpheme.gloss?.[f.ws], word);
-      for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos, word);
+      for (const f of fieldsBy('morphPos')) addSpan(f, morphIds[i], s.morpheme.pos?.[f.ws], word);
     });
     // The bulk endpoint requires all spans in one call to share a layer.
     const byLayer = new Map();
@@ -904,6 +915,7 @@ async function runImportImpl({
         lexicon,
         baselineWs: config.baselineWs,
         primaryAnalysisWs: config.primaryAnalysisWs,
+        posWs: config.posWs,
         customFieldWs: config.customFieldWs ?? {},
         analysisWss: config.analysisWss ?? null,
         lexiconFields: config.lexiconFields ?? [],
