@@ -9,7 +9,12 @@ import {
   ATTRIBUTES,
 } from '../../../domain/format/inventory.js';
 import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
-import { EMPTY_LEXICON, entriesStartingWith, entryLabel } from '../../../domain/vocabLexicon.js';
+import {
+  EMPTY_LEXICON,
+  argsOfEntry,
+  entriesStartingWith,
+  entryLabel,
+} from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { relationProblem, attrValueProblem } from '../../../domain/format/penman.js';
 
@@ -44,13 +49,20 @@ const uniqEntries = (list) => {
 };
 
 // Roles for an edge out of `parentConcept`: the parent's own arguments
-// first, with what each means, when the frame file knows the roleset.
-export const roleOptions = (frames = null, parentConcept = null) => [
-  ...(parentConcept && argsOf(frames, parentConcept).length
+// first, with what each means, from the bundled frame file or, for a
+// project keeping its own rolesets, from the vocabulary entry.
+const parentArgs = (frames, lexicon, parentConcept) => {
+  if (!parentConcept) return [];
+  const known = argsOf(frames, parentConcept);
+  return known.length ? known : argsOfEntry(lexicon, parentConcept);
+};
+
+export const roleOptions = (frames = null, parentConcept = null, lexicon = null) => [
+  ...(parentArgs(frames, lexicon, parentConcept).length
     ? [
         {
           group: parentConcept,
-          items: argsOf(frames, parentConcept).map((a) => ({
+          items: parentArgs(frames, lexicon, parentConcept).map((a) => ({
             value: a.role,
             label: `${a.role} ${a.description}`,
           })),

@@ -82,12 +82,16 @@ A project with no text at all is set up in Plaid IGT or Plaid UD first.
 
 **Project Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
 It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
+The page names the file the saved language gets and how many rolesets are in it.
+A language with no bundled file is the ordinary case for a language being documented, and its rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
 
 == Vocabulary
 
 A vocabulary linked to the project in Plaid IGT is a lexicon here.
 A word that IGT has linked to an entry offers that entry's headword as its concept, with the entry's gloss beside it, and typing in the concept picker finds any entry by its form.
-An entry that stands for a roleset says so in its metadata: `umr.roleset` is the concept it offers (`lunch-01`) and `umr.args` describes the arguments the way a frame file does (`{"ARG0": "eater"}`).
+An entry can also stand for a roleset, which is how a language with no bundled frame file gets one.
+Write it in Plaid IGT, in the entry editor: the **UMR** band takes the roleset the entry offers as its concept (`lunch-01`) and a description per argument (`ARG0`, `the one eating`), and the band appears once a UMR project is linked to that vocabulary.
+The concept picker then offers the roleset in place of the headword, and the argument descriptions show beside the roles when you attach one.
 
 = Importing and Exporting
 

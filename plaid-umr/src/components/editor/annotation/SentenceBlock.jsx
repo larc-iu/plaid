@@ -991,7 +991,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const editorOptions = (ed) => {
     if (!ed) return [];
-    if (ed.kind === 'role') return roleOptions(frames, parentConceptOf(ed.pending));
+    if (ed.kind === 'role') return roleOptions(frames, parentConceptOf(ed.pending), lexicon);
     if (ed.kind === 'new') {
       const words = ed.wordIds.length
         ? sentence.words.filter((w) => ed.wordIds.includes(w.id))

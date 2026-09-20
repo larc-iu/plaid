@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  EMPTY_LEXICON,
+  argsOfEntry,
   buildLexicon,
   entriesStartingWith,
   entryLabel,
@@ -92,4 +94,34 @@ test('typing finds entries by form or by the roleset they name', () => {
   );
   assert.deepEqual(entriesStartingWith(lex, ''), []);
   assert.equal(entriesStartingWith(lex, 'l', 2).length, 2);
+});
+
+// A language being documented has no bundled frame file, so the role picker
+// asks the vocabulary for a concept's arguments (see pickers.js).
+test('a roleset kept in the vocabulary names its arguments, in number order', () => {
+  const lex = buildLexicon([
+    {
+      id: 'v2',
+      name: 'Lexicon',
+      items: [
+        {
+          id: 'j1',
+          form: 'give',
+          metadata: {
+            umr: { roleset: 'give-01', args: { ARG2: 'recipient', ARG0: 'giver', note: 'ignore' } },
+          },
+        },
+        { id: 'j2', form: 'dog', metadata: { gloss: 'dog' } },
+      ],
+    },
+  ]);
+  assert.deepEqual(argsOfEntry(lex, 'give-01'), [
+    { role: ':ARG0', description: 'giver' },
+    { role: ':ARG2', description: 'recipient' },
+  ]);
+  // An entry with no roleset stands for its headword and describes nothing.
+  assert.deepEqual(argsOfEntry(lex, 'dog'), []);
+  assert.deepEqual(argsOfEntry(lex, 'leave-02'), []);
+  assert.deepEqual(argsOfEntry(lex, null), []);
+  assert.deepEqual(argsOfEntry(EMPTY_LEXICON, 'give-01'), []);
 });

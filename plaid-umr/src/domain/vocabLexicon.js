@@ -13,7 +13,7 @@
 // A word's link says which entry the annotator chose for it, so that entry
 // is offered first. The rest of the lexicon is reachable by typing.
 
-import { argSummary } from './lexicon.js';
+import { argsOf, argSummary } from './lexicon.js';
 
 const uniqBy = (list, key) => {
   const seen = new Set();
@@ -135,6 +135,19 @@ export function entriesStartingWith(lexicon, prefix, limit = 40) {
     }
   }
   return out;
+}
+
+/**
+ * The arguments of a concept the vocabulary describes, in the shape
+ * `lexicon.js`'s `argsOf` returns for a bundled frame file, so the role
+ * picker offers a project's own rolesets the way it offers the bundled ones.
+ * A language being documented has no bundled frame file, and the vocabulary
+ * is where its rolesets live.
+ */
+export function argsOfEntry(lexicon, concept) {
+  if (!concept) return [];
+  const entry = (lexicon?.entries || []).find((e) => e.args && e.concept === concept);
+  return entry ? argsOf({ [concept]: entry.args }, concept) : [];
 }
 
 // One line for a list: the concept, the gloss, and the arguments when the
