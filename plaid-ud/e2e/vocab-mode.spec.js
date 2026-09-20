@@ -224,22 +224,21 @@ test('a maintainer can close a vocabulary and describe its values', async ({ pag
   await toggle.click();
   await page.getByRole('button', { name: /^Save/ }).click();
 
+  // Each value is its own write and Save makes them in order, so the poll
+  // waits for the LAST of them. Waiting for `closed`, which is written before
+  // the descriptions are, let the read land between the two.
+  const readXpos = async () => {
+    const project = await S.client.projects.get(S.projectId);
+    const words = project.textLayers[0].tokenLayers.find((l) => l.name === 'Words');
+    return words.spanLayers.find((l) => l.name === 'XPOS');
+  };
   await expect
-    .poll(
-      async () => {
-        const project = await S.client.projects.get(S.projectId);
-        const words = project.textLayers[0].tokenLayers.find((l) => l.name === 'Words');
-        const xpos = words.spanLayers.find((l) => l.name === 'XPOS');
-        return JSON.stringify(xpos.config?.ud || {});
-      },
-      { timeout: 10000 },
-    )
-    .toContain('closed');
+    .poll(async () => JSON.stringify((await readXpos()).config?.ud || {}), { timeout: 10000 })
+    .toContain('Singular common noun.');
 
-  const project = await S.client.projects.get(S.projectId);
-  const words = project.textLayers[0].tokenLayers.find((l) => l.name === 'Words');
-  const xpos = words.spanLayers.find((l) => l.name === 'XPOS');
+  const xpos = await readXpos();
   expect(xpos.config.ud.vocab).toEqual(['NN']);
+  expect(xpos.config.ud.vocabMode).toBe('closed');
   expect(xpos.config.ud.vocabDescriptions).toEqual({ NN: 'Singular common noun.' });
 
   await S.client.spanLayers.setConfig(S.layers.xpos, 'ud', 'vocabMode', 'open');

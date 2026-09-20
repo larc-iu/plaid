@@ -45,7 +45,7 @@ import math
 import re
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, Param, ROLES, find_by_role
+from plaid_client import BaseService, Param, ROLES, TASKS, find_by_role
 from plaid_client.service import check_unchanged
 
 DEFAULT_SERVICE_ID = 'umr-ancast'
@@ -54,12 +54,6 @@ DEFAULT_SERVICE_ID = 'umr-ancast'
 #: cross-app `config.plaid.role`, and the layers UMR owns carry a flag under
 #: this one (src/utils/umrLayerUtils.js).
 UMR_NAMESPACE = 'umr'
-
-#: The task this service serves. The literal rather than `TASKS.COMPARE`, which
-#: is being added to both clients: the string is the wire value either way, so
-#: the file works against the client that has the constant and the one that
-#: does not.
-TASK_COMPARE = 'compare'
 
 #: The report's shape, so a reader can refuse one it does not understand. 2:
 #: a match is an object carrying both concepts and whether it was a leftover.
@@ -988,7 +982,7 @@ class UmrAncastService(BaseService):
             service_name='AnCast adjudication',
             description='Scores this document\'s UMR against another annotator\'s copy with '
                         'the AnCast++ metric',
-            tasks=[TASK_COMPARE],           # TASKS.COMPARE
+            tasks=[TASKS.COMPARE],
             summary=SUMMARY,
             parameters=[
                 Param.enum('scope', 'Scope',
