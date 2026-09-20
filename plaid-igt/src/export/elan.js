@@ -50,7 +50,7 @@
 
 import { morphFormOf } from '../domain/igtExport.js';
 import { MEDIA_FILE_FIELD } from '../domain/igtConfig.js';
-import { morphemeJoiner } from '../domain/affixMarkers.js';
+import { joinerBetween } from '../domain/affixMarkers.js';
 import { xmlEscape, phraseSpeakerFor } from './flextext.js';
 
 const EAF_VERSION = '2.8';
@@ -173,7 +173,8 @@ const morphText = (morphemes, i, withMarkers) => {
   const form = morphFormOf(morphemes[i]);
   if (!withMarkers || i === 0) return form;
   const typeOf = (m) => m?.morphType ?? m?.metadata?.morphType;
-  return morphemeJoiner(typeOf(morphemes[i - 1]), typeOf(morphemes[i])) + form;
+  const piece = (j) => ({ text: morphFormOf(morphemes[j]), morphType: typeOf(morphemes[j]) });
+  return joinerBetween(piece(i - 1), piece(i)) + form;
 };
 
 // MIME_TYPE is required on MEDIA_DESCRIPTOR. When the caller has the served

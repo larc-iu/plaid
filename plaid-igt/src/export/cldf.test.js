@@ -8,6 +8,7 @@ import {
   BASELINE,
 } from './cldf.js';
 import { makeFixtureDoc, makeAlignmentToken } from './testFixtures.js';
+import { splitAnalyzed } from '../import/align.js';
 
 const LAYERS = {
   orthographies: ['Translit'],
@@ -147,6 +148,23 @@ describe('buildCldfDataset — examples', () => {
     const { files } = build();
     const [row] = table(files, 'examples.csv');
     expect(row.Gloss.split('\t')).toHaveLength(row.Analyzed_Word.split('\t').length);
+  });
+
+  it('writes one marker where the gloss already carries its own', () => {
+    // Glosses written to Leipzig by hand ("=PL") reach us from CLDF, from ELAN
+    // morph tiers and from FLEx lexicons that decorate their sense glosses.
+    // A joiner in front of one would be the second, and since CLDF alignment
+    // is positional, the row would claim MORPHEME_ALIGNED while our own
+    // importer split the gloss into more pieces than the word.
+    const doc = makeFixtureDoc();
+    doc.sortedSentences[0].tokens[0].morphemes[1].annotations.Gloss = { value: '=PL' };
+    const { files } = build({ documents: [{ igtDoc: doc }] });
+    const [row] = table(files, 'examples.csv');
+    expect(row.Gloss.split('\t')[0]).toBe('dog=PL');
+    expect(row.LGR_Conformance).toBe('MORPHEME_ALIGNED');
+    expect(splitAnalyzed(row.Gloss.split('\t')[0])).toHaveLength(
+      splitAnalyzed(row.Analyzed_Word.split('\t')[0]).length,
+    );
   });
 
   it('reports MORPHEME_ALIGNED only when every segmented word is fully glossed', () => {

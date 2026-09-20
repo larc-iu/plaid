@@ -55,6 +55,52 @@ describe('affix markers', () => {
       ]),
     ).toBe('руша-кай=ни');
   });
+
+  it('writes no joiner in front of a value that already carries one', () => {
+    // A FLEx lexicon whose glosses were written to Leipzig by hand, and the
+    // shape CLDF's Gloss column and ELAN's morph tiers use throughout.
+    expect(
+      joinMorphemes([
+        { text: 'long.ago', morphType: 'stem' },
+        { text: '-ADV', morphType: 'suffix' },
+      ]),
+    ).toBe('long.ago-ADV');
+    expect(
+      joinMorphemes([
+        { text: 'front', morphType: 'stem' },
+        { text: '=CVB:SEQ.LOC', morphType: 'enclitic' },
+      ]),
+    ).toBe('front=CVB:SEQ.LOC');
+    // The author's own marker stands, even where the types would name another.
+    expect(
+      joinMorphemes([
+        { text: 'a', morphType: 'stem' },
+        { text: '-X', morphType: 'enclitic' },
+      ]),
+    ).toBe('a-X');
+    // A marker on the left edge of the boundary counts the same.
+    expect(
+      joinMorphemes([
+        { text: 'ka-', morphType: 'prefix' },
+        { text: 'b', morphType: 'stem' },
+      ]),
+    ).toBe('ka-b');
+  });
+
+  it('still writes a joiner around an empty or marker-less piece', () => {
+    expect(
+      joinMorphemes([
+        { text: 'a', morphType: 'stem' },
+        { text: '', morphType: 'suffix' },
+      ]),
+    ).toBe('a-');
+    expect(
+      joinMorphemes([
+        { text: '', morphType: 'stem' },
+        { text: '-ADV', morphType: 'suffix' },
+      ]),
+    ).toBe('-ADV');
+  });
 });
 
 describe('clitic side of a "=" boundary', () => {

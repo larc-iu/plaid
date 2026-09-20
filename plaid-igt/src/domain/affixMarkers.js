@@ -238,10 +238,26 @@ export const splitChainText = (text) => {
   return { segments, joiners };
 };
 
+// A value may arrive with the boundary already spelled out in it. CLDF writes
+// its Gloss column that way (our own importer splits on those markers to find
+// the morphemes, src/import/cldf/buildDocuments.js), ELAN's morph tiers do,
+// and so does any lexicon whose glosses were written to Leipzig by hand. A
+// joiner in front of such a value would be the second one.
+const startsWithMarker = (text) => /^[-=]/.test(text ?? '');
+const endsWithMarker = (text) => /[-=]$/.test(text ?? '');
+
+/**
+ * The joint to write between two adjacent pieces of a word: nothing when
+ * either side already carries a marker on the edge that would meet it, else
+ * the joiner their morph types call for. Suppressing ours rather than
+ * stripping theirs keeps the value the author wrote, which is what a CLDF or
+ * ELAN round trip reads back out.
+ */
+export const joinerBetween = (prev, next) =>
+  endsWithMarker(prev?.text) || startsWithMarker(next?.text)
+    ? ''
+    : morphemeJoiner(prev?.morphType, next?.morphType);
+
 /** Join morpheme strings with per-pair joints. items: [{text, morphType}] */
 export const joinMorphemes = (items) =>
-  items
-    .map((m, i) =>
-      i === 0 ? m.text : morphemeJoiner(items[i - 1].morphType, m.morphType) + m.text,
-    )
-    .join('');
+  items.map((m, i) => (i === 0 ? m.text : joinerBetween(items[i - 1], m) + m.text)).join('');
