@@ -961,7 +961,7 @@
   becomes a SQL identifier. The `__e_N` entity-id columns (which make a match
   distinct) are ordered by var name so they align across UNION branches; `expand`
   guarantees every branch binds the same entity-var set under aggregation."
-  [st ret]
+  [st ret align]
   (let [group-vars (:group ret)
         g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
         agg-srcs (distinct (keep second (:aggregates ret)))
@@ -969,8 +969,16 @@
         a-proj (mapv (fn [v] [(scalar-agg-expr st v) (src->kw v)]) agg-srcs)
         ;; every entity/layer var id makes a match distinct; sort by var name so
         ;; column N denotes the SAME variable in every branch of a UNION.
-        e-vars (sort-by name (keys (:var->alias @st)))
-        e-proj (map-indexed (fn [i v] [(col (get-in @st [:var->alias v]) :id) (keyword (str "__e_" i))]) e-vars)
+        ;; `align` is the union of what the branches bind, so a branch that
+        ;; does not bind one of them projects NULL in its column and the
+        ;; branches still union: an alternative may bind a variable another
+        ;; one does not.
+        e-vars (or (seq align) (sort-by name (keys (:var->alias @st))))
+        e-proj (map-indexed
+                (fn [i v]
+                  (let [alias (get-in @st [:var->alias v])]
+                    [(if alias (col alias :id) nil) (keyword (str "__e_" i))]))
+                e-vars)
         label (fn [op src] (if src (str (name op) "_" (term-label src)) (name op)))
         plan {:group-cols (mapv second g-proj)
               :group-labels (mapv term-label group-vars)
@@ -1044,7 +1052,8 @@
       ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
       ;; projection FIRST: a group key like a token's surface form joins its text,
       ;; and that alias has to be in :from before distinct-redundant? reads it.
-      (let [{:keys [select plan]} (aggregate-projection st (:return resolved))
+      (let [{:keys [select plan]} (aggregate-projection st (:return resolved)
+                                                        (:plaid.query.ast/align-entities resolved))
             select-kw (if (distinct-redundant? st) :select :select-distinct)]
         (vary-meta {select-kw select :from (:from @st) :where (into [:and] (:where @st))}
                    assoc ::aggregate plan))

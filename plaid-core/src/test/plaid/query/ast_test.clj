@@ -368,16 +368,20 @@
                    "where" [["span" "?a" {"layer" "?sl"}] ["span" "?b" {"layer" "?sl2"}]
                             ["span-layer" "?sl" {}] ["span-layer" "?sl2" {}]
                             ["!=" "?sl" "?sl2"]]})))))
-  (testing "aggregating over :or where a var is positive in one branch but :not-only in another is a clean 400"
-    ;; ?t is positively bound in branch 1, but appears only inside :not in branch 2 —
-    ;; the branches would project different entity-var counts -> UNION arity 500.
-    ;; Must be rejected at validate, not blow up in SQL.
-    (is (= 400 (code-of #(ast/expand
-                          {"where" [["span" "?s" {"layer" "p"}]
-                                    ["or"
-                                     [["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]
-                                     [["not" ["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]]]]
-                           "return" {"group" ["?s"] "aggregates" [["count"]]}}))))))
+  (testing "aggregating over :or where a var is positive in one branch but :not-only in another"
+    ;; ?t is positively bound in branch 1 and appears only inside :not in branch
+    ;; 2, so the branches bind different entity vars. Both project the union of
+    ;; them, NULL where a branch binds nothing, which is what keeps the UNION's
+    ;; arity right (it used to be a 400, to keep a 500 out of the SQL).
+    (let [branches (ast/expand
+                    {"where" [["span" "?s" {"layer" "p"}]
+                              ["or"
+                               [["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]
+                               [["not" ["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]]]]
+                     "return" {"group" ["?s"] "aggregates" [["count"]]}})]
+      (is (= 2 (count branches)))
+      (is (= [['?s '?t] ['?s '?t]]
+             (mapv :plaid.query.ast/align-entities branches))))))
 
 (defn- cmap-of [ast] (nth (first (:where ast)) 2))
 

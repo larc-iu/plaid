@@ -90,16 +90,29 @@
         ;; the value-10 span OR the value-20 span -> 2 distinct matches
         (is (= [[2]] (:results r)))))))
 
-(deftest aggregate-asymmetric-branches-400
-  (testing "branches binding different entity vars under aggregation -> clean 400 (not a 500)"
-    (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"every alternative of :or or :seq must bind"
-         (ast/expand {"where" [["or"
-                                [["span" "?s" {"layer" "AggProj/pos" "value" 10}]
-                                 ["token" "?t" {"layer" "AggProj/words"}]
-                                 ["covers" "?s" "?t"]]
-                                [["span" "?s" {"layer" "AggProj/pos" "value" 20}]]]]
-                      "return" {"group" [] "aggregates" [["count"]]}})))))
+(deftest aggregate-asymmetric-branches
+  ;; One alternative binds a variable the other does not. Every branch projects
+  ;; the union of what the branches bind, NULL where a branch binds nothing, so
+  ;; the union holds and the count is the matches of both alternatives. It used
+  ;; to be refused with a 400, because the projections had different shapes.
+  (let [{:keys [pos words]} (build!)]
+    (testing "an alternative may bind a variable another does not"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["or"
+                                 [["span" "?s" {"layer" pos "value" 10}]
+                                  ["token" "?t" {"layer" words}]
+                                  ["covers" "?s" "?t"]]
+                                 [["span" "?s" {"layer" pos "value" 20}]]]]
+                       "return" {"group" [] "aggregates" [["count"]]}})
+            one (qe/run db "admin@example.com"
+                        {"where" [["span" "?s" {"layer" pos "value" 10}]
+                                  ["token" "?t" {"layer" words}]
+                                  ["covers" "?s" "?t"]]
+                         "return" {"group" [] "aggregates" [["count"]]}})
+            two (qe/run db "admin@example.com"
+                        {"where" [["span" "?s" {"layer" pos "value" 20}]]
+                         "return" {"group" [] "aggregates" [["count"]]}})]
+        (is (= [[(+ (ffirst (:results one)) (ffirst (:results two)))]] (:results r)))))))
 
 (deftest count-vs-find-tuple-divergence-under-fanout
   ;; Pins the documented subtlety: return:"count" counts distinct FIND tuples,

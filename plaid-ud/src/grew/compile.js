@@ -189,10 +189,9 @@ class Compiler {
       impossible: this.impossible,
       // What this query cannot find, although the local matcher can: an edge
       // whose named head could be the root's, since the root hangs off the
-      // anchor and no word, and a form stored beside a multiword token's own
-      // word rather than read off the text. A rewrite reads every document
-      // rather than the ones this query names.
-      partialDocs: Boolean(this.rootsMayBeMissed || this.formsMayBeMissed),
+      // anchor and no word. A rewrite reads every document rather than the
+      // ones this query names.
+      partialDocs: Boolean(this.rootsMayBeMissed),
       // What the pattern named, so a caller can offer "count by" over it
       // without parsing the query text again.
       nodes: [...this.topNodeIds].sort(),
@@ -494,28 +493,32 @@ class Compiler {
         'Matching tokens with no surface form is not supported.',
       );
     }
-    // A word's form is its Form span where it has one, and its slice of the
-    // text otherwise: the span is stored only while the two differ, which is
-    // what the words inside a multiword token do. The query reads the slice,
-    // so those words are not found by it, which the warning says and which
-    // `formsMayBeMissed` keeps a rewrite from trusting.
-    this.warnFormMwt();
-    this.formsMayBeMissed = true;
-    ctx.list.push([
-      'token',
-      tv,
+    const vc =
       fi.op === '<>'
         ? { value: { regex: notExactlyRegex(this.litValue(fi.value)) } }
-        : { value: this.valueConstraint(fi.value, ctx) },
+        : { value: this.valueConstraint(fi.value, ctx) };
+    // A word's form is its Form span where it has one, and its slice of the
+    // text otherwise: the span is stored only while the two differ, which is
+    // what the words inside a multiword token do. Both are asked, so a search
+    // finds the words inside a contraction as readily as any other.
+    const FORM = this.li.formLayer?.id;
+    if (!FORM) {
+      ctx.list.push(['token', tv, vc]);
+      return;
+    }
+    const fv = this.fresh('fm');
+    const any = this.fresh('fm');
+    ctx.list.push([
+      'or',
+      [
+        ['span', fv, { layer: FORM, ...vc }],
+        ['covers', fv, tv],
+      ],
+      [
+        ['token', tv, vc],
+        ['not', ['span', any, { layer: FORM }], ['covers', any, tv]],
+      ],
     ]);
-  }
-
-  warnFormMwt() {
-    if (this._formWarned) return;
-    this._formWarned = true;
-    this.warnings.push(
-      "`form` matches the token's text slice. For a multiword token's own words the form is stored beside it, and this does not read it.",
-    );
   }
 
   emitFeatCmp(item, ctx) {

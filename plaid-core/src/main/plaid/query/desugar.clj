@@ -11,7 +11,7 @@
 
   Called by `plaid.query.ast/expand`."
   (:refer-clojure :exclude [var?])
-  (:require [clojure.string :as str]
+  (:require [clojure.set :as set]
             [plaid.query.clauses :as clauses :refer [err! var?]]))
 
 ;; ---------------------------------------------------------------------------
@@ -193,11 +193,13 @@
                                " — every branch must bind it to the same entity kind")
                 {:var v :kinds (vec ks)}))))))
 
-(defn check-aggregate-branch-entities!
-  "Under aggregation, the distinct-match key projects EVERY entity/layer var's id,
-  so a UNION's branches must bind the SAME set of those vars (otherwise the branch
-  projections have different shapes — a 500 from the SQL engine). Reject the
-  mismatch with a clean 400."
+(defn aggregate-branch-entities
+  "Under aggregation, the distinct-match key projects EVERY entity/layer var's
+  id, so a UNION's branches must project the same columns in the same order.
+  This is the union of those vars across the branches: a branch that does not
+  bind one projects NULL in its column (`aggregate-projection`), so branches
+  that bind different variables can still be unioned. Sorted by name, which is
+  the order the columns are emitted in."
   [branch-wheres]
   ;; Compare the vars actually PROJECTED per branch: positive (non-:not) entity/
   ;; layer vars — exactly the ids the distinct-match key emits. Keying off
@@ -208,18 +210,6 @@
                             (let [kinds (clauses/infer-kinds {:where w})]
                               (set (remove #(= :scalar (get kinds %)) (clauses/positive-binding-vars w)))))
                           branch-wheres)]
-    (when (apply not= entity-sets)
-      ;; Named in the asker's own words: the sets hold the variables the
-      ;; desugaring invented for a quantified `seq` step (`?__seqt1`), which
-      ;; nobody wrote and nobody can make match. What they CAN do is ask for
-      ;; the count alone, so the message says so.
-      (let [own (fn [vars] (vec (sort (remove #(str/starts-with? (name %) "__") vars))))
-            hidden? (some (fn [vars] (some #(str/starts-with? (name %) "__") vars)) entity-sets)]
-        (err! :validate (str "When the result is aggregated, every alternative of :or or :seq must bind "
-                             "the same variables. The alternatives bind "
-                             (str/join " and " (map own entity-sets))
-                             (when hidden?
-                               (str ", and a quantified step of a :seq binds one of its own that nothing "
-                                    "else can name"))
-                             ". Ask for the count alone (\"return\": \"count\"), or have every "
-                             "alternative bind the same variables."))))))
+    (vec (sort-by name (apply set/union entity-sets)))))
+
+

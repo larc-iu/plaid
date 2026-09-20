@@ -423,6 +423,14 @@
         projected (if agg? (clauses/aggregate-vars (:return parsed)) (:find parsed))
         branch-wheres (desugar/expand-where (vec (:where parsed)))]
     (when (> (count branch-wheres) 1)
-      (desugar/check-branch-consistency! branch-wheres projected)
-      (when agg? (desugar/check-aggregate-branch-entities! branch-wheres)))
-    (mapv (fn [w] (validate/validate (assoc base :where (vec w)))) branch-wheres)))
+      (desugar/check-branch-consistency! branch-wheres projected))
+    ;; Under aggregation every branch projects the SAME entity columns, so the
+    ;; union of what the branches bind travels with them: a branch that does
+    ;; not bind one of these projects NULL in its column, which is what lets
+    ;; alternatives binding different variables be unioned at all.
+    (let [align (when (and agg? (> (count branch-wheres) 1))
+                  (desugar/aggregate-branch-entities branch-wheres))]
+      (mapv (fn [w]
+              (cond-> (validate/validate (assoc base :where (vec w)))
+                (seq align) (assoc ::align-entities align)))
+            branch-wheres))))
