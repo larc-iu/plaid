@@ -191,7 +191,7 @@ export function firstMatch(rule, graph) {
 // checking each clause as soon as everything it mentions is bound. Edge
 // clauses bind an edge id per qualifying edge (a branch each). `emit` is
 // called per complete assignment and returns false to stop the search.
-function solve(ctx, items, nodeVars, nodes, edges, emit) {
+function solve(ctx, items, nodeVars, nodes, edges, emit, foreign = null) {
   const localVars = nodeVars.filter((v) => !nodes.has(v));
   // Clauses that mention no unbound node can be checked right away.
   const pending = items.filter((it) => it.kind !== 'cross');
@@ -203,22 +203,29 @@ function solve(ctx, items, nodeVars, nodes, edges, emit) {
     // Check every clause whose nodes are now all bound; edge clauses branch.
     const ready = remaining.filter((it) => nodeRefsOf(it).every((v) => nodesB.has(v)));
     const later = remaining.filter((it) => !ready.includes(it));
-    runClauses(ctx, ready, nodesB, edgesB, (edgesC) => {
-      if (stopped) return;
-      if (i === localVars.length) {
-        if (!crosses.every((c) => checkCross(ctx, c, edgesC))) return;
-        if (emit(nodesB, edgesC) === false) stopped = true;
-        return;
-      }
-      const v = localVars[i];
-      for (const n of candidates(ctx, v, later, nodesB)) {
+    runClauses(
+      ctx,
+      ready,
+      nodesB,
+      edgesB,
+      (edgesC) => {
         if (stopped) return;
-        if (!ctx.nonInjective.has(v) && isBoundNode(nodesB, n.id, ctx.nonInjective)) continue;
-        nodesB.set(v, n.id);
-        step(i + 1, nodesB, edgesC, later);
-        nodesB.delete(v);
-      }
-    });
+        if (i === localVars.length) {
+          if (!crosses.every((c) => checkCross(ctx, c, edgesC))) return;
+          if (emit(nodesB, edgesC) === false) stopped = true;
+          return;
+        }
+        const v = localVars[i];
+        for (const n of candidates(ctx, v, later, nodesB)) {
+          if (stopped) return;
+          if (!ctx.nonInjective.has(v) && isBoundNode(nodesB, n.id, ctx.nonInjective)) continue;
+          nodesB.set(v, n.id);
+          step(i + 1, nodesB, edgesC, later);
+          nodesB.delete(v);
+        }
+      },
+      foreign,
+    );
   };
   step(0, nodes, edges, pending);
 }
@@ -267,7 +274,7 @@ const uniq = (arr) => {
 // Check the ready clauses against the bindings. Non-edge clauses are plain
 // predicates; each edge clause multiplies the continuation by its qualifying
 // edges. `k(edges)` runs once per consistent edge assignment.
-function runClauses(ctx, ready, nodes, edges, k) {
+function runClauses(ctx, ready, nodes, edges, k, foreign = null) {
   const plain = ready.filter((it) => it.kind !== 'edge');
   const edgeClauses = ready.filter((it) => it.kind === 'edge');
   for (const it of plain) if (!checkClause(ctx, it, nodes)) return;
@@ -276,7 +283,13 @@ function runClauses(ctx, ready, nodes, edges, k) {
     const it = edgeClauses[j];
     const key = it.id || it; // anonymous clauses key on their own AST node
     for (const e of qualifyingEdges(ctx.graph, it, nodes)) {
-      if ([...edgesB.values()].includes(e.id) && !it.id) continue; // distinct edges per clause
+      // Distinct edges per clause, within one scope. An edge bound OUTSIDE
+      // this one does not count: a `without` asks whether its own pattern
+      // holds, and the edge the pattern already named is a perfectly good
+      // answer. Refusing it made `without { H -[discourse]-> X }` over the
+      // pattern's own edge match here while the server's query did not.
+      const mine = [...edgesB.entries()].filter(([key]) => !foreign?.has(key));
+      if (mine.some(([, id]) => id === e.id) && !it.id) continue;
       edgesB.set(key, e.id);
       go(j + 1, edgesB);
       edgesB.delete(key);
@@ -298,11 +311,21 @@ function qualifyingEdges(g, it, nodes) {
 function hasExtension(ctx, items, nodes, edges, lexConstraints = [], lexicons = {}) {
   let found = false;
   const localVars = nodeIdsOf(items).filter((v) => !nodes.has(v));
-  solve(ctx, items, [...nodes.keys(), ...localVars], new Map(nodes), new Map(edges), (nodesB) => {
-    if (!reduceLexicons(lexConstraints, lexicons, ctx.graph, nodesB)) return true;
-    found = true;
-    return false;
-  });
+  solve(
+    ctx,
+    items,
+    [...nodes.keys(), ...localVars],
+    new Map(nodes),
+    new Map(edges),
+    (nodesB) => {
+      if (!reduceLexicons(lexConstraints, lexicons, ctx.graph, nodesB)) return true;
+      found = true;
+      return false;
+    },
+    // What the pattern outside already bound: this block's own clauses are
+    // free to name those edges again.
+    new Set(edges.keys()),
+  );
   return found;
 }
 

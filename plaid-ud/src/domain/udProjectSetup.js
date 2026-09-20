@@ -29,6 +29,8 @@ import {
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
+  findByRole,
+  readRole,
 } from '@larc-iu/plaid-client';
 
 // Provenance survives a split, including one made by another app sharing this
@@ -36,9 +38,10 @@ import {
 // a token born of a split is otherwise born bare, and what is lost that way
 // leaves nothing for a later reconcile to find. See the manual's "Metadata
 // Preserved Across a Split".
-// Takes the batch it queues on, since every caller writes inside one.
-const declarePreserveOnSplit = (batch, layerId) =>
-  batch.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
+// Takes whatever it writes through: the batch the bootstrap queues on, or the
+// client itself when `adoptSubstrate` writes one layer at a time.
+const declarePreserveOnSplit = (target, layerId) =>
+  target.tokenLayers.setConfig(layerId, PLAID_NAMESPACE, PRESERVE_ON_SPLIT_KEY, [
     ...PROVENANCE_KEYS,
   ]);
 import {
@@ -182,6 +185,109 @@ export const createUdProject = (client, projectName) =>
   client.withOperation(`Create UD project "${projectName.trim()}"`, () =>
     bootstrap(client, projectName),
   );
+
+/**
+ * Add UD's layers to a project that is not set up for UD yet, reusing every
+ * layer already there, including the ones another app set up. This is how a
+ * project born in IGT or UMR becomes one UD can open.
+ *
+ * There is nothing to choose. The text layer is the one carrying the baseline
+ * role, and a project made by any Plaid app has exactly one; failing that, the
+ * project's only text layer, or a new one when it has none. Everything below
+ * is found by role or by UD's own config flag, and created where it is
+ * missing, so a re-run after a failure picks up where it left off.
+ *
+ * Sequential awaits, not a batch: each find-or-create needs the result of the
+ * one before it, which is also what makes a re-run safe.
+ *
+ * @param {object} client - PlaidClient instance
+ * @param {object} project - the project, as read
+ * @returns {Promise<void>}
+ */
+export const adoptSubstrate = (client, project) =>
+  client.withOperation('Set the project up for UD', async () => {
+    const textLayers = project?.textLayers || [];
+    const baseline = findByRole(textLayers, ROLES.BASELINE);
+    // Two text layers with no baseline role between them is not a project any
+    // Plaid app makes, and picking one for the writer would be a guess.
+    if (!baseline && textLayers.length > 1) {
+      throw new Error('This project has more than one text layer.');
+    }
+    const existingTextLayer = baseline || textLayers[0] || null;
+
+    let textLayerId = existingTextLayer?.id;
+    if (!textLayerId) {
+      const created = await client.textLayers.create(project.id, 'Text');
+      textLayerId = created?.id || created;
+    }
+    if (readRole(existingTextLayer?.config) !== ROLES.BASELINE) {
+      await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
+    }
+
+    // Sentences > Tokens > Words, bound by shared role. UD's "Words" layer
+    // holds SYNTACTIC WORDS (CoNLL-U words / MWT splits), so its role is
+    // `syntactic-word`: a sibling of IGT's `morpheme` layer under the shared
+    // word layer, never the same layer.
+    const ensureTokenLayer = async (role, name, overlapMode, parentId) => {
+      const existing = findByRole(existingTextLayer?.tokenLayers, role);
+      if (existing) return existing.id;
+      const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
+      const id = created?.id || created;
+      await client.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
+      await declarePreserveOnSplit(client, id);
+      return id;
+    };
+    const sentenceLayerId = await ensureTokenLayer(ROLES.SENTENCE, 'Sentences', 'partitioning');
+    const wordLayerId = await ensureTokenLayer(
+      ROLES.WORD,
+      'Tokens',
+      'non-overlapping',
+      sentenceLayerId,
+    );
+    const morphemeLayerId = await ensureTokenLayer(
+      ROLES.SYNTACTIC_WORD,
+      'Words',
+      'any',
+      wordLayerId,
+    );
+
+    // Annotation layers are UD's own, found by UD's flags under the layer UD
+    // annotates: the one that was already there, or none when this call just
+    // made it.
+    const existingMorphemeLayer = findByRole(existingTextLayer?.tokenLayers, ROLES.SYNTACTIC_WORD);
+    const findFlagged = (layers, key) =>
+      (layers || []).find((layer) => layer.config?.[UD_NAMESPACE]?.[key] === true) || null;
+
+    let lemmaLayer = null;
+    let lemmaLayerId = null;
+    for (const [name, configKey] of SPAN_LAYER_SPECS) {
+      const existing = findFlagged(existingMorphemeLayer?.spanLayers, configKey);
+      let id = existing?.id;
+      if (!id) {
+        const created = await client.spanLayers.create(morphemeLayerId, name);
+        id = created?.id || created;
+        await client.spanLayers.setConfig(id, UD_NAMESPACE, configKey, true);
+      }
+      if (configKey === UD_SPAN_CONFIG_KEYS.lemma) {
+        lemmaLayer = existing;
+        lemmaLayerId = id;
+      }
+    }
+
+    // The dependency tree, and the enhanced graph beside it. `lemmaLayer` is
+    // the project's own layer where it had one, relation layers and all, and
+    // null where this call just made it, which has none to find.
+    if (!findFlagged(lemmaLayer?.relationLayers, UD_RELATION_CONFIG_KEY)) {
+      const created = await client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
+      await client.relationLayers.setConfig(
+        created?.id || created,
+        UD_NAMESPACE,
+        UD_RELATION_CONFIG_KEY,
+        true,
+      );
+    }
+    await ensureEnhancedRelationLayer(client, lemmaLayer || { id: lemmaLayerId });
+  });
 
 /**
  * The project's enhanced relation layer, made if it has none: a second

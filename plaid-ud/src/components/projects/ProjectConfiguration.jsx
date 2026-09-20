@@ -1,45 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Info } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import {
-  UD_NAMESPACE,
-  UD_SPAN_CONFIG_KEYS,
-  UD_RELATION_CONFIG_KEY,
-  UD_LAYER_LABELS,
-  getUdLayerInfo,
-} from '../../utils/udLayerUtils.js';
-import { PLAID_NAMESPACE, ROLE_KEY, ROLES, findByRole } from '@larc-iu/plaid-client';
+import { getUdLayerInfo, UD_LAYER_LABELS } from '../../utils/udLayerUtils.js';
+import { ROLES, findByRole } from '@larc-iu/plaid-client';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
+import { adoptSubstrate } from '../../domain/udProjectSetup.js';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@ui/components/ui/select';
-
-// Span layers, in creation order, all attached to the morpheme token layer.
-const SPAN_KEYS_IN_ORDER = ['form', 'lemma', 'upos', 'xpos', 'features'];
-const SPAN_LAYER_NAMES = {
-  form: 'Form',
-  lemma: 'Lemma',
-  upos: 'UPOS',
-  xpos: 'XPOS',
-  features: 'Features',
-};
 
 // The standalone /configuration page: the layer-structure half of project
-// setup: the text layer plus the three-level token hierarchy and the
+// setup, the text layer plus the three-level token hierarchy and the
 // annotation layers under it. Project-specific vocabularies, colors and locale
 // live in the separate Customization settings tab (ProjectCustomization).
-// Saving creates or completes the layers idempotently.
+//
+// There is nothing to choose here. The text layer UD builds on is the one
+// carrying the baseline role, which is the one every Plaid app makes, and the
+// layers below it are the same in every UD project. Setting a project up is
+// therefore one button, and the document list offers it there too, at the door
+// where a maintainer meets an unconfigured project. This page is what is left:
+// the same button for a project that is missing only some of its layers, and
+// the place every "configure the project" link in the app points at.
 export const ProjectConfiguration = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -49,12 +32,6 @@ export const ProjectConfiguration = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   useDocumentTitle('Configuration', project?.name);
-
-  const [formData, setFormData] = useState({
-    textLayerType: 'existing',
-    selectedTextLayerId: '',
-    newTextLayerName: 'Text',
-  });
 
   const fetchProject = async () => {
     try {
@@ -84,190 +61,20 @@ export const ProjectConfiguration = () => {
 
   const canConfigure = canManageProject(project, user);
 
-  useEffect(() => {
-    if (project && !canConfigure) {
-      navigate('/projects');
-    }
-  }, [project, canConfigure, navigate]);
-
-  const availableTextLayers = project?.textLayers || [];
-
-  // Initialize the text-layer choice once project data is available.
-  useEffect(() => {
-    if (!project) return;
-    const info = getUdLayerInfo(project);
-    const existingTextLayerId = info.textLayer?.id || availableTextLayers[0]?.id || '';
-    setFormData({
-      textLayerType: availableTextLayers.length === 0 ? 'new' : 'existing',
-      selectedTextLayerId: existingTextLayerId,
-      newTextLayerName: 'Text',
-    });
-    // Seeded from the project. `availableTextLayers` is derived from it, so
-    // naming it would re-seed the form (discarding the user's edits) whenever
-    // that derived array changed identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project]);
-
-  const validateForm = () => {
-    if (formData.textLayerType === 'existing' && !formData.selectedTextLayerId) {
-      return 'Select a text layer or choose to create a new one.';
-    }
-    if (formData.textLayerType === 'new' && !formData.newTextLayerName.trim()) {
-      return 'Name the new text layer.';
-    }
-    return '';
-  };
-
-  // Find an existing UD annotation layer (idempotent re-configuration), else null.
-  const findFlagged = (layers, namespace, key) =>
-    (layers || []).find((layer) => layer.config?.[namespace]?.[key] === true) || null;
-  // Substrate layers are matched by their shared ROLE (findByRole, imported from
-  // the client). This is also how UD adopts a substrate created by another app:
-  // reuse its baseline/sentence/word and create only the layers UD needs below.
-
-  const ensureTokenLayer = async (
-    client,
-    textLayerId,
-    existingTextLayer,
-    role,
-    name,
-    overlapMode,
-    parentId,
-  ) => {
-    const existing = findByRole(existingTextLayer?.tokenLayers, role);
-    if (existing) return existing;
-    const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-    await client.tokenLayers.setConfig(created.id, PLAID_NAMESPACE, ROLE_KEY, role);
-    return created;
-  };
-
-  const ensureSpanLayer = async (
-    client,
-    morphemeLayerId,
-    existingMorphemeLayer,
-    configKey,
-    name,
-  ) => {
-    const existing = findFlagged(existingMorphemeLayer?.spanLayers, UD_NAMESPACE, configKey);
-    if (existing) return existing;
-    const created = await client.spanLayers.create(morphemeLayerId, name);
-    await client.spanLayers.setConfig(created.id, UD_NAMESPACE, configKey, true);
-    return created;
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    const validationError = validateForm();
-    if (validationError) {
-      notifyError(validationError);
-      return;
-    }
-
+  const handleSetUp = async () => {
     try {
       setSaving(true);
       const client = getClient();
       if (!client) {
         throw new Error('Not authenticated');
       }
-
-      // Sequential awaits (not batched) are deliberate here: the
-      // `ensureTokenLayer`/`ensureSpanLayer` helpers below short-circuit when a
-      // UD-flagged layer already exists, which makes a partial-failure re-run
-      // safe (idempotent). Wrapping these in a batch would defeat that — we
-      // need the in-memory result of each ensure-check to decide the next op.
-      // The trade-off (no per-step atomicity) is acceptable because re-running
-      // this form picks up where it left off.
-      //
-      // 1. Text layer
-      let textLayerId = formData.selectedTextLayerId;
-      let existingTextLayer = availableTextLayers.find((l) => l.id === textLayerId) || null;
-      if (formData.textLayerType === 'new') {
-        const name = formData.newTextLayerName.trim() || 'Text';
-        const textLayer = await client.textLayers.create(projectId, name);
-        textLayerId = textLayer.id;
-        existingTextLayer = null;
-      }
-      await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
-
-      // 2. Token-layer hierarchy, tagged by shared role: sentence (partitioning) >
-      //    word (non-overlapping) > syntactic-word (any). UD's "Morphemes" layer
-      //    holds syntactic words, so its role is `syntactic-word` (a sibling of
-      //    IGT's `morpheme` layer under the shared word layer).
-      const sentenceLayer = await ensureTokenLayer(
-        client,
-        textLayerId,
-        existingTextLayer,
-        ROLES.SENTENCE,
-        'Sentences',
-        'partitioning',
-        undefined,
-      );
-      const wordLayer = await ensureTokenLayer(
-        client,
-        textLayerId,
-        existingTextLayer,
-        ROLES.WORD,
-        'Tokens',
-        'non-overlapping',
-        sentenceLayer.id,
-      );
-      const morphemeLayer = await ensureTokenLayer(
-        client,
-        textLayerId,
-        existingTextLayer,
-        ROLES.SYNTACTIC_WORD,
-        'Words',
-        'any',
-        wordLayer.id,
-      );
-
-      // 3. Annotation span layers, all under the syntactic-word ("Morphemes") layer
-      const existingMorphemeLayer = findByRole(
-        existingTextLayer?.tokenLayers,
-        ROLES.SYNTACTIC_WORD,
-      );
-      const spanLayers = {};
-      for (const key of SPAN_KEYS_IN_ORDER) {
-        spanLayers[key] = await ensureSpanLayer(
-          client,
-          morphemeLayer.id,
-          existingMorphemeLayer,
-          UD_SPAN_CONFIG_KEYS[key],
-          SPAN_LAYER_NAMES[key],
-        );
-      }
-
-      // 4. Dependency relation layer under the lemma span layer
-      const existingRelationLayer = findFlagged(
-        spanLayers.lemma?.relationLayers,
-        UD_NAMESPACE,
-        UD_RELATION_CONFIG_KEY,
-      );
-      if (!existingRelationLayer) {
-        const relationLayer = await client.relationLayers.create(
-          spanLayers.lemma.id,
-          'Dependency Relations',
-        );
-        await client.relationLayers.setConfig(
-          relationLayer.id,
-          UD_NAMESPACE,
-          UD_RELATION_CONFIG_KEY,
-          true,
-        );
-      }
-
-      // 5. The enhanced relation layer beside it. `spanLayers.lemma` is the
-      // project's own layer where it had one, relation layers and all, and a
-      // bare create result where it did not, which has none to find.
-      await ensureEnhancedRelationLayer(client, spanLayers.lemma);
-
+      await adoptSubstrate(client, project);
       notifySuccess('Layers saved');
       // Setup/repair done — head back to the project's document view.
       navigate(`/projects/${projectId}/documents`);
     } catch (err) {
-      console.error('Failed to save configuration:', err);
-      notifyError(humanizeError(err, 'Failed to save configuration'));
+      console.error('Failed to set the project up for UD:', err);
+      notifyError(humanizeError(err, 'Failed to save the layers.'));
     } finally {
       setSaving(false);
     }
@@ -279,8 +86,8 @@ export const ProjectConfiguration = () => {
 
   // A blank screen with no way back is what a writer following a link here
   // used to get, and anyone whose project load failed after the toast had
-  // gone. This screen is the one the Documents tab redirects a maintainer
-  // into, so arriving here without the role is a real path.
+  // gone. This screen is the one the Documents tab links a maintainer to, so
+  // arriving here without the role is a real path.
   if (!project || !canConfigure) {
     return (
       <div className="flex flex-col items-start gap-3 p-4">
@@ -301,6 +108,11 @@ export const ProjectConfiguration = () => {
     ? info.missingLayers.map((key) => UD_LAYER_LABELS[key] || key).join(', ')
     : '';
 
+  // Two text layers with no baseline role between them is not a project any
+  // Plaid app makes, and UD cannot tell which one it is meant to annotate.
+  const textLayers = project.textLayers || [];
+  const ambiguousText = !findByRole(textLayers, ROLES.BASELINE) && textLayers.length > 1;
+
   const statusLine = info.isConfigured ? (
     <p className="text-sm text-green-700">Every Universal Dependencies layer is set up.</p>
   ) : (
@@ -311,7 +123,7 @@ export const ProjectConfiguration = () => {
     <div className="mx-auto flex max-w-4xl flex-col gap-6 py-4">
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Configure UD layers</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Set up UD layers</h1>
           <p className="text-sm text-muted-foreground">{project.name}</p>
           {statusLine}
         </div>
@@ -320,87 +132,27 @@ export const ProjectConfiguration = () => {
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Text layer</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {/* Two radios rather than a select: there are exactly two choices,
-                and one of them disables itself when the project has no layers
-                to reuse. */}
-            <div className="flex gap-6">
-              <label className="flex items-center gap-2 text-sm has-[:disabled]:opacity-50">
-                <input
-                  type="radio"
-                  name="textLayerType"
-                  className="h-4 w-4 accent-primary"
-                  value="existing"
-                  checked={formData.textLayerType === 'existing'}
-                  disabled={availableTextLayers.length === 0}
-                  onChange={() => setFormData((prev) => ({ ...prev, textLayerType: 'existing' }))}
-                />
-                Use existing
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="textLayerType"
-                  className="h-4 w-4 accent-primary"
-                  value="new"
-                  checked={formData.textLayerType === 'new'}
-                  onChange={() => setFormData((prev) => ({ ...prev, textLayerType: 'new' }))}
-                />
-                Create new
-              </label>
-            </div>
-
-            {formData.textLayerType === 'existing' ? (
-              <div className="flex max-w-md flex-col gap-1.5">
-                <Label htmlFor="text-layer">Text layer</Label>
-                <Select
-                  value={formData.selectedTextLayerId || undefined}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({ ...prev, selectedTextLayerId: value || '' }))
-                  }
-                >
-                  <SelectTrigger id="text-layer">
-                    <SelectValue placeholder="Select a text layer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableTextLayers.map((layer) => (
-                      <SelectItem key={layer.id} value={layer.id}>
-                        {layer.name} ({layer.id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="flex max-w-md flex-col gap-1.5">
-                <Label htmlFor="new-text-layer">New text layer name</Label>
-                <Input
-                  id="new-text-layer"
-                  name="newTextLayerName"
-                  value={formData.newTextLayerName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, newTextLayerName: e.target.value }))
-                  }
-                  placeholder="Text"
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
+      {ambiguousText ? (
+        <div className="flex gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-4">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="flex flex-col items-start gap-1 text-sm">
+            <p className="font-medium">More than one text layer</p>
+            <p className="text-muted-foreground">
+              UD annotates one text layer, and this project has {textLayers.length}. A project made
+              in Plaid IGT, Plaid UD or Plaid UMR has one.
+            </p>
+          </div>
+        </div>
+      ) : (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Token hierarchy and annotations</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+          <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              Saving creates, or completes, the three-layer token hierarchy and the annotation
-              layers below. Layers that already exist are reused, including ones another app set up.
+              The three-layer token hierarchy and the annotation layers below it are created, or
+              completed. Layers that already exist are reused, including ones another app set up,
+              and the text and the tokens in them are left as they are.
             </p>
             <ul className="ml-5 list-disc space-y-1 text-sm">
               <li>
@@ -418,18 +170,12 @@ export const ProjectConfiguration = () => {
               <li>Span layers on words: Form, Lemma, UPOS, XPOS, Features</li>
               <li>Dependency relation layer on the Lemma layer</li>
             </ul>
+            <Button className="self-start" onClick={handleSetUp} disabled={saving}>
+              {saving ? 'Saving…' : 'Set up for UD'}
+            </Button>
           </CardContent>
         </Card>
-
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate(-1)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </form>
+      )}
     </div>
   );
 };

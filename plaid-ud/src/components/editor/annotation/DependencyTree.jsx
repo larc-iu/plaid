@@ -394,6 +394,10 @@ export const DependencyTree = forwardRef(
           const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
           const word = wordInColumn(point, dragEnhanced);
           if (word) completeDrop(word);
+          // Above the ROOT bar is the bar: the arc in the hand is already
+          // drawn as a root there (see the preview's own rule), and letting
+          // go used to write nothing at all.
+          else if (!dragEnhanced && point.y < ROOT_Y + 15) handleRootMouseUp(e);
         }
         endDrag();
       },

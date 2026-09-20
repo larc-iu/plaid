@@ -93,7 +93,7 @@
 (deftest aggregate-asymmetric-branches-400
   (testing "branches binding different entity vars under aggregation -> clean 400 (not a 500)"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"must bind the same variables"
+         clojure.lang.ExceptionInfo #"every alternative of :or or :seq must bind"
          (ast/expand {"where" [["or"
                                 [["span" "?s" {"layer" "AggProj/pos" "value" 10}]
                                  ["token" "?t" {"layer" "AggProj/words"}]
