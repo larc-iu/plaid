@@ -12,6 +12,27 @@ const FILES = {
   pt: () => import('../data/frames/portuguese.json'),
 };
 
+/**
+ * What each bundled file holds, for a screen that wants to SAY so without
+ * fetching a megabyte to count. `frames.test.js` reads the files and fails
+ * while a count here disagrees, so the shortcut cannot drift.
+ */
+export const FRAME_LANGUAGES = Object.freeze({
+  en: { name: 'English', rolesets: 8733 },
+  zh: { name: 'Chinese', rolesets: 16891 },
+  ar: { name: 'Arabic', rolesets: 10073 },
+  pt: { name: 'Portuguese', rolesets: 1410 },
+});
+
+/** The base of a BCP-47 tag: `en-US` and `en_GB` are both `en`. */
+export const baseTag = (languageTag) =>
+  String(languageTag || '')
+    .toLowerCase()
+    .split(/[-_]/)[0];
+
+/** What the bundled file for a tag holds, or null when there is none. */
+export const framesFor = (languageTag) => FRAME_LANGUAGES[baseTag(languageTag)] || null;
+
 const loaded = new Map();
 
 // The frame file for a BCP-47 tag (`en-US` reads as `en`), or null when the

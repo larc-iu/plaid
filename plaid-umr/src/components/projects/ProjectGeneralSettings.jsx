@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UMR_NAMESPACE, readProjectLanguage } from '../../utils/umrLayerUtils.js';
+import { FRAME_LANGUAGES, framesFor } from '../../domain/lexicon.js';
+
+// The languages with a bundled frame file, for the line that says a project's
+// has none. Named rather than listed as tags: a tag is what you type, a name
+// is what you recognize.
+const BUNDLED_NAMES = Object.values(FRAME_LANGUAGES)
+  .map((f) => f.name)
+  .join(', ');
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { useManagedProject } from './useManagedProject.js';
 import { Button } from '@ui/components/ui/button';
@@ -51,6 +59,11 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
   };
 
   const nameChanged = !!project && name.trim() !== project.name && name.trim() !== '';
+
+  // The language as SAVED, not as typed: the line below reports what the
+  // concept editor is offering now, which an unsaved edit has not changed.
+  const savedLanguage = project ? readProjectLanguage(project) : '';
+  const savedFrames = framesFor(savedLanguage);
 
   const handleRename = async () => {
     if (!nameChanged) return;
@@ -148,7 +161,7 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
             The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>zh</code>,{' '}
-            <code>arp</code>). It picks the frame file the concept editor offers, and it is the
+            <code>arp</code>). It picks the rolesets the concept editor offers, and it is the
             language code on an exported document.
           </p>
           <div className="flex items-end gap-2">
@@ -164,6 +177,23 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
               {savingLanguage ? 'Saving…' : 'Save'}
             </Button>
           </div>
+          {/* Which rolesets the saved language actually gets. Four languages
+              have a bundled file and every other one has none, which the
+              concept editor showed only as an empty Senses group. */}
+          <p className="text-sm text-muted-foreground">
+            {savedFrames ? (
+              <>
+                Bundled rolesets: {savedFrames.name}, {savedFrames.rolesets.toLocaleString()}.
+              </>
+            ) : savedLanguage ? (
+              <>
+                No bundled rolesets for <code>{savedLanguage}</code>. Rolesets come from the
+                project&rsquo;s vocabularies. Bundled: {BUNDLED_NAMES}.
+              </>
+            ) : (
+              <>No language, so no bundled rolesets. Bundled: {BUNDLED_NAMES}.</>
+            )}
+          </p>
         </CardContent>
       </Card>
 
