@@ -57,24 +57,25 @@ const parentArgs = (frames, lexicon, parentConcept) => {
   return known.length ? known : argsOfEntry(lexicon, parentConcept);
 };
 
-export const roleOptions = (frames = null, parentConcept = null, lexicon = null) => [
-  ...(parentArgs(frames, lexicon, parentConcept).length
-    ? [
-        {
-          group: parentConcept,
-          items: parentArgs(frames, lexicon, parentConcept).map((a) => ({
-            value: a.role,
-            label: `${a.role} ${a.description}`,
-          })),
-        },
-      ]
-    : []),
-  { group: 'Core', items: ARG_ROLES },
-  { group: 'Participant', items: flat(ROLES.participant) },
-  { group: 'Non-participant', items: flat(ROLES.nonParticipant) },
-  { group: 'Spatial', items: flat(ROLES.spatial) },
-  { group: 'Discourse', items: flat(ROLES.discourse) },
-];
+export const roleOptions = (frames = null, parentConcept = null, lexicon = null) => {
+  // Once: the vocabulary answer walks the entries, and a dictionary is long.
+  const own = parentArgs(frames, lexicon, parentConcept);
+  return [
+    ...(own.length
+      ? [
+          {
+            group: parentConcept,
+            items: own.map((a) => ({ value: a.role, label: `${a.role} ${a.description}` })),
+          },
+        ]
+      : []),
+    { group: 'Core', items: ARG_ROLES },
+    { group: 'Participant', items: flat(ROLES.participant) },
+    { group: 'Non-participant', items: flat(ROLES.nonParticipant) },
+    { group: 'Spatial', items: flat(ROLES.spatial) },
+    { group: 'Discourse', items: flat(ROLES.discourse) },
+  ];
+};
 
 // A role typed without its colon gets one. A label picked from a list
 // (`:ARG0 giver`) is the role alone.
