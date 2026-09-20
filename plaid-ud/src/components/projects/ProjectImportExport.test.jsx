@@ -81,3 +81,50 @@ describe('the skipped-document rows after an export', () => {
     await view.unmount();
   });
 });
+
+// The project the beforeEach hands back has no layers, so the import card
+// shows its "not set up" notice either way. What differs is who is offered the
+// way out: a layer needs a maintainer, and a link a writer cannot follow
+// lands them on a page that tells them so.
+describe('the import card on a project with no UD layers', () => {
+  const asRole = (role) => {
+    auth.user = { id: 'u', isAdmin: false };
+    auth.getClient.mockReturnValue({
+      projects: {
+        get: async () => ({
+          id: 'A',
+          name: 'Ay',
+          maintainers: role === 'maintainer' ? ['u'] : [],
+          writers: role === 'writer' ? ['u'] : [],
+          readers: [],
+        }),
+        listDocuments: async () => [],
+      },
+    });
+  };
+
+  it('offers a maintainer the way to set them up', async () => {
+    asRole('maintainer');
+    const view = await renderComponent(app);
+    await view.step(settle);
+    const link = [...view.container.querySelectorAll('a')].find(
+      (a) => a.textContent.trim() === 'Set up its layers',
+    );
+    expect(link).not.toBe(undefined);
+    expect(link.getAttribute('href')).toBe('/projects/A/configuration');
+    await view.unmount();
+  });
+
+  it('tells a writer who can, and offers no link', async () => {
+    asRole('writer');
+    const view = await renderComponent(app);
+    await view.step(settle);
+    expect(view.container.textContent).toContain('A project maintainer can set it up.');
+    expect(
+      [...view.container.querySelectorAll('a')].some(
+        (a) => a.textContent.trim() === 'Set up its layers',
+      ),
+    ).toBe(false);
+    await view.unmount();
+  });
+});

@@ -11,7 +11,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { importUmrDocument } from '../../domain/umrImport.js';
 import { exportProjectUmr } from '../../domain/umrExport.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
-import { canEditProject } from '@ui/domain/permissions.js';
+import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -182,6 +182,7 @@ export const ProjectImportExport = () => {
   }, [importing]);
 
   const canEdit = canEditProject(project, user);
+  const canManage = canManageProject(project, user);
   const layerInfo = getUmrLayerInfo(project);
   const configured = layerInfo.isConfigured;
 
@@ -381,17 +382,26 @@ export const ProjectImportExport = () => {
                   <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                   <div>
                     <p className="font-medium">Not available</p>
-                    <p>
-                      This project&apos;s UMR layers are not set up, so there is nothing to import
-                      into.{' '}
-                      <Link
-                        className="text-primary underline underline-offset-4"
-                        to={`/projects/${projectId}/configuration`}
-                      >
-                        Set up its layers
-                      </Link>{' '}
-                      first.
-                    </p>
+                    {/* Only a maintainer can make a layer, so only a
+                        maintainer is offered the way to. */}
+                    {canManage ? (
+                      <p>
+                        This project&apos;s UMR layers are not set up, so there is nothing to import
+                        into.{' '}
+                        <Link
+                          className="text-primary underline underline-offset-4"
+                          to={`/projects/${projectId}/configuration`}
+                        >
+                          Set up its layers
+                        </Link>{' '}
+                        first.
+                      </p>
+                    ) : (
+                      <p>
+                        This project&apos;s UMR layers are not set up, so there is nothing to import
+                        into. A project maintainer can set it up.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (

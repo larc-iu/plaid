@@ -94,7 +94,10 @@ export const SearchPage = () => {
   const layerInfo = useMemo(() => getUdLayerInfo(project), [project]);
   const docName = useCallback((id) => documents.find((d) => d.id === id)?.name || id, [documents]);
   const isRewrite = useMemo(() => looksLikeGrs(queryText), [queryText]);
-  const canApply = canManageProject(project, user);
+  // Applying a rewrite and making a layer are both a maintainer's, so this is
+  // read twice: for the Apply button and for the way out of an unconfigured
+  // project below.
+  const canManage = canManageProject(project, user);
 
   const reportError = useCallback((err) => {
     if (err instanceof GrewError) {
@@ -268,16 +271,24 @@ export const SearchPage = () => {
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p className="font-medium">Not available</p>
-              <p>
-                This project is not set up for UD annotation.{' '}
-                <Link
-                  className="text-primary underline underline-offset-4"
-                  to={`/projects/${projectId}/configuration`}
-                >
-                  Set up its layers
-                </Link>
-                .
-              </p>
+              {/* Only a maintainer can make a layer, so only a maintainer is
+                  offered the way to. Everyone else is told who can. */}
+              {canManage ? (
+                <p>
+                  This project is not set up for UD annotation.{' '}
+                  <Link
+                    className="text-primary underline underline-offset-4"
+                    to={`/projects/${projectId}/configuration`}
+                  >
+                    Set up its layers
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <p>
+                  This project is not set up for UD annotation. A project maintainer can set it up.
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -308,7 +319,7 @@ export const SearchPage = () => {
                 selected={selected}
                 onSelect={setSelected}
                 hrefFor={sentenceHref}
-                canApply={canApply}
+                canApply={canManage}
                 busy={applying}
                 onApply={apply}
               />
