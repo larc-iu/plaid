@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { TASKS } from '@larc-iu/plaid-client';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
 import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
 import { reloadAfterRun } from '@ui/lib/runReload.js';
 import { notifyError } from '../../../utils/feedback.jsx';
-import { COMPARE_STORAGE_ID, DRAFT_STORAGE_ID } from '../../../utils/serviceDefaults.js';
+import {
+  COMPARE_SPOT,
+  COMPARE_STORAGE_ID,
+  DRAFT_SPOT,
+  DRAFT_STORAGE_ID,
+} from '../../../utils/serviceDefaults.js';
 import { draftNotice } from '../../../domain/draftNotice.js';
 import { compareNotice } from '../../../domain/compareNotice.js';
 
@@ -35,7 +39,7 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
 
   const draft = useSpotRun({
     request,
-    task: TASKS.ANALYZE,
+    task: DRAFT_SPOT.key,
     storageId: DRAFT_STORAGE_ID,
     project,
     projectId,
@@ -60,7 +64,7 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
 
   const compare = useSpotRun({
     request,
-    task: TASKS.COMPARE,
+    task: COMPARE_SPOT.key,
     storageId: COMPARE_STORAGE_ID,
     project,
     projectId,

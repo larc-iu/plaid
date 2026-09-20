@@ -253,7 +253,7 @@ class UmrBootstrapService(BaseService):
             description='Writes a first graph per sentence from the vocabulary links and '
                         'glosses the project already has: anchored nodes with concepts '
                         'and attributes, no relations, no model.',
-            tasks=[TASKS.ANALYZE],
+            tasks=[TASKS.DRAFT_GRAPH],
             summary=SUMMARY,
             parameters=[
                 Param.enum('scope', 'Scope',

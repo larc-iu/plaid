@@ -17,7 +17,7 @@ export const DRAFT_STORAGE_ID = 'draft';
 // declares in its extras. Read by the Draft dialog and by the project's
 // Services settings, so the two cannot describe it differently.
 export const DRAFT_SPOT = {
-  key: TASKS.ANALYZE,
+  key: TASKS.DRAFT_GRAPH,
   label: 'Draft',
   description:
     'Writes a first UMR graph for the sentences of a document, to be corrected on the canvas. ' +

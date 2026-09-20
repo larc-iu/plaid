@@ -55,6 +55,20 @@ export const TASKS = Object.freeze({
   LINK_VOCAB: "link-vocab",
   /** Propose an interlinear analysis (morpheme segmentation + glosses) for words. */
   ANALYZE: "analyze",
+  /**
+   * Draft a meaning representation graph over the sentences of a document,
+   * for correction by hand. The request names a `scope` ('document' or
+   * 'sentence'), a `sentence` number when the scope is one sentence, and
+   * `overwrite`. See plaid-umr's drafting services.
+   *
+   * Apart from `analyze` on purpose. A task is the CONTRACT a spot offers a
+   * service against, and these two share almost none of it: an analyze
+   * request names the three token layers plus the language, metalanguage and
+   * orthography, and writes morphemes and glosses. Both claimed `analyze` for
+   * a while, so every app offering an analyze spot offered the other app's
+   * services, which could not answer the request they would have been given.
+   */
+  DRAFT_GRAPH: "draft-graph",
   /** Propose a free translation for each sentence. */
   TRANSLATE: "translate",
   /**

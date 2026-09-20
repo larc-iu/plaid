@@ -741,7 +741,7 @@ class UmrDraftService(BaseService):
             service_name='UMR drafting',
             description='Drafts a sentence-level UMR graph with a language model, for correction '
                         'on the canvas',
-            tasks=[TASKS.ANALYZE],
+            tasks=[TASKS.DRAFT_GRAPH],
             summary=SUMMARY,
             parameters=[
                 Param.enum('scope', 'Scope',
