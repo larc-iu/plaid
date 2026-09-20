@@ -181,6 +181,9 @@ function App() {
               path="projects/:projectId/documents/:documentId"
               element={<DocumentEditorShell />}
             >
+              {/* A link to the document with no tab, such as a hand-trimmed
+                  URL, opens the work surface rather than an empty body. */}
+              <Route index element={<Navigate to="annotate" replace />} />
               <Route path="annotate" element={<AnnotationEditor />} />
               <Route path="details" element={<DocumentDetails />} />
               <Route
@@ -210,7 +213,11 @@ function App() {
             </Route>
           </Route>
 
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* An address that matches nothing goes to the project list, which
+              sends a signed-out visitor on to the login page itself. Going
+              straight to login tells someone already signed in that they are
+              not. */}
+          <Route path="*" element={<Navigate to="/projects" replace />} />
         </Routes>
       </AuthProvider>
     </HashRouter>
