@@ -20,18 +20,35 @@ const sentences = [
       word('w3', 'roa', { vocabItem: { id: 'e-roa' } }),
       word('w4', 'Roa'),
       word('w5', 'roa', { morphemes: [morph('m4', 'roa', { vocabItem: { id: 'e-roa' } })] }),
+      word('w6', 'roa', { morphemes: [morph('m5', 'roa')] }),
     ],
   },
 ];
 
 describe('sameFormUnlinked', () => {
   it('finds the other unlinked morphemes showing the same form, in order', () => {
-    expect(sameFormUnlinked(sentences, 'morpheme', 'roa', 'm1')).toEqual(['m3']);
+    expect(sameFormUnlinked(sentences, 'morpheme', 'roa', 'm1')).toEqual(['m3', 'm5']);
   });
 
   it('finds the other unlinked words with the same content, exactly', () => {
-    // w3 is linked, w4 differs in case, w1 is the one asking.
-    expect(sameFormUnlinked(sentences, 'word', 'roa', 'w1')).toEqual(['w5']);
+    // w3 is linked, w4 differs in case, w1 is the one asking, and w5 is
+    // linked at the other level: a word nobody has segmented and its one
+    // morpheme are the same thing to a reader, so linking both put two chips
+    // on one word saying different things.
+    expect(sameFormUnlinked(sentences, 'word', 'roa', 'w1')).toEqual(['w6']);
+  });
+
+  it('leaves a word alone at either level once it is linked at one', () => {
+    const one = [{ id: 's', tokens: [word('w', 'roa', { morphemes: [morph('m', 'roa')] })] }];
+    expect(sameFormUnlinked(one, 'word', 'roa', 'other')).toEqual(['w']);
+    expect(sameFormUnlinked(one, 'morpheme', 'roa', 'other')).toEqual(['m']);
+    const linkedAbove = [
+      {
+        id: 's',
+        tokens: [word('w', 'roa', { vocabItem: { id: 'e' }, morphemes: [morph('m', 'roa')] })],
+      },
+    ];
+    expect(sameFormUnlinked(linkedAbove, 'morpheme', 'roa', 'other')).toEqual([]);
   });
 
   it('takes an edited morpheme form over the baseline content', () => {

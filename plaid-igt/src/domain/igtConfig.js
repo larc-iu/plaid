@@ -268,12 +268,23 @@ export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
  * reads it from here rather than looking the vocabulary up by a name it
  * recomputes, which a renamed project or a hand-named lexicon does not match.
  */
-export const markImportStarted = async (client, projectId, kind, source, vocabId = null) => {
+export const markImportStarted = async (
+  client,
+  projectId,
+  kind,
+  source,
+  vocabId = null,
+  choices = null,
+) => {
   try {
     await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
       kind,
       source: source ?? null,
       vocabId,
+      // What the review screen was told, so a resume can be given the same
+      // answers rather than the defaults it would pick for itself. Opaque
+      // here: each wizard writes and reads its own shape.
+      choices: choices ?? null,
       startedAt: new Date().toISOString(),
     });
   } catch (err) {

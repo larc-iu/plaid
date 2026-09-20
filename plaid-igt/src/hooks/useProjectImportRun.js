@@ -47,6 +47,9 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     setupShare = 0.15,
     vocabId = null,
     requireVocab = null,
+    // What the review screen was answered with, kept on the record so a
+    // resume repeats this run rather than starting from its own defaults.
+    choices = null,
     run,
   }) => {
     setStage('running');
@@ -63,7 +66,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
           onProgress: (pct, msg) => setProgress({ label: msg, pct: pct * setupShare }),
           onProjectCreated: (id) => {
             projectIdRef.current = id;
-            markImportStarted(client, id, kind, source);
+            markImportStarted(client, id, kind, source, null, choices);
           },
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
@@ -72,7 +75,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       }
       const projectId = projectIdRef.current;
       const vocab = typeof vocabId === 'function' ? await vocabId({ projectId, setup }) : vocabId;
-      await markImportStarted(client, projectId, kind, source, vocab);
+      await markImportStarted(client, projectId, kind, source, vocab, choices);
       if (requireVocab && !vocab) throw new Error(requireVocab);
 
       const res = await run({

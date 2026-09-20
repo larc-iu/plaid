@@ -17,6 +17,7 @@ import { wideEnoughToDock } from '@ui/components/assistant/panelWidth.js';
 import { defaultGuessSource, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
+import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
 import {
   cellTier,
   PRECEDENT_REFRESH_MIN_MS,
@@ -516,7 +517,17 @@ export class IgtEditor {
     // Vocab-link review sweep: land focus on the next suggested chip after a
     // confirm/remove re-render (same data-vocab-opener idiom as _closePopover).
     if (pf.vocabOpener != null) {
-      const chip = this.container.querySelector(`[data-vocab-opener="${pf.vocabOpener}"]`);
+      let chip = this.container.querySelector(`[data-vocab-opener="${pf.vocabOpener}"]`);
+      // The morpheme of a word nobody had segmented is derived, and writing to
+      // it makes it a real token under a new id: the chip asked for here is
+      // gone, and focus fell to the page. The word's own morpheme row is the
+      // same row, whatever it is called now.
+      if (!chip && isVirtualMorphemeId(pf.vocabOpener)) {
+        const wordId = virtualMorphemeWordId(pf.vocabOpener);
+        const word = this.doc.tokenLookup?.get(wordId);
+        const real = word?.morphemes?.length === 1 ? word.morphemes[0].id : null;
+        if (real) chip = this.container.querySelector(`[data-vocab-opener="${real}"]`);
+      }
       if (chip) chip.focus();
       return;
     }

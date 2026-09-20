@@ -13,7 +13,7 @@
 // against the same project; the engine skips documents already marked done
 // and redoes half-imported ones.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, FileUp, Check, X, RefreshCw, Square } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -184,6 +184,31 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     }
   };
 
+  // A resume is the same import again, so the screen is given the answers the
+  // first run was given: the record carries them, and the file is read again
+  // here to check them against. Without this a resume sent the defaults, which
+  // could write the wrong orthography, leave out a language the first run kept
+  // (and then fail on a field that is missing), or import the texts that were
+  // unticked.
+  const resumeChoices = resumeRecord?.choices ?? null;
+  const choicesApplied = useRef(false);
+  useEffect(() => {
+    if (!parsed || !resumeChoices || choicesApplied.current) return;
+    choicesApplied.current = true;
+    const known = (list, available) => new Set((list || []).filter((x) => available.has(x)));
+    setSelectedTexts(
+      known(resumeChoices.texts, new Set(parsed.build.documents.map((d) => d.guid))),
+    );
+    setSelectedWss(known(resumeChoices.analysisWss, new Set(parsed.analysisWssAvailable)));
+    setSelectedLexFields(
+      known(resumeChoices.lexiconFields, new Set(parsed.ir.lexiconFields.map((f) => f.name))),
+    );
+    if (resumeChoices.orthoNames) {
+      setOrthoNames((prev) => ({ ...prev, ...resumeChoices.orthoNames }));
+    }
+    setImportVariants(!!resumeChoices.importVariants);
+  }, [parsed, resumeChoices]);
+
   // The selection knobs (texts, analysis languages) feed straight into the
   // derived config so the review cards always show what will be created.
   const filteredBuild = useMemo(
@@ -237,6 +262,15 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     return start({
       source: parsed.sourceName,
       setupShare: 0.1,
+      // The answers this screen was given, so a resume writes the same shape
+      // rather than the defaults it would pick for itself.
+      choices: {
+        texts: [...selectedTexts],
+        analysisWss: [...selectedWss],
+        lexiconFields: [...selectedLexFields],
+        orthoNames,
+        importVariants,
+      },
       setupData: () => ({
         basicInfo: { projectName: projectName.trim() },
         orthographies: {

@@ -855,21 +855,28 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // is worth having and is not worth losing a corpus over.
   const wanted = (archive.manifest.guidelines || []).filter((g) => g?.title);
   if (wanted.length) {
-    let present = new Set();
+    // Counted, not matched as a set: an archive holding the same guideline
+    // twice means two, and one already in the project answers for one of
+    // them. Matching by set alone lost the second copy.
+    const key = (g) => `${g.title}\u0000${g.body || ''}`;
+    const have = new Map();
     try {
       const existing = await client.guidelines.list(projectId, { includeBodies: true });
-      present = new Set(existing.map((g) => `${g.title}\u0000${g.body || ''}`));
+      existing.forEach((g) => have.set(key(g), (have.get(key(g)) || 0) + 1));
     } catch (err) {
       warnings.push(`The project's guidelines could not be read: ${err?.message ?? err}`);
     }
     for (const g of wanted) {
-      if (present.has(`${g.title}\u0000${g.body || ''}`)) continue;
+      const left = have.get(key(g)) || 0;
+      if (left > 0) {
+        have.set(key(g), left - 1);
+        continue;
+      }
       try {
         await client.guidelines.create(projectId, g.title, {
           body: g.body || '',
           pinned: !!g.pinned,
         });
-        present.add(`${g.title}\u0000${g.body || ''}`);
       } catch (err) {
         warnings.push(`Guideline "${g.title}" could not be created: ${err?.message ?? err}`);
       }

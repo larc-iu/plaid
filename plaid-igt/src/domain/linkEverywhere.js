@@ -16,12 +16,19 @@ import { extractAnalysis, isUnanalyzedWord } from './analysisMemory.js';
  */
 export function sameFormUnlinked(sentences, kind, form, exceptId) {
   const out = [];
+  // A word nobody has segmented and its one morpheme are the same thing to a
+  // reader, so a link at either level speaks for both. Linking the other
+  // level as well put two chips on one word saying different things.
+  const oneMorph = (t) => (t.morphemes || []).length === 1;
   for (const s of sentences || []) {
     for (const t of s.tokens || []) {
       if (kind === 'word') {
-        if (t.id !== exceptId && !t.vocabItem && t.content === form) out.push(t.id);
+        const takenBelow = oneMorph(t) && !!t.morphemes[0].vocabItem;
+        if (t.id !== exceptId && !t.vocabItem && !takenBelow && t.content === form) out.push(t.id);
         continue;
       }
+      const takenAbove = oneMorph(t) && !!t.vocabItem;
+      if (takenAbove) continue;
       for (const m of t.morphemes || []) {
         if (m.id !== exceptId && !m.vocabItem && morphFormOf(m) === form) out.push(m.id);
       }

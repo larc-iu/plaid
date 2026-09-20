@@ -16,6 +16,8 @@ import {
   trimIgnoredEdges,
   readLanguages,
   hasLanguageIdentity,
+  markImportStarted,
+  readImportState,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc } from './test-helpers.js';
@@ -233,5 +235,28 @@ describe('hasLanguageIdentity', () => {
     expect(hasLanguageIdentity({})).toBe(false);
     expect(hasLanguageIdentity(null)).toBe(false);
     expect(hasLanguageIdentity({ latitude: 41.5 })).toBe(false);
+  });
+});
+
+// A resume must be able to repeat the run that was stopped, so the record
+// carries what the review screen was answered with.
+describe('the import record', () => {
+  it('keeps the review screen’s answers for a resume', async () => {
+    const written = [];
+    const client = {
+      projects: { setConfig: async (...args) => written.push(args) },
+    };
+    const choices = { texts: ['g1'], analysisWss: ['ru'], orthoNames: { xx: 'IPA' } };
+    await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup', 'v1', choices);
+    const [, , , value] = written[0];
+    expect(value.choices).toEqual(choices);
+    expect(readImportState({ igt: { import: value } })).toEqual(value);
+  });
+
+  it('records no answers when a wizard offers none', async () => {
+    const written = [];
+    const client = { projects: { setConfig: async (...args) => written.push(args) } };
+    await markImportStarted(client, 'p1', 'CLDF', null);
+    expect(written[0][3].choices).toBe(null);
   });
 });
