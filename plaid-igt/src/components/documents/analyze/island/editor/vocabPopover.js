@@ -167,8 +167,58 @@ export const vocabPopover = {
     return inlineNames.length ? vals.join(' · ') : (vals[0] ?? '');
   },
 
+  // The popover a project with no lexicon gets: one row, the word's analysis
+  // onto the words nobody has analyzed, and the morph type when it is opened
+  // from a morpheme.
+  _spreadPopover(tokenId, formText, kind) {
+    const like =
+      kind === 'mwe' ? null : sameFormUnanalyzed(this.doc.sentences, tokenId, this._ignoredCfg);
+    const pos = this._popoverPos;
+    const posStyle = pos
+      ? `position:fixed;left:${pos.left}px;top:${pos.top}px;transform:none;margin-top:0;`
+      : '';
+    return html`<div
+      class="igt-vocab-pop"
+      data-igt-pop
+      role="dialog"
+      aria-label=${`Analyze “${formText}”`}
+      style=${posStyle}
+      @click=${(e) => e.stopPropagation()}
+      @keydown=${(e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          this._closePopover(true);
+        }
+      }}
+    >
+      ${like
+        ? html`<button
+            type="button"
+            class="igt-vocab-pop__all"
+            data-pop-autofocus
+            title=${`Give the ${like.ids.length} unanalyzed “${like.word.content}” in this text this word’s morphemes and values`}
+            @click=${(e) => {
+              e.stopPropagation();
+              this._analyzeEverywhere(tokenId, like, true);
+            }}
+          >
+            Analyze every “${like.word.content}” in this text like this
+            <span class="igt-vocab-pop__prec">×${like.ids.length}</span>
+          </button>`
+        : html`<div class="igt-vocab-pop__empty" data-pop-autofocus tabindex="-1">
+            Nothing else in this text is spelled “${formText}” and unanalyzed.
+          </div>`}
+      ${kind === 'morpheme' ? this._morphTypeRow(tokenId, null) : nothing}
+    </div>`;
+  },
+
   _vocabPopover(tokenId, formText, currentItem, kind) {
     const vocabs = Object.values(this.doc.vocabularies || {});
+    // A project with no lexicon has nothing to link to, and everything below
+    // is about linking. What it can still offer is the word's own analysis,
+    // spread over the words spelled the same, which needs no lexicon at all
+    // and used to be unreachable because this popover never opened.
+    if (!vocabs.length) return this._spreadPopover(tokenId, formText, kind);
     // The popover is scoped to ONE vocabulary at a time, chosen by the thin
     // selector at the bottom. Default to the linked item's vocab (so an existing
     // link is visible), else the first. The list, create, and manage row all

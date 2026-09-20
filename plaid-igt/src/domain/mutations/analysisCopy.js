@@ -67,17 +67,26 @@ export const analysisCopyMutations = {
   // word's analysis onto other words nobody has analyzed. A person pointed at
   // the analysis and asked for it, so it lands as their work (the writer's
   // create stamp: nothing for a verifier), as a re-analyze does. Words that
-  // stopped being unanalyzed since the row was drawn are skipped. Returns the
-  // number of words written (false on failure).
-  async applyAnalysisToWords(wordTokenIds, analysis) {
+  // stopped being unanalyzed since the row was drawn are skipped. `confirm`
+  // names the words the analysis came from: asking for it to be spread is
+  // endorsing it, so they stop reading as somebody else's guess while their
+  // copies read as this person's work. Returns the number of words written
+  // (false on failure).
+  async applyAnalysisToWords(wordTokenIds, analysis, { confirm = [] } = {}) {
     const todo = this._planAnalysisApply(
       (wordTokenIds || []).map((wordTokenId) => ({ wordTokenId, analysis })),
     );
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const ok = await this._withSaving('Failed to analyze words', () =>
-      this._applyAnalysesImpl(todo, this.createStamp || {}),
-    );
+    const ok = await this._withSaving('Failed to analyze words', async () => {
+      await this._applyAnalysesImpl(todo, this.createStamp || {});
+      if (confirm.length) {
+        await this._client.batched(async (b) => {
+          this._queueConfirm(b, confirm);
+        });
+        await this._reload();
+      }
+    });
     return ok ? todo.length : false;
   },
 
@@ -93,13 +102,19 @@ export const analysisCopyMutations = {
   async bulkReplaceAnalyses(proposals) {
     const targetSig = new Map();
     const targets = [];
+    const already = [];
     for (const p of proposals || []) {
       const token = this.tokenLookup.get(p.wordTokenId);
       if (!token || !p.analysis) continue;
       let sig = targetSig.get(p.analysis);
       if (!sig) targetSig.set(p.analysis, (sig = analysisSignature(p.analysis)));
       const current = extractAnalysis(token);
-      if (current && analysisSignature(current) === sig) continue;
+      // Already carrying it: nothing to write, but this is one of the words
+      // the person pointed at, so it stops reading as somebody else's guess.
+      if (current && analysisSignature(current) === sig) {
+        already.push(p.wordTokenId);
+        continue;
+      }
       targets.push({ wordTokenId: p.wordTokenId, analysis: p.analysis, token });
     }
     if (!targets.length) return 0;
@@ -174,6 +189,14 @@ export const analysisCopyMutations = {
       );
       if (todo === false) throw new Error('Morpheme layer not configured');
       await this._applyAnalysesImpl(todo, this.createStamp || {});
+      // The occurrences that already carried this analysis are what the
+      // person chose it from: they are confirmed with the rest.
+      if (already.length) {
+        await this._client.batched(async (b) => {
+          this._queueConfirm(b, already);
+        });
+        await this._reload();
+      }
     }))
       ? targets.length
       : false;
@@ -434,6 +457,45 @@ export const analysisCopyMutations = {
   //     { targetId, field, value, metadata }, where targetId is this word or
   //     one of its morphemes.
   // No-op (true) when there is nothing to confirm and nothing to adopt.
+  // What this writer can confirm on `words` and their morphemes: the links,
+  // the annotation spans and the tokens that are somebody else's unconfirmed
+  // work. Morpheme tokens (a copied segmentation) AND the word token itself
+  // (a tokenizer service stamps prov on word tokens) confirm together.
+  _reviewableIdsOf(words) {
+    const spanIds = [];
+    const tokenIds = [];
+    const linkIds = [];
+    const collect = (t) => {
+      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
+      for (const span of Object.values(t.annotations || {})) {
+        if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
+      }
+      if (this.reviewable(t.metadata)) tokenIds.push(t.id);
+    };
+    for (const token of words) {
+      if (!token) continue;
+      collect(token);
+      for (const m of token.morphemes || []) collect(m);
+    }
+    return { spanIds, tokenIds, linkIds };
+  },
+
+  // Confirm what `wordTokenIds` carry of somebody else's unconfirmed work, on
+  // the batch `b`. Spreading an analysis is endorsing it, so the word it was
+  // copied from stops reading as a guess while its copies read as this
+  // person's own work.
+  _queueConfirm(b, wordTokenIds) {
+    const words = (wordTokenIds || []).map((id) => this.tokenLookup.get(id)).filter(Boolean);
+    if (!words.length) return false;
+    const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf(words);
+    if (!spanIds.length && !tokenIds.length && !linkIds.length) return false;
+    const confirm = this.confirmStamp(stampInferred('any'));
+    tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirm));
+    linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirm));
+    spanIds.forEach((id) => b.spans.patchMetadata(id, confirm));
+    return true;
+  },
+
   async confirmWordAnalysis(wordTokenId, adoptions = []) {
     const token = this.tokenLookup.get(wordTokenId);
     if (!token) {
@@ -442,21 +504,7 @@ export const analysisCopyMutations = {
     }
     // One writer, one stamp: what it merges does not depend on the entity.
     const confirm = this.confirmStamp(stampInferred('any'));
-    const spanIds = [];
-    const tokenIds = [];
-    const linkIds = [];
-
-    const collect = (t) => {
-      if (this.reviewableState(t.vocabItem?.prov)) linkIds.push(t.vocabItem.linkId);
-      for (const span of Object.values(t.annotations || {})) {
-        if (span && this.reviewable(span.metadata)) spanIds.push(span.id);
-      }
-      // Morpheme tokens (a copied segmentation) AND the word token itself (a
-      // tokenizer service stamps prov on word tokens) confirm together.
-      if (this.reviewable(t.metadata)) tokenIds.push(t.id);
-    };
-    collect(token);
-    for (const m of token.morphemes || []) collect(m);
+    const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf([token]);
 
     // Resolve adoptions against the word itself: the scope follows the target,
     // and a cell that gained a value between the render and the keypress is

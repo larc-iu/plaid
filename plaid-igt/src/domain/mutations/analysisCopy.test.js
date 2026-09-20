@@ -142,6 +142,27 @@ describe('bulkReplaceAnalyses', () => {
     expect(busy.calls).toEqual([]);
   });
 
+  // Spreading an analysis is endorsing it, so the word it came from stops
+  // reading as somebody else's guess while its copies read as this person's
+  // work (Luke's ruling, 2026-09-19).
+  it('applyAnalysisToWords confirms the word the analysis came from', async () => {
+    // The source word's gloss and part of speech are a machine's, unconfirmed.
+    const machineRaw = () => {
+      const raw = analyzedRaw();
+      const machine = { prov: 'inferred', provSource: 'service:test' };
+      raw.textLayers[0].tokenLayers[2].spanLayers[0].spans[0].metadata = { ...machine };
+      raw.textLayers[0].tokenLayers[1].spanLayers[0].spans[0].metadata = { ...machine };
+      return raw;
+    };
+    const client = clientFor({ reloadDoc: machineRaw() });
+    const doc = docFor(machineRaw(), client);
+    await doc.applyAnalysisToWords(['w-1'], targetAnalysis, { confirm: ['w-2'] });
+    const confirmed = client.calls
+      .filter((c) => c.kind === 'spans.patchMetadata')
+      .map((c) => c.args[0]);
+    expect(confirmed).toEqual(expect.arrayContaining(['g-2', 'p-2']));
+  });
+
   it('bulkApplyAnalyses still stamps copies as inferred', async () => {
     const client = clientFor({ reloadDoc: strippedRaw() });
     const doc = docFor(strippedRaw(), client);

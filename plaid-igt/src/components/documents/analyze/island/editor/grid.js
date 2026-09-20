@@ -5,6 +5,7 @@ import { isTokenIgnored } from '@/domain/igtConfig';
 import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
 import { KINDS } from '@/domain/precedent';
+import { extractAnalysis } from '@/domain/analysisMemory.js';
 import {
   cellTier,
   morphFormOf,
@@ -445,6 +446,15 @@ export const grid = {
   // focus — see .igt-vocab__link in the CSS). Both are real <button>s so
   // they're keyboard-focusable and operable (Enter/Space). `face` may be a
   // string or an input template. opts: { id, vocabItem, formText, kind }
+  // Whether this word has an analysis somebody stood behind, which is what
+  // "Analyze every word spelled like this one" copies. Read off the word
+  // alone: whether any other word is waiting for it is the popover's question
+  // to ask, once, when it opens.
+  _canSpread(wordTokenId) {
+    const token = this.doc.tokenLookup?.get(wordTokenId);
+    return Boolean(token && extractAnalysis(token));
+  },
+
   _vocabFace(face, opts) {
     const { id, vocabItem, formText, kind } = opts;
     const hasVocabs = Object.keys(this.doc.vocabularies || {}).length > 0;
@@ -502,6 +512,20 @@ export const grid = {
         @click=${openerClick}
       >
         link
+      </button>`;
+    } else if (!hasVocabs && !this.readOnly && kind === 'word' && this._canSpread(id)) {
+      // A project with no lexicon has no chip at all, which left "Analyze
+      // every word spelled like this one" with nowhere to be asked for. The
+      // word's own analysis is what it opens.
+      opener = html`<button
+        type="button"
+        class="igt-vocab__opener igt-vocab__link"
+        data-vocab-opener=${id}
+        data-pop-opener=${`vocab:${id}`}
+        title="Analyze every word spelled like this one, like this one"
+        @click=${openerClick}
+      >
+        analyze
       </button>`;
     }
     // A word's stack holds, between the word and its chip, one row per lane

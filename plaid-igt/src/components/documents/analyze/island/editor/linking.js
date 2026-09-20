@@ -72,7 +72,9 @@ export const linking = {
   _analyzeEverywhere(tokenId, like, returnFocus = false) {
     this._closePopover(returnFocus);
     this._runThenFocus({ vocabOpener: tokenId }, () =>
-      this.doc.applyAnalysisToWords(like.ids, like.analysis),
+      // The word the analysis came from is confirmed with it: asking for it
+      // to be spread is endorsing it.
+      this.doc.applyAnalysisToWords(like.ids, like.analysis, { confirm: [tokenId] }),
     ).then((count) => {
       if (count) {
         notifyInfo(
