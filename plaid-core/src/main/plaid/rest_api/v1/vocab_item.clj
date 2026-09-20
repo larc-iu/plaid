@@ -42,6 +42,10 @@
     (when (uuid? id)
       (:vocab-item/layer (vocab-item/get db id)))))
 
+(defn bulk-get-layer-id-from-entry [{db :db params :parameters}]
+  (when-let [id (-> params :body first :id)]
+    (:vocab-item/layer (vocab-item/get db id))))
+
 (def vocab-item-routes
   ["/vocab-items"
 
@@ -97,6 +101,40 @@
                                        {:status 201 :body {:ids (:extra result)}}
                                        {:status (or (:code result) 500)
                                         :body {:error (:error result)}})))))}
+             :patch {:summary (str "Update multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
+                                   "<body>id</body>, the vocab item to update\n"
+                                   "<body>form</body>, an optional new form (set only when the key is present)\n"
+                                   "<body>metadata</body>, an optional metadata PATCH: keys present are set or overwritten, keys absent are left untouched, and a key whose value is null is deleted\n"
+                                   "Entries may target different vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. "
+                                   "Only an entry whose form actually changes restates the documents linking it; every document so restated has its version bumped, and their new versions are returned in X-Document-Versions.")
+                     ;; Same two-step gate as the other bulk verbs: the coarse
+                     ;; vocab-WRITER check runs on the first entry's layer, and
+                     ;; the handler then checks every distinct layer.
+                     :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-entry]
+                                  metadata/wrap-inline-metadata-shape-guard]
+                     :parameters {:body [:sequential
+                                         [:map
+                                          [:id :uuid]
+                                          [:form {:optional true} string?]
+                                          [:metadata {:optional true} [:map-of string? any?]]]]}
+                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
+                                (let [layer-ids (vocab-item/get-layer-ids db (map :id items))
+                                      unwritable (remove #(user-can-write-vocab-layer? db % user-id) layer-ids)]
+                                  (if (seq unwritable)
+                                    {:status 403
+                                     :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
+                                    (let [attrs-vec (mapv (fn [{:keys [id form metadata]}]
+                                                            (cond-> {:id id}
+                                                              (some? form) (assoc :vocab-item/form form)
+                                                              metadata (assoc :metadata metadata)))
+                                                          items)
+                                          {:keys [success code error extra documents]}
+                                          (vocab-item/bulk-merge db attrs-vec user-id)]
+                                      (if success
+                                        (prm/assoc-document-versions-in-header
+                                         {:status 200 :body {:count (count extra)}} db documents)
+                                        {:status (or code 500)
+                                         :body {:error (or error "Internal server error")}})))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. "
                                     "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
                       :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]

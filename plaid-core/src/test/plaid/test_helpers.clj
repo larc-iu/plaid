@@ -498,6 +498,14 @@
                              :path "/api/v1/vocab-items/bulk"
                              :body items}))
 
+(defn bulk-update-vocab-items
+  "items is a vector of {:id <id> :form? <str> :metadata? {...}} — form set
+  when present, metadata a shallow patch."
+  [user-request-fn items]
+  (api-call user-request-fn {:method :patch
+                             :path "/api/v1/vocab-items/bulk"
+                             :body items}))
+
 (defn bulk-delete-vocab-items [user-request-fn item-ids]
   (api-call user-request-fn {:method :delete
                              :path "/api/v1/vocab-items/bulk"

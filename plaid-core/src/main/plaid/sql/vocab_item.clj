@@ -4,7 +4,8 @@
 
   Per v2 there is no public `delete` — items are removed transitively
   via the cascade from `vocab_layers`."
-  (:require [plaid.sql.audit-write :as psaw]
+  (:require [clojure.string :as str]
+            [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
@@ -278,6 +279,61 @@
                                (psaw/record-audit-write! tx :vocab_items (:id r) :insert nil post-image))))
                          (op/touch-vocab-layers! tx layer-ids)
                          (mapv :id records)))))
+
+(defn bulk-merge
+  "Update many vocab items in ONE operation: set forms and/or patch metadata.
+  `items` is a vector of maps, each with `:id` and either or both of
+  `:vocab-item/form` (set when the key is PRESENT) and `:metadata` (a patch
+  with `plaid.sql.metadata/patch-metadata!` semantics, a nil value deleting
+  that key). Entries may span several vocab layers; the caller has already
+  checked write access on each.
+
+  Unknown ids are refused (404) rather than dropped, and an id may appear
+  only once — the contract `plaid.sql.bulk/bulk-update!` sets for spans,
+  tokens and relations. That path cannot be reused here: it finds the
+  project through the layer's `project_id` and bumps the entities' own
+  document, and a vocab layer has neither. Instead, as in single `merge`,
+  only a form that actually CHANGES restates the documents linking the
+  entry, so re-writing the form an entry already has bumps nothing.
+
+  Returns the vector of ids updated."
+  [db items user-id]
+  (let [ids (mapv :id items)]
+    (submit-operation! [tx db {:type :vocab-item/bulk-merge
+                               :project nil
+                               :document nil
+                               :description (str "Bulk update " (count items) " vocab items")
+                               :user user-id}]
+                       ;; Validation runs inside the tx so submit-operation* projects
+                       ;; ExceptionInfo to a structured 4xx response.
+                       (when (empty? items)
+                         (throw (ex-info "Bulk update requires at least one vocab item" {:code 400})))
+                       (when (not= (count ids) (count (distinct ids)))
+                         (throw (ex-info "A vocab item may appear only once in a bulk update"
+                                         {:code 400})))
+                       (let [rows (psc/fetch-ids tx :vocab_items ids)
+                             by-id (into {} (map (juxt :id identity)) rows)
+                             missing (remove by-id ids)]
+                         (when (seq missing)
+                           (throw (ex-info (str "Vocab items not found: " (str/join ", " missing))
+                                           {:code 404 :ids (vec missing)})))
+                         (let [renamed (filterv (fn [it]
+                                                  (and (contains? it :vocab-item/form)
+                                                       (not= (:vocab-item/form it)
+                                                             (:form (by-id (:id it))))))
+                                                items)
+                               ;; Read BEFORE the forms change, like every other
+                               ;; writer in this namespace.
+                               doc-ids (linked-document-ids tx (mapv :id renamed))]
+                           (when (seq renamed)
+                             (crud/bulk-update-by-id! tx :vocab_items
+                                                      (mapv (juxt :id #(hash-map :form (:vocab-item/form %)))
+                                                            renamed)))
+                           (doseq [it items :when (seq (:metadata it))]
+                             (metadata/patch-metadata! tx "vocab-item" (:id it) (:metadata it)))
+                           (op/touch-vocab-layers! tx (distinct (map :vocab_layer_id rows)))
+                           (op/bump-document-versions! tx doc-ids)
+                           ids)))))
 
 (defn bulk-delete
   "Bulk-delete vocab items in a single operation. For each existing item the

@@ -1,5 +1,5 @@
 (ns plaid.rest-api.v1.vocab-item-bulk-test
-  "Tests for POST/DELETE /vocab-items/bulk — the bulk vocab-item endpoints,
+  "Tests for POST/PATCH/DELETE /vocab-items/bulk — the bulk vocab-item endpoints,
   sibling to the vocab-link bulk variants. Unlike vocab links, vocab items
   hang off a vocab LAYER (not a document), so there is no document/OCC
   version and entries may target different layers in one call."
@@ -110,3 +110,68 @@
       (is (= 2 (count ids)))
       (assert-no-content (bulk-delete-vocab-items user1-request ids))
       (is (= 404 (:status (get-vocab-item admin-request (first ids))))))))
+
+;; ---- PATCH /vocab-items/bulk ------------------------------------------------
+
+(deftest bulk-update-forms-and-metadata
+  (testing "one call sets forms across DIFFERENT layers and patches metadata"
+    (let [{:keys [v1 v2]} (setup)
+          [i1 i2] (-> (bulk-create-vocab-items admin-request
+                                               [{:vocab-layer-id v1 :form "dogs"
+                                                 :metadata {"pos" "N" "note" "keep"}}
+                                                {:vocab-layer-id v2 :form "run"}])
+                      :body :ids)
+          res (bulk-update-vocab-items admin-request
+                                       [{:id i1 :form "dog" :metadata {"pos" "NOUN"}}
+                                        {:id i2 :metadata {"pos" "V"}}])]
+      (assert-ok res)
+      (is (= 2 (-> res :body :count)))
+      (let [a (-> (get-vocab-item admin-request i1) :body)
+            b (-> (get-vocab-item admin-request i2) :body)]
+        (is (= "dog" (:vocab-item/form a)) "form set when the key is present")
+        (is (= "NOUN" (-> a :metadata (get "pos"))) "a present key is overwritten")
+        (is (= "keep" (-> a :metadata (get "note"))) "an absent key is left untouched")
+        (is (= "run" (:vocab-item/form b)) "an entry with no :form keeps its form")
+        (is (= "V" (-> b :metadata (get "pos"))))))))
+
+(deftest bulk-update-null-deletes-a-metadata-key
+  (testing "a null value deletes that key, the same patch semantics as PATCH /:id/metadata"
+    (let [{:keys [v1]} (setup)
+          id (-> (bulk-create-vocab-items admin-request
+                                          [{:vocab-layer-id v1 :form "dogs"
+                                            :metadata {"pos" "N" "note" "drop me"}}])
+                 :body :ids first)]
+      (assert-ok (bulk-update-vocab-items admin-request [{:id id :metadata {"note" nil}}]))
+      (let [meta (-> (get-vocab-item admin-request id) :body :metadata)]
+        (is (= "N" (get meta "pos")))
+        (is (not (contains? meta "note")))))))
+
+(deftest bulk-update-refuses-unknown-id-whole
+  (testing "an unknown id 404s and nothing in the call is written"
+    (let [{:keys [v1]} (setup)
+          id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
+                 :body :ids first)]
+      (assert-status 404 (bulk-update-vocab-items admin-request
+                                                  [{:id id :form "dog"}
+                                                   {:id (random-uuid) :form "x"}]))
+      (is (= "dogs" (-> (get-vocab-item admin-request id) :body :vocab-item/form))
+          "the whole update rolled back"))))
+
+(deftest bulk-update-refuses-duplicate-and-empty
+  (testing "an id may appear only once, and the list may not be empty"
+    (let [{:keys [v1]} (setup)
+          id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
+                 :body :ids first)]
+      (assert-bad-request (bulk-update-vocab-items admin-request
+                                                   [{:id id :form "a"} {:id id :form "b"}]))
+      (assert-bad-request (bulk-update-vocab-items admin-request [])))))
+
+(deftest bulk-update-requires-vocab-writer
+  (testing "a user without write access to the layer cannot bulk update"
+    (let [{:keys [proj v1]} (setup)
+          id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
+                 :body :ids first)]
+      (assert-forbidden (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
+      (add-project-writer admin-request proj user1)
+      (assert-ok (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
+      (is (= "dog" (-> (get-vocab-item admin-request id) :body :vocab-item/form))))))

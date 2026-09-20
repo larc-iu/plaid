@@ -212,6 +212,11 @@ class Resource:
         self._call('bulk_create', ops, {'body': {'ids': ids}})
         return {'ids': ids}
 
+    def bulk_update(self, items):
+        items = list(items)
+        self._call('bulk_update', items, {'body': {'count': len(items)}})
+        return {'count': len(items)}
+
     def delete(self, entity_id):
         self._call('delete', entity_id, {'body': {}})
 

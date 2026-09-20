@@ -2348,6 +2348,17 @@ class PlaidClient {
           body,
         }),
       /**
+       * Update many vocab items in a single operation: set forms and/or patch
+       * metadata.
+       * @param {Array<{id: string, form?: string, metadata?: any}>} body - `form` is set only when the key is present; `metadata` is a patch, a null value deleting that key. The entries may lie in several vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
+       * @returns {Promise<{count: number}>} How many vocab items were updated.
+       */
+      bulkUpdate: (body, auditMessage) =>
+        this._request("PATCH", "/api/v1/vocab-items/bulk", {
+          auditMessage,
+          body,
+        }),
+      /**
        * Delete multiple vocab items in a single operation. Each item's
        * descendant vocab links are deleted too. Provide an array of IDs.
        *

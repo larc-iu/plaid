@@ -2473,6 +2473,27 @@ class VocabItemsResource(_Resource):
         """
         return self._request('POST', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
 
+    def bulk_update(self, body: list, audit_message=None) -> dict:
+        """Update many vocab items in a single operation: set forms and/or
+        patch metadata.
+
+        Each entry is a dict with ``id`` and either or both of ``form`` (set
+        only when the key is present) and ``metadata`` (a patch, a ``None``
+        value deleting that key). The entries may lie in several vocab
+        layers; the user must have write access to each. An unknown id
+        refuses the whole update, and an id may appear only once. Only an
+        entry whose form really changes restates the documents linking it,
+        and a strict-mode client picks up their new versions from the
+        response.
+
+        Args:
+            body: The vocab item updates
+
+        Returns:
+            ``{"count": n}`` — how many vocab items were updated.
+        """
+        return self._request('PATCH', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
+
     def bulk_delete(self, body: list, audit_message=None) -> Any:
         """Delete multiple vocab items in a single operation. Provide a list of IDs.
 

@@ -1067,6 +1067,7 @@ interface VocabItemsBundle {
   ): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
+  bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, form: string, auditMessage?: string): Promise<any>;

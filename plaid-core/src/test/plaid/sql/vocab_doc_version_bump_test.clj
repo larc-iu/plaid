@@ -32,6 +32,7 @@
                                         update-vocab-item
                                         delete-vocab-item
                                         bulk-delete-vocab-items
+                                        bulk-update-vocab-items
                                         delete-vocab-layer
                                         link-vocab-to-project
                                         unlink-vocab-from-project
@@ -199,6 +200,29 @@
           pre-versions (mapv (comp doc-version :doc) docs)]
       (bulk-delete-vocab-items admin-request [item])
       (assert-bumped! "vocab-item/bulk-delete" docs pre-versions))))
+
+(deftest vocab-item-bulk-merge-bumps-only-the-renamed
+  (testing "vocab-item/bulk-merge bumps the linked documents of an entry
+            whose form really changes, and of no other entry in the call:
+            a metadata-only patch, or a form rewritten to itself, restates
+            nothing"
+    (let [{:keys [vocab item docs]} (setup-fixture! "ItemBulkMerge")
+          quiet (-> (create-vocab-item admin-request vocab "other") :body :id)
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      ;; One real rename, one no-op form, one metadata-only patch.
+      (bulk-update-vocab-items admin-request
+                               [{:id item :form "salutation"}
+                                {:id quiet :form "other" :metadata {"pos" "N"}}])
+      (assert-bumped! "vocab-item/bulk-merge" docs pre-versions)))
+  (testing "a bulk update that renames nothing bumps nothing"
+    (let [{:keys [item docs]} (setup-fixture! "ItemBulkMergeNoop")
+          pre-versions (mapv (comp doc-version :doc) docs)]
+      (bulk-update-vocab-items admin-request
+                               [{:id item :form "greeting" :metadata {"pos" "N"}}])
+      (is (= pre-versions (mapv (comp doc-version :doc) docs))
+          "an unchanged form left every linked document's version alone")
+      (is (empty? (doc-bump-rows (latest-op-id "vocab-item/bulk-merge")))
+          "and emitted no :doc-version-bump audit rows"))))
 
 (defn- header-versions
   "The X-Document-Versions map on a response, keyed by document id string."
