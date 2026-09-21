@@ -3,6 +3,7 @@ import { BookOpen, ChevronDown, ChevronRight, MapPin, Quote, Wrench } from 'luci
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
+import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
@@ -135,6 +136,16 @@ export const Turn = ({
         <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground">
           {item.text}
         </div>
+        {/* What was attached to this question. It stays on the message for the
+            rest of the thread, because the answers below it are about a file
+            whose name is the only thing left saying so. */}
+        {item.files?.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+            {item.files.map((f) => (
+              <AttachmentChip key={f.id} file={f} />
+            ))}
+          </div>
+        )}
       </div>
     );
   }

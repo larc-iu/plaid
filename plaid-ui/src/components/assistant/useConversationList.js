@@ -18,6 +18,11 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
   );
   const [rows, setRows] = useState([]); // sidebar metas, newest first
   const [loading, setLoading] = useState(true);
+  // Whether a read has actually SUCCEEDED. A failed one leaves the rows empty,
+  // which is indistinguishable from a user with no conversations, and one
+  // caller (the sweep for files left behind by a failed send) would read that
+  // as "nothing here is live" and delete what it found.
+  const [loaded, setLoaded] = useState(false);
   // Whether the list reaches past this project. Off by default, so nothing
   // changes for a reader who never asks: the common case is looking for a
   // thread about what is in front of them. On, for the reader who knows they
@@ -31,6 +36,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     try {
       const metas = await readMetas(store, { allProjects });
       setRows(metas);
+      setLoaded(true);
       return metas;
     } catch (e) {
       console.error('[Assistant] could not load conversations', e);
@@ -98,6 +104,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
     store,
     rows,
     loading,
+    loaded,
     allProjects,
     setAllProjects,
     projectNames,

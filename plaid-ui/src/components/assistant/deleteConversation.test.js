@@ -5,12 +5,16 @@ import { buildMeta, deleteConversation } from './jobs.js';
 // from another project was deleted under the project on SCREEN: a key that has
 // never existed, so a 404 every time and the row stayed where it was.
 
-const store = (over) => {
+const store = (over, files = []) => {
   const del = vi.fn().mockResolvedValue(undefined);
+  const list = vi.fn(async (userId, { prefix }) =>
+    files.filter((key) => key.startsWith(prefix)).map((key) => ({ key })),
+  );
   return {
     del,
+    list,
     store: {
-      client: { userData: { delete: del } },
+      client: { userData: { delete: del, list } },
       userId: 'u1',
       app: 'igt',
       projectId: 'here',
@@ -45,5 +49,22 @@ describe('deleteConversation', () => {
     const { del, store: s } = store();
     await deleteConversation(s, { id: 'c3', projectId: 'here' });
     expect(del).toHaveBeenCalledTimes(2);
+  });
+
+  it("takes the files attached to it along, and no other conversation's", async () => {
+    // Its files are only ever reachable through the conversation. Left behind,
+    // nothing would name them again.
+    const { del, store: s } = store({}, [
+      'igt:assistant:here:file:c4:f1:part:0',
+      'igt:assistant:here:file:c4:f1:part:1',
+      'igt:assistant:here:file:c40:f9:part:0',
+    ]);
+    await deleteConversation(s, { id: 'c4', projectId: 'here' });
+    expect(del.mock.calls.map((c) => c[1])).toEqual([
+      'igt:assistant:here:file:c4:f1:part:0',
+      'igt:assistant:here:file:c4:f1:part:1',
+      'igt:assistant:here:conv:c4',
+      'igt:assistant:here:meta:c4',
+    ]);
   });
 });

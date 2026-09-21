@@ -1,5 +1,6 @@
 import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { deleteConversationFiles } from './attachments.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -205,9 +206,13 @@ export const readConv = async (store, id) => {
 // screen, which is a key that has never existed: a 404 every time, and the row
 // stayed. Every row carries its project, whether it was listed, read back, or
 // just written here.
-export const deleteConversation = (store, meta) => {
+export const deleteConversation = async (store, meta) => {
   const { client, userId, app } = store;
   const { projectId } = meta;
+  // The files first: they are only ever reachable THROUGH the conversation, so
+  // deleting the two keys first and then failing would leave them with nothing
+  // left that names them. A conversation with no files pays one narrow listing.
+  await deleteConversationFiles(store, projectId, meta.id);
   return Promise.all([
     client.userData.delete(userId, convKey(app, projectId, meta.id)),
     client.userData.delete(userId, metaKey(app, projectId, meta.id)),
@@ -369,7 +374,10 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
   );
   j.promise = (async () => {
     // The record first: the service reads the message from it, and a tab
-    // that comes back finds the request there.
+    // that comes back finds the request there. Any file the message carries is
+    // already stored: the chat writes those before it builds the message, so a
+    // file that could not be stored stops the send instead of going with it as
+    // a reference to nothing.
     await persistConv(store, conv, meta);
     await watch(j, () =>
       client.messages.requestService(

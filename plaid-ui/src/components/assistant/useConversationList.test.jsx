@@ -24,7 +24,12 @@ const meta = (id, at, over = {}) => ({
 
 const fakeClient = (entries, projects = []) => ({
   userData: {
-    list: vi.fn().mockResolvedValue(entries),
+    // A prefix narrows the listing, as the server's does: deleting a
+    // conversation lists its files by one, and a fake that ignored it handed
+    // back the conversation's own entry as though it were an attachment.
+    list: vi.fn(async (userId, { prefix } = {}) =>
+      prefix ? entries.filter((e) => e.key.startsWith(prefix)) : entries,
+    ),
     delete: vi.fn().mockResolvedValue(undefined),
   },
   projects: { list: vi.fn().mockResolvedValue(projects) },

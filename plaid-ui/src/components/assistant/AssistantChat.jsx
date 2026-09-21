@@ -3,11 +3,20 @@ import { RotateCcw, Check, X, Loader2, PanelRightClose } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/button.jsx';
 import { cn } from '../../lib/utils.js';
-import { notifyError } from '../../lib/notify.js';
+import { notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry, stoppedIn } from './resume.js';
+import {
+  MAX_FILES,
+  readAttachment,
+  refOf,
+  refuse,
+  sweepOrphanFiles,
+  uploadAttachments,
+  valueBudget,
+} from './attachments.js';
 import { assertAdapter } from './adapterContract.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 import { NEARLY_FULL, fullness, latestUsage, totalSpend, usageLabel, usageTitle } from './usage.js';
@@ -201,6 +210,12 @@ export const AssistantChat = ({
 
   // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
+  // The files picked for the message being typed, each holding its own text
+  // until the message is sent. Nothing of them is stored before that: a file
+  // picked and then thought better of leaves nothing behind, and the parts are
+  // written under the conversation the message actually joins.
+  const [attachments, setAttachments] = useState([]);
+  const [attaching, setAttaching] = useState(false); // reading or storing one
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
@@ -402,27 +417,59 @@ export const AssistantChat = ({
   const usage = useMemo(() => latestUsage(active?.display), [active?.display]);
   const spend = useMemo(() => totalSpend(active?.display), [active?.display]);
 
-  const canSend = !!service && !busy;
+  const canSend = !!service && !busy && !attaching;
 
-  const send = (textOverride) => {
+  // `files` is given on a RETRY, where the message is sent again with the
+  // references its first attempt carried: those parts are already stored, so
+  // nothing is written for them a second time.
+  const send = async (textOverride, files = null) => {
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend) return;
     setStopped(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
     const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
-    setInput('');
-    onClearFocus?.();
     // Sending is what turns a draft into a saved conversation, so the flag
     // does not travel with it.
     const base = activeRef.current ?? newConversation();
+    const pending = files ? [] : attachments;
+    if (pending.length) {
+      // The files before anything else: a file that cannot be stored stops the
+      // send, and the composer is left exactly as it was, with the file still
+      // on it, so pressing Enter again is the whole of the retry.
+      setAttaching(true);
+      try {
+        await uploadAttachments(store, base.id, pending);
+      } catch (e) {
+        notifyError(humanizeError(e, 'The file could not be attached, so nothing was sent.'));
+        return;
+      } finally {
+        setAttaching(false);
+      }
+      // The reader moved to another conversation while the file was being
+      // stored. Its parts are under the conversation they were meant for, and
+      // sending this message into a different thread would point it at them.
+      if (activeRef.current?.id !== base.id) return;
+    }
+    setInput('');
+    setAttachments([]);
+    onClearFocus?.();
     // The display item carries the place as data, for the chip on the message.
     // The model's copy is stamped by the service, which owns every word the
     // model reads, and only when the place has changed since the last turn.
+    const sent = files || pending.map(refOf);
     const conv = {
       id: base.id,
       messages: [...base.messages, { role: 'user', content: text }],
-      display: [...base.display, { kind: 'user', text, ...(where ? { where } : {}) }],
+      display: [
+        ...base.display,
+        {
+          kind: 'user',
+          text,
+          ...(where ? { where } : {}),
+          ...(sent.length ? { files: sent } : {}),
+        },
+      ],
     };
     const prevMeta = list.rows.find((m) => m.id === conv.id);
     openSeq.current++; // sending settles which conversation is open
@@ -433,6 +480,53 @@ export const AssistantChat = ({
     showJob(startTurn({ store, service, conv, prevMeta, where }));
   };
 
+  // Files picked, dropped or pasted. They are READ here and stored nowhere:
+  // the text is held with the message being typed until it is sent, so a file
+  // added and then removed leaves nothing behind anywhere.
+  const addFiles = async (picked) => {
+    const chosen = Array.from(picked || []);
+    if (!chosen.length) return;
+    setAttaching(true);
+    try {
+      const budget = await valueBudget(client);
+      const read = [];
+      for (const file of chosen) {
+        if (attachments.length + read.length >= MAX_FILES) {
+          notifyWarning(`A message carries at most ${MAX_FILES} files. ${file.name} was left out.`);
+          break;
+        }
+        const no = refuse(file);
+        if (no) {
+          notifyError(no);
+          continue;
+        }
+        // One at a time, in the order they were picked: the note the service
+        // writes lists them in this order too.
+        read.push(await readAttachment(file, budget));
+      }
+      if (read.length) setAttachments((prev) => [...prev, ...read]);
+    } catch (e) {
+      notifyError(humanizeError(e, 'That file could not be read.'));
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
+
+  // Files left behind by a send that stored them and then could not write the
+  // record, which is the only way one is made. Once per project, and only once
+  // the list has really been READ: a failed listing looks exactly like a user
+  // with no conversations, and this would take that for "none of these are
+  // live" and delete every file it found.
+  useEffect(() => {
+    if (!list.loaded || !userId) return;
+    const live = list.rows.filter((m) => m.projectId === projectId).map((m) => m.id);
+    sweepOrphanFiles(store, live).catch((e) => {
+      console.warn('[Assistant] could not sweep abandoned attachments', e);
+    });
+  }, [list.loaded, list.rows, store, userId, projectId]);
+
   // Send the user's last message again, whether the turn was lost (its
   // request went away with the server or the service) or failed. Both rewind
   // the same way, to just before the user's item.
@@ -442,7 +536,7 @@ export const AssistantChat = ({
     const rewound = rewindForRetry(conv);
     if (!rewound) return;
     activeRef.current = rewound.conv;
-    send(rewound.text);
+    send(rewound.text, rewound.files);
   };
 
   // Stop a turn: the service is asked to stop, and does so between steps.
@@ -730,6 +824,10 @@ export const AssistantChat = ({
           focus={focus}
           onClearFocus={onClearFocus}
           mentionOffer={subject?.mentions}
+          attachments={attachments}
+          onAttach={addFiles}
+          onRemoveAttachment={removeAttachment}
+          attaching={attaching}
           onSend={send}
           compact={compact}
         />

@@ -150,3 +150,83 @@ describe('AssistantComposer', () => {
     await m.unmount();
   });
 });
+
+// A file arriving: the three gestures, and the chips they leave. The chat owns
+// what is attached (AssistantChat's send stores it), so what the composer has
+// to get right is handing every gesture over and drawing what it is given.
+describe('AssistantComposer attachments', () => {
+  const FILE = { name: 'wordlist.csv' };
+  const ATTACHED = [{ id: 'f1', name: 'wordlist.csv', bytes: 2400, lines: 30 }];
+
+  // An event carrying files the way a browser's does, which happy-dom cannot
+  // build: a DataTransfer is not constructible here.
+  const fire = (target, type, field, files, types = ['Files']) => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(e, field, { value: { files, types } });
+    target.dispatchEvent(e);
+    return e;
+  };
+
+  it('offers no paperclip where nothing can take a file', async () => {
+    const m = await mount();
+    expect(m.container.querySelector('[aria-label="Attach a file"]')).toBeNull();
+    await m.unmount();
+  });
+
+  it('hands over a picked file', async () => {
+    const onAttach = vi.fn();
+    const m = await mount({ onAttach });
+    const input = m.container.querySelector('input[type="file"]');
+    expect(input.getAttribute('accept')).toContain('.csv');
+    Object.defineProperty(input, 'files', { value: [FILE], configurable: true });
+    await m.step(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    expect(onAttach).toHaveBeenCalledWith([FILE]);
+    await m.unmount();
+  });
+
+  it('takes a file dropped anywhere on the composer', async () => {
+    const onAttach = vi.fn();
+    const m = await mount({ onAttach });
+    const zone = m.container.firstElementChild;
+    await m.step(() => fire(zone, 'dragover', 'dataTransfer', []));
+    await m.step(() => fire(m.box, 'drop', 'dataTransfer', [FILE]));
+    expect(onAttach).toHaveBeenCalledWith([FILE]);
+    await m.unmount();
+  });
+
+  it('takes a pasted file and leaves pasted text to the box', async () => {
+    const onAttach = vi.fn();
+    const m = await mount({ onAttach });
+    await m.step(() => fire(m.box, 'paste', 'clipboardData', []));
+    expect(onAttach).not.toHaveBeenCalled();
+    await m.step(() => fire(m.box, 'paste', 'clipboardData', [FILE]));
+    expect(onAttach).toHaveBeenCalledWith([FILE]);
+    await m.unmount();
+  });
+
+  it('takes nothing while it cannot send', async () => {
+    const onAttach = vi.fn();
+    const m = await mount({ onAttach, canSend: false });
+    await m.step(() => fire(m.box, 'drop', 'dataTransfer', [FILE]));
+    expect(onAttach).not.toHaveBeenCalled();
+    expect(m.container.querySelector('[aria-label="Attach a file"]').disabled).toBe(true);
+    await m.unmount();
+  });
+
+  it('shows what is attached, and removes one', async () => {
+    const onRemoveAttachment = vi.fn();
+    const m = await mount({ onAttach: vi.fn(), attachments: ATTACHED, onRemoveAttachment });
+    expect(m.container.textContent).toContain('wordlist.csv');
+    expect(m.container.textContent).toContain('2 KB');
+    await m.step(() => m.container.querySelector('[aria-label="Remove wordlist.csv"]').click());
+    expect(onRemoveAttachment).toHaveBeenCalledWith('f1');
+    await m.unmount();
+  });
+
+  it('will not send while a file is still being read', async () => {
+    const m = await mount({ onAttach: vi.fn(), attaching: true });
+    await m.type('count these');
+    expect(m.container.querySelector('[title="Send"]').disabled).toBe(true);
+    await m.unmount();
+  });
+});

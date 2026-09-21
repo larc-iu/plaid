@@ -84,3 +84,23 @@ describe('stoppedIn', () => {
     expect(stoppedIn({ convId: null, steps: [] }, null)).toBeNull();
   });
 });
+
+describe('rewindForRetry and attachments', () => {
+  it('sends the files the message carried with it again, without storing them twice', () => {
+    // The parts are already stored under this conversation; a retry that
+    // dropped the references would send the question without its file.
+    const files = [{ id: 'f1', name: 'wordlist.csv', bytes: 24, lines: 2, chunks: 1 }];
+    const conv = {
+      id: 'c1',
+      messages: [],
+      display: [
+        { kind: 'user', text: 'count these', files },
+        { kind: 'error', text: 'x' },
+      ],
+    };
+    const r = rewindForRetry(conv);
+    expect(r.text).toBe('count these');
+    expect(r.files).toBe(files);
+    expect(r.conv.display).toEqual([]);
+  });
+});

@@ -1,7 +1,10 @@
-import { Send, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Paperclip, Send, X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Textarea } from '../ui/textarea.jsx';
 import { cn } from '../../lib/utils.js';
+import { ACCEPT } from './attachments.js';
+import { AttachmentChip } from './AttachmentChip.jsx';
 import { AssistantPicker } from './ConversationList.jsx';
 import { MentionList } from './MentionList.jsx';
 import { NEARLY_FULL, fullness } from './usage.js';
@@ -36,6 +39,13 @@ export const AssistantComposer = ({
   onClearFocus,
   // What the screen behind the chat offers to `@` (see subject.js).
   mentionOffer = null,
+  // The files waiting to go with this message, and the three ways one arrives:
+  // the paperclip, a drop anywhere on this box, and a paste. The chat owns
+  // them, the way it owns the message; this owns the gestures.
+  attachments = [],
+  onAttach = null,
+  onRemoveAttachment = null,
+  attaching = false,
   onSend,
   // A narrow column: tighter padding.
   compact = false,
@@ -60,9 +70,35 @@ export const AssistantComposer = ({
   };
 
   const full = fullness(usage);
+  const fileInput = useRef(null);
+  const [over, setOver] = useState(false);
+  const canAttach = !!onAttach && canSend;
+
+  // A drop anywhere on the composer, not only on a target drawn for it: the
+  // box IS the target, and a reader dragging a file at a chat box aims at the
+  // box. `dragover` has to be prevented or the browser opens the file instead.
+  const onDrop = (e) => {
+    if (!canAttach) return;
+    e.preventDefault();
+    setOver(false);
+    if (e.dataTransfer?.files?.length) onAttach(e.dataTransfer.files);
+  };
 
   return (
-    <div className={cn('border-t', compact ? 'px-3 py-2' : 'px-4 py-3')}>
+    <div
+      className={cn('border-t', compact ? 'px-3 py-2' : 'px-4 py-3')}
+      onDragOver={(e) => {
+        if (!canAttach || !e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Only the drag actually leaving the composer, not one crossing from
+        // the box to the button inside it.
+        if (!e.currentTarget.contains(e.relatedTarget)) setOver(false);
+      }}
+      onDrop={onDrop}
+    >
       {/* The conversation's own assistant is gone. Rather than answer in a
           different voice without saying so, name the replacement, and let
           the user choose it where there is more than one. */}
@@ -113,7 +149,19 @@ export const AssistantComposer = ({
           rather than off the caret: measuring a character position inside a
           textarea needs a mirror element and breaks on wrap and on resize,
           and the composer is never far from the caret anyway. */}
-      <div className="relative mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring">
+      {attachments.length > 0 && (
+        <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-1.5">
+          {attachments.map((f) => (
+            <AttachmentChip key={f.id} file={f} onRemove={onRemoveAttachment} />
+          ))}
+        </div>
+      )}
+      <div
+        className={cn(
+          'relative mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 focus-within:ring-1 focus-within:ring-ring',
+          over && 'border-primary ring-1 ring-primary',
+        )}
+      >
         {mentions.open && (
           <MentionList
             groups={mentions.groups}
@@ -133,6 +181,14 @@ export const AssistantComposer = ({
           onKeyUp={mentions.trackCaret}
           onSelect={mentions.trackCaret}
           onKeyDown={onKeyDown}
+          onPaste={(e) => {
+            // A file pasted from the desktop. Pasted TEXT is left alone: it is
+            // already in the box, which is where someone pasting it wants it.
+            if (canAttach && e.clipboardData?.files?.length) {
+              e.preventDefault();
+              onAttach(e.clipboardData.files);
+            }
+          }}
           placeholder={
             !service
               ? 'No assistant online'
@@ -144,11 +200,38 @@ export const AssistantComposer = ({
           rows={2}
           className="min-h-[2.5rem] flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0"
         />
+        {onAttach && (
+          <>
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept={ACCEPT.join(',')}
+              className="hidden"
+              onChange={(e) => {
+                onAttach(e.target.files);
+                // So the same file picked twice in a row is picked twice.
+                e.target.value = '';
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => fileInput.current?.click()}
+              disabled={!canAttach}
+              title="Attach"
+              aria-label="Attach a file"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </>
+        )}
         <Button
           type="button"
           size="sm"
           onClick={() => onSend()}
-          disabled={!canSend || !text.trim()}
+          disabled={!canSend || !text.trim() || attaching}
           title="Send"
         >
           <Send className="h-4 w-4" />

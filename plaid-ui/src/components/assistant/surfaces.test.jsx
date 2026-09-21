@@ -90,9 +90,9 @@ const fakeClient = () => {
       cancelServiceRequest: vi.fn().mockResolvedValue({}),
     },
     userData: {
-      list: vi.fn(async () =>
+      list: vi.fn(async (userId, { prefix } = {}) =>
         [...records]
-          .filter(([key]) => key.includes(':meta:'))
+          .filter(([key]) => (prefix ? key.startsWith(prefix) : key.includes(':meta:')))
           .map(([key, value]) => ({ key, value })),
       ),
       get: vi.fn(async (userId, key) => (records.has(key) ? { value: records.get(key) } : null)),
@@ -291,6 +291,93 @@ describe('AssistantChat with no way to track the conversation', () => {
     await flush(m);
     expect(notifyError).toHaveBeenCalledTimes(1);
     expect(m.container.textContent).not.toContain('gloss it');
+    await m.unmount();
+  });
+});
+
+// Attaching a file and sending it, mounted, because the ORDER is the contract:
+// the parts are stored before the record names them, so a message never goes
+// out pointing at a file that is not there.
+describe('AssistantChat attachments', () => {
+  const TEXT = 'word,translation\nnis,milk\n';
+  const FILE = { name: 'wordlist.csv', size: TEXT.length, text: async () => TEXT };
+
+  const drop = (m, files) =>
+    m.step(() => {
+      const e = new Event('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'dataTransfer', { value: { files, types: ['Files'] } });
+      m.container.querySelector('textarea').dispatchEvent(e);
+    });
+
+  const typeAndSend = (m, value) =>
+    m.step(() => {
+      const box = m.container.querySelector('textarea');
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(
+        box,
+        value,
+      );
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+
+  it('stores the file before the message that names it, and sends only the reference', async () => {
+    const client = fakeClient();
+    const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
+    await flush(m);
+    await drop(m, [FILE]);
+    await flush(m);
+    expect(m.container.textContent).toContain('wordlist.csv');
+    await typeAndSend(m, 'which of these are new?');
+    await flush(m, 8);
+
+    const puts = client.userData.put.mock.calls.map((c) => c[1]);
+    const part = puts.findIndex((k) => k.startsWith('igt:assistant:p1:file:c1:'));
+    const record = puts.indexOf('igt:assistant:p1:conv:c1');
+    expect(part).toBeGreaterThanOrEqual(0);
+    expect(part).toBeLessThan(record);
+    expect(client.records.get(puts[part])).toBe(TEXT);
+
+    const sent = client.userData.put.mock.calls[record][2];
+    const asked = sent.display.at(-1);
+    expect(asked).toMatchObject({ kind: 'user', text: 'which of these are new?' });
+    expect(asked.files).toEqual([
+      expect.objectContaining({ name: 'wordlist.csv', bytes: TEXT.length, lines: 2, chunks: 1 }),
+    ]);
+    expect(JSON.stringify(sent)).not.toContain('nis,milk');
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    await m.unmount();
+  });
+
+  it('sends nothing when the file cannot be stored, and keeps the message and the file', async () => {
+    const client = fakeClient();
+    const put = client.userData.put.getMockImplementation();
+    client.userData.put.mockImplementation(async (userId, key, value) => {
+      if (key.includes(':file:')) throw Object.assign(new Error('too large'), { status: 413 });
+      return put(userId, key, value);
+    });
+    const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
+    await flush(m);
+    await drop(m, [FILE]);
+    await flush(m);
+    await typeAndSend(m, 'which of these are new?');
+    await flush(m, 8);
+    expect(client.messages.requestService).not.toHaveBeenCalled();
+    expect(notifyError).toHaveBeenCalled();
+    expect(m.container.querySelector('textarea').value).toBe('which of these are new?');
+    expect(m.container.querySelector('[aria-label="Remove wordlist.csv"]')).not.toBeNull();
+    await m.unmount();
+  });
+
+  it('refuses a file it cannot read, and says why', async () => {
+    const client = fakeClient();
+    const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
+    await flush(m);
+    await drop(m, [{ name: 'photo.png', size: 10, text: async () => '' }]);
+    await flush(m);
+    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('It reads text'));
+    expect(m.container.querySelector('[aria-label="Remove photo.png"]')).toBeNull();
     await m.unmount();
   });
 });
