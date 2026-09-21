@@ -2,20 +2,19 @@
 
 A file dragged into the chat is stored BESIDE the conversation, in the same
 private key/value store the record itself lives in (see :mod:`.conversation`),
-under one small entry and as many parts as its text takes:
+as many parts as its text takes and nothing else:
 
-``<app>:assistant:<project>:file:<conversation>:<file>:meta``
-    ``{id, name, bytes, lines, chunks}``, written by the browser when the file
-    is attached.
 ``<app>:assistant:<project>:file:<conversation>:<file>:part:<n>``
     One part of the text, stored as a bare JSON string. The store caps one
     value at a megabyte, so a file is cut until every part fits. Where the cuts
     fall is the browser's business and nothing here cares: the parts are joined
     before anything reads them.
 
-The record holds the REFERENCE and never the text. A user item carries
-``files`` as ``[{id, name, bytes, lines}]``, which is what the person sees on
-their own message and what a turn resolves against the store.
+There is no entry describing the file, because the record already describes it.
+A user item carries ``files`` as ``[{id, name, bytes, lines, chunks}]``, which
+is what the person sees on their own message and what a turn resolves against
+the store. The conversation is IN the key, so deleting a conversation's files
+is a listing of keys and no reads at all.
 
 Why the text stays out of the record: everything in the record is sent to the
 model on every later turn. A table of ten thousand rows put there would be paid
@@ -97,11 +96,11 @@ def read_table(name: str, text: str) -> Optional[Tuple[List[str], List[Dict[str,
     """``(columns, rows)`` when the file reads as a table, else None.
 
     Rows are dicts keyed by column name, with a missing cell as ``''`` and any
-    cell past the last column collected under ``extra``. Nothing is dropped and
-    nothing raises: a ragged file is a normal file, and the point of reading it
-    here rather than in the sandbox is that quoting, newlines inside a cell and
-    ragged rows are dealt with once, by the standard library, where the text
-    still exists in full.
+    cell past the last column collected under :func:`overflow_key`. Nothing is
+    dropped and nothing raises: a ragged file is a normal file, and the point of
+    reading it here rather than in the sandbox is that quoting, newlines inside
+    a cell and ragged rows are dealt with once, by the standard library, where
+    the text still exists in full.
     """
     lower = name.lower()
     if lower.endswith('.json'):
@@ -114,15 +113,30 @@ def read_table(name: str, text: str) -> Optional[Tuple[List[str], List[Dict[str,
     except StopIteration:
         return ([], [])
     columns = _name_columns(header)
+    overflow = overflow_key(columns)
     rows: List[Dict[str, Any]] = []
     for cells in reader:
         if not cells or (len(cells) == 1 and not cells[0].strip()):
             continue  # a blank line between records, which every hand-made file has
         row = {c: (cells[i] if i < len(cells) else '') for i, c in enumerate(columns)}
         if len(cells) > len(columns):
-            row['extra'] = cells[len(columns):]
+            row[overflow] = cells[len(columns):]
         rows.append(row)
     return (columns, rows)
+
+
+def overflow_key(columns: List[str]) -> str:
+    """Where a row's cells past the last column go: ``extra``, unless the file
+    has a column of that name, and then the first numbered name it does not.
+
+    A fixed key would overwrite a real cell in a file with an "extra" column,
+    which is a common enough heading for a notes column that it happened in the
+    first file this was tried on.
+    """
+    name, n = 'extra', 2
+    while name in columns:
+        name, n = f'extra ({n})', n + 1
+    return name
 
 
 def _read_json_table(text: str) -> Optional[Tuple[List[str], List[Dict[str, Any]]]]:

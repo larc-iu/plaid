@@ -223,12 +223,12 @@ def test_read_file_numbers_the_lines_and_says_how_to_go_on():
     ws = Ws(attached(('notes.txt', NOTES)))
     out = filetools.t_read_file(ws, name='notes.txt', limit=2)
     assert '1  Session 3, 12 March.' in out
-    assert 'Lines 1–2 of 4' in out and 'start_line=3' in out
+    assert 'Lines 1–2 of 3' in out and 'start_line=3' in out
 
 
 def test_read_file_past_the_end_says_how_long_the_file_is():
     ws = Ws(attached(('notes.txt', NOTES)))
-    assert 'has 4 lines' in filetools.t_read_file(ws, name='notes.txt', start_line=99)
+    assert 'has 3 lines' in filetools.t_read_file(ws, name='notes.txt', start_line=99)
 
 
 def test_read_file_without_an_attachment_says_where_one_comes_from():
@@ -275,3 +275,20 @@ def test_the_file_tool_is_offered_only_to_a_conversation_that_has_one():
     names = lambda ws: {t['function']['name'] for t in tools_for(ws, tools, (), (), ('read_file',))}
     assert names(Ws()) == {'search'}
     assert names(Ws(attached(('wordlist.csv', WORDLIST)))) == {'search', 'read_file'}
+
+
+def test_a_file_that_ends_in_a_newline_has_no_last_empty_line():
+    """The note counts the lines a person would count, and read_file says
+    "of N" from its own split. The two have to be the same N."""
+    ws = Ws(attached(('notes.txt', NOTES)))
+    assert 'lines, ' in filetools.described(ws.files.get('notes.txt'))
+    assert filetools.described(ws.files.get('notes.txt')).startswith('3 lines')
+    assert 'of 3' in filetools.t_read_file(ws, name='notes.txt')
+
+
+def test_a_column_called_extra_keeps_its_own_cells_when_a_row_runs_long():
+    """The first real file this was tried on had a notes column headed "extra",
+    and a fixed overflow key would have put a list over its value."""
+    columns, rows = read_table('x.csv', 'word,extra\nnis,milk\nhoa,sun,late\n')
+    assert rows[0] == {'word': 'nis', 'extra': 'milk'}
+    assert rows[1] == {'word': 'hoa', 'extra': 'sun', 'extra (2)': ['late']}
