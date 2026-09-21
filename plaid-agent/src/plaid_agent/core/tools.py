@@ -93,15 +93,19 @@ def limit_arg(tool: str, what: str = 'Rows') -> Dict[str, Any]:
     return {'type': 'integer', 'description': f'{what} (default {default}, max {cap}).'}
 
 
-def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools) -> List[Dict[str, Any]]:
+def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools,
+              file_tools=()) -> List[Dict[str, Any]]:
     """The tools a turn on this workspace may call.
 
     The web tools exist only where the operator configured a search backend,
-    and the code tools only where the sandbox's worker binary is installed, so
-    a model that cannot do either is never told that it can.
+    the code tools only where the sandbox's worker binary is installed, and the
+    file tools only where the user has actually attached something, so a model
+    that cannot do any of the three is never told that it can.
     """
     from . import sandbox
     hidden = set() if ws.web is not None else set(web_tools)
     if sandbox.available() is not None:
         hidden |= set(code_tools)
+    if not getattr(ws, 'files', None):
+        hidden |= set(file_tools)
     return [t for t in tools if t['function']['name'] not in hidden]

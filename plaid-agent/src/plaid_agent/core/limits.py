@@ -36,6 +36,7 @@ READ_LIMITS = {
     'comments': (30, 200),
     'recent_changes': (20, 100),
     'query': (50, 500),
+    'read_file': (40, 500),
 }
 
 # How the audit log is walked: entries per page, newest first, and how many

@@ -74,6 +74,11 @@ class BaseWorkspace:
         # Set when the operator configured web search. None means the web tools
         # are not offered to the model at all.
         self.web = None
+        # The files the user attached to this conversation (a files.Attachments),
+        # set by the service before the turn runs. Empty means the file tools are
+        # not offered to the model at all, on the same rule as the web tools: a
+        # model told it can read a file when there is none goes looking for one.
+        self.files = None
         # The turn's code worker (core.sandbox.Session), opened by the first
         # run_code call and released by close().
         self.code = None

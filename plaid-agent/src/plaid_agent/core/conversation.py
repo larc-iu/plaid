@@ -106,14 +106,21 @@ class ConversationStore:
                                   {'messages': conv['messages'], 'display': conv['display']})
         self.client.user_data.put(self.user_id, meta_key(self.app, self.project_id, conv_id), meta)
 
-    def _get(self, key: str) -> Optional[Dict[str, Any]]:
+    def read(self, key: str) -> Any:
+        """One value under this user's keys, whatever JSON it is, or None when
+        there is nothing there. Public because the conversation is not the only
+        thing stored under its own prefix: the files attached to it are stored
+        beside it (see :mod:`.files`), as plain strings rather than objects."""
         try:
             entry = self.client.user_data.get(self.user_id, key)
         except PlaidAPIError as e:
             if e.status == 404:
                 return None
             raise
-        value = (entry or {}).get('value')
+        return (entry or {}).get('value')
+
+    def _get(self, key: str) -> Optional[Dict[str, Any]]:
+        value = self.read(key)
         return value if isinstance(value, dict) else None
 
 

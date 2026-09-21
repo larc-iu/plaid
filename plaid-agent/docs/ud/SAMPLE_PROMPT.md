@@ -92,7 +92,7 @@ Running code:
 
 ## Tools
 
-35 tools, in the order the model receives them: 16 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
+36 tools, in the order the model receives them: 16 plan a change (`PLAN:`), 2 reach the web, the rest read the project or manage the plan.
 
 ### project_overview
 
@@ -356,9 +356,17 @@ Read one web page in full. Only a link that web_search returned in this conversa
 
 - `url` (string, required)
 
+### read_file
+
+Read a file the user attached to this conversation, a slice of lines at a time. The note on their message says what is attached and what shape it is in. For a table, prefer run_code: file_rows(name) gives every row as a dict and can count, join and filter in one call, where this shows the file as it is written.
+
+- `name` (string, required): The file's name, as the note gives it.
+- `start_line` (integer): First line to show (default 1).
+- `limit` (integer): Lines (default 40, max 500).
+
 ### run_code
 
-Run Python over a plain-data view of the project, for a question the other reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions, a check across the corpus. Code sees the treebank through load(document), documents(), query(q) and plan(tool, ...), and nothing else: no files, no network, no packages. Call code_help first for the shape of a document and examples. Print what you want to see.
+Run Python over a plain-data view of the project, for a question the other reads do not answer in one call: a loop over many documents, a join between columns, a tally under your own conditions, a check across the corpus. Code sees the treebank through load(document), documents(), query(q) and plan(tool, ...), and nothing else: no filesystem, no network, no packages. Call code_help first for the shape of a document and examples. Print what you want to see.
 
 - `code` (string, required): The Python to run.
 

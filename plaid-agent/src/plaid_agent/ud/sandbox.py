@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict
 
 from plaid_client.provenance import prov_state
 
-from ..core import sandbox
+from ..core import filetools, sandbox
 from ..core.query import parse_query, rewrite, run as run_query, QueryRefused
 from .project import UdDoc, word_ref
 from .tools import Workspace
@@ -97,7 +97,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     # this one included), so it is asked for here rather than at the top.
     from .toolkit import WRITE_TOOLS, call_tool
     return {'documents': documents, 'load': sandbox.load_proxy(ws, view), 'query': query,
-            'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS)}
+            'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS),
+            **filetools.api(ws)}
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
@@ -105,4 +106,4 @@ def t_run_code(ws: Workspace, code: str = None) -> str:
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(UD_HELP)
+    return sandbox.help_text(UD_HELP, filetools.code_help(ws))

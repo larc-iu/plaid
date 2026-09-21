@@ -10,7 +10,7 @@ write to.
 
 from typing import Any, Callable, Dict
 
-from ..core import sandbox
+from ..core import filetools, sandbox
 from ..core.query import QueryRefused, parse_query, rewrite, run as run_query
 from .project import UmrDoc, ilg_lines, penman_of, resolve_ilg
 from .tools import Workspace
@@ -118,7 +118,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     return {'documents': documents,
             'load': sandbox.load_proxy(ws, lambda doc: view(doc, ws.project)),
             'query': query,
-            'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS)}
+            'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS),
+            **filetools.api(ws)}
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
@@ -126,4 +127,4 @@ def t_run_code(ws: Workspace, code: str = None) -> str:
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(UMR_HELP)
+    return sandbox.help_text(UMR_HELP, filetools.code_help(ws))

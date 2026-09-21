@@ -13,7 +13,8 @@ from typing import Any, Dict, List
 
 from ..core import guidelines as _guidelines
 from ..core import sandbox as _sandbox
-from ..core import webtools
+from ..core import filetools, webtools
+from ..core.filetools import t_read_file
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
@@ -35,6 +36,7 @@ from .tools import (Workspace, t_add_triple, t_apply_penman, t_delete_triple, t_
 # code or look something up is never told that it can.
 CODE_TOOLS = _sandbox.NAMES
 WEB_TOOLS = webtools.NAMES
+FILE_TOOLS = filetools.NAMES
 
 _fn = fn
 
@@ -247,6 +249,11 @@ _IMPL.update({'add_guideline': t_add_guideline, 'revise_guideline': t_revise_gui
 TOOLS += webtools.schemas('this corpus')
 _IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
 
+# Offered only where the user has actually attached a file to the conversation
+# (see tools_for). What the code does with one is in core/filetools.py's api().
+TOOLS += filetools.schemas()
+_IMPL.update({'read_file': t_read_file})
+
 # Offered only where the sandbox's worker binary is installed.
 TOOLS += _sandbox.schemas('the corpus')
 _IMPL.update({'run_code': t_run_code, 'code_help': t_code_help})
@@ -259,7 +266,7 @@ WRITE_TOOLS = {t['function']['name'] for t in TOOLS
 
 def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
     """The tools a turn on this workspace may call."""
-    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS)
+    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS, FILE_TOOLS)
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:

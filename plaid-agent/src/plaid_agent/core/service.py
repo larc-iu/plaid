@@ -55,8 +55,10 @@ from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
 
+from . import filetools
 from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled,
                     context_window, ping_model, run_turn)
+from .files import Attachments
 from .guidelines import in_context as guidelines_in_context
 from .conversation import (ConversationStore, MissingConversation, assistant_item, build_meta, error_item,
                            find_plan, prune, record_budget, settle_plan)
@@ -318,6 +320,13 @@ class BaseAssistantService(BaseService):
             return bool(getattr(response_helper, 'cancelled', False))
 
         ws = self.make_workspace(client, project, send)
+        # What the user attached to this conversation, and the note in front of
+        # the message it came on. The note is written BEFORE the place stamp,
+        # because that one has to stay at the very start of the message: it is
+        # found again by matching there (see `stamped`).
+        ws.files = Attachments.of(store, conv_id, conv['display'])
+        last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
+        transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
         # Where this question was asked from, stamped onto the question itself.
         # The panel outlives the screen it was opened from, so one thread can
         # hold questions asked from several places, and the system note below

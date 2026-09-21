@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
+from file_fixtures import WORDLIST, attached  # noqa: E402
 from plaid_agent.igt.toolkit import TOOLS as IGT_TOOLS, call_tool as igt_call  # noqa: E402
 from plaid_agent.ud.toolkit import TOOLS as UD_TOOLS, call_tool as ud_call  # noqa: E402
 from plaid_agent.umr.toolkit import call_tool as umr_call  # noqa: E402
@@ -21,9 +22,11 @@ from plaid_agent.umr.toolkit import call_tool as umr_call  # noqa: E402
 # Enough of each tool's other arguments to reach the integer.
 IGT_ARGS = {'document': 'Text 1', 'pattern': 'gam', 'field': 'Gloss', 'ref': 's1', 'refs': ['s1.w1'],
             'sequence': [{'Gloss': 'ERG'}], 'entry_form': 'gam', 'entry_id': 'vi-gam',
-            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
+            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
+            'name': 'wordlist.csv'}
 UD_ARGS = {'document': 'Viaje', 'pattern': 'mar', 'field': 'lemma', 'ref': 's1.w1', 'refs': ['s1.w1'],
-           'what': 'lemma', 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
+           'what': 'lemma', 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
+           'name': 'wordlist.csv'}
 # Where one name means something else to one tool: `pattern` is a document
 # NAME to list_documents and a value to search for everywhere else, and a
 # pattern that matches nothing answers "no documents" without reading a
@@ -81,6 +84,9 @@ def _igt_ws():
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = True
     w.web = NoWeb()
+    # A file on the conversation: without one read_file refuses for want of an
+    # attachment, which is the same answer with and without the bad number.
+    w.files = attached(('wordlist.csv', WORDLIST))
     return w
 
 
@@ -94,6 +100,9 @@ def _ud_ws():
     c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
     w = Workspace(c, load_project(c, PID))
     w.web = NoWeb()
+    # A file on the conversation: without one read_file refuses for want of an
+    # attachment, which is the same answer with and without the bad number.
+    w.files = attached(('wordlist.csv', WORDLIST))
     return w
 
 
@@ -104,6 +113,9 @@ def _umr_ws():
     c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
     w = Workspace(c, load_project(c, PID))
     w.web = NoWeb()
+    # A file on the conversation: without one read_file refuses for want of an
+    # attachment, which is the same answer with and without the bad number.
+    w.files = attached(('wordlist.csv', WORDLIST))
     return w
 
 

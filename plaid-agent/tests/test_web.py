@@ -162,13 +162,16 @@ def ws_with_web(monkeypatch, handler):
 
 
 def test_the_web_tools_exist_only_where_the_operator_configured_them():
-    from plaid_agent.igt.toolkit import TOOLS, WEB_TOOLS, call_tool, tools_for
+    from plaid_agent.igt.toolkit import FILE_TOOLS, TOOLS, WEB_TOOLS, call_tool, tools_for
     from test_tools import ws as tools_ws
     w = tools_ws()
     assert {t['function']['name'] for t in tools_for(w)}.isdisjoint(WEB_TOOLS)
     assert call_tool(w, 'web_search', {'query': 'x'}) == 'Error: Web lookup is not configured on this assistant.'
     w.web = WebSession(CFG)
-    assert {t['function']['name'] for t in tools_for(w)} == {t['function']['name'] for t in TOOLS}
+    # Every tool but the file ones, which are withheld for their own reason:
+    # this conversation has nothing attached to it.
+    assert ({t['function']['name'] for t in tools_for(w)}
+            == {t['function']['name'] for t in TOOLS} - set(FILE_TOOLS))
 
 
 def test_results_come_back_fenced_and_labelled(monkeypatch):

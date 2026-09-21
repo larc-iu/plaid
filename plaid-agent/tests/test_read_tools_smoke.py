@@ -21,6 +21,7 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
+from file_fixtures import WORDLIST, attached  # noqa: E402
 from plaid_agent.core.tools import ToolError  # noqa: E402
 from plaid_agent.igt.toolkit import (TOOLS as IGT_TOOLS, WRITE_TOOLS as IGT_WRITES,  # noqa: E402
                                      _IMPL as IGT_IMPL)
@@ -31,9 +32,11 @@ REFUSALS = (ToolError, ValueError)
 
 # A value for every parameter a read tool requires or declares an enum for.
 IGT_ARGS = {'title': 'Glossing', 'document': 'Text 1', 'pattern': 'a', 'field': 'Gloss', 'sequence': [{'Gloss': 'ERG'}], 'code': 'print(1)',
-            'indexes': [1], 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
+            'indexes': [1], 'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
+            'name': 'wordlist.csv'}
 UD_ARGS = {'title': 'Glossing', 'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma', 'indexes': [1], 'code': 'print(1)',
-           'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]}}
+           'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
+           'name': 'wordlist.csv'}
 
 SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 
@@ -115,6 +118,10 @@ def _igt(scan: bool):
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = scan
+    # A file on the conversation, so read_file has something to read: its
+    # refusal when nothing is attached would otherwise count as an answer and
+    # leave the body unrun.
+    w.files = attached(('wordlist.csv', WORDLIST))
     return w
 
 
@@ -131,7 +138,9 @@ def _ud(scan: bool):
                              'updated_at': '2026-09-01T10:00:00Z', 'user': {'id': 'a@b.com'}}])
     if not scan:
         _empty_engine(c)
-    return Workspace(c, load_project(c, 'p1'))
+    w = Workspace(c, load_project(c, 'p1'))
+    w.files = attached(('wordlist.csv', WORDLIST))
+    return w
 
 
 def _ids(cases):

@@ -68,19 +68,20 @@ def test_a_number_the_apps_set_apart_says_so_where_it_is_set(name):
 # say how to call it in both apps.
 CALLABLE = {
     'igt': {'list_documents': {}, 'search': {'pattern': 'gam'}, 'frequency_list': {},
-            'worklist': {}, 'comments': {}, 'recent_changes': {}},
+            'worklist': {}, 'comments': {}, 'recent_changes': {}, 'read_file': {'name': 'wordlist.csv'}},
     # UD's corpus-wide branches go through the query engine, which the fake
     # client does not answer, so each of those is asked of one document.
     'ud': {'list_documents': {}, 'search': {'field': 'lemma', 'pattern': 'mar', 'document': 'Viaje'},
            'frequency_list': {'what': 'lemma', 'document': 'Viaje'}, 'worklist': {'document': 'Viaje'},
-           'comments': {'document': 'Viaje'}, 'recent_changes': {}},
+           'comments': {'document': 'Viaje'}, 'recent_changes': {},
+           'read_file': {'name': 'wordlist.csv'}},
     # The same for UMR: its counts go through the engine except the attribute
     # ones, which are metadata it does not index, so that is the branch this
     # asks for.
     'umr': {'list_documents': {}, 'search': {'pattern': 'dog', 'document': 'Story'},
             'frequency_list': {'what': 'attribute', 'document': 'Story'},
             'worklist': {'document': 'Story'}, 'comments': {'document': 'Story'},
-            'recent_changes': {}},
+            'recent_changes': {}, 'read_file': {'name': 'wordlist.csv'}},
 }
 # A read the fake client cannot answer, with why. Its signature is swept below
 # like every other.
@@ -90,6 +91,7 @@ NOT_CALLED = {'query': 'the fixture project has no query engine, so the tool ref
 def _ws_and_call(app):
     import sys
     sys.path.insert(0, 'tests')
+    from file_fixtures import WORDLIST, attached
     if app == 'igt':
         from fixtures import project_raw, document_raw, lexicon_raw
         from fixtures_ext import ExtClient
@@ -99,6 +101,7 @@ def _ws_and_call(app):
         c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
         w = Workspace(c, load_project(c, 'p1'))
         w.prefer_scan = True
+        w.files = attached(('wordlist.csv', WORDLIST))
         return w, call_tool
     if app == 'ud':
         from ud_fixtures import PID, ExtClient, project_raw, document_raw
@@ -106,13 +109,17 @@ def _ws_and_call(app):
         from plaid_agent.ud.toolkit import call_tool
         from plaid_agent.ud.tools import Workspace
         c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
-        return Workspace(c, load_project(c, PID)), call_tool
+        w = Workspace(c, load_project(c, PID))
+        w.files = attached(('wordlist.csv', WORDLIST))
+        return w, call_tool
     from umr_fixtures import PID, ExtClient, project_raw, document_raw
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.toolkit import call_tool
     from plaid_agent.umr.tools import Workspace
     c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
-    return Workspace(c, load_project(c, PID)), call_tool
+    w = Workspace(c, load_project(c, PID))
+    w.files = attached(('wordlist.csv', WORDLIST))
+    return w, call_tool
 
 
 def _impl(app, tool):

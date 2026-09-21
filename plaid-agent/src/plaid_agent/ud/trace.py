@@ -76,6 +76,10 @@ def describe_step(name: str, a: Dict[str, Any]) -> str:
     if name == 'plan_status':
         return 'Reviewed the plan so far'
 
+    if name == 'read_file':
+        at = f' from line {a["start_line"]}' if a.get('start_line') else ''
+        return f'Read the attached file {q(a.get("name"))}{at}'
+
     # --- outside the project ---------------------------------------------------
     if name == 'web_search':
         return f'Searched the web for {q(a.get("query"))}'
@@ -162,6 +166,7 @@ _PROGRESS = {
     'plan_status': lambda a: 'Reviewing the plan…',
     'web_search': lambda a: f'Searching the web for "{a.get("query", "")}"…',
     'read_url': lambda a: f'Reading {a.get("url", "")}…',
+    'read_file': lambda a: f'Reading "{a.get("name", "")}"…',
     'discard_plan': lambda a: 'Discarding the plan so far…',
     'drop_planned': lambda a: 'Dropping planned changes…',
 }

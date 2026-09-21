@@ -13,7 +13,8 @@ from typing import Any, Dict, List
 
 from ..core import sandbox as _sandbox
 from ..core import guidelines as _guidelines
-from ..core import webtools
+from ..core import filetools, webtools
+from ..core.filetools import t_read_file
 from ..core.webtools import t_read_url, t_web_search
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
@@ -37,6 +38,7 @@ from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
 # run code or look something up is never told that it can.
 CODE_TOOLS = _sandbox.NAMES
 WEB_TOOLS = webtools.NAMES
+FILE_TOOLS = filetools.NAMES
 
 _fn = fn
 
@@ -296,6 +298,11 @@ TOOLS += webtools.schemas('this corpus')
 
 _IMPL.update({'web_search': t_web_search, 'read_url': t_read_url})
 
+# Offered only where the user has actually attached a file to the conversation
+# (see tools_for). What the code does with one is in core/filetools.py's api().
+TOOLS += filetools.schemas()
+_IMPL.update({'read_file': t_read_file})
+
 # A tool that plans a change says so in the first word of its description, and
 # that is what makes it one: no second list to keep in step with the first.
 WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['description'].startswith('PLAN:')}
@@ -303,7 +310,7 @@ WRITE_TOOLS = {t['function']['name'] for t in TOOLS if t['function']['descriptio
 
 def tools_for(ws: Workspace) -> List[Dict[str, Any]]:
     """The tools a turn on this workspace may call."""
-    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS)
+    return core_tools_for(ws, TOOLS, WEB_TOOLS, CODE_TOOLS, FILE_TOOLS)
 
 
 def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:

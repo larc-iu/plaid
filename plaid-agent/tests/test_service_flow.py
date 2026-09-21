@@ -11,6 +11,7 @@ from plaid_agent.core import service as service_mod
 from plaid_agent.core.agent import ModelConfig, TurnCancelled, TurnResult
 from plaid_agent.core.conversation import ConversationStore, assistant_item, build_meta, user_item
 from plaid_agent.igt.service import AssistantService
+from plaid_agent.igt.toolkit import tools_for as igt_tools_for
 
 
 class Helper:
@@ -233,3 +234,56 @@ def test_the_workspace_is_released_when_the_turn_ends(monkeypatch):
     _seed(client)
     svc.process_request(_request(client), Helper())
     assert released == [True]
+
+
+def test_a_turn_meets_the_file_the_user_attached(monkeypatch):
+    """The record carries the reference and the store carries the text, so the
+    turn has to put the two together: the model is told what arrived, in front
+    of the message it arrived on, and the tools can read the rest of it."""
+    from plaid_agent.core.files import file_key
+
+    client = FakeClient()
+    store = _seed(client, text='Which of these are already in the corpus?')
+    text = 'word,translation\naq\'a,water\nnis,milk\n'
+    client.user_data.put('u@x', f'{file_key("igt", "p1", "c1", "f1")}:part:0', text)
+    conv, meta = store.load('c1')
+    conv['display'][-1]['files'] = [{'id': 'f1', 'name': 'wordlist.csv',
+                                     'bytes': len(text.encode()), 'lines': 3, 'chunks': 1}]
+    store.save('c1', conv, meta)
+    seen = {}
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen['stamp'] = transcript[-1]['content']
+        seen['rows'] = ws.files.get('wordlist.csv').table()[1]
+        seen['offered'] = {t['function']['name'] for t in igt_tools_for(ws)}
+        return TurnResult('Both.', [{'role': 'assistant', 'content': 'Both.'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    helper = Helper()
+    _service().process_request(_request(client), helper)
+
+    assert not helper.errors
+    assert 'wordlist.csv' in seen['stamp'] and 'a table of 2 rows' in seen['stamp']
+    assert seen['stamp'].endswith('Which of these are already in the corpus?')
+    assert seen['rows'][0] == {'word': "aq'a", 'translation': 'water'}
+    assert 'read_file' in seen['offered']
+    # The note is written into the record with the message, so it is paid for
+    # once rather than rebuilt (and re-read) on every later turn.
+    saved, _ = store.load('c1')
+    assert 'wordlist.csv' in saved['messages'][0]['content']
+
+
+def test_a_turn_with_nothing_attached_is_not_told_about_files(monkeypatch):
+    client = FakeClient()
+    _seed(client)
+    seen = {}
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen['stamp'] = transcript[-1]['content']
+        seen['offered'] = {t['function']['name'] for t in igt_tools_for(ws)}
+        return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    _service().process_request(_request(client), Helper())
+    assert seen['stamp'] == 'Which words are unglossed?'
+    assert 'read_file' not in seen['offered']

@@ -193,9 +193,12 @@ query() for counting where it can count. Errors come back as text; fix the code 
 '''
 
 
-def help_text(app_half: str) -> str:
+def help_text(app_half: str, extra: str = '') -> str:
+    """The shared half, the app's half, and whatever this conversation adds to
+    both (at present, the files the user attached: see
+    :func:`.filetools.code_help`)."""
     return HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX,
-                       turn_seconds=TURN_EXEC_SECONDS) + app_half
+                       turn_seconds=TURN_EXEC_SECONDS) + app_half + extra
 
 
 def schemas(subject: str) -> List[Dict[str, Any]]:
@@ -208,7 +211,7 @@ def schemas(subject: str) -> List[Dict[str, Any]]:
                             'reads do not answer in one call: a loop over many documents, a join between '
                             'columns, a tally under your own conditions, a check across the corpus. Code '
                             f'sees {subject} through load(document), documents(), query(q) and plan(tool, '
-                            '...), and nothing else: no files, no network, no packages. Call code_help '
+                            '...), and nothing else: no filesystem, no network, no packages. Call code_help '
                             'first for the shape of a document and examples. Print what you want to see.'),
             'parameters': {'type': 'object', 'properties': {
                 'code': {'type': 'string', 'description': 'The Python to run.'}},
