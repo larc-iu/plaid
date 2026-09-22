@@ -5,7 +5,6 @@
             [reitit.coercion.malli]
             [plaid.sql.vocab-link :as vocab-link]
             [plaid.sql.vocab-item :as vocab-item]
-            [plaid.sql.vocab-layer :as vocab-layer]
             [plaid.sql.user :as user]))
 
 (defn get-project-id-from-tokens
@@ -39,24 +38,11 @@
         (vocab-link/document-id-from-token db first-token-id)))))
 
 (defn- user-can-access-vocab-item?
-  "Check if user can access a vocab item (read access to its vocab layer)"
+  "Read access to a vocab item, which is read access to its vocab layer. An
+  item that does not exist is not accessible."
   [db vocab-item-id user-id]
-  (let [item (vocab-item/get db vocab-item-id)]
-    (when item
-      (let [vocab-layer-id (:vocab-item/layer item)
-            admin? (user/admin? (user/get db user-id))
-            maintainer? (vocab-layer/maintainer? db vocab-layer-id user-id)
-            accessible? (vocab-layer/accessible-through-project? db vocab-layer-id user-id)]
-        (or admin? maintainer? accessible?)))))
-
-(defn- user-can-write-vocab-layer?
-  "Check if user has write access to a vocab layer (the gate single delete uses
-  via `wrap-vocab-writer-required`)."
-  [db vocab-layer-id user-id]
-  (let [admin? (user/admin? (user/get db user-id))
-        maintainer? (vocab-layer/maintainer? db vocab-layer-id user-id)
-        write? (vocab-layer/write-accessible-through-project? db vocab-layer-id user-id)]
-    (or admin? maintainer? write?)))
+  (when-let [item (vocab-item/get db vocab-item-id)]
+    (pra/vocab-reader? db (:vocab-item/layer item) user-id)))
 
 ;; Bulk auth/version resolvers. The body is either an array of
 ;; {:vocab-item :tokens :metadata} (bulk create) or an array of link ids
@@ -166,7 +152,7 @@
                                    :body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
                                  (let [layer-ids (->> ids (keep #(vocab-link/get-vocab-layer db %)) distinct)
-                                       unwritable (remove #(user-can-write-vocab-layer? db % user-id) layer-ids)]
+                                       unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
                                    (if (seq unwritable)
                                      {:status 403
                                       :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}

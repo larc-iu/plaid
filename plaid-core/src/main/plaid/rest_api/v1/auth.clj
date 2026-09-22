@@ -486,6 +486,37 @@
 (defn wrap-maintainer-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/maintainers get-project-id))
 
+(defn vocab-reader?
+  "Does `user-id` hold read access to vocab layer `vocab-id` — admin, a
+  maintainer of the vocabulary, or a member of a project the vocabulary is
+  granted to? The predicate behind `wrap-vocab-reader-required`, exposed
+  because a bulk handler can touch N vocabularies, which the single-id
+  middleware cannot express, and the check must be the same one.
+
+  `user-record` is the caller's already-loaded user row where there is one."
+  ([db vocab-id user-id]
+   (vocab-reader? db vocab-id user-id (user/get db user-id)))
+  ([db vocab-id user-id user-record]
+   (boolean (or (user/admin? user-record)
+                (and vocab-id
+                     (or (vocab/maintainer? db vocab-id user-id)
+                         (vocab/accessible-through-project? db vocab-id user-id)))))))
+
+(defn vocab-writer?
+  "Does `user-id` hold write access to vocab layer `vocab-id` — admin, a
+  maintainer of the vocabulary, or a writer on a project the vocabulary is
+  granted to? The predicate behind `wrap-vocab-writer-required`, exposed for
+  the bulk handlers the way `vocab-reader?` is.
+
+  `user-record` is the caller's already-loaded user row where there is one."
+  ([db vocab-id user-id]
+   (vocab-writer? db vocab-id user-id (user/get db user-id)))
+  ([db vocab-id user-id user-record]
+   (boolean (or (user/admin? user-record)
+                (and vocab-id
+                     (or (vocab/maintainer? db vocab-id user-id)
+                         (vocab/write-accessible-through-project? db vocab-id user-id)))))))
+
 (defn wrap-vocab-maintainer-required
   "Requires that the user is a maintainer of the vocab layer or an admin."
   [handler get-vocab-id]
@@ -507,13 +538,8 @@
   (fn [{db :db :as request}]
     (let [user-id (->user-id request)
           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db db})
-          admin? (user/admin? (:user/record request))
-          maintainer? (and vocab-id
-                           (vocab/maintainer? db vocab-id user-id))
-          accessible? (and vocab-id
-                           (vocab/accessible-through-project? db vocab-id user-id))]
-      (if-not (or admin? maintainer? accessible?)
+                                  :db db})]
+      (if-not (vocab-reader? db vocab-id user-id (:user/record request))
         {:status 403
          :body {:error (str "User " user-id " lacks read access to vocab layer " vocab-id)}}
         (handler request)))))
@@ -524,13 +550,8 @@
   (fn [{db :db :as request}]
     (let [user-id (->user-id request)
           vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db db})
-          admin? (user/admin? (:user/record request))
-          maintainer? (and vocab-id
-                           (vocab/maintainer? db vocab-id user-id))
-          write-accessible? (and vocab-id
-                                 (vocab/write-accessible-through-project? db vocab-id user-id))]
-      (if-not (or admin? maintainer? write-accessible?)
+                                  :db db})]
+      (if-not (vocab-writer? db vocab-id user-id (:user/record request))
         {:status 403
          :body {:error (str "User " user-id " lacks write access to vocab layer " vocab-id)}}
         (handler request)))))

@@ -3,9 +3,7 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.rest-api.v1.middleware :as prm]
             [reitit.coercion.malli]
-            [plaid.sql.vocab-item :as vocab-item]
-            [plaid.sql.vocab-layer :as vocab-layer]
-            [plaid.sql.user :as user]))
+            [plaid.sql.vocab-item :as vocab-item]))
 
 (defn get-vocab-id-from-layer
   "Get vocab layer ID from request parameters (for create operations)"
@@ -18,17 +16,6 @@
   (when-let [item-id (-> params :path :id)]
     (when-let [item (vocab-item/get db item-id)]
       (:vocab-item/layer item))))
-
-(defn- user-can-write-vocab-layer?
-  "Check if user has write access to a vocab layer (the gate single
-  create/delete uses via `wrap-vocab-writer-required`). The bulk endpoint
-  can touch N distinct layers, which the single-id middleware can't express,
-  so the per-layer check runs in the handler."
-  [db vocab-layer-id user-id]
-  (let [admin? (user/admin? (user/get db user-id))
-        maintainer? (vocab-layer/maintainer? db vocab-layer-id user-id)
-        write? (vocab-layer/write-accessible-through-project? db vocab-layer-id user-id)]
-    (or admin? maintainer? write?)))
 
 ;; Bulk auth resolvers. Create and delete resolve the coarse vocab-layer
 ;; gate from the FIRST element (create: each entry carries
@@ -90,7 +77,7 @@
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                (let [layer-ids (->> items (map :vocab-layer-id) distinct)
-                                     unwritable (remove #(user-can-write-vocab-layer? db % user-id) layer-ids)]
+                                     unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
                                  (if (seq unwritable)
                                    {:status 403
                                     :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
@@ -122,7 +109,7 @@
                                           [:metadata {:optional true} [:map-of string? any?]]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                 (let [layer-ids (vocab-item/get-layer-ids db (map :id items))
-                                      unwritable (remove #(user-can-write-vocab-layer? db % user-id) layer-ids)]
+                                      unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
                                   (if (seq unwritable)
                                     {:status 403
                                      :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
@@ -144,7 +131,7 @@
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id}]
                                  (let [layer-ids (vocab-item/get-layer-ids db ids)
-                                       unwritable (remove #(user-can-write-vocab-layer? db % user-id) layer-ids)]
+                                       unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
                                    (if (seq unwritable)
                                      {:status 403
                                       :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
