@@ -56,8 +56,18 @@ export const ImportCldfProject = () => {
     ? (readImportState(resumeProject.config)?.choices ?? null)
     : null;
 
-  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
-    useProjectImportRun({ client, kind: 'CLDF', resumeId });
+  const {
+    stage,
+    setStage,
+    progress,
+    runError,
+    stopped,
+    results,
+    projectIdRef,
+    setupDoneRef,
+    stop,
+    start,
+  } = useProjectImportRun({ client, kind: 'CLDF', resumeId });
 
   // The build is re-derived whenever an option changes, so the review numbers
   // and warnings always describe what the import would actually do.
@@ -408,7 +418,13 @@ export const ImportCldfProject = () => {
               </p>
             )}
 
-            <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop} />
+            <ImportRunPanel
+              stage={stage}
+              runError={runError}
+              stopped={stopped}
+              progress={progress}
+              onStop={stop}
+            />
 
             {stage === 'done' && results && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">

@@ -36,6 +36,9 @@ export function useProjectImportRun({ client, kind, resumeId }) {
   const [stage, setStage] = useState('pick'); // pick | parsing | review | running | done
   const [progress, setProgress] = useState(null); // {label, pct} | null
   const [runError, setRunError] = useState(null);
+  // Whether that error was the Stop button rather than a failure. The run
+  // knows; the screen must not have to guess it from the wording.
+  const [stopped, setStopped] = useState(false);
   const [results, setResults] = useState(null);
   const projectIdRef = useRef(resumeId || null);
   const setupDoneRef = useRef(false);
@@ -54,6 +57,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
   }) => {
     setStage('running');
     setRunError(null);
+    setStopped(false);
     stopRef.current = false;
     try {
       let setup = null;
@@ -114,11 +118,11 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       return res;
     } catch (e) {
       console.error(`${kind} import failed:`, e);
+      const cancelled = e instanceof ImportCancelled || e.message === 'Import cancelled';
       setRunError(humanizeError(e));
+      setStopped(cancelled);
       setStage('review');
-      if (!(e instanceof ImportCancelled) && e.message !== 'Import cancelled') {
-        notifyError(humanizeError(e), 'Import failed');
-      }
+      if (!cancelled) notifyError(humanizeError(e), 'Import failed');
       return null;
     }
   };
@@ -133,6 +137,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
     progress,
     setProgress,
     runError,
+    stopped,
     results,
     projectIdRef,
     setupDoneRef,

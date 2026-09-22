@@ -32,8 +32,18 @@ export const ImportNativeProject = () => {
 
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
-  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
-    useProjectImportRun({ client, kind: 'Plaid IGT archive', resumeId });
+  const {
+    stage,
+    setStage,
+    progress,
+    runError,
+    stopped,
+    results,
+    projectIdRef,
+    setupDoneRef,
+    stop,
+    start,
+  } = useProjectImportRun({ client, kind: 'Plaid IGT archive', resumeId });
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -185,7 +195,13 @@ export const ImportNativeProject = () => {
               resuming={!!resumeId}
             />
 
-            <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop} />
+            <ImportRunPanel
+              stage={stage}
+              runError={runError}
+              stopped={stopped}
+              progress={progress}
+              onStop={stop}
+            />
 
             {stage === 'done' && results && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">

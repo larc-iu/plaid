@@ -55,7 +55,7 @@ describe('ImportRunPanel', () => {
     await done.unmount();
   });
 
-  it('reports a failure with what failed, and a cancellation as a stop', async () => {
+  it('reports a failure with what failed, and a stop as a stop', async () => {
     const failed = await renderComponent(
       <ImportRunPanel stage="review" runError="The server said 500" />,
     );
@@ -65,11 +65,28 @@ describe('ImportRunPanel', () => {
     await failed.unmount();
 
     const stopped = await renderComponent(
-      <ImportRunPanel stage="review" runError="Import cancelled" />,
+      <ImportRunPanel stage="review" runError="Import cancelled" stopped />,
     );
     expect(byText(stopped.container, 'p', 'Import stopped')).not.toBeNull();
     expect(texts(stopped.container, 'p')).not.toContain('Import cancelled');
     await stopped.unmount();
+  });
+
+  // Which of the two it was is the run's to say. Deciding it from the error's
+  // wording titled a failure whose message happened to carry the word
+  // "cancel" -- a server's, or a future client's -- as something the person
+  // had asked for, and suppressed the only account of it.
+  it('reports a failure that says "cancelled" as a failure, and says what it was', async () => {
+    const { container, unmount } = await renderComponent(
+      <ImportRunPanel
+        stage="review"
+        runError="The server could not cancel the pending write: 503"
+        stopped={false}
+      />,
+    );
+    expect(byText(container, 'p', 'Import failed')).not.toBeNull();
+    expect(texts(container, 'p')).toContain('The server could not cancel the pending write: 503');
+    await unmount();
   });
 
   it('keeps the error off the screen while the run is going again', async () => {

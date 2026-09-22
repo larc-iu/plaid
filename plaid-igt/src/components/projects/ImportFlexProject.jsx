@@ -93,8 +93,18 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
 
   // Survive retries within this page session (see header comment).
   const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
-  const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
-    useProjectImportRun({ client, kind: fmt.kind, resumeId });
+  const {
+    stage,
+    setStage,
+    progress,
+    runError,
+    stopped,
+    results,
+    projectIdRef,
+    setupDoneRef,
+    stop,
+    start,
+  } = useProjectImportRun({ client, kind: fmt.kind, resumeId });
   // On a resume the lexicon is the one the record names: the run writes into
   // it whatever the screen would otherwise offer.
   const resumeRecord = resumeProject ? readImportState(resumeProject.config) : null;
@@ -803,7 +813,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               </div>
             </div>
 
-            <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop} />
+            <ImportRunPanel
+              stage={stage}
+              runError={runError}
+              stopped={stopped}
+              progress={progress}
+              onStop={stop}
+            />
 
             {stage === 'review' && (
               <div className="flex items-center justify-end gap-2">

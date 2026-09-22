@@ -128,16 +128,24 @@ const barWidth = (pct) => Math.min(100, Math.max(0, Math.round(pct ?? 0)));
  * What a run shows: the bar and the step while it goes, and why it stopped
  * once it has. `children` sit between the two, which is where ELAN puts its
  * warning log.
+ *
+ * `stopped` is the run hook's own answer to whether the Stop button ended
+ * it. Reading that off the error's wording titled any failure whose message
+ * happened to carry the word "cancel" as one the person had asked for, and
+ * threw away the only explanation of it.
  */
-export const ImportRunPanel = ({ stage, runError, progress, onStop, children }) => (
+export const ImportRunPanel = ({
+  stage,
+  runError,
+  stopped = false,
+  progress,
+  onStop,
+  children,
+}) => (
   <>
     {runError && stage !== 'running' && (
-      <Panel
-        tone="error"
-        icon={AlertTriangle}
-        title={/cancel/i.test(runError) ? 'Import stopped' : 'Import failed'}
-      >
-        {!/cancel/i.test(runError) && <p className="mt-1 text-xs">{runError}</p>}
+      <Panel tone="error" icon={AlertTriangle} title={stopped ? 'Import stopped' : 'Import failed'}>
+        {!stopped && <p className="mt-1 text-xs">{runError}</p>}
         <p className="mt-1 text-xs">Retry continues where it left off.</p>
       </Panel>
     )}
