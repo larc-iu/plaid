@@ -402,6 +402,19 @@ export const VocabularyItems = ({
     if (Object.keys(metadata).length) await client.vocabItems.setMetadata(id, metadata);
     else await client.vocabItems.deleteMetadata(id);
   };
+  // Repoint a pile of entries at once. The plans are whole maps and the write
+  // is each one's patch against what that entry carries now, so nothing else
+  // on it is disturbed. One request is one transaction holding the
+  // vocabulary's write lock, hence the chunks. `metaById` is what the entries
+  // hold at the time of the call, which is not always the list in state: the
+  // load-time repair runs against what it has just fetched.
+  const bulkRepoint = async (patches, metaById) => {
+    const updates = metadataUpdates(patches, metaById);
+    for (let i = 0; i < updates.length; i += REPAIR_CHUNK) {
+      await client.vocabItems.bulkUpdate(updates.slice(i, i + REPAIR_CHUNK));
+    }
+  };
+  const metadataNow = (list) => new Map((list || []).map((it) => [it.id, it.metadata]));
   const foldPatches = (patches) => {
     const byId = new Map(patches.map((p) => [p.id, p.metadata]));
     setItems((prev) =>
@@ -432,14 +445,10 @@ export const VocabularyItems = ({
     if (!patches.length) return;
     try {
       // A vocabulary that has lost a pile of entries has as many writes as it
-      // has references to them, so they go out in bulk: the plans are whole
-      // maps, and the write is each one's patch against what the entry carries.
-      const updates = metadataUpdates(patches, new Map(fetched.map((it) => [it.id, it.metadata])));
-      await client.withOperation('Repair entry references', async () => {
-        for (let i = 0; i < updates.length; i += REPAIR_CHUNK) {
-          await client.vocabItems.bulkUpdate(updates.slice(i, i + REPAIR_CHUNK));
-        }
-      });
+      // has references to them, so they go out in bulk.
+      await client.withOperation('Repair entry references', () =>
+        bulkRepoint(patches, metadataNow(fetched)),
+      );
       // The repair lands a round trip after the draft was seeded, so an entry
       // it touched is re-seeded from the repaired metadata. Left alone the
       // form still holds the cleared value and a Save writes it back.
@@ -692,8 +701,11 @@ export const VocabularyItems = ({
     try {
       const deletedId = selectedItem.id;
       if (deleteRefPatches.length) {
+        // A headword with many senses, or a root with many variants, is one
+        // repoint per referring entry: the same walk the load-time repair
+        // does, so the same bulk write.
         await client.withOperation(`Delete entry "${selectedItem.form}"`, async () => {
-          for (const p of deleteRefPatches) await writeMetadata(p.id, p.metadata);
+          await bulkRepoint(deleteRefPatches, metadataNow(items));
           await client.vocabItems.delete(deletedId);
         });
         foldPatches(deleteRefPatches);
