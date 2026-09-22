@@ -1067,15 +1067,17 @@ export class ConlluDocument extends DocumentModel {
     return createdSpanId;
   }
 
-  // Suppressors lying over these basic relations. A suppressor says the
-  // enhanced graph leaves out the basic relation over its pair, so it goes
-  // when that relation goes. Left behind it would suppress nothing, and would
-  // quietly suppress the next relation drawn over the same pair. Reconcile
-  // clears the ones another writer leaves, this clears our own at the source.
-  _suppressorIdsOver(info, basicRelations) {
+  // Suppressors lying over these pairs, each given as a basic relation or as a
+  // bare `{source, target}`. A suppressor says the enhanced graph leaves out
+  // the basic relation over its pair, so it goes when that relation goes. Left
+  // behind it would suppress nothing, and would quietly suppress the next
+  // relation drawn over the same pair. Reconcile clears the ones another
+  // writer leaves, at the next open; this clears them at both moments a
+  // relation over the pair changes hands.
+  _suppressorIdsOver(info, pairs) {
     const rows = info.enhancedRelationLayer?.relations || [];
     if (rows.length === 0) return [];
-    return basicRelations.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean);
+    return pairs.map((rel) => suppressorFor(rel, rows)?.id).filter(Boolean);
   }
 
   // Create (or replace) a dependency relation between two lemma spans.
@@ -1119,7 +1121,23 @@ export class ConlluDocument extends DocumentModel {
       const incomingRelations = (info.relationLayer.relations || []).filter(
         (rel) => rel.target === resolvedTargetId,
       );
-      const staleSuppressors = this._suppressorIdsOver(info, incomingRelations);
+      // Every suppressor this write makes meaningless: the ones over the
+      // incoming relations it REPLACES, and any already lying over the pair it
+      // CREATES. The second is one guard covering every stale source, not just
+      // this editor's own: an agent `set_head`, a script, the Python client
+      // each move a basic relation and leave a suppressor over the pair they
+      // left, and only reconcile-on-OPEN sweeps those. A person with the
+      // document open when one runs would otherwise redraw that very arc and
+      // see it born faded, with no enhanced head and nothing on screen saying
+      // why.
+      const staleSuppressors = [
+        ...new Set(
+          this._suppressorIdsOver(info, [
+            ...incomingRelations,
+            { source: resolvedSourceId, target: resolvedTargetId },
+          ]),
+        ),
+      ];
       const finalDeprel = deprel || (resolvedSourceId === resolvedTargetId ? 'root' : 'dep');
       // A re-pointed head is a person's relation: it carries the writer's
       // create stamp (null for a verifier, so a verifier's stays plain).

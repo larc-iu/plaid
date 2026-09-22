@@ -153,6 +153,46 @@ test('re-pointing a head clears the suppressor over the relation it replaces', a
   assert.deepEqual(rows(), []);
 });
 
+test('a relation drawn over a pair someone else left a suppressor on is not born faded', async () => {
+  // The other direction of the same guard, and the one that covers writers
+  // outside this editor: an agent `set_head`, a script or the Python client
+  // moves a basic relation and leaves the suppressor over the pair it left
+  // behind. Only reconcile-on-OPEN sweeps those, and the assistant panel is
+  // app chrome, so a person can have the document open while one runs. The
+  // arc they then draw over that pair must not adopt the stale row and come
+  // up faded, with no enhanced head and nothing on screen saying why.
+  const { client, log } = relationClient();
+  const raw = rawDocFromConllu(INPUT, 'e', { enhanced: true });
+  const lemmaLayer = raw.textLayers[0].tokenLayers[2].spanLayers[1];
+  const spanId = (value) => lemmaLayer.spans.find((s) => s.value === value).id;
+  lemmaLayer.relationLayers[1].relations.push({
+    id: 'stale',
+    source: spanId('come'),
+    target: spanId('home'),
+    value: null,
+    metadata: { suppress: true },
+  });
+  const doc = new ConlluDocument({ raw, client });
+
+  await doc.createRelation(spanId('come'), spanId('home'), 'obj');
+
+  assert.deepEqual(doc.layerInfo.enhancedRelationLayer.relations, []);
+  assert.ok(
+    log.some((l) => l.op === 'delete' && l.id === 'stale'),
+    'the stale suppressor was not deleted on the server',
+  );
+  const edges = enhancedEdges(
+    doc.layerInfo.relationLayer.relations,
+    doc.layerInfo.enhancedRelationLayer.relations,
+  );
+  assert.ok(
+    edges.some(
+      (e) => e.source === spanId('come') && e.target === spanId('home') && e.value === 'obj',
+    ),
+    'the new relation is missing from the enhanced graph',
+  );
+});
+
 test('a project with no enhanced layer refuses an enhanced edge', async () => {
   const { doc, log, lemma } = open(INPUT, {});
   assert.equal(await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj'), false);
