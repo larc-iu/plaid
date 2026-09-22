@@ -53,8 +53,6 @@ export const DependencyTree = forwardRef(
       // The extras among them, split out by the row, which needs them for the
       // band below and so is where that split is made.
       extras = [],
-      lemmaSpans,
-      textContent,
       tokenPositions = [],
       onExitDown,
       onEditText,
@@ -125,12 +123,10 @@ export const DependencyTree = forwardRef(
     const dragLiveRef = useRef(false);
     const labelRefs = useRef(new Map());
 
-    const TOKEN_SPACING = 80;
     // The tree is only as tall as its deepest stack of arcs needs (see
     // arcLayout). The sentence grid reserves the matching padding, so the two
     // read the same layout and cannot drift apart.
     const TREE_HEIGHT = arcLayout.treeHeight;
-    const PADDING = 20;
     // Where the words and the line every arc springs from fall inside a tree
     // that tall. Everything geometric below is asked of arcLayout with this.
     const frame = treeFrame(TREE_HEIGHT);
@@ -152,33 +148,11 @@ export const DependencyTree = forwardRef(
 
     // The measured word positions, with one y for all of them: every arc
     // leaves and lands on the same baseline whatever a word's own box does.
-    // Before the grid has been measured there is nothing to draw an arc from,
-    // so words are laid out evenly and only the invisible hit rects use it
-    // (arcs wait for `positionsInitialized`).
-    const adjustedTokenPositions =
-      tokenPositions.length > 0
-        ? tokenPositions.map((pos) => ({
-            ...pos,
-            y: TOKEN_Y,
-          }))
-        : tokens.map((token, index) => {
-            // `textContent` is the provider object from SentenceRow (a `.substring`
-            // that resolves a token's form by exact begin/end), NOT a raw string —
-            // don't slice it.
-            const tokenForm = textContent.substring(token.begin, token.end);
-            const matchingLemmaSpan = lemmaSpans.find(
-              (span) => (span.tokens && span.tokens.includes(token.id)) || span.begin === token.id,
-            );
-
-            return {
-              token,
-              x: PADDING + index * TOKEN_SPACING + TOKEN_SPACING / 2,
-              y: TOKEN_Y,
-              form: tokenForm,
-              lemmaSpanId: matchingLemmaSpan?.id,
-              index: index,
-            };
-          });
+    // Empty until the grid has been measured, which is one frame away: the
+    // evenly spaced positions this used to invent in the meantime put nothing
+    // on screen (the arcs wait for `positionsInitialized`) but a row of
+    // invisible grab rects in places no word was.
+    const adjustedTokenPositions = tokenPositions.map((pos) => ({ ...pos, y: TOKEN_Y }));
 
     // Editing is disabled (read-only) whenever the parent withholds the relation
     // handlers — i.e. for viewer access or while viewing a past state. Guard every

@@ -112,15 +112,6 @@ export const SentenceRow = React.memo(
     // measured. Zero, and no band, in a sentence with no extra edge.
     const lowerBand = useMemo(() => computeLowerBand(extras, indexById), [extras, indexById]);
 
-    // Create a text content object that can handle token extraction for DependencyTree
-    const textContentProvider = {
-      substring: (begin, end) => {
-        // Find the token that matches these begin/end positions
-        const matchingToken = tokenData.find((t) => t.token.begin === begin && t.token.end === end);
-        return matchingToken ? matchingToken.tokenForm : '';
-      },
-    };
-
     // Use the token positions hook
     const { tokenPositions, sentenceGridRef, tokenRefs } = useTokenPositions(tokenData, lemmaSpans);
 
@@ -272,8 +263,6 @@ export const SentenceRow = React.memo(
             relations={relations}
             enhancedRelations={enhancedRelations}
             extras={extras}
-            lemmaSpans={lemmaSpans}
-            textContent={textContentProvider}
             tokenPositions={tokenPositions}
             onExitDown={focusGridCell}
             onEditText={handleEditText}
