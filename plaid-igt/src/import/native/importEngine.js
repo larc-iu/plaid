@@ -147,8 +147,9 @@ export function resolveNativeTargets(project, manifest) {
     morphemeLayerId: morphemeLayer.id,
     alignmentLayerId: alignmentLayer?.id ?? null,
     spanLayerByScopeName,
-    // Span layers with no scope, made as the documents that need them arrive.
-    unscopedSpanLayers: new Map(),
+    // Annotation layers already reported as missing, so a corpus does not
+    // carry the same warning once per annotation.
+    skippedSpanLayers: new Set(),
     // Other apps' layers, filled in by restoreOtherLayers once per project.
     otherLayers: noOtherLayers(),
   };
@@ -410,7 +411,6 @@ async function importNativeDocument({
   if (docMaps && docData.id != null) docMaps.set(docData.id, { docId, tokenIdMap });
   const spanIdMap = new Map(); // archive span id → new span id
   const relationIdMap = new Map(); // archive relation id → new relation id
-  const tokenLayerOf = new Map(); // new token id → the token layer it is in
   let baselineTextId = null; // for comments anchored to the text itself
   // References in metadata, resolved through everything made so far. This
   // document's own id is known from here on.
@@ -438,11 +438,6 @@ async function importNativeDocument({
       );
       oldIds.forEach((oldId, i) => {
         if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
-      });
-      // Which layer each new token is in, so a span layer the archive names
-      // but setup did not make can be created where its tokens are.
-      specs.forEach((spec, i) => {
-        if (ids[i]) tokenLayerOf.set(ids[i], spec.tokenLayerId);
       });
     };
 
@@ -574,27 +569,21 @@ async function importNativeDocument({
     // a span can be reattached after the bulk create returns its new ids. It is
     // null for a tree entry that had no id of its own.
     const spanSpecs = [];
-    // A span layer with no IGT scope: another app's, or one a service put on
-    // the segments. Setup never makes one, since it builds fields from the
-    // archive's scoped field schema, so it is made here on the token layer its
-    // annotations point into, under the name it had. Kept across documents, so
-    // a corpus does not end up with one layer of that name per document.
-    const ensureSpanLayer = async (scope, name, tokenIds, archiveLayerId = null) => {
-      // One the archive describes was made up front, and is found by its own
-      // id rather than by name, since two layers may share a name.
+    // Where a span goes. A layer with no IGT scope is another app's, or one a
+    // service put on the segments, and setup never makes one (it builds
+    // fields from the archive's scoped field schema): every one the archive
+    // describes is made up front by `restoreOtherLayers`, once per project,
+    // and found here by its ARCHIVE id rather than by name, since two layers
+    // may share a name. A span whose layer the archive does not describe has
+    // nowhere to go and is reported. Making one from the name alone was the
+    // older path and was not resume-safe (its cache was per run, so a resumed
+    // import made the layer a second time), and an archive this app wrote
+    // always carries the id.
+    const spanLayerFor = (scope, name, archiveLayerId = null) => {
       const restored =
         archiveLayerId == null ? null : targets.otherLayers.spanLayers.get(archiveLayerId);
       if (restored) return restored;
-      const known = targets.spanLayerByScopeName.get(`${scope}:${name}`);
-      if (known) return known;
-      const tokenLayerId = tokenLayerOf.get(tokenIds[0]);
-      if (scope || !name || !tokenLayerId) return null;
-      const cacheKey = `${tokenLayerId}:${name}`;
-      if (!targets.unscopedSpanLayers.has(cacheKey)) {
-        const made = await client.spanLayers.create(tokenLayerId, name);
-        targets.unscopedSpanLayers.set(cacheKey, made.id ?? made);
-      }
-      return targets.unscopedSpanLayers.get(cacheKey);
+      return targets.spanLayerByScopeName.get(`${scope}:${name}`) ?? null;
     };
     const resolveSpan = async (
       scope,
@@ -608,14 +597,17 @@ async function importNativeDocument({
       archiveLayerId = null,
     ) => {
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
-      const spanLayerId =
-        tokenIds.length === tokens.length
-          ? await ensureSpanLayer(scope, name, tokenIds, archiveLayerId)
-          : null;
-      if (!spanLayerId || tokenIds.length !== tokens.length) {
-        warnings.push(
-          `"${docData.name}": annotation ${label} skipped (unresolvable ${!spanLayerId ? 'layer' : 'tokens'})`,
-        );
+      if (tokenIds.length !== tokens.length) {
+        warnings.push(`"${docData.name}": annotation ${label} skipped (unresolvable tokens)`);
+        return;
+      }
+      const spanLayerId = spanLayerFor(scope, name, archiveLayerId);
+      if (!spanLayerId) {
+        const key = `${scope}:${name}`;
+        if (!targets.skippedSpanLayers.has(key)) {
+          targets.skippedSpanLayers.add(key);
+          warnings.push(`Annotation layer "${name}" skipped (the archive does not describe it)`);
+        }
         return;
       }
       spanSpecs.push({

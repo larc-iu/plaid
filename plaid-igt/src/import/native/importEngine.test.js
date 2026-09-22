@@ -1283,6 +1283,28 @@ describe("runNativeImport, other apps' layers", () => {
     expect(relationLayers.sort()).toEqual(['had-deps', 'had-rels']);
   });
 
+  it('warns rather than making a span layer the archive does not describe', async () => {
+    // The older path made one here from the name alone, cached per run: a
+    // resumed import made the layer a second time. Every layer a current
+    // archive holds is described, so the fallback only ever ran for one
+    // edited by hand.
+    const archive = otherAppArchive();
+    archive.manifest.otherLayers.spanLayers = archive.manifest.otherLayers.spanLayers.filter(
+      (sl) => sl.name !== 'Lemma',
+    );
+    const { client, result } = await freshImport(archive);
+    expect(argsOf(client, 'spanLayers.create').map((c) => c[1])).toEqual(['Concepts']);
+    // Said once for the layer, not once per annotation on it.
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        'Annotation layer "Lemma" skipped (the archive does not describe it)',
+      ]),
+    );
+    expect(
+      result.warnings.filter((w) => w.includes('"Lemma" skipped (the archive does not describe')),
+    ).toHaveLength(1);
+  });
+
   it('warns rather than guessing when the layer another is nested in did not come back', async () => {
     const archive = otherAppArchive();
     const words = archive.manifest.otherLayers.tokenLayers.find((tl) => tl.name === 'Words');
