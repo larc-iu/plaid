@@ -49,6 +49,13 @@ const stub = (project) => {
   return { client, calls };
 };
 
+// The import record an interrupted run leaves on the project. It names the
+// vocabulary that run made, which is the only thing that says the vocabulary
+// belongs to this project rather than to somebody else's of the same name.
+const importRecord = (vocabId) => ({
+  [IGT_NAMESPACE]: { import: { kind: 'FLEx', source: null, vocabId, choices: null } },
+});
+
 const SETUP_DATA = {
   basicInfo: { projectName: 'Lezgi' },
   orthographies: { orthographies: [{ name: 'Baseline', isBaseline: true }] },
@@ -96,7 +103,7 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
   it('links a vocabulary an earlier run made rather than making a second one', async () => {
     const project = {
       id: 'p1',
-      config: {},
+      config: importRecord('v-half'),
       textLayers: [
         {
           id: 'tl',
@@ -128,7 +135,7 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
   it('leaves the fields an earlier run already wrote on that vocabulary alone', async () => {
     const project = {
       id: 'p1',
-      config: {},
+      config: importRecord('v-half'),
       textLayers: [
         {
           id: 'tl',
@@ -192,6 +199,58 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     // And the token layers hang off the chosen layer.
     expect(madeOf(calls, 'token')).toHaveLength(4);
     expect([...new Set(madeOf(calls, 'token').map((c) => c.under))]).toEqual(['tl-chosen']);
+  });
+
+  it('leaves another project\u2019s vocabulary of the same name alone', async () => {
+    // `GET /vocab-layers` answers with every vocabulary the user can read, in
+    // any project, and says nothing about which project owns one. Two runs of
+    // the same import name their lexicon the same, so a name match linked a
+    // colleague's dictionary into this project and wrote this import's
+    // entries into it.
+    const project = {
+      id: 'p1',
+      config: importRecord(null),
+      textLayers: [
+        {
+          id: 'tl',
+          name: 'Main Text',
+          config: { [PLAID_NAMESPACE]: { [ROLE_KEY]: ROLES.BASELINE } },
+          tokenLayers: [],
+        },
+      ],
+      vocabs: [],
+    };
+    const { client, calls } = stub(project);
+    calls.vocabList = [
+      {
+        id: 'v-other-project',
+        name: 'Lezgi Lexicon',
+        config: { [IGT_NAMESPACE]: { fields: [{ name: 'Sense' }], tagsets: {} } },
+      },
+    ];
+    const result = await run(client, 'p1');
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'vocab')).toEqual([{ kind: 'vocab', name: 'Lezgi Lexicon' }]);
+    expect(calls.linked).toHaveLength(1);
+    expect(calls.linked[0]).not.toBe('v-other-project');
+    expect(calls.linked[0]).toMatch(/^vocab-/);
+  });
+
+  it('says which vocabulary it made before it links it', async () => {
+    // The record is what a later run reads to tell this project's half-made
+    // lexicon from anyone else's, so it is written between the two requests
+    // rather than after both.
+    const { client, calls } = stub(null);
+    const said = [];
+    await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: null,
+      setupData: SETUP_DATA,
+      onProgress: () => {},
+      onVocabCreated: (id) => said.push({ said: id, linkedSoFar: [...calls.linked] }),
+    });
+    expect(said).toEqual([{ said: calls.linked[0], linkedSoFar: [] }]);
   });
 
   it('makes both from scratch when there is nothing to finish', async () => {

@@ -26,6 +26,7 @@ import {
 // scripts, which drive the real setup against the live core.
 import {
   IGT_NAMESPACE,
+  readImportState,
   readInitialized,
   findBaselineTextLayer,
   findSentenceTokenLayer,
@@ -72,6 +73,7 @@ async function executeProjectSetupImpl({
   setupData,
   onProgress,
   onProjectCreated,
+  onVocabCreated,
 }) {
   const updateProgress = (pct, msg) => onProgress?.(pct, msg);
 
@@ -116,7 +118,7 @@ async function executeProjectSetupImpl({
     const newProject = await client.projects.create(setupData.basicInfo.projectName);
     currentProjectId = newProject.id;
     resources.project = newProject;
-    onProjectCreated?.(newProject.id);
+    await onProjectCreated?.(newProject.id);
   }
 
   // Step 2: Find or create the substrate, ADOPTING a shared substrate that
@@ -357,9 +359,18 @@ async function executeProjectSetupImpl({
     // names only the linked ones, so the rest are read once and only on a
     // resume, where a half-made one can exist. Never fatal: without the list
     // this is the behaviour it had before, which is to make a second one.
+    //
+    // WHICH of them is the import record's to say. `GET /vocab-layers` lists
+    // every vocabulary the user can read, in any project, and its rows say
+    // nothing about which project owns them: a name is shared by every run
+    // of the same import, so matching on one linked a colleague's lexicon
+    // into this project and wrote this import's entries into it. A run
+    // records the vocabulary it makes the moment it exists (onVocabCreated),
+    // so only the one this project's own record names is adopted.
+    const recordedVocabId = readImportState(existingProject?.config)?.vocabId ?? null;
     let unlinked = null;
     const madeEarlier = async (name) => {
-      if (!existingProject) return null;
+      if (!existingProject || !recordedVocabId) return null;
       if (!unlinked) {
         const linkedIds = new Set(linkedVocabs.map((v) => v.id));
         let all = [];
@@ -370,7 +381,7 @@ async function executeProjectSetupImpl({
         }
         unlinked = all.filter((v) => !linkedIds.has(v.id));
       }
-      return unlinked.find((v) => v.name === name) ?? null;
+      return unlinked.find((v) => v.id === recordedVocabId && v.name === name) ?? null;
     };
 
     for (const vocab of enabledVocabs) {
@@ -385,6 +396,10 @@ async function executeProjectSetupImpl({
           if (!newVocab) {
             updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
             newVocab = await client.vocabLayers.create(vocab.name);
+            // Said before it is linked, so a run that dies in between leaves
+            // a record naming it and the next one finishes it rather than
+            // making a second.
+            await onVocabCreated?.(newVocab.id);
           }
           // A new vocabulary starts with the core fields plus Status and its
           // list, the same setup every creation path does (statusFieldSeed).
