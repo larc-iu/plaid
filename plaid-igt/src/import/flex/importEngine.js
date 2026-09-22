@@ -17,6 +17,7 @@ import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
+import { withLangSuffix } from '../../domain/fieldNames.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets } from '../project.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
@@ -91,7 +92,7 @@ const senseMorphTypes = (lexicon) => {
  * every other one carries its tag (`gloss (ru)`). Annotation fields are named
  * by their own rule in deriveImportConfig.
  */
-const entryKey = (base, ws, primaryWs) => (ws === primaryWs ? base : `${base} (${ws})`);
+const entryKey = (base, ws, primaryWs) => (ws === primaryWs ? base : withLangSuffix(base, ws));
 
 /**
  * Derive the wizard pre-fill from a parse: orthographies, annotation fields
@@ -177,7 +178,7 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // names its translations by the same rule.
   const languages = new Set(perWs.filter((f) => f.base).map((f) => f.ws));
   const fields = perWs.map(({ base, ...f }) =>
-    base ? { ...f, name: languages.size > 1 ? `${base} (${f.ws})` : base } : f,
+    base ? { ...f, name: languages.size > 1 ? withLangSuffix(base, f.ws) : base } : f,
   );
 
   // Alternate text titles (e.g. the English names of vernacular-titled texts)
@@ -199,8 +200,8 @@ export function deriveImportConfig(ir, build, opts = {}) {
   // as a mistake, and the notebook fields exist only for a text given a record.
   const filled = new Set(build.documents.flatMap((d) => Object.keys(documentMetadataOf(d))));
   const documentMetadata = [
-    ...[...titleWss].map((ws) => ({ name: `Title (${ws})` })),
-    ...[...abbrWss].map((ws) => ({ name: `Abbreviation (${ws})` })),
+    ...[...titleWss].map((ws) => ({ name: withLangSuffix('Title', ws) })),
+    ...[...abbrWss].map((ws) => ({ name: withLangSuffix('Abbreviation', ws) })),
     { name: 'Source' },
     { name: 'Description' },
     { name: 'Genre' },
@@ -601,9 +602,9 @@ const abbreviationsOf = (doc) => {
 function documentMetadataOf(doc) {
   const md = {};
   for (const [ws, title] of Object.entries(doc.names)) {
-    if (title !== doc.name) md[`Title (${ws})`] = title;
+    if (title !== doc.name) md[withLangSuffix('Title', ws)] = title;
   }
-  for (const [ws, abbr] of abbreviationsOf(doc)) md[`Abbreviation (${ws})`] = abbr;
+  for (const [ws, abbr] of abbreviationsOf(doc)) md[withLangSuffix('Abbreviation', ws)] = abbr;
   if (doc.source) md.Source = pickEn(doc.source);
   if (doc.description) md.Description = pickEn(doc.description);
   if (doc.genres?.length) md.Genre = doc.genres.join(', ');

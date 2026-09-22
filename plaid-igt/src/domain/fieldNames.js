@@ -44,6 +44,18 @@ export const fieldNameLang = (name) => {
 };
 
 /**
+ * A field or lexicon key named for the language it is in: "Gloss (pmy)",
+ * "Translation (Russian)". THE ONLY WRITER of the bracket, so what the
+ * importers put in it and what `fieldNameLang` reads back out of it cannot
+ * drift apart. Whatever else a name has to say goes in words, never in the
+ * bracket: an ELAN tier qualified by a FLEx item code came back as a field in
+ * the language "pos" and both FLEx exporters tagged its values with it.
+ *
+ * `tag` is a language tag, or a language's name where the source gives no tag.
+ */
+export const withLangSuffix = (base, tag) => `${base} (${tag})`;
+
+/**
  * The writing system a field's values go out under, most trustworthy first:
  * an explicit override from the export preset, then what the FIELD ITSELF
  * records (config.igt.lang), then the preset's one tag for glosses and

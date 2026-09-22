@@ -20,7 +20,7 @@
 // tags and the one tier and one field left over must be each other. That last
 // step is a guess, and it is only reached for fields nobody labelled.
 
-import { isLangTag, parseFieldName } from '../../domain/fieldNames.js';
+import { isLangTag, parseFieldName, withLangSuffix } from '../../domain/fieldNames.js';
 
 // What each FLEx item code is called in a field name, for the codes that have
 // no name of their own in the IGT field vocabulary. Spelled out rather than
@@ -95,7 +95,7 @@ export function fieldWorksFieldNames(entries, alsoIn = []) {
   });
   const nameOf = (p) => {
     const base = codes.get(fold(p.base)).size > 1 ? byItemType(p) : p.base;
-    return languages.size > 1 ? `${base} (${p.ws})` : base;
+    return languages.size > 1 ? withLangSuffix(base, p.ws) : base;
   };
   return Object.fromEntries(parsed.map(([key, p]) => [key, nameOf(p)]));
 }

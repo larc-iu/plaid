@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFieldName, fieldNameLang, resolveFieldLang } from './fieldNames.js';
+import { parseFieldName, fieldNameLang, resolveFieldLang, withLangSuffix } from './fieldNames.js';
 
 describe('parseFieldName', () => {
   it('splits a writing-system suffix off the base', () => {
@@ -22,6 +22,30 @@ describe('fieldNameLang', () => {
     expect(fieldNameLang('Translation (free)')).toBeNull();
     expect(fieldNameLang('Gloss (broad)')).toBeNull();
     expect(fieldNameLang('Note (1)')).toBeNull();
+  });
+});
+
+// The writers and the reader are one pair: every importer that puts a
+// language in a field's name goes through withLangSuffix (FLEx's fields,
+// titles, abbreviations and lexicon keys; CLDF's translations; ELAN's tiers),
+// and fieldNameLang reads it back.
+describe('withLangSuffix', () => {
+  it('writes a name fieldNameLang reads the tag back out of', () => {
+    for (const [base, tag] of [
+      ['Gloss', 'nl'],
+      ['Translation', 'pmy'],
+      ['Title', 'spa-x-translit'],
+    ]) {
+      expect(fieldNameLang(withLangSuffix(base, tag))).toBe(tag);
+      expect(parseFieldName(withLangSuffix(base, tag)).base).toBe(base);
+    }
+  });
+
+  it('keeps a base that already carries a bracket', () => {
+    expect(parseFieldName(withLangSuffix('Note (old)', 'fr'))).toEqual({
+      base: 'Note (old)',
+      ws: 'fr',
+    });
   });
 });
 

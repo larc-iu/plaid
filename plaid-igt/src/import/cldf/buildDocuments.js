@@ -27,7 +27,7 @@ import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords } from '../align.js
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
-import { isLangTag } from '../../domain/fieldNames.js';
+import { isLangTag, withLangSuffix } from '../../domain/fieldNames.js';
 
 /**
  * Grouping sentinel: one document per example row. Not every corpus is running
@@ -458,7 +458,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   const translationFieldFor = (metaLanguageId) => {
     if (!metaLanguageId || metaLanguageIds.size <= 1) return o.translationField;
     const tag = languageTag(metaLanguageId);
-    const name = `${o.translationField} (${tag ?? languageLabel(metaLanguageId)})`;
+    const name = withLangSuffix(o.translationField, tag ?? languageLabel(metaLanguageId));
     if (tag) translationLangs.set(name, tag);
     return name;
   };

@@ -21,8 +21,11 @@ import {
 // project that already names a language keeps it: this is a first record,
 // never a correction.
 //
-// ONE WRITER. Every importer records the languages through here, so the shape
-// on the project and the rule about not correcting one have a single home.
+// ONE WRITER. Every importer that READS a language off its source records it
+// through here (FLEx, CLDF, ELAN), so the shape on the project and the rule
+// about not correcting one have a single home. The archive import is the one
+// exception and not a writer of this rule: it puts back the record a project
+// already had, verbatim, the way it puts back every other config key.
 const ISO_639_3 = /^[a-z]{3}$/;
 
 const language = (given) => {
