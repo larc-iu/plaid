@@ -1,4 +1,4 @@
-"""Every tool's schema and its Python signature agree, in both apps.
+"""Every tool's schema and its Python signature agree, in all three apps.
 
 A parameter the function accepts but the schema omits is one the model can
 never use; a schema parameter the function rejects is a TypeError the model
@@ -10,9 +10,10 @@ import pytest
 
 from plaid_agent.igt import toolkit as igt
 from plaid_agent.ud import toolkit as ud
+from plaid_agent.umr import toolkit as umr
 
 
-@pytest.mark.parametrize('app', [ud, igt], ids=['ud', 'igt'])
+@pytest.mark.parametrize('app', [ud, igt, umr], ids=['ud', 'igt', 'umr'])
 def test_every_schema_matches_its_signature(app):
     schema = {t['function']['name']: set((t['function']['parameters'] or {}).get('properties', {}).keys())
               for t in app.TOOLS}

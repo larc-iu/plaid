@@ -1,7 +1,8 @@
 """Every read tool, on both paths, with every enum value its schema declares.
 
 Sixty-four IGT tool bodies and twenty-six UD ones, and nothing called most of
-them. The ones that failed, failed as Python: a variable bound on one branch
+them. UMR joined the sweep in 2026-09, having been outside it since it was
+built. The ones that failed, failed as Python: a variable bound on one branch
 and read on another answered "what are the commonest forms?" with
 UnboundLocalError, and it shipped because no test had ever asked that question.
 
@@ -27,6 +28,8 @@ from plaid_agent.igt.toolkit import (TOOLS as IGT_TOOLS, WRITE_TOOLS as IGT_WRIT
                                      _IMPL as IGT_IMPL)
 from plaid_agent.ud.toolkit import (TOOLS as UD_TOOLS, WRITE_TOOLS as UD_WRITES,  # noqa: E402
                                     _IMPL as UD_IMPL)
+from plaid_agent.umr.toolkit import (TOOLS as UMR_TOOLS, WRITE_TOOLS as UMR_WRITES,  # noqa: E402
+                                     _IMPL as UMR_IMPL)
 
 REFUSALS = (ToolError, ValueError)
 
@@ -37,6 +40,10 @@ IGT_ARGS = {'title': 'Glossing', 'document': 'Text 1', 'pattern': 'a', 'field': 
 UD_ARGS = {'title': 'Glossing', 'document': 'Viaje', 'pattern': 'a', 'field': 'lemma', 'what': 'lemma', 'indexes': [1], 'code': 'print(1)',
            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
            'name': 'wordlist.csv'}
+UMR_ARGS = {'title': 'Aspect', 'document': 'Story', 'pattern': 'dog', 'what': 'concept',
+            'kind': 'ungraphed', 'where': 'words', 'indexes': [1], 'code': 'print(1)',
+            'query': {'find': ['?t'], 'where': [['token', '?t', {'layer': 'words'}]]},
+            'name': 'wordlist.csv'}
 
 SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 
@@ -44,7 +51,7 @@ SKIP = ('web_search', 'read_url')   # the network is not the tools' contract
 # them the tool refuses every call, which the sweep accepts as an answer and
 # which leaves its body unrun (see test_every_read_tool_answered_at_least_once).
 EXTRA = {'igt': {'analyses_of': {'forms': ['gam']}, 'lexicon_entry': {'entry_form': 'gam#1'}},
-         'ud': {}}
+         'ud': {}, 'umr': {'find_nodes': {'concept': 'dog'}}}
 
 
 def _cases(tools, write_tools, values, in_document: bool, extra=None):
@@ -82,7 +89,7 @@ def _cases(tools, write_tools, values, in_document: bool, extra=None):
 # call the sweep makes has not been exercised at all, and the whole suite of
 # 106 cases could have gone green having run no tool body. The last test here
 # holds every read tool to answering at least once.
-ANSWERED: dict = {'igt': set(), 'ud': set()}
+ANSWERED: dict = {'igt': set(), 'ud': set(), 'umr': set()}
 
 
 def _run(app, impl, ws, name, args):
@@ -143,6 +150,22 @@ def _ud(scan: bool):
     return w
 
 
+def _umr(scan: bool):
+    from umr_fixtures import ExtClient, project_raw, document_raw
+    from plaid_agent.umr.project import load_project
+    from plaid_agent.umr.tools import Workspace
+    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()},
+                  comments=[{'id': 'c1', 'document_id': 'umr1', 'entity_type': 'document',
+                             'entity_id': 'umr1', 'body': 'a note',
+                             'created_at': '2026-09-01T10:00:00Z',
+                             'updated_at': '2026-09-01T10:00:00Z', 'user': {'id': 'a@b.com'}}])
+    if not scan:
+        _empty_engine(c)
+    w = Workspace(c, load_project(c, 'mp1'))
+    w.files = attached(('wordlist.csv', WORDLIST))
+    return w
+
+
 def _ids(cases):
     return [f'{n}-{"-".join(f"{k}={v}" for k, v in sorted(a.items()) if isinstance(v, str))}'
             for n, a in cases]
@@ -152,6 +175,8 @@ IGT_IN_DOC = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=True, extra=EXT
 IGT_PROJECT = _cases(IGT_TOOLS, IGT_WRITES, IGT_ARGS, in_document=False, extra=EXTRA['igt'])
 UD_IN_DOC = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=True, extra=EXTRA['ud'])
 UD_PROJECT = _cases(UD_TOOLS, UD_WRITES, UD_ARGS, in_document=False, extra=EXTRA['ud'])
+UMR_IN_DOC = _cases(UMR_TOOLS, UMR_WRITES, UMR_ARGS, in_document=True, extra=EXTRA['umr'])
+UMR_PROJECT = _cases(UMR_TOOLS, UMR_WRITES, UMR_ARGS, in_document=False, extra=EXTRA['umr'])
 
 
 @pytest.mark.parametrize('name,args', IGT_IN_DOC, ids=_ids(IGT_IN_DOC))
@@ -174,22 +199,35 @@ def test_ud_read_tools_project_wide(name, args):
     _run('ud', UD_IMPL, _ud(scan=False), name, args)
 
 
-@pytest.mark.parametrize('app,name', [('igt', 'Text 1'), ('ud', 'Viaje')])
-def test_the_history_a_sweep_case_reads_actually_holds_a_change(app, name):
+@pytest.mark.parametrize('name,args', UMR_IN_DOC, ids=_ids(UMR_IN_DOC))
+def test_umr_read_tools_in_one_document(name, args):
+    _run('umr', UMR_IMPL, _umr(scan=True), name, args)
+
+
+@pytest.mark.parametrize('name,args', UMR_PROJECT, ids=_ids(UMR_PROJECT))
+def test_umr_read_tools_project_wide(name, args):
+    _run('umr', UMR_IMPL, _umr(scan=False), name, args)
+
+
+@pytest.mark.parametrize('app,name,message', [('igt', 'Text 1', 'Assistant: 2 field values'),
+                                              ('ud', 'Viaje', 'Assistant: 2 field values'),
+                                              ('umr', 'Story', 'Assistant: 2 concepts')])
+def test_the_history_a_sweep_case_reads_actually_holds_a_change(app, name, message):
     """A sweep case takes any string for an answer, and "nothing has changed
     here" is a string. UD's fixture client carried the other app's audit log,
     which named a document this project does not have, so recent_changes ran
     its empty branch in every one of those cases and nothing said so.
     """
-    ws, impl = (_igt(scan=True), IGT_IMPL) if app == 'igt' else (_ud(scan=True), UD_IMPL)
-    out = impl['recent_changes'](ws, document=name)
-    assert 'Luke G' in out and 'Assistant: 2 field values' in out and name in out
+    ws, impl = {'igt': (_igt, IGT_IMPL), 'ud': (_ud, UD_IMPL), 'umr': (_umr, UMR_IMPL)}[app]
+    out = impl['recent_changes'](ws(scan=True), document=name)
+    assert 'Luke G' in out and message in out and name in out
 
 
 def test_the_sweep_actually_covers_the_read_tools():
     """Without this the test above is green on an empty case list."""
     for cases, tools, writes, least in ((IGT_PROJECT, IGT_TOOLS, IGT_WRITES, 20),
-                                        (UD_PROJECT, UD_TOOLS, UD_WRITES, 12)):
+                                        (UD_PROJECT, UD_TOOLS, UD_WRITES, 12),
+                                        (UMR_PROJECT, UMR_TOOLS, UMR_WRITES, 12)):
         reads = {t['function']['name'] for t in tools} - set(writes) - set(SKIP)
         assert {n for n, _ in cases} == reads
         assert len(cases) >= least
@@ -203,6 +241,7 @@ NEVER_ANSWERS = {
     # here would make this a test about the plan tools.
     'igt': {'run_code', 'code_help', 'drop_planned'},
     'ud': {'run_code', 'code_help', 'drop_planned'},
+    'umr': {'run_code', 'code_help', 'drop_planned'},
 }
 
 
@@ -215,7 +254,8 @@ def test_every_read_tool_answered_at_least_once():
     the sweep exists to catch, so it is asserted rather than assumed.
     """
     for app, cases, tools, writes in (('igt', IGT_PROJECT + IGT_IN_DOC, IGT_TOOLS, IGT_WRITES),
-                                      ('ud', UD_PROJECT + UD_IN_DOC, UD_TOOLS, UD_WRITES)):
+                                      ('ud', UD_PROJECT + UD_IN_DOC, UD_TOOLS, UD_WRITES),
+                                      ('umr', UMR_PROJECT + UMR_IN_DOC, UMR_TOOLS, UMR_WRITES)):
         reads = {t['function']['name'] for t in tools} - set(writes) - set(SKIP)
         silent = reads - ANSWERED[app] - NEVER_ANSWERS[app]
         assert not silent, (f'{app}: these read tools refused every call the sweep made, so none of '

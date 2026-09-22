@@ -1,10 +1,12 @@
-"""A number the two apps share lives in `core.limits`, or it drifts.
+"""A number two apps share lives in `core.limits`, or it drifts.
 
 Each of these was written twice, once per app, and one of the two was raised
 and the other was not: a tool answered with a hundred rows in one app and
 thirty in the other, and nobody could name the reason. The sweep below reads
-the module-level numbers out of both apps and refuses a name that appears in
-both unless there is a reason recorded here for the two to differ.
+the module-level numbers out of EVERY app and refuses a name that appears in
+more than one unless there is a reason recorded here for them to differ. It
+compared igt against ud alone until 2026-09, so a number set in ud and umr
+passed it.
 """
 
 import ast
@@ -22,8 +24,10 @@ SRC = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'plaid_agent'
 # else the two apps both name is a number with two homes: put it in
 # `core.limits` and read it from there, or give the two different names.
 DELIBERATELY_PER_APP = {
-    'RENDER_DOC_BUDGET': 'a hit renders as a block of lines in IGT and as one KWIC line in UD',
+    'RENDER_DOC_BUDGET': 'a hit renders as a block of lines in IGT and as one line in UD and UMR',
 }
+
+APPS = ('igt', 'ud', 'umr')
 
 
 def _module_numbers(app: str):
@@ -44,12 +48,14 @@ def _module_numbers(app: str):
     return out
 
 
-def test_no_number_has_a_home_in_both_apps():
-    igt, ud = _module_numbers('igt'), _module_numbers('ud')
-    assert igt and ud, 'the sweep is green on an empty reading without this'
-    shared = set(igt) & set(ud)
+@pytest.mark.parametrize('a,b', [(a, b) for i, a in enumerate(APPS) for b in APPS[i + 1:]])
+def test_no_number_has_a_home_in_two_apps(a, b):
+    first, second = _module_numbers(a), _module_numbers(b)
+    assert first and second, 'the sweep is green on an empty reading without this'
+    shared = set(first) & set(second)
     assert shared == set(DELIBERATELY_PER_APP), (
-        'a number is set in both apps: ' + ', '.join(sorted(shared - set(DELIBERATELY_PER_APP)))
+        f'a number is set in both {a} and {b}: '
+        + ', '.join(sorted(shared - set(DELIBERATELY_PER_APP)))
         + '. Put it in core.limits, or say here why the two differ.')
 
 
@@ -57,7 +63,7 @@ def test_no_number_has_a_home_in_both_apps():
 def test_a_number_the_apps_set_apart_says_so_where_it_is_set(name):
     """A reason recorded only in this test is a reason nobody reads. It has to
     be beside the number too."""
-    for app in ('igt', 'ud', 'umr'):
+    for app in APPS:
         text = '\n'.join(p.read_text() for p in (SRC / app).rglob('*.py') if f'\n{name} = ' in p.read_text())
         head = text[:text.index(f'\n{name} = ')]
         assert 'same budget' in head[-400:], f'{app}/{name} does not say why it differs from the other app'
@@ -127,7 +133,7 @@ def _impl(app, tool):
     return mod._IMPL[tool]
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud', 'umr'])
+@pytest.mark.parametrize('app', APPS)
 @pytest.mark.parametrize('tool', sorted(limits.READ_LIMITS))
 def test_a_read_asked_for_nothing_shows_what_the_shared_table_says(app, tool):
     """`clamp_limit` reaches the table's default only when the tool was given
@@ -170,16 +176,19 @@ def test_the_sweep_covers_every_shared_read():
         assert set(table) | set(NOT_CALLED) == set(limits.READ_LIMITS), app
 
 
-def test_both_apps_cap_a_scope_and_a_read_at_the_same_number():
+def test_every_app_caps_a_scope_and_a_read_at_the_same_number():
     from plaid_agent.igt import tools as igt_tools
     from plaid_agent.igt import project as igt_project
     from plaid_agent.ud import tools as ud_tools
+    from plaid_agent.umr import tools as umr_tools
     assert igt_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     assert ud_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     assert ud_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
     assert igt_project.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
+    assert umr_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
     assert igt_project.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
     assert ud_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
+    assert umr_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
 
 
 def test_the_prompt_says_how_many_documents_the_overview_really_shows():

@@ -203,3 +203,40 @@ def test_most_write_tools_are_refused_by_the_funnel_itself(app, floor):
     sweep stopped proving anything about those tools."""
     reached = _reached(app)
     assert len(reached) >= floor, f'only {len(reached)} of {app}\'s write tools reached the guard: {reached}'
+
+
+# --- UMR: the certain-delete refusal ------------------------------------------
+#
+# UMR has no restore, so the sweeps above do not reach it. The other refusal a
+# plan owes IS its: a change to something the plan certainly deletes, refused
+# as the plan is built rather than dropped from a card the user approved. A
+# node delete takes the concept span, every relation on it and every
+# document-level triple on it, so all three are what the guard has to see.
+
+UMR_DELETE = {'kind': 'delete_node', 'document_id': 'umr1', 'sentence': 1, 'span_id': 'mc-d',
+              'var': 's1d', 'token_ids': ['mn-2'], 'relation_ids': ['md-1', 'mr-1'],
+              'staging': 'earlier', 'label': 'remove (s1d / dog)'}
+
+# Each names something the delete above takes away: the node's concept span,
+# the node as an end of a new triple, and the document-level triple the
+# cascade removes.
+UMR_CASES = [
+    ('set_attributes', {'document': 'Story', 'sentence': 1, 'var': 's1d', 'line': ':polarity -'}),
+    ('add_triple', {'document': 'Story', 'a': 's2t', 'rel': ':before', 'b': 's1d'}),
+    ('delete_triple', {'document': 'Story', 'a': 's2t', 'rel': ':same-entity', 'b': 's1d'}),
+]
+
+
+@pytest.mark.parametrize('tool,args', UMR_CASES, ids=[t for t, _ in UMR_CASES])
+def test_no_umr_tool_joins_a_plan_that_deletes_what_it_names(tool, args):
+    from umr_fixtures import PID, umr_client
+    from plaid_agent.umr.project import load_project
+    from plaid_agent.umr.toolkit import call_tool
+    from plaid_agent.umr.tools import Workspace
+    c = umr_client()
+    ws = Workspace(c, load_project(c, PID))
+    ws.doc('Story')
+    ws.ops.append(dict(UMR_DELETE))
+    out = call_tool(ws, tool, args)
+    assert out.startswith('Error:') and 'this plan deletes' in out, out
+    assert ws.ops == [UMR_DELETE], f'{tool} added to a plan that deletes what it names'
