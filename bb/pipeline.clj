@@ -144,6 +144,33 @@
     (step "Run the Python test suite (plaid-client-py)")
     (p/shell {:dir "plaid-client-py"} (python-exe) "-m" "pytest" "-q")))
 
+;; The fidelity campaign's round trips, in the order they fail most usefully:
+;; the kitchen sink first (a feature the builder stopped making makes the other
+;; two lie), then what we can read back, then what the outside world accepts.
+;;
+;; Each boots a PRIVATE core from source (its own port, its own database, its
+;; own media directory, stopped at the end), so nothing here touches a core
+;; anyone is looking at. `realFiles.mjs` is deliberately absent: its corpora
+;; are real files that live outside the repo, so it stays a local run.
+(def ^:private fidelity-runs
+  [["coverage.mjs" "the kitchen sink still holds every catalogued feature"]
+   ["roundTrip.mjs" "every format reads back what it wrote, or its loss list says why not"]
+   ["validate.mjs" "every export passes its own format's validator"]])
+
+(defn run-fidelity! []
+  (ensure-repo-root!)
+  (ensure-node!)
+  (when-not (fs/which "clojure")
+    (fail "clojure not found on PATH — each run boots a plaid-core from source"))
+  (when-not (fs/exists? "plaid-igt/node_modules")
+    (fail "plaid-igt/node_modules is missing — run `npm ci` there (or `bb test`) first"))
+  (doseq [[script what] fidelity-runs]
+    (step (str "Fidelity: " what))
+    ;; `--import ./e2e/live/aliases.mjs` is what gives plain node the `@/` and
+    ;; `@ui/` specifiers Vite gives the app. See e2e/live/aliases.mjs.
+    (p/shell {:dir "plaid-igt"}
+             "node" "--import" "./e2e/live/aliases.mjs" (str "e2e/fidelity/" script))))
+
 ;; The SAMPLE_PROMPT.md files are snapshots of what the model is actually
 ;; sent, and they rot silently: a tool changes and the file goes on describing
 ;; the tool as it was. `bb test` fails while any of them is stale, so this is

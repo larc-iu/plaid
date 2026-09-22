@@ -92,3 +92,23 @@ jobs:
       # (bb/pipeline.clj), so the gate can't drift.
       - name: Run tests
         run: bb test
+      # The fidelity round trips: the kitchen sink built on a core of their
+      # own (their own port and database, booted from source), exported and
+      # read back through every format that can, then handed to each format's
+      # OWN validator. Nightly only, never per-commit or on the release path:
+      # they cost five to ten minutes, and they are the only thing that
+      # notices an importer quietly dropping something (`8add4f51` broke
+      # `token.morphemeFormEmpty` and it was caught only because somebody ran
+      # this by hand). `bb test` goes first, so plaid-igt is installed by the
+      # time this runs. `realFiles.mjs` stays local: its corpora are real
+      # files outside the repo.
+      #
+      # pycldf is what `validate.mjs` hands a CLDF export to; without it that
+      # one check reports itself skipped. The XML schemas (EAF, FlexInterlinear,
+      # LIFT) are third-party and not in the repo, so those stay skipped here.
+      - name: Install the fidelity validators
+        run: pip install pycldf
+      - name: Run the fidelity round trips
+        env:
+          PLAID_PYTHON: python3
+        run: bb fidelity

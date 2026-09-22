@@ -19,6 +19,11 @@
    :task (do (pl/run-tests!)
              (pl/build-artifacts! (pl/parse-build-args *command-line-args*)))}
 
+  fidelity
+  {:doc "Run the fidelity round trips: the kitchen-sink coverage check, the round trip through every format that can read back what it writes (against each format's loss list), and every export through the format's OWN validator. Each boots a private plaid-core from source on its own port and database, so nothing touches the dev core; the three together take roughly five to ten minutes. `realFiles.mjs` is NOT here, its corpora living outside the repo. Prereqs: Node >= 24 active, `clojure` on PATH, and plaid-igt installed (`npm ci` there, or `bb test`). Nightly runs this after `bb test`."
+   :requires ([pipeline :as pl])
+   :task (pl/run-fidelity!)}
+
   sample-prompts
   {:doc "Regenerate every assistant's prompt snapshot (plaid-agent/docs/igt/, docs/ud/ and docs/umr/SAMPLE_PROMPT.md) from the real prompt builders and tool tables. Run it in the same change as any tool or prompt edit: the test gate fails while a snapshot is stale. Uses the `plaid-agent` mamba env's interpreter (or PLAID_AGENT_PYTHON), so no activation is needed."
    :requires ([pipeline :as pl])
