@@ -86,6 +86,59 @@
   planner-stats-thread
   (atom nil))
 
+(def ^:private analyze-pause-ms
+  "How long to stand off the database between two tables' ANALYZE. A
+   writer that arrived while the previous statement held the write lock
+   is parked in its `busy_timeout` retry loop; this is the window in
+   which it is certain to find the lock free."
+  50)
+
+(defn- analyze-targets
+  "Every user table in the database, in name order — one ANALYZE
+   statement each. `sqlite_%` tables are SQLite's own (including
+   `sqlite_stat1`, which ANALYZE writes)."
+  [^java.sql.Connection conn]
+  (with-open [stmt (.createStatement conn)
+              rs (.executeQuery stmt (str "SELECT name FROM sqlite_master WHERE type = 'table' "
+                                          "AND name NOT LIKE 'sqlite_%' ORDER BY name"))]
+    (loop [names []]
+      (if (.next rs)
+        (recur (conj names (.getString rs 1)))
+        names))))
+
+(defn- analyze-statement
+  "`ANALYZE <table>` for one table. Identifier-quoted: the names come
+   from `sqlite_master`, but a quoted identifier is what makes that
+   irrelevant."
+  [table]
+  (str "ANALYZE \"" (clojure.string/replace table "\"" "\"\"") "\";"))
+
+(defn- analyze-tables!
+  "ANALYZE the database ONE TABLE PER STATEMENT, pausing between them.
+   SQLite runs each ANALYZE in its own write transaction — a whole-database
+   `ANALYZE;` is ONE statement, so it holds the write lock from its first
+   write to `sqlite_stat1` until it ends. On the prod database that is
+   108-133 seconds during which every write waits out `busy_timeout` and is
+   refused with 503, and both clients stop retrying a 503 after about 24
+   seconds: two minutes of failed saves after every deploy. Per table, each
+   lock lasts one table's indexes, and `analyze-pause-ms` between them
+   leaves a window a parked writer is certain to win."
+  [datasource]
+  (with-open [conn (.getConnection datasource)]
+    ;; Autocommit, so each statement below is its own transaction and the
+    ;; write lock is dropped the moment it ends.
+    (when-not (.getAutoCommit conn)
+      (.setAutoCommit conn true))
+    (with-open [stmt (.createStatement conn)]
+      (.execute stmt "PRAGMA analysis_limit=400;"))
+    (let [tables (analyze-targets conn)]
+      (doseq [[i table] (map-indexed vector tables)]
+        (when (pos? i)
+          (Thread/sleep analyze-pause-ms))
+        (with-open [stmt (.createStatement conn)]
+          (.execute stmt (analyze-statement table))))
+      (count tables))))
+
 (defn- refresh-planner-stats!
   "Run a sampled ANALYZE so SQLite plans against the database as it is
    now, then drop the pool's open connections so every later one loads
@@ -102,20 +155,23 @@
    across three restarts. Blocking :start on that makes every restart an
    outage of that length. Stale statistics make reads slow, not wrong, so
    answering for a minute or two on last boot's statistics beats not
-   answering at all."
+   answering at all.
+
+   AND ONE TABLE PER STATEMENT (`analyze-tables!`), because the write lock
+   an ANALYZE holds lasts as long as its statement does. Off the start path
+   but holding the lock for two minutes, this traded an unreachable server
+   for one that reads and refuses every save — the same outage wearing a
+   500. Per table, a writer waits out one table, not the file."
   [datasource]
   (reset! planner-stats-thread
           (doto (Thread.
                  (fn []
                    (try
-                     (let [t0 (System/nanoTime)]
-                       (with-open [conn (.getConnection datasource)
-                                   stmt (.createStatement conn)]
-                         (.execute stmt "PRAGMA analysis_limit=400;")
-                         (.execute stmt "ANALYZE;"))
+                     (let [t0 (System/nanoTime)
+                           n (analyze-tables! datasource)]
                        (.softEvictConnections (.getHikariPoolMXBean datasource))
-                       (log/info (format "Planner statistics refreshed in the background in %dms"
-                                         (quot (- (System/nanoTime) t0) 1000000))))
+                       (log/info (format "Planner statistics refreshed in the background across %d tables in %dms"
+                                         n (quot (- (System/nanoTime) t0) 1000000))))
                      (catch Exception e
                        (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))
                  "plaid-planner-stats")
