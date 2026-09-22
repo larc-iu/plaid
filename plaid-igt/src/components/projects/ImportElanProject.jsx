@@ -232,7 +232,11 @@ export const ImportElanProject = () => {
                   onRecordMediaName={batch.setRecordMediaName}
                 />
 
-                <ElanTierReview batch={batch} editable={mappingEditable} />
+                <ElanTierReview
+                  batch={batch}
+                  editable={editable}
+                  mappingEditable={mappingEditable}
+                />
 
                 <ElanPreview build={batch.build} />
 

@@ -135,6 +135,8 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
  *
  * @param batch  the useElanBatch state
  * @param editable  false while a run is in flight
+ * @param mappingEditable  whether the roles and field names can be changed;
+ *                 a resume locks them to the answers the first run was given
  * @param renderFieldControl  (node) => ReactNode for a tier in a named role
  * @param rowNote  (node) => {text, tone?}|null, what choosing this row's name
  *                 does to the project ("new field"), said on the row that does it
@@ -143,10 +145,16 @@ export const ElanTierReview = ({
   step = 2,
   batch,
   editable,
+  mappingEditable = editable,
   renderFieldControl = null,
   rowNote = null,
 }) => {
   const { files, nodes, roles, fieldNames } = batch;
+  // A locked mapping still lets an unanswered pair of tier names be decided.
+  // Import waits on every pair, and a resume whose record has no answer for
+  // one (a record written before the answers were kept, or a pair that only
+  // appears once an .eaf is taken out of the batch) has no other way on.
+  const decidable = editable && (mappingEditable || batch.undecidedNearMisses.length > 0);
   const [showEmpty, setShowEmpty] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   // A corpus template carries tiers nobody has filled in, and a row with
@@ -162,7 +170,7 @@ export const ElanTierReview = ({
           groups={batch.nearMissGroups}
           choices={batch.nearMissChoices}
           undecided={batch.undecidedNearMisses}
-          editable={editable}
+          editable={decidable}
           onChoose={batch.chooseNearMiss}
         />
       )}
@@ -225,14 +233,14 @@ export const ElanTierReview = ({
                     <Input
                       aria-label={`Name for ${nodeLabel(node)}`}
                       value={fieldNames[node.key] ?? ''}
-                      disabled={!editable}
+                      disabled={!mappingEditable}
                       onChange={(e) => batch.setName(node.key, e.target.value)}
                       className="h-8 w-40 shrink-0"
                     />
                   ))}
                 <Select
                   value={roles[node.key] ?? ROLES.OFF}
-                  disabled={!editable}
+                  disabled={!mappingEditable}
                   onValueChange={(v) => batch.setRole(node.key, v)}
                 >
                   <SelectTrigger className="h-8 w-44 shrink-0">

@@ -43,6 +43,7 @@ const NEAR_MISS = [
 ];
 
 const picked = (tiers) => [{ name: 'corpus.eaf', text: async () => eaf(tiers) }];
+const pickedAs = (names, tiers) => names.map((name) => ({ name, text: async () => eaf(tiers) }));
 
 const Probe = ({ onReady }) => {
   const batch = useElanBatch();
@@ -108,6 +109,36 @@ describe('useElanBatch on a resume', () => {
     // The pair is still reported, and still answered.
     expect(again.read().nearMissGroups).toHaveLength(1);
     expect(again.read().undecidedNearMisses).toEqual([]);
+    await again.unmount();
+  });
+
+  it('keeps the merge decisions and the recorded mapping when an .eaf is taken out', async () => {
+    // Removing a file re-derives the schema from what is left. Dropping the
+    // merge decisions there un-folds the tiers the recorded mapping is filed
+    // under, and on a resume, where the mapping is locked, leaves the pair
+    // undecided with no way to answer it: Import greyed out for good.
+    const FILES = ['one.eaf', 'two.eaf'];
+    const TIERS = [...NEAR_MISS, { id: 'Bo', anns: [['b1', 'los gatos', 400, 500]] }];
+
+    const first = await mount();
+    await first.step(() => first.read().readFiles(pickedAs(FILES, TIERS)));
+    await first.step(() => first.read().chooseNearMiss('phrase', 'Phrase'));
+    const bo = keyOf(first.read(), 'Bo');
+    const folded = keyOf(first.read(), 'Phrase');
+    await first.step(() => first.read().setRole(bo, ROLES.UTTERANCE));
+    await first.step(() => first.read().setName(folded, 'Transcription'));
+    const recorded = first.read().choices;
+    await first.unmount();
+
+    const again = await mount();
+    await again.step(() => again.read().readFiles(pickedAs(FILES, TIERS), recorded));
+    expect(again.read().undecidedNearMisses).toEqual([]);
+    await again.step(() => again.read().removeEaf('two.eaf'));
+    expect(again.read().files.map((f) => f.fileName)).toEqual(['one.eaf']);
+    expect(again.read().nearMissChoices).toEqual({ phrase: 'Phrase' });
+    expect(again.read().undecidedNearMisses).toEqual([]);
+    expect(again.read().roles[bo]).toBe(ROLES.UTTERANCE);
+    expect(again.read().fieldNames[folded]).toBe('Transcription');
     await again.unmount();
   });
 

@@ -6,7 +6,7 @@
 // create, or one of the project's existing fields) and what happens on Import.
 // Everything up to that point lives here.
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
 import {
   compareSchemas,
@@ -63,6 +63,12 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   const [roles, setRoles] = useState({});
   const [fieldNames, setFieldNames] = useState({});
   const [recordMediaName, setRecordMediaName] = useState(true);
+  // The mapping a resumed import was answered with the first time, kept for
+  // every re-derivation of the schema and not just the first. A merge
+  // decision and a removed .eaf both rebuild the node keys the record's
+  // answers are filed under, so a rebuild that forgets them re-suggests the
+  // mapping and the hand-mapped tiers go with it.
+  const givenRef = useRef(null);
 
   const nodes = useMemo(() => comparison?.nodes ?? [], [comparison]);
   const problems = useMemo(
@@ -143,7 +149,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   const chooseNearMiss = (fold, choice) => {
     const choices = { ...nearMissChoices, [fold]: choice };
     setNearMissChoices(choices);
-    applySchema(files, compareSchemas(files, canonicalOf(choices)));
+    applySchema(files, compareSchemas(files, canonicalOf(choices)), givenRef.current);
   };
 
   /**
@@ -177,6 +183,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     const result = compareSchemas(parsed);
     setFiles(parsed);
     setNearMissGroups(result.nearMisses);
+    givenRef.current = given ?? null;
     const merges = given?.nearMissChoices ?? {};
     setNearMissChoices(merges);
     const canonical = canonicalOf(merges);
@@ -199,10 +206,19 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
       return;
     }
     const result = compareSchemas(kept);
+    // The merge decisions stand for every pair the batch still has: dropping
+    // them would un-fold the tiers the mapping is filed under, and on a
+    // resume, where they cannot be answered again, leave the import with
+    // nothing to decide them with.
+    const folds = new Set(result.nearMisses.map((g) => g.fold));
+    const choices = Object.fromEntries(
+      Object.entries(nearMissChoices).filter(([fold]) => folds.has(fold)),
+    );
+    const canonical = canonicalOf(choices);
     setFiles(kept);
     setNearMissGroups(result.nearMisses);
-    setNearMissChoices({});
-    applySchema(kept, result);
+    setNearMissChoices(choices);
+    applySchema(kept, canonical ? compareSchemas(kept, canonical) : result, givenRef.current);
   };
 
   const reset = () => {
@@ -211,6 +227,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     setMediaFiles([]);
     setNearMissGroups([]);
     setNearMissChoices({});
+    givenRef.current = null;
   };
 
   return {
