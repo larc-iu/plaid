@@ -6,8 +6,8 @@ import { AdminProjects } from './AdminProjects';
 // The Shape column is the only place on the server that says which app owns a
 // project, and getting it wrong sends an admin to the wrong app: which, for a
 // project this one did not set up, means its setup wizard, pointed at somebody
-// else's corpus. So: what each shape reads off, and that a UD project's name
-// leaves this app rather than linking inside it.
+// else's corpus. So: what each shape reads off, and that another app's project
+// name leaves this app rather than linking inside it.
 
 const client = (projects) => ({
   projects: { list: vi.fn(async () => projects) },
@@ -25,6 +25,22 @@ const udProject = (over = {}) => ({
           config: { plaid: { role: 'syntactic-word' } },
           spanLayers: [{ config: { ud: { upos: true } } }],
         },
+      ],
+    },
+  ],
+  ...over,
+});
+
+const umrProject = (over = {}) => ({
+  id: 'p-umr',
+  name: 'Meaning',
+  config: {},
+  textLayers: [
+    {
+      config: { plaid: { role: 'baseline' } },
+      tokenLayers: [
+        { config: { plaid: { role: 'word' } }, spanLayers: [] },
+        { config: { umr: { nodes: true } }, spanLayers: [{ config: { umr: { concepts: true } } }] },
       ],
     },
   ],
@@ -82,5 +98,28 @@ describe('AdminProjects', () => {
     // bundle and its own hash router.
     expect(link.getAttribute('href')).toMatch(/\/#\/projects\/p-ud\/documents$/);
     expect(link.getAttribute('href')).not.toMatch(/^\/projects/);
+  });
+
+  it('labels a UMR project UMR and sends its name to the UMR app', async () => {
+    const view = await render([umrProject()]);
+    expect(texts(view.container, 'tbody tr td:nth-child(2)')).toEqual(['UMR']);
+    const link = view.container.querySelector('tbody tr a');
+    expect(link.getAttribute('href')).toBe('/umr/#/projects/p-umr/documents');
+  });
+
+  it('does not call a project UMR on a substrate it shares', async () => {
+    // UMR builds on whatever substrate is there, so the roles say nothing.
+    // Only the node layer's own flag does.
+    const view = await render([
+      umrProject({
+        textLayers: [
+          {
+            config: { plaid: { role: 'baseline' } },
+            tokenLayers: [{ config: { plaid: { role: 'word' } }, spanLayers: [] }],
+          },
+        ],
+      }),
+    ]);
+    expect(texts(view.container, 'tbody tr td:nth-child(2)')).toEqual(['Other app']);
   });
 });

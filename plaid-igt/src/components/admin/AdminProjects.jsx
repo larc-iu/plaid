@@ -5,9 +5,10 @@ import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { isUdProject } from '@ui/domain/udProject';
+import { isUmrProject } from '@ui/domain/umrProject';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
-import { udProjectUrl } from '@ui/domain/siblingApps.js';
+import { udProjectUrl, umrProjectUrl } from '@ui/domain/siblingApps.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
 
@@ -16,14 +17,27 @@ import { projectRole } from '@larc-iu/plaid-client';
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
 
-// Which app owns the project. This one knows its own for certain, from its own
-// config module, and knows plaid-ud's from the shared package: a shape one app
-// has to recognise in ANOTHER app's project is what plaid-ui is for, and a
-// second copy of that answer living here is how two apps start disagreeing
-// about what a project is.
+// Which app owns the project, and where its name leads. This one knows its
+// own for certain, from its own config module, and knows the other apps' from
+// the shared package: a shape one app has to recognise in ANOTHER app's
+// project is what plaid-ui is for, and a second copy of that answer living
+// here is how two apps start disagreeing about what a project is.
+//
+// `url` is null for a project this app owns, which opens through the router.
+// It is the owning app for every other, because this app's project route is
+// its setup wizard, and running that over a corpus another app set up is the
+// wrong thing to do to someone else's work.
+const OWNERS = [
+  { shape: 'UD', owns: isUdProject, url: udProjectUrl },
+  { shape: 'UMR', owns: isUmrProject, url: umrProjectUrl },
+];
+
+const ownerOf = (project) => OWNERS.find((o) => o.owns(project)) ?? null;
+
 const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
-  if (isUdProject(project)) return 'UD';
+  const owner = ownerOf(project);
+  if (owner) return owner.shape;
   return findBaselineTextLayer(project.textLayers || []) ? 'Other app' : 'Not set up';
 };
 
@@ -72,20 +86,20 @@ export const AdminProjects = ({ client, currentUser }) => {
       key: 'name',
       label: 'Name',
       sort: (p) => p.name.toLowerCase(),
-      // A project's name is its way in, and a UD project's way in is the UD
-      // app: this one sends a project it did not set up to its setup wizard,
-      // which is the wrong thing to do to someone else's corpus. That is a
-      // full page load, so a plain anchor, not a router Link.
-      render: (p) =>
-        isUdProject(p) ? (
-          <a href={udProjectUrl(p.id)} className="font-medium hover:underline">
+      // A project's name is its way in, and it leads to the app that owns it.
+      // Another app is a full page load, so a plain anchor, not a router Link.
+      render: (p) => {
+        const owner = readInitialized(p.config) ? null : ownerOf(p);
+        return owner ? (
+          <a href={owner.url(p.id)} className="font-medium hover:underline">
             {p.name}
           </a>
         ) : (
           <Link to={`/projects/${p.id}`} className="font-medium hover:underline">
             {p.name}
           </Link>
-        ),
+        );
+      },
     },
     {
       key: 'shape',
