@@ -21,7 +21,8 @@ from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .penman import parse_attribute_line
-from .plan import KIND, attrs_scope_targets, docs_of_op, graphs_of_op
+from .plan import (GRAPH_KINDS, KIND, attrs_scope_targets, docs_of_op, graphs_of_op,
+                   sentence_graph_key)
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
                       render_document, render_document_graph)
@@ -73,23 +74,41 @@ class Workspace(BaseWorkspace):
         self.refuse_second_graph(op, replacing=replacing)
 
     def refuse_second_graph(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
-        """Two replacements of one sentence's graph in one plan.
+        """A graph replacement beside another change to that sentence's graph.
 
-        The second was worked out against the graph the first replaces, so its
-        variables name different nodes and its ids may already be gone. Refused
-        as the plan is built, with ``validate_ops`` as the backstop.
+        Either one was worked out against a graph the other replaces, so its
+        variables name different nodes and its ids may already be gone. BOTH
+        ORDERS are refused: the attribute change after the replacement (which
+        the tool refuses by name, in ``_no_graph_planned``) and the
+        replacement after the attribute change, which used to stage happily
+        and leave the two orders meaning different things.
+
+        Refused as the plan is built, with ``validate_ops`` as the backstop.
+        A document-level triple is not part of a sentence's graph and is left
+        alone; the delete guard covers a triple on a node the graph removes.
         """
         graphs = graphs_of_op(op)
         if not graphs:
             return
         staging = op.get('staging')
         for i, prev in enumerate(self.ops):
-            if i == replacing or not (graphs_of_op(prev) & graphs):
+            if i == replacing or prev.get('staging') == staging:
                 continue
-            if prev.get('staging') != staging:
+            if graphs_of_op(prev) & graphs:
                 raise ToolError('This plan already replaces the graph of this sentence. Keep one '
                                 'of the two (plan_status, drop_planned), or plan them in separate '
                                 'turns.')
+            if prev.get('kind') in GRAPH_KINDS and sentence_graph_key(prev) in graphs:
+                raise ToolError(f'This plan already changes {self._where(prev)}, and that change '
+                                f'was worked out against the graph this one replaces. Keep one of '
+                                f'the two (plan_status, drop_planned), or plan them in separate '
+                                f'turns.')
+
+    def _where(self, op: Dict[str, Any]) -> str:
+        """A planned change's sentence, as the user would name it."""
+        doc = self._docs.get(op.get('document_id'))
+        name = f' in "{doc.name}"' if doc is not None else ''
+        return f's{op.get("sentence")}{name}'
 
     def plan_payload(self) -> Optional[Dict[str, Any]]:
         if not self.ops:

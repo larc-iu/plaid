@@ -261,6 +261,18 @@ def test_an_attribute_change_is_refused_on_a_sentence_the_plan_rewrites(ws):
     assert len(ws.ops) == 1
 
 
+def test_a_graph_is_refused_on_a_sentence_the_plan_already_changes(ws):
+    """The other order of the same pair. It staged both, so the same two
+    changes were a refusal one way round and a plan the other, and the graph
+    had been worked out against attributes the plan was about to rewrite."""
+    run(ws, 'set_attributes', document='Story', sentence=1, var='s1d', line=':polarity -')
+    out = call_tool(ws, 'apply_penman',
+                    {'document': 'Story', 'sentence': 1,
+                     'text': SENTENCE_1_PENMAN.replace('bark-01', 'bark-02')})
+    assert 'already changes s1 in "Story"' in out
+    assert len(ws.ops) == 1, 'and the refused call stages none of its own changes'
+
+
 # --- the plan itself ---------------------------------------------------------------
 
 def test_the_plan_can_be_read_back_and_trimmed(ws):

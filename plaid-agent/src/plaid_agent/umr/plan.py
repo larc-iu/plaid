@@ -378,6 +378,14 @@ def graphs_of_op(op: Dict[str, Any]) -> set:
     return {op['graph_of']} if op.get('graph_of') else set()
 
 
+def sentence_graph_key(op: Dict[str, Any]) -> str:
+    """The sentence graph a single-node change belongs to, written the way
+    ``graph_of`` is, so the two can be compared."""
+    if op.get('document_id') and op.get('sentence'):
+        return f'{op["document_id"]}:{op["sentence"]}'
+    return ''
+
+
 def validate_ops(ops: List[Dict[str, Any]]) -> None:
     """Reject a malformed plan BEFORE anything is written."""
     for i, op in enumerate(ops):
@@ -388,20 +396,26 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
         if spec.shape == ok.EXCLUSIVE and len(ops) > 1:
             raise ValueError(f'op {i + 1} ({spec.name}): a {spec.noun[0]} must be the only op '
                              f'in its plan')
-    # Two replacements of one sentence's graph. The second was worked out
-    # against the graph the first replaces, so its variables and its ids mean
-    # something else by the time it runs. The tools refuse the pair as the plan
-    # is built; this is the backstop, because a plan that silently applied half
-    # of each is the worst outcome here.
+    # A sentence graph replaced by one call and changed by another. Whichever
+    # was staged second was worked out against a graph the other replaces, so
+    # its variables and its ids mean something else by the time it runs. The
+    # tools refuse the pair in either order as the plan is built; this is the
+    # backstop, because a plan that silently applied half of each is the worst
+    # outcome here.
     # One call stages many ops over one graph, so what is counted is the
     # STAGING, not the ops: each call tags its ops with its own id.
+    replaced = {key for op in ops for key in graphs_of_op(op)}
     stagings: Dict[str, set] = {}
     for op in ops:
-        for key in graphs_of_op(op):
+        keys = graphs_of_op(op)
+        if not keys and op.get('kind') in GRAPH_KINDS:
+            # A change to one node of a graph another call replaces.
+            keys = {k for k in [sentence_graph_key(op)] if k in replaced}
+        for key in keys:
             stagings.setdefault(key, set()).add(op.get('staging') or '')
     crowded = sorted(k for k, v in stagings.items() if len(v) > 1)
     if crowded:
-        raise ValueError('this plan replaces the same sentence graph twice: '
+        raise ValueError('this plan holds two separate changes to one sentence graph: '
                          + ', '.join(crowded))
     # A change to something the plan deletes. The tools refuse the pair in
     # either order as it is staged; reaching here means the plan was built some
@@ -562,5 +576,5 @@ def summarize(ops: List[Dict[str, Any]]) -> str:
 
 __all__ = ['KIND', 'STAGES', 'GRAPH_KINDS', 'SCOPES', 'EXCLUSIVE_KINDS', 'Context',
            'PlanError', 'Resolution', 'attrs_scope_targets', 'concept_matches', 'docs_of_op',
-           'graphs_of_op', 'execute_plan', 'normalize_ops', 'resolve_scopes', 'summarize',
-           'validate_ops']
+           'graphs_of_op', 'execute_plan', 'normalize_ops', 'resolve_scopes',
+           'sentence_graph_key', 'summarize', 'validate_ops']

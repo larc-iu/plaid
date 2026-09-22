@@ -235,3 +235,21 @@ def test_the_same_sentence_cannot_be_rewritten_twice_in_one_plan(ws):
                                          'text': SENTENCE_1_PENMAN.replace('bark-01', 'bark-03')})
     assert 'already replaces the graph of s1' in out
     assert len(ws.ops) == 1
+
+
+def test_a_plan_built_some_other_way_still_refuses_two_changes_to_one_graph(ws):
+    """The backstop under the tools, for both shapes of the pair: two
+    replacements, and a replacement beside a single change to one of that
+    sentence's nodes."""
+    from plaid_agent.umr.plan import validate_ops
+    replacement = {'kind': 'set_concept', 'document_id': 'umr1', 'sentence': 1,
+                   'span_id': 'mc-b', 'concept': 'bark-02', 'staging': 'a',
+                   'graph_of': 'umr1:1', 'label': 'x'}
+    attrs = {'kind': 'set_attrs', 'document_id': 'umr1', 'sentence': 1, 'span_id': 'mc-d',
+             'staging': 'b', 'umr_base': {}, 'umr_set': {'attrs': []}, 'label': 'y'}
+    with pytest.raises(ValueError) as e:
+        validate_ops([replacement, attrs])
+    assert 'two separate changes to one sentence graph' in str(e.value)
+    # Each on its own, and both from ONE call, are fine.
+    validate_ops([replacement])
+    validate_ops([replacement, {**attrs, 'staging': 'a'}])
