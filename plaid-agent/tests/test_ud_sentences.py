@@ -7,12 +7,12 @@ sentence, and a boundary renumbers everything after it.
 
 import pytest
 
-from plaid_agent.ud.plan import validate_ops
+from plaid_agent.ud.plan import execute_plan, validate_ops
 from plaid_agent.ud.sentences import crossing_relations
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.tools import Workspace
 from plaid_agent.ud.toolkit import call_tool
-from ud_fixtures import PID, ud_client
+from ud_fixtures import PID, suppressor, ud_client, with_enhanced
 
 
 @pytest.fixture
@@ -152,6 +152,42 @@ def test_a_boundary_in_ANOTHER_document_is_fine():
         {'kind': 'set_span', 'document_id': 'd2', 'layer_id': 'L', 'token_id': 'w1', 'value': 'x'},
     ]
     validate_ops(ops)
+
+
+def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
+    """A suppressor lies over the same pair as the basic relation it
+    suppresses, so it crosses a cut exactly when that one does. Left behind it
+    suppresses nothing, and once the two sentences are merged back it quietly
+    suppresses the next relation drawn over the pair: the person redraws the
+    arc and it is born faded, with no enhanced head and nothing on screen
+    saying why. The editor deletes them with the split (its `relationsCrossing`
+    asks the enhanced layer's rows too), and reconcile-on-open only runs on an
+    OPEN, which a plan against an open document does not cause."""
+    client = ud_client(documents={'ud1': with_enhanced([suppressor('e-1', 'sp-l1', 'sp-l4')])})
+    ws = Workspace(client, load_project(client, PID))
+    out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    op = ws.ops[-1]
+    assert op['relation_ids'] == ['r-4']
+    assert op['suppressor_ids'] == ['e-1']
+    assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert deleted == ['r-4', 'e-1']
+    assert len(client.batches) == 1, 'in the same batch as the split itself'
+
+
+def test_a_split_that_crosses_no_suppressed_relation_takes_none():
+    """The suppressor here stands over w5's relation, and a cut before w4
+    leaves w5 and its head on the same side."""
+    client = ud_client(documents={'ud1': with_enhanced([suppressor('e-1', 'sp-l3', 'sp-l4')])})
+    ws = Workspace(client, load_project(client, PID))
+    call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    assert ws.ops[-1]['suppressor_ids'] == []
+
+
+def test_a_split_in_a_treebank_with_no_enhanced_rows_stages_none(ws):
+    run(ws, 'split_sentence', document='Viaje', ref='s1.w5')
+    assert ws.ops[-1]['suppressor_ids'] == []
 
 
 def test_the_plan_says_how_many_relations_a_split_takes_with_it():

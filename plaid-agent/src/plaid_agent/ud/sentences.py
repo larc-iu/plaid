@@ -17,6 +17,10 @@ Finding them is per sentence, which is all a split needs: a head is stored as
 the CoNLL-U id of another word in the SAME sentence, so the relations a cut
 can orphan are exactly the ones inside the sentence being cut. One whose head
 points nowhere is left alone rather than guessed at.
+
+The enhanced layer's suppressors go with them (``crossing_suppressors``): a
+suppressor is a statement about the basic relation under it, and the editor's
+own `relationsCrossing` asks the enhanced layer's rows as well as the tree's.
 """
 
 from typing import Any, Dict, List
@@ -32,15 +36,14 @@ def _sentence_of(doc: UdDoc, thing) -> Sentence:
     return next(s for s in doc.sentences if any(t is token for t in s.tokens))
 
 
-def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
-    """The relations in ``sentence`` that a boundary at ``char_pos`` would
-    leave spanning two sentences.
+def _crossing_words(sentence: Sentence, char_pos: int):
+    """Every word of ``sentence`` whose basic relation a boundary at
+    ``char_pos`` would leave spanning two sentences.
 
     A word covers the whole of its surface token (the full-width rule), so
     where a word begins is where its token begins. The root is a self-relation
     (head 0) and crosses nothing.
     """
-    out = []
     for w in sentence.words:
         if not w.relation_id or not w.head:
             continue  # no relation, or head 0: the root
@@ -48,8 +51,32 @@ def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
         if head is None:
             continue  # a head pointing nowhere
         if (w.token.begin < char_pos) != (head.token.begin < char_pos):
-            out.append(w.relation_id)
-    return out
+            yield w
+
+
+def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
+    """The relations in ``sentence`` that a boundary at ``char_pos`` would
+    leave spanning two sentences."""
+    return [w.relation_id for w in _crossing_words(sentence, char_pos)]
+
+
+def crossing_suppressors(sentence: Sentence, char_pos: int) -> List[str]:
+    """The enhanced layer's suppressors over the relations
+    ``crossing_relations`` names.
+
+    A suppressor lies over the same pair as the basic relation it suppresses,
+    so it crosses exactly when that one does, and it belongs to the relation
+    under it: left behind by the delete, it suppresses nothing and quietly
+    suppresses the next relation drawn over the same pair, which a person then
+    sees born faded with nothing on screen saying why. The editor deletes them
+    with the split, because its own `relationsCrossing` asks the enhanced
+    layer's rows as well as the tree's (plaid-ud ``utils/udReconcile.js``).
+    Reconcile-on-open catches what anyone else leaves, and it only runs on an
+    OPEN: the panel is app chrome, so the document can be open across a plan,
+    and merging the two sentences back puts the pair within one sentence again
+    with the stale suppressor still over it.
+    """
+    return [w.suppressor_id for w in _crossing_words(sentence, char_pos) if w.suppressor_id]
 
 
 def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> str:
@@ -90,6 +117,9 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         'char_pos': thing.token.begin,
         'ref': ref,
         'relation_ids': losing,
+        # A suppressor is no arc of its own, so it is not counted in what the
+        # card says goes: it stands over one of `losing` and goes with it.
+        'suppressor_ids': crossing_suppressors(sentence, thing.token.begin),
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
@@ -122,7 +152,8 @@ def t_merge_sentences(ws: Workspace, document: str = None, ref: str = None) -> s
 
 
 def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
-    """The split and the relations it orphans, in ONE batch.
+    """The split, the relations it orphans and the suppressors over those, in
+    ONE batch.
 
     Together, because between the two the document holds a relation spanning
     two sentences, and reconcile-on-open would delete it on the next read
@@ -130,7 +161,7 @@ def apply_split_sentence(op: Dict[str, Any], b, stamp) -> None:
     makes, which is what lets them share a batch at all.
     """
     b.add(lambda batch, o=op: batch.tokens.split(o['sentence_id'], o['char_pos']))
-    for rel_id in op.get('relation_ids') or []:
+    for rel_id in list(op.get('relation_ids') or []) + list(op.get('suppressor_ids') or []):
         b.add(lambda batch, i=rel_id: batch.relations.delete(i))
 
 

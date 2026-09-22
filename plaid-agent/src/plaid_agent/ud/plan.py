@@ -369,7 +369,9 @@ KIND = ok.registry([
            deletes_tokens=lambda op: list(op.get('existing_word_ids') or [])),
     OpKind('split_sentence', ('sentence split', 'sentence splits'), apply=_apply_split_sentence,
            required=('document_id', 'sentence_id', 'char_pos'), shape=SENTENCE_SHAPE,
-           deletes=lambda op: list(op.get('relation_ids') or []), summary=_split_sentence_summary),
+           deletes=lambda op: (list(op.get('relation_ids') or [])
+                               + list(op.get('suppressor_ids') or [])),
+           summary=_split_sentence_summary),
     OpKind('merge_sentences', ('sentence merge', 'sentence merges'), apply=_apply_merge_sentences,
            required=('document_id', 'sentence_id', 'previous_id'), shape=SENTENCE_SHAPE,
            deletes=lambda op: list(op.get('relation_ids') or [])),
