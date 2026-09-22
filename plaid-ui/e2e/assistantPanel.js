@@ -1,4 +1,4 @@
-// Both apps' assistant-panel spec: the panel beside an open document.
+// Every app's assistant-panel spec: the panel beside an open document.
 //
 // `assistantChrome.js` holds what the panel is as APP chrome (it survives a
 // navigation, it keeps one thread per project, it is reachable everywhere).
@@ -19,7 +19,10 @@
 
 import { assistantStub } from './assistantChrome.js';
 
-const OTHER = { igt: 'ud', ud: 'igt' };
+// Whose assistant stands in for "somebody else's" in the test below. Any app
+// but this one will do: the apps share projects, so an assistant belonging to
+// another one is the ordinary state of a shared project.
+const OTHER = { igt: 'ud', ud: 'igt', umr: 'igt' };
 
 // Short enough that a document of a few sentences really scrolls, and wide
 // enough that a side panel is still offered.
@@ -81,13 +84,16 @@ export const assistantPanelTests = ({
   panel: harness,
   // The document's name, which the panel's header must not repeat.
   documentName,
-  // How this app offers to ask about a sentence.
+  // How this app offers to ask about a sentence, or NOTHING where it offers no
+  // such gesture (plaid-umr does not: the panel is opened from the header).
+  // The two tests about the gesture are then not registered at all, rather than
+  // skipped, so the count of what ran is the count of what this app has.
   //   absent: assert the app's own affordance is not offered.
   //   first:  ask about the first sentence, which opens the panel by itself.
   //   last:   scroll the last sentence into view and answer with
   //           `{watch, click}`: the element whose place on screen must not
   //           move, and how to ask about it.
-  ask,
+  ask = null,
   // Anything else this app hides when no assistant is online. Runs last, so it
   // may navigate.
   alsoHidden = async () => {},
@@ -109,7 +115,7 @@ export const assistantPanelTests = ({
       // A control that opens an empty panel is worse than no control.
       await open(page, []);
       await expect(toggle(page)).toHaveCount(0);
-      await ask.absent(page);
+      await ask?.absent(page);
       await alsoHidden(page);
     });
 
@@ -121,7 +127,7 @@ export const assistantPanelTests = ({
       // be answered.
       await open(page, foreign);
       await expect(toggle(page)).toHaveCount(0);
-      await ask.absent(page);
+      await ask?.absent(page);
       await alsoHidden(page);
     });
 
@@ -176,20 +182,22 @@ export const assistantPanelTests = ({
       expect(header.x + header.width).toBeLessThanOrEqual(box.x + 1);
     });
 
-    test('Ask puts the sentence in the composer and then lets go of it', async ({ page }) => {
-      await open(page);
-      // The gesture opens the panel by itself: it is how you start asking.
-      await ask.first(page);
+    if (ask) {
+      test('Ask puts the sentence in the composer and then lets go of it', async ({ page }) => {
+        await open(page);
+        // The gesture opens the panel by itself: it is how you start asking.
+        await ask.first(page);
 
-      const panel = panelOf(page);
-      await expect(panel).toBeVisible();
-      await expect(panel).toContainText('Sentence');
-      await expect(panel).toContainText('s1');
+        const panel = panelOf(page);
+        await expect(panel).toBeVisible();
+        await expect(panel).toContainText('Sentence');
+        await expect(panel).toContainText('s1');
 
-      // Removing the chip leaves the conversation alone.
-      await panel.getByRole('button', { name: 'Remove' }).click();
-      await expect(panel).not.toContainText('Sentence');
-    });
+        // Removing the chip leaves the conversation alone.
+        await panel.getByRole('button', { name: 'Remove' }).click();
+        await expect(panel).not.toContainText('Sentence');
+      });
+    }
 
     test('the panel picks which assistant answers, while the thread is new', async ({ page }) => {
       await open(page, two);
@@ -276,38 +284,40 @@ export const assistantPanelTests = ({
       await expect(dock.getByRole('button', { name: 'New conversation' })).toBeVisible();
     });
 
-    test('Ask keeps the reader where they were', async ({ page }) => {
-      // Opening the panel used to dump the reader at the top of the document:
-      // measuring the docked height puts the page at the top to do it, and the
-      // discarded offset was the reader's place. Worst on "Ask", whose whole
-      // point is the sentence in front of you. The dock is fixed in the shell
-      // now, so nothing measures anything and the page is never touched, and
-      // the assertion is correspondingly stronger: the scroll position is not
-      // restored to within a line, it is UNCHANGED.
-      await seedAuth(page);
-      await withAssistant(page);
-      await page.setViewportSize(SHORT_VIEWPORT);
-      await openDocument(page);
+    if (ask) {
+      test('Ask keeps the reader where they were', async ({ page }) => {
+        // Opening the panel used to dump the reader at the top of the document:
+        // measuring the docked height puts the page at the top to do it, and the
+        // discarded offset was the reader's place. Worst on "Ask", whose whole
+        // point is the sentence in front of you. The dock is fixed in the shell
+        // now, so nothing measures anything and the page is never touched, and
+        // the assertion is correspondingly stronger: the scroll position is not
+        // restored to within a line, it is UNCHANGED.
+        await seedAuth(page);
+        await withAssistant(page);
+        await page.setViewportSize(SHORT_VIEWPORT);
+        await openDocument(page);
 
-      const { watch, click } = await ask.last(page);
-      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-      const scrolledTo = await page.evaluate(() => window.scrollY);
-      const before = await watch.boundingBox();
+        const { watch, click } = await ask.last(page);
+        await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+        const scrolledTo = await page.evaluate(() => window.scrollY);
+        const before = await watch.boundingBox();
 
-      await click();
-      await expect(panelOf(page)).toBeVisible();
-      expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
+        await click();
+        await expect(panelOf(page)).toBeVisible();
+        expect(await page.evaluate(() => window.scrollY)).toBe(scrolledTo);
 
-      // The sentence asked about is still on screen, within a line of where it
-      // was. Not exactly where it was: the dock takes width, so the column
-      // narrows and what is above re-wraps. That reflow is the reason for a
-      // tolerance here, and it is why the scroll position above is the
-      // assertion that can be exact.
-      const after = await watch.boundingBox();
-      expect(after).not.toBeNull();
-      expect(after.y).toBeGreaterThan(0);
-      expect(after.y).toBeLessThan(SHORT_VIEWPORT.height);
-      expect(Math.abs(after.y - before.y)).toBeLessThan(80);
-    });
+        // The sentence asked about is still on screen, within a line of where it
+        // was. Not exactly where it was: the dock takes width, so the column
+        // narrows and what is above re-wraps. That reflow is the reason for a
+        // tolerance here, and it is why the scroll position above is the
+        // assertion that can be exact.
+        const after = await watch.boundingBox();
+        expect(after).not.toBeNull();
+        expect(after.y).toBeGreaterThan(0);
+        expect(after.y).toBeLessThan(SHORT_VIEWPORT.height);
+        expect(Math.abs(after.y - before.y)).toBeLessThan(80);
+      });
+    }
   });
 };
