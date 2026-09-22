@@ -126,9 +126,17 @@ async function executeProjectSetupImpl({
   // Made by an interrupted run and not yet tagged. Nothing else makes a text
   // layer of this name in this project, so it is finished rather than made a
   // second time (which left the untagged one behind for good).
-  const halfMadeBaseline = adoptedBaseline
-    ? null
-    : unfinishedLayer(existingTextLayers, BASELINE_LAYER_NAME);
+  //
+  // Only where this run would otherwise CREATE one. Setting up over a project
+  // that already has its text, the wizard asks which text layer to build on
+  // and that answer is the step: an untagged "Main Text" from some earlier
+  // attempt is not a better answer to it, and taking it silently tags and
+  // builds under a layer the documents have no text on.
+  const wouldCreateBaseline = isNewProject || setupData.layerSelection?.textLayerType === 'new';
+  const halfMadeBaseline =
+    adoptedBaseline || !wouldCreateBaseline
+      ? null
+      : unfinishedLayer(existingTextLayers, BASELINE_LAYER_NAME);
   const baselineLayer = adoptedBaseline ?? halfMadeBaseline;
 
   let textLayerId = baselineLayer?.id ?? null;

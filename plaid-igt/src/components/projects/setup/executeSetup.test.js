@@ -18,7 +18,9 @@ const stub = (project) => {
     (kind) =>
     async (...args) => {
       const name = args[kind === 'project' ? 0 : 1];
-      calls.created.push({ kind, name });
+      // `under` is what it was created on: the project for a text layer, the
+      // text layer for a token layer, the token layer for a span layer.
+      calls.created.push({ kind, name, under: kind === 'project' ? null : args[0] });
       return { id: id(kind), name };
     };
   const setConfig = (kind) => async (layerId, ns, key, value) => {
@@ -148,6 +150,48 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     await run(client, 'p1');
     expect(calls.config.filter((c) => c.kind === 'vocab')).toEqual([]);
     expect(calls.linked).toEqual(['v-half']);
+  });
+
+  it('builds on the text layer the wizard was answered with, stray "Main Text" or not', async () => {
+    // Setting up over a project that already has its text: the wizard asks
+    // which text layer to build on. An untagged "Main Text" an earlier
+    // attempt left behind must not take that answer's place — everything is
+    // built under it, and the documents have no text on it.
+    const project = {
+      id: 'p1',
+      config: {},
+      textLayers: [
+        { id: 'tl-chosen', name: 'Transcription', config: {}, tokenLayers: [] },
+        { id: 'tl-stray', name: 'Main Text', config: {}, tokenLayers: [] },
+      ],
+      vocabs: [],
+    };
+    const { client, calls } = stub(project);
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: false,
+      resumeProjectId: 'p1',
+      setupData: {
+        ...SETUP_DATA,
+        layerSelection: { textLayerType: 'existing', selectedTextLayerId: 'tl-chosen' },
+        vocabulary: { vocabularies: [] },
+      },
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'text')).toEqual([]);
+    expect(calls.config.filter((c) => c.kind === 'text')).toEqual([
+      {
+        kind: 'text',
+        id: 'tl-chosen',
+        ns: PLAID_NAMESPACE,
+        key: ROLE_KEY,
+        value: ROLES.BASELINE,
+      },
+    ]);
+    // And the token layers hang off the chosen layer.
+    expect(madeOf(calls, 'token')).toHaveLength(4);
+    expect([...new Set(madeOf(calls, 'token').map((c) => c.under))]).toEqual(['tl-chosen']);
   });
 
   it('makes both from scratch when there is nothing to finish', async () => {
