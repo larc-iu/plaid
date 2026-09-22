@@ -49,7 +49,7 @@ export const DEFAULT_OPTIONS = Object.freeze({
  * @param {Map} nodesById
  * @returns {{ treeEdgeIds: Set<string>, parentOf: Map<string, string>, depthOf: Map<string, number>, order: string[] }}
  */
-export function treeOf(sentence, nodesById) {
+function treeOf(sentence, nodesById) {
   const treeEdgeIds = new Set();
   const parentOf = new Map();
   const depthOf = new Map();

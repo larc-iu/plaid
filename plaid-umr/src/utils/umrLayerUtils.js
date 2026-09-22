@@ -1,4 +1,4 @@
-import { ROLES, findByRole, readRole } from '@larc-iu/plaid-client';
+import { ROLES, findByRole } from '@larc-iu/plaid-client';
 
 // The app's private config namespace. Substrate layers (text, sentences,
 // words, morphemes) are found by their shared `config.plaid.role`; everything
@@ -28,7 +28,7 @@ export const UMR_LAYER_FLAGS = {
   documentGraph: 'documentGraph',
 };
 
-export const UMR_LAYER_LABELS = {
+const UMR_LAYER_LABELS = {
   textLayer: 'Text layer',
   sentenceTokenLayer: 'Sentence layer',
   wordTokenLayer: 'Word layer',
@@ -128,16 +128,6 @@ export const getUmrLayerInfo = (document) => {
 
 export const missingUmrLayerLabels = (missingKeys) =>
   (Array.isArray(missingKeys) ? missingKeys : []).map((key) => UMR_LAYER_LABELS[key] || key);
-
-// Token layers UMR binds or owns. Any other role under the baseline means
-// another app shares this substrate (IGT's morphemes, a time alignment).
-const UMR_TOKEN_ROLES = new Set([ROLES.SENTENCE, ROLES.WORD, ROLES.MORPHEME]);
-
-export const hasForeignSubstrateParticipants = (layerInfo) =>
-  (layerInfo?.textLayer?.tokenLayers || []).some((tk) => {
-    const role = readRole(tk.config);
-    return role && !UMR_TOKEN_ROLES.has(role);
-  });
 
 // The project's language as a BCP-47 tag, from the project's own config. It
 // picks the bundled frame file and the ISO code on exported gloss headers.

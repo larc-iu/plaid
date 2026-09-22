@@ -326,30 +326,12 @@ const EXEMPT_NAMES = {
 // package. The list only ever gets shorter: a dead export NOT on it fails the
 // run today, and an entry somebody has since dealt with is warned about, the
 // way a spent exemption is.
-const UMR_BACKLOG = new Set([
-  'plaid-umr/src/components/editor/annotation/pickers.js:attributeLineOptions',
-  'plaid-umr/src/components/editor/annotation/pickers.js:lineToAttrs',
-  'plaid-umr/src/domain/adjudication.js:REPORT_VERSION',
-  'plaid-umr/src/domain/adjudication.js:SCORE_LABELS',
-  'plaid-umr/src/domain/commentAnchors.js:anchorCaption',
-  'plaid-umr/src/domain/format/inventory.js:REIFICATIONS',
-  'plaid-umr/src/domain/format/inventory.js:EVENT_EXEMPT',
-  'plaid-umr/src/domain/format/inventory.js:NAMED_ENTITY_TREE',
-  'plaid-umr/src/domain/format/inventory.js:NAMED_ENTITY_TYPES',
-  'plaid-umr/src/domain/format/inventory.js:isInverse',
-  'plaid-umr/src/domain/format/inventory.js:inverseOf',
-  'plaid-umr/src/domain/format/penman.js:isVariableToken',
-  'plaid-umr/src/domain/ilg.js:sortIlg',
-  'plaid-umr/src/domain/lexicon.js:lemmaOf',
-  'plaid-umr/src/domain/sentenceGraph.js:COREF_RELATIONS',
-  'plaid-umr/src/domain/sentenceGraph.js:alignmentOf',
-  'plaid-umr/src/domain/umrLayout.js:treeOf',
-  'plaid-umr/src/domain/umrProjectSetup.js:LAYER_NAMES',
-  'plaid-umr/src/utils/umrLayerUtils.js:UMR_LAYER_LABELS',
-  'plaid-umr/src/utils/umrLayerUtils.js:hasForeignSubstrateParticipants',
-  'plaid-umr/e2e/fixtures.js:BASE_URL',
-  'plaid-umr/e2e/fixtures.js:reportDiagnostics',
-]);
+// plaid-umr's dead exports, cleared 2026-09-21: the ones used only inside
+// their own file lost the keyword, the ones nothing named at all went. Kept
+// as an empty set rather than removed, so the next umr finding has an
+// obvious place to be parked and this comment says what happened to the
+// last one.
+const UMR_BACKLOG = new Set([]);
 
 // ---------------------------------------------------------------------------
 // The census

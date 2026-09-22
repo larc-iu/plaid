@@ -33,7 +33,7 @@ const declarePreserveOnSplit = (batch, layerId) =>
   ]);
 
 // Layer names as the layer list shows them.
-export const LAYER_NAMES = {
+const LAYER_NAMES = {
   text: 'Text',
   sentences: 'Sentences',
   words: 'Words',

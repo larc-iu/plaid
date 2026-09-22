@@ -10,11 +10,9 @@
 // from another app on the same substrate and describes as outdated, which is
 // honest: this app cannot show you an IGT gloss.
 //
-// `anchorCaption` lives in plaid-ui: it does not depend on what a document
-// looks like. Re-exported so this file is the one place the app asks about an
-// anchor.
-
-export { anchorCaption } from '@ui/domain/commentAnchors';
+// What a thread SAYS about its anchor is plaid-ui's `anchorCaption`: it does
+// not depend on what a document looks like, so the screens take it from
+// there directly.
 
 const QUOTE_LIMIT = 60;
 

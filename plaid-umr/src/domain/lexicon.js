@@ -69,7 +69,7 @@ export const hasFrames = (languageTag) =>
 
 // The lemma of a roleset id: `leave-02` is `leave`, `have-org-role-92` is
 // `have-org-role`.
-export const lemmaOf = (roleset) => String(roleset).replace(/-\d+$/, '');
+const lemmaOf = (roleset) => String(roleset).replace(/-\d+$/, '');
 
 // What a surface form might be the lemma of, in English at least: the form
 // itself, lowercased, and the form less the common inflections. A wrong

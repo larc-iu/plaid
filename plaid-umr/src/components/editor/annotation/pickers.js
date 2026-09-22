@@ -133,24 +133,9 @@ export const conceptOptions = (words = [], frames = null, typed = '', vocab = nu
 export const wordOptions = (words = []) =>
   words.map((w) => ({ value: `${w.index}`, label: `${w.index} ${w.text}`, word: w }));
 
-// Attribute lines: `:aspect performance`, offered as whole lines from the
-// active value sets, so typing `asp` lists every aspect value.
-export const attributeLineOptions = (sets = 'validator') => {
-  const groups = [];
-  Object.entries(ATTRIBUTES || {}).forEach(([rel, byset]) => {
-    const values = byset?.[sets] || byset?.validator || [];
-    if (!values.length) return;
-    const name = rel.startsWith(':') ? rel : `:${rel}`;
-    groups.push({ group: name, items: values.map((v) => `${name} ${v}`) });
-  });
-  return groups;
-};
-
 // One line of attributes to and from a node's `attrs`. A string value keeps
 // its quotes, which is what the raw PENMAN token carries.
 export const attrsToLine = (attrs) => attrs.map((a) => `${a.rel} ${a.value}`).join(' ');
-
-export const lineToAttrs = (line) => readAttrLine(line).attrs;
 
 /**
  * One line of attributes, and why it cannot be read, rather than what a

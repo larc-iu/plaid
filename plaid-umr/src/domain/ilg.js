@@ -41,7 +41,7 @@ const scopeRank = (entry) => {
   return SCOPE_RANK[h.scope] ?? 3;
 };
 
-export const sortIlg = (mapping) =>
+const sortIlg = (mapping) =>
   (mapping || [])
     .map((entry, i) => [entry, i])
     .sort(([a, ai], [b, bi]) => scopeRank(a) - scopeRank(b) || ai - bi)

@@ -72,11 +72,6 @@ export const attrValueProblem = (value) => {
     : null;
 };
 
-/** Whether a token has the shape of a UMR variable. */
-export function isVariableToken(token) {
-  return VARIABLE.test(token);
-}
-
 // A quoted string and a comment must not be mistaken for graph text when the
 // definition set is collected, so both are blanked first. Newlines survive so
 // that positions still line up.

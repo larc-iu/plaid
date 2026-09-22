@@ -18,7 +18,7 @@
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 
 /** The shape this reads. The service writes the same number. */
-export const REPORT_VERSION = 2;
+const REPORT_VERSION = 2;
 
 /** The report on a document as `documents.get` returns it, or null. */
 export const readAdjudication = (raw) => {
@@ -40,7 +40,7 @@ export const percent = (x) =>
 
 // The document-level scores in the order the tab lists them, with the
 // label each carries.
-export const SCORE_LABELS = [
+const SCORE_LABELS = [
   ['sentence', 'Sentence graphs'],
   ['modal', 'Modal'],
   ['temporal', 'Temporal'],

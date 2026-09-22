@@ -244,7 +244,7 @@ export function buildDocumentGraph(layerInfo, { ilg = null } = {}) {
 }
 
 // The coreference relations, whichever way they point, join nodes into chains.
-export const COREF_RELATIONS = new Set([':same-entity', ':same-event', ':subset-of', ':subset']);
+const COREF_RELATIONS = new Set([':same-entity', ':same-event', ':subset-of', ':subset']);
 
 // Chains as connected components over the coreference triples, numbered in
 // order of first mention, and each node told its chain.
@@ -435,7 +435,7 @@ const nodeOrder = (a, b) => {
 
 // The 1-based inclusive word ranges a node's pieces cover. A zero-width piece
 // covers nothing, so an unaligned node gives [].
-export function alignmentOf(node, words) {
+function alignmentOf(node, words) {
   const ranges = [];
   node.pieces.forEach((piece) => {
     const covered = words.filter((w) => overlaps(piece, w));
