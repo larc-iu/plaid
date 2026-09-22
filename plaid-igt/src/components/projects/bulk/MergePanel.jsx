@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Merge } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';

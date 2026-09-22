@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { TimecodeField } from './TimecodeField.jsx';
 

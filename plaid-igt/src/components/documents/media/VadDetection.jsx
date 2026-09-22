@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AudioLines } from 'lucide-react';
 import { ServiceRunDialog } from '@ui/components/services/ServiceRunDialog.jsx';
 import { ServiceMethodRow } from '@ui/components/services/ServiceMethodRow.jsx';

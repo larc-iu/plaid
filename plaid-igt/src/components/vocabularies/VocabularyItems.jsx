@@ -71,7 +71,6 @@ import {
 } from './vocabItemsState';
 import { useEntryList } from './useEntryList';
 import { EntryList } from './EntryList';
-import { FormLabel } from './FormLabel';
 import { soleProjectLinking } from '@/domain/vocabProject';
 import { linksUmrProject } from '@/domain/vocabUmr';
 import { EntryEditor } from './EntryEditor';

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
 import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';

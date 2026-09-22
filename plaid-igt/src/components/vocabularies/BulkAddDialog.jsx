@@ -8,7 +8,7 @@
 // write goes out.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, FileText, X, ArrowLeft, ArrowRight, Download, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, X, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
 import {

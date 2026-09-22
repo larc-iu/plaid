@@ -5,7 +5,6 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { Switch } from '@ui/components/ui/switch';
 import { Textarea } from '@ui/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';

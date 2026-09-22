@@ -39,7 +39,7 @@ export default [
       'react-hooks/immutability': 'off',
       'react-hooks/preserve-manual-memoization': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      'no-unused-vars': ['warn', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
     },
   },
   {

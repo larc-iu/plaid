@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AudioLines, Upload } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Progress } from '@ui/components/ui/progress';

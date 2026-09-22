@@ -8,7 +8,6 @@ import { FieldPanel } from './FieldPanel.jsx';
 import { MergePanel } from './MergePanel.jsx';
 import { ReanalyzePanel } from './ReanalyzePanel.jsx';
 import { RespellPanel } from './RespellPanel.jsx';
-import { Change } from './parts.jsx';
 
 // The Bulk Edit workbench: pick an operation, describe the change, preview
 // every match as a checkbox row (grouped by document, each row a link into

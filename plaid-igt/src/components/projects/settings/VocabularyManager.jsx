@@ -1,14 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  Plus,
-  Trash2,
-  Check,
-  X,
-  ChevronUp,
-  ChevronDown,
-  Unlink,
-  AlertTriangle,
-} from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown, Unlink, AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList } from '@ui/hooks/usePagedList';

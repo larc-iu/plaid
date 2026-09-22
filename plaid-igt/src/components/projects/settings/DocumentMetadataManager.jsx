@@ -1,16 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PREDEFINED_FIELDS } from '@/domain/igtConfig';
 import { Link } from 'react-router-dom';
-import {
-  Plus,
-  Trash2,
-  RotateCcw,
-  Check,
-  X,
-  ChevronUp,
-  ChevronDown,
-  AlertTriangle,
-} from 'lucide-react';
+import { Plus, Trash2, RotateCcw, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import {

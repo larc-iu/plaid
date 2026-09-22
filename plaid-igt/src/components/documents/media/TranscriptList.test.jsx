@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import React from 'react';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';

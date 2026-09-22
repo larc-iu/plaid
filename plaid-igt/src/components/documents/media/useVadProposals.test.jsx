@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import React from 'react';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
 
