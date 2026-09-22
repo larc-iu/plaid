@@ -14,13 +14,14 @@
       token-id (tok/project-id db token-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
-  (let [tokl-id (or (-> params :body first :token-layer-id))
-        token-id (-> params :body first)]
-    (cond
-      tokl-id (tokl/project-id db tokl-id)
-      token-id (tok/project-id db token-id)
-      :else nil)))
+(def bulk-get-project-id
+  "The project the writer gate checks for a bulk create (entries carry
+  `:token-layer-id`) or a bulk delete (an entry is a token id), resolved
+  from the first entry that resolves (`pra/bulk-resolver`)."
+  (pra/bulk-resolver (fn [db entry]
+                       (if-let [tokl-id (:token-layer-id entry)]
+                         (tokl/project-id db tokl-id)
+                         (when (uuid? entry) (tok/project-id db entry))))))
 
 (defn get-document-id [{db :db params :parameters}]
   (let [token-id (-> params :path :token-id)
@@ -30,13 +31,15 @@
                  (tok/get-doc-id-of-text db (:token/text token)))
       text-id (tok/get-doc-id-of-text db text-id))))
 
-(defn bulk-get-document-id [{db :db params :parameters}]
-  (let [token-id (-> params :body first)
-        text-id (when (map? token-id) (:text token-id))]
-    (cond
-      text-id (tok/get-doc-id-of-text db text-id)
-      (uuid? token-id) (when-let [token (tok/get db token-id)]
-                         (tok/get-doc-id-of-text db (:token/text token))))))
+(def bulk-get-document-id
+  "The document the OCC middleware checks `?document-version=` against, and
+  the one whose new version the response carries. From the first entry that
+  resolves (`pra/bulk-resolver`)."
+  (pra/bulk-resolver (fn [db entry]
+                       (cond
+                         (map? entry) (some->> (:text entry) (tok/get-doc-id-of-text db))
+                         (uuid? entry) (when-let [token (tok/get db entry)]
+                                         (tok/get-doc-id-of-text db (:token/text token)))))))
 
 (def bulk-update-get-project-id
   "The project the writer gate checks, resolved from the first entry that

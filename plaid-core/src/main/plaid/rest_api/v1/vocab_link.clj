@@ -46,22 +46,26 @@
 
 ;; Bulk auth/version resolvers. The body is either an array of
 ;; {:vocab-item :tokens :metadata} (bulk create) or an array of link ids
-;; (bulk delete); both resolve project/document from the FIRST element, as the
-;; other bulk endpoints do. The SQL layer enforces single-document, so the
-;; first element's project/document covers the whole call.
-(defn bulk-get-project-id [{db :db params :parameters}]
-  (let [item (-> params :body first)]
-    (cond
-      (and (map? item) (-> item :tokens seq)) (vocab-link/project-id-from-token db (-> item :tokens first))
-      (uuid? item) (vocab-link/project-id db item)
-      :else nil)))
+;; (bulk delete). Both resolve project/document from the first entry that
+;; RESOLVES (`pra/bulk-resolver`), as the other bulk endpoints do, so a link
+;; a colleague already deleted at the head of the list does not turn the
+;; call's own answer into a 403. The SQL layer enforces single-document, so
+;; one resolved entry's project/document covers the whole call.
+(def bulk-get-project-id
+  (pra/bulk-resolver
+   (fn [db item]
+     (cond
+       (and (map? item) (-> item :tokens seq)) (vocab-link/project-id-from-token db (-> item :tokens first))
+       (uuid? item) (vocab-link/project-id db item)
+       :else nil))))
 
-(defn bulk-get-document-id [{db :db params :parameters}]
-  (let [item (-> params :body first)]
-    (cond
-      (and (map? item) (-> item :tokens seq)) (vocab-link/document-id-from-token db (-> item :tokens first))
-      (uuid? item) (:vocab-link/document (vocab-link/get db item))
-      :else nil)))
+(def bulk-get-document-id
+  (pra/bulk-resolver
+   (fn [db item]
+     (cond
+       (and (map? item) (-> item :tokens seq)) (vocab-link/document-id-from-token db (-> item :tokens first))
+       (uuid? item) (:vocab-link/document (vocab-link/get db item))
+       :else nil))))
 
 (defn get-vocab-id-from-vocab-item-body [{:keys [db parameters]}]
   (->> parameters :body :vocab-item (vocab-item/get db) :vocab-item/layer))

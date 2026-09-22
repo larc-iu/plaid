@@ -406,21 +406,30 @@
    :project/writers "write for"
    :project/maintainers "maintain"})
 
-(defn bulk-update-resolver
-  "Build the auth resolver for a bulk update, whose entries carry an id
-  rather than a layer. `lookup` takes a db and one entry's id and comes
-  back with the project, document or vocab layer that entry belongs to.
+(defn bulk-resolver
+  "Build the auth or document-version resolver for a bulk route. `lookup`
+  takes a db and ONE ENTRY of the body (an id for a bulk delete, a map for
+  a bulk create or update) and comes back with the project, document or
+  vocab layer that entry belongs to, or nil where the entry names nothing.
 
-  THE FIRST ENTRY THAT RESOLVES, not simply the first: an unknown id at
-  the head of the list would otherwise leave the gate's subject
+  THE FIRST ENTRY THAT RESOLVES, not simply the first: an id already gone
+  at the head of the list would otherwise leave the gate's subject
   unresolved and answer 403 (or, for the document-version gate, 400),
-  where the update's own 404 naming the id is the caller's real answer.
-  Whether a member sees 404 or 403 must not depend on where in their
-  list the stale id sits. Every bulk-update route resolves through this
-  — tokens, spans, relations and vocab items."
+  where the route's own answer is the caller's real one. Whether a member
+  sees 404, 403 or a plain success must not depend on where in their list
+  the stale id sits. The gate is no weaker for it: an entry that DOES
+  resolve is never skipped, so a member is still judged against the first
+  real thing their list names. Every bulk route resolves through this,
+  create, update and delete alike."
   [lookup]
   (fn [{db :db params :parameters}]
-    (some #(lookup db (:id %)) (:body params))))
+    (some #(lookup db %) (:body params))))
+
+(defn bulk-update-resolver
+  "`bulk-resolver` for a bulk UPDATE, whose entries are maps carrying the
+  entity's id under `:id`. `lookup` takes a db and that id."
+  [lookup]
+  (bulk-resolver (fn [db entry] (lookup db (:id entry)))))
 
 (defn- resolve-project-id
   "Run a route's project resolver against `request`.

@@ -17,13 +17,14 @@
       relation-id (r/project-id db relation-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
-  (let [rl-id (or (-> params :body first :relation-layer-id))
-        relation-id (-> params :body first)]
-    (cond
-      rl-id (rl/project-id db rl-id)
-      relation-id (r/project-id db relation-id)
-      :else nil)))
+(def bulk-get-project-id
+  "The project the writer gate checks for a bulk create (entries carry
+  `:relation-layer-id`) or a bulk delete (an entry is a relation id),
+  resolved from the first entry that resolves (`pra/bulk-resolver`)."
+  (pra/bulk-resolver (fn [db entry]
+                       (if-let [rl-id (:relation-layer-id entry)]
+                         (rl/project-id db rl-id)
+                         (when (uuid? entry) (r/project-id db entry))))))
 
 (defn get-document-id
   "Get document ID from relation's source span."
@@ -44,19 +45,20 @@
 
       :else nil)))
 
-(defn bulk-get-document-id
-  "Get document ID from first relation's source span."
-  [{db :db params :parameters}]
-  (when-let [first-relation (first (:body params))]
-    (cond
-      (:source first-relation)
-      (r/get-doc-id-of-span db (:source first-relation))
+(def bulk-get-document-id
+  "The document of a bulk create or delete, read off a relation's source
+  span, from the first entry that resolves (`pra/bulk-resolver`)."
+  (pra/bulk-resolver
+   (fn [db entry]
+     (cond
+       (:source entry)
+       (r/get-doc-id-of-span db (:source entry))
 
-      (uuid? first-relation)
-      (when-let [relation (r/get db first-relation)]
-        (r/get-doc-id-of-span db (:relation/source relation)))
+       (uuid? entry)
+       (when-let [relation (r/get db entry)]
+         (r/get-doc-id-of-span db (:relation/source relation)))
 
-      :else nil)))
+       :else nil))))
 
 (def bulk-update-get-project-id
   "The project the writer gate checks, resolved from the first entry that

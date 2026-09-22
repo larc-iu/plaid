@@ -93,6 +93,28 @@
       (assert-no-content (bulk-delete-vocab-items admin-request [i2]))
       (is (= 404 (:status (get-vocab-item admin-request i2)))))))
 
+(deftest bulk-delete-with-a-stale-id-at-the-head-answers-the-same-either-way
+  ;; The coarse vocab-writer gate resolves the layer off the body. Reading
+  ;; only the FIRST entry, an id a colleague had already deleted left it
+  ;; unresolved and told a writer they "lack write access to vocab layer "
+  ;; with no layer named, where the same list with the stale id second
+  ;; deleted the rest and answered 204. The bulk update was taught this in
+  ;; `bulk-update-unknown-id-at-the-head-is-a-404-for-a-writer`.
+  (testing "a writer whose list starts with a stale id still deletes the rest"
+    (let [{:keys [proj v1]} (setup)
+          _ (add-project-writer admin-request proj user1)
+          [i1 i2] (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}
+                                                              {:vocab-layer-id v1 :form "run"}])
+                      :body :ids)
+          stale (random-uuid)
+          head (bulk-delete-vocab-items user1-request [stale i1])
+          tail (bulk-delete-vocab-items user1-request [i2 stale])]
+      (assert-no-content head)
+      (assert-no-content tail)
+      (is (= (:status head) (:status tail)) "list order cannot change the answer")
+      (is (= 404 (:status (get-vocab-item admin-request i1))))
+      (is (= 404 (:status (get-vocab-item admin-request i2)))))))
+
 (deftest bulk-requires-vocab-writer
   (testing "a user without write access to the layer cannot bulk create or delete"
     (let [{:keys [v1]} (setup)

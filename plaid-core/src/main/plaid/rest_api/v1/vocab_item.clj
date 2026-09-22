@@ -17,18 +17,17 @@
     (when-let [item (vocab-item/get db item-id)]
       (:vocab-item/layer item))))
 
-;; Bulk auth resolvers. Create and delete resolve the coarse vocab-layer
-;; gate from the FIRST element (create: each entry carries
-;; :vocab-layer-id; delete: the entry is an item id whose layer we look
-;; up), update from the first entry that RESOLVES; the handler then
+;; Bulk auth resolvers. Create reads :vocab-layer-id off an entry, delete
+;; and update look the layer up from the entry's item id. All three take
+;; the first entry that RESOLVES (`pra/bulk-resolver`); the handler then
 ;; checks every distinct layer.
-(defn bulk-get-layer-id [{params :parameters}]
-  (-> params :body first :vocab-layer-id))
+(def bulk-get-layer-id
+  (pra/bulk-resolver (fn [_db entry] (:vocab-layer-id entry))))
 
-(defn bulk-get-layer-id-from-item [{db :db params :parameters}]
-  (let [id (-> params :body first)]
-    (when (uuid? id)
-      (:vocab-item/layer (vocab-item/get db id)))))
+(def bulk-get-layer-id-from-item
+  (pra/bulk-resolver (fn [db id]
+                       (when (uuid? id)
+                         (:vocab-item/layer (vocab-item/get db id))))))
 
 (def bulk-get-layer-id-from-entry
   "The vocab layer the writer gate checks for a bulk update, resolved from

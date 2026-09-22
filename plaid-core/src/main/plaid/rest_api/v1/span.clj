@@ -17,13 +17,14 @@
       span-id (s/project-id db span-id)
       :else nil)))
 
-(defn bulk-get-project-id [{db :db params :parameters}]
-  (let [sl-id (or (-> params :body first :span-layer-id))
-        span-id (-> params :body first)]
-    (cond
-      sl-id (sl/project-id db sl-id)
-      span-id (s/project-id db span-id)
-      :else nil)))
+(def bulk-get-project-id
+  "The project the writer gate checks for a bulk create (entries carry
+  `:span-layer-id`) or a bulk delete (an entry is a span id), resolved from
+  the first entry that resolves (`pra/bulk-resolver`)."
+  (pra/bulk-resolver (fn [db entry]
+                       (if-let [sl-id (:span-layer-id entry)]
+                         (sl/project-id db sl-id)
+                         (when (uuid? entry) (s/project-id db entry))))))
 
 (defn get-document-id
   "Get document ID from span tokens."
@@ -39,23 +40,25 @@
 
       :else nil)))
 
-(defn bulk-get-document-id
-  "Get document ID from first span's first token."
-  [{db :db params :parameters}]
-  (when-let [span-or-id (first (:body params))]
-    (cond
-      ;; For bulk create. The parsed body carries `:tokens` (the wire key),
-      ;; never `:span/tokens`; reading the wrong key here left the document
-      ;; unresolved, so a bulk create under document-version OCC was refused
-      ;; as "no document was found with the provided version".
-      (:tokens span-or-id)
-      (s/get-doc-id-of-token db (first (:tokens span-or-id)))
+(def bulk-get-document-id
+  "The document of a bulk create or delete, from the first entry that
+  resolves (`pra/bulk-resolver`): the OCC middleware checks
+  `?document-version=` against it and the response carries its new version."
+  (pra/bulk-resolver
+   (fn [db span-or-id]
+     (cond
+       ;; For bulk create. The parsed body carries `:tokens` (the wire key),
+       ;; never `:span/tokens`; reading the wrong key here left the document
+       ;; unresolved, so a bulk create under document-version OCC was refused
+       ;; as "no document was found with the provided version".
+       (:tokens span-or-id)
+       (s/get-doc-id-of-token db (first (:tokens span-or-id)))
 
-      ;; For bulk delete (array of IDs)
-      (uuid? span-or-id)
-      (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-or-id))))
+       ;; For bulk delete (array of IDs)
+       (uuid? span-or-id)
+       (s/get-doc-id-of-token db (first (:span/tokens (s/get db span-or-id))))
 
-      :else nil)))
+       :else nil))))
 
 (def bulk-update-get-project-id
   "The project the writer gate checks, resolved from the first entry that
