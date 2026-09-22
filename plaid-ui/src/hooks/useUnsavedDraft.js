@@ -8,6 +8,10 @@ import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
 // that screen then asks the same question before taking it:
 //
 //  - the tab strip, through `useUnsavedGuard()` handed to `Tabs` as `guard`;
+//  - the screen's OWN navigation, a copy, a delete or signing out, through the
+//    same guard awaited immediately before the router push. A router push is
+//    none of the three below, so a screen that navigates itself and does not
+//    ask is a way out with no question on it;
 //  - any in-app link (a breadcrumb, a document row, the project name), through
 //    a capture-phase click listener installed while a draft exists;
 //  - the browser's Back button, through one extra history entry standing in
