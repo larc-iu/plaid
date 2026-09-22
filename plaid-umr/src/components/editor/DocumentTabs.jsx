@@ -1,11 +1,15 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 
 // There is no Text Editor tab: the text and the tokens under it are made in
 // Plaid IGT or Plaid UD, and this app reads them.
 export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  // A graph typed in text mode and not applied is asked about before the strip
+  // leaves the tab holding it.
+  const guard = useUnsavedGuard();
   const currentPath = location.pathname;
   const active = currentPath.includes('/export')
     ? 'export'
@@ -54,7 +58,7 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
         </span>
       </nav>
 
-      <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])}>
+      <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])} guard={guard}>
         <TabsList>
           <TabsTrigger value="annotate" {...target('annotate')}>
             Annotate

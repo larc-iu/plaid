@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -37,6 +36,7 @@ import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useDocumentTabs } from './hooks/useDocumentTabs.js';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
@@ -125,23 +125,9 @@ const DocumentEditor = () => {
   // What the tab showing says it would lose (`useUnsavedDraft`), and the
   // question the strip asks before leaving it. A tab that saves as you go, the
   // Analyze island and every other, says nothing and is never asked about.
-  const confirm = useConfirm();
-  const unsavedRef = useRef(null);
-  const reportUnsaved = useCallback((what) => {
-    unsavedRef.current = what || null;
-  }, []);
-  const guardLeavingTab = useCallback(async () => {
-    const what = unsavedRef.current;
-    if (!what) return true;
-    const ok = await confirm({
-      title: 'Leave without saving?',
-      description: `${what} is not saved. Leaving this tab loses it.`,
-      confirmLabel: 'Leave',
-      destructive: true,
-    });
-    if (ok) unsavedRef.current = null;
-    return ok;
-  }, [confirm]);
+  // The same question meets an in-app link and the browser's Back, from the
+  // shared hook.
+  const guardLeavingTab = useUnsavedGuard();
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is here.
   const focusHere = useSentenceFocus({ documentId, focusParam, focusWordParam, activeTab });
@@ -462,7 +448,6 @@ const DocumentEditor = () => {
               // the island uses stays the island's: it is not React and has no
               // context to read.
               goToTab: setActiveTab,
-              reportUnsaved,
             }}
           >
             {/* The initial repair takes the tab strip's place rather than

@@ -7,6 +7,7 @@ import { canEditProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -50,6 +51,9 @@ export const DocumentDetails = () => {
   }, [doc.name]);
 
   const dirty = name.trim() !== (doc.name || '') && name.trim() !== '';
+  // A typed name that has not been saved: leaving this screen asks first,
+  // whether by the tab strip, a link, Back or a reload.
+  useUnsavedDraft(dirty ? 'The name you have typed' : null);
 
   const handleRename = async () => {
     if (!dirty) return;

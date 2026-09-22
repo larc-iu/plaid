@@ -9,6 +9,7 @@ import { DocumentTabs } from './DocumentTabs.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useUmrServices } from './hooks/useUmrServices.js';
@@ -177,14 +178,15 @@ export const DocumentEditorShell = () => {
   // document, or opening another one, takes it with us.
   useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
-  // A save in flight lives only in this tab, so a reload or a tab close drops
-  // it silently. Warn while `_withSaving` holds the gate (the browser shows its
-  // own prompt). The handler reads the getter at fire time, so it never sees a
+  // A save in flight, or a graph typed in text mode and not applied, lives
+  // only in this tab, so a reload or a tab close drops it silently. Warn while
+  // `_withSaving` holds the gate or a draft is registered (the browser shows
+  // its own prompt). The handler reads both at fire time, so it never sees a
   // stale flag.
   useEffect(() => {
     if (!doc) return;
     const onBeforeUnload = (e) => {
-      if (!doc.isSaving) return;
+      if (!doc.isSaving && !hasUnsavedDraft()) return;
       e.preventDefault();
       e.returnValue = '';
     };

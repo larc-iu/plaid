@@ -1,9 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 
 export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  // A tab that holds something typed and unsaved is asked about before the
+  // strip leaves it.
+  const guard = useUnsavedGuard();
   const currentPath = location.pathname;
   const active = currentPath.includes('/annotate')
     ? 'annotate'
@@ -53,7 +57,7 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
         </span>
       </nav>
 
-      <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])}>
+      <Tabs value={active} onValueChange={(v) => !disabled && navigate(routes[v])} guard={guard}>
         <TabsList>
           <TabsTrigger value="edit" {...target('edit')}>
             Text Editor

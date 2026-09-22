@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@ui/components/ui/button';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { parsePenman } from '../../../domain/format/penman.js';
 
 // The text mode of one sentence: its graph as PENMAN in a textarea, applied
@@ -19,6 +20,9 @@ export function PenmanEditor({ initial, onApply, onCancel, plan, applying = fals
   const [base, setBase] = useState(initial);
   const ref = useRef(null);
   const dirty = text !== base;
+  // Typed and not applied. Every way out of this screen asks first: the tab
+  // strip, a link, the browser's Back, a reload.
+  useUnsavedDraft(dirty ? 'The graph you have typed' : null);
   useEffect(() => {
     if (initial === base) return;
     if (!dirty) setText(initial);
