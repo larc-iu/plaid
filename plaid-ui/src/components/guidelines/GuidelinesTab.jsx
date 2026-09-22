@@ -13,21 +13,12 @@ import { collationKey, compareText, textIncludes } from '../../domain/collation.
 import { humanizeError, statusOf } from '../../lib/errors.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
+import { useGuidelineCaps } from './guidelineCaps.js';
 import { cn } from '../../lib/utils.js';
 
-// The server's ceilings, in `plaid.sql.guideline/max-title-length` and
-// `max-body-length`. Kept here as literals because the JS client publishes no
-// guideline limits and neither does /info: the point of naming them is that a
-// body over the cap is refused where it was typed, instead of after a save
-// that throws away nothing but costs a round trip and arrives as a raw 400.
-// Both sides count the same units (Clojure's `count` over a String and JS's
-// `.length` are both UTF-16 code units), so the two numbers agree.
-const TITLE_MAX = 100;
-const BODY_MAX = 20000;
-
-// Where the counter appears. Below this a guideline is nowhere near the
-// ceiling and the number is noise.
-const COUNTER_FROM = BODY_MAX * 0.9;
+// Where the counter appears, as a fraction of the server's body cap: below it a
+// guideline is nowhere near the ceiling and the number is noise.
+const COUNTER_FROM = 0.9;
 
 // A project's annotation manual: the conventions the people on it have agreed
 // to, written down where everyone (and the assistant) can read them.
@@ -86,6 +77,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   const confirm = useConfirm();
   const begin = useLatestCall();
   const beginBody = useLatestCall();
+  const { titleMax, bodyMax } = useGuidelineCaps(client);
 
   const selectedId = params.get('guideline');
 
@@ -184,8 +176,8 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
     }
     // The server's own sentence, said before the round trip rather than after
     // it, so the text stays on screen with the count beside it.
-    if (draft.body.length > BODY_MAX) {
-      notifyError(`Guideline body exceeds ${BODY_MAX} characters`);
+    if (draft.body.length > bodyMax) {
+      notifyError(`Guideline body exceeds ${bodyMax} characters`);
       return;
     }
     setSaving(true);
@@ -339,7 +331,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
               <Input
                 id="guideline-title"
                 value={draft.title}
-                maxLength={TITLE_MAX}
+                maxLength={titleMax}
                 spellCheck={false}
                 placeholder="Glossing conventions"
                 aria-describedby={titleTaken ? 'guideline-title-taken' : undefined}
@@ -358,14 +350,14 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                 onChange={(body) => setDraft((d) => ({ ...d, body }))}
               />
             </Suspended>
-            {draft.body.length > COUNTER_FROM && (
+            {draft.body.length > bodyMax * COUNTER_FROM && (
               <p
                 className={cn(
                   'text-xs',
-                  draft.body.length > BODY_MAX ? 'text-destructive' : 'text-muted-foreground',
+                  draft.body.length > bodyMax ? 'text-destructive' : 'text-muted-foreground',
                 )}
               >
-                {draft.body.length.toLocaleString()} of {BODY_MAX.toLocaleString()} characters
+                {draft.body.length.toLocaleString()} of {bodyMax.toLocaleString()} characters
               </p>
             )}
             <div className="flex items-center gap-2">

@@ -229,6 +229,27 @@ describe('a writer', () => {
     await unmount();
   });
 
+  // The caps are the server's, published on GET /info. A deployment that
+  // raised or lowered them must be believed: the alternative is a screen that
+  // refuses text the server would take, or takes text the server will refuse.
+  it('counts against the cap the server publishes, not the built-in one', async () => {
+    const long = 'x'.repeat(95);
+    const client = {
+      ...fakeClient({
+        get: vi.fn(async (id) => ({ ...INDEX.find((g) => g.id === id), body: long })),
+      }),
+      server: { limits: vi.fn().mockResolvedValue({ guidelineBodyLength: 90 }) },
+    };
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+
+    expect(container.textContent).toContain('95 of 90 characters');
+    await step(() => byText(container, 'button', 'Save').click());
+    expect(client.guidelines.update).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   it('pins a guideline without restating the rest of it', async () => {
     const { container, client, step, unmount } = await mount({ canWrite: true });
     await step(() => byText(container, 'button', 'Alpha').click());
