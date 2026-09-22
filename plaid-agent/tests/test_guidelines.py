@@ -27,8 +27,15 @@ from plaid_agent.core.tools import ToolError  # noqa: E402
 from fixtures import FakeClient, PID, scan_ws  # noqa: E402
 
 
-def g(title, *, body='A body.', pinned=False, gid=None):
-    return Guideline(id=gid or title.lower(), title=title, body=body, pinned=pinned)
+#: What the fixture's rows were last changed at. A revision is staged against
+#: it and written conditionally on it, so the tests hold the real value rather
+#: than the presence of the key.
+READ_AT = '2026-09-10T09:00:00Z'
+
+
+def g(title, *, body='A body.', pinned=False, gid=None, updated_at=READ_AT):
+    return Guideline(id=gid or title.lower(), title=title, body=body, pinned=pinned,
+                     updated_at=updated_at)
 
 
 def body_of(chars, fill='x'):
@@ -246,6 +253,8 @@ def test_load_reads_one_request_with_the_bodies_on_it():
     assert [x.title for x in got] == ['Glossing', 'Orthography', 'Translations']
     assert got[0].pinned is True
     assert got[0].body, 'the bodies come with the index, so read_guideline is a memory lookup'
+    # What a revision is written conditionally on.
+    assert got[0].updated_at == '2026-09-10T09:00:00Z'
 
 
 def test_a_server_that_cannot_answer_leaves_the_project_without_a_manual():
@@ -287,7 +296,7 @@ def test_a_targeted_edit_changes_one_passage_and_leaves_the_rest_byte_for_byte(w
     assert op['body'] == 'Keep it short.\nGloss proper nouns as PN, person names only.\nUse NFC.'
     # Staged against what it read: a person editing between the plan and its
     # approval must not have their words replaced by a draft made without them.
-    assert 'updated_at' in op
+    assert op['updated_at'] == READ_AT
 
 
 def test_the_line_the_user_approves_shows_what_becomes_what(ws):
@@ -324,7 +333,41 @@ def test_a_rewrite_carries_the_id_and_what_it_was_read_against(ws):
     op = ws.ops[-1]
     assert op['kind'] == 'rewrite_guideline'
     assert op['guideline_id'] == 'gl2'
-    assert 'updated_at' in op
+    assert op['updated_at'] == '2026-09-11T09:00:00Z'
+
+
+# --- applying one ------------------------------------------------------------
+#
+# A plan is approved later, sometimes much later. The two editors' check is
+# what keeps the approval from replacing words somebody wrote in between, and
+# it only works if the revision carries what it was read against all the way
+# to the write.
+
+def _apply(ws):
+    from plaid_agent.igt.plan import execute_plan
+    return execute_plan(ws.client, ws.ops, source='test', label='L', project=ws.project,
+                        stamp_mode='verified', contributor=None)
+
+
+def test_a_revision_is_written_against_what_it_read(ws):
+    t_revise_guideline(ws, 'Translations', find='Idiomatic', replace='Idiomatic and plain')
+    _apply(ws)
+    write = next(c for c in ws.client.log if c[0] == 'guidelines' and c[1] == 'update')
+    assert write[2] == ('gl2',)
+    assert write[3]['expected_updated_at'] == '2026-09-11T09:00:00Z'
+
+
+def test_a_guideline_edited_since_the_plan_was_made_is_refused_not_overwritten(ws):
+    from plaid_agent.core.plan import PlanError
+    t_revise_guideline(ws, 'Translations', find='Idiomatic', replace='Idiomatic and plain')
+    # Somebody saves their own edit between the plan and the approval.
+    row = next(r for r in ws.client._guidelines if r['id'] == 'gl2')
+    row['body'] = 'Their own words.'
+    row['updated_at'] = '2026-09-20T12:00:00Z'
+    with pytest.raises(PlanError) as e:
+        _apply(ws)
+    assert 'changed by someone else' in str(e.value)
+    assert row['body'] == 'Their own words.', 'their words stand'
 
 
 def test_a_rewrite_of_nothing_is_not_planned(ws):

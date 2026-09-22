@@ -32,7 +32,7 @@ cannot end the manual and start giving instructions in the harness's voice.
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from .limits import GUIDELINES_INLINE_CHARS
 from .opkind import PROSE
@@ -50,12 +50,19 @@ NAMES = ('read_guideline',)
 
 @dataclass(frozen=True)
 class Guideline:
-    """One entry in the manual. ``body`` is empty on an index-only read."""
+    """One entry in the manual. ``body`` is empty on an index-only read.
+
+    ``updated_at`` is when the server last saw it change. A revision is staged
+    against it and written conditionally on it, so a person who edits the
+    guideline between a plan being made and approved is refused rather than
+    overwritten.
+    """
 
     id: str
     title: str
     pinned: bool = False
     body: str = ''
+    updated_at: Optional[str] = None
 
     @property
     def chars(self) -> int:
@@ -84,6 +91,10 @@ def load(client, project_id: str) -> List[Guideline]:
             title=row.get('title') or '',
             pinned=bool(row.get('pinned')),
             body=row.get('body') or '',
+            # What a revision is written conditionally on (see
+            # ``_staged_against``). A server that does not send it leaves the
+            # write unconditional, which is what every write was before.
+            updated_at=row.get('updated_at'),
         )
         for row in (rows or [])
     ]
@@ -395,7 +406,7 @@ def _staged_against(g) -> Dict[str, Any]:
     when the plan was made. A plan is approved later, possibly much later, and
     a person may have edited the guideline in between: the conditional write
     turns that into a refusal instead of a silent overwrite of their words."""
-    return {'guideline_id': g.id, 'title': g.title, 'updated_at': getattr(g, 'updated_at', None)}
+    return {'guideline_id': g.id, 'title': g.title, 'updated_at': g.updated_at or None}
 
 
 def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:

@@ -140,9 +140,11 @@ def guidelines_raw():
     """The project's annotation manual: one pinned, one not."""
     return [
         {'id': 'gl1', 'title': 'Aspect', 'pinned': True,
-         'body': 'Every eventive concept carries an `:aspect`.'},
+         'body': 'Every eventive concept carries an `:aspect`.',
+         'updated_at': '2026-09-10T09:00:00Z'},
         {'id': 'gl2', 'title': 'Coreference', 'pinned': False,
-         'body': 'A pronoun is a `thing` node joined to its antecedent with `:same-entity`.'},
+         'body': 'A pronoun is a `thing` node joined to its antecedent with `:same-entity`.',
+         'updated_at': '2026-09-11T09:00:00Z'},
     ]
 
 

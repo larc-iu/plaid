@@ -126,11 +126,13 @@ def guidelines_raw():
     body (a guideline titled now and written later)."""
     return [
         {'id': 'gl1', 'title': 'Glossing', 'pinned': True,
-         'body': 'A copula is the **head** of its clause here.'},
+         'body': 'A copula is the **head** of its clause here.',
+         'updated_at': '2026-09-10T09:00:00Z'},
         {'id': 'gl2', 'title': 'Lemmas', 'pinned': False,
-         'body': 'Citation form, lowercase except proper nouns.'},
+         'body': 'Citation form, lowercase except proper nouns.',
+         'updated_at': '2026-09-11T09:00:00Z'},
         {'id': 'gl3', 'title': 'Features', 'pinned': False,
-         'body': ''},
+         'body': '', 'updated_at': '2026-09-12T09:00:00Z'},
     ]
 
 

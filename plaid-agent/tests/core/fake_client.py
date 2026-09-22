@@ -89,6 +89,10 @@ class _Batch:
     def comments(self):
         return self._queueing('comments')
 
+    @property
+    def guidelines(self):
+        return self._queueing('guidelines')
+
     def submit(self):
         assert self.open, 'this batch was already submitted or aborted'
         self.open = False
@@ -253,18 +257,52 @@ class BaseFakeClient:
         def __init__(self, c):
             self.c = c
 
+        def _rows(self):
+            # On a batch this reaches the client's own list, so a write made
+            # inside a batch and a read after it see one manual.
+            return getattr(self.c, '_guidelines', None) or []
+
         def list(self, pid, *, include_bodies=None, **kw):
-            rows = list(getattr(self.c, '_guidelines', None) or [])
+            rows = list(self._rows())
             if include_bodies:
                 return [dict(r) for r in rows]
             return [{k: v for k, v in r.items() if k != 'body'} | {'body_chars': len(r.get('body') or '')}
                     for r in rows]
 
         def get(self, gid):
-            for r in getattr(self.c, '_guidelines', None) or []:
+            for r in self._rows():
                 if r.get('id') == gid:
                     return dict(r)
-            raise PlaidAPIError('Guideline not found', status_code=404)
+            raise PlaidAPIError('Guideline not found', status=404)
+
+        def create(self, pid, title, *, body=None, pinned=None, **kw):
+            rows = self._rows()
+            row = {'id': f'gl-new-{len(rows)}', 'title': title, 'body': body or '',
+                   'pinned': bool(pinned), 'updated_at': now_iso()}
+            rows.append(row)
+            self.c.log.append(('guidelines', 'create', (pid, title), {'body': body or ''}))
+            return {'id': row['id']}
+
+        def update(self, gid, *, title=None, body=None, pinned=None,
+                   expected_updated_at=None, **kw):
+            """The server's own rule: given ``expected_updated_at`` and no
+            longer matching, nothing is written and this is a 409. Omitted, the
+            write is unconditional."""
+            row = next((r for r in self._rows() if r.get('id') == gid), None)
+            if row is None:
+                raise PlaidAPIError('Guideline not found', status=404)
+            if expected_updated_at and expected_updated_at != row.get('updated_at'):
+                raise PlaidAPIError('This guideline was changed by someone else after you '
+                                    'opened it', status=409)
+            for key, value in (('title', title), ('body', body), ('pinned', pinned)):
+                if value is not None:
+                    row[key] = value
+            row['updated_at'] = now_iso()
+            self.c.log.append(('guidelines', 'update', (gid,),
+                               {'expected_updated_at': expected_updated_at,
+                                **{k: v for k, v in (('title', title), ('body', body),
+                                                     ('pinned', pinned)) if v is not None}}))
+            return {'id': gid}
 
     @property
     def guidelines(self):
