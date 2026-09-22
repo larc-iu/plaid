@@ -5,14 +5,18 @@ import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/proven
 import { DeprelEditor } from './DeprelEditor.jsx';
 import { useEditorSession } from './editorSession.js';
 import {
-  ARC_BASE,
-  LOWER_BAND_TOP,
-  TOKEN_BASELINE,
+  ROOT_BAR_HEIGHT,
+  ROOT_GRAB,
+  ROOT_Y,
   TREE_OVERHANG,
   arcHeight,
-  arcPath,
-  handArcPath,
-  levelAmong,
+  bandBaselineUnder,
+  dragPreview,
+  grabRect,
+  svgWidth,
+  treeArc,
+  treeFrame,
+  wordInColumn,
 } from '../../../utils/arcLayout.js';
 import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
@@ -36,14 +40,9 @@ const relationMark = (relation) => provMark(relation?.metadata);
 // could disagree, and an arc that changes sides mid-drag is a bug to look at.
 const isEnhancedGesture = (event) => Boolean(event?.ctrlKey || event?.metaKey);
 
-// How far either side of a word's centre the hand still counts as being on
-// that word. ONE rule, because the invisible grab rect and the column a drag
-// snaps by are the same reach seen twice: 37d25898 gave short words a floor
-// so they could be snapped to, and the rect kept the bare proportion, which
-// left a two-letter word snappable from further away than it was clickable.
-// The default width is for a position measured before its word was.
-const WORD_WIDTH_FALLBACK = 60;
-const reachOf = (position) => Math.max((position?.width || WORD_WIDTH_FALLBACK) * 0.6, 24);
+// The arc in the hand, while it points at nothing: no word means no label,
+// and no label means no colour of its own.
+const DRAG_GREY = '#6b7280';
 
 export const DependencyTree = forwardRef(
   (
@@ -134,8 +133,10 @@ export const DependencyTree = forwardRef(
     // read the same layout and cannot drift apart.
     const TREE_HEIGHT = arcLayout.treeHeight;
     const PADDING = 20;
-    const TOKEN_Y = TREE_HEIGHT - TOKEN_BASELINE; // Tokens at bottom
-    const ROOT_Y = 25; // ROOT bar at top
+    // Where the words and the line every arc springs from fall inside a tree
+    // that tall. Everything geometric below is asked of arcLayout with this.
+    const frame = treeFrame(TREE_HEIGHT);
+    const TOKEN_Y = frame.tokenY;
 
     // How high above the words this relation's arc runs. An arc encloses
     // everything nested under it, one step per level.
@@ -180,21 +181,6 @@ export const DependencyTree = forwardRef(
               index: index,
             };
           });
-
-    // Generate SVG path for dependency arc
-    const computeEdge = (sourcePos, targetPos, isToRoot, height) => {
-      const y = TOKEN_Y - 10;
-
-      // A root relation drops straight from the ROOT bar onto its token.
-      if (isToRoot) {
-        return `M ${sourcePos.x} ${y} l 0 ${ROOT_Y + 10 - y}`;
-      }
-
-      // The arc leaves the head a few pixels along, so that its rise doesn't sit
-      // on top of an arrowhead pointing at that same word.
-      const offset = targetPos.x > sourcePos.x ? 5 : -5;
-      return arcPath(sourcePos.x + offset, targetPos.x, y, height);
-    };
 
     // Editing is disabled (read-only) whenever the parent withholds the relation
     // handlers — i.e. for viewer access or while viewing a past state. Guard every
@@ -309,7 +295,7 @@ export const DependencyTree = forwardRef(
       let shown = null;
       if (dragOrigin && svgRef.current) {
         const rect = svgRef.current.getBoundingClientRect();
-        shown = wordInColumn({ x: e.clientX - rect.left, y: e.clientY - rect.top }, dragEnhanced);
+        shown = wordUnder({ x: e.clientX - rect.left, y: e.clientY - rect.top }, dragEnhanced);
       }
       completeDrop(shown || position);
       endDrag();
@@ -365,28 +351,11 @@ export const DependencyTree = forwardRef(
       endDrag();
     };
 
-    // The word an arc in the hand would land on: the one whose COLUMN the
-    // pointer is in, on the arc's own side of the words. For the tree that is
-    // from under the ROOT bar down to the word, for the enhanced graph from the
-    // word down as far as the hand goes. One rule for both, so an arc snaps to a
-    // word as readily above it as below: when the tree asked for the word's
-    // small grab box while the band below took the whole column, drawing above
-    // was noticeably the fussier of the two. The nearest word wins where the
-    // reach of two short ones overlaps.
-    const wordInColumn = (point, below) => {
-      if (!point) return null;
-      const inBand = below
-        ? point.y >= TOKEN_Y - 12
-        : point.y >= ROOT_Y + 20 && point.y <= TOKEN_Y + 28;
-      if (!inBand) return null;
-      let best = null;
-      for (const p of adjustedTokenPositions) {
-        const dx = Math.abs(point.x - p.x);
-        if (dx > reachOf(p)) continue;
-        if (!best || dx < best.dx) best = { p, dx };
-      }
-      return best?.p || null;
-    };
+    // The word an arc in the hand would land on, out of the words on screen.
+    // The reach and the two bands (above the words for the tree, below them
+    // for the enhanced graph) are arcLayout's.
+    const wordUnder = (point, below) =>
+      wordInColumn(adjustedTokenPositions, point, { below, frame });
 
     // While an arc is in the hand the WINDOW is listened to, not this SVG: the
     // SVG ends at the words, and a pointer followed only inside it leaves an
@@ -406,12 +375,12 @@ export const DependencyTree = forwardRef(
         if (svgRef.current) {
           const rect = svgRef.current.getBoundingClientRect();
           const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-          const word = wordInColumn(point, dragEnhanced);
+          const word = wordUnder(point, dragEnhanced);
           if (word) completeDrop(word);
           // Above the ROOT bar is the bar: the arc in the hand is already
           // drawn as a root there (see the preview's own rule), and letting
           // go used to write nothing at all.
-          else if (!dragEnhanced && point.y < ROOT_Y + 15) handleRootMouseUp(e);
+          else if (!dragEnhanced && point.y < ROOT_GRAB) handleRootMouseUp(e);
         }
         endDrag();
       },
@@ -710,11 +679,12 @@ export const DependencyTree = forwardRef(
       const sourcePos = adjustedTokenPositions.find((p) =>
         positionMatchesSpanId(p, relation.source),
       );
+      // A root points its word at itself, so it has the one position.
       const targetPos = isSelfPointing
-        ? { x: sourcePos?.x || 0, y: ROOT_Y, index: -1 }
+        ? sourcePos
         : adjustedTokenPositions.find((p) => positionMatchesSpanId(p, relation.target));
 
-      if (!sourcePos || (!targetPos && !isSelfPointing)) {
+      if (!sourcePos || !targetPos) {
         return null;
       }
 
@@ -724,23 +694,18 @@ export const DependencyTree = forwardRef(
       const isFocused = focusedRelation === relation.id;
       const isToRoot = isSelfPointing;
 
-      const height = heightOf(relation);
-      const pathData = computeEdge(sourcePos, targetPos, isToRoot, height);
+      // The path, the arrowhead and where the label goes: one answer, from
+      // the same module the band below the words draws itself from.
+      const shape = treeArc({
+        fromX: sourcePos.x,
+        toX: targetPos.x,
+        toRoot: isToRoot,
+        height: heightOf(relation),
+        frame,
+      });
       const pathId = `arc-${relation.id}`;
-
-      // Calculate arrow position - for ROOT relations, arrow points to the token
-      const arrowX = isToRoot ? sourcePos.x : targetPos.x;
-      const arrowY = isToRoot ? TOKEN_Y - 10 : TOKEN_Y - 10;
-
-      // The label rides just above its arc's horizontal run.
-      let labelX, labelY;
-      if (isToRoot) {
-        labelX = sourcePos.x;
-        labelY = (TOKEN_Y + ROOT_Y) / 2;
-      } else {
-        labelX = (sourcePos.x + targetPos.x) / 2;
-        labelY = TOKEN_Y - 10 - height - 5;
-      }
+      const labelX = shape.label.x;
+      const labelY = shape.label.y;
 
       // Unreviewed relations read as their provenance hue + a dashed stroke:
       // the dash is the unambiguous cue, so it can't be confused with a settled
@@ -772,7 +737,7 @@ export const DependencyTree = forwardRef(
           {/* Arc path */}
           <path
             id={pathId}
-            d={pathData}
+            d={shape.d}
             stroke={color}
             strokeWidth={strokeWidth}
             strokeDasharray={inferred ? '5,4' : undefined}
@@ -785,7 +750,7 @@ export const DependencyTree = forwardRef(
 
           {/* Arrow polygon */}
           <polygon
-            points={`${arrowX - 3},${arrowY - 3} ${arrowX + 3},${arrowY - 3} ${arrowX},${arrowY + 2}`}
+            points={shape.arrow}
             fill={color}
             opacity={dimmed ? 0.35 : undefined}
             className="tree-arc-arrow"
@@ -933,13 +898,10 @@ export const DependencyTree = forwardRef(
       return { key: relation.id, body, label };
     };
 
-    // Render drag arrow during mouse drag
-    // The arc in the hand, drawn as close to the arc it will become as can be
-    // known, and on ONE side of the words for the whole drag: above for the
-    // tree, below for the enhanced graph, as the drag began. Over a word it IS
-    // the arc to come: at the level the stacking will give it, in the colour
-    // of the label it will take, with that label and an arrowhead. Between
-    // words it is the same shape ending at the pointer.
+    // The arc in the hand. Its SHAPE is arcLayout's (dragPreview), which draws
+    // it as the arc it is about to become; what is decided here is what only
+    // this component knows: which word the hand is over, which arcs the new
+    // one will stack among, and what label it will wear.
     const renderDragArc = () => {
       if (!dragOrigin || !dragCurrent || !dragSourceId) return null;
 
@@ -950,89 +912,15 @@ export const DependencyTree = forwardRef(
       if (!fromRoot && !sourcePos) return null;
 
       const below = dragEnhanced;
-      const y = TOKEN_Y - 10;
-      // The band's baseline under a word, off the measured word.
-      const baseUnder = (position) => {
-        const measured = tokenPositions.find((p) => p.token?.id === position?.token?.id);
-        return measured ? measured.y + (measured.height || 0) / 2 + LOWER_BAND_TOP : TREE_HEIGHT;
-      };
-      const cls = below ? 'tree-drag-arc tree-drag-arc--enhanced' : 'tree-drag-arc';
-      const downArrow = (x, tipY) => `${x - 3},${tipY - 5} ${x + 3},${tipY - 5} ${x},${tipY}`;
-      const upArrow = (x, tipY) => `${x - 3},${tipY + 5} ${x + 3},${tipY + 5} ${x},${tipY}`;
-      const preview = (d, color, arrow, label) => (
-        <g className={cls} style={{ color }}>
-          <path d={d} />
-          {arrow && <polygon points={arrow} />}
-          {label && (
-            <text x={label.x} y={label.y} className="tree-drag-label">
-              {label.text}
-            </text>
-          )}
-        </g>
-      );
-      const colorOf = (deprel) => resolveColor(baseRel(deprel), deprelColors);
-      const GREY = '#6b7280';
-
-      // The word this arc would land on if let go now.
-      const over = wordInColumn(dragCurrent, below);
+      // The word this arc would land on if let go now, and whether the hand is
+      // on the ROOT bar instead.
+      const over = wordUnder(dragCurrent, below);
       const target = over && (fromRoot || over !== sourcePos) ? over : null;
       const toRoot =
-        !fromRoot && (hoveredToken?.lemmaSpanId === 'ROOT' || dragCurrent.y < ROOT_Y + 15);
+        !fromRoot && (hoveredToken?.lemmaSpanId === 'ROOT' || dragCurrent.y < ROOT_GRAB);
 
-      // A root. In the tree, the straight drop from the ROOT bar onto its word.
-      // In the enhanced graph, the stub under it.
-      if ((fromRoot && target) || toRoot) {
-        const word = fromRoot ? target : sourcePos;
-        if (below) {
-          const base = baseUnder(word);
-          return preview(
-            `M ${word.x} ${base} l 0 ${ARC_BASE}`,
-            colorOf('root'),
-            upArrow(word.x, base - 5),
-            { x: word.x, y: base + ARC_BASE + 11, text: 'root' },
-          );
-        }
-        return preview(
-          `M ${word.x} ${ROOT_Y + 10} L ${word.x} ${y}`,
-          colorOf('root'),
-          downArrow(word.x, y + 2),
-          { x: word.x, y: (TOKEN_Y + ROOT_Y) / 2, text: 'root' },
-        );
-      }
-      // Out of the ROOT bar and over no word yet. The bar is above the words
-      // whichever graph this is for, so this one stretch is drawn from it.
-      if (fromRoot) {
-        const tipY = Math.max(dragCurrent.y, ROOT_Y + 15);
-        return preview(
-          `M ${dragCurrent.x} ${ROOT_Y + 10} L ${dragCurrent.x} ${tipY}`,
-          GREY,
-          downArrow(dragCurrent.x, tipY),
-        );
-      }
-
-      // Between words. The end follows the hand, but never across the row of
-      // words: an arc for the tree stays above it and one for the enhanced
-      // graph below it, wherever the pointer goes.
-      if (!target) {
-        if (below) {
-          const base = baseUnder(sourcePos);
-          const tipY = Math.max(dragCurrent.y, base);
-          return preview(
-            handArcPath(sourcePos.x, base, dragCurrent.x, tipY, { down: true }),
-            GREY,
-            upArrow(dragCurrent.x, tipY - 5),
-          );
-        }
-        const tipY = Math.min(dragCurrent.y, y);
-        return preview(
-          handArcPath(sourcePos.x, y, dragCurrent.x, tipY),
-          GREY,
-          downArrow(dragCurrent.x, tipY + 2),
-        );
-      }
-
-      // Over a word. The level comes from the real stacking: every arc that
-      // will still be there, plus this one.
+      // The arcs this one will share its side of the words with. A re-pointed
+      // head replaces the word's present one, which is not among them.
       const columnOf = (spanId) =>
         adjustedTokenPositions.find((p) => positionMatchesSpanId(p, spanId))?.index;
       const spansOf = (rels) =>
@@ -1041,39 +929,52 @@ export const DependencyTree = forwardRef(
           .map((rel) => [columnOf(rel.source), columnOf(rel.target)])
           .filter(([a, b]) => a !== undefined && b !== undefined)
           .map(([a, b], i) => ({ id: i, left: Math.min(a, b), right: Math.max(a, b) }));
-      const left = Math.min(sourcePos.index, target.index);
-      const right = Math.max(sourcePos.index, target.index);
-      const deprel = incomingDeprel(target);
-      const offset = target.x > sourcePos.x ? 5 : -5;
+      const spans = target
+        ? spansOf(
+            below ? extras : relations.filter((rel) => !positionMatchesSpanId(target, rel.target)),
+          )
+        : [];
 
-      if (below) {
-        const base = baseUnder(target);
-        const height = arcHeight(levelAmong(spansOf(extras), left, right));
-        return preview(
-          arcPath(sourcePos.x + offset, target.x, base, -height),
-          colorOf(deprel),
-          upArrow(target.x, base - 5),
-          { x: (sourcePos.x + target.x) / 2, y: base + height + 11, text: deprel },
-        );
-      }
+      const shape = dragPreview({
+        from: sourcePos,
+        to: target,
+        pointer: dragCurrent,
+        below,
+        toRoot,
+        spans,
+        frame,
+        // The band hangs off the measured underside of a word, which the one
+        // y every arc springs from has been flattened out of.
+        under: (word) =>
+          bandBaselineUnder(
+            tokenPositions.find((p) => p.token?.id === word?.token?.id),
+            TREE_HEIGHT,
+          ),
+      });
 
-      // A re-pointed head replaces the word's present one, which is not among
-      // the arcs this one will share the tree with.
-      const staying = relations.filter((rel) => !positionMatchesSpanId(target, rel.target));
-      const height = arcHeight(levelAmong(spansOf(staying), left, right));
-      return preview(
-        arcPath(sourcePos.x + offset, target.x, y, height),
-        colorOf(deprel),
-        downArrow(target.x, y + 2),
-        { x: (sourcePos.x + target.x) / 2, y: y - height - 5, text: deprel },
+      // A label comes back exactly when the arc has a word at each end, so it
+      // has a label to wear and a colour of its own.
+      const text = shape.label ? (fromRoot || toRoot ? 'root' : incomingDeprel(target)) : null;
+
+      return (
+        <g
+          className={below ? 'tree-drag-arc tree-drag-arc--enhanced' : 'tree-drag-arc'}
+          style={{ color: text ? resolveColor(baseRel(text), deprelColors) : DRAG_GREY }}
+        >
+          <path d={shape.d} />
+          {shape.arrow && <polygon points={shape.arrow} />}
+          {shape.label && (
+            <text x={shape.label.x} y={shape.label.y} className="tree-drag-label">
+              {text}
+            </text>
+          )}
+        </g>
       );
     };
 
-    // Calculate SVG width based on actual token positions
-    const minSvgWidth =
-      adjustedTokenPositions.length > 0
-        ? Math.max(...adjustedTokenPositions.map((p) => p.x)) + 50
-        : 300;
+    // As wide as the last word plus room for its arc — the same width the
+    // band of enhanced edges under the words takes.
+    const minSvgWidth = svgWidth(adjustedTokenPositions);
 
     return (
       <div className="dependency-tree-container" style={{ top: `${-TREE_OVERHANG}px` }}>
@@ -1089,7 +990,7 @@ export const DependencyTree = forwardRef(
             x={0}
             y={ROOT_Y}
             width="100%"
-            height="20"
+            height={ROOT_BAR_HEIGHT}
             fill={hoveredToken?.lemmaSpanId === 'ROOT' ? '#e5e7eb' : '#fafafa'}
             className={selectedSource || dragOrigin ? 'tree-root-rect' : 'tree-root-rect--default'}
             onClick={() => handleRootClick()}
@@ -1126,16 +1027,15 @@ export const DependencyTree = forwardRef(
           {adjustedTokenPositions.map((position) => {
             // The same reach a drag snaps by, so a word is clickable exactly
             // where it is droppable.
-            const reach = reachOf(position);
-            const tokenHeight = 30;
+            const box = grabRect(position);
 
             return (
               <rect
                 key={position.token.id}
-                x={position.x - reach}
-                y={position.y - tokenHeight * 0.6 + 10}
-                width={reach * 2}
-                height={tokenHeight * 1.2}
+                x={box.x}
+                y={box.y}
+                width={box.width}
+                height={box.height}
                 fill="transparent"
                 className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
                 onClick={(e) => handleTokenClick(e, position)}

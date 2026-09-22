@@ -1,5 +1,6 @@
-// Pure-fn tests for the dependency tree's arc stacking (arcLayout.js): which
-// level each arc is drawn at, and how tall the tree that holds them has to be.
+// Pure-fn tests for the dependency tree's geometry (arcLayout.js): which level
+// each arc is drawn at, how tall the tree that holds them has to be, and where
+// every piece of one arc goes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -12,11 +13,27 @@ import {
   assignLevels,
   arcHeight,
   arcPath,
+  arrowPoints,
+  bandArc,
+  dragPreview,
+  grabRect,
+  labelXOf,
+  reachOf,
+  sortByLabelX,
+  svgWidth,
+  treeArc,
+  treeFrame,
+  wordInColumn,
   TREE_OVERHANG,
   TOKEN_BASELINE,
   ARC_BASE,
   ARC_STEP,
   ARC_CORNER,
+  LOWER_BAND_TOP,
+  ROOT_Y,
+  ROOT_BAR_HEIGHT,
+  ROOT_LINE,
+  ROOT_GRAB,
 } from '../src/utils/arcLayout.js';
 
 // A sentence of `n` words, one lemma span per word, named w0..w(n-1) / s0..s(n-1).
@@ -308,4 +325,258 @@ test('under the words an arc in the hand drops where one above would rise', () =
   const near = handArcPath(100, 200, 300, 205, { down: true });
   assert.ok(near.includes(`L ${300 - ARC_CORNER} ${200 + ARC_BASE}`));
   assert.ok(near.endsWith(`Q 300 ${200 + ARC_BASE} 300 205`));
+});
+
+// ---------------------------------------------------------------------------
+// The annotation editor's geometry: where a word can be grabbed, which word an
+// arc in the hand would land on, and the three answers (path, arrowhead,
+// label) for an arc above the words and one below them. All of this was inline
+// in DependencyTree.jsx, where the only way to check a number was to look at
+// the screen.
+// ---------------------------------------------------------------------------
+
+// One measured word. `width` is what its reach is proportional to.
+const word = (index, x, width = 60) => ({
+  token: { id: `w${index}` },
+  x,
+  y: 120,
+  width,
+  height: 20,
+  index,
+});
+
+const FRAME = treeFrame(150); // tokenY 120, baselineY 110
+
+test('the words sit a fixed distance up from the bottom of the overlay', () => {
+  assert.equal(FRAME.tokenY, 150 - TOKEN_BASELINE);
+  // The arcs spring from above the words, leaving the arrowheads their room.
+  assert.ok(FRAME.baselineY < FRAME.tokenY);
+  assert.equal(treeFrame(400).tokenY - treeFrame(400).baselineY, FRAME.tokenY - FRAME.baselineY);
+});
+
+test('a short word is clickable exactly as far out as it is droppable', () => {
+  // The rect that takes the click and the column a drop snaps by are one
+  // reach: a two-letter word used to be snappable from further away than it
+  // could be grabbed.
+  const short = word(0, 100, 10);
+  const wide = word(1, 400, 200);
+  assert.equal(reachOf(short), 24); // the floor
+  assert.equal(reachOf(wide), 120); // the proportion
+  // A position measured before its word was has no width yet.
+  assert.equal(reachOf({ x: 0 }), 36);
+
+  for (const p of [short, wide]) {
+    const rect = grabRect(p);
+    assert.equal(rect.x, p.x - reachOf(p));
+    assert.equal(rect.x + rect.width, p.x + reachOf(p));
+    assert.equal(wordInColumn([p], { x: rect.x + 0.5, y: p.y }, { below: false, frame: FRAME }), p);
+    assert.equal(
+      wordInColumn([p], { x: rect.x - 1, y: p.y }, { below: false, frame: FRAME }),
+      null,
+    );
+  }
+});
+
+test('the nearest word wins where two short ones overlap', () => {
+  const a = word(0, 100, 10);
+  const b = word(1, 140, 10);
+  const at = (x) => wordInColumn([a, b], { x, y: FRAME.tokenY }, { below: false, frame: FRAME });
+  // 118 and 122 are inside both reaches (24 each); the nearer takes it.
+  assert.equal(at(118), a);
+  assert.equal(at(122), b);
+  assert.equal(at(70), null); // outside both
+});
+
+test('an arc snaps to a word on its own side of them and nowhere else', () => {
+  const w = word(0, 100);
+  const above = (y) => wordInColumn([w], { x: 100, y }, { below: false, frame: FRAME });
+  const below = (y) => wordInColumn([w], { x: 100, y }, { below: true, frame: FRAME });
+
+  // The tree reaches from under the ROOT bar down to just past the words.
+  assert.equal(above(ROOT_Y + ROOT_BAR_HEIGHT), w);
+  assert.equal(above(ROOT_Y + 1), null); // on the bar: that is the bar's own
+  assert.equal(above(FRAME.tokenY + 28), w);
+  assert.equal(above(FRAME.tokenY + 29), null);
+
+  // The band reaches from the words down as far as the hand goes, so an
+  // enhanced edge is no fussier to draw than a tree one.
+  assert.equal(below(FRAME.tokenY - 12), w);
+  assert.equal(below(FRAME.tokenY - 13), null);
+  assert.equal(below(4000), w);
+
+  assert.equal(wordInColumn([w], null, { frame: FRAME }), null);
+});
+
+test('an arrowhead is one triangle, pointed whichever way its arc arrives', () => {
+  assert.equal(arrowPoints(100, 50), '97,45 103,45 100,50');
+  assert.equal(arrowPoints(100, 50, { up: true }), '97,55 103,55 100,50');
+});
+
+test('an arc of the tree leaves its head a few pixels along, either way', () => {
+  const right = treeArc({ fromX: 100, toX: 300, height: arcHeight(1), frame: FRAME });
+  const left = treeArc({ fromX: 300, toX: 100, height: arcHeight(1), frame: FRAME });
+  assert.ok(right.d.startsWith('M 105 110'));
+  assert.ok(left.d.startsWith('M 295 110'));
+  // Both end on the word they point at, on the arcs' own baseline.
+  assert.ok(right.d.endsWith('300 110'));
+  assert.ok(left.d.endsWith('100 110'));
+  // The label rides above the flat run, midway between the two words.
+  assert.deepEqual(right.label, { x: 200, y: FRAME.baselineY - arcHeight(1) - 5 });
+  assert.deepEqual(left.label, right.label);
+  // The arrowhead is at the DEPENDENT, pointing down onto it.
+  assert.equal(right.arrow, arrowPoints(300, FRAME.baselineY + 2));
+  assert.equal(left.arrow, arrowPoints(100, FRAME.baselineY + 2));
+});
+
+test('a root is a straight drop from the ROOT bar onto its word', () => {
+  const root = treeArc({ fromX: 100, toRoot: true, frame: FRAME });
+  assert.equal(root.d, `M 100 ${FRAME.baselineY} L 100 ${ROOT_LINE}`);
+  assert.equal(root.arrow, arrowPoints(100, FRAME.baselineY + 2));
+  // Its label rides halfway down the drop.
+  assert.deepEqual(root.label, { x: 100, y: (FRAME.tokenY + ROOT_Y) / 2 });
+});
+
+test('an arc of the band below the words is the tree arc turned over', () => {
+  const height = arcHeight(2);
+  const above = treeArc({ fromX: 100, toX: 300, height, frame: FRAME });
+  const below = bandArc({ fromX: 100, toX: 300, height });
+
+  // Same rise out of the head, same fall onto the dependent, mirrored.
+  assert.ok(below.d.startsWith(`M 105 ${LOWER_BAND_TOP}`));
+  assert.ok(below.d.endsWith(`300 ${LOWER_BAND_TOP}`));
+  assert.ok(below.d.includes(`${LOWER_BAND_TOP + height}`));
+  assert.ok(above.d.includes(`${FRAME.baselineY - height}`));
+  // The arrowhead points UP into the word; the label hangs UNDER the run.
+  assert.equal(below.arrow, arrowPoints(300, LOWER_BAND_TOP - 5, { up: true }));
+  assert.equal(below.label.x, above.label.x);
+  assert.ok(below.label.y > LOWER_BAND_TOP + height);
+
+  // An enhanced root is a stub under its own word.
+  const root = bandArc({ fromX: 100, toRoot: true, height: ARC_BASE });
+  assert.equal(root.d, `M 100 ${LOWER_BAND_TOP} l 0 ${ARC_BASE}`);
+  assert.equal(root.label.x, 100);
+
+  // An arc still in the hand hangs from the measured underside of a word
+  // rather than from the band's own top.
+  assert.ok(bandArc({ fromX: 100, toX: 300, height, baseline: 90 }).d.startsWith('M 105 90'));
+});
+
+test('the overlay is as wide as its last word plus room for that word arc', () => {
+  assert.equal(svgWidth([word(0, 100), word(1, 400)]), 450);
+  assert.equal(svgWidth([]), 300);
+});
+
+test('the labels are walked left to right, a root over its own word', () => {
+  const xOf = (id) => ({ s0: 100, s1: 200, s2: 300 })[id];
+  const rels = [
+    { id: 'far', source: 's0', target: 's2' }, // label at 200
+    { id: 'root', source: 's0', target: 's0' }, // label at 100
+    { id: 'near', source: 's1', target: 's2' }, // label at 250
+  ];
+  assert.equal(labelXOf(rels[1], xOf), 100);
+  assert.equal(labelXOf(rels[0], xOf), 200);
+  assert.deepEqual(
+    sortByLabelX(rels, xOf).map((r) => r.id),
+    ['root', 'far', 'near'],
+  );
+  // An endpoint with no measured word yet counts as 0 rather than throwing.
+  assert.equal(labelXOf({ source: 'gone', target: 'gone' }, xOf), 0);
+});
+
+// The arc in the hand. What matters is that it is already the arc it will be.
+test('over a word, the preview IS the arc that is about to land', () => {
+  const from = word(0, 100);
+  const to = word(2, 300);
+  const pointer = { x: 302, y: 104 };
+  const nested = [{ id: 'inner', left: 0, right: 2 }];
+
+  assert.deepEqual(
+    dragPreview({ from, to, pointer, spans: [], frame: FRAME }),
+    treeArc({ fromX: 100, toX: 300, height: arcHeight(1), frame: FRAME }),
+  );
+  // With an arc already under it, the preview is drawn a level higher, which
+  // is where it will sit once it lands.
+  assert.deepEqual(
+    dragPreview({ from, to, pointer, spans: nested, frame: FRAME }),
+    treeArc({ fromX: 100, toX: 300, height: arcHeight(2), frame: FRAME }),
+  );
+  // Below, the same, hung from the measured underside of the word.
+  const under = () => 90;
+  assert.deepEqual(
+    dragPreview({ from, to, pointer, below: true, spans: [], frame: FRAME, under }),
+    bandArc({ fromX: 100, toX: 300, height: arcHeight(1), baseline: 90 }),
+  );
+});
+
+test('a preview aimed at the ROOT bar is the root drop, above or below', () => {
+  const w = word(1, 200);
+  // Out of a word and up to the bar: the tree's drop onto that word.
+  assert.deepEqual(
+    dragPreview({ from: w, to: null, pointer: { x: 200, y: 20 }, toRoot: true, frame: FRAME }),
+    treeArc({ fromX: 200, toRoot: true, frame: FRAME }),
+  );
+  // Out of the bar and onto a word: the same drop.
+  assert.deepEqual(
+    dragPreview({ from: null, to: w, pointer: { x: 200, y: 90 }, frame: FRAME }),
+    treeArc({ fromX: 200, toRoot: true, frame: FRAME }),
+  );
+  // In the enhanced graph a root is a stub under the word, not a drop from
+  // above: the ROOT bar is the tree's, and the band never reaches it.
+  assert.deepEqual(
+    dragPreview({
+      from: w,
+      to: null,
+      pointer: { x: 200, y: 300 },
+      toRoot: true,
+      below: true,
+      frame: FRAME,
+      under: () => 90,
+    }),
+    bandArc({ fromX: 200, toRoot: true, height: ARC_BASE, baseline: 90 }),
+  );
+});
+
+test('between words the preview follows the hand and wears no label', () => {
+  const from = word(0, 100);
+
+  // Above: it never crosses down through the row of words.
+  const high = dragPreview({ from, to: null, pointer: { x: 250, y: 60 }, frame: FRAME });
+  assert.equal(high.label, null);
+  assert.equal(high.d, handArcPath(100, FRAME.baselineY, 250, 60));
+  const past = dragPreview({ from, to: null, pointer: { x: 250, y: 500 }, frame: FRAME });
+  assert.equal(past.d, handArcPath(100, FRAME.baselineY, 250, FRAME.baselineY));
+  assert.equal(past.arrow, arrowPoints(250, FRAME.baselineY + 2));
+
+  // Below: likewise, it never rises back through them.
+  const under = () => 90;
+  const low = dragPreview({
+    from,
+    to: null,
+    pointer: { x: 250, y: 300 },
+    below: true,
+    frame: FRAME,
+    under,
+  });
+  assert.equal(low.label, null);
+  assert.equal(low.d, handArcPath(100, 90, 250, 300, { down: true }));
+  assert.equal(low.arrow, arrowPoints(250, 295, { up: true }));
+  const risen = dragPreview({
+    from,
+    to: null,
+    pointer: { x: 250, y: 10 },
+    below: true,
+    frame: FRAME,
+    under,
+  });
+  assert.equal(risen.d, handArcPath(100, 90, 250, 90, { down: true }));
+});
+
+test('out of the ROOT bar and over no word, the preview hangs from the bar', () => {
+  const out = dragPreview({ from: null, to: null, pointer: { x: 250, y: 200 }, frame: FRAME });
+  assert.equal(out.d, `M 250 ${ROOT_LINE} L 250 200`);
+  assert.equal(out.arrow, arrowPoints(250, 200));
+  assert.equal(out.label, null);
+  // It never climbs above the bar it came out of.
+  const up = dragPreview({ from: null, to: null, pointer: { x: 250, y: 0 }, frame: FRAME });
+  assert.equal(up.d, `M 250 ${ROOT_LINE} L 250 ${ROOT_GRAB}`);
 });
