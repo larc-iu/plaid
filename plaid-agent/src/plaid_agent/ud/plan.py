@@ -24,8 +24,9 @@ from typing import Any, Dict, List
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import (CONFIRM, PlanError, Stamps, TrackingBatcher, apply_add_comment,
-                         apply_restore_document, applying, created_id, docs_of_op, expand_ops)
+from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher,
+                         apply_add_comment, apply_restore_document, applying, created_id,
+                         docs_of_op, expand_ops)
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 
@@ -290,21 +291,6 @@ def _relation_entity(op):
 # ops at approval, reading the document NOW. Each kind declares its own
 # resolver beside everything else it declares, and `resolve_scopes` runs them
 # without naming one.
-
-class Resolution:
-    """What the scopes of one plan resolve with: the client, the project, and
-    the documents read so far, so two scopes over one document read it once."""
-
-    def __init__(self, client, project):
-        self.client = client
-        self.project = project
-        self._docs: Dict[str, Any] = {}
-
-    def document(self, document_id: str):
-        if document_id not in self._docs:
-            self._docs[document_id] = load_document(self.client, self.project, document_id)
-        return self._docs[document_id]
-
 
 def _resolve_confirm_scope(res: Resolution, op):
     did = op['document_id']
@@ -651,22 +637,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
             return False
         return not named_too(o)
 
-    return ok.resolve_ops(KIND, Resolution(client, project), ops, keep), notes
-
-
-def _run(ctx: Context, ops, stage: str) -> None:
-    """One pass of the executor: every op whose kind belongs to ``stage``."""
-    for op in ops:
-        spec = KIND[op['kind']]
-        if spec.stage != stage:
-            continue
-        n = spec.apply(ctx, op)
-        n = 1 if n is None else n
-        # An applier that wrote nothing (clearing a value that was not there)
-        # adds no key. A zero-valued one reaches the user as "0 field values"
-        # on the applied card.
-        if n:
-            ctx.counts[spec.noun[1]] += n
+    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep), notes
 
 
 def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None) -> Dict[str, int]:
@@ -681,7 +652,7 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
 
         # --- pass 1: the columns, and any lemma span a relation is going to need ---
         # Every kind the executor sees that is not waiting on a minted id.
-        _run(ctx, ops, ok.BATCH)
+        ok.run_stage(KIND, ctx, ops, ok.BATCH)
 
         # Second sub-pass: the lemma spans a relation is going to need, now
         # that `creating` says which ones the plan already makes. A word with
@@ -725,14 +696,14 @@ def _execute(client, ops, *, label, counts, notes, stamps: Stamps, tracker=None)
         for op in ops:
             if op.get('kind') == 'set_words':
                 finish_set_words(op, b, b.results, ctx.stamp)
-        _run(ctx, ops, IDS)
+        ok.run_stage(KIND, ctx, ops, IDS)
         b.flush()
 
         # --- pass 3: the parser ---
         # Last, and outside the batches, because it is not a write of ours at
         # all: it is another service rewriting whole documents, under its own
         # document lock, for as long as that takes.
-        _run(ctx, ops, PARSE)
+        ok.run_stage(KIND, ctx, ops, PARSE)
 
     result = dict(counts)
     if notes:

@@ -358,6 +358,26 @@ def apply_restore_document(ctx, op) -> int:
     return 1
 
 
+class Resolution:
+    """What the scopes of one plan resolve with: the client, the project, and
+    the documents read so far, so two scopes over one document read it once.
+
+    ``load`` is the app's document reader, because that is the one thing about
+    reading a document that is the app's.
+    """
+
+    def __init__(self, client, project, load):
+        self.client = client
+        self.project = project
+        self._load = load
+        self._docs: Dict[str, Any] = {}
+
+    def document(self, document_id: str):
+        if document_id not in self._docs:
+            self._docs[document_id] = self._load(self.client, self.project, document_id)
+        return self._docs[document_id]
+
+
 def docs_of_op(op: Dict[str, Any]) -> set:
     """The documents an op reaches: one, a list it carries, or every document a
     corpus-wide change matched. Every guard that reasons about what a plan

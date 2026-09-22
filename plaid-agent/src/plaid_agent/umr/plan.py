@@ -20,8 +20,8 @@ from typing import Any, Dict, List
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import (PlanError, Stamps, TrackingBatcher, applying, created_id,
-                         docs_of_op, expand_ops)
+from ..core.plan import (PlanError, Resolution, Stamps, TrackingBatcher, applying,
+                         created_id, docs_of_op, expand_ops)
 from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
@@ -192,21 +192,6 @@ def _apply_create_triple(ctx: Context, op) -> int:
 # ops at approval, reading the document NOW. Each kind declares its own
 # resolver beside everything else it declares, and `resolve_scopes` runs them
 # without naming one.
-
-class Resolution:
-    """What the scopes of one plan resolve with: the client, the project, and
-    the documents read so far, so two scopes over one document read it once."""
-
-    def __init__(self, client, project):
-        self.client = client
-        self.project = project
-        self._docs: Dict[str, Any] = {}
-
-    def document(self, document_id: str):
-        if document_id not in self._docs:
-            self._docs[document_id] = load_document(self.client, self.project, document_id)
-        return self._docs[document_id]
-
 
 def concept_matches(op: Dict[str, Any], concept: str) -> bool:
     """Whether a node's concept is one this scope names. The pattern is stored
@@ -494,19 +479,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]):
             return False
         return True
 
-    return ok.resolve_ops(KIND, Resolution(client, project), ops, keep), notes
-
-
-def _run(ctx: Context, ops, stage: str) -> None:
-    """One pass of the executor: every op whose kind belongs to ``stage``."""
-    for op in ops:
-        spec = KIND[op['kind']]
-        if spec.stage != stage:
-            continue
-        n = spec.apply(ctx, op)
-        n = 1 if n is None else n
-        if n:
-            ctx.counts[spec.noun[1]] += n
+    return ok.resolve_ops(KIND, Resolution(client, project, load_document), ops, keep), notes
 
 
 def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
@@ -521,7 +494,7 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
         b = ctx.b
 
         # --- pass 1: deletes, values, metadata, and every anchor token ------
-        _run(ctx, ops, ok.BATCH)
+        ok.run_stage(KIND, ctx, ops, ok.BATCH)
         b.flush()
 
         # --- pass 2: the concept spans over the tokens pass 1 minted --------
@@ -550,7 +523,7 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
             b.flush()
 
         # --- pass 3: the relations between those spans ----------------------
-        _run(ctx, ops, LINKS)
+        ok.run_stage(KIND, ctx, ops, LINKS)
         b.flush()
 
     result = dict(counts)

@@ -332,14 +332,17 @@ def test_ud_runs_exactly_the_passes_it_declares(monkeypatch):
     """STAGES is the list `check_applicable` refuses a kind outside of, so a
     pass named there and never run would skip that kind again, and a pass run
     without being named would refuse a kind it can apply."""
+    from plaid_agent.core import opkind
     from plaid_agent.core.plan import Stamps
     from plaid_agent.ud import plan
     from collections import Counter
     seen = []
-    monkeypatch.setattr(plan, '_run', lambda ctx, ops, stage: seen.append(stage))
+    monkeypatch.setattr(plan.ok, 'run_stage',
+                        lambda kinds, ctx, ops, stage: seen.append(stage))
     plan._execute(FakeClient(), [], label='l', counts=Counter(), notes=[],
                   stamps=Stamps('verified', 's'))
     assert seen == list(plan.STAGES)
+    assert plan.ok is opkind
 
 
 def test_every_ud_kind_has_an_apply_and_every_apply_is_registered():

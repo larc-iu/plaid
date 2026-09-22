@@ -411,3 +411,20 @@ def stored_count(spec: OpKind, op: Dict[str, Any]) -> int:
     if op.get('compact') or spec.shape == SCOPE:
         return int(op.get('count') or 1)
     return 1
+
+
+def run_stage(kinds: Dict[str, 'OpKind'], ctx, ops, stage: str) -> None:
+    """One pass of an executor: every op whose kind belongs to ``stage``.
+
+    An applier that wrote nothing (clearing a value that was not there) adds no
+    key. A zero-valued one would reach the user as "0 of something" on the
+    applied card.
+    """
+    for op in ops:
+        spec = kinds[op['kind']]
+        if spec.stage != stage:
+            continue
+        n = spec.apply(ctx, op)
+        n = 1 if n is None else n
+        if n:
+            ctx.counts[spec.noun[1]] += n
