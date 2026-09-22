@@ -12,7 +12,8 @@ import { DocumentList } from './components/documents/DocumentList';
 import { TextEditor } from './components/editor/TextEditor.jsx';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
-import { DocumentDetails } from './components/documents/DocumentDetails.jsx';
+import { DocumentDetailsPage } from '@ui/components/shared/DocumentDetailsPage.jsx';
+import { DocumentMetadataCard } from './components/documents/DocumentMetadataCard.jsx';
 import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
 import { UD_ASSISTANT } from './components/assistant/adapter.js';
 import { buildAnchorIndex } from './domain/commentAnchors.js';
@@ -237,7 +238,10 @@ function App() {
               <Route index element={<Navigate to="annotate" replace />} />
               <Route path="edit" element={<TextEditor />} />
               <Route path="annotate" element={<AnnotationEditor />} />
-              <Route path="details" element={<DocumentDetails />} />
+              <Route
+                path="details"
+                element={<DocumentDetailsPage metadata={DocumentMetadataCard} />}
+              />
               <Route
                 path="comments"
                 element={

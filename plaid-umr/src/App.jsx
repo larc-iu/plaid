@@ -12,7 +12,7 @@ import { ProjectList } from './components/projects/ProjectList';
 import { DocumentList } from './components/documents/DocumentList';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
-import { DocumentDetails } from './components/documents/DocumentDetails.jsx';
+import { DocumentDetailsPage } from '@ui/components/shared/DocumentDetailsPage.jsx';
 import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
 import { UMR_ASSISTANT } from './components/assistant/adapter.js';
 import { buildAnchorIndex } from './domain/commentAnchors.js';
@@ -188,7 +188,7 @@ function App() {
                   URL, opens the work surface rather than an empty body. */}
               <Route index element={<Navigate to="annotate" replace />} />
               <Route path="annotate" element={<AnnotationEditor />} />
-              <Route path="details" element={<DocumentDetails />} />
+              <Route path="details" element={<DocumentDetailsPage />} />
               <Route
                 path="comments"
                 element={

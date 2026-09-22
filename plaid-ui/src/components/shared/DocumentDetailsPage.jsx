@@ -1,34 +1,39 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Trash2 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
-import { canEditProject } from '@ui/domain/permissions.js';
-import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { useConfirm } from '@ui/components/shared/ConfirmProvider';
-import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
-import { TextDirectionField } from '@ui/components/shared/TextDirectionField.jsx';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@ui/components/ui/dialog';
+import { useAuth } from '../../contexts/useAuth.js';
+import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import { canEditProject } from '../../domain/permissions.js';
+import { appRoutes } from '../../lib/uiConfig.js';
+import { humanizeError } from '../../lib/errors.js';
+import { notifySuccess, notifyError } from '../../lib/notify.js';
+import { fullTimestamp, timeAgo } from '../../lib/formatTime.js';
+import { useConfirm } from './ConfirmProvider.jsx';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { TextDirectionField } from './TextDirectionField.jsx';
 
-// The document's own tab: what it is called, a copy of it, and the end of it.
-// These three are here rather than scattered across the editor because they are
-// all about the document as a thing, not about its text or its annotations.
-export const DocumentDetails = () => {
+/**
+ * The document's own tab: what it is called, which way it reads, a copy of it,
+ * and the end of it. These are here rather than scattered across the editor
+ * because they are all about the document as a thing, not about its text or its
+ * annotations. Delete in particular used to sit under plaid-ud's tokens, which
+ * put an irreversible action at the bottom of a screen people scroll daily.
+ *
+ * `metadata` is an app's own card for what its projects record about a
+ * document, drawn under Details where it has one.
+ */
+export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
   const { projectId, documentId, doc, project } = useDocumentEditor();
   const { user, getClient } = useAuth();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const routes = appRoutes();
 
   useDocumentTitle('Details', doc?.name, project?.name);
 
@@ -46,6 +51,9 @@ export const DocumentDetails = () => {
   }, [doc.name]);
 
   const dirty = name.trim() !== (doc.name || '') && name.trim() !== '';
+  // A typed name that has not been saved: leaving this screen asks first,
+  // whether by the tab strip, a link, Back or a reload.
+  useUnsavedDraft(dirty ? 'The name you have typed' : null);
 
   const handleRename = async () => {
     if (!dirty) return;
@@ -64,7 +72,7 @@ export const DocumentDetails = () => {
       if (!created?.id) return;
       setCopyOpen(false);
       notifySuccess(`Copied to “${created.name}”`);
-      navigate(`/projects/${projectId}/documents/${created.id}/annotate`);
+      navigate(routes.document(projectId, created.id));
     } finally {
       setCopying(false);
     }
@@ -82,7 +90,7 @@ export const DocumentDetails = () => {
     try {
       await getClient().documents.delete(documentId);
       notifySuccess(`Deleted “${label}”`);
-      navigate(`/projects/${projectId}/documents`);
+      navigate(routes.documents(projectId));
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to delete document');
       console.error('Error deleting document:', err);
@@ -130,6 +138,8 @@ export const DocumentDetails = () => {
           )}
         </CardContent>
       </Card>
+
+      {Metadata && <Metadata doc={doc} project={project} readOnly={readOnly} />}
 
       {!readOnly && (
         <Card>
