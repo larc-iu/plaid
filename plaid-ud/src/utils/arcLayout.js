@@ -43,10 +43,19 @@ export const ARC_CORNER = 18;
 const BAND_MARGIN = 110;
 const MIN_TREE_HEIGHT = 150;
 
-// The tree is an overlay that starts 50px above the sentence grid (see
-// .dependency-tree-container); the words in the grid sit just below the
-// arrowheads. This is the grid padding that reserves the difference.
-const GRID_INSET = 85;
+// How far the tree overlay hangs ABOVE the sentence grid it is drawn over,
+// and how far the words sit above the bottom of that overlay. Both are here
+// because four places need them to agree: the overlay's own offset, the
+// measured y of a word (useTokenPositions), the baseline the arcs are drawn
+// from (DependencyTree), and the grid padding below. Move one alone and the
+// arrowheads leave the words.
+export const TREE_OVERHANG = 50;
+export const TOKEN_BASELINE = 30;
+
+// The grid padding that reserves the difference: the overhang, the words'
+// own baseline inside the overlay, and a few pixels of air under the
+// arrowheads.
+const GRID_INSET = TREE_OVERHANG + TOKEN_BASELINE + 5;
 
 // How high above the words an arc at this level runs.
 export const arcHeight = (level, { base = ARC_BASE, step = ARC_STEP } = {}) =>

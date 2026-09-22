@@ -3,7 +3,8 @@
 /* Dependency Tree Container */
 .dependency-tree-container {
   position: absolute;
-  top: -50px; /* Position just above the sentence grid */
+  /* `top` is set from TREE_OVERHANG (utils/arcLayout.js), which the measured
+     word positions and the grid's padding are derived from too. */
   left: 0;
   width: 100%;
   z-index: 10; /* Ensure it appears above the sentence grid */

@@ -7,6 +7,8 @@ import { useEditorSession } from './editorSession.js';
 import {
   ARC_BASE,
   LOWER_BAND_TOP,
+  TOKEN_BASELINE,
+  TREE_OVERHANG,
   arcHeight,
   arcPath,
   handArcPath,
@@ -116,14 +118,13 @@ export const DependencyTree = forwardRef(
     const dragLiveRef = useRef(false);
     const labelRefs = useRef(new Map());
 
-    // Constants for layout (back to original working version)
     const TOKEN_SPACING = 80;
     // The tree is only as tall as its deepest stack of arcs needs (see
     // arcLayout). The sentence grid reserves the matching padding, so the two
     // read the same layout and cannot drift apart.
     const TREE_HEIGHT = arcLayout.treeHeight;
     const PADDING = 20;
-    const TOKEN_Y = TREE_HEIGHT - 30; // Tokens at bottom
+    const TOKEN_Y = TREE_HEIGHT - TOKEN_BASELINE; // Tokens at bottom
     const ROOT_Y = 25; // ROOT bar at top
 
     // How high above the words this relation's arc runs. An arc encloses
@@ -1062,7 +1063,7 @@ export const DependencyTree = forwardRef(
         : 300;
 
     return (
-      <div className="dependency-tree-container">
+      <div className="dependency-tree-container" style={{ top: `${-TREE_OVERHANG}px` }}>
         <svg
           ref={svgRef}
           width="100%"

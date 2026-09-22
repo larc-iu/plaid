@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+import { TREE_OVERHANG } from '../../../utils/arcLayout.js';
+
 // Compare two measured-position arrays for arc-geometry equivalence. Token
 // objects get fresh identities on every doc rebuild, so compare the fields that
 // actually drive arc rendering (token id + x/y/width/height/index/lemmaSpanId).
@@ -42,7 +44,8 @@ export const useTokenPositions = (tokenData, lemmaSpans) => {
       if (tokenRef) {
         const tokenRect = tokenRef.getBoundingClientRect();
         const centerX = tokenRect.left + tokenRect.width / 2 - gridRect.left;
-        const centerY = tokenRect.top + tokenRect.height / 2 - gridRect.top + 50; // Offset for SVG positioning
+        // Into the tree overlay's own coordinates, which start above the grid.
+        const centerY = tokenRect.top + tokenRect.height / 2 - gridRect.top + TREE_OVERHANG;
 
         // Find lemma span for this token
         const matchingLemmaSpan = lemmaSpans?.find(

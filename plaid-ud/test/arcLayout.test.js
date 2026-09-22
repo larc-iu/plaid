@@ -12,6 +12,8 @@ import {
   assignLevels,
   arcHeight,
   arcPath,
+  TREE_OVERHANG,
+  TOKEN_BASELINE,
   ARC_BASE,
   ARC_STEP,
   ARC_CORNER,
@@ -182,7 +184,11 @@ test('the tree is as tall as its deepest stack, and the grid reserves the same',
     indexById,
   );
   assert.equal(deep.treeHeight - shallow.treeHeight, arcHeight(7) - arcHeight(3));
-  assert.equal(deep.gridPaddingTop, deep.treeHeight - 85);
+  // The padding is DERIVED from the overhang and the words' baseline inside
+  // the overlay, not folded by hand: the CSS offset, the measured word y and
+  // the arc baseline all read the same two numbers.
+  assert.equal(deep.gridPaddingTop, deep.treeHeight - (TREE_OVERHANG + TOKEN_BASELINE + 5));
+  assert.equal(TREE_OVERHANG + TOKEN_BASELINE + 5, 85);
 
   // However few arcs a sentence has, there is still a tree to draw into: a
   // floor keeps the ROOT bar a draggable distance above the words.

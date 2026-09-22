@@ -25,9 +25,9 @@
 }
 
 .sentence-container {
-  /* The top margin is inside the scroller, where it holds the 50px of tree
-     drawn above this block (DependencyTree.css). The scroller clips anything
-     outside it. */
+  /* The top margin is inside the scroller, where it holds the tree drawn
+     above this block (TREE_OVERHANG in utils/arcLayout.js). The scroller clips
+     anything outside it. */
   margin: 56px 20px 8px;
   /* As wide as the sentence, so the tree and the grid, which both fill this
      box, are as wide as each other. The arcs are measured from the grid's edge
