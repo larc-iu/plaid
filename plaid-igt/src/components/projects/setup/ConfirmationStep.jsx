@@ -250,7 +250,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
                   Exceptions: {fieldsData.ignoredTokens.unicodePunctuationExceptions.join(', ')}
                 </p>
               )}
-            {fieldsData.ignoredTokens.mode === 'explicit-list' &&
+            {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit &&
               fieldsData.ignoredTokens.explicitIgnoredTokens?.length > 0 && (
                 <p className="text-sm">
                   Ignored: {fieldsData.ignoredTokens.explicitIgnoredTokens.join(', ')}

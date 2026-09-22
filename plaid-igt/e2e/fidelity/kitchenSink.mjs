@@ -31,7 +31,11 @@ import PlaidClient, {
 } from '@larc-iu/plaid-client';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
-import { IGT_NAMESPACE } from '../../src/domain/igtConfig.js';
+import {
+  IGNORED_TOKEN_MODES,
+  IGT_NAMESPACE,
+  defaultIgnoredTokensSetup,
+} from '../../src/domain/igtConfig.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
 import { newPreset, writeExportPresets } from '../../src/export/presets.js';
 import { wavBytes } from '../bugbash/harness.mjs';
@@ -778,8 +782,8 @@ async function buildBlacklist(client, name) {
       fields: {
         fields: [{ name: 'Gloss', scope: 'Word' }],
         ignoredTokens: {
-          mode: 'explicit',
-          unicodePunctuationExceptions: [],
+          ...defaultIgnoredTokensSetup(),
+          mode: IGNORED_TOKEN_MODES.explicit,
           explicitIgnoredTokens: ['--'],
         },
       },
