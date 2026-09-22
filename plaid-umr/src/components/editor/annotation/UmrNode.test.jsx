@@ -115,3 +115,45 @@ describe('UmrNode document tags', () => {
     await r.unmount();
   });
 });
+
+describe('UmrNode provenance', () => {
+  const withMeta = (metadata) => ({ ...node, metadata });
+
+  it('tints a machine-drafted node and a contributor', async () => {
+    let r = await renderComponent(
+      <UmrNode
+        node={withMeta({ prov: 'inferred', provSource: 'service:umr-draft-llm' })}
+        position={position}
+      />,
+    );
+    let box = r.container.querySelector('.umr-node');
+    expect(box.classList.contains('umr-node--machine')).toBe(true);
+    expect(box.dataset.prov).toBe('machine');
+    expect(box.title).toBe('Machine-made, unverified');
+    await r.unmount();
+
+    r = await renderComponent(
+      <UmrNode
+        node={withMeta({ prov: 'contributed', provSource: 'user:a@b.com' })}
+        position={position}
+      />,
+    );
+    box = r.container.querySelector('.umr-node');
+    expect(box.classList.contains('umr-node--contributed')).toBe(true);
+    await r.unmount();
+  });
+
+  it('draws a settled node plain, confirmed or hand-made', async () => {
+    for (const metadata of [
+      null,
+      { prov: 'inferred', provSource: 'service:umr-draft-llm', provConfirmed: true },
+    ]) {
+      const r = await renderComponent(<UmrNode node={withMeta(metadata)} position={position} />);
+      const box = r.container.querySelector('.umr-node');
+      expect(box.className).not.toMatch(/umr-node--(machine|contributed)/);
+      expect(box.hasAttribute('data-prov')).toBe(false);
+      expect(box.hasAttribute('title')).toBe(false);
+      await r.unmount();
+    }
+  });
+});

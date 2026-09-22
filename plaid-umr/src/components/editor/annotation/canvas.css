@@ -156,6 +156,20 @@
   font-size: 0.85em;
   color: hsl(var(--muted-foreground));
 }
+/* Provenance (the cross-app convention, plaid-ui's tokens): a node a machine
+   drafted is tinted violet and a contributor's amber, until a person's edit
+   settles it. Set on the node's own background variable so an unaligned,
+   hollow node takes the tint too, and placed above the hover, problem and
+   focus rules so each of those still owns the border. A settled node draws
+   plain: the mark is for what needs a look. */
+.umr-node--machine {
+  --umr-node-bg: var(--plaid-machine-fill);
+  border-color: var(--plaid-machine-soft);
+}
+.umr-node--contributed {
+  --umr-node-bg: var(--plaid-contributed-fill);
+  border-color: var(--plaid-contributed-soft);
+}
 .umr-node:hover {
   border-color: var(--umr-edge);
 }

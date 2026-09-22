@@ -126,6 +126,7 @@ The **Annotate** tab draws every sentence of the document as a block: the graph 
 A node shows its variable, its concept, and its attributes as a line of text (`aspect performance · polarity -`).
 A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
+A node a service drafted is tinted violet, and one made by a member whose work the project reviews is tinted amber; the tint goes when you edit the node, which records it as yours.
 The root's concept is underlined.
 
 == Edges

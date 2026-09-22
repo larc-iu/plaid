@@ -1,4 +1,20 @@
 import React, { useRef } from 'react';
+import { PROV_STATES, provState } from '@larc-iu/plaid-client';
+
+// Provenance, the cross-app convention: a node a machine drafted or a
+// contributor made is tinted until somebody settles it, in the two hues
+// every app uses. Colour means provenance here, as it does in the igt grid;
+// the tint goes the moment a person edits the node, because the edit carries
+// the writer's stamp (UmrDocument's `writer`). Marking what needs attention
+// rather than what is finished is why a verified node draws plain.
+const PROV_CLASS = {
+  [PROV_STATES.MACHINE]: 'umr-node--machine',
+  [PROV_STATES.CONTRIBUTED]: 'umr-node--contributed',
+};
+const PROV_TITLE = {
+  [PROV_STATES.MACHINE]: 'Machine-made, unverified',
+  [PROV_STATES.CONTRIBUTED]: 'Contributed, unverified',
+};
 
 // The most document tags a node wears, and the most other ends one tag
 // lists. Past either, one fewer and a `+k` that lists them all: nearly every
@@ -59,6 +75,7 @@ export const UmrNode = React.memo(function UmrNode({
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
     : { left: 0, top: 0, visibility: 'hidden' };
   const label = [node.var, node.concept].filter(Boolean).join(' ');
+  const prov = provState(node.metadata);
   // The tags as drawn: one per relation and direction, the other ends listed
   // in it, so four `:full-affirmative` relations are one tag.
   const tagItems = (() => {
@@ -104,6 +121,7 @@ export const UmrNode = React.memo(function UmrNode({
         focused ? 'umr-node--focused' : '',
         dropTarget ? 'umr-node--drop' : '',
         modeTarget ? 'umr-node--target' : '',
+        PROV_CLASS[prov] || '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -111,7 +129,9 @@ export const UmrNode = React.memo(function UmrNode({
       tabIndex={tabIndex}
       role="button"
       aria-label={label}
+      title={PROV_TITLE[prov]}
       data-node-id={node.id}
+      data-prov={PROV_CLASS[prov] ? prov : undefined}
       onPointerDownCapture={() => {
         wasFocused.current = focused;
       }}

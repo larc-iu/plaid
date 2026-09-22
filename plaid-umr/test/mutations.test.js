@@ -9,6 +9,7 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
+import { recordingClient } from './recordingClient.js';
 
 const FIXTURE = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -16,65 +17,6 @@ const FIXTURE = path.join(
   'umr',
   'english_umr-0001.umr',
 );
-
-// A client that answers every write with fresh ids and remembers the calls.
-// `batched` runs the queued ops in order and answers like the server: one
-// `{ body }` per op.
-function recordingClient() {
-  let n = 0;
-  const id = () => `new${++n}`;
-  const calls = [];
-  const record = (name, ...args) => calls.push({ name, args });
-  const api = {
-    tokens: {
-      bulkCreate: async (ops) => {
-        record('tokens.bulkCreate', ops);
-        return { ids: ops.map(() => id()) };
-      },
-      bulkDelete: async (ids) => record('tokens.bulkDelete', ids),
-    },
-    spans: {
-      create: async (layer, tokens, value, metadata) => {
-        record('spans.create', layer, tokens, value, metadata);
-        return { id: id() };
-      },
-      update: async (spanId, value) => record('spans.update', spanId, value),
-      patchMetadata: async (spanId, patch) => record('spans.patchMetadata', spanId, patch),
-      setTokens: async (spanId, tokens) => record('spans.setTokens', spanId, tokens),
-    },
-    relations: {
-      create: async (layer, source, target, value, metadata) => {
-        record('relations.create', layer, source, target, value, metadata);
-        return { id: id() };
-      },
-      update: async (relId, value) => record('relations.update', relId, value),
-      patchMetadata: async (relId, patch) => record('relations.patchMetadata', relId, patch),
-      delete: async (relId) => record('relations.delete', relId),
-    },
-    withOperation: async (label, fn) => {
-      record('operation', label);
-      return fn(() => {});
-    },
-    batched: async (fn) => {
-      const queue = [];
-      const proxy = (group) =>
-        new Proxy(
-          {},
-          {
-            get:
-              (_, method) =>
-              (...args) =>
-                queue.push(() => api[group][method](...args)),
-          },
-        );
-      await fn({ tokens: proxy('tokens'), spans: proxy('spans'), relations: proxy('relations') });
-      const out = [];
-      for (const op of queue) out.push({ body: await op() });
-      return out;
-    },
-  };
-  return { client: api, calls };
-}
 
 const load = () => {
   const text = fs.readFileSync(FIXTURE, 'utf8');
