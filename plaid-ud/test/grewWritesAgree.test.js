@@ -70,6 +70,23 @@ const RULES = [
     'a basic head re-pointed',
     'pattern { V [lemma="sing"]; W [lemma="dance"]; e: V -[nsubj]-> S } commands { shift_out V =[nsubj]=> W }',
   ],
+  [
+    'a word deleted from under a suppressor',
+    'pattern { N [lemma="dance"] } commands { del_node N }',
+  ],
+  ['a word with no lemma span deleted', 'pattern { N [form="loudly"] } commands { del_node N }'],
+  [
+    'the incoming edges of a word shifted onto one with no lemma span',
+    'pattern { X [lemma="dance"]; Y [form="loudly"] } without { Z -> Y } commands { shift_in X ==> Y }',
+  ],
+  [
+    'a basic edge deleted from under a suppressor',
+    'pattern { e: V -[conj]-> W } commands { del_edge e }',
+  ],
+  [
+    'edges shifted both ways at once',
+    'pattern { X [lemma="dance"]; Y [form="loudly"] } without { Z -> Y } commands { shift X ==> Y }',
+  ],
 ];
 
 // --- applying the writes, the way runner.js applies them ---
@@ -79,8 +96,6 @@ const SPAN_LAYERS = ['formLayer', 'lemmaLayer', 'uposLayer', 'xposLayer', 'featu
 function applyWrites(li, writes) {
   let n = 0;
   const newId = () => `w${++n}`;
-  const lemmaOf = new Map();
-  for (const s of li.lemmaLayer.spans || []) for (const t of s.tokens || []) lemmaOf.set(t, s.id);
   const spanLayerById = (id) => SPAN_LAYERS.map((k) => li[k]).find((l) => l && l.id === id) || null;
   const relLayerById = (id) =>
     [li.relationLayer, li.enhancedRelationLayer].find((l) => l && l.id === id) || null;
@@ -90,7 +105,44 @@ function applyWrites(li, writes) {
       .flatMap((l) => l.relations || [])
       .find((r) => r.id === id);
 
-  // The lemma spans a relation will hang on, first and in their own batch.
+  // Deleted words first, as the runner does, and with the cascade the server
+  // performs for it: a word token takes its syntactic words, a token takes the
+  // spans over it, and a span takes the relations hanging off it. The diff
+  // writes no relation delete for an edge that touches a deleted word
+  // (`touchesDeleted`), so an applier that did not cascade would leave those
+  // rows behind and the comparison below would pass on a document the server
+  // would never produce.
+  const doomedTokens = new Set();
+  for (const w of writes.tokens) {
+    if (w.op !== 'deleteToken') throw new Error(`the applier has no ${w.op}`);
+    doomedTokens.add(w.id);
+    const word = (li.wordTokenLayer?.tokens || []).find((t) => t.id === w.id);
+    if (!word) continue;
+    for (const m of li.morphemeTokenLayer?.tokens || [])
+      if (m.begin >= word.begin && m.end <= word.end) doomedTokens.add(m.id);
+  }
+  if (doomedTokens.size) {
+    for (const layer of [li.sentenceTokenLayer, li.wordTokenLayer, li.morphemeTokenLayer]) {
+      if (layer) layer.tokens = (layer.tokens || []).filter((t) => !doomedTokens.has(t.id));
+    }
+    const doomedSpans = new Set();
+    for (const layer of SPAN_LAYERS.map((k) => li[k])) {
+      if (!layer) continue;
+      for (const s of layer.spans || [])
+        if ((s.tokens || []).some((t) => doomedTokens.has(t))) doomedSpans.add(s.id);
+      layer.spans = (layer.spans || []).filter((s) => !doomedSpans.has(s.id));
+    }
+    for (const layer of relations()) {
+      layer.relations = (layer.relations || []).filter(
+        (r) => !doomedSpans.has(r.source) && !doomedSpans.has(r.target),
+      );
+    }
+  }
+
+  const lemmaOf = new Map();
+  for (const s of li.lemmaLayer.spans || []) for (const t of s.tokens || []) lemmaOf.set(t, s.id);
+
+  // The lemma spans a relation will hang on, next and in their own batch.
   for (const w of writes.lemmaCreates) {
     const id = newId();
     li.lemmaLayer.spans.push({ id, tokens: [...w.tokens], value: w.value });

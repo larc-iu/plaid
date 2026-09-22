@@ -36,6 +36,17 @@ const relationClient = () => {
       delete: async (id) => {
         log.push({ op: 'delete', id });
       },
+      patchMetadata: async (id, body) => {
+        log.push({ op: 'patch', id, body });
+      },
+      update: async (id, value) => {
+        log.push({ op: 'update', id, value });
+      },
+    },
+    spans: {
+      delete: async (id) => {
+        log.push({ op: 'delete-span', id });
+      },
     },
   });
   return { client, log };
@@ -285,6 +296,54 @@ test('the bin and a Grew del_edge leave the same enhanced graph', async () => {
 
   assert.deepEqual(graphOf(byHand), graphOf(byRule));
   assert.ok(graphOf(byHand).includes('come>leave:conj'));
+});
+
+test('the band relabels an extra without touching the tree', async () => {
+  const { doc, log, lemma, basic, rows, graph } = open();
+  const id = await doc.createEnhancedRelation(lemma('come'), lemma('she'), 'nsubj');
+
+  assert.equal(await doc.updateRelation(id, 'nsubj:pass'), true);
+  assert.equal(rows().find((r) => r.id === id).value, 'nsubj:pass');
+  assert.equal(basic('nsubj').value, 'nsubj');
+  assert.ok(graph().includes('come>she:nsubj:pass'));
+  assert.deepEqual(log.at(-1), { op: 'update', id, value: 'nsubj:pass' });
+});
+
+test('relabelling a machine extra verifies it, as an edit of any machine value does', async () => {
+  const { doc, log, lemma, rows } = open();
+  const id = await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj');
+  rows().find((r) => r.id === id).metadata = {
+    prov: 'inferred',
+    provSource: 'service:stanza-parser',
+  };
+
+  assert.equal(await doc.updateRelation(id, 'nsubj:xsubj'), true);
+  assert.equal(rows().find((r) => r.id === id).metadata.provConfirmed, true);
+  assert.deepEqual(
+    log.slice(-2).map((l) => l.op),
+    ['update', 'patch'],
+  );
+});
+
+test('discarding a machine relation takes the suppressor lying over it', async () => {
+  const { doc, log, basic, rows } = open();
+  const obj = basic('obj');
+  obj.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
+  await doc.setRelationSuppressed(obj.id, true);
+  assert.equal(rows().length, 1);
+
+  // "home" is the dependent of that relation.
+  const home = doc.layerInfo.lemmaLayer.spans.find((s) => s.value === 'home').tokens[0];
+  assert.equal(await doc.discardTokens([home]), true);
+
+  assert.deepEqual(rows(), []);
+  assert.deepEqual(
+    log
+      .filter((l) => l.op === 'delete')
+      .map((l) => l.id)
+      .sort(),
+    [obj.id, 'new-0'].sort(),
+  );
 });
 
 test('a project with no enhanced layer refuses an enhanced edge', async () => {
