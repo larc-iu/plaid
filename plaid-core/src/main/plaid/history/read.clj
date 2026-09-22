@@ -35,7 +35,7 @@
             [clojure.string :as str]
             [plaid.media.storage :as media]
             [plaid.sql.common :as psc]
-            [plaid.sql.token-layer :as token-layer])
+            [plaid.sql.document-rows :as drows])
   (:import (java.time Instant ZonedDateTime)
            (java.util Date))
   (:refer-clojure :exclude [get]))
@@ -216,7 +216,9 @@
        (mapv coerce-entity)))
 
 ;; ============================================================
-;; Builders — mirror plaid.sql.document/get-with-layer-data exactly
+;; Builders for the document row itself. The layer tree under it is
+;; assembled by `plaid.sql.document-rows/assemble`, the one the live
+;; read uses too.
 ;; ============================================================
 
 (defn- attach-meta
@@ -249,15 +251,6 @@
        :document/time-modified (:modified_at entity)}
       (attach-meta entity)
       (attach-media-url db (:id entity))))
-
-(def ^:private token-order
-  "Canonical token order (begin, precedence NULLS LAST, end, id) — the
-  OLTP deep read's SQL ORDER BY, reproduced for the in-memory rows."
-  (juxt :begin
-        (fn [t] (if (nil? (:precedence t)) 1 0))
-        :precedence
-        :end_
-        (comp str :id)))
 
 ;; ============================================================
 ;; Public API
@@ -349,166 +342,41 @@
     (when (and doc-entity (project-live? db (:project_id doc-entity)))
       (let [doc (build-document db doc-entity)
             prj-id (:project_id doc-entity)
-            ;; --- layer skeleton at T, filtered to this project ---
+            ;; --- the layer skeleton at T, filtered to this project ---
             layer-folded (fold-rows (q-layer-rows db bound))
-            layers-of (fn [table]
-                        (->> (entities-of layer-folded table)
-                             (filterv #(= prj-id (:project_id %)))))
-            text-layer-rows (->> (layers-of "text_layers")
-                                 (sort-by :order_idx))
+            text-layer-rows (->> (entities-of layer-folded "text_layers")
+                                 (filterv #(= prj-id (:project_id %))))
             tl-ids (set (map :id text-layer-rows))
             token-layer-rows (->> (entities-of layer-folded "token_layers")
-                                  (filter #(contains? tl-ids (:text_layer_id %)))
-                                  (sort-by :order_idx))
+                                  (filterv #(contains? tl-ids (:text_layer_id %))))
             tokl-ids (set (map :id token-layer-rows))
             span-layer-rows (->> (entities-of layer-folded "span_layers")
-                                 (filter #(contains? tokl-ids (:token_layer_id %)))
-                                 (sort-by :order_idx))
+                                 (filterv #(contains? tokl-ids (:token_layer_id %))))
             sl-ids (set (map :id span-layer-rows))
-            relation-layer-rows (->> (entities-of layer-folded "relation_layers")
-                                     (filter #(contains? sl-ids (:span_layer_id %)))
-                                     (sort-by :order_idx))
-            ;; --- document-scoped entities at T ---
-            text-rows (->> (entities-of folded "texts")
-                           (filterv #(contains? tl-ids (:text_layer_id %))))
-            token-rows (->> (entities-of folded "tokens")
-                            (sort-by token-order))
-            span-rows (->> (entities-of folded "spans")
-                           (sort-by (comp str :id)))
-            relation-rows (->> (entities-of folded "relations")
-                               (sort-by (comp str :id)))
-            vl-rows (->> (entities-of folded "vocab_links")
-                         (sort-by (comp str :id)))
-            ;; --- vocab hydration (by referenced id) ---
+            ;; --- the vocabulary the document's links name, by referenced id ---
+            vl-rows (entities-of folded "vocab_links")
             vi-ids (->> vl-rows (map :vocab_item_id) distinct (remove nil?) vec)
             vi-rows (entities-of (fold-rows (q-target-rows db "vocab_items" vi-ids bound))
                                  "vocab_items")
             vlayer-ids (->> vi-rows (map :vocab_layer_id) distinct (remove nil?) vec)
             vlayer-rows (entities-of (fold-rows (q-target-rows db "vocab_layers" vlayer-ids bound))
-                                     "vocab_layers")
-            ;; --- grouping ---
-            token-rows-by-layer (group-by :token_layer_id token-rows)
-            span-rows-by-layer (group-by :span_layer_id span-rows)
-            rel-rows-by-layer (group-by :relation_layer_id relation-rows)
-            relation-layers-by-span-layer (group-by :span_layer_id relation-layer-rows)
-            span-layers-by-token-layer (group-by :token_layer_id span-layer-rows)
-            token-layers-by-text-layer (group-by :text_layer_id token-layer-rows)
-            text-by-text-layer (into {} (map (juxt :text_layer_id identity)) text-rows)
-            token-id->layer (into {} (map (juxt :id :token_layer_id)) token-rows)
-            vi-by-id (into {} (map (juxt :id identity)) vi-rows)
-            vlayer-by-id (into {} (map (juxt :id identity)) vlayer-rows)
-            vl->token-layers (reduce (fn [acc vl]
-                                       (assoc acc (:id vl)
-                                              (->> (or (:tokens vl) [])
-                                                   (map token-id->layer)
-                                                   (remove nil?)
-                                                   distinct
-                                                   vec)))
-                                     {} vl-rows)
-            vl-by-id (into {} (map (juxt :id identity)) vl-rows)
-            ;; Walks vl-rows, which are sorted by id above, rather than the
-            ;; hash map: same reason as the OLTP read (plaid.sql.document),
-            ;; where a hash order here made each layer's links arrive shuffled.
-            links-by-token-layer (reduce (fn [acc vl]
-                                           (reduce (fn [a tlid]
-                                                     (update a tlid (fnil conj []) (:id vl)))
-                                                   acc (clojure.core/get vl->token-layers (:id vl) [])))
-                                         {} vl-rows)
-            ;; --- builders (shape-identical to the OLTP deep read) ---
-            build-token (fn [r]
-                          (-> {:token/id (:id r)
-                               :token/begin (:begin r)
-                               :token/end (:end_ r)
-                               :token/precedence (:precedence r)}
-                              (attach-meta r)))
-            build-span (fn [r]
-                         (-> {:span/id (:id r)
-                              :span/value (psc/read-json (:value r))
-                              :span/tokens (or (:tokens r) [])}
-                             (attach-meta r)))
-            build-relation (fn [r]
-                             (-> {:relation/id (:id r)
-                                  :relation/source (:source_span_id r)
-                                  :relation/target (:target_span_id r)
-                                  :relation/value (psc/read-json (:value r))}
-                                 (attach-meta r)))
-            build-vocab-item (fn [vi-id]
-                               (when-let [row (vi-by-id vi-id)]
-                                 {:vocab-item/id vi-id
-                                  :vocab-item/layer (:vocab_layer_id row)
-                                  :vocab-item/form (:form row)}))
-            build-link (fn [vl-id]
-                         (let [row (vl-by-id vl-id)]
-                           (-> {:vocab-link/id vl-id
-                                :vocab-link/vocab-item (build-vocab-item (:vocab_item_id row))
-                                :vocab-link/tokens (or (:tokens row) [])}
-                               (attach-meta row))))
-            build-vocabs-for-token-layer
-            (fn [tl-id]
-              (let [vl-ids (clojure.core/get links-by-token-layer tl-id [])
-                    links (mapv build-link vl-ids)
-                    links-by-vlayer (group-by (fn [l]
-                                                (:vocab-item/layer
-                                                 (:vocab-link/vocab-item l)))
-                                              links)]
-                (->> links-by-vlayer
-                     (keep (fn [[vlayer-id ls]]
-                             (when-let [row (vlayer-by-id vlayer-id)]
-                               {:vocab/id vlayer-id
-                                :vocab/name (:name row)
-                                ;; Sorted: matches the OLTP read's
-                                ;; ORDER BY user_id on the maintainers
-                                ;; join (the folded list is the
-                                ;; synthetic image's running value).
-                                :vocab/maintainers (vec (sort (map str (or (:maintainers row) []))))
-                                :config (psc/parse-config (:config row))
-                                :vocab-layer/vocab-links ls})))
-                     vec)))
-            build-relation-layer
-            (fn [rl]
-              {:relation-layer/id (:id rl)
-               :relation-layer/name (:name rl)
-               :config (psc/parse-config (:config rl))
-               :relation-layer/relations (->> (clojure.core/get rel-rows-by-layer (:id rl) [])
-                                              (mapv build-relation))})
-            build-span-layer
-            (fn [sl]
-              {:span-layer/id (:id sl)
-               :span-layer/name (:name sl)
-               :config (psc/parse-config (:config sl))
-               :span-layer/spans (->> (clojure.core/get span-rows-by-layer (:id sl) [])
-                                      (mapv build-span))
-               :span-layer/relation-layers (->> (clojure.core/get relation-layers-by-span-layer (:id sl) [])
-                                                (sort-by :order_idx)
-                                                (mapv build-relation-layer))})
-            build-token-layer
-            (fn [tl]
-              (let [raw-tokens (->> (clojure.core/get token-rows-by-layer (:id tl) [])
-                                    (mapv build-token))
-                    tokens (vec (token-layer/sort-token-records raw-tokens))]
-                {:token-layer/id (:id tl)
-                 :token-layer/name (:name tl)
-                 :config (psc/parse-config (:config tl))
-                 :token-layer/overlap-mode (some-> (:overlap_mode tl) keyword)
-                 :token-layer/parent-token-layer (:parent_token_layer_id tl)
-                 :token-layer/tokens tokens
-                 :token-layer/span-layers (->> (clojure.core/get span-layers-by-token-layer (:id tl) [])
-                                               (sort-by :order_idx)
-                                               (mapv build-span-layer))
-                 :token-layer/vocabs (build-vocabs-for-token-layer (:id tl))}))
-            build-text-layer
-            (fn [txtl]
-              (let [text-row (text-by-text-layer (:id txtl))
-                    text (when text-row
-                           (-> {:text/id (:id text-row)
-                                :text/document (:document_id text-row)
-                                :text/body (:body text-row)}
-                               (attach-meta text-row)))]
-                {:text-layer/id (:id txtl)
-                 :text-layer/name (:name txtl)
-                 :config (psc/parse-config (:config txtl))
-                 :text-layer/text text
-                 :text-layer/token-layers (->> (clojure.core/get token-layers-by-text-layer (:id txtl) [])
-                                               (sort-by :order_idx)
-                                               (mapv build-token-layer))}))]
-        (assoc doc :document/text-layers (mapv build-text-layer text-layer-rows))))))
+                                     "vocab_layers")]
+        ;; The fold above produced the rows; the shape they go into, and every
+        ;; order inside it, is the assembler's — the same one the live read
+        ;; goes through (`plaid.sql.document/get-with-layer-data`), so the two
+        ;; cannot drift apart.
+        (drows/assemble
+         doc
+         {:text-layers text-layer-rows
+          :token-layers token-layer-rows
+          :span-layers span-layer-rows
+          :relation-layers (->> (entities-of layer-folded "relation_layers")
+                                (filterv #(contains? sl-ids (:span_layer_id %))))
+          :texts (->> (entities-of folded "texts")
+                      (filterv #(contains? tl-ids (:text_layer_id %))))
+          :tokens (entities-of folded "tokens")
+          :spans (entities-of folded "spans")
+          :relations (entities-of folded "relations")
+          :vocab-links vl-rows
+          :vocab-items vi-rows
+          :vocab-layers vlayer-rows})))))

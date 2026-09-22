@@ -13,7 +13,6 @@
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
-            [plaid.sql.token-layer :as token-layer]
             [plaid.media.storage :as media])
   (:refer-clojure :exclude [get merge]))
 
@@ -94,12 +93,16 @@
 ;;
 ;; PERF (Task #52, 2026-05-27): rewrites the previous recursive
 ;; per-layer / per-row walker to a small fixed set of batched queries
-;; (~11 round trips regardless of layer count / row count), with a
-;; single bulk entity_metadata fetch keyed on entity_id. The previous
-;; shape ran O(layers × kinds) layer SELECTs plus an entity_metadata
-;; SELECT per row, which was the 1m+ latency the SQL port was created
-;; to fix. The result map is intentionally shape-identical to the old
-;; recursive walker — the REST consumers depend on the exact key set.
+;; (~11 round trips regardless of layer count / row count), with one
+;; entity_metadata fetch per kind. The previous shape ran
+;; O(layers × kinds) layer SELECTs plus an entity_metadata SELECT per
+;; row, which was the 1m+ latency the SQL port was created to fix.
+;;
+;; The rows this namespace fetches are the shape
+;; `plaid.sql.document-rows/read-rows` returns, and it is that
+;; namespace's `assemble` that turns them into the response — the same
+;; function the as-of read (`plaid.history.read`) hands its rows to, so
+;; neither read can drift from the other.
 ;;
 ;; SQLite-specific note: span/vocab-link token-id arrays are aggregated
 ;; with `json_group_array(token_id ORDER BY order_idx)` then decoded
@@ -119,46 +122,6 @@
   (when (some? s)
     (mapv psc/->uuid (json/read-str s))))
 
-(defn- bulk-metadata-by-entity
-  "Bulk-fetch entity_metadata for the given `[entity-type ids]` groups and
-  return a `{[entity-type entity-id] {key value}}` map. One query per type
-  and 4000-id chunk replaces the per-row `metadata/get-metadata` calls the
-  old walker issued. Every query names the entity_type so the primary key
-  (entity_type, entity_id, key) serves the lookup: filtering on entity_id
-  alone scans the whole table, which at a million rows cost seconds per
-  document read."
-  [db typed-ids]
-  (let [rows (into []
-                   (mapcat (fn [[entity-type ids]]
-                             (mapcat (fn [chunk]
-                                       (psc/q db {:select [:entity_type :entity_id :key :value]
-                                                  :from [:entity_metadata]
-                                                  :where [:and
-                                                          [:= :entity_type entity-type]
-                                                          [:in :entity_id (vec chunk)]]}))
-                                     (partition-all 4000 (distinct ids)))))
-                   typed-ids)]
-    (reduce (fn [acc r]
-              (let [k [(:entity_type r) (:entity_id r)]
-                    v (try
-                        ;; metadata values are JSON-encoded; keep
-                        ;; nested keys as STRINGS to match v2 round-tripping
-                        ;; (see metadata/decode-value).
-                        (json/read-str (:value r))
-                        (catch Exception _ (:value r)))]
-                (update acc k (fnil assoc {}) (:key r) v)))
-            {} rows)))
-
-(defn- attach-meta
-  "Mirror of `metadata/add-metadata-to-response`, but reads from a
-  precomputed metadata-index produced by `bulk-metadata-by-entity`.
-  Pure (no DB hit)."
-  [meta-idx entity-type entity-id m]
-  (let [meta-map (clojure.core/get meta-idx [entity-type entity-id])]
-    (if (seq meta-map)
-      (assoc m :metadata meta-map)
-      m)))
-
 (declare deep-read)
 
 (defn get-with-layer-data
@@ -167,7 +130,8 @@
   nesting already says: a token carries no document or text id, a span
   or relation no document id, and a vocab link names its entry by id,
   layer, and form (the entry's metadata is on the vocab layer read).
-  The history read (`plaid.history.read`) builds the same shape.
+  The shape is `plaid.sql.document-rows/assemble`'s, which the as-of
+  read (`plaid.history.read`) builds through as well.
 
   Implementation: ~11 batched queries (vs the previous walker's
   O(layers × kinds + rows) round trips). Token-id arrays for spans
@@ -230,35 +194,24 @@
                                  :where [:and
                                          [:= :document_id id]
                                          [:in :text_layer_id text-tl-ids]]}))
-          ;; --- 3. All tokens for this doc — one query, group Clojure-side. ---
-          ;; ORDER BY: the canonical token order is (begin, precedence, end, id)
-          ;; with precedence NULLS LAST — precedence OUTRANKS extent (task #101,
-          ;; revised 2026-06-02 to match the query engine; see
-          ;; plaid.sql.query.compile). The post-group sort via
-          ;; `sort-token-records` preserves this order (its keys are a prefix of
-          ;; the SQL key).
+          ;; --- 3. All tokens for this doc — one query, group Clojure-side.
+          ;; Unordered: the assembler puts each layer's tokens in the canonical
+          ;; token order, which no SQL ORDER BY here can be a second home for. ---
           token-tokl-ids (keep-ids tokl-ids)
           token-rows (if (empty? token-tokl-ids)
                        []
                        (psc/q db {:select [:*]
                                   :from [:tokens]
                                   :where (cond-> [:and [:= :document_id id]]
-                                           named (conj [:in :token_layer_id token-tokl-ids]))
-                                  :order-by [[:begin :asc]
-                                             [:precedence :asc-nulls-last]
-                                             [:end_ :asc]
-                                             [:id :asc]]}))
+                                           named (conj [:in :token_layer_id token-tokl-ids]))}))
           ;; --- 4. All spans + their ordered token-id arrays, one query.
           ;; LEFT JOIN + FILTER keeps spans with no span_tokens rows
           ;; (json_group_array of zero rows would be the literal "[null]"
           ;; without the FILTER). Postgres would write
           ;;   array_agg(st.token_id ORDER BY st.order_idx)
           ;;     FILTER (WHERE st.token_id IS NOT NULL)
-          ;; (or json_agg(...)). ---
-          ;; ORDER BY s.id: deterministic ordering so the OLTP↔history
-          ;; parity test doesn't rely on coincidental row order matching
-          ;; across SQLite and XTDB v2 (neither guarantees one without
-          ;; an explicit ORDER BY).
+          ;; (or json_agg(...)). Unordered, like the tokens above: the
+          ;; assembler puts spans in id order. ---
           span-sl-ids (keep-ids sl-ids)
           span-rows (if (empty? span-sl-ids)
                       []
@@ -273,8 +226,7 @@
                                   FROM spans s
                                   LEFT JOIN span_tokens st ON st.span_id = s.id
                                   WHERE s.document_id = ?" in-sql "
-                                  GROUP BY s.id
-                                  ORDER BY s.id")
+                                  GROUP BY s.id")
                                          id]
                                         (when named (map str span-sl-ids))))))
           ;; --- 5. All relations for this doc. ---
@@ -284,16 +236,11 @@
                           (psc/q db {:select [:*]
                                      :from [:relations]
                                      :where (cond-> [:and [:= :document_id id]]
-                                              named (conj [:in :relation_layer_id relation-rl-ids]))
-                                     :order-by [:id]}))
+                                              named (conj [:in :relation_layer_id relation-rl-ids]))}))
           ;; --- 6. Vocab links scoped to this doc + their token arrays,
           ;; one query. Same Postgres-shape note as above. ---
           ;; Vocab links hang off the TOKEN layers their tokens live in, so with
           ;; no fetched tokens there is nothing for them to attach to.
-          ;; ORDER BY id like spans and relations above: ids are minted in
-          ;; order, a client decides which of two links on one token it shows
-          ;; from the order they arrive in, and the history read sorts them by
-          ;; id too (plaid.history.read), so parity needs it here as well.
           vl-rows (if (and named (empty? token-rows))
                     []
                     (psc/q db ["SELECT vl.id, vl.vocab_item_id, vl.document_id,
@@ -304,8 +251,7 @@
                                 LEFT JOIN vocab_link_tokens vlt
                                        ON vlt.vocab_link_id = vl.id
                                 WHERE vl.document_id = ?
-                                GROUP BY vl.id
-                                ORDER BY vl.id"
+                                GROUP BY vl.id"
                                id]))
           ;; --- 7. Vocab item / vocab layer / maintainers hydration. ---
           vi-ids (->> vl-rows (map :vocab_item_id) distinct vec)
@@ -320,181 +266,37 @@
                         (psc/q db {:select [:*]
                                    :from [:vocab_layers]
                                    :where [:in :id vlayer-ids]}))
-          ;; ORDER BY user_id so the per-vlayer maintainers list
-          ;; (`maintainers-by-vlayer` appends in row order) is
-          ;; deterministically ordered and matches the history read ordering
-          ;; — without it OLTP↔history parity diverges run-to-run (task #13).
           vm-rows (if (empty? vlayer-ids)
                     []
                     (psc/q db {:select [:vocab_layer_id :user_id]
                                :from [:vocab_maintainers]
-                               :where [:in :vocab_layer_id vlayer-ids]
-                               :order-by [:user_id]}))
-          ;; --- 8. Bulk entity_metadata for every entity in this doc, by type:
-          ;; texts + tokens + spans + relations + vocab-links. (The document's
-          ;; own metadata is attached by the caller; a vocab item's stays with
-          ;; the vocab layer read.) ---
-          meta-idx (bulk-metadata-by-entity
-                    db
-                    [["text" (map :id text-rows)]
-                     ["token" (map :id token-rows)]
-                     ["span" (map :id span-rows)]
-                     ["relation" (map :id relation-rows)]
-                     ["vocab-link" (map :id vl-rows)]])
-          ;; --- Grouping helpers (no further DB hits below). ---
-          token-rows-by-layer (group-by :token_layer_id token-rows)
-          span-rows-by-layer (group-by :span_layer_id span-rows)
-          rel-rows-by-layer (group-by :relation_layer_id relation-rows)
-          token-id->layer (into {} (map (juxt :id :token_layer_id)) token-rows)
-          ;; vocab-links attach to the TOKEN-LAYER they touch (v2 contract).
-          ;; A link spanning multiple token-layers appears under each.
-          vl-token-ids (into {}
-                             (map (fn [r]
-                                    [(:id r) (decode-token-id-array (:token_ids r))]))
-                             vl-rows)
-          vl->token-layers (reduce (fn [acc [vl-id tok-ids]]
-                                     (assoc acc vl-id
-                                            (->> tok-ids
-                                                 (map token-id->layer)
-                                                 (remove nil?)
-                                                 distinct
-                                                 vec)))
-                                   {} vl-token-ids)
-          vi-by-id (into {} (map (juxt :id identity)) vi-rows)
-          vlayer-by-id (into {} (map (juxt :id identity)) vlayer-rows)
-          maintainers-by-vlayer (reduce (fn [acc r]
-                                          (update acc (:vocab_layer_id r)
-                                                  (fnil conj []) (:user_id r)))
-                                        {} vm-rows)
-          relation-layers-by-span-layer (group-by :span_layer_id relation-layer-rows)
-          span-layers-by-token-layer (group-by :token_layer_id span-layer-rows)
-          token-layers-by-text-layer (group-by :text_layer_id token-layer-rows)
-          text-by-text-layer (into {} (map (juxt :text_layer_id identity)) text-rows)
-          ;; Walks vl-rows, which came back in id order, rather than reducing
-          ;; over the maps above: those are hash maps keyed by uuid, so their
-          ;; iteration order is the hash's, which shuffles run to run. Each
-          ;; layer's list has to stay in id order — a client decides which of
-          ;; two links on one token it shows from the order they arrive in.
-          links-by-token-layer (reduce (fn [acc r]
-                                         (reduce (fn [a tlid]
-                                                   (update a tlid (fnil conj []) (:id r)))
-                                                 acc (clojure.core/get vl->token-layers (:id r) [])))
-                                       {} vl-rows)
-          vl-by-id (into {} (map (juxt :id identity)) vl-rows)
-          ;; --- Builders (all pure functions over the maps above). ---
-          build-token (fn [r]
-                        (attach-meta meta-idx "token" (:id r)
-                                     {:token/id (:id r)
-                                      :token/begin (:begin r)
-                                      :token/end (:end_ r)
-                                      :token/precedence (:precedence r)}))
-          build-span (fn [r]
-                       (attach-meta meta-idx "span" (:id r)
-                                    {:span/id (:id r)
-                                     :span/value (psc/read-json (:value r))
-                                     :span/tokens (or (decode-token-id-array (:token_ids r))
-                                                      [])}))
-          build-relation (fn [r]
-                           (attach-meta meta-idx "relation" (:id r)
-                                        {:relation/id (:id r)
-                                         :relation/source (:source_span_id r)
-                                         :relation/target (:target_span_id r)
-                                         :relation/value (psc/read-json (:value r))}))
-          ;; A link names its entry by id, layer, and form only: the entry's
-          ;; metadata lives in the vocab layer read, and repeating it on every
-          ;; link made up a quarter of a large document's body.
-          build-vocab-item (fn [vi-id]
-                             (when-let [row (vi-by-id vi-id)]
-                               {:vocab-item/id vi-id
-                                :vocab-item/layer (:vocab_layer_id row)
-                                :vocab-item/form (:form row)}))
-          build-link (fn [vl-id]
-                       (let [row (vl-by-id vl-id)
-                             tok-vec (or (decode-token-id-array (:token_ids row)) [])
-                             base {:vocab-link/id vl-id
-                                   :vocab-link/vocab-item (build-vocab-item
-                                                           (:vocab_item_id row))
-                                   :vocab-link/tokens tok-vec}]
-                         (attach-meta meta-idx "vocab-link" vl-id base)))
-          build-vocabs-for-token-layer
-          (fn [tl-id]
-            (let [vl-ids (clojure.core/get links-by-token-layer tl-id [])
-                  links (mapv build-link vl-ids)
-                  ;; Group these links by their vocab-layer (via the
-                  ;; vocab_item they point to).
-                  links-by-vlayer (group-by (fn [l]
-                                              (:vocab-item/layer
-                                               (:vocab-link/vocab-item l)))
-                                            links)]
-              (->> links-by-vlayer
-                   (keep (fn [[vlayer-id ls]]
-                           (when-let [row (vlayer-by-id vlayer-id)]
-                             {:vocab/id vlayer-id
-                              :vocab/name (:name row)
-                              :vocab/maintainers (vec (clojure.core/get
-                                                       maintainers-by-vlayer
-                                                       vlayer-id []))
-                              :config (psc/parse-config (:config row))
-                              :vocab-layer/vocab-links ls})))
-                   vec)))
-          build-relation-layer
-          (fn [rl-row]
-            (let [rels (->> (clojure.core/get rel-rows-by-layer (:id rl-row) [])
-                            (mapv build-relation))]
-              {:relation-layer/id (:id rl-row)
-               :relation-layer/name (:name rl-row)
-               :config (psc/parse-config (:config rl-row))
-               :relation-layer/relations rels}))
-          build-span-layer
-          (fn [sl-row]
-            (let [spans (->> (clojure.core/get span-rows-by-layer (:id sl-row) [])
-                             (mapv build-span))
-                  rls (->> (clojure.core/get relation-layers-by-span-layer
-                                             (:id sl-row) [])
-                           (sort-by :order_idx)
-                           (mapv build-relation-layer))]
-              {:span-layer/id (:id sl-row)
-               :span-layer/name (:name sl-row)
-               :config (psc/parse-config (:config sl-row))
-               :span-layer/spans spans
-               :span-layer/relation-layers rls}))
-          build-token-layer
-          (fn [tl-row]
-            (let [raw-tokens (->> (clojure.core/get token-rows-by-layer
-                                                    (:id tl-row) [])
-                                  (mapv build-token))
-                  tokens (vec (token-layer/sort-token-records raw-tokens))
-                  sls (->> (clojure.core/get span-layers-by-token-layer
-                                             (:id tl-row) [])
-                           (sort-by :order_idx)
-                           (mapv build-span-layer))
-                  vocabs (build-vocabs-for-token-layer (:id tl-row))]
-              {:token-layer/id (:id tl-row)
-               :token-layer/name (:name tl-row)
-               :config (psc/parse-config (:config tl-row))
-               :token-layer/overlap-mode (some-> (:overlap_mode tl-row) keyword)
-               :token-layer/parent-token-layer (:parent_token_layer_id tl-row)
-               :token-layer/tokens tokens
-               :token-layer/span-layers sls
-               :token-layer/vocabs vocabs}))
-          build-text-layer
-          (fn [txtl-row]
-            (let [text-row (text-by-text-layer (:id txtl-row))
-                  text (when text-row
-                         (attach-meta meta-idx "text" (:id text-row)
-                                      {:text/id (:id text-row)
-                                       :text/document (:document_id text-row)
-                                       :text/body (:body text-row)}))
-                  tls (->> (clojure.core/get token-layers-by-text-layer
-                                             (:id txtl-row) [])
-                           (sort-by :order_idx)
-                           (mapv build-token-layer))]
-              {:text-layer/id (:id txtl-row)
-               :text-layer/name (:name txtl-row)
-               :config (psc/parse-config (:config txtl-row))
-               :text-layer/text text
-               :text-layer/token-layers tls}))]
-      (assoc doc :document/text-layers (mapv build-text-layer text-layer-rows)))))
+                               :where [:in :vocab_layer_id vlayer-ids]}))
+          ;; --- 8. Metadata for every row of the document, one query per
+          ;; kind, folded onto the row it belongs to the way the as-of read
+          ;; folds it out of the audit images. ---
+          with-token-list (fn [r] (assoc r :tokens (decode-token-id-array (:token_ids r))))
+          maintainers-by-vlayer (group-by :vocab_layer_id vm-rows)]
+      ;; One assembler, two sources: `plaid.sql.document-rows/assemble` decides
+      ;; the whole nested shape and every order in it, here and in the as-of
+      ;; read (`plaid.history.read`). Everything above is this read's own job:
+      ;; fetching the rows, narrowed to the named layers.
+      (drows/assemble
+       doc
+       {:text-layers text-layer-rows
+        :token-layers token-layer-rows
+        :span-layers span-layer-rows
+        :relation-layers relation-layer-rows
+        :texts (drows/with-metadata db "text" text-rows)
+        :tokens (drows/with-metadata db "token" token-rows)
+        :spans (drows/with-metadata db "span" (mapv with-token-list span-rows))
+        :relations (drows/with-metadata db "relation" relation-rows)
+        :vocab-links (drows/with-metadata db "vocab-link" (mapv with-token-list vl-rows))
+        :vocab-items vi-rows
+        :vocab-layers (mapv (fn [r]
+                              (assoc r :maintainers
+                                     (mapv :user_id
+                                           (clojure.core/get maintainers-by-vlayer (:id r) []))))
+                            vlayer-rows)}))))
 
 ;; ============================================================
 ;; Layer subsetting (issue #57)
