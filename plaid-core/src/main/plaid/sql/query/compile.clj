@@ -964,7 +964,16 @@
   identifier. The `__e_N` entity-id columns (which make a match distinct) are
   ordered by var name so they align across UNION branches; under a multi-branch
   aggregate `align` names the vars EVERY branch binds, which is what each
-  branch projects."
+  branch projects.
+
+  When that leaves NOTHING to project — a bare `count`, no group key, no
+  aggregate source, and alternatives sharing no entity var at all — one
+  constant column stands in for the empty distinct-match key. By ruling an
+  aggregate over `or` counts only the variables every alternative binds, so
+  with none every match has the same (empty) key: the count is 1 where
+  anything matches and 0 where nothing does. Without the column the SQL is
+  `SELECT DISTINCT FROM …`, which SQLite refuses and the endpoint turned
+  into a 500."
   [st ret align]
   (let [group-vars (:group ret)
         g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
@@ -986,8 +995,11 @@
         plan {:group-cols (mapv second g-proj)
               :group-labels (mapv term-label group-vars)
               :aggs (mapv (fn [[op src]] {:op op :col (when src (src->kw src)) :label (label op src)})
-                          (:aggregates ret))}]
-    {:select (vec (concat g-proj a-proj e-proj)) :plan plan :entity-vars (vec e-vars)}))
+                          (:aggregates ret))}
+        select (vec (concat g-proj a-proj e-proj))]
+    {:select (if (seq select) select [[[:inline 1] :__e_0]])
+     :plan plan
+     :entity-vars (vec e-vars)}))
 
 (defn- assert-acl-invariant! [st]
   (let [scoped-kind? #(or (contains? entity-table %) (layer-kind? %))

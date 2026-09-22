@@ -138,6 +138,40 @@
                           ["token" "?t" {"layer" tokl}]
                           ["covers" "?s" "?t"]]))))))
 
+(deftest aggregate-over-or-whose-alternatives-share-no-variable
+  ;; The ruling's edge: alternatives binding DISJOINT entity variables, so the
+  ;; set every alternative binds is empty. An aggregate counts only that set,
+  ;; and every match here has the same (empty) key — one match where anything
+  ;; matches at all. The projection had no columns, so the SQL was
+  ;; `SELECT DISTINCT FROM …`, SQLite refused it and the endpoint answered
+  ;; "Internal query error" (500).
+  (let [{:keys [pos words]} (build!)
+        empty-sl (id (h/create-span-layer admin-request words "unused"))]
+    (testing "a bare count answers, and answers 1"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["or"
+                                 [["span" "?s" {"layer" pos}]]
+                                 [["token" "?t" {"layer" words}]]]]
+                       "return" {"group" [] "aggregates" [["count"]]}})]
+        (is (= :aggregate (:return r)))
+        (is (= ["count"] (:columns r)))
+        (is (= [[1]] (:results r)))))
+    (testing "and 0 when neither alternative matches anything"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["or"
+                                 [["span" "?s" {"layer" empty-sl}]]
+                                 [["span" "?s2" {"layer" empty-sl}]]]]
+                       "return" {"group" [] "aggregates" [["count"]]}})]
+        (is (= [[0]] (:results r)))))
+    (testing "a group key each alternative binds still gives the union of its values"
+      (let [r (qe/run db "admin@example.com"
+                      {"where" [["or"
+                                 [["span" "?s" {"layer" pos "value" {"var" "?v"}}]]
+                                 [["token" "?t" {"layer" words "begin" {"var" "?v"}}]]]]
+                       "return" {"group" ["?v"] "aggregates" [["count"]]}})]
+        (is (= ["v" "count"] (:columns r)))
+        (is (= {"0" [1] "3" [1] "6" [1] "10" [1] "20" [1] "30" [1]} (by-key r)))))))
+
 (deftest count-vs-find-tuple-divergence-under-fanout
   ;; Pins the documented subtlety: return:"count" counts distinct FIND tuples,
   ;; while an aggregate count over a one-to-many join counts MATCHES (all bound
