@@ -5,8 +5,8 @@ import { Badge } from '@ui/components/ui/badge';
 import { SearchInput, ListHint } from '@ui/components/shared/list-search';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { notifySuccess, notifyError } from '@/utils/feedback';
-import { useUserSearch } from '@/hooks/useUserSearch';
-import { UserSearch } from '@/components/shared/UserSearch';
+import { useUserSearch } from '@ui/hooks/useUserSearch.js';
+import { UserSearch } from '@ui/components/shared/UserSearch.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // Current maintainers are resolved id-by-id (the per-user GET is open to any

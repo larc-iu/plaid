@@ -12,8 +12,8 @@ import {
 } from '@ui/components/ui/dropdown-menu';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { useUserAdmin } from './useUserAdmin';
-import { UserAdminDialogs } from './userAdmin';
+import { useUserAdmin } from '@ui/hooks/useUserAdmin.js';
+import { UserAdminDialogs } from '@ui/components/shared/UserAdminDialogs.jsx';
 import { UserDetail } from './UserDetail';
 import { textIncludes } from '@ui/domain/collation.js';
 

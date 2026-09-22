@@ -4,11 +4,9 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
-import { isUdProject } from '@ui/domain/udProject';
-import { isUmrProject } from '@ui/domain/umrProject';
+import { ownerOf } from '@ui/domain/appOwners.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { findBaselineTextLayer, readInitialized } from '../../domain/igtConfig';
-import { udProjectUrl, umrProjectUrl } from '@ui/domain/siblingApps.js';
 import { textIncludes } from '@ui/domain/collation.js';
 import { projectRole } from '@larc-iu/plaid-client';
 
@@ -17,23 +15,16 @@ import { projectRole } from '@larc-iu/plaid-client';
 // everywhere else is who is on each, which app owns it, and whether anyone has
 // touched it lately.
 
-// Which app owns the project, and where its name leads. This one knows its
-// own for certain, from its own config module, and knows the other apps' from
-// the shared package: a shape one app has to recognise in ANOTHER app's
-// project is what plaid-ui is for, and a second copy of that answer living
-// here is how two apps start disagreeing about what a project is.
+// Which app owns the project, and where its name leads. This one knows its own
+// for certain, from its own config module; every other app is `ownerOf` in the
+// shared package, which pairs each recogniser with the URL that app opens a
+// project at. A second copy of that table here is how two apps start
+// disagreeing about what a project is, and how a fourth app is forgotten.
 //
-// `url` is null for a project this app owns, which opens through the router.
-// It is the owning app for every other, because this app's project route is
-// its setup wizard, and running that over a corpus another app set up is the
-// wrong thing to do to someone else's work.
-const OWNERS = [
-  { shape: 'UD', owns: isUdProject, url: udProjectUrl },
-  { shape: 'UMR', owns: isUmrProject, url: umrProjectUrl },
-];
-
-const ownerOf = (project) => OWNERS.find((o) => o.owns(project)) ?? null;
-
+// A project this app owns opens through the router. Every other opens in the
+// app that owns it, because this app's project route is its setup wizard, and
+// running that over a corpus another app set up is the wrong thing to do to
+// someone else's work.
 const shapeOf = (project) => {
   if (readInitialized(project.config)) return 'IGT';
   const owner = ownerOf(project);

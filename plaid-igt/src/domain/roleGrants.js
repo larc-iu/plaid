@@ -5,20 +5,17 @@
 // Written once because a reader of one of those screens and a reader of
 // another are being told about the same four grants. Naming the levels and
 // nothing else left "a Reader cannot comment" to be learned by granting
-// someone Reader and hearing about it. Only the maintainer line reads the same
-// in both apps, which is why it comes from the shared package.
+// someone Reader and hearing about it. Only the two lines that name what this
+// app holds are here: the other two read the same in every app and come from
+// the shared package, which builds all four.
 
-import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
+import { grantRoleHints, projectRoleOptions } from '@ui/domain/projectRoles.js';
 
-export const ROLE_OPTIONS = [
-  { value: 'none', label: 'No access', hint: NO_ACCESS_HINT },
-  { value: 'reader', label: 'Reader', hint: 'Reads the texts and the lexicon. Cannot comment.' },
-  { value: 'writer', label: 'Writer', hint: 'Also edits documents and links vocabulary.' },
-  { value: 'maintainer', label: 'Maintainer', hint: MAINTAINER_HINT },
-];
+export const ROLE_OPTIONS = projectRoleOptions({
+  readerHint: 'Reads the texts and the lexicon. Cannot comment.',
+  writerHint: 'Also edits documents and links vocabulary.',
+});
 
 // The three a link or a search result can be granted, by value, for a picker
 // that offers no way to take access away.
-export const ROLE_HINTS = Object.fromEntries(
-  ROLE_OPTIONS.filter((o) => o.value !== 'none').map((o) => [o.value, o.hint]),
-);
+export const ROLE_HINTS = grantRoleHints(ROLE_OPTIONS);

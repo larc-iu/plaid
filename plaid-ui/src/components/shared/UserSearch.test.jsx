@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../../test/renderComponent.jsx';
 
-import { useUserSearch, USER_SEARCH_LIMIT } from '@/hooks/useUserSearch';
+import { useUserSearch, USER_SEARCH_LIMIT } from '../../hooks/useUserSearch.js';
 import { UserSearch } from './UserSearch.jsx';
 
 // Two halves of the capped-hint rule, both of which this screen got wrong.

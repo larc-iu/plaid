@@ -1,11 +1,12 @@
 import { Users, Plug, Settings, Rows3, SpellCheck } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
-import { AccessManagement } from './AccessManagement';
+import { ProjectAccessScreen } from '@ui/components/shared/ProjectAccessScreen.jsx';
 import { ProjectAccessTokens } from '@ui/components/shared/ProjectAccessTokens.jsx';
 import { ServicesSettings } from './settings/ServicesSettings';
 import { GeneralSettings } from './settings/GeneralSettings.jsx';
 import { OrthographyVocabSettings } from './settings/OrthographyVocabSettings.jsx';
 import { AnnotationSettings } from './settings/AnnotationSettings.jsx';
+import { ROLE_OPTIONS } from '@/domain/roleGrants.js';
 
 // What the project is, then what it annotates with, then who may touch it.
 const SECTIONS = [
@@ -58,12 +59,13 @@ export const ProjectSettingsPanel = ({
             answers to one question, so one section. */}
         <TabsContent value="access" className="mt-0">
           <div className="flex flex-col gap-8 [&>*+*]:border-t [&>*+*]:pt-8">
-            <AccessManagement
+            <ProjectAccessScreen
               project={project}
               user={user}
               projectId={projectId}
               client={client}
               onDataUpdate={onProjectUpdate}
+              roleOptions={ROLE_OPTIONS}
             />
             <ProjectAccessTokens profileHref="/profile" />
           </div>
