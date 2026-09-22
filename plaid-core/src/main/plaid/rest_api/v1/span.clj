@@ -57,24 +57,17 @@
 
       :else nil)))
 
-(defn bulk-update-get-project-id
-  "For a bulk update, whose entries carry an id rather than a layer. Reads
-  the first entry that resolves, not simply the first: an unknown id at
-  the head of the list would otherwise leave the project unresolved and
-  answer 403 where the update's own 404 is the caller's real answer."
-  [{db :db params :parameters}]
-  (some #(s/project-id db (:id %)) (:body params)))
+(def bulk-update-get-project-id
+  "The project the writer gate checks, resolved from the first entry that
+  resolves (`pra/bulk-update-resolver`)."
+  (pra/bulk-update-resolver (fn [db id] (s/project-id db id))))
 
-(defn bulk-update-get-document-id
+(def bulk-update-get-document-id
   "The document the OCC middleware checks `?document-version=` against. A
   bulk update reaching more than one document refuses the parameter
-  outright (`plaid.sql.bulk/bulk-update!`). Reads the first entry that
-  resolves, not simply the first, the way `bulk-update-get-project-id`
-  does: an unknown id at the head of the list would otherwise leave the
-  document unresolved and answer 400 where the update's own 404 is the
-  caller's real answer."
-  [{db :db params :parameters}]
-  (some #(:span/document (s/get db (:id %))) (:body params)))
+  outright (`plaid.sql.bulk/bulk-update!`). Resolved from the first entry
+  that resolves (`pra/bulk-update-resolver`)."
+  (pra/bulk-update-resolver (fn [db id] (:span/document (s/get db id)))))
 
 (def span-routes
 

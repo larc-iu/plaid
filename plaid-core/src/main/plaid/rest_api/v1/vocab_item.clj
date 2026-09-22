@@ -30,10 +30,11 @@
         write? (vocab-layer/write-accessible-through-project? db vocab-layer-id user-id)]
     (or admin? maintainer? write?)))
 
-;; Bulk auth resolvers. Both resolve the coarse vocab-layer gate from the
-;; FIRST element (create: each entry carries :vocab-layer-id; delete: the
-;; entry is an item id whose layer we look up); the handler then checks
-;; every distinct layer.
+;; Bulk auth resolvers. Create and delete resolve the coarse vocab-layer
+;; gate from the FIRST element (create: each entry carries
+;; :vocab-layer-id; delete: the entry is an item id whose layer we look
+;; up), update from the first entry that RESOLVES; the handler then
+;; checks every distinct layer.
 (defn bulk-get-layer-id [{params :parameters}]
   (-> params :body first :vocab-layer-id))
 
@@ -42,9 +43,11 @@
     (when (uuid? id)
       (:vocab-item/layer (vocab-item/get db id)))))
 
-(defn bulk-get-layer-id-from-entry [{db :db params :parameters}]
-  (when-let [id (-> params :body first :id)]
-    (:vocab-item/layer (vocab-item/get db id))))
+(def bulk-get-layer-id-from-entry
+  "The vocab layer the writer gate checks for a bulk update, resolved from
+  the first entry that resolves (`pra/bulk-update-resolver`), as the token,
+  span and relation bulk updates resolve theirs."
+  (pra/bulk-update-resolver (fn [db id] (:vocab-item/layer (vocab-item/get db id)))))
 
 (def vocab-item-routes
   ["/vocab-items"

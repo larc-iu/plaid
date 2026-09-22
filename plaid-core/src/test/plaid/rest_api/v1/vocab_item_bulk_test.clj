@@ -3,7 +3,8 @@
   sibling to the vocab-link bulk variants. Unlike vocab links, vocab items
   hang off a vocab LAYER (not a document), so there is no document/OCC
   version and entries may target different layers in one call."
-  (:require [clojure.test :refer :all]
+  (:require [clojure.string :as str]
+            [clojure.test :refer :all]
             [plaid.fixtures :refer [with-db with-mount-states with-rest-handler
                                     admin-request assert-status assert-created assert-ok
                                     assert-no-content assert-bad-request assert-forbidden
@@ -165,6 +166,30 @@
       (assert-bad-request (bulk-update-vocab-items admin-request
                                                    [{:id id :form "a"} {:id id :form "b"}]))
       (assert-bad-request (bulk-update-vocab-items admin-request [])))))
+
+(deftest bulk-update-unknown-id-at-the-head-is-a-404-for-a-writer
+  ;; The coarse vocab-writer gate resolves the layer off the body. Reading
+  ;; only the FIRST entry, a stale id at the head left it unresolved and
+  ;; answered a member "lacks write access to vocab layer null" (403),
+  ;; hiding the update's own 404 — and the same list with the stale id
+  ;; second answered 404. The answer must not depend on list order.
+  (testing "a writer whose list starts with a stale id gets the 404 naming it"
+    (let [{:keys [proj v1]} (setup)
+          _ (add-project-writer admin-request proj user1)
+          id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
+                 :body :ids first)
+          stale (random-uuid)
+          head (bulk-update-vocab-items user1-request [{:id stale :form "x"}
+                                                       {:id id :form "dog"}])
+          tail (bulk-update-vocab-items user1-request [{:id id :form "dog"}
+                                                       {:id stale :form "x"}])]
+      (assert-status 404 head)
+      (is (str/includes? (str (-> head :body :error)) (str stale))
+          "and the 404 names the id the caller got wrong")
+      (assert-status 404 tail)
+      (is (= (:status head) (:status tail)) "list order cannot change the answer")
+      (is (= "dogs" (-> (get-vocab-item admin-request id) :body :vocab-item/form))
+          "nothing was written"))))
 
 (deftest bulk-update-requires-vocab-writer
   (testing "a user without write access to the layer cannot bulk update"

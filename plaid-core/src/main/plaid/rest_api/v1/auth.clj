@@ -406,6 +406,22 @@
    :project/writers "write for"
    :project/maintainers "maintain"})
 
+(defn bulk-update-resolver
+  "Build the auth resolver for a bulk update, whose entries carry an id
+  rather than a layer. `lookup` takes a db and one entry's id and comes
+  back with the project, document or vocab layer that entry belongs to.
+
+  THE FIRST ENTRY THAT RESOLVES, not simply the first: an unknown id at
+  the head of the list would otherwise leave the gate's subject
+  unresolved and answer 403 (or, for the document-version gate, 400),
+  where the update's own 404 naming the id is the caller's real answer.
+  Whether a member sees 404 or 403 must not depend on where in their
+  list the stale id sits. Every bulk-update route resolves through this
+  — tokens, spans, relations and vocab items."
+  [lookup]
+  (fn [{db :db params :parameters}]
+    (some #(lookup db (:id %)) (:body params))))
+
 (defn- resolve-project-id
   "Run a route's project resolver against `request`.
 
