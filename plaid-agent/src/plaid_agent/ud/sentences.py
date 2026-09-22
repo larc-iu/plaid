@@ -13,14 +13,20 @@ SAME batch, exactly as the editor does and just as silently. The alternative,
 listing them for approval, was considered and turned down: the editor does it
 without asking and two answers to the same gesture is worse than one.
 
-Finding them is per sentence, which is all a split needs: a head is stored as
-the CoNLL-U id of another word in the SAME sentence, so the relations a cut
-can orphan are exactly the ones inside the sentence being cut. One whose head
-points nowhere is left alone rather than guessed at.
+**In BOTH relation layers.** An edge across two sentences is invalid data
+whichever layer holds it, and the editor asks the same question of both (its
+`relationsCrossing` reads `allDependencyRelations`, plaid-ud
+``utils/udReconcile.js``). Removing them is a consequence of the split, not
+the assistant authoring the enhanced graph, so it is no exception to the
+enhanced layer being read-only to the assistant's own operations (ruled
+2026-09-21). An extra edge is an arc, so it is counted in what the card says
+goes; a suppressor (``crossing_suppressors``) is a statement about the basic
+relation under it and is not.
 
-The enhanced layer's suppressors go with them (``crossing_suppressors``): a
-suppressor is a statement about the basic relation under it, and the editor's
-own `relationsCrossing` asks the enhanced layer's rows as well as the tree's.
+Finding them is per sentence, which is all a split needs: a head is stored as
+the CoNLL-U id of another word in the SAME sentence, in DEPS as in HEAD, so
+the relations a cut can orphan are exactly the ones inside the sentence being
+cut. One whose head points nowhere is left alone rather than guessed at.
 """
 
 from typing import Any, Dict, List
@@ -55,9 +61,41 @@ def _crossing_words(sentence: Sentence, char_pos: int):
 
 
 def crossing_relations(sentence: Sentence, char_pos: int) -> List[str]:
-    """The relations in ``sentence`` that a boundary at ``char_pos`` would
-    leave spanning two sentences."""
-    return [w.relation_id for w in _crossing_words(sentence, char_pos)]
+    """Every dependency relation in ``sentence`` that a boundary at
+    ``char_pos`` would leave spanning two sentences: the tree's, then the
+    enhanced layer's EXTRA edges.
+
+    Both layers, because an edge across two sentences is invalid data whichever
+    one holds it, and the editor asks the same question of both (its
+    `relationsCrossing` reads `allDependencyRelations`, plaid-ud
+    ``utils/udReconcile.js``). An extra edge is an arc of its own, so it is
+    counted in what the card says goes, unlike a suppressor
+    (``crossing_suppressors``).
+    """
+    return ([w.relation_id for w in _crossing_words(sentence, char_pos)]
+            + _crossing_extras(sentence, char_pos))
+
+
+def _crossing_extras(sentence: Sentence, char_pos: int) -> List[str]:
+    """The enhanced layer's extra edges a boundary at ``char_pos`` would leave
+    spanning two sentences.
+
+    An extra edge is a row of the enhanced layer with a head of its own, so
+    each is asked separately rather than through the word's basic relation. The
+    same two conservatisms as the tree: a self-relation (head 0) is on one side
+    by definition, and an end that resolves to no word is left alone.
+    """
+    out = []
+    for w in sentence.words:
+        for head, rel_id in w.extra_edges:
+            if not head:
+                continue  # head 0: a self-relation
+            source = sentence.word(head)
+            if source is None:
+                continue  # a head pointing nowhere
+            if (w.token.begin < char_pos) != (source.token.begin < char_pos):
+                out.append(rel_id)
+    return out
 
 
 def crossing_suppressors(sentence: Sentence, char_pos: int) -> List[str]:
@@ -116,9 +154,12 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         'sentence_id': sentence.id,
         'char_pos': thing.token.begin,
         'ref': ref,
+        # Every dependency relation the cut would leave spanning two sentences,
+        # the tree's and the enhanced layer's extra edges alike. All arcs, so
+        # all counted.
         'relation_ids': losing,
-        # A suppressor is no arc of its own, so it is not counted in what the
-        # card says goes: it stands over one of `losing` and goes with it.
+        # A suppressor is no arc of its own, so it is not counted: it stands
+        # over one of `losing` and goes with it.
         'suppressor_ids': crossing_suppressors(sentence, thing.token.begin),
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })

@@ -176,6 +176,44 @@ def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
     assert len(client.batches) == 1, 'in the same batch as the split itself'
 
 
+def test_a_split_takes_the_enhanced_extra_edges_that_would_cross_it():
+    """An edge across two sentences is invalid data whichever relation layer
+    holds it, and the editor asks the same question of both (`relationsCrossing`
+    reads `allDependencyRelations`). Removing one is a consequence of the split,
+    not the assistant authoring the enhanced graph. An extra edge IS an arc, so
+    unlike a suppressor it is counted in what the card says goes."""
+    from plaid_agent.ud.plan import summarize
+
+    client = ud_client(documents={'ud1': with_enhanced([
+        # An extra edge from "mar" (w4) to the punct (w5), which a cut before
+        # w5 leaves spanning the two sentences.
+        {'id': 'e-x', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'nsubj'},
+        suppressor('e-1', 'sp-l1', 'sp-l4')])})
+    ws = Workspace(client, load_project(client, PID))
+    out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    op = ws.ops[-1]
+    assert op['relation_ids'] == ['r-4', 'e-x'], "the tree's relation and the extra edge"
+    assert op['suppressor_ids'] == ['e-1']
+    assert 'dropping 2 dependency relation(s)' in out, 'the extra counts, the suppressor does not'
+    assert summarize(ws.ops) == '2 removed dependencies, 1 sentence split'
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert deleted == ['r-4', 'e-x', 'e-1']
+    assert len(client.batches) == 1, 'in the same batch as the split itself'
+
+
+def test_an_extra_edge_on_one_side_of_the_cut_is_left_alone():
+    """The extra edge joins w4 and w5, and a cut before w4 puts both of them on
+    the same side of it. An extra edge has a head of its own, so it is asked
+    separately from the basic relation of the word it lands on: w5's basic
+    relation crosses this cut and its extra edge does not."""
+    client = ud_client(documents={'ud1': with_enhanced([
+        {'id': 'e-x', 'source': 'sp-l3', 'target': 'sp-l4', 'value': 'nsubj'}])})
+    ws = Workspace(client, load_project(client, PID))
+    call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w4'})
+    assert ws.ops[-1]['relation_ids'] == ['r-2a', 'r-2b', 'r-3', 'r-4']
+
+
 def test_a_split_that_crosses_no_suppressed_relation_takes_none():
     """The suppressor here stands over w5's relation, and a cut before w4
     leaves w5 and its head on the same side."""

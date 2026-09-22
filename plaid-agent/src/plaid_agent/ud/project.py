@@ -249,6 +249,12 @@ class Word:
     #: suppress nothing, and would quietly suppress the next relation drawn
     #: over the same pair.
     suppressor_id: Optional[str] = None
+    #: The enhanced layer's EXTRA edges INTO this word, ``[(head id, relation
+    #: id)]``. An extra edge is a row of the enhanced layer in its own right,
+    #: so unlike the tree's relation it has an id a write can name, and unlike
+    #: a suppressor it is an arc. ``enhanced`` is what a reader prints, this is
+    #: what a writer names.
+    extra_edges: List[Tuple[int, str]] = dc_field(default_factory=list)
 
     def value(self, name: str) -> str:
         sp = self.fields.get(name)
@@ -475,6 +481,10 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
                   for r in rows if _suppresses(r)}
     basic_by_target = {r.get('target'): r for r in basic}
     extras: Dict[str, List[Tuple[int, str]]] = {}
+    # The same extras by relation ID rather than deprel, which is what a write
+    # naming one needs (a split deletes the extras it would leave spanning two
+    # sentences, as the editor does).
+    extra_ids: Dict[str, List[Tuple[int, str]]] = {}
     touched = set()
     for row in rows:
         target = by_lemma_span.get(row.get('target'))
@@ -488,6 +498,8 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
         if head is None:
             continue
         extras.setdefault(target.id, []).append((head, row.get('value') or ''))
+        if row.get('id'):
+            extra_ids.setdefault(target.id, []).append((head, row['id']))
     for s in sentences:
         words = s.words
         if not any(w.id in touched for w in words):
@@ -495,6 +507,7 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
         s.has_enhanced = True
         for w in words:
             edges: List[Tuple[int, str]] = []
+            w.extra_edges = extra_ids.get(w.id, [])
             lemma = w.fields.get('lemma')
             rel = basic_by_target.get(lemma.id) if lemma else None
             if rel is not None:
