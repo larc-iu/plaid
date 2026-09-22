@@ -114,6 +114,21 @@
   [table]
   (str "ANALYZE \"" (str/replace table "\"" "\"\"") "\";"))
 
+(def ^:private orphan-statistics-statement
+  "Delete the statistics for every name the schema no longer holds.
+
+   `ANALYZE <table>` replaces the rows of the table it names and no
+   others, so nothing in the per-table pass clears what a table that has
+   since left the schema wrote. SQLite clears a DROPped table's rows
+   itself, but not a RENAMEd one's: those stay under the OLD name, and
+   the migrations rebuild a table exactly that way (create the new shape,
+   copy, drop, rename: see `20260905130000-comments-vocab-anchor.up.sql`,
+   the shape every relaxed NOT NULL needs). A row stranded under a name a
+   later migration hands to a DIFFERENT table is statistics the planner
+   reads for a table they were never measured on."
+  (str "DELETE FROM sqlite_stat1 WHERE tbl NOT IN "
+       "(SELECT name FROM sqlite_master WHERE type IN ('table', 'index'));"))
+
 (defn- analyze-tables!
   "ANALYZE the database ONE TABLE PER STATEMENT, pausing between them.
    SQLite runs each ANALYZE in its own write transaction — a whole-database
@@ -123,7 +138,11 @@
    refused with 503, and both clients stop retrying a 503 after about 24
    seconds: two minutes of failed saves after every deploy. Per table, each
    lock lasts one table's indexes, and `analyze-pause-ms` between them
-   leaves a window a parked writer is certain to win."
+   leaves a window a parked writer is certain to win.
+
+   Then one more statement, `orphan-statistics-statement`, for the rows
+   per-table ANALYZE cannot reach: those of a table the schema no longer
+   holds."
   [datasource]
   (with-open [conn (.getConnection datasource)]
     ;; Autocommit, so each statement below is its own transaction and the
@@ -138,6 +157,13 @@
           (Thread/sleep analyze-pause-ms))
         (with-open [stmt (.createStatement conn)]
           (.execute stmt (analyze-statement table))))
+      ;; Last, and only once a table has been analysed, since that is what
+      ;; creates `sqlite_stat1`. One DELETE over a table of a few dozen
+      ;; rows, in the same autocommit as the statements above, so the write
+      ;; lock it takes is about as short as one gets.
+      (when (seq tables)
+        (with-open [stmt (.createStatement conn)]
+          (.execute stmt orphan-statistics-statement)))
       (count tables))))
 
 (defn- refresh-planner-stats!

@@ -81,6 +81,19 @@
   [ds]
   (-> (jdbc/execute-one! ds ["SELECT COUNT(DISTINCT tbl) AS n FROM sqlite_stat1"]) :n))
 
+(defn- statistics-under
+  "How many rows `sqlite_stat1` holds under this name."
+  [ds tbl]
+  (-> (jdbc/execute-one! ds ["SELECT COUNT(*) AS n FROM sqlite_stat1 WHERE tbl = ?" tbl]) :n))
+
+(defn- orphan-statistics
+  "Every name `sqlite_stat1` holds statistics under that the schema does
+  not know."
+  [ds]
+  (into #{} (map :sqlite_stat1/tbl)
+        (jdbc/execute! ds [(str "SELECT DISTINCT tbl FROM sqlite_stat1 WHERE tbl NOT IN "
+                                "(SELECT name FROM sqlite_master)")])))
+
 (defn- write-attempt
   "One autocommit INSERT over a connection whose `busy_timeout` is short.
   Returns :ok, or the failure message."
@@ -214,6 +227,36 @@
                            (jdbc/execute! ds ["SELECT DISTINCT tbl FROM sqlite_stat1"]))]
         (is (= table-count (count (filter #(str/starts-with? % "probe_") analysed)))
             "every table must end up in sqlite_stat1")))))
+
+;; `ANALYZE <table>` replaces the rows of the table it names and no others, so
+;; the per-table pass cannot reach the statistics of a table that has since
+;; left the schema: the whole-database statement it replaced rebuilt
+;; `sqlite_stat1` from empty every time and swept them as a side effect.
+;;
+;; SQLite clears them itself when a table is DROPped (asserted below, so the
+;; day it stops doing that is a day this test says so) but NOT when one is
+;; RENAMEd, and renaming is how a table is rebuilt here, since SQLite cannot
+;; relax a NOT NULL in place (`20260905130000-comments-vocab-anchor.up.sql`:
+;; create the new shape, copy, drop, rename). Those rows stay under the OLD
+;; name, which a later migration may hand to a different table, and then the
+;; planner is reading statistics measured on a table that no longer exists.
+(deftest a-table-taken-out-of-the-schema-leaves-no-statistics-behind
+  (with-fixture
+    (fn [ds writer-ds]
+      (refresh-and-join! ds)
+      (is (pos? (statistics-under ds "probe_1")) "analysed, so it has statistics to lose")
+      (is (pos? (statistics-under ds "probe_2")))
+      (statement! ds "DROP TABLE probe_1;")
+      (statement! ds "ALTER TABLE probe_2 RENAME TO probe_2_rebuilt;")
+      (refresh-and-join! ds)
+      (is (zero? (statistics-under ds "probe_1"))
+          "a dropped table's statistics must not outlive it")
+      (is (zero? (statistics-under ds "probe_2"))
+          "nor a renamed table's, under the name it no longer answers to")
+      (is (empty? (orphan-statistics ds))
+          "no row of sqlite_stat1 may name something the schema does not hold")
+      (is (pos? (statistics-under ds "probe_2_rebuilt"))
+          "and the table under its new name is analysed like any other"))))
 
 (deftest analyze-statement-is-per-table-and-quoted
   (is (= "ANALYZE \"tokens\";" (#'server-sql/analyze-statement "tokens")))
