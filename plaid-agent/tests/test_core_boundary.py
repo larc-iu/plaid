@@ -15,12 +15,14 @@ import re
 
 CORE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'plaid_agent', 'core')
 
-# One app's word creeping into core is how it stops being shared. Both
-# apps' vocabularies are listed: UD's were missing, so "lemma", "feats"
-# and the rest could have been written here with nothing to say so.
+# One app's word creeping into core is how it stops being shared. Every app's
+# vocabulary is listed: UD's were missing, so "lemma", "feats" and the rest
+# could have been written here with nothing to say so, and UMR's were missing
+# after that.
 APP_WORDS = re.compile(
     r'\b(igt|interlinear|morpheme|gloss(?:ed|es|ing)?|lexicon'
-    r'|conllu|deprel|upos|lemma|treebank|dependency|feats|head)\b', re.I)
+    r'|conllu|deprel|upos|lemma|treebank|dependency|feats|head'
+    r'|umr|penman|concept|coreference|re-entrancy)\b', re.I)
 
 
 def _core_files():
@@ -47,7 +49,8 @@ def test_the_core_imports_no_app():
     for name in _core_files():
         with open(os.path.join(CORE, name), encoding='utf-8') as fh:
             for n, line in enumerate(fh, 1):
-                if re.search(r'^\s*(from|import)\s+.*\b(plaid_agent\.(igt|ud)|\.\.(igt|ud))\b', line):
+                if re.search(r'^\s*(from|import)\s+.*\b(plaid_agent\.(igt|ud|umr)|\.\.(igt|ud|umr))\b',
+                             line):
                     offences.append(f'{name}:{n}: {line.strip()!r}')
     assert not offences, 'plaid_agent/core imports an app:\n  ' + '\n  '.join(offences)
 
