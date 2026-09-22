@@ -82,7 +82,10 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                 'kind': 'create_node', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'var': var, 'concept': node.concept, 'attrs': attrs,
                 'node_layer_id': project.node_layer_id, 'concept_layer_id': project.concept_layer_id,
-                'text_id': doc.text_id, 'begin': sentence.begin, 'sentence_id': sentence.id,
+                'text_id': doc.text_id, 'sentence_id': sentence.id,
+                # Aligned to no word, so the anchor stands over the whole
+                # sentence (the app's rule since c6313696).
+                'begin': sentence.begin, 'end': sentence.end,
                 'label': f'add ({var} / {node.concept})'})
             for e in edges:
                 edges_add.append({

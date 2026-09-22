@@ -57,12 +57,13 @@ def test_a_new_node_is_a_create_and_the_edge_that_reaches_it(ws):
     assert kinds(diff) == ['create_edge', 'create_node']
     create = next(op for op in diff.ops if op['kind'] == 'create_node')
     assert (create['var'], create['concept']) == ('s1y', 'yard')
-    # Unaligned: a node made here has a zero-width anchor at the start of its
-    # sentence until somebody anchors it on the canvas, and it records that
-    # sentence, which is how the editor tells it from a stray once another
-    # app deletes the sentence.
-    assert create['begin'] == 0
-    assert create['sentence_id'] == ws.doc('Story').sentences[0].id
+    # Aligned to no word: the anchor stands over the WHOLE sentence until
+    # somebody anchors it on the canvas, so an edit to the text around it
+    # resizes the anchor rather than deleting the node, and the sentence it
+    # records is what says it is aligned to nothing.
+    s1 = ws.doc('Story').sentences[0]
+    assert (create['begin'], create['end']) == (s1.begin, s1.end)
+    assert create['sentence_id'] == s1.id
     edge = next(op for op in diff.ops if op['kind'] == 'create_edge')
     assert (edge['source_var'], edge['role'], edge['target_var']) == ('s1b', ':place', 's1y')
     # The source exists, so the executor needs no id for it; the target does
@@ -139,6 +140,12 @@ def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(clie
         ('tokens', 'bulk_create'), ('spans', 'create'), ('relations', 'create')]
     # Three batches, because a span cannot name a token its own batch minted.
     assert [len(b) for b in client.batches] == [1, 1, 1]
+    # The anchor covers the whole sentence, not a point at its start: core
+    # deletes a zero-width token a text edit spans, and the node would go
+    # with it (c6313696).
+    s1 = ws.doc('Story').sentences[0]
+    token = next(e for e in log if e[0] == 'tokens')
+    assert (token[2][0][0]['begin'], token[2][0][0]['end']) == (s1.begin, s1.end)
     span = next(e for e in log if e[0] == 'spans')
     assert span[2][0] == 'm-concept' and span[2][2] == 'yard'
     assert span[2][1] == ['new-tokens-0']          # the token the first batch made

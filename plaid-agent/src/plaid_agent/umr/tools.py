@@ -384,7 +384,9 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
                 'concept': end['var'], 'attrs': [], 'constant': True,
                 'node_layer_id': ws.project.node_layer_id,
                 'concept_layer_id': ws.project.concept_layer_id,
-                'text_id': doc.text_id, 'begin': 0,
+                # A constant belongs to no sentence, so its anchor is a point
+                # at the text's start, which is where the editor puts one.
+                'text_id': doc.text_id, 'begin': 0, 'end': 0,
                 'label': f'add the constant {end["var"]}'})
     op: Dict[str, Any] = {
         'kind': 'create_triple', 'document_id': doc.id,

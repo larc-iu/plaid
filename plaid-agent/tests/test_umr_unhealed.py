@@ -75,6 +75,17 @@ def test_a_node_whose_recorded_sentence_is_gone_is_placed_by_its_anchor():
     assert node.pieces[0].begin == 17
 
 
+def test_a_node_standing_over_its_whole_sentence_is_aligned_to_no_word():
+    """What says a node is aligned to nothing is the sentence it records, not
+    its anchor's width: the anchor covers the whole sentence, so reading the
+    width would align the node to every word of it and the model would be told
+    a node is about words nobody put it on."""
+    document = _load(_with_unaligned(SENT_2, 'ms-2'))
+    _sentence, node = _node(document, 's2p')
+    assert node.aligned is False
+    assert node.alignment == []
+
+
 def test_a_node_whose_anchor_drifted_off_its_sentence_stays_in_it():
     """An anchor that no longer covers exactly its sentence is what the app's
     resize puts back. Placement reads the begin alone, so it is unaffected."""

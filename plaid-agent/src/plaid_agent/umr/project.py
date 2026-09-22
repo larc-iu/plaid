@@ -5,10 +5,14 @@ word token layers, and IGT's morphemes when the project has them) plus four
 layers UMR owns, flagged under ``config.umr``:
 
     nodes          a ROOT token layer, one token per contiguous anchor piece,
-                   zero-width where a node is unaligned
+                   covering the WHOLE SENTENCE where a node is aligned to no
+                   word (a constant, which belongs to no sentence, stands on a
+                   point at the text's start)
     concepts       a span layer, one span per graph node. ``value`` is the
                    concept and ``metadata.umr`` is
-                   ``{var, attrs: [{rel, value, order}], constant?, root?}``
+                   ``{var, attrs: [{rel, value, order}], constant?, root?,
+                   sentence?}``, where ``sentence`` is the sentence token's id
+                   and is carried by exactly the nodes aligned to no word
     relations      the sentence-level edges, ``value`` the role,
                    ``metadata.umr = {order}``
     documentGraph  the temporal, modal and coreference triples,
@@ -176,8 +180,8 @@ def load_project(client, project_id: str) -> UmrProject:
 
 @dataclass
 class Piece:
-    """One contiguous anchor of a node: a token on the node layer, zero-width
-    where the node is not aligned to any word."""
+    """One contiguous anchor of a node: a token on the node layer, covering
+    the whole sentence where the node is aligned to no word."""
     id: str
     begin: int
     end: int
@@ -231,6 +235,9 @@ class GNode:
     metadata: Optional[dict] = None
     pieces: List[Piece] = dc_field(default_factory=list)
     sentence: Optional[int] = None
+    #: The sentence token this node RECORDS, which is carried by exactly the
+    #: nodes aligned to no word. Not the sentence it stands in (``sentence``).
+    sentence_token: Optional[str] = None
     alignment: List[Tuple[int, int]] = dc_field(default_factory=list)
     out: List[Edge] = dc_field(default_factory=list)
     into: List[Edge] = dc_field(default_factory=list)
@@ -239,7 +246,11 @@ class GNode:
 
     @property
     def aligned(self) -> bool:
-        return any(p.end > p.begin for p in self.pieces)
+        """Aligned to words, which is what the absence of a sentence record
+        says. A node aligned to nothing stands over the whole of its sentence,
+        so reading the anchor's width instead would align it to every word
+        (the rule in plaid-umr ``src/domain/sentenceGraph.js``)."""
+        return not self.sentence_token and any(p.end > p.begin for p in self.pieces)
 
     def attr_line(self) -> str:
         return ' '.join(f'{a.get("rel")} {a.get("value")}' for a in self.attrs)
@@ -416,7 +427,8 @@ def parse_document(raw: dict, project: UmrProject) -> UmrDoc:
             concept=span.get('value') if span.get('value') is not None else '',
             attrs=sorted(list(meta.get('attrs') or []), key=lambda a: a.get('order') or 0),
             constant=meta.get('constant') is True, root=meta.get('root') is True,
-            metadata=span.get('metadata'), pieces=pieces)
+            metadata=span.get('metadata'), pieces=pieces,
+            sentence_token=meta.get('sentence') or None)
         nodes_by_id[span['id']] = node
         if node.constant:
             constants.append(node)
@@ -461,7 +473,9 @@ def parse_document(raw: dict, project: UmrProject) -> UmrDoc:
 
     for s in sentences:
         for node in s.nodes:
-            node.alignment = _alignment_of(node, s.words)
+            # A node aligned to no word covers its whole sentence, which is
+            # where it stands and not what it is about: it aligns to nothing.
+            node.alignment = _alignment_of(node, s.words) if node.aligned else []
         s.nodes.sort(key=lambda n: (n.pieces[0].begin if n.pieces else 0, n.var))
         s.edges.sort(key=lambda e: e.order)
         s.roots = _roots_of(s, nodes_by_id)
@@ -473,8 +487,9 @@ def parse_document(raw: dict, project: UmrProject) -> UmrDoc:
 
 
 def _alignment_of(node: GNode, words: List[Word]) -> List[Tuple[int, int]]:
-    """The 1-based inclusive word ranges a node's pieces cover. A zero-width
-    piece covers nothing, so an unaligned node gives []."""
+    """The 1-based inclusive word ranges a node's pieces cover. Asked only of
+    a node aligned to words: one aligned to none stands over its whole
+    sentence, and reading that would cover every word of it."""
     ranges: List[Tuple[int, int]] = []
     for piece in node.pieces:
         covered = [w for w in words if _overlaps(piece.begin, piece.end, w.begin, w.end)]

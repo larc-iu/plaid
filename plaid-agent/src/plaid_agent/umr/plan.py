@@ -151,13 +151,18 @@ def _apply_set_edge_order(ctx: Context, op) -> int:
 
 
 def _apply_create_node(ctx: Context, op) -> int:
-    """The anchor token. A node made here is UNALIGNED, so the token is
-    zero-width at the start of its sentence, exactly as the editor makes one
-    before a person anchors it to words."""
+    """The anchor token. A node made here is aligned to no word, so it stands
+    over the WHOLE of its sentence, exactly as the editor makes one before a
+    person anchors it to words (``UmrDocument.piecesFor``). It stood on a point
+    at the sentence's start until ``c6313696``: core deletes a zero-width token
+    a deletion spans, so an edit in another app that joined two sentences took
+    the node with it. A constant belongs to no sentence and keeps its point at
+    the text's start, which is what the editor gives one."""
     key = (op['document_id'], op['var'])
-    ctx.token_at[key] = ctx.b.add(lambda batch, o=op: batch.tokens.bulk_create([{
-        'token_layer_id': o['node_layer_id'], 'text': o['text_id'],
-        'begin': o.get('begin') or 0, 'end': o.get('begin') or 0}]))
+    begin = op.get('begin') or 0
+    end = op.get('end') or begin
+    ctx.token_at[key] = ctx.b.add(lambda batch, o=op, a=begin, z=end: batch.tokens.bulk_create([{
+        'token_layer_id': o['node_layer_id'], 'text': o['text_id'], 'begin': a, 'end': z}]))
     return 1
 
 
@@ -310,7 +315,7 @@ KIND = ok.registry([
     OpKind('create_node', _NODE, required=('var', 'node_layer_id', 'concept_layer_id', 'text_id'),
            apply=_apply_create_node,
            target=lambda op: ('new-node', op.get('document_id'), op.get('var')),
-           compact_each=('var', 'concept', 'attrs', 'begin', 'root', 'ref', 'label'),
+           compact_each=('var', 'concept', 'attrs', 'begin', 'end', 'root', 'ref', 'label'),
            compact_label=_group_label),
     OpKind('create_edge', _EDGE, stage=LINKS, required=('relation_layer_id', 'role'),
            apply=_apply_create_edge,
@@ -511,10 +516,10 @@ def _execute(client, project, ops, *, label, counts, notes, stamps: Stamps,
                 meta['constant'] = True
             if op.get('root'):
                 meta['root'] = True
-            # A node made here is unaligned, so it records its sentence, as
-            # the editor does: its anchor is a point at the sentence's start,
-            # which outlives the sentence when another app deletes it, and the
-            # editor's reconcile tells the stray by the record.
+            # A node aligned to no word records its sentence, as the editor
+            # does: the record is what says so, and the anchor stands over the
+            # whole sentence, so an edit to the text around it resizes the
+            # anchor rather than taking the node with it.
             if op.get('sentence_id') and not op.get('constant'):
                 meta['sentence'] = op['sentence_id']
             ctx.span_at[(op['document_id'], op['var'])] = b.add(
