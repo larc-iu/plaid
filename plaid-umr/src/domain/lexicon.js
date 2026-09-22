@@ -38,9 +38,7 @@ const loaded = new Map();
 // The frame file for a BCP-47 tag (`en-US` reads as `en`), or null when the
 // language has none.
 export function loadFrames(languageTag) {
-  const base = String(languageTag || '')
-    .toLowerCase()
-    .split(/[-_]/)[0];
+  const base = baseTag(languageTag);
   const load = FILES[base];
   if (!load) return Promise.resolve(null);
   if (!loaded.has(base)) {
@@ -57,15 +55,6 @@ export function loadFrames(languageTag) {
   }
   return loaded.get(base);
 }
-
-export const hasFrames = (languageTag) =>
-  Boolean(
-    FILES[
-      String(languageTag || '')
-        .toLowerCase()
-        .split(/[-_]/)[0]
-    ],
-  );
 
 // The lemma of a roleset id: `leave-02` is `leave`, `have-org-role-92` is
 // `have-org-role`.

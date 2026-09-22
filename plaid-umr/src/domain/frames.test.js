@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { FRAME_LANGUAGES, baseTag, framesFor, hasFrames } from './lexicon.js';
+import { FRAME_LANGUAGES, baseTag, framesFor } from './lexicon.js';
 
 const FILE = {
   en: 'english.json',
@@ -49,11 +49,5 @@ describe('finding a language’s frames', () => {
     expect(framesFor('lez')).toBeNull();
     expect(framesFor('')).toBeNull();
     expect(framesFor(undefined)).toBeNull();
-  });
-
-  it('agrees with hasFrames, which the canvas asks', () => {
-    for (const tag of ['en', 'zh', 'ar', 'pt', 'arp', 'lez', '']) {
-      expect(Boolean(framesFor(tag))).toBe(hasFrames(tag));
-    }
   });
 });

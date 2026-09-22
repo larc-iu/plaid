@@ -1,19 +1,20 @@
-// What to say about a finished draft run, from what the service actually
-// reported.
+// What to say about a finished draft run: the service's own words.
 //
-// The rule: never claim more than we know. A service reports a per-sentence
-// failure in its counts rather than by failing the request, so a run where
-// every sentence was skipped or refused still comes back `status: success`
-// with zeros. Announcing "Drafted" over an untouched document is the bug this
-// exists to prevent.
+// The rule: never claim more than we know. A drafting service reports a
+// per-sentence failure in its counts rather than by failing the request, so a
+// run where every sentence was skipped or refused still comes back
+// `status: success` with zeros. Announcing "Drafted" over an untouched
+// document is the bug this exists to prevent.
 //
-// A service that declares its own `notice` authors both the words and the
-// severity, and this only maps the severity to a colour. The counts are the
-// fallback for a service that predates that contract.
+// A service declares its own `notice` (both bundled ones do: see
+// `build_draft_notice` in services/umr_draft_llm.py, which the skeleton
+// service shares), authoring both the words and the severity. This maps the
+// severity to a colour and passes the words through. It used to rebuild the
+// sentences from the counts as well, which was a second home for the same
+// wording and had already drifted from the service's: the same all-skipped
+// run read "Document not modified" from Python and "Nothing drafted" here.
 //
 // Pure, so `test/draftNotice.test.js` can drive every shape.
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
 export const draftNotice = (summary) => {
   const notice = summary?.notice;
   if (notice) {
@@ -23,22 +24,11 @@ export const draftNotice = (summary) => {
       message: notice.message || undefined,
     };
   }
-  const drafted = Number(summary?.drafted) || 0;
-  const skipped = Number(summary?.skipped) || 0;
-  const failed = Number(summary?.failed) || 0;
-  const tail = [];
-  if (skipped) tail.push(`Skipped ${plural(skipped, 'sentence')} that already had a graph.`);
-  if (failed) tail.push(`Failed ${plural(failed, 'sentence')}.`);
-  if (drafted > 0) {
-    return {
-      level: 'success',
-      title: `Drafted ${plural(drafted, 'sentence')}`,
-      message: tail.join(' ') || undefined,
-    };
-  }
+  // A service that reports no notice at all: say that, and nothing about
+  // what it may or may not have written.
   return {
     level: 'warning',
-    title: 'Nothing drafted',
-    message: tail.join(' ') || 'The service reported no changes to this document.',
+    title: 'Draft finished',
+    message: 'The service reported no summary.',
   };
 };
