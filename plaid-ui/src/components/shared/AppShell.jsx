@@ -9,6 +9,7 @@ import { AssistantSubjectProvider } from '../assistant/AssistantSubject.jsx';
 import { useAssistantScope } from '../assistant/subject.js';
 import { adminUrl } from '../../domain/siblingApps.js';
 import { useUserKeymap } from '../../hooks/useUserKeymap.js';
+import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
 // The app shell, and the one place the assistant panel is mounted.
 //
@@ -34,7 +35,12 @@ const Shell = ({ adapter, keymap }) => {
 
   const routes = appRoutes();
 
-  const handleLogout = () => {
+  // Signing out takes the screen underneath with it, so it is a way out like
+  // any other: the text typed on the screen below is asked about first.
+  const guardLeaving = useUnsavedGuard();
+
+  const handleLogout = async () => {
+    if (!(await guardLeaving())) return;
     logout();
     navigate(routes.login);
   };

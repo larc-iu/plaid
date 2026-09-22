@@ -4,7 +4,11 @@ import { Copy, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
-import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import {
+  useUnsavedDraft,
+  useUnsavedGuard,
+  dropUnsavedDrafts,
+} from '../../hooks/useUnsavedDraft.js';
 import { canEditProject } from '../../domain/permissions.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { humanizeError } from '../../lib/errors.js';
@@ -54,6 +58,9 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
   // A typed name that has not been saved: leaving this screen asks first,
   // whether by the tab strip, a link, Back or a reload.
   useUnsavedDraft(dirty ? 'The name you have typed' : null);
+  // The two ways this screen leaves itself. A router push is none of the ways
+  // out the hook watches, so it asks here.
+  const guardLeaving = useUnsavedGuard();
 
   const handleRename = async () => {
     if (!dirty) return;
@@ -72,6 +79,11 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
       if (!created?.id) return;
       setCopyOpen(false);
       notifySuccess(`Copied to “${created.name}”`);
+      // The copy is made either way; what is asked about is LEAVING this
+      // screen for it, because the name typed above goes with the screen. The
+      // question stands immediately before the navigation, not at the top of
+      // the handler, so a No cancels nothing the reader asked for.
+      if (!(await guardLeaving())) return;
       navigate(routes.document(projectId, created.id));
     } finally {
       setCopying(false);
@@ -90,6 +102,9 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
     try {
       await getClient().documents.delete(documentId);
       notifySuccess(`Deleted “${label}”`);
+      // Nothing to ask: the document the name was typed for is gone. The extra
+      // history entry still comes out before the route changes.
+      await dropUnsavedDrafts();
       navigate(routes.documents(projectId));
     } catch (err) {
       notifyError(humanizeError(err), 'Failed to delete document');

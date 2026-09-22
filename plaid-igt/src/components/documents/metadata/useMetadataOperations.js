@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
+import { useUnsavedGuard, dropUnsavedDrafts } from '@ui/hooks/useUnsavedDraft.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
@@ -65,6 +66,9 @@ export const useMetadataOperations = () => {
       (field) => (editedMetadata[field.name] ?? '') !== (document.metadata[field.name] || ''),
     );
   useUnsavedDraft(nameChanged || fieldsChanged ? 'What you have typed here' : null);
+  // The two ways this tab leaves itself. A router push is none of the ways out
+  // the hook watches, so it asks here.
+  const guardLeaving = useUnsavedGuard();
 
   const handleCopyClick = () => {
     setCopyName(`${document.name || ''} (copy)`);
@@ -80,6 +84,9 @@ export const useMetadataOperations = () => {
     if (newId) {
       setCopyModalOpen(false);
       notifySuccess(`"${name}" is ready.`, 'Document copied');
+      // The copy is made either way; what is asked about is LEAVING this
+      // screen for it, because what is typed here goes with the screen.
+      if (!(await guardLeaving())) return;
       navigate(`/projects/${doc.projectId}/documents/${newId}`);
     }
   };
@@ -95,6 +102,9 @@ export const useMetadataOperations = () => {
     setDeleteModalOpen(false);
     if (ok) {
       notifySuccess(`"${name}" has been successfully deleted.`, 'Document deleted');
+      // Nothing to ask: the document what was typed belonged to is gone. The
+      // extra history entry still comes out before the route changes.
+      await dropUnsavedDrafts();
       navigate(`/projects/${doc.projectId}`);
     }
   };

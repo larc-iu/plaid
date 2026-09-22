@@ -192,6 +192,21 @@ export const useUnsavedGuard = () => {
 };
 
 /**
+ * Leave without asking, because what the drafts belonged to is gone: the
+ * document holding them has just been deleted, so there is nothing left to
+ * rename and nothing to ask about.
+ *
+ * The extra history entry still has to come out, and it has to come out BEFORE
+ * the navigation: once the router has pushed the next page the entry is buried
+ * under it, nothing can take it out again, and the reader pays for it with a
+ * Back press that looks like it did nothing.
+ */
+export const dropUnsavedDrafts = async () => {
+  drafts.clear();
+  await dropStop();
+};
+
+/**
  * Register a half-typed value, so that leaving asks first. `what` names it in
  * the question ("The baseline text you have typed"); null while there is
  * nothing to lose.
