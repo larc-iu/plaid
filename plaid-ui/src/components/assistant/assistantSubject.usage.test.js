@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { appTrees, repoRoot } from '../../test/apps.js';
 
 // What every screen that publishes an assistant subject has to say about the
 // reader, checked against the source rather than by rendering.
@@ -16,23 +16,17 @@ import { fileURLToPath } from 'node:url';
 //
 // A static read is the right tool: the property is "this prop is present at
 // this call site", which a reader of the source can see and a renderer cannot.
-// It reads BOTH apps, since the hook is shared and a new screen in either can
-// break it, which is why it sits beside `subject.js` here rather than in one
-// of them. It runs under plaid-igt's vitest, like every test in this package.
+// It reads EVERY app and this package, since the hook is shared and a new
+// screen anywhere can break it, which is why it sits beside `subject.js` here
+// rather than in one of them. It runs under plaid-igt's vitest, like every test
+// in this package.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-const repoRoot = () => {
-  let dir = here;
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'plaid-igt', 'src'))) return dir;
-    dir = path.dirname(dir);
-  }
-  throw new Error(`No repo root above ${here}`);
-};
 const repo = repoRoot();
 
-const APPS = ['plaid-igt/src', 'plaid-ud/src', 'plaid-dict/src'];
+// This package as well as the apps: the project tab strip publishes the project
+// for every project-level screen and lives here now, so a read of the apps
+// alone would find four call sites and pass on a false floor.
+const TREES = ['plaid-ui/src', ...appTrees('src'), 'plaid-dict/src'];
 
 const sources = (dir) =>
   fs.existsSync(dir)
@@ -46,7 +40,7 @@ const sources = (dir) =>
 // Every `useAssistantSubject({ … })` across the apps, as {file, line, args}.
 // Brace-balanced, since the argument holds callbacks full of JSX.
 const callSites = () =>
-  APPS.flatMap((app) => sources(path.join(repo, app))).flatMap((file) => {
+  TREES.flatMap((tree) => sources(path.join(repo, tree))).flatMap((file) => {
     const text = fs.readFileSync(file, 'utf8');
     const out = [];
     const marker = 'useAssistantSubject({';

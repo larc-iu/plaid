@@ -1,121 +1,55 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
+import { canManageProject } from '@ui/domain/permissions.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
-import { Tabs, TabsList, TabsTrigger } from '@ui/components/ui/tabs';
+import { ProjectTabStrip } from '@ui/components/shared/ProjectTabStrip.jsx';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { UMR_ASSISTANT } from '../assistant/adapter.js';
 
-// The top tab bar for the project-level views, mirroring the per-document
-// DocumentTabs. Each tab is route-backed and renders its own body. `project`
-// may be null mid-load, which the gating tolerates.
+// This app's project-level tabs, as data for the shared strip
+// (@ui/components/shared/ProjectTabStrip), which draws them, decides which is
+// active, and publishes the project to the assistant panel.
 //
-// It is also where the shell's assistant panel learns which project the reader
-// is on. Every project-level screen renders this strip and is already handed
-// the project, so this is the ONE place that fact exists for all of them. A
-// document has a subject of its own (see DocumentEditorShell) and does not
-// render this.
+// `project` is the full object every page already fetches (it carries the layer
+// config `getUmrLayerInfo` reads); it may be null mid-load, which the gating
+// below tolerates.
+
+// Settings stands for every section route under it, and for the standalone
+// layer-setup page.
+const SETTINGS = /\/(management|customization|services|tokens|general|configuration)$/;
+
 export const ProjectTabs = ({ projectId, project }) => {
-  const location = useLocation();
-  const navigate = useNavigate();
   const { user, getClient } = useAuth();
   // The tab is offered only when an assistant is online. The ROUTE still
   // works, so a link to a past conversation opens whether or not one is
   // running: this hides the invitation, not the conversations.
   const assistantAvailable = useAssistantAvailable(getClient(), projectId, UMR_ASSISTANT.app);
-
-  // The panel is about the PROJECT here. No subject of its own: what a reader
-  // is looking at on these screens is the project at large, and naming a screen
-  // the assistant has no tool for (the importer, the access list) would invite
-  // it to claim it can act there.
-  useAssistantSubject({
-    projectId,
-    projectName: project?.name,
-    canWrite: canEditProject(project, user),
-    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
-  });
-
   const canManage = canManageProject(project, user);
-  const configured = getUmrLayerInfo(project).isConfigured;
   // Settings assumes a configured project. An unconfigured one routes to the
   // layer-setup page instead.
-  const settingsTo = configured
-    ? `/projects/${projectId}/management`
-    : `/projects/${projectId}/configuration`;
+  const configured = getUmrLayerInfo(project).isConfigured;
 
-  const p = location.pathname;
-  const active = p.endsWith('/guidelines')
-    ? 'guidelines'
-    : p.endsWith('/assistant')
-      ? 'assistant'
-      : p.endsWith('/import-export')
-        ? 'import-export'
-        : p.endsWith('/activity')
-          ? 'activity'
-          : p.endsWith('/validate')
-            ? 'validate'
-            : /\/(management|customization|services|tokens|general|configuration)$/.test(p)
-              ? 'settings'
-              : 'documents';
+  const at = (section) => `/projects/${projectId}/${section}`;
+  const tabs = [
+    { value: 'documents', label: 'Documents', to: at('documents') },
+    { value: 'guidelines', label: 'Guidelines', to: at('guidelines') },
+    {
+      value: 'assistant',
+      label: 'Assistant',
+      to: at('assistant'),
+      show: assistantAvailable,
+      alsoWhenActive: true,
+    },
+    { value: 'validate', label: 'Validation', to: at('validate'), show: canManage },
+    { value: 'activity', label: 'Activity', to: at('activity'), show: canManage },
+    {
+      value: 'settings',
+      label: 'Project Settings',
+      to: at(configured ? 'management' : 'configuration'),
+      match: SETTINGS,
+      show: canManage,
+    },
+    { value: 'import-export', label: 'Import & Export', to: at('import-export') },
+  ];
 
-  const routes = {
-    documents: `/projects/${projectId}/documents`,
-    guidelines: `/projects/${projectId}/guidelines`,
-    assistant: `/projects/${projectId}/assistant`,
-    activity: `/projects/${projectId}/activity`,
-    validate: `/projects/${projectId}/validate`,
-    settings: settingsTo,
-    'import-export': `/projects/${projectId}/import-export`,
-  };
-
-  return (
-    <div className="mb-6">
-      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
-        <Link to="/projects" className="text-muted-foreground hover:text-foreground">
-          Projects
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="truncate text-muted-foreground">{project?.name || 'Loading…'}</span>
-      </nav>
-
-      {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open
-          it in a new browser tab. The shared trigger swallows Radix's double
-          fire. */}
-      <Tabs value={active} onValueChange={(v) => navigate(routes[v])}>
-        <TabsList>
-          <TabsTrigger value="documents" to={routes.documents}>
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="guidelines" to={routes.guidelines}>
-            Guidelines
-          </TabsTrigger>
-          {(assistantAvailable || active === 'assistant') && (
-            <TabsTrigger value="assistant" to={routes.assistant}>
-              Assistant
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="validate" to={routes.validate}>
-              Validation
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="activity" to={routes.activity}>
-              Activity
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="settings" to={routes.settings}>
-              Project Settings
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="import-export" to={routes['import-export']}>
-            Import &amp; Export
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-    </div>
-  );
+  return <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} />;
 };
