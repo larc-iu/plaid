@@ -81,12 +81,12 @@ It is not a place for annotation data, which belongs in layers where it is share
 === Guidelines
 
 A project may carry a flat list of **guidelines** (`/projects/{id}/guidelines`, `/guidelines/{id}`): short Markdown documents recording the conventions the people working on it have agreed to — how a hard case is annotated, what a field is for, what the project leaves alone.
-Each has a `title` (the handle an assistant asks for one by), a one-line `summary`, a Markdown `body`, and a `pinned` flag that an assistant reads as "send this one in full on every turn".
+Each has a `title` (the handle an assistant asks for one by), a Markdown `body`, and a `pinned` flag that an assistant reads as "send this one in full on every turn".
 Titles are deliberately **not** unique: refusing a write because a title is taken would throw away a document that had just been typed, so a client warns about it instead, and anything resolving a guideline by title has to answer for every match rather than pick one.
 Reading takes Reader access and writing takes Writer, matching comments rather than layer configuration: the people who annotate are the people who discover what the conventions have to be.
 The list is ordered by title and paginated like every other collection (see <<Pagination>>); without `include-bodies` each entry carries `body-chars` instead of its text, so a caller can budget before fetching any.
 A PATCH may be made CONDITIONAL by passing `updated-at` (the `updated-at` the caller last read): if somebody else saved in between the write is refused with a 409 and nothing is written, which is what stops two people editing one guideline from silently overwriting each other. Omit it and the write is unconditional, which is what a pin toggle or a script wants.
-Writes ARE audited, so a change appears in the project's audit feed with pre- and post-images and announces on its event stream — but guidelines are project-scoped rather than document-scoped, so they are not time-travelable: `?as-of=` on these routes is a 400, not an answer.
+Writes ARE audited, so a change appears in the project's audit feed with the row as it now stands and announces on its event stream — but guidelines are project-scoped rather than document-scoped, so they are not time-travelable: `?as-of=` on these routes is a 400, not an answer.
 They are deleted with the project.
 
 == Clients
@@ -1261,8 +1261,8 @@ The server runs a batch as one transaction holding its single write lock for the
 
 A batch of many single updates is expensive: every request in it is processed on its own inside the one transaction, and each writes its own operation.
 When the changes are all of one kind, use the bulk endpoints instead, which apply a whole list in one operation and one transaction.
-`bulk_create` and `bulk_delete` exist for tokens, spans, relations and vocab links.
-`bulk_update` exists for spans and relations (a value, a metadata patch, or both, per entry) and for tokens (a metadata patch per entry):
+`bulk_create` and `bulk_delete` exist for tokens, spans, relations, vocab links and vocab items.
+`bulk_update` exists for spans and relations (a value, a metadata patch, or both, per entry), for tokens (a metadata patch per entry) and for vocab items (a form, a metadata patch, or both, per entry):
 
 [,python]
 ----
