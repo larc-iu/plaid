@@ -23,7 +23,8 @@ from ..core.webtools import t_read_url, t_web_search
 
 from .corpus import (COUNTABLE, SEARCHABLE, WORKLIST_KINDS, t_find_nodes, t_frequency_list,
                      t_search, t_worklist)
-from .history import t_comments, t_recent_changes
+from ..core.history import recent_changes as t_recent_changes
+from .history import t_comments
 from .project import DOC_CONSTANTS, GROUPS
 from .query import t_query, t_query_help
 from .sandbox import t_code_help, t_run_code

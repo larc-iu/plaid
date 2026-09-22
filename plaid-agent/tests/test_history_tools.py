@@ -10,7 +10,6 @@ from fixtures_ext import ExtClient
 
 from plaid_agent.igt.plan import execute_plan, validate_ops
 from plaid_agent.igt.toolkit import call_tool
-from plaid_agent.igt.reads import AUDIT_WINDOWS_DAYS
 
 
 def _ago(days):
@@ -30,27 +29,36 @@ def _client_with_audit():
     return c
 
 
-def test_recent_changes_reads_recent_windows_first_and_widens():
+def test_recent_changes_pages_the_log_newest_first():
+    """The audit endpoint pages from the OLDEST entry unless it is asked
+    otherwise, so this app used to read a WINDOW (a week, then a month, then
+    six months, then everything) and sort what came back. On a long-lived
+    project that fetched the whole history to print twenty lines: 2.1 s where
+    the other two apps take 0.13 s. One paged read for all three now.
+    """
     c = _client_with_audit()
     out = call_tool(scan_ws(c), 'recent_changes', {'limit': 1})
-    assert out.startswith('1 most recent change (newest first; as_of=')
-    assert c.audit_calls == [c.audit_calls[0]] and c.audit_calls[0] >= _ago(8)  # one window, a week
-    assert f'Luke G: Assistant: 2 field values  ["Text 1"]  (2 ops)  as_of={c.audit[0]["end_time"]}' in out
-    c = _client_with_audit()
-    out = call_tool(scan_ws(c), 'recent_changes', {'limit': 2})
-    assert len(c.audit_calls) == 3 and c.audit_calls[2] <= _ago(179)  # widened to 180 days
-    assert '2 most recent changes' in out and 'Create project "Demo"' in out
-    c = _client_with_audit()
-    call_tool(scan_ws(c), 'recent_changes', {'limit': 5})
-    assert len(c.audit_calls) == len(AUDIT_WINDOWS_DAYS) and c.audit_calls[-1] is None  # the whole log, last
-    # A user filter widens until enough of THAT person's entries are in hand.
+    assert out.startswith('1 change(s), newest first. as_of=')
+    assert 'which is what restore_document takes' in out
+    # One page, asked for newest first, with no window at all.
+    assert c.audit_pages == [{'order': 'desc', 'start_time': None}]
+    assert 'Luke G  "Text 1": Assistant: 2 field values (2 op(s))' in out
+    assert f'as_of={c.audit[0]["end_time"]}' in out
+
+    # A user filter costs no extra request: the page is filtered in hand.
     c = _client_with_audit()
     out = call_tool(scan_ws(c), 'recent_changes', {'limit': 1, 'user': 'someone'})
-    assert len(c.audit_calls) == 3 and '1 most recent change by "someone"' in out
-    # since= reads exactly that window.
+    assert len(c.audit_pages) == 1 and 'Someone' in out
+
+    # Nobody by that name, and the reply says how far it looked.
+    c = _client_with_audit()
+    out = call_tool(scan_ws(c), 'recent_changes', {'user': 'nobody here'})
+    assert 'Nothing by "nobody here" among the 3 most recent change(s).' == out
+
+    # since= is passed to the server rather than filtered here.
     c = _client_with_audit()
     call_tool(scan_ws(c), 'recent_changes', {'since': '2026-01-01'})
-    assert c.audit_calls == ['2026-01-01T00:00:00Z']
+    assert c.audit_pages == [{'order': 'desc', 'start_time': '2026-01-01T00:00:00Z'}]
 
 
 def _comments():

@@ -124,6 +124,7 @@ class BaseFakeClient:
     def __init__(self, project, documents, audit=None, guidelines=None):
         self.log = []
         self.doc_reads = []  # (document id, layers asked for) per body read
+        self.audit_pages = []  # {order, start_time} per paged audit read
         self.batches = []  # each: list of log entries submitted together
         self.operations = []
         self._project = project
@@ -145,6 +146,7 @@ class BaseFakeClient:
             return self.c.audit
 
         def audit_page(self, pid, *, order=None, limit=None, cursor=None, start_time=None, **kw):
+            self.c.audit_pages.append({'order': order, 'start_time': start_time})
             entries = [e for e in self.c.audit if not start_time or (e.get('time') or '') >= start_time]
             entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
             return {'entries': entries[:limit] if limit else entries, 'next_cursor': None}
@@ -181,6 +183,7 @@ class BaseFakeClient:
             return [e for e in self.c.audit if any(d['id'] == did for d in e.get('documents', []))]
 
         def audit_page(self, did, *, order=None, limit=None, cursor=None, start_time=None, **kw):
+            self.c.audit_pages.append({'order': order, 'start_time': start_time})
             entries = [e for e in self.audit(did) if not start_time or (e.get('time') or '') >= start_time]
             entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
             return {'entries': entries[:limit] if limit else entries, 'next_cursor': None}

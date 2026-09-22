@@ -2,19 +2,18 @@
 
 The corpus-wide half of reading (search over every document, the statistics
 and worklists) is :mod:`.stats` and :mod:`.corpus`, which ask the query engine.
-What is here reads one document, one entry, or one window of the change
-history, and renders it for the model.
+What is here reads one document or one entry and renders it for the model. The
+change history is :mod:`..core.history`, shared with the other apps.
 """
 
 import json
-import re
 import unicodedata
 from collections import Counter
 from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int, sentence_number
 from ..core.limits import READ_LIMITS, RENDER_BUDGET
-from ..core.tools import ToolError, server_refused, truncate
+from ..core.tools import ToolError, truncate
 
 from .project import (Word, Morpheme, document_lines, joiner, render_document, render_overview,
                       render_word, segmentation, word_ref)
@@ -578,77 +577,6 @@ def _consistency_lines(ws, f, values, by_form, unlinked_n, unlinked, linked_empt
                          + (': ' + '; '.join(unlinked) + (' …' if unlinked_n > len(unlinked) else '') if unlinked else '.'))
             lines.append(f'{linked_empty_n} linked but with no {f.name} value'
                          + (': ' + '; '.join(linked_empty) + (' …' if linked_empty_n > len(linked_empty) else '') if linked_empty else '.'))
-    return truncate('\n'.join(lines))
-
-
-# How far back recent_changes looks when no `since` is given, widening until
-# it has enough entries: the audit endpoint pages from the OLDEST entry, so
-# an unbounded read of a long-lived project would fetch its whole history to
-# show the newest twenty.
-AUDIT_WINDOWS_DAYS = (7, 30, 180, 730, None)
-
-
-def _audit_entries(ws: Workspace, document: Optional[str], start: Optional[str], keep) -> list:
-    """The audit entries at or after ``start`` that ``keep`` accepts."""
-    try:
-        if document:
-            did = ws.resolve_document_id(document)
-            entries = ws.client.documents.audit(did, start_time=start)
-        else:
-            entries = ws.client.projects.audit(ws.project.id, start_time=start)
-    except ToolError:
-        raise
-    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
-        raise server_refused('The change history', e) from None
-    return [e for e in entries or [] if keep(e)]
-
-
-def t_recent_changes(ws: Workspace, document: Optional[str] = None, limit: Optional[int] = None,
-                     since: Optional[str] = None, user: Optional[str] = None) -> str:
-    """The newest entries of the audit log: who changed what, when, under
-    which operation label (the assistant's own applied plans included).
-    `since` is a date (YYYY-MM-DD) or timestamp; `user` matches the actor's
-    name or email. Without `since`, recent windows are read first and
-    widened until `limit` entries are in hand."""
-    import datetime
-    limit = clamp_limit(limit, *READ_LIMITS['recent_changes'])
-    ws.on_progress('Reading the change history…')
-    u = (user or '').casefold()
-
-    def keep(e):
-        return not u or u in ((e.get('user') or {}).get('display_name') or '').casefold() \
-            or u in ((e.get('user') or {}).get('id') or '').casefold()
-
-    if since:
-        start = since.strip()
-        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
-            start += 'T00:00:00Z'
-        entries = _audit_entries(ws, document, start, keep)
-    else:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        entries = []
-        for days in AUDIT_WINDOWS_DAYS:
-            start = (now - datetime.timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ') if days else None
-            entries = _audit_entries(ws, document, start, keep)
-            if len(entries) >= limit:
-                break
-    entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
-    if not entries:
-        return 'No changes recorded.'
-    lines = [f'{len(entries)} most recent change{"s" if len(entries) != 1 else ""}'
-             + (f' since {since}' if since else '') + (f' by "{user}"' if user else '')
-             + ' (newest first; as_of= is the moment right after that change, for restore_document):']
-    for e in entries:
-        who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
-        when = (e.get('time') or '')[:16].replace('T', ' ')
-        after = e.get('end_time') or e.get('time') or ''
-        ops = e.get('ops') or []
-        kinds: Counter = Counter(o.get('type') for o in ops)
-        what = e.get('message') or (ops[0].get('description') if len(ops) == 1 and ops else
-                                    ', '.join(f'{n}× {k}' for k, n in kinds.most_common(4)))
-        docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])[:3])
-        lines.append(f'  {when}  {who}: {what}' + (f'  [{docs}]' if docs else '')
-                     + (f'  ({len(ops)} ops)' if len(ops) > 1 else '') + f'  as_of={after}')
     return truncate('\n'.join(lines))
 
 

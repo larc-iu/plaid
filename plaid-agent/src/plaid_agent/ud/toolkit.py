@@ -22,13 +22,14 @@ from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import t_replace_in_field
+from ..core.history import recent_changes as t_recent_changes
 from .query import t_query, t_query_help
 from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
 from .shape import t_set_words
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
-                    t_comments, t_frequency_list, t_recent_changes, t_search, t_worklist)
+                    t_comments, t_frequency_list, t_search, t_worklist)
 from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
                     t_discard_plan, t_discard_predictions, t_drop_planned, t_list_documents,
                     t_plan_status, t_project_overview, t_read_document, t_run_parse, t_set_feature,

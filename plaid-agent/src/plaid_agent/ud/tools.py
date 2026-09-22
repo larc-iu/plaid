@@ -55,6 +55,7 @@ class Workspace(BaseWorkspace):
     PLAN_NOTE = PLAN_NOTE
     SPAN_KIND = 'set_span'
     DOC_CACHE = _DOC_CACHE
+    RESTORE_TOOL = 'restore_document'
 
     def __init__(self, client, project: UdProject, on_progress=None):
         super().__init__(client, project, on_progress)

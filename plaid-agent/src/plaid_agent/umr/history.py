@@ -6,75 +6,18 @@ moment a restore would go back to; the comments are notes annotators leave for
 each other, anchored on a document or on one of its sentences.
 
 Both read the server directly rather than through the query engine: the log is
-not corpus data, and a comment outlives the thing it is anchored to.
+not corpus data, and a comment outlives the thing it is anchored to. Reading the
+log is `core.history`'s, shared with the other apps; what is here is how this
+app's references name the thing a comment is anchored to.
 """
 
-import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from ..core.args import clamp_limit
-from ..core.limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
+from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, server_refused, truncate
 from .project import Sentence, resolve
 from .tools import Workspace
-
-
-def t_recent_changes(ws: Workspace, document: str = None, limit: int = None,
-                     since: str = None, user: str = None) -> str:
-    """Who changed what, when, under which operation label. The assistant's
-    own applied plans appear here like anyone else's work.
-
-    Read newest first, a page at a time, and stopped as soon as the limit is
-    met: the log of a corpus is long, and reading a whole window of it to print
-    twenty lines is most of the cost of this tool.
-    """
-    limit = clamp_limit(limit, *READ_LIMITS['recent_changes'])
-    ws.on_progress('Reading the change history…')
-    u = (user or '').casefold()
-
-    def keep(e):
-        who = e.get('user') or {}
-        return not u or u in (who.get('display_name') or '').casefold() \
-            or u in (who.get('id') or '').casefold()
-
-    kw: Dict[str, Any] = {}
-    if since:
-        start = since.strip()
-        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
-            start += 'T00:00:00Z'
-        kw['start_time'] = start
-    source = ws.client.documents if document else ws.client.projects
-    target = ws.resolve_document_id(document) if document else ws.project.id
-    entries: List[dict] = []
-    cursor = None
-    pages = 0
-    walked = 0
-    while len(entries) < limit and pages < AUDIT_MAX_PAGES:
-        try:
-            page = source.audit_page(target, order='desc', limit=AUDIT_PAGE, cursor=cursor, **kw)
-        except Exception as e:  # noqa: BLE001 - the model reads the server's reason
-            raise server_refused('The change history', e)
-        got = (page or {}).get('entries') or []
-        walked += len(got)
-        entries += [e for e in got if keep(e)]
-        cursor = (page or {}).get('next_cursor')
-        pages += 1
-        if not cursor or not got:
-            break
-    entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
-    if not entries:
-        if u and walked:
-            return (f'Nothing by "{user}" among the {walked} most recent change(s)'
-                    + (f' since {since}' if since else '') + '.')
-        return 'Nothing has changed here' + (f' since {since}' if since else '') + '.'
-    out = [f'{len(entries)} change(s), newest first.']
-    for e in entries:
-        who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
-        docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])) or 'the project'
-        what = e.get('message') or ', '.join(
-            sorted({(o.get('type') or '').split('/')[0] for o in (e.get('ops') or [])})) or 'changes'
-        out.append(f'  {e.get("time")}  {who}  {docs}: {what} ({len(e.get("ops") or [])} op(s))')
-    return truncate('\n'.join(out))
 
 
 def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = None) -> str:
@@ -114,4 +57,4 @@ def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int 
     return truncate(head + ':\n' + '\n'.join(out))
 
 
-__all__ = ['t_comments', 't_recent_changes']
+__all__ = ['t_comments']

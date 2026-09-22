@@ -5,7 +5,7 @@ only to print the hits it actually has.
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
@@ -13,7 +13,7 @@ from ..core.corpus import spread
 from ..core.tools import ToolError, server_refused, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
-from ..core.limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
+from ..core.limits import READ_LIMITS
 
 SEARCHABLE = FIELDS + ('form', 'deprel')
 COUNTABLE = ('form', 'lemma', 'upos', 'xpos', 'features', 'feature-bundles', 'deprel')
@@ -373,73 +373,8 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
 
 
 # --- history and comments --------------------------------------------------------
-
-def t_recent_changes(ws: Workspace, document: str = None, limit: int = None,
-                     since: str = None, user: str = None) -> str:
-    """Who changed what, when, under which operation label. The assistant's
-    own applied plans appear here like anyone else's work.
-
-    Read newest first, a page at a time, and stopped as soon as the limit is
-    met: the log of a corpus is long (EWT's is six thousand entries and eight
-    megabytes with their ops), and reading a whole window of it to print
-    twenty lines was most of the cost of this tool.
-    """
-    import re as _re
-    limit = clamp_limit(limit, *READ_LIMITS['recent_changes'])
-    ws.on_progress('Reading the change history…')
-    u = (user or '').casefold()
-
-    def keep(e):
-        who = e.get('user') or {}
-        return not u or u in (who.get('display_name') or '').casefold() \
-            or u in (who.get('id') or '').casefold()
-
-    kw: Dict[str, Any] = {}
-    if since:
-        start = since.strip()
-        if _re.fullmatch(r'\d{4}-\d{2}-\d{2}', start):
-            start += 'T00:00:00Z'
-        kw['start_time'] = start
-    source = ws.client.documents if document else ws.client.projects
-    target = ws.resolve_document_id(document) if document else ws.project.id
-    entries: List[dict] = []
-    cursor = None
-    pages = 0
-    walked = 0
-    while len(entries) < limit and pages < AUDIT_MAX_PAGES:
-        try:
-            page = source.audit_page(target, order='desc', limit=AUDIT_PAGE, cursor=cursor, **kw)
-        except Exception as e:  # noqa: BLE001 - the model reads the server's reason
-            raise server_refused('The change history', e)
-        got = (page or {}).get('entries') or []
-        walked += len(got)
-        entries += [e for e in got if keep(e)]
-        cursor = (page or {}).get('next_cursor')
-        pages += 1
-        if not cursor or not got:
-            break
-    entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=True)[:limit]
-    if not entries:
-        if u and walked:
-            return (f'Nothing by "{user}" among the {walked} most recent change(s)'
-                    + (f' since {since}' if since else '') + '.')
-        return 'Nothing has changed here' + (f' since {since}' if since else '') + '.'
-    out = [f'{len(entries)} change(s), newest first. as_of= is the moment right AFTER that change, '
-           'which is what restore_document takes.']
-    for e in entries:
-        who = (e.get('user') or {}).get('display_name') or (e.get('user') or {}).get('id') or '?'
-        docs = ', '.join(f'"{d.get("name")}"' for d in (e.get('documents') or [])) or 'the project'
-        what = e.get('message') or ', '.join(
-            sorted({(o.get('type') or '').split('/')[0] for o in (e.get('ops') or [])})) or 'changes'
-        # The END of the operation, not its start. A change is a whole
-        # operation of many writes, and restoring to the instant it BEGAN
-        # lands in the middle of it, with some of its writes kept and some
-        # thrown away. IGT has printed end_time since restore landed.
-        after = e.get('end_time') or e.get('time') or ''
-        out.append(f'  {e.get("time")}  {who}  {docs}: {what} ({len(e.get("ops") or [])} op(s))')
-        out.append(f'      as_of={after}')
-    return truncate('\n'.join(out))
-
+# `recent_changes` is `core.history`'s: nothing in reading the audit log is
+# this app's, and it used to be written out here, in plaid-umr and in plaid-igt.
 
 def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = None) -> str:
     """What people have written to each other on a sentence or a document.

@@ -172,9 +172,11 @@ def test_lexicon_and_document_ops():
 
 def test_recent_changes_filters():
     w = ws()
-    assert '1 most recent change by "luke"' in call_tool(w, 'recent_changes', {'user': 'luke'})
-    out = call_tool(w, 'recent_changes', {'since': '2026-08-29'})
-    assert 'since 2026-08-29' in out
+    out = call_tool(w, 'recent_changes', {'user': 'luke'})
+    assert out.startswith('1 change(s), newest first.') and 'Luke G' in out
+    assert 'Nothing by "nobody"' in call_tool(w, 'recent_changes', {'user': 'nobody'})
+    # Nothing since then, and the reply says which window it looked in.
+    assert 'since 2026-12-01' in call_tool(w, 'recent_changes', {'since': '2026-12-01'})
 
 
 def test_query_rewrites_layer_names_and_scopes_to_the_project():

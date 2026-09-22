@@ -51,6 +51,10 @@ class BaseWorkspace:
     # The app's process-wide cache of parsed documents (a docload.DocCache).
     # An app that sets none reads every document afresh every turn.
     DOC_CACHE = None
+    # The app's tool for putting a document back as it was at an instant, named
+    # so the change history can say what its `as_of` is for. None where the app
+    # has no such tool: the instant is still printed, it is just not offered.
+    RESTORE_TOOL = None
 
     def __init__(self, client, project, on_progress=None):
         self.client = client

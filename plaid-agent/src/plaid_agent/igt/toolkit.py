@@ -27,9 +27,10 @@ from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_ren
 from .lexicon import (t_add_sense, t_create_entry, t_free_sense, t_make_sense_of, t_move_sense,
                       t_order_homographs, t_promote_example, t_remove_example, t_set_entry_field)
 from .query import t_query, t_query_help
+from ..core.history import recent_changes as t_recent_changes
 from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
                     t_list_documents, t_plan_status, t_project_overview, t_read_document,
-                    t_read_lexicon, t_recent_changes, t_search)
+                    t_read_lexicon, t_search)
 from .sandbox import t_code_help, t_run_code
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
                     t_retype_sentence, t_split_sentence, t_split_word)
