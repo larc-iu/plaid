@@ -8,12 +8,16 @@
   503 after about 24 s). `refresh-planner-stats!` therefore analyses ONE
   TABLE PER STATEMENT in autocommit, with a pause between them.
 
-  Both tests here run a real refresh against a populated file-backed
-  database while a second connection writes with a short `busy_timeout`.
-  The fixture has many small tables so that the whole-database statement
-  is many times longer than any single table's; the first test runs the
-  old whole-database statement as a control, so the comparison is between
-  two measurements of the same fixture rather than one absolute clock."
+  The claim is checked STRUCTURALLY rather than against the clock, because
+  a threshold in milliseconds is a promise about the machine and not about
+  the code. Each `ANALYZE <table>` COMMITS the rows it wrote, so a second
+  connection can watch the statistics being built up table by table; one
+  statement over the whole file takes them from none to all at its single
+  commit, and nothing outside can ever observe a part of it. So: a write
+  that succeeds while `sqlite_stat1` holds some but not all of the
+  fixture's tables is a write that got the lock BETWEEN two of the
+  refresh's statements, which is exactly what the fix is for and what the
+  shape it replaced cannot produce."
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
             [next.jdbc :as jdbc]
@@ -21,14 +25,22 @@
             [plaid.sql.datasource :as psd])
   (:import (java.io File)))
 
-;; 400 is `analysis_limit`, so rows beyond it cost ANALYZE nothing; the
-;; work that matters is per index, and the ratio that matters is the
-;; table count (a whole-database ANALYZE is the sum of all of them).
+;; Enough tables that the refresh spends real time standing off the
+;; database between statements (`analyze-pause-ms` each), few enough that
+;; the whole test is a second or so.
+(def ^:private table-count 24)
+
+;; 400 is `analysis_limit`, so rows past it cost ANALYZE nothing; what
+;; matters is that each table has indexes to walk.
 (def ^:private rows-per-table 500)
 
-;; Short enough that a writer blocked for a whole-database ANALYZE over
-;; the fixture is refused, long enough that one table's never refuses it.
-(def ^:private writer-busy-timeout-ms 25)
+;; Short by any standard (the pool's own default is 5000), and two orders
+;; of magnitude longer than one of this fixture's tables takes to analyse.
+(def ^:private writer-busy-timeout-ms 100)
+
+;; A backstop on every wait in this file: a refresh thread that dies
+;; without running its `finally` must fail the test, not hang the suite.
+(def ^:private deadline-ms 60000)
 
 (defn- temp-db-path []
   (let [dir (File. (System/getProperty "java.io.tmpdir")
@@ -39,7 +51,7 @@
 (defn- populate!
   "`table-count` tables, each with rows and two indexes, so ANALYZE has
   real work to do per table and many tables to do it on."
-  [ds table-count]
+  [ds]
   (with-open [conn (jdbc/get-connection ds)]
     (.setAutoCommit conn false)
     (dotimes [t table-count]
@@ -58,6 +70,17 @@
     (.commit conn)
     (.setAutoCommit conn true)))
 
+(defn- statement! [ds sql]
+  (with-open [conn (.getConnection ds)
+              stmt (.createStatement conn)]
+    (.execute stmt sql)))
+
+(defn- tables-with-statistics
+  "How many of the fixture's tables `sqlite_stat1` holds statistics for
+  right now, as a reader outside the analysis sees it."
+  [ds]
+  (-> (jdbc/execute-one! ds ["SELECT COUNT(DISTINCT tbl) AS n FROM sqlite_stat1"]) :n))
+
 (defn- write-attempt
   "One autocommit INSERT over a connection whose `busy_timeout` is short.
   Returns :ok, or the failure message."
@@ -70,37 +93,44 @@
 
 (defn- contend
   "Run `analyze-fn` on its own thread while a second connection writes in
-  a loop until it finishes. Reports what the writes did, and the longest
-  stretch in which not one of them got through — the quantity the fix is
-  about, since a single statement over the whole file makes that stretch
-  the entire run."
+  a loop until it finishes, reading after each write that got through how
+  much of the analysis is committed. Reports what the writes did and the
+  set of those readings.
+
+  Bounded by `deadline-ms`: the loop ends on the deadline whether or not
+  the analysis said it was done, so a thread that dies without delivering
+  fails the test rather than hanging the suite."
   [ds writer-ds analyze-fn]
-  ;; Truncate the WAL first: an auto-checkpoint fired by the writer's own
-  ;; inserts would take the same lock and show up as a stretch with no
-  ;; write through that has nothing to do with ANALYZE.
-  (with-open [conn (.getConnection ds)
-              stmt (.createStatement conn)]
-    (.execute stmt "PRAGMA wal_checkpoint(TRUNCATE);"))
+  ;; Start from no statistics, so progress through the file is visible,
+  ;; and from a truncated WAL, so an auto-checkpoint fired by the writer's
+  ;; own inserts does not take the lock for reasons of its own.
+  (statement! ds "DELETE FROM sqlite_stat1;")
+  (statement! ds "PRAGMA wal_checkpoint(TRUNCATE);")
   (let [done (promise)
         t0 (System/nanoTime)
+        deadline (+ t0 (* deadline-ms 1000000))
         _ (doto (Thread. (fn [] (try (analyze-fn) (finally (deliver done true)))))
             (.setDaemon true)
             (.start))
-        outcomes (loop [acc []]
-                   (if (realized? done)
-                     acc
-                     (let [outcome (write-attempt writer-ds)
-                           at (System/nanoTime)]
-                       (Thread/sleep 2)
-                       (recur (conj acc [outcome at])))))
-        t1 (System/nanoTime)
-        ->ms (fn [nanos] (/ (double nanos) 1e6))
-        got-through (keep (fn [[outcome at]] (when (= :ok outcome) at)) outcomes)
-        marks (concat [t0] got-through [t1])]
-    {:refused (remove #{:ok} (map first outcomes))
+        [outcomes progress timed-out?]
+        (loop [outcomes [] progress #{}]
+          (cond
+            (realized? done) [outcomes progress false]
+            (> (System/nanoTime) deadline) [outcomes progress true]
+            :else
+            (let [outcome (write-attempt writer-ds)
+                  seen (when (= :ok outcome) (tables-with-statistics writer-ds))]
+              (Thread/sleep 2)
+              (recur (conj outcomes outcome)
+                     (cond-> progress seen (conj seen))))))]
+    {:refused (remove #{:ok} outcomes)
      :attempts (count outcomes)
-     :elapsed-ms (->ms (- t1 t0))
-     :longest-shut-out-ms (->ms (apply max (map - (rest marks) marks)))}))
+     :timed-out? timed-out?
+     ;; The readings taken right after a write got through. A reading
+     ;; strictly between 0 and `table-count` is the one that matters.
+     :progress-seen progress
+     :got-in-mid-analysis (count (filter #(< 0 % table-count) progress))
+     :elapsed-ms (quot (- (System/nanoTime) t0) 1000000)}))
 
 (defn- whole-database-analyze!
   "What `refresh-planner-stats!` used to run: one statement for the file."
@@ -111,19 +141,22 @@
     (.execute stmt "ANALYZE;")))
 
 (defn- refresh-and-join!
-  "The real refresh, waited out."
+  "The real refresh, waited out. Bounded, and tolerant of a refresh that
+  never named a thread — the test asserts on that separately."
   [ds]
   (#'server-sql/refresh-planner-stats! ds)
-  (.join ^Thread @@#'server-sql/planner-stats-thread 120000))
+  (when-let [^Thread t @@#'server-sql/planner-stats-thread]
+    (.join t deadline-ms)))
 
-(defn- with-fixture [table-count f]
+(defn- with-fixture [f]
   (let [db-path (temp-db-path)
         ds (psd/build-datasource db-path)
         writer-ds (psd/build-datasource db-path {:busy-timeout-ms writer-busy-timeout-ms})]
     (try
-      (populate! ds table-count)
-      ;; Warm the page cache for both scenarios alike: what is under test
-      ;; is lock granularity, not cold I/O.
+      (populate! ds)
+      ;; One analysis up front: it creates `sqlite_stat1` (which `contend`
+      ;; then empties) and warms the page cache, so neither run below pays
+      ;; for cold I/O the other does not.
       (whole-database-analyze! ds)
       (f ds writer-ds)
       (finally
@@ -134,59 +167,52 @@
             (when (.exists file) (.delete file))))
         (.delete (.getParentFile (File. db-path)))))))
 
-(deftest a-writer-is-never-shut-out-for-the-whole-refresh
-  ;; 120 tables, and the pause between them cut to 1ms: with the shipped
-  ;; 50ms pause this fixture would spend six seconds standing off the
-  ;; database, and the pause is not what the comparison below is about —
-  ;; the per-statement lock is.
+(deftest a-writer-gets-in-between-two-tables-of-the-refresh
   (with-fixture
-    120
     (fn [ds writer-ds]
-      (let [control (contend ds writer-ds #(whole-database-analyze! ds))
-            refreshed (with-redefs-fn {#'server-sql/analyze-pause-ms 1}
-                        (fn [] (contend ds writer-ds #(refresh-and-join! ds))))]
+      (let [;; The shape the fix replaced, run the same way. Nothing here
+            ;; is asserted: it is a number to read when the assertions
+            ;; below fail, not a threshold to compare against.
+            control (contend ds writer-ds #(whole-database-analyze! ds))
+            refreshed (contend ds writer-ds #(refresh-and-join! ds))
+            note (str "(refresh: " (:attempts refreshed) " writes in "
+                      (:elapsed-ms refreshed) "ms, readings "
+                      (sort (:progress-seen refreshed))
+                      "; one whole-database ANALYZE over the same fixture: "
+                      (:attempts control) " writes in " (:elapsed-ms control)
+                      "ms, readings " (sort (:progress-seen control)) ")")]
+        (is (not (:timed-out? refreshed))
+            (str "the refresh must finish well inside " deadline-ms "ms " note))
         (is (pos? (:attempts refreshed))
             "the writer must have had the chance to contend at all")
         (is (empty? (:refused refreshed))
             (str "Every write during the background refresh must get the lock; "
                  (count (:refused refreshed)) " of " (:attempts refreshed)
-                 " were refused, e.g. " (first (:refused refreshed))))
-        ;; Conclusive only when the whole-database statement was long
-        ;; enough to measure against: on a machine where it finishes in a
-        ;; millisecond, nothing about lock granularity can be read off it
-        ;; either way.
-        (when (> (:elapsed-ms control) 15.0)
-          (is (< (:longest-shut-out-ms refreshed) (/ (:elapsed-ms control) 3))
-              (str "No writer may wait out the whole analysis: the longest stretch with no "
-                   "write through was " (:longest-shut-out-ms refreshed) "ms, against a "
-                   (:elapsed-ms control) "ms whole-database ANALYZE"))
-          (is (>= (:longest-shut-out-ms control) (/ (:elapsed-ms control) 2))
-              (str "Control: one ANALYZE over the file should shut writers out for its run ("
-                   (:elapsed-ms control) "ms), and shut them out for "
-                   (:longest-shut-out-ms control) "ms")))))))
+                 " were refused, e.g. " (first (:refused refreshed)) " " note))
+        ;; The structural claim. A writer that lands while the statistics
+        ;; are partly built landed between two of the refresh's statements.
+        ;; One statement over the whole file commits once, so no reader
+        ;; outside it can ever see a part of its work: on the old shape
+        ;; this count is necessarily zero.
+        (is (pos? (:got-in-mid-analysis refreshed))
+            (str "A write must get through while the analysis is part done — "
+                 "that is what one statement per table is for " note))))))
 
 (deftest refresh-runs-on-a-daemon-thread-and-covers-every-table
   (with-fixture
-    12
     (fn [ds writer-ds]
-      ;; Every assertion below runs on this thread: clojure.test's
-      ;; counters are thread-local, so an `is` inside the analysis thread
-      ;; would be reported nowhere.
       (let [refreshed (contend ds writer-ds #(refresh-and-join! ds))
             ^Thread t @@#'server-sql/planner-stats-thread]
+        (is (not (:timed-out? refreshed)) "the refresh must finish")
         (is (some? t) "the refresh must be handed to a thread")
         (is (.isDaemon t) "the refresh must never hold up JVM shutdown")
         (is (= "plaid-planner-stats" (.getName t)))
-        (is (not (.isAlive t)) "the refresh must finish")
-        (is (empty? (:refused refreshed))
-            (str "A write with a " writer-busy-timeout-ms
-                 "ms busy timeout must survive the refresh; refused: "
-                 (first (:refused refreshed)))))
+        (is (not (.isAlive t)) "the refresh must finish"))
       ;; One statement per table still has to leave statistics for every
       ;; table behind.
       (let [analysed (into #{} (map :sqlite_stat1/tbl)
                            (jdbc/execute! ds ["SELECT DISTINCT tbl FROM sqlite_stat1"]))]
-        (is (= 12 (count (filter #(str/starts-with? % "probe_") analysed)))
+        (is (= table-count (count (filter #(str/starts-with? % "probe_") analysed)))
             "every table must end up in sqlite_stat1")))))
 
 (deftest analyze-statement-is-per-table-and-quoted
