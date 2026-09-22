@@ -1098,7 +1098,7 @@ export class ConlluDocument extends DocumentModel {
 
     return this._withSaving('Failed to create relation', async () => {
       // Post-server (NOT optimistic): a relation create needs the server id, so
-      // it requires a temp-id placeholder + a second reconcile patch. That
+      // it requires a temp-id placeholder + a second patch to swap it. That
       // double grid-rebuild makes the dependency tree re-measure positions and
       // re-mount arcs twice, which visibly janks the drag-to-draw interaction —
       // worse than just waiting one round trip. Creates show a brief absence,
