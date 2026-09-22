@@ -2208,22 +2208,42 @@ describe('multi-word expressions', () => {
   });
 });
 
-describe('copyDocument', () => {
-  it('copies under the given name and hands back the new id', async () => {
+describe('rename and copy', () => {
+  // What a document is CALLED and copying it are the shared model's, not this
+  // app's: one spelling, `rename` and `copyTo`, for the screen all three apps
+  // mount and for this app's metadata tab. An igt method of its own here is a
+  // second spelling that will drift from it.
+  it('are inherited, with no igt spelling of either', () => {
+    const own = Object.getOwnPropertyNames(IgtDocument.prototype);
+    expect(own).not.toContain('updateName');
+    expect(own).not.toContain('copyDocument');
     const doc = makeDoc();
-    const newId = await doc.copyDocument('Doc, copy');
-    expect(newId).toBe('doc-1');
+    expect(typeof doc.rename).toBe('function');
+    expect(typeof doc.copyTo).toBe('function');
+  });
+
+  it('copies under the given name and hands back the copy', async () => {
+    const doc = makeDoc();
+    expect(await doc.copyTo('Doc, copy')).toEqual({ id: 'doc-1', name: 'Doc, copy' });
     const call = doc._client.calls.find((c) => c.kind === 'documents.copy');
     expect(call.args).toEqual([doc.id, 'Doc, copy']);
   });
 
-  it('reports the failure rather than a new id', async () => {
+  it('reports the failure rather than a copy', async () => {
     const client = makeFakeClient();
     client.documents.copy = () => {
       throw new Error('nope');
     };
     const doc = makeDoc({ client });
-    expect(await doc.copyDocument('Doc, copy')).toBe(false);
+    expect(await doc.copyTo('Doc, copy')).toBe(null);
+  });
+
+  it('renames through the client and shows the new name at once', async () => {
+    const doc = makeDoc();
+    expect(await doc.rename('  Renamed  ')).toBe(true);
+    expect(doc.name).toBe('Renamed');
+    const call = doc._client.calls.find((c) => c.kind === 'documents.update');
+    expect(call.args).toEqual([doc.id, 'Renamed']);
   });
 });
 

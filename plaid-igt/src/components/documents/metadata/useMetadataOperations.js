@@ -78,16 +78,18 @@ export const useMetadataOperations = () => {
 
   const handleCopy = async () => {
     setCopying(true);
-    const name = copyName.trim();
-    const newId = await doc.copyDocument(name);
+    // `copyTo` is the shared document model's: it trims the name, falls back
+    // to "<name> (copy)" for a blank one, and answers with the copy's id and
+    // the name it was given.
+    const created = await doc.copyTo(copyName);
     setCopying(false);
-    if (newId) {
+    if (created) {
       setCopyModalOpen(false);
-      notifySuccess(`"${name}" is ready.`, 'Document copied');
+      notifySuccess(`"${created.name}" is ready.`, 'Document copied');
       // The copy is made either way; what is asked about is LEAVING this
       // screen for it, because what is typed here goes with the screen.
       if (!(await guardLeaving())) return;
-      navigate(`/projects/${doc.projectId}/documents/${newId}`);
+      navigate(`/projects/${doc.projectId}/documents/${created.id}`);
     }
   };
 

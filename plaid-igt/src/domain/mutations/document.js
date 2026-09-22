@@ -1,6 +1,9 @@
-// Mutation mixin: document-level operations (baseline text, metadata, name,
-// delete, media upload/delete). See IgtDocument.js for the `this` API
-// (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
+// Mutation mixin: document-level operations (baseline text, metadata, delete,
+// media upload/delete). See IgtDocument.js for the `this` API (_withSaving,
+// _applyRawPatch, _reload, layerInfo, body, etc.).
+//
+// Renaming a document and copying it are NOT here: they are `rename` and
+// `copyTo` on the shared DocumentModel, which every app's document inherits.
 
 import { cpLength } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
@@ -108,15 +111,6 @@ export const documentMutations = {
     return this.setMetadata(merged);
   },
 
-  async updateName(name) {
-    return this._withSaving('Failed to update name', async () => {
-      await this._client.documents.update(this.id, name);
-      this._applyRawPatch((next) => {
-        next.name = name;
-      });
-    });
-  },
-
   // Combined save for the analyze tab. Merges the partial metadata over the
   // existing metadata so deactivated fields aren't dropped. Issued
   // sequentially (these are document-level, not token-level — not a batch).
@@ -136,18 +130,6 @@ export const documentMutations = {
         next.metadata = completeMetadata;
       });
     });
-  },
-
-  // Copy the document into a new one of the same project. Returns the new
-  // document's id, or false when the copy failed (the toast has said so).
-  // Nothing local changes: the copy is a different document.
-  async copyDocument(name) {
-    let newId = false;
-    const ok = await this._withSaving('Failed to copy document', async () => {
-      const result = await this._client.documents.copy(this.id, name);
-      newId = result?.id;
-    });
-    return ok ? newId : false;
   },
 
   async deleteDocument() {
