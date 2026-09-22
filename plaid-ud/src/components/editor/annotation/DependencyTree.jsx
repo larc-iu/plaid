@@ -36,6 +36,15 @@ const relationMark = (relation) => provMark(relation?.metadata);
 // could disagree, and an arc that changes sides mid-drag is a bug to look at.
 const isEnhancedGesture = (event) => Boolean(event?.ctrlKey || event?.metaKey);
 
+// How far either side of a word's centre the hand still counts as being on
+// that word. ONE rule, because the invisible grab rect and the column a drag
+// snaps by are the same reach seen twice: 37d25898 gave short words a floor
+// so they could be snapped to, and the rect kept the bare proportion, which
+// left a two-letter word snappable from further away than it was clickable.
+// The default width is for a position measured before its word was.
+const WORD_WIDTH_FALLBACK = 60;
+const reachOf = (position) => Math.max((position?.width || WORD_WIDTH_FALLBACK) * 0.6, 24);
+
 export const DependencyTree = forwardRef(
   (
     {
@@ -369,7 +378,7 @@ export const DependencyTree = forwardRef(
       let best = null;
       for (const p of adjustedTokenPositions) {
         const dx = Math.abs(point.x - p.x);
-        if (dx > Math.max((p.width || 60) * 0.6, 24)) continue;
+        if (dx > reachOf(p)) continue;
         if (!best || dx < best.dx) best = { p, dx };
       }
       return best?.p || null;
@@ -1111,16 +1120,17 @@ export const DependencyTree = forwardRef(
 
           {/* Invisible token click areas */}
           {adjustedTokenPositions.map((position) => {
-            // Use token width if available, otherwise default to 60px
-            const tokenWidth = position.width || 60;
+            // The same reach a drag snaps by, so a word is clickable exactly
+            // where it is droppable.
+            const reach = reachOf(position);
             const tokenHeight = 30;
 
             return (
               <rect
                 key={position.token.id}
-                x={position.x - tokenWidth * 0.6}
+                x={position.x - reach}
                 y={position.y - tokenHeight * 0.6 + 10}
-                width={tokenWidth * 1.2}
+                width={reach * 2}
                 height={tokenHeight * 1.2}
                 fill="transparent"
                 className={`tree-token-area ${dragOrigin ? 'tree-token-area--drag' : 'tree-token-area--grab'}`}
