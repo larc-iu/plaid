@@ -356,3 +356,57 @@ def apply_restore_document(ctx, op) -> int:
     """A restore runs after the batches: it is the server's own operation."""
     ctx.restores.append(op)
     return 1
+
+
+def docs_of_op(op: Dict[str, Any]) -> set:
+    """The documents an op reaches: one, a list it carries, or every document a
+    corpus-wide change matched. Every guard that reasons about what a plan
+    touches asks this, the tools' as well as the executor's, so the two cannot
+    drift into disagreeing about what an op reaches."""
+    out = set()
+    if op.get('document_id'):
+        out.add(op['document_id'])
+    out.update(op.get('document_ids') or [])
+    out.update(op.get('documents') or [])
+    return out
+
+
+# --- the plan, as the model reads and edits it --------------------------------
+# A plan is a list of labelled changes nobody has agreed to yet, so the model
+# needs to see it, throw it away and take one line out of it. None of that
+# depends on what the changes are, so it is written once here. An app whose
+# plan carries more than `ops` (entries created alongside it, say) overrides
+# what it has to and calls back here.
+
+def plan_status(ws) -> str:
+    if not ws.ops:
+        return 'Nothing is planned yet.'
+    out = [f'{len(ws.ops)} change(s) planned. The user approves or discards them as one plan.']
+    for i, op in enumerate(ws.ops, start=1):
+        where = f' ({op["ref"]})' if op.get('ref') else ''
+        out.append(f'  {i}. {op.get("label")}{where}')
+    return '\n'.join(out)
+
+
+def discard_plan(ws) -> str:
+    n = len(ws.ops)
+    ws.ops.clear()
+    return f'Discarded {n} planned change(s).' if n else 'Nothing was planned.'
+
+
+def drop_planned(ws, indexes=None) -> str:
+    from .args import whole
+    from .tools import ToolError
+    if not indexes:
+        raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
+    try:
+        drop = {whole(i, 'indexes') for i in indexes}
+    except (TypeError, ValueError):
+        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, '
+                        'e.g. [2, 5].')
+    bad = [i for i in drop if not 1 <= i <= len(ws.ops)]
+    if bad:
+        raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
+                        f'{len(ws.ops)} are planned.')
+    ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
+    return f'Dropped {len(drop)} planned change(s). {len(ws.ops)} remain.'

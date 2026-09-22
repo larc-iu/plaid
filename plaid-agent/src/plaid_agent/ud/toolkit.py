@@ -30,10 +30,12 @@ from .sentences import t_merge_sentences, t_split_sentence
 from .shape import t_set_words
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
                     t_comments, t_frequency_list, t_search, t_worklist)
+from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
+    plan_status as t_plan_status
+from ..core.tools import list_documents as t_list_documents
 from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
-                    t_discard_plan, t_discard_predictions, t_drop_planned, t_list_documents,
-                    t_plan_status, t_project_overview, t_read_document, t_run_parse, t_set_feature,
-                    t_set_field, t_set_head)
+                    t_discard_predictions, t_project_overview, t_read_document, t_run_parse,
+                    t_set_feature, t_set_field, t_set_head)
 
 # Offered only where the monty worker binary is present, and only where the
 # operator configured a search backend (see tools_for): a model that cannot

@@ -20,7 +20,8 @@ from typing import Any, Dict, List
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
-from ..core.plan import PlanError, Stamps, TrackingBatcher, applying, created_id, expand_ops
+from ..core.plan import (PlanError, Stamps, TrackingBatcher, applying, created_id,
+                         docs_of_op, expand_ops)
 from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
@@ -360,17 +361,6 @@ EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
 #: same sentence.
 GRAPH_KINDS = ('delete_node', 'delete_edge', 'set_concept', 'set_attrs', 'set_root',
                'unset_root', 'set_edge_order', 'create_node', 'create_edge')
-
-
-def docs_of_op(op: Dict[str, Any]) -> set:
-    """The documents an op reaches. Every guard that reasons about what a plan
-    touches asks this, so the tools and the executor cannot drift into
-    disagreeing about what an op reaches."""
-    out = set()
-    if op.get('document_id'):
-        out.add(op['document_id'])
-    out.update(op.get('document_ids') or [])
-    return out
 
 
 def graphs_of_op(op: Dict[str, Any]) -> set:

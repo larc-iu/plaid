@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from . import docload, opkind
-from .plan import PLAN_MAX_OPS, PlanFull, reserve as core_reserve
+from .plan import PLAN_MAX_OPS, PlanFull, docs_of_op, reserve as core_reserve
 from .tools import ToolError
 
 # A turn that has read a page from the web plans nothing. The page is text by
@@ -192,6 +192,27 @@ class BaseWorkspace:
                         + ', '.join(f'"{d.get("name")}"' for d in docs[:50]))
 
     # --- the plan ---------------------------------------------------------
+
+    def touched_documents(self) -> List[Dict[str, Any]]:
+        """The documents the plan refers to, with the version each was read at,
+        so approval can refuse a plan made against data that has moved on."""
+        out: List[Dict[str, Any]] = []
+        listed = {d['id']: d for d in self.documents()}
+        touched: List[str] = []
+        for op in self.ops:
+            for did in sorted(docs_of_op(op)):
+                if did not in touched:
+                    touched.append(did)
+        for did in touched:
+            doc = self._docs.get(did)
+            if doc is not None:
+                out.append({'id': did, 'name': doc.name, 'version': doc.version})
+            elif did in listed:
+                # Matched by a corpus-wide op without being read: the list
+                # carries its version, which is all the stale check needs.
+                out.append({'id': did, 'name': listed[did].get('name'),
+                            'version': listed[did].get('version')})
+        return out
 
     def op_target(self, op: Dict[str, Any]):
         """What an op writes to, for last-wins replacement within one plan.

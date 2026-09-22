@@ -14,9 +14,9 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
-from ..core.args import clamp_limit, read_int, sentence_number, whole
+from ..core.args import sentence_number, whole
 from ..core.limits import (MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
-                           READ_LIMITS, RENDER_BUDGET)
+                           RENDER_BUDGET)
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused, truncate
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
@@ -179,26 +179,6 @@ class Workspace(BaseWorkspace):
                 'changes': describe_changes(self, ops),
                 'documents': self.touched_documents()}
 
-    def touched_documents(self) -> List[Dict[str, Any]]:
-        """The documents the plan refers to, with the version each was read at,
-        so approval can refuse a plan made against data that has moved on."""
-        out = []
-        listed = {d['id']: d for d in self.documents()}
-        touched = []
-        for op in self.ops:
-            for did in sorted(docs_of_op(op)):
-                if did not in touched:
-                    touched.append(did)
-        for did in touched:
-            doc = self._docs.get(did)
-            if doc is not None:
-                out.append({'id': did, 'name': doc.name, 'version': doc.version})
-            elif did in listed:
-                # Matched by a corpus-wide op without being read: the list
-                # carries its version, which is all the stale check needs.
-                out.append({'id': did, 'name': listed[did].get('name'), 'version': listed[did].get('version')})
-        return out
-
 
 def op_target(op: Dict[str, Any]):
     """What an op writes to, for last-wins replacement within one plan. Each
@@ -258,22 +238,6 @@ def t_project_overview(ws: Workspace) -> str:
         out.append(f'  "{d.get("name")}"')
     if len(docs) > OVERVIEW_DOCS:
         out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
-    return '\n'.join(out)
-
-
-def t_list_documents(ws: Workspace, pattern: str = None, limit: int = None, offset: int = 0) -> str:
-    docs = ws.documents()
-    if pattern:
-        docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]
-    if not docs:
-        return 'No documents matched.' if pattern else 'The project has no documents.'
-    limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
-    offset = read_int(offset, 'offset', 0, minimum=0)
-    page = docs[offset:offset + limit]
-    out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
-           + (f', showing {offset + 1} to {offset + len(page)}' if len(docs) > len(page) else '') + ':']
-    for d in page:
-        out.append(f'  "{d.get("name")}"')
     return '\n'.join(out)
 
 
@@ -768,37 +732,6 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
 
 
 # --- the plan so far -----------------------------------------------------------
-
-def t_plan_status(ws: Workspace) -> str:
-    if not ws.ops:
-        return 'Nothing is planned yet.'
-    out = [f'{len(ws.ops)} change(s) planned. The user approves or discards them as one plan.']
-    for i, op in enumerate(ws.ops, start=1):
-        where = f' ({op["ref"]})' if op.get('ref') else ''
-        out.append(f'  {i}. {op.get("label")}{where}')
-    return '\n'.join(out)
-
-
-def t_discard_plan(ws: Workspace) -> str:
-    n = len(ws.ops)
-    ws.ops.clear()
-    return f'Discarded {n} planned change(s).' if n else 'Nothing was planned.'
-
-
-def t_drop_planned(ws: Workspace, indexes=None) -> str:
-    if not indexes:
-        raise ToolError('Give indexes: the numbers plan_status shows, as a list.')
-    try:
-        drop = {whole(i, 'indexes') for i in indexes}
-    except (TypeError, ValueError):
-        raise ToolError('indexes must be the whole numbers plan_status shows, as a list, e.g. [2, 5].')
-    bad = [i for i in drop if not 1 <= i <= len(ws.ops)]
-    if bad:
-        raise ToolError(f'No planned change numbered {", ".join(str(b) for b in bad)}. '
-                        f'{len(ws.ops)} are planned.')
-    ws.ops[:] = [op for i, op in enumerate(ws.ops, start=1) if i not in drop]
-    return f'Dropped {len(drop)} planned change(s). {len(ws.ops)} remain.'
-
 
 # --- running the parser ----------------------------------------------------------
 # The odd one out among the plan ops: it does not write anything itself, it

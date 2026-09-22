@@ -10,6 +10,7 @@ import inspect
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
+from .args import clamp_limit, read_int
 from .limits import MAX_RESULT_CHARS, READ_LIMITS
 
 
@@ -109,3 +110,23 @@ def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools,
     if not getattr(ws, 'files', None):
         hidden |= set(file_tools)
     return [t for t in tools if t['function']['name'] not in hidden]
+
+
+def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) -> str:
+    """The project's documents by name, a page at a time, narrowed by a
+    substring. Every app lists them the same way, because a document is a
+    document whatever an app puts in one."""
+    docs = ws.documents()
+    if pattern:
+        docs = [d for d in docs if pattern.lower() in (d.get('name') or '').lower()]
+    if not docs:
+        return 'No documents matched.' if pattern else 'The project has no documents.'
+    limit = clamp_limit(limit, *READ_LIMITS['list_documents'])
+    offset = read_int(offset, 'offset', 0, minimum=0)
+    page = docs[offset:offset + limit]
+    out = [f'{len(docs)} document(s)' + (f' matching "{pattern}"' if pattern else '')
+           + (f', showing {offset + 1} to {offset + len(page)}' if len(docs) > len(page) else '')
+           + ':']
+    for d in page:
+        out.append(f'  "{d.get("name")}"')
+    return '\n'.join(out)

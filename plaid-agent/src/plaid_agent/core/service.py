@@ -137,9 +137,22 @@ class BaseAssistantService(BaseService):
         prompt. An app with no docked screens keeps the default and neither
         the stamp nor the note appears.
 
-        :meth:`document_place` builds the triple for the case every app has.
+        The default answers for the case every app has, a document, and names
+        it the way the tools take it back: two documents may share a name and
+        ``resolve_document_id`` refuses an ambiguous one, so those are named by
+        id instead. An app that docks its assistant beside anything else
+        answers for that too and falls back here.
         """
-        return None
+        where = where or {}
+        if where.get('kind') != 'document':
+            return None
+        document_id = where.get('id')
+        names = [d.get('name') or '' for d in ws.documents() if d['id'] == document_id]
+        if not names:
+            return None
+        name = names[0]
+        clashes = sum(1 for d in ws.documents() if (d.get('name') or '').lower() == name.lower())
+        return self.document_place(name if clashes == 1 else document_id)
 
     def document_place(self, name: Optional[str]) -> Optional[tuple]:
         """The triple for a document, given what the app calls it. The name is

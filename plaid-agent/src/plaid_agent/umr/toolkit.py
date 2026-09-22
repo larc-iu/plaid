@@ -28,8 +28,10 @@ from .history import t_comments
 from .project import DOC_CONSTANTS, GROUPS
 from .query import t_query, t_query_help
 from .sandbox import t_code_help, t_run_code
-from .tools import (Workspace, t_add_triple, t_apply_penman, t_delete_triple, t_discard_plan,
-                    t_document_graph, t_drop_planned, t_list_documents, t_plan_status,
+from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
+    plan_status as t_plan_status
+from ..core.tools import list_documents as t_list_documents
+from .tools import (Workspace, t_add_triple, t_apply_penman, t_delete_triple, t_document_graph,
                     t_project_overview, t_read_document, t_set_attribute_for_concept,
                     t_set_attributes)
 

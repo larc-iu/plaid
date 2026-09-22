@@ -54,22 +54,6 @@ class AssistantService(BaseAssistantService):
     def system_prompt(self, project, web: bool) -> str:
         return build_system_prompt(project, web=web)
 
-    def place(self, ws, where: Optional[dict]) -> Optional[tuple]:
-        # A document is the only thing this app docks the assistant beside.
-        # The name is the one the tools accept back: two documents may share
-        # one, and resolve_document_id refuses an ambiguous name, so those are
-        # named by id instead.
-        where = where or {}
-        if where.get('kind') != 'document':
-            return None
-        document_id = where.get('id')
-        names = [d.get('name') or '' for d in ws.documents() if d['id'] == document_id]
-        if not names:
-            return None
-        name = names[0]
-        clashes = sum(1 for d in ws.documents() if (d.get('name') or '').lower() == name.lower())
-        return self.document_place(name if clashes == 1 else document_id)
-
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         return resolve_citations(ws, text)
 

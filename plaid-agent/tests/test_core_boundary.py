@@ -68,13 +68,33 @@ def test_the_focus_note_names_the_document_and_still_allows_the_corpus():
     assert 'corpus as a whole' in note and 'compare' in note
 
 
-def test_an_app_with_no_docked_screens_names_no_place():
+def test_the_base_places_a_document_and_nothing_else():
     """One hook answers all three questions (what is open, what to call it,
-    what the model should be told), and an app that docks the assistant
-    nowhere answers none of them."""
+    what the model should be told). A DOCUMENT is the case every app has, so
+    the base answers it; a screen only one app docks beside is that app's, and
+    the base says nothing about it.
+
+    The name has to be one a tool will take back, so a document sharing its
+    name with another is named by id: `resolve_document_id` refuses an
+    ambiguous name.
+    """
     from plaid_agent.core.service import BaseAssistantService
 
-    assert BaseAssistantService.place(None, None, {'kind': 'document', 'id': 'any-id'}) is None
+    class _Ws:
+        def documents(self):
+            return [{'id': 'd1', 'name': 'Story'}, {'id': 'd2', 'name': 'Notes'},
+                    {'id': 'd3', 'name': 'notes'}]
+
+    class _Service(BaseAssistantService):
+        APP, APP_LABEL, DESCRIPTION, SUMMARY = 'x', 'X', 'x', 'x'
+
+    place, ws = BaseAssistantService.place, _Ws()
+    assert place(_Service(), ws, {'kind': 'document', 'id': 'd1'})[:2] == ('document', 'Story')
+    # Two documents called "Notes": named by id, which a tool takes back.
+    assert place(_Service(), ws, {'kind': 'document', 'id': 'd2'})[:2] == ('document', 'd2')
+    assert place(_Service(), ws, {'kind': 'document', 'id': 'gone'}) is None
+    assert place(_Service(), ws, {'kind': 'vocabulary', 'id': 'v1'}) is None
+    assert place(_Service(), ws, None) is None
 
 
 def test_the_lexicon_focus_note_names_the_vocabulary_and_keeps_the_corpus_in_play():

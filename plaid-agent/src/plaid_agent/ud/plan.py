@@ -25,7 +25,7 @@ from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (CONFIRM, PlanError, Stamps, TrackingBatcher, apply_add_comment,
-                         apply_restore_document, applying, created_id, expand_ops)
+                         apply_restore_document, applying, created_id, docs_of_op, expand_ops)
 from .project import load_document, word_ref
 from .review import all_words, confirm_targets, discard_targets
 
@@ -429,19 +429,6 @@ RESHAPES_TOKEN = ok.shaped(KIND, WORD_SHAPE)
 # their whole plan. A restore is the second; a parse is only the first.
 REWRITES_DOCUMENT = ok.shaped(KIND, DOCUMENT_SHAPE)
 EXCLUSIVE_KINDS = ok.shaped(KIND, ok.EXCLUSIVE)
-
-
-def docs_of_op(op: Dict[str, Any]) -> set:
-    """The documents an op reaches: one, a parse's list, or every document a
-    corpus-wide replacement matched. Every guard that reasons about what a
-    plan touches asks this, the tools' as well as the executor's, so the two
-    cannot drift into disagreeing about what an op reaches."""
-    out = set()
-    if op.get('document_id'):
-        out.add(op['document_id'])
-    out.update(op.get('document_ids') or [])
-    out.update(op.get('documents') or [])
-    return out
 
 
 def entity_of(op: Dict[str, Any]):

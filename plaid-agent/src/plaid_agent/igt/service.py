@@ -68,10 +68,10 @@ class AssistantService(BaseAssistantService):
             name = next((v['name'] for v in ws.project.vocabs if v['id'] == where.get('id')), None)
             return ('vocabulary', name, lexicon_focus_note(name)) if name else None
         if where.get('kind') == 'document':
-            # The name a printed reference uses, so what the model is told
-            # matches what a tool will accept back.
+            # The name a printed reference uses here is the corpus tag's, not
+            # the document's own, so this app answers for a document too.
             return self.document_place(ws.corpus.ref_name(where.get('id')))
-        return None
+        return super().place(ws, where)
 
     def citations(self, ws, text: str) -> List[Dict[str, Any]]:
         return resolve_citations(ws, text)
