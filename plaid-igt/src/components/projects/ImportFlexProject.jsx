@@ -26,9 +26,10 @@ import { parseFwdata } from '../../import/flex/fwdataParser';
 import { parseFlextextFiles } from '../../import/flex/flextextParser';
 import { buildDocuments } from '../../import/flex/buildDocuments';
 import { deriveImportConfig, runImport } from '../../import/flex/importEngine';
-import { defaultIgnoredTokensSetup, readImportState } from '../../domain/igtConfig';
+import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+import { setupDataFor } from '../../import/project';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -273,43 +274,24 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         orthoNames,
         importVariants,
       },
-      setupData: () => ({
-        basicInfo: { projectName: projectName.trim() },
-        orthographies: {
-          orthographies: [
-            { name: 'Baseline', isBaseline: true },
-            ...config.orthographies.map((o) => ({ name: o.name })),
-          ],
-        },
-        fields: {
-          // `ws` is the writing system this field's values are in. It is
-          // recorded on the layer, so the FLEx exporters can tag each field
+      setupData: () =>
+        setupDataFor({
+          projectName: projectName.trim(),
+          orthographies: config.orthographies.map((o) => o.name),
+          // `ws` is the writing system this field's values are in, which is
+          // what `lang` means on a field everywhere outside this importer. It
+          // is recorded on the layer, so the FLEx exporters can tag each field
           // exactly instead of reading it back out of the field's name.
-          fields: config.fields.map((f) => ({
-            name: f.name,
-            scope: f.scope,
-            lang: f.ws ?? null,
-            isCustom: true,
-          })),
-          ignoredTokens: defaultIgnoredTokensSetup(),
-        },
-        vocabulary: {
+          fields: config.fields.map((f) => ({ name: f.name, scope: f.scope, lang: f.ws ?? null })),
           vocabularies: flextext
             ? []
             : [
                 lexiconMode === 'existing'
-                  ? { id: existingVocab.id, name: vocabName, enabled: true, isCustom: false }
-                  : { id: 'new-flex-lexicon', name: vocabName, enabled: true, isCustom: true },
+                  ? { id: existingVocab.id, name: vocabName, isCustom: false }
+                  : { id: 'new-flex-lexicon', name: vocabName },
               ],
-        },
-        documentMetadata: {
-          enabledFields: config.documentMetadata.map((m) => ({
-            name: m.name,
-            enabled: true,
-            isCustom: true,
-          })),
-        },
-      }),
+          documentMetadata: config.documentMetadata.map((m) => m.name),
+        }),
       // The lexicon the record names. A resume writes into the one its record
       // already names: setup returned early for a project already set up, so
       // a choice made on this screen would name a vocabulary the project is

@@ -43,61 +43,41 @@ import {
 import {
   IGT_NAMESPACE,
   findBaselineTextLayer,
-  findSentenceTokenLayer,
-  findWordTokenLayer,
-  findMorphemeTokenLayer,
-  findAlignmentTokenLayer,
   readScope,
   ignoredTokensSetup,
 } from '../../domain/igtConfig.js';
+import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
+
+// The manifest's fields as the flat {name, scope} list the shared pipeline
+// takes: the archive groups them by scope, everything else names the scope on
+// the field.
+const manifestFields = (manifest) => {
+  const schema = manifest.schema || {};
+  return [
+    ['sentence', 'Sentence'],
+    ['word', 'Word'],
+    ['morpheme', 'Morpheme'],
+  ].flatMap(([key, scope]) =>
+    (schema.fields?.[key] || []).map((f) => ({ name: f.name, scope, lang: f.lang ?? null })),
+  );
+};
 
 /** The setup-wizard input derived from an archive manifest. */
 export function deriveSetupData(manifest, projectName) {
   const schema = manifest.schema || {};
-  const field = (scope) => (f) => ({
-    name: f.name,
-    scope,
-    lang: f.lang ?? null,
-    isCustom: true,
-  });
-  const fields = [
-    ...(schema.fields?.sentence || []).map(field('Sentence')),
-    ...(schema.fields?.word || []).map(field('Word')),
-    ...(schema.fields?.morpheme || []).map(field('Morpheme')),
-  ];
   const ignored = schema.ignoredTokens;
-  return {
-    basicInfo: { projectName },
-    orthographies: {
-      orthographies: [
-        { name: 'Baseline', isBaseline: true },
-        ...(schema.orthographies || []).map((o) => ({ name: o.name })),
-      ],
-    },
-    fields: {
-      fields,
-      // Left out entirely when the archive names no rule, so setup writes
-      // none rather than the default over whatever the project has.
-      ignoredTokens: ignored == null ? undefined : ignoredTokensSetup(ignored),
-    },
-    vocabulary: {
-      vocabularies: (manifest.vocabularies || []).map((v) => ({
-        id: `new-${v.id}`,
-        name: v.name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-    documentMetadata: {
-      enabledFields: (schema.documentMetadata || []).map((m) => ({
-        name: m.name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-  };
+  return setupDataFor({
+    projectName,
+    orthographies: (schema.orthographies || []).map((o) => o.name),
+    fields: manifestFields(manifest),
+    // No rule at all when the archive names none, so setup writes nothing
+    // rather than the default over whatever the project has.
+    ignoredTokens: ignored == null ? null : ignoredTokensSetup(ignored),
+    vocabularies: (manifest.vocabularies || []).map((v) => ({ id: `new-${v.id}`, name: v.name })),
+    documentMetadata: (schema.documentMetadata || []).map((m) => m.name),
+  });
 }
 
 /**
@@ -105,43 +85,8 @@ export function deriveSetupData(manifest, projectName) {
  * field the archive needs is missing (setup incomplete).
  */
 export function resolveNativeTargets(project, manifest) {
-  const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer. Project setup incomplete');
-  const tokenLayers = textLayer.tokenLayers || [];
-  const sentenceLayer = findSentenceTokenLayer(tokenLayers);
-  const wordLayer = findWordTokenLayer(tokenLayers);
-  const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
-  const alignmentLayer = findAlignmentTokenLayer(tokenLayers);
-  if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing. Project setup incomplete');
-  }
-  const spanLayerByScopeName = new Map();
-  for (const tl of tokenLayers) {
-    for (const sl of tl.spanLayers || []) {
-      spanLayerByScopeName.set(`${readScope(sl.config)}:${sl.name}`, sl.id);
-    }
-  }
-  const schema = manifest.schema || {};
-  for (const [scopeKey, scope] of [
-    ['sentence', 'Sentence'],
-    ['word', 'Word'],
-    ['morpheme', 'Morpheme'],
-  ]) {
-    for (const f of schema.fields?.[scopeKey] || []) {
-      if (!spanLayerByScopeName.has(`${scope}:${f.name}`)) {
-        throw new Error(
-          `Annotation field "${f.name}" (${scope}) missing. Project setup incomplete`,
-        );
-      }
-    }
-  }
   return {
-    textLayerId: textLayer.id,
-    sentenceLayerId: sentenceLayer.id,
-    wordLayerId: wordLayer.id,
-    morphemeLayerId: morphemeLayer.id,
-    alignmentLayerId: alignmentLayer?.id ?? null,
-    spanLayerByScopeName,
+    ...resolveIgtTargets(project, manifestFields(manifest)),
     // Annotation layers already reported as missing, so a corpus does not
     // carry the same warning once per annotation.
     skippedSpanLayers: new Set(),
@@ -390,25 +335,13 @@ async function importNativeDocument({
     if (shouldStop?.()) throw new ImportCancelled();
   };
 
-  progress('Creating document');
-  const newDoc = await client.documents.create(
-    projectId,
-    docData.name,
-    importStamp(
-      rewriteReferences(docData.metadata, (id) => docIdMap.get(id)),
-      docData.id,
-    ),
-  );
-  const docId = newDoc.id ?? newDoc;
-
   const body = docData.baseline?.body ?? '';
   const tokenIdMap = new Map(); // archive token id → new token id
-  if (docMaps && docData.id != null) docMaps.set(docData.id, { docId, tokenIdMap });
   const spanIdMap = new Map(); // archive span id → new span id
   const relationIdMap = new Map(); // archive relation id → new relation id
-  let baselineTextId = null; // for comments anchored to the text itself
+  let docId = null;
   // References in metadata, resolved through everything made so far. This
-  // document's own id is known from here on.
+  // document's own id is known from the moment the document row exists.
   const lookup = (id) =>
     tokenIdMap.get(id) ??
     spanIdMap.get(id) ??
@@ -416,46 +349,58 @@ async function importNativeDocument({
     (id === docData.id ? docId : docIdMap.get(id));
   const refs = documentReferences({ client, lookup, ahead: archivedIds(docData), check });
 
-  if (body.length > 0) {
-    progress('Creating text');
-    const textMetadata = refs.prepare(docData.baseline?.metadata || {});
-    const text = await client.texts.create(targets.textLayerId, docId, body, textMetadata.metadata);
-    const textId = text.id ?? text;
-    baselineTextId = textId;
-    if (textMetadata.later) refs.remember('text', textId, textMetadata.metadata);
-
-    const bulkTokens = async (specs, oldIds) => {
-      if (!specs.length) return;
-      const ids = await refs.create(
+  const sentences = docData.sentences || [];
+  const words = sentences.flatMap((s) => s.words || []);
+  const orphansBy = (layer) => (docData.orphanTokens || []).filter((t) => t.layer === layer);
+  const bulkTokens = async (specs, oldIds) => {
+    if (!specs.length) return [];
+    const ids =
+      (await refs.create(
         'token',
         specs,
         async (sent) => (await client.tokens.bulkCreate(sent))?.ids,
-      );
-      oldIds.forEach((oldId, i) => {
-        if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
-      });
-    };
+      )) ?? [];
+    oldIds.forEach((oldId, i) => {
+      if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
+    });
+    return ids;
+  };
 
-    const sentences = docData.sentences || [];
-    const words = sentences.flatMap((s) => s.words || []);
-    const orphansBy = (layer) => (docData.orphanTokens || []).filter((t) => t.layer === layer);
-
-    // Sentence partition (bulk; partitioning layers require it). Orphan
-    // sentence tokens ride in the same call — same layer, and partitioning
-    // rejects later singles.
-    check();
-    progress('Creating sentences');
-    const sentenceNodes = [...sentences, ...orphansBy('sentence')];
-    await bulkTokens(
-      sentenceNodes.map((s) => ({
-        tokenLayerId: targets.sentenceLayerId,
-        text: textId,
-        begin: s.begin,
-        end: s.end,
-        ...maybeMetadata({ ...(s.metadata || {}) }),
-      })),
-      sentenceNodes.map((s) => s.id),
-    );
+  // Orphan sentence tokens ride in the partition's own call — same layer, and
+  // partitioning rejects later singles.
+  const sentenceNodes = [...sentences, ...orphansBy('sentence')];
+  let textMetadata = null;
+  const shell = await createDocumentShell({
+    client,
+    projectId,
+    targets,
+    name: docData.name,
+    metadata: importStamp(
+      rewriteReferences(docData.metadata, (id) => docIdMap.get(id)),
+      docData.id,
+    ),
+    body,
+    sentences: sentenceNodes.map((s) => ({
+      begin: s.begin,
+      end: s.end,
+      metadata: { ...(s.metadata || {}) },
+    })),
+    textMetadata: () => (textMetadata = refs.prepare(docData.baseline?.metadata || {})).metadata,
+    onDocument: (id) => {
+      docId = id;
+      if (docMaps && docData.id != null) docMaps.set(docData.id, { docId: id, tokenIdMap });
+    },
+    createTokens: (specs) =>
+      bulkTokens(
+        specs,
+        sentenceNodes.map((s) => s.id),
+      ),
+    progress,
+    check,
+  });
+  const textId = shell.textId; // for comments anchored to the text itself
+  if (textId) {
+    if (textMetadata?.later) refs.remember('text', textId, textMetadata.metadata);
 
     check();
     progress('Creating words');
@@ -751,7 +696,7 @@ async function importNativeDocument({
           case 'document':
             return docId;
           case 'text':
-            return baselineTextId;
+            return textId;
           case 'token':
             return tokenIdMap.get(anchor.id);
           case 'span':

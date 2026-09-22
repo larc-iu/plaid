@@ -16,16 +16,9 @@ import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resu
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
-import {
-  IGT_NAMESPACE,
-  findBaselineTextLayer,
-  findSentenceTokenLayer,
-  findWordTokenLayer,
-  findMorphemeTokenLayer,
-  readScope,
-  readVocabFields,
-} from '../../domain/igtConfig.js';
+import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
+import { createDocumentShell, resolveIgtTargets } from '../project.js';
 import { FIELD_SCOPES, FIELD_TYPES } from '../../domain/vocabFields.js';
 import { pickEn } from './fwdataParser.js';
 
@@ -234,35 +227,14 @@ export function deriveImportConfig(ir, build, opts = {}) {
  * field the import needs is missing (setup incomplete).
  */
 export function resolveTargets(project, config) {
-  const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer. Run project setup first');
-  const tokenLayers = textLayer.tokenLayers || [];
-  const sentenceLayer = findSentenceTokenLayer(tokenLayers);
-  const wordLayer = findWordTokenLayer(tokenLayers);
-  const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
-  if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing. Run project setup first');
-  }
-  const spanLayerByScopeName = new Map();
-  for (const tl of tokenLayers) {
-    for (const sl of tl.spanLayers || []) {
-      spanLayerByScopeName.set(`${readScope(sl.config)}:${sl.name}`, sl);
-    }
-  }
-  const fieldLayers = new Map(); // field name+scope → span layer id
+  const targets = resolveIgtTargets(project, config.fields);
+  // The engine writes a field's spans by the config row it came from, since
+  // two rows can name one field at two scopes.
+  const fieldLayers = new Map();
   for (const f of config.fields) {
-    const sl = spanLayerByScopeName.get(`${f.scope}:${f.name}`);
-    if (!sl)
-      throw new Error(`Annotation field "${f.name}" (${f.scope}) missing. Run project setup first`);
-    fieldLayers.set(f, sl.id);
+    fieldLayers.set(f, targets.spanLayerByScopeName.get(`${f.scope}:${f.name}`));
   }
-  return {
-    textLayerId: textLayer.id,
-    sentenceLayerId: sentenceLayer.id,
-    wordLayerId: wordLayer.id,
-    morphemeLayerId: morphemeLayer.id,
-    fieldLayers,
-  };
+  return { ...targets, fieldLayers };
 }
 
 // Item metadata keys that are bookkeeping or structured data are never a
@@ -683,47 +655,28 @@ async function importDocument({
     if (shouldStop?.()) throw new ImportCancelled();
   };
 
-  progress('Creating document');
-  const newDoc = await client.documents.create(
+  // A text FLEx left unsegmented still partitions: one sentence over the
+  // whole body, so the editor has a row to hang the word tokens off.
+  const sentences = doc.sentences.length
+    ? doc.sentences
+    : [{ begin: 0, end: [...doc.body].length }];
+  const {
+    documentId: docId,
+    textId,
+    sentenceIds,
+  } = await createDocumentShell({
+    client,
     projectId,
-    doc.name,
-    importStamp(documentMetadataOf(doc), doc.guid),
-  );
-  const docId = newDoc.id ?? newDoc;
+    targets,
+    name: doc.name,
+    metadata: importStamp(documentMetadataOf(doc), doc.guid),
+    body: doc.body,
+    sentences,
+    progress,
+    check,
+  });
 
-  if (doc.body.length > 0) {
-    progress('Creating text');
-    const text = await client.texts.create(targets.textLayerId, docId, doc.body);
-    const textId = text.id ?? text;
-
-    // Sentence partition (single bulk call; partitioning layers require bulk)
-    check();
-    progress('Creating sentences');
-    const sentenceSpansSpec = doc.sentences.length
-      ? doc.sentences
-      : [
-          {
-            begin: 0,
-            end: [...doc.body].length,
-            freeTranslation: null,
-            literalTranslation: null,
-            notes: [],
-          },
-        ];
-    // The sentence layer PARTITIONS the text, and the server checks that the
-    // tokens tile the whole extent on every bulk call. So this one cannot be
-    // chunked: a first chunk ending mid-text is rejected with "Partition must
-    // end at the extent's end". A long text therefore holds the write lock for
-    // one big transaction, which is the cost of the invariant.
-    const { ids: sentenceIds } = await client.tokens.bulkCreate(
-      sentenceSpansSpec.map((s) => ({
-        tokenLayerId: targets.sentenceLayerId,
-        text: textId,
-        begin: s.begin,
-        end: s.end,
-      })),
-    );
-
+  if (textId) {
     // Word tokens, with orthography metadata
     check();
     progress('Creating words');

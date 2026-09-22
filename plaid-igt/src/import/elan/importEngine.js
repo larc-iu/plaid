@@ -23,84 +23,25 @@
 import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
-import {
-  findBaselineTextLayer,
-  findSentenceTokenLayer,
-  findWordTokenLayer,
-  findMorphemeTokenLayer,
-  findAlignmentTokenLayer,
-  readScope,
-  defaultIgnoredTokensSetup,
-} from '../../domain/igtConfig.js';
+import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 
 export { ImportCancelled };
 
 /** The setup-wizard input derived from a build. */
 export function deriveSetupData(build, projectName) {
-  return {
-    basicInfo: { projectName },
-    orthographies: {
-      orthographies: [
-        { name: 'Baseline', isBaseline: true },
-        ...build.schema.orthographies.map((name) => ({ name })),
-      ],
-    },
-    fields: {
-      fields: build.schema.fields.map((f) => ({
-        name: f.name,
-        scope: f.scope,
-        lang: f.lang ?? null,
-        isCustom: true,
-      })),
-      // An .eaf says nothing about which words to skip, so the project gets the
-      // rule every new project starts with.
-      ignoredTokens: defaultIgnoredTokensSetup(),
-    },
-    vocabulary: { vocabularies: [] },
-    documentMetadata: {
-      enabledFields: build.schema.documentMetadata.map((m) => ({
-        name: m.name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-  };
+  return setupDataFor({
+    projectName,
+    orthographies: build.schema.orthographies,
+    fields: build.schema.fields,
+    // An .eaf says nothing about which words to skip, so the project gets the
+    // rule every new project starts with.
+    documentMetadata: build.schema.documentMetadata.map((m) => m.name),
+  });
 }
 
 /** Resolve engine write targets. Throws when setup did not produce them. */
 export function resolveTargets(project, build) {
-  const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer. Project setup incomplete');
-  const tokenLayers = textLayer.tokenLayers || [];
-  const sentenceLayer = findSentenceTokenLayer(tokenLayers);
-  const wordLayer = findWordTokenLayer(tokenLayers);
-  const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
-  if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing. Project setup incomplete');
-  }
-  const spanLayerByScopeName = new Map();
-  for (const tl of tokenLayers) {
-    for (const sl of tl.spanLayers || []) {
-      spanLayerByScopeName.set(`${readScope(sl.config)}:${sl.name}`, sl.id);
-    }
-  }
-  for (const f of build.schema.fields) {
-    if (!spanLayerByScopeName.has(`${f.scope}:${f.name}`)) {
-      throw new Error(
-        `Annotation field "${f.name}" (${f.scope}) missing. Project setup incomplete`,
-      );
-    }
-  }
-  return {
-    textLayerId: textLayer.id,
-    sentenceLayerId: sentenceLayer.id,
-    wordLayerId: wordLayer.id,
-    morphemeLayerId: morphemeLayer.id,
-    // Optional: a project without one simply carries no time alignment, which
-    // is reported rather than treated as a failed setup.
-    alignmentLayerId: findAlignmentTokenLayer(tokenLayers)?.id ?? null,
-    spanLayerByScopeName,
-  };
+  return resolveIgtTargets(project, build.schema.fields);
 }
 
 /**
@@ -127,34 +68,23 @@ export async function importDocument({
   };
   const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
 
-  progress('Creating document');
-  const created = await client.documents.create(
+  const {
+    documentId: docId,
+    textId,
+    sentenceIds,
+  } = await createDocumentShell({
+    client,
     projectId,
-    copyName ?? doc.name,
-    copyName ? doc.metadata : importStamp(doc.metadata, doc.id),
-  );
-  const docId = created.id ?? created;
+    targets,
+    name: copyName ?? doc.name,
+    metadata: copyName ? doc.metadata : importStamp(doc.metadata, doc.id),
+    body: doc.body,
+    sentences: doc.sentences,
+    progress,
+    check,
+  });
 
-  if (doc.body.length > 0) {
-    progress('Creating text');
-    const text = await client.texts.create(targets.textLayerId, docId, doc.body);
-    const textId = text.id ?? text;
-
-    check();
-    progress('Creating sentences');
-    // The sentence layer PARTITIONS the text and the server checks that the
-    // tokens tile the whole extent on EVERY bulk call, so this one cannot be
-    // chunked: a first chunk ending mid-text is rejected outright.
-    const sentenceRes = await client.tokens.bulkCreate(
-      doc.sentences.map((s) => ({
-        tokenLayerId: targets.sentenceLayerId,
-        text: textId,
-        begin: s.begin,
-        end: s.end,
-      })),
-    );
-    const sentenceIds = sentenceRes.ids ?? sentenceRes;
-
+  if (textId) {
     // Time alignment. Seconds in metadata, matching the editor's own writes.
     if (doc.alignments.length && targets.alignmentLayerId) {
       check();

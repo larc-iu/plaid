@@ -16,16 +16,8 @@ import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resu
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
-import {
-  IGT_NAMESPACE,
-  readVocabFields,
-  findBaselineTextLayer,
-  findSentenceTokenLayer,
-  findWordTokenLayer,
-  findMorphemeTokenLayer,
-  readScope,
-  defaultIgnoredTokensSetup,
-} from '../../domain/igtConfig.js';
+import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import { IGT_NAMESPACE, readVocabFields } from '../../domain/igtConfig.js';
 
 const ITEM_SOURCE_KEY = 'cldfEntry';
 
@@ -47,83 +39,36 @@ const lexiconNames = (lexicon, fallback = 'Lexicon') => {
 const META_LANGUAGE_FIELDS = new Set(['Gloss', 'Translation', 'Note']);
 
 export function deriveSetupData(build, projectName, { vocabularyName = 'Lexicon' } = {}) {
-  return {
-    basicInfo: { projectName },
-    orthographies: {
-      orthographies: [
-        { name: 'Baseline', isBaseline: true },
-        ...build.schema.orthographies.map((name) => ({ name })),
-      ],
-    },
-    fields: {
-      // The gloss, translation and comment fields are in the dataset's meta
-      // language by the format's own definition. A dataset translated into
-      // several has each translation named after its language, and the build
-      // says which. Recorded, so the FLEx export tags them without anyone
-      // typing the code. A custom column's language is not known.
-      fields: build.schema.fields.map((f) => ({
-        name: f.name,
-        scope: f.scope,
-        lang:
-          f.lang ??
-          (META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null),
-        isCustom: true,
-      })),
-      // A dataset says nothing about which words to skip, so the project gets
-      // the rule every new project starts with, the one the build assumed.
-      ignoredTokens: defaultIgnoredTokensSetup(),
-    },
-    vocabulary: {
-      // One vocabulary per name the dataset gives its entries (our own export
-      // writes a Vocabulary column), else one under the default name.
-      vocabularies: lexiconNames(build.lexicon, vocabularyName).map((name, i) => ({
-        id: i === 0 ? 'new-cldf-lexicon' : `new-cldf-lexicon-${i + 1}`,
-        name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-    documentMetadata: {
-      enabledFields: build.schema.documentMetadata.map((m) => ({
-        name: m.name,
-        enabled: true,
-        isCustom: true,
-      })),
-    },
-  };
+  return setupDataFor({
+    projectName,
+    orthographies: build.schema.orthographies,
+    // The gloss, translation and comment fields are in the dataset's meta
+    // language by the format's own definition. A dataset translated into
+    // several has each translation named after its language, and the build
+    // says which. Recorded, so the FLEx export tags them without anyone
+    // typing the code. A custom column's language is not known.
+    fields: build.schema.fields.map((f) => ({
+      name: f.name,
+      scope: f.scope,
+      lang:
+        f.lang ??
+        (META_LANGUAGE_FIELDS.has(f.name) ? build.languages?.meta?.iso639P3 || null : null),
+    })),
+    // A dataset says nothing about which words to skip, so the project gets
+    // the rule every new project starts with, the one the build assumed.
+    // One vocabulary per name the dataset gives its entries (our own export
+    // writes a Vocabulary column), else one under the default name.
+    vocabularies: lexiconNames(build.lexicon, vocabularyName).map((name, i) => ({
+      id: i === 0 ? 'new-cldf-lexicon' : `new-cldf-lexicon-${i + 1}`,
+      name,
+    })),
+    documentMetadata: build.schema.documentMetadata.map((m) => m.name),
+  });
 }
 
 /** Resolve engine write targets. Throws when setup did not produce them. */
 export function resolveTargets(project, build) {
-  const textLayer = findBaselineTextLayer(project.textLayers || []);
-  if (!textLayer) throw new Error('No baseline text layer. Project setup incomplete');
-  const tokenLayers = textLayer.tokenLayers || [];
-  const sentenceLayer = findSentenceTokenLayer(tokenLayers);
-  const wordLayer = findWordTokenLayer(tokenLayers);
-  const morphemeLayer = findMorphemeTokenLayer(tokenLayers);
-  if (!sentenceLayer || !wordLayer || !morphemeLayer) {
-    throw new Error('Substrate token layers missing. Project setup incomplete');
-  }
-  const spanLayerByScopeName = new Map();
-  for (const tl of tokenLayers) {
-    for (const sl of tl.spanLayers || []) {
-      spanLayerByScopeName.set(`${readScope(sl.config)}:${sl.name}`, sl.id);
-    }
-  }
-  for (const f of build.schema.fields) {
-    if (!spanLayerByScopeName.has(`${f.scope}:${f.name}`)) {
-      throw new Error(
-        `Annotation field "${f.name}" (${f.scope}) missing. Project setup incomplete`,
-      );
-    }
-  }
-  return {
-    textLayerId: textLayer.id,
-    sentenceLayerId: sentenceLayer.id,
-    wordLayerId: wordLayer.id,
-    morphemeLayerId: morphemeLayer.id,
-    spanLayerByScopeName,
-  };
+  return resolveIgtTargets(project, build.schema.fields);
 }
 
 /**
@@ -296,35 +241,23 @@ async function importDocument({
   };
   const spanLayerFor = (scope, name) => targets.spanLayerByScopeName.get(`${scope}:${name}`);
 
-  progress('Creating document');
-  const created = await client.documents.create(
+  const {
+    documentId: docId,
+    textId,
+    sentenceIds,
+  } = await createDocumentShell({
+    client,
     projectId,
-    doc.name,
-    importStamp(doc.metadata, doc.id),
-  );
-  const docId = created.id ?? created;
+    targets,
+    name: doc.name,
+    metadata: importStamp(doc.metadata, doc.id),
+    body: doc.body,
+    sentences: doc.sentences,
+    progress,
+    check,
+  });
 
-  if (doc.body.length > 0) {
-    progress('Creating text');
-    const text = await client.texts.create(targets.textLayerId, docId, doc.body);
-    const textId = text.id ?? text;
-
-    check();
-    progress('Creating sentences');
-    // The sentence layer PARTITIONS the text, and the server checks that the
-    // tokens tile the whole extent on every bulk call. So this one cannot be
-    // chunked: a first chunk ending mid-text is rejected with "Partition must
-    // end at the extent's end". A long text therefore holds the write lock for
-    // one big transaction, which is the cost of the invariant.
-    const { ids: sentenceIds } = await client.tokens.bulkCreate(
-      doc.sentences.map((s) => ({
-        tokenLayerId: targets.sentenceLayerId,
-        text: textId,
-        begin: s.begin,
-        end: s.end,
-      })),
-    );
-
+  if (textId) {
     check();
     progress('Creating words');
     const wordIds = await bulkInChunks(
