@@ -180,7 +180,18 @@ export const KEY_ACTIONS = [
     label: 'Create the entry as typed',
     keys: ['Mod+Enter'],
   },
-  ...fixed('popover', 'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'Mod+Shift+Enter'),
+  {
+    // The two above at once. A row of its own rather than "whichever chord
+    // the other two happen to share": the handler used to test Ctrl/Cmd and
+    // Shift by hand, so moving either of them left the pair behind on the
+    // chord nobody was bound to any more.
+    id: 'popover.createAndLinkAll',
+    scope: 'popover',
+    group: 'popover',
+    label: 'Create the entry as typed and link it to every unlinked occurrence',
+    keys: ['Mod+Shift+Enter'],
+  },
+  ...fixed('popover', 'Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown'),
 
   // ---- Media tab -----------------------------------------------------------
   {

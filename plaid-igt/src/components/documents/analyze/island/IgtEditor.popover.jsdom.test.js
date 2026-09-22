@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
+import { keys } from '@/lib/keymap.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
 
@@ -121,18 +122,42 @@ describe('taking every same-form token along with the first link', () => {
     await vi.waitFor(() => expect(linkedForms(second.doc).filter(Boolean)).toHaveLength(1));
   });
 
+  const searchKey = (init) =>
+    host
+      .querySelector('.igt-vocab-pop__search')
+      .dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+
   it('links them all on Shift+Enter, and one on Enter', async () => {
     const { doc } = open('kat kat kat');
-    const key = (init) =>
-      host
-        .querySelector('.igt-vocab-pop__search')
-        .dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
-    key({ key: 'Enter', shiftKey: true });
+    searchKey({ key: 'Enter', shiftKey: true });
     await vi.waitFor(() => expect(linkedForms(doc).filter(Boolean)).toHaveLength(3));
 
     host.remove();
     const second = open('kat kat kat');
-    key({ key: 'Enter' });
+    searchKey({ key: 'Enter' });
     await vi.waitFor(() => expect(linkedForms(second.doc).filter(Boolean)).toHaveLength(1));
+  });
+
+  // "Create as typed AND link them all" is one chord, and it used to be read
+  // here by testing for Ctrl/Cmd and Shift by hand, so it went on meaning
+  // that after a person moved it.
+  afterEach(() => keys.setOverrides({}));
+
+  it('follows the table when the create-and-link-all chord is rebound', async () => {
+    const { doc } = open('kat kat kat');
+    searchKey({ key: 'Enter', ctrlKey: true, shiftKey: true });
+    await vi.waitFor(() => expect(linkedForms(doc).filter(Boolean)).toHaveLength(3));
+
+    host.remove();
+    keys.setOverrides({ 'popover.createAndLinkAll': ['Alt+g'] });
+    const moved = open('kat kat kat');
+    searchKey({ key: 'g', altKey: true });
+    await vi.waitFor(() => expect(linkedForms(moved.doc).filter(Boolean)).toHaveLength(3));
+
+    // And the chord it left behind is a plain Enter again: one link.
+    host.remove();
+    const old = open('kat kat kat');
+    searchKey({ key: 'Enter', ctrlKey: true, shiftKey: true });
+    await vi.waitFor(() => expect(linkedForms(old.doc).filter(Boolean)).toHaveLength(1));
   });
 });

@@ -423,10 +423,13 @@ export const vocabPopover = {
     // to the search box, Tab stays trapped in the dialog.
     const onCreateEditKey = (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter' || keys.is('popover.linkAll', e)) {
+      // Creating is what this box is for, so only the "and link them all"
+      // half of either chord says anything here.
+      const takeAll = keys.which(['popover.createAndLinkAll', 'popover.linkAll'], e);
+      if (e.key === 'Enter' || takeAll) {
         e.preventDefault();
         const v = (e.target.value || '').trim();
-        if (v) act.create(v, true, keys.is('popover.linkAll', e));
+        if (v) act.create(v, true, !!takeAll);
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this._cancelCreateEdit();
@@ -471,7 +474,10 @@ export const vocabPopover = {
       // A bound chord is asked about BEFORE the arrows and Enter this panel
       // reads by position: rebinding one of these actions to Alt+Down left it
       // dead, because the row cursor took the key first.
-      const bound = keys.which(['popover.linkAll', 'popover.createNow'], e);
+      const bound = keys.which(
+        ['popover.createAndLinkAll', 'popover.linkAll', 'popover.createNow'],
+        e,
+      );
       if (e.key === 'Escape') {
         e.preventDefault();
         this._closePopover(true);
@@ -483,8 +489,9 @@ export const vocabPopover = {
         this._movePopoverActive(-1, total);
       } else if (e.key === 'Enter' || bound) {
         e.preventDefault();
-        // Ctrl/Cmd+Shift+Enter is both at once, and stays where it is.
-        const both = e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.shiftKey;
+        // One chord asks for both at once, and it is a row in the table like
+        // the other two rather than a Ctrl-and-Shift test made here.
+        const both = bound === 'popover.createAndLinkAll';
         selectActive(
           both || keys.is('popover.createNow', e),
           both || keys.is('popover.linkAll', e),

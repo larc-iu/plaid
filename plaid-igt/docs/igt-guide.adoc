@@ -1113,7 +1113,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.
-| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links or unlinks the highlighted one, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Esc** closes the popover.
+| **↑** / **↓** (entry popover) | Move through the entries. **Enter** links or unlinks the highlighted one, **Shift+Enter** links it to every unlinked occurrence of the form in the text, **Ctrl/Cmd+Enter** creates the entry as typed, **Ctrl/Cmd+Shift+Enter** does both, **Esc** closes the popover.
 | **Ctrl/Cmd+Enter** (comment popover) | Post the comment. **Esc** closes the popover.
 |===
 
