@@ -15,10 +15,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, FileUp, Check, X, RefreshCw, Square } from 'lucide-react';
+import { Upload, FileUp, Check, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
+import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
@@ -393,17 +394,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             </p>
           )}
           {resumeId && (
-            <p className="mt-2 text-sm">
-              Continuing the unfinished import into{' '}
-              <span className="font-medium">{resumeName ?? 'this project'}</span>. {fmt.again}{' '}
-              <button
-                type="button"
-                onClick={finishAsIs}
-                className="font-medium text-primary hover:underline"
-              >
-                Use the project as it is
-              </button>
-            </p>
+            <ResumeBanner name={resumeName} again={fmt.again} onFinishAsIs={finishAsIs} />
           )}
         </div>
 
@@ -502,22 +493,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               )}
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <label className="mb-1 block text-sm font-medium" htmlFor="flex-project-name">
-                Project name
-              </label>
-              <Input
-                id="flex-project-name"
-                value={resumeId ? (resumeName ?? '') : projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
-              />
-              {resumeId && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Continuing an import into this project. What it already holds is kept.
-                </p>
-              )}
-            </div>
+            <ProjectNameField
+              id="flex-project-name"
+              value={resumeId ? (resumeName ?? '') : projectName}
+              onChange={setProjectName}
+              disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
+              resuming={!!resumeId}
+            />
 
             {!flextext && (
               <div className="rounded-lg border bg-card p-4">
@@ -821,26 +803,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               </div>
             </div>
 
-            {runError && stage === 'review' && (
-              <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm">
-                <div className="flex items-start gap-2">
-                  <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  <div>
-                    <p className="font-medium text-destructive">
-                      {runError === 'Import cancelled' ? 'Import stopped' : 'Import failed'}
-                    </p>
-                    {runError !== 'Import cancelled' && (
-                      <p className="mt-1 text-muted-foreground">{runError}</p>
-                    )}
-                    {projectIdRef.current && (
-                      <p className="mt-1 text-muted-foreground">
-                        Progress so far is kept. Importing again resumes where it stopped.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
+            <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop} />
 
             {stage === 'review' && (
               <div className="flex items-center justify-end gap-2">
@@ -869,31 +832,6 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     </>
                   )}
                 </Button>
-              </div>
-            )}
-
-            {stage === 'running' && (
-              <div className="rounded-lg border bg-card p-4">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-                    <p className="font-medium">Importing…</p>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full bg-primary transition-all"
-                      style={{ width: `${progress?.pct ?? 0}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground">
-                      {progress?.label ?? 'Starting…'}
-                    </p>
-                    <Button variant="outline" size="sm" onClick={stop}>
-                      <Square className="h-3.5 w-3.5" /> Stop
-                    </Button>
-                  </div>
-                </div>
               </div>
             )}
 

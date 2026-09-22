@@ -10,9 +10,9 @@
 
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Check, RefreshCw, Square } from 'lucide-react';
+import { Upload, Check, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
+import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
@@ -111,18 +111,11 @@ export const ImportNativeProject = () => {
             alignment, media, and provenance.
           </p>
           {resumeId && (
-            <p className="mt-2 text-sm">
-              Continuing the unfinished import into{' '}
-              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              file: what is already there is kept.{' '}
-              <button
-                type="button"
-                onClick={finishAsIs}
-                className="font-medium text-primary hover:underline"
-              >
-                Use the project as it is
-              </button>
-            </p>
+            <ResumeBanner
+              name={resumeName}
+              again="Choose the same file: what is already there is kept."
+              onFinishAsIs={finishAsIs}
+            />
           )}
         </div>
 
@@ -184,42 +177,15 @@ export const ImportNativeProject = () => {
               </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              <label className="mb-1 block text-sm font-medium" htmlFor="native-project-name">
-                Project name
-              </label>
-              <Input
-                id="native-project-name"
-                value={resumeId ? (resumeName ?? '') : projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
-              />
-              {resumeId && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Continuing an import into this project. What it already holds is kept.
-                </p>
-              )}
-            </div>
+            <ProjectNameField
+              id="native-project-name"
+              value={resumeId ? (resumeName ?? '') : projectName}
+              onChange={setProjectName}
+              disabled={!!resumeId || stage !== 'review' || setupDoneRef.current}
+              resuming={!!resumeId}
+            />
 
-            {runError && stage === 'review' && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {runError === 'Import cancelled'
-                  ? 'Import stopped. Retry continues where it left off.'
-                  : `Import failed: ${runError}. Retry continues where it left off.`}
-              </div>
-            )}
-
-            {stage === 'running' && (
-              <div className="rounded-lg border bg-card p-4">
-                <div className="mb-2 h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${progress?.pct ?? 0}%` }}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">{progress?.label ?? 'Starting…'}</p>
-              </div>
-            )}
+            <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop} />
 
             {stage === 'done' && results && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
@@ -252,11 +218,6 @@ export const ImportNativeProject = () => {
                   ) : (
                     'Create project & import'
                   )}
-                </Button>
-              )}
-              {stage === 'running' && (
-                <Button variant="outline" onClick={stop}>
-                  <Square className="h-4 w-4" /> Stop
                 </Button>
               )}
               {stage === 'done' && (

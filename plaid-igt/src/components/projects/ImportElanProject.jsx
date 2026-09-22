@@ -20,11 +20,15 @@
 
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Check, RefreshCw, Square, AlertTriangle } from 'lucide-react';
-import { Panel, WarningLog } from './ImportPanels.jsx';
+import { Upload, Check, RefreshCw, AlertTriangle } from 'lucide-react';
+import {
+  ImportRunPanel,
+  Panel,
+  ProjectNameField,
+  ResumeBanner,
+  WarningLog,
+} from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import { Label } from '@ui/components/ui/label';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
@@ -159,18 +163,11 @@ export const ImportElanProject = () => {
             tier structure so one set of decisions covers the whole corpus.
           </p>
           {resumeId && (
-            <p className="mt-2 text-sm">
-              Continuing the unfinished import into{' '}
-              <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              files: what is already there is kept, and the first run’s answers are used again.{' '}
-              <button
-                type="button"
-                onClick={finishAsIs}
-                className="font-medium text-primary hover:underline"
-              >
-                Use the project as it is
-              </button>
-            </p>
+            <ResumeBanner
+              name={resumeName}
+              again="Choose the same files: what is already there is kept, and the first run’s answers are used again."
+              onFinishAsIs={finishAsIs}
+            />
           )}
         </div>
 
@@ -209,21 +206,13 @@ export const ImportElanProject = () => {
 
             {batch.comparison.consistent && (
               <>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="project-name">Project name</Label>
-                  <Input
-                    id="project-name"
-                    value={resumeId ? (resumeName ?? '') : projectName}
-                    disabled={!!resumeId || !editable}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    className="max-w-md"
-                  />
-                  {resumeId && (
-                    <p className="text-xs text-muted-foreground">
-                      Continuing an import into this project. What it already holds is kept.
-                    </p>
-                  )}
-                </div>
+                <ProjectNameField
+                  id="project-name"
+                  value={resumeId ? (resumeName ?? '') : projectName}
+                  onChange={setProjectName}
+                  disabled={!!resumeId || !editable}
+                  resuming={!!resumeId}
+                />
 
                 <ElanFiles
                   files={batch.files}
@@ -249,28 +238,9 @@ export const ImportElanProject = () => {
 
                 <ElanProblems batch={batch} />
 
-                {runError && (
-                  <Panel tone="error" icon={AlertTriangle} title="Import failed">
-                    <p className="mt-1 text-xs">{runError}</p>
-                    <p className="mt-1 text-xs">
-                      Retrying continues in the same project: finished documents are skipped.
-                    </p>
-                  </Panel>
-                )}
-
-                {log.length > 0 && <WarningLog log={log} />}
-
-                {stage === 'running' && progress && (
-                  <div className="flex flex-col gap-2">
-                    <div className="h-2 overflow-hidden rounded bg-muted">
-                      <div
-                        className="h-full bg-primary transition-all"
-                        style={{ width: `${Math.min(100, Math.round(progress.pct))}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">{progress.label}</p>
-                  </div>
-                )}
+                <ImportRunPanel stage={stage} runError={runError} progress={progress} onStop={stop}>
+                  {log.length > 0 && <WarningLog log={log} />}
+                </ImportRunPanel>
 
                 <div className="flex items-center gap-2">
                   <Button onClick={startImport} disabled={!canRun}>
@@ -282,11 +252,6 @@ export const ImportElanProject = () => {
                       'Import'
                     )}
                   </Button>
-                  {stage === 'running' && (
-                    <Button variant="outline" onClick={stop}>
-                      <Square className="h-4 w-4" /> Stop
-                    </Button>
-                  )}
                   <span className="ms-2 text-xs text-muted-foreground">
                     {elanCounts(batch.build)}
                   </span>
