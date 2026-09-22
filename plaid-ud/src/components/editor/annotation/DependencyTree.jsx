@@ -14,7 +14,7 @@ import {
   handArcPath,
   levelAmong,
 } from '../../../utils/arcLayout.js';
-import { extraEdges, suppressedBasicIds } from '../../../domain/enhancedGraph.js';
+import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
@@ -53,6 +53,9 @@ export const DependencyTree = forwardRef(
       // The enhanced layer's rows for this sentence, extras and suppressors
       // alike (see domain/enhancedGraph.js). Empty in a project without one.
       enhancedRelations,
+      // The extras among them, split out by the row, which needs them for the
+      // band below and so is where that split is made.
+      extras = [],
       lemmaSpans,
       textContent,
       tokenPositions = [],
@@ -82,13 +85,11 @@ export const DependencyTree = forwardRef(
     } = useEditorSession();
     const deprelColors = colors?.deprel;
 
-    // What the enhanced graph has beside the tree, and which of the tree's
-    // relations it leaves out. The extras are NOT drawn here: they hang below
-    // the words (EnhancedArcs), and this tree only needs to know where one
-    // already is, so that drawing over it opens it. A suppressor is not drawn
-    // either: it shows as a DIMMED arc and label on the basic relation it
-    // lies over.
-    const extras = useMemo(() => extraEdges(enhancedRelations), [enhancedRelations]);
+    // Which of the tree's relations the enhanced graph leaves out. The extras
+    // are NOT drawn here: they hang below the words (EnhancedArcs), and this
+    // tree only needs to know where one already is, so that drawing over it
+    // opens it. A suppressor is not drawn either: it shows as a DIMMED arc and
+    // label on the basic relation it lies over.
     const suppressedIds = useMemo(
       () => suppressedBasicIds(relations, enhancedRelations),
       [relations, enhancedRelations],

@@ -2,7 +2,12 @@ import React, { useMemo, useCallback, useRef } from 'react';
 import { isMachine } from '@larc-iu/plaid-client';
 import { DependencyTree } from './DependencyTree.jsx';
 import { EnhancedArcs } from './EnhancedArcs.jsx';
-import { computeArcLayout, computeLowerBand, buildIndexById } from '../../../utils/arcLayout.js';
+import {
+  computeArcLayout,
+  computeLowerBand,
+  buildIndexById,
+  TREE_OVERHANG,
+} from '../../../utils/arcLayout.js';
 import { sentenceArcs, extraEdges } from '../../../domain/enhancedGraph.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
@@ -265,6 +270,7 @@ export const SentenceRow = React.memo(
             tokens={sentenceData.tokens.map((t) => t.token)}
             relations={relations}
             enhancedRelations={enhancedRelations}
+            extras={extras}
             lemmaSpans={lemmaSpans}
             textContent={textContentProvider}
             tokenPositions={tokenPositions}
@@ -277,14 +283,14 @@ export const SentenceRow = React.memo(
 
           {/* The enhanced graph's extra edges, under the words. Hung from the
           measured bottom of the word row: `y` is a word's centre in the tree's
-          coordinates, which start 50px above this block. */}
+          coordinates, which start TREE_OVERHANG above this block. */}
           {extras.length > 0 && tokenPositions.length > 0 && (
             <EnhancedArcs
               ref={lowerRef}
               relations={extras}
               tokenPositions={tokenPositions}
               layout={lowerBand}
-              top={tokenPositions[0].y - 50 + (tokenPositions[0].height || 0) / 2}
+              top={tokenPositions[0].y - TREE_OVERHANG + (tokenPositions[0].height || 0) / 2}
               minWidth={Math.max(...tokenPositions.map((p) => p.x)) + 50}
               onExitDown={focusGridCell}
               onExitUp={(tokenId) =>
