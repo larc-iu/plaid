@@ -6,6 +6,7 @@ import {
   deriveImportOptions,
   customColumnChoices,
   groupingChoices,
+  restoreImportOptions,
   PER_EXAMPLE,
   BY_CONTRIBUTION,
   SINGLE_TEXT,
@@ -889,6 +890,62 @@ describe('groupingChoices', () => {
       PER_EXAMPLE,
       SINGLE_TEXT,
     ]);
+  });
+});
+
+describe('restoreImportOptions', () => {
+  // A resumed import redoes the documents the first run did not finish. Under
+  // freshly derived options a changed gloss scope makes the engine look for a
+  // field the project never created, and a changed grouping cuts the rest of
+  // the corpus differently from the part already there.
+  const csv =
+    'ID,Primary_Text,Analyzed_Word,Gloss,chapter,Whatever\r\n' +
+    '1,uno,uno=s,one=PL,a,x\r\n2,dos,dos,two,a,y\r\n3,tres,tres,three,b,z\r\n';
+  const columns = [...BASIC_COLUMNS, col('chapter', null), col('Whatever', null)];
+  const ds = () => dataset(csv, columns);
+
+  it('gives back what the first run was answered with', () => {
+    const d = ds();
+    const derived = deriveImportOptions(d);
+    expect(derived.glossScope).toBe('Morpheme');
+    expect(derived.groupBy).toBe(SINGLE_TEXT);
+    expect(derived.customColumns.Whatever).toMatchObject({ enabled: false });
+
+    const restored = restoreImportOptions(d, derived, {
+      glossScope: 'Word',
+      groupBy: 'chapter',
+      customColumns: { Whatever: { scope: 'Sentence', name: 'Remark', enabled: true } },
+    });
+    expect(restored.glossScope).toBe('Word');
+    expect(restored.groupBy).toBe('chapter');
+    expect(restored.customColumns.Whatever).toEqual({
+      scope: 'Sentence',
+      name: 'Remark',
+      enabled: true,
+    });
+    // And the documents come out cut the way the first run cut them.
+    expect(buildCldfDocuments(d, derived).documents).toHaveLength(1);
+    expect(buildCldfDocuments(d, restored).documents.map((doc) => doc.name)).toEqual(['a', 'b']);
+  });
+
+  it('keeps the derived answer where the record says nothing', () => {
+    const d = ds();
+    const derived = deriveImportOptions(d);
+    expect(restoreImportOptions(d, derived, {})).toEqual(derived);
+    expect(restoreImportOptions(d, derived, null)).toBe(derived);
+  });
+
+  it('ignores a column or grouping this dataset does not offer', () => {
+    const d = ds();
+    const derived = deriveImportOptions(d);
+    const restored = restoreImportOptions(d, derived, {
+      glossScope: 'Sideways',
+      groupBy: 'gone_column',
+      customColumns: { Not_Here: { scope: 'Sentence', name: 'Nope', enabled: true } },
+    });
+    expect(restored.glossScope).toBe(derived.glossScope);
+    expect(restored.groupBy).toBe(derived.groupBy);
+    expect(restored.customColumns.Not_Here).toBeUndefined();
   });
 });
 

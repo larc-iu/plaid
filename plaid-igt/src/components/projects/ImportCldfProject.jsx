@@ -8,7 +8,7 @@
 // same project; the engine skips documents already marked done, redoes
 // half-imported ones, and dedupes lexicon items by their stamped entry id.
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Check, RefreshCw, Square, AlertTriangle } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -29,9 +29,11 @@ import {
   deriveImportOptions,
   customColumnChoices,
   groupingChoices,
+  restoreImportOptions,
   SINGLE_TEXT,
 } from '../../import/cldf/buildDocuments';
 import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
+import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
@@ -49,7 +51,10 @@ export const ImportCldfProject = () => {
   const [options, setOptions] = useState(null);
   const [projectName, setProjectName] = useState('');
 
-  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
+  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
+  const resumeChoices = resumeProject
+    ? (readImportState(resumeProject.config)?.choices ?? null)
+    : null;
 
   const { stage, setStage, progress, runError, results, projectIdRef, setupDoneRef, stop, start } =
     useProjectImportRun({ client, kind: 'CLDF', resumeId });
@@ -80,6 +85,19 @@ export const ImportCldfProject = () => {
     }
   };
 
+  // A resume is the same import again, so the screen is given the answers the
+  // first run was given rather than the ones this dataset would suggest now.
+  // The record may still be loading when the file is read, so this waits for
+  // both. Without it a changed gloss scope makes the engine look for a field
+  // the project never created, and a changed grouping cuts the documents the
+  // resume adds differently from the ones already there.
+  const choicesApplied = useRef(false);
+  useEffect(() => {
+    if (!dataset || !resumeChoices || choicesApplied.current) return;
+    choicesApplied.current = true;
+    setOptions((o) => restoreImportOptions(dataset, o, resumeChoices));
+  }, [dataset, resumeChoices]);
+
   const setColumn = (column, mapping) =>
     setOptions((o) => ({ ...o, customColumns: { ...o.customColumns, [column]: mapping } }));
 
@@ -87,6 +105,8 @@ export const ImportCldfProject = () => {
     start({
       source: dataset?.title ?? null,
       setupData: () => deriveSetupData(build, projectName.trim()),
+      // The answers this screen was given, so a resume repeats them.
+      choices: options,
       // The lexicon setup made, so the record names it.
       vocabId: async ({ projectId }) =>
         ((await client.projects.get(projectId)).vocabs || [])[0]?.id ?? null,
@@ -113,6 +133,9 @@ export const ImportCldfProject = () => {
     });
 
   const editable = stage === 'review';
+  // The review answers lock once setup has run, and on a resume: the resume
+  // deletes and redoes the unfinished documents against them.
+  const locked = !editable || setupDoneRef.current || !!resumeId;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -148,7 +171,7 @@ export const ImportCldfProject = () => {
             <p className="mt-2 text-sm">
               Continuing the unfinished import into{' '}
               <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              file: what is already there is kept.{' '}
+              file: what is already there is kept, and the first run’s answers are used again.{' '}
               <button
                 type="button"
                 onClick={finishAsIs}
@@ -257,7 +280,7 @@ export const ImportCldfProject = () => {
               <Select
                 value={options.glossScope}
                 onValueChange={(v) => setOptions((o) => ({ ...o, glossScope: v }))}
-                disabled={!editable}
+                disabled={locked}
               >
                 <SelectTrigger className="h-8 w-56">
                   <SelectValue />
@@ -282,7 +305,7 @@ export const ImportCldfProject = () => {
                 <Select
                   value={options.groupBy ?? SINGLE_TEXT}
                   onValueChange={(v) => setOptions((o) => ({ ...o, groupBy: v }))}
-                  disabled={!editable}
+                  disabled={locked}
                 >
                   <SelectTrigger className="h-8 w-64">
                     <SelectValue />
@@ -317,7 +340,7 @@ export const ImportCldfProject = () => {
                         <span className="min-w-0 flex-1 truncate text-sm">{choice.name}</span>
                         <Select
                           value={active ? mapping.scope : OFF}
-                          disabled={!editable}
+                          disabled={locked}
                           onValueChange={(v) =>
                             setColumn(
                               choice.name,
@@ -344,7 +367,7 @@ export const ImportCldfProject = () => {
                         <Input
                           className="h-8 w-40 shrink-0"
                           value={mapping?.name ?? choice.name}
-                          disabled={!editable || !active}
+                          disabled={locked || !active}
                           onChange={(e) =>
                             setColumn(choice.name, { ...mapping, name: e.target.value })
                           }

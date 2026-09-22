@@ -256,7 +256,7 @@ describe('the import record', () => {
   it('records no answers when a wizard offers none', async () => {
     const written = [];
     const client = { projects: { setConfig: async (...args) => written.push(args) } };
-    await markImportStarted(client, 'p1', 'CLDF', null);
+    await markImportStarted(client, 'p1', 'Plaid IGT archive', null);
     expect(written[0][3].choices).toBe(null);
   });
 });

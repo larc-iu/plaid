@@ -264,6 +264,33 @@ export function customColumnChoices(dataset) {
     }));
 }
 
+/**
+ * The options a resumed import runs under: the answers the first run's review
+ * was given, checked against the dataset in hand. A resume redoes the
+ * documents it did not finish, so running it under freshly derived defaults
+ * would cut the rest of the corpus differently from the part already there,
+ * or look for a gloss field at a scope the project never created.
+ *
+ * `derived` stands in wherever the record says nothing or names something this
+ * dataset does not offer.
+ */
+export function restoreImportOptions(dataset, derived, choices) {
+  if (!choices) return derived;
+  const next = { ...derived };
+  if (choices.glossScope === 'Morpheme' || choices.glossScope === 'Word') {
+    next.glossScope = choices.glossScope;
+  }
+  if (groupingChoices(dataset).some((c) => c.value === choices.groupBy)) {
+    next.groupBy = choices.groupBy;
+  }
+  const offered = new Set(customColumnChoices(dataset).map((c) => c.name));
+  next.customColumns = { ...derived.customColumns };
+  for (const [name, mapping] of Object.entries(choices.customColumns || {})) {
+    if (mapping && offered.has(name)) next.customColumns[name] = mapping;
+  }
+  return next;
+}
+
 // ---- media -------------------------------------------------------------------
 
 /**

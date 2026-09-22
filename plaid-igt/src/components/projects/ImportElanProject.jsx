@@ -28,6 +28,7 @@ import { Label } from '@ui/components/ui/label';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { deriveSetupData, runElanImport } from '../../import/elan/importEngine';
+import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 
@@ -54,7 +55,14 @@ export const ImportElanProject = () => {
   const limits = useServerLimits();
   const conversion = useRecordingConversion(batch.setMediaFiles);
   const durations = useMediaDurations(batch.mediaFiles);
-  const { resumeId, resumeName, finishAsIs } = useResumeImport(client);
+  const { resumeId, resumeName, resumeProject, finishAsIs } = useResumeImport(client);
+  // A resume is the same import again, so the batch is given the mapping the
+  // first run was answered with rather than one suggested afresh: the memory
+  // note records that a second speaker's tier tree is mapped by hand and never
+  // suggested, so a re-suggested mapping drops it without a word.
+  const resumeChoices = resumeProject
+    ? (readImportState(resumeProject.config)?.choices ?? null)
+    : null;
   const { stage, setStage, progress, runError, results, projectIdRef, stop, start } =
     useProjectImportRun({ client, kind: 'ELAN', resumeId });
 
@@ -65,7 +73,7 @@ export const ImportElanProject = () => {
     // what would throw the tier mapping away.
     if (partitionPicked(fileList).eafs.length) setStage('parsing');
     try {
-      await batch.readFiles(fileList);
+      await batch.readFiles(fileList, resumeChoices);
       setProjectName((name) => name || 'ELAN corpus');
       setStage('review');
     } catch (e) {
@@ -79,6 +87,8 @@ export const ImportElanProject = () => {
     setLog([]);
     return start({
       setupData: () => deriveSetupData(batch.build, projectName.trim()),
+      // The answers this screen was given, so a resume repeats them.
+      choices: batch.choices,
       run: ({ projectId, shouldStop, setProgress }) =>
         runElanImport({
           client,
@@ -100,6 +110,9 @@ export const ImportElanProject = () => {
   };
 
   const editable = stage === 'review';
+  // The mapping locks on a resume: it deletes and redoes the unfinished
+  // documents against the answers the first run was given.
+  const mappingEditable = editable && !resumeId;
   const canRun =
     editable && !!batch.build && !!projectName.trim() && batch.undecidedNearMisses.length === 0;
 
@@ -149,7 +162,7 @@ export const ImportElanProject = () => {
             <p className="mt-2 text-sm">
               Continuing the unfinished import into{' '}
               <span className="font-medium">{resumeName ?? 'this project'}</span>. Choose the same
-              files: what is already there is kept.{' '}
+              files: what is already there is kept, and the first run’s answers are used again.{' '}
               <button
                 type="button"
                 onClick={finishAsIs}
@@ -219,6 +232,7 @@ export const ImportElanProject = () => {
                   durations={durations}
                   maxBytes={limits?.mediaFileBytes ?? null}
                   editable={editable}
+                  choicesEditable={mappingEditable}
                   converting={conversion.converting}
                   documents={batch.build?.documents ?? null}
                   onAddFiles={() => fileInputRef.current?.click()}
@@ -229,7 +243,7 @@ export const ImportElanProject = () => {
                   onRecordMediaName={batch.setRecordMediaName}
                 />
 
-                <ElanTierReview batch={batch} editable={editable} />
+                <ElanTierReview batch={batch} editable={mappingEditable} />
 
                 <ElanPreview build={batch.build} />
 

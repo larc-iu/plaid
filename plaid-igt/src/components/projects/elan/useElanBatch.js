@@ -92,43 +92,69 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   // Adopt a schema: suggest the roles and field names for it, keeping whatever
   // the user has already chosen for nodes that survive. A merge changes node
   // keys, so the mapping has to be rebuilt rather than carried over wholesale.
-  const applySchema = (parsed, result) => {
+  //
+  // `given` is the mapping a resumed import was answered with the first time.
+  // It wins over both the suggestion and anything chosen since, for every tier
+  // still in the batch: the resume redoes the documents the first run did not
+  // finish, and a re-suggested role would import them under a mapping nobody
+  // made. A tier the batch no longer has is dropped.
+  const applySchema = (parsed, result, given = null) => {
     setComparison(result);
     const suggested = result.consistent ? suggestRoles(result.nodes) : {};
     const roleOf = { ...suggested };
     if (skipEmptyTiers) {
       for (const n of result.nodes) if (!n.annotationCount) roleOf[n.key] = ROLES.OFF;
     }
+    const here = new Set(result.nodes.map((n) => n.key));
+    const kept = (record, valid) =>
+      Object.fromEntries(
+        Object.entries(record || {}).filter(([key, value]) => here.has(key) && valid(value)),
+      );
+    const givenRoles = kept(given?.roles, (r) => Object.values(ROLES).includes(r));
+    const givenNames = kept(given?.fieldNames, (n) => typeof n === 'string' && n.length > 0);
     setRoles((prev) => {
       const next = { ...roleOf };
       for (const n of result.nodes) if (prev[n.key] !== undefined) next[n.key] = prev[n.key];
-      return next;
+      return { ...next, ...givenRoles };
     });
     // Named from the SUGGESTED roles, not the ones an empty tier is forced to:
     // switching one on later should find its field already chosen.
     const placed = namesFor?.(result.nodes, suggested) ?? {};
     setFieldNames((prev) =>
       Object.fromEntries(
-        result.nodes.map((n) => [n.key, prev[n.key] ?? placed[n.key] ?? defaultFieldName(n)]),
+        result.nodes.map((n) => [
+          n.key,
+          givenNames[n.key] ?? prev[n.key] ?? placed[n.key] ?? defaultFieldName(n),
+        ]),
       ),
     );
+  };
+
+  // The tiers a set of merge decisions folds together, as compareSchemas takes
+  // them: null when nothing has been decided.
+  const canonicalOf = (choices) => {
+    const merged = new Map(
+      Object.entries(choices || {}).filter(([, v]) => v !== 'separate' && v !== undefined),
+    );
+    return merged.size ? merged : null;
   };
 
   /** Re-read the batch under a new set of merge decisions. */
   const chooseNearMiss = (fold, choice) => {
     const choices = { ...nearMissChoices, [fold]: choice };
     setNearMissChoices(choices);
-    const canonical = new Map(
-      Object.entries(choices).filter(([, v]) => v !== 'separate' && v !== undefined),
-    );
-    applySchema(files, compareSchemas(files, canonical.size ? canonical : null));
+    applySchema(files, compareSchemas(files, canonicalOf(choices)));
   };
 
   /**
    * Read a picked file list. Media files are kept aside; .eaf files are parsed
    * and compared. Throws with a message fit to show the user.
+   *
+   * `given` is the mapping a resumed import was answered with the first time
+   * (`{roles, fieldNames, nearMissChoices, recordMediaName}`), which the batch
+   * takes instead of its own suggestions.
    */
-  const readFiles = async (fileList) => {
+  const readFiles = async (fileList, given = null) => {
     const { eafs, media: picked } = partitionPicked(fileList);
     // Picking the same recording twice (choosing again, or dragging a folder
     // over one already staged) must not stage it twice: the second copy would
@@ -146,11 +172,16 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     }
     const parsed = [];
     for (const file of eafs) parsed.push(readEaf(await file.text(), file.name));
+    // The near misses are what the batch reads like before any of them is
+    // decided, so they are found first and the merge applied over the top.
     const result = compareSchemas(parsed);
     setFiles(parsed);
     setNearMissGroups(result.nearMisses);
-    setNearMissChoices({});
-    applySchema(parsed, result);
+    const merges = given?.nearMissChoices ?? {};
+    setNearMissChoices(merges);
+    const canonical = canonicalOf(merges);
+    applySchema(parsed, canonical ? compareSchemas(parsed, canonical) : result, given);
+    if (typeof given?.recordMediaName === 'boolean') setRecordMediaName(given.recordMediaName);
     return true;
   };
 
@@ -183,6 +214,9 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
   };
 
   return {
+    // Everything the review step was answered with, in the shape `readFiles`
+    // takes back: what an importer records so a resume repeats this mapping.
+    choices: { roles, fieldNames, nearMissChoices, recordMediaName },
     recordMediaName,
     setRecordMediaName,
     files,
