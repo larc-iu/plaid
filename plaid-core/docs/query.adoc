@@ -1010,8 +1010,9 @@ client.query({
   past that the result is `truncated`. The 30-second time limit still applies. The
   envelope's top-level `count` is the number of group rows returned.
 * `find` and `order-by` are not used with an aggregate `return`.
-* When the pattern uses `or` / `seq`, every branch must bind the same
-  set of entity and layer variables, not just the same `find` vars, else 400.
+* When the pattern uses `or` / `seq`, a match is a binding of the variables
+  EVERY alternative binds, so a row two alternatives both match counts once and
+  a variable only one of them binds does not multiply it.
 
 Grouping matters. A "match" is a binding of all the query's variables, so a
 one-to-many join repeats the aggregated value once per match. If you bind extra

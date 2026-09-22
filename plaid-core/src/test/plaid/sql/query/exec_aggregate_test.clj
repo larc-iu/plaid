@@ -91,10 +91,10 @@
         (is (= [[2]] (:results r)))))))
 
 (deftest aggregate-asymmetric-branches
-  ;; One alternative binds a variable the other does not. Every branch projects
-  ;; the union of what the branches bind, NULL where a branch binds nothing, so
-  ;; the union holds and the count is the matches of both alternatives. It used
-  ;; to be refused with a 400, because the projections had different shapes.
+  ;; One alternative binds a variable the other does not. Both branches project
+  ;; only the vars EVERY branch binds, so the count is the distinct bindings of
+  ;; those — here of ?s, one span per alternative. It used to be refused with a
+  ;; 400, because the projections had different shapes.
   (let [{:keys [pos words]} (build!)]
     (testing "an alternative may bind a variable another does not"
       (let [r (qe/run db "admin@example.com"
@@ -103,16 +103,40 @@
                                   ["token" "?t" {"layer" words}]
                                   ["covers" "?s" "?t"]]
                                  [["span" "?s" {"layer" pos "value" 20}]]]]
-                       "return" {"group" [] "aggregates" [["count"]]}})
-            one (qe/run db "admin@example.com"
-                        {"where" [["span" "?s" {"layer" pos "value" 10}]
-                                  ["token" "?t" {"layer" words}]
-                                  ["covers" "?s" "?t"]]
-                         "return" {"group" [] "aggregates" [["count"]]}})
-            two (qe/run db "admin@example.com"
-                        {"where" [["span" "?s" {"layer" pos "value" 20}]]
-                         "return" {"group" [] "aggregates" [["count"]]}})]
-        (is (= [[(+ (ffirst (:results one)) (ffirst (:results two)))]] (:results r)))))))
+                       "return" {"group" [] "aggregates" [["count"]]}})]
+        (is (= [[2]] (:results r)) "the value-10 span and the value-20 span")))))
+
+(deftest aggregate-over-or-counts-only-the-shared-variables
+  ;; Ruling, 2026-09-21: an aggregate over `or` alternatives counts only the
+  ;; variables EVERY alternative binds. A span that satisfies both
+  ;; alternatives is one match, however many tokens the alternative that binds
+  ;; ?t fans it out over. Before the ruling this query counted 3: two
+  ;; (span, token) rows from the first alternative and one (span, NULL) from
+  ;; the second.
+  (let [pid (h/create-test-project admin-request "SharedVarProj")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl (id (h/create-span-layer admin-request tokl "pos"))
+        doc (h/create-test-document admin-request pid "d1")
+        tx (id (h/create-text admin-request txtl doc "aa bb cc"))
+        t0 (id (h/create-token admin-request tokl tx 0 2))
+        t1 (id (h/create-token admin-request tokl tx 3 5))
+        _t2 (id (h/create-token admin-request tokl tx 6 8))
+        _ (h/create-span admin-request sl [t0 t1] 10)
+        count-of (fn [where]
+                   (ffirst (:results (qe/run db "admin@example.com"
+                                             {"where" where
+                                              "return" {"group" [] "aggregates" [["count"]]}}))))]
+    (testing "the span satisfying both alternatives counts once"
+      (is (= 1 (count-of [["or"
+                           [["span" "?s" {"layer" sl "value" 10}]
+                            ["token" "?t" {"layer" tokl}]
+                            ["covers" "?s" "?t"]]
+                           [["span" "?s" {"layer" sl "value" 10}]]]]))))
+    (testing "and the same alternative alone still counts every binding of ?t"
+      (is (= 2 (count-of [["span" "?s" {"layer" sl "value" 10}]
+                          ["token" "?t" {"layer" tokl}]
+                          ["covers" "?s" "?t"]]))))))
 
 (deftest count-vs-find-tuple-divergence-under-fanout
   ;; Pins the documented subtlety: return:"count" counts distinct FIND tuples,

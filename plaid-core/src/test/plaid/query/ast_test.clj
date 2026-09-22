@@ -370,9 +370,10 @@
                             ["!=" "?sl" "?sl2"]]})))))
   (testing "aggregating over :or where a var is positive in one branch but :not-only in another"
     ;; ?t is positively bound in branch 1 and appears only inside :not in branch
-    ;; 2, so the branches bind different entity vars. Both project the union of
-    ;; them, NULL where a branch binds nothing, which is what keeps the UNION's
-    ;; arity right (it used to be a 400, to keep a 500 out of the SQL).
+    ;; 2, so the branches bind different entity vars. Both project only what
+    ;; EVERY branch binds — ?s — so the arity matches and a span counts once
+    ;; however many tokens branch 1 fans it out over (it used to be a 400, to
+    ;; keep a 500 out of the SQL).
     (let [branches (ast/expand
                     {"where" [["span" "?s" {"layer" "p"}]
                               ["or"
@@ -380,7 +381,7 @@
                                [["not" ["token" "?t" {"layer" "w"}] ["covers" "?s" "?t"]]]]]
                      "return" {"group" ["?s"] "aggregates" [["count"]]}})]
       (is (= 2 (count branches)))
-      (is (= [['?s '?t] ['?s '?t]]
+      (is (= [['?s] ['?s]]
              (mapv :plaid.query.ast/align-entities branches))))))
 
 (defn- cmap-of [ast] (nth (first (:where ast)) 2))

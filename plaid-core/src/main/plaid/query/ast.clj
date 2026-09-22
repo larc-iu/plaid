@@ -424,13 +424,15 @@
         branch-wheres (desugar/expand-where (vec (:where parsed)))]
     (when (> (count branch-wheres) 1)
       (desugar/check-branch-consistency! branch-wheres projected))
-    ;; Under aggregation every branch projects the SAME entity columns, so the
-    ;; union of what the branches bind travels with them: a branch that does
-    ;; not bind one of these projects NULL in its column, which is what lets
-    ;; alternatives binding different variables be unioned at all.
+    ;; Under aggregation every branch projects the SAME entity columns, and by
+    ;; ruling those are the ones EVERY branch binds: what an alternative binds
+    ;; alone does not make a match distinct, so a row satisfying two
+    ;; alternatives is counted once. The set travels with each branch.
+    ;; `some?`, not `seq`: an empty set is a real answer (alternatives sharing
+    ;; no entity var), and means project no entity columns at all.
     (let [align (when (and agg? (> (count branch-wheres) 1))
                   (desugar/aggregate-branch-entities branch-wheres))]
       (mapv (fn [w]
               (cond-> (validate/validate (assoc base :where (vec w)))
-                (seq align) (assoc ::align-entities align)))
+                (some? align) (assoc ::align-entities align)))
             branch-wheres))))

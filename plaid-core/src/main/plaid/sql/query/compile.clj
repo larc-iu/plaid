@@ -913,10 +913,12 @@
 
 ;; --- aggregate projection ($:return {:group .. :aggregates ..}) -------------
 ;; The match query projects (DISTINCT) the group columns, the aggregate source
-;; columns, and EVERY entity/layer var's id — so DISTINCT counts true matches
-;; (every distinct binding of all variables), not raw join rows. exec then wraps
-;; this in `SELECT <group>, <agg fns> ... GROUP BY <group>`. `distinct-redundant?`
-;; drops the DISTINCT when the projection cannot repeat a row anyway.
+;; columns, and every entity/layer var's id — so DISTINCT counts true matches
+;; (every distinct binding of all variables), not raw join rows. Over `or`
+;; alternatives it projects the vars EVERY alternative binds, so a row two
+;; alternatives both match counts once. exec then wraps this in
+;; `SELECT <group>, <agg fns> ... GROUP BY <group>`. `distinct-redundant?` drops
+;; the DISTINCT when the projection cannot repeat a row anyway.
 
 (defn aggregate-plan
   "The aggregate plan compile-query attached as metadata (or nil): :group-cols /
@@ -956,11 +958,13 @@
                :id)))
 
 (defn- aggregate-projection
-  "Returns {:select <distinct-match projection> :plan <plan for exec>}. ALL the
-  internal aliases (__g_N / __a_N / __e_N) are POSITIONAL — no user var name ever
-  becomes a SQL identifier. The `__e_N` entity-id columns (which make a match
-  distinct) are ordered by var name so they align across UNION branches; `expand`
-  guarantees every branch binds the same entity-var set under aggregation."
+  "Returns {:select <distinct-match projection> :plan <plan for exec>
+  :entity-vars <the vars whose ids are projected>}. ALL the internal aliases
+  (__g_N / __a_N / __e_N) are POSITIONAL — no user var name ever becomes a SQL
+  identifier. The `__e_N` entity-id columns (which make a match distinct) are
+  ordered by var name so they align across UNION branches; under a multi-branch
+  aggregate `align` names the vars EVERY branch binds, which is what each
+  branch projects."
   [st ret align]
   (let [group-vars (:group ret)
         g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
@@ -969,11 +973,10 @@
         a-proj (mapv (fn [v] [(scalar-agg-expr st v) (src->kw v)]) agg-srcs)
         ;; every entity/layer var id makes a match distinct; sort by var name so
         ;; column N denotes the SAME variable in every branch of a UNION.
-        ;; `align` is the union of what the branches bind, so a branch that
-        ;; does not bind one of them projects NULL in its column and the
-        ;; branches still union: an alternative may bind a variable another
-        ;; one does not.
-        e-vars (or (seq align) (sort-by name (keys (:var->alias @st))))
+        ;; `align` (possibly empty, see `desugar/aggregate-branch-entities`) is
+        ;; what EVERY branch of the union binds: a variable only one
+        ;; alternative binds does not split one row into several matches.
+        e-vars (if (some? align) (vec align) (sort-by name (keys (:var->alias @st))))
         e-proj (map-indexed
                 (fn [i v]
                   (let [alias (get-in @st [:var->alias v])]
@@ -984,7 +987,7 @@
               :group-labels (mapv term-label group-vars)
               :aggs (mapv (fn [[op src]] {:op op :col (when src (src->kw src)) :label (label op src)})
                           (:aggregates ret))}]
-    {:select (vec (concat g-proj a-proj e-proj)) :plan plan}))
+    {:select (vec (concat g-proj a-proj e-proj)) :plan plan :entity-vars (vec e-vars)}))
 
 (defn- assert-acl-invariant! [st]
   (let [scoped-kind? #(or (contains? entity-table %) (layer-kind? %))
@@ -996,19 +999,20 @@
 
 (defn- distinct-redundant?
   "True when the aggregate projection is already duplicate-free, so the DISTINCT
-  can be dropped. It holds when every alias in the FROM is an entity/layer VAR
-  alias: aggregate mode projects every var alias's `id`, each one its table's
-  primary key, so the projected tuple identifies at most one row of the join and
-  no two rows can be equal. Any OTHER alias may repeat a match — a junction row
-  (`span_tokens`, `vocab_link_tokens`) or a `project_vocabs` grant multiplies it —
-  and keeps the DISTINCT. The test is deliberately by exclusion, so a join alias
-  added later is duplicate-generating until someone proves otherwise.
+  can be dropped. It holds when every alias in the FROM is the alias of a
+  PROJECTED entity/layer var: that var's `id` is its table's primary key, so the
+  projected tuple identifies at most one row of the join and no two rows can be
+  equal. Any OTHER alias may repeat a match — a junction row (`span_tokens`,
+  `vocab_link_tokens`), a `project_vocabs` grant, or a var joined but NOT
+  projected (a multi-branch aggregate projects only the vars every alternative
+  binds) — and keeps the DISTINCT. The test is deliberately by exclusion, so a
+  join alias added later is duplicate-generating until someone proves otherwise.
 
   Worth the care: the DISTINCT is a temp B-tree over every match, and on the alpha
   server the project list's per-layer token count spent 3.8s in it and 0.2s without."
-  [st]
-  (let [var-aliases (set (vals (:var->alias @st)))]
-    (every? var-aliases (map second (:from @st)))))
+  [st projected-vars]
+  (let [projected-aliases (set (keep #(get-in @st [:var->alias %]) projected-vars))]
+    (every? projected-aliases (map second (:from @st)))))
 
 (defn compile-query
   "Resolved AST -> HoneySQL map. Throws 500 only on internal invariant failures."
@@ -1052,9 +1056,10 @@
       ;; aggregate mode: project the distinct-match columns; exec wraps in GROUP BY
       ;; projection FIRST: a group key like a token's surface form joins its text,
       ;; and that alias has to be in :from before distinct-redundant? reads it.
-      (let [{:keys [select plan]} (aggregate-projection st (:return resolved)
-                                                        (:plaid.query.ast/align-entities resolved))
-            select-kw (if (distinct-redundant? st) :select :select-distinct)]
+      (let [{:keys [select plan entity-vars]} (aggregate-projection
+                                               st (:return resolved)
+                                               (:plaid.query.ast/align-entities resolved))
+            select-kw (if (distinct-redundant? st entity-vars) :select :select-distinct)]
         (vary-meta {select-kw select :from (:from @st) :where (into [:and] (:where @st))}
                    assoc ::aggregate plan))
       (let [order-pairs (order-projection st (:order-by resolved))

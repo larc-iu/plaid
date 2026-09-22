@@ -194,22 +194,27 @@
                 {:var v :kinds (vec ks)}))))))
 
 (defn aggregate-branch-entities
-  "Under aggregation, the distinct-match key projects EVERY entity/layer var's
-  id, so a UNION's branches must project the same columns in the same order.
-  This is the union of those vars across the branches: a branch that does not
-  bind one projects NULL in its column (`aggregate-projection`), so branches
-  that bind different variables can still be unioned. Sorted by name, which is
-  the order the columns are emitted in."
+  "Under aggregation, the distinct-match key projects entity/layer var ids, and
+  a UNION's branches must project the same columns in the same order. This is
+  the set of those vars EVERY branch binds — the intersection, by ruling: an
+  aggregate over `or` alternatives counts only the variables every alternative
+  binds, so a span that satisfies two alternatives is one match however many
+  extra variables either of them happens to bind. Sorted by name, which is the
+  order the columns are emitted in.
+
+  May be EMPTY (alternatives sharing no entity var at all), which is not the
+  same as absent: an empty vector means project no entity columns, where nil
+  means this is not a multi-branch aggregate and every var is projected."
   [branch-wheres]
   ;; Compare the vars actually PROJECTED per branch: positive (non-:not) entity/
   ;; layer vars — exactly the ids the distinct-match key emits. Keying off
-  ;; `clauses/infer-kinds` instead would fold in `:not`-existential vars, so a var that is
-  ;; positive in one branch but only inside a `:not` in another would look equal
-  ;; here yet project a different column count -> a UNION-arity 500.
+  ;; `clauses/infer-kinds` instead would fold in `:not`-existential vars, so a var
+  ;; positive in one branch but only inside a `:not` in another would look bound
+  ;; in both, and its column would be NULL for half the matches.
   (let [entity-sets (mapv (fn [w]
                             (let [kinds (clauses/infer-kinds {:where w})]
                               (set (remove #(= :scalar (get kinds %)) (clauses/positive-binding-vars w)))))
                           branch-wheres)]
-    (vec (sort-by name (apply set/union entity-sets)))))
+    (vec (sort-by name (apply set/intersection entity-sets)))))
 
 
