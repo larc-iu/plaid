@@ -12,7 +12,7 @@
 // and relation is made fresh and found again through an old-to-new map.
 
 import { PLAID_NAMESPACE, ROLES } from '@larc-iu/plaid-client';
-import { bulkInChunks } from '../bulk.js';
+import { bulkInChunks } from '../../domain/bulk.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import { otherTokenLayers, ownTokenLayers, parentsFirst } from '../../domain/otherLayers.js';
 

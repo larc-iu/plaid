@@ -11,8 +11,9 @@ import { isValidMorphType } from '../affixMarkers.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 import { lexiconView } from '../vocabDictionary.js';
 
-// Link replacements emit 2 ops apiece (delete + create); 400 per batch keeps
-// each atomic batch comfortably under plaid-core's 1000-op cap.
+// Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
+// rather than a bulk endpoint, and a link replacement emits 2 ops apiece
+// (delete + create), so it is plaid-core's 1000-op cap that bounds it.
 const REPLACE_CHUNK = 400;
 
 /**

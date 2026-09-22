@@ -17,7 +17,7 @@
 // patched once every document is in (`relinkDocumentReferences`), from what
 // the server holds, so that a resumed import settles the same way.
 
-import { bulkInChunks } from '../bulk.js';
+import { bulkInChunks } from '../../domain/bulk.js';
 
 const isPlainObject = (v) =>
   v != null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);

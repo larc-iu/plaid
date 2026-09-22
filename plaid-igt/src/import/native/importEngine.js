@@ -25,7 +25,7 @@
 
 import { documentProgress } from '../progress.js';
 import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
-import { CHUNK } from '../bulk.js';
+import { CHUNK } from '../../domain/bulk.js';
 import { metadataPatchTo } from '@/domain/metadataPatch';
 import { attributedBody } from './commentAttribution.js';
 import {

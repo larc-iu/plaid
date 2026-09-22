@@ -13,7 +13,7 @@
 
 import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
-import { CHUNK, bulkInChunks } from '../bulk.js';
+import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {

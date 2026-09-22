@@ -28,11 +28,7 @@ import { humanizeFieldName, FIELD_TYPES } from '@/domain/vocabFields';
 import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
-
-// Entries per bulk update. One request is one transaction holding the
-// vocabulary's write lock, so this bounds that hold, and it gives the progress
-// line something to say on a lexicon of thousands.
-const CHUNK = 500;
+import { CHUNK } from '@/domain/bulk';
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the

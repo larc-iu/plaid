@@ -18,6 +18,7 @@
 // correct move (same as the service-backed auto-link path).
 
 import { stampInferred, mergeMetadata, PROV } from '@larc-iu/plaid-client';
+import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 
@@ -50,11 +51,10 @@ const findVocabItem = (vocabularies, vocabItemId) => {
   return null;
 };
 
-// Entities per atomic batch when stripping analyses (bulkReplaceAnalyses).
-// A chunk is at most five ops — a bulk delete per entity kind, one bulk
-// metadata update, and the rare precedence fix — so this bounds the write-lock
-// hold rather than an op count.
-const STRIP_CHUNK = 500;
+// Entities per atomic batch when stripping analyses (bulkReplaceAnalyses) is
+// the ordinary bulk chunk: a chunk is at most five ops — a bulk delete per
+// entity kind, one bulk metadata update, and the rare precedence fix — so
+// what bounds it is the write-lock hold and not plaid-core's op cap.
 
 export const analysisCopyMutations = {
   // Returns the number of words a copy was applied to (false on failure).
@@ -205,7 +205,7 @@ export const analysisCopyMutations = {
       let part = [];
       let partSize = 0;
       for (const word of [...byWord, null]) {
-        if ((word === null || partSize + word.size > STRIP_CHUNK) && part.length) {
+        if ((word === null || partSize + word.size > CHUNK) && part.length) {
           const words = part;
           part = [];
           partSize = 0;

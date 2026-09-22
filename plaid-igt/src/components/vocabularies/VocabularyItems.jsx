@@ -43,6 +43,7 @@ import {
   itemLabel,
 } from '@/domain/vocabDictionary';
 import { metadataUpdates } from '@/domain/metadataPatch';
+import { CHUNK } from '@/domain/bulk';
 import {
   HomographDialog,
   ReferencedByPanel,
@@ -81,11 +82,6 @@ import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/s
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
-
-// How many repairs ride in one bulk update. One request is one transaction
-// holding the vocabulary's write lock, so it is sized by how long that lock is
-// held.
-const REPAIR_CHUNK = 500;
 
 // The Entries screen of a vocabulary. This component owns the data (the
 // entries, their usage counts) and every write; the selection lives in the
@@ -410,8 +406,8 @@ export const VocabularyItems = ({
   // load-time repair runs against what it has just fetched.
   const bulkRepoint = async (patches, metaById) => {
     const updates = metadataUpdates(patches, metaById);
-    for (let i = 0; i < updates.length; i += REPAIR_CHUNK) {
-      await client.vocabItems.bulkUpdate(updates.slice(i, i + REPAIR_CHUNK));
+    for (let i = 0; i < updates.length; i += CHUNK) {
+      await client.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
     }
   };
   const metadataNow = (list) => new Map((list || []).map((it) => [it.id, it.metadata]));

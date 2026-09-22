@@ -21,7 +21,7 @@
 // rather than as plain text.
 
 import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
-import { CHUNK, bulkInChunks } from '../bulk.js';
+import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   findBaselineTextLayer,

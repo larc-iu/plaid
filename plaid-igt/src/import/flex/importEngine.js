@@ -13,7 +13,7 @@
 
 import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
-import { CHUNK, bulkInChunks } from '../bulk.js';
+import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { documentProgress } from '../progress.js';
 import {

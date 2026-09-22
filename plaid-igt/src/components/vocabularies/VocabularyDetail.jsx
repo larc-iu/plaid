@@ -55,6 +55,7 @@ import { VocabularyCommentsTab } from './VocabularyCommentsTab';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
+import { CHUNK } from '@/domain/bulk';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useTabParam } from '@/hooks/useTabParam';
@@ -72,9 +73,6 @@ const TYPE_CHOICES = [
 ];
 const typeChoiceOf = (field) =>
   field.type === FIELD_TYPES.ITEM ? (field.many ? 'items' : 'item') : 'text';
-// Entries per bulk update. One request is one transaction holding the
-// vocabulary's write lock, so this bounds that hold.
-const FIELD_CLEAR_CHUNK = 500;
 
 export const VocabularyDetail = () => {
   const { vocabularyId } = useParams();
@@ -489,8 +487,8 @@ export const VocabularyDetail = () => {
     const writes = fieldPruneWrites(items, after);
     if (!writes.length) return;
     await client.withOperation(`Change "${label}"`, async () => {
-      for (let i = 0; i < writes.length; i += FIELD_CLEAR_CHUNK) {
-        await client.vocabItems.bulkUpdate(writes.slice(i, i + FIELD_CLEAR_CHUNK));
+      for (let i = 0; i < writes.length; i += CHUNK) {
+        await client.vocabItems.bulkUpdate(writes.slice(i, i + CHUNK));
       }
     });
   };

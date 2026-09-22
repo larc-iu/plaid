@@ -19,6 +19,7 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
+import { CHUNK } from '@/domain/bulk';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
@@ -43,14 +44,6 @@ import {
 // A stable "no field is governed", so the default does not remake the
 // normalizer (and with it every entry and the whole plan) on each render.
 const NO_TAGSETS = () => null;
-
-// One bulkCreate carries this many entries: the server caps a JSON body at
-// 10MB, and a few hundred KB per request also gives the progress line
-// something to say during a long import.
-const CREATE_CHUNK = 500;
-// Entries per bulk update, the same bound as the create above: one request is
-// one transaction holding the vocabulary's write lock.
-const UPDATE_CHUNK = 500;
 
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.
@@ -452,8 +445,8 @@ export const BulkAddDialog = ({
       await client.withOperation(
         `Bulk add to ${vocabularyName || 'vocabulary'}`,
         async (setMessage) => {
-          for (let i = 0; i < creates.length; i += CREATE_CHUNK) {
-            const chunk = creates.slice(i, i + CREATE_CHUNK);
+          for (let i = 0; i < creates.length; i += CHUNK) {
+            const chunk = creates.slice(i, i + CHUNK);
             await client.vocabItems.bulkCreate(
               chunk.map((c) => ({
                 vocabLayerId: vocabularyId,
@@ -464,8 +457,8 @@ export const BulkAddDialog = ({
             created += chunk.length;
             setProgress({ done: created, total, phase: 'adding' });
           }
-          for (let i = 0; i < updates.length; i += UPDATE_CHUNK) {
-            const chunk = updates.slice(i, i + UPDATE_CHUNK);
+          for (let i = 0; i < updates.length; i += CHUNK) {
+            const chunk = updates.slice(i, i + CHUNK);
             await client.vocabItems.bulkUpdate(chunk.map((u) => ({ id: u.id, metadata: u.patch })));
             updated += chunk.length;
             setProgress({ done: created + updated, total, phase: 'updating' });

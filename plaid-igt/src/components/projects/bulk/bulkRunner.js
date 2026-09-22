@@ -13,6 +13,7 @@
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { readIgnoredTokens } from '@/domain/igtConfig';
+import { chunk } from '@/domain/bulk';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
   collectRespellRows,
@@ -21,18 +22,7 @@ import {
   collectOccurrenceRows,
   collectLinksToMove,
   respellOps,
-  chunk,
 } from './bulkPlan.js';
-
-// Entities per bulk request. Every write here goes to a bulk endpoint, which
-// dispatches the REST stack ONCE and does the work set-wise, rather than a
-// batch of one op per entity — a batch re-dispatches routing, auth, the ACL
-// lookup and an operation per sub-op, all while holding the single SQLite
-// write lock. What this bounds is that hold: a request is one transaction, and
-// a writer arriving mid-request waits, then is refused with a 503 once the
-// server's busy_timeout runs out. Same number and same reason as the
-// importers' `CHUNK` (src/import/bulk.js).
-const BULK_CHUNK = 500;
 
 // Documents with at least one server-side match for `domain`/`spec`, busiest
 // first: [[docId, count], ...].
@@ -118,7 +108,7 @@ export async function applyRespell(
       // A document with more morpheme forms than one request should carry
       // sends the rest after: the first chunk is the one that has to be
       // atomic with the text edit.
-      const [first, ...rest] = chunk(morphPatches, BULK_CHUNK);
+      const [first, ...rest] = chunk(morphPatches);
       await client.batched(async (b) => {
         b.texts.update(textId, respellOps(docRows));
         if (first?.length) b.tokens.bulkUpdate(formPatches(first));
@@ -129,7 +119,7 @@ export async function applyRespell(
       out.morphemesChanged += morphPatches.length;
     }
     if (includeLexicon) {
-      for (const part of chunk(lexiconRows, BULK_CHUNK)) {
+      for (const part of chunk(lexiconRows)) {
         await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
         out.entriesChanged += part.length;
       }
@@ -155,11 +145,11 @@ export async function applyField(client, { rows }, { label }) {
   const morphRows = rows.filter((r) => r.kind === 'morphForm');
   const spanRows = rows.filter((r) => r.kind !== 'morphForm');
   await client.withOperation(label, async () => {
-    for (const part of chunk(spanRows, BULK_CHUNK)) {
+    for (const part of chunk(spanRows)) {
       await client.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
       changed += part.length;
     }
-    for (const part of chunk(morphRows, BULK_CHUNK)) {
+    for (const part of chunk(morphRows)) {
       await client.tokens.bulkUpdate(part.map((r) => ({ id: r.id, metadata: { form: r.new } })));
       changed += part.length;
     }
@@ -265,7 +255,7 @@ export async function applyMerge(
   }
   await client.withOperation(label, async () => {
     for (const docLinks of byDoc.values()) {
-      for (const part of chunk(docLinks, BULK_CHUNK)) {
+      for (const part of chunk(docLinks)) {
         await client.vocabLinks.bulkCreate(
           part.map((l) => ({
             vocabItem: survivorId,
@@ -275,7 +265,7 @@ export async function applyMerge(
         );
       }
     }
-    for (const part of chunk(refUpdates, BULK_CHUNK)) {
+    for (const part of chunk(refUpdates)) {
       await client.vocabItems.bulkUpdate(part);
     }
     await client.vocabItems.bulkDelete(loserIds);

@@ -11,7 +11,7 @@ import {
   makeOtherAppRaw,
   makeOtherAppProject,
 } from '../../export/testFixtures.js';
-import { CHUNK } from '../bulk.js';
+import { CHUNK } from '../../domain/bulk.js';
 import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
 import {
   deriveSetupData,

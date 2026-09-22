@@ -311,12 +311,6 @@ export function groupByDoc(rows) {
   return [...groups.values()];
 }
 
-export function chunk(arr, size) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-}
-
 // The per-project row shape AnalysisCard needs, derived from IGT layer info
 // once by the caller: which annotation rows exist at each scope, whether the
 // morpheme chain shows, and whether forms carry a lexicon-link line.
