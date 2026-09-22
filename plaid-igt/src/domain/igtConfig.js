@@ -215,7 +215,8 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const normalizeLanguage = (lang) => ({
+/** One language record, fully shaped, from whatever a caller has. */
+export const normalizeLanguage = (lang) => ({
   name: str(lang?.name),
   glottocode: str(lang?.glottocode),
   iso639P3: str(lang?.iso639P3),

@@ -295,6 +295,29 @@ describe('runCldfImport', () => {
     const call = callsOf(client, 'projects.setConfig').find((c) => c.args.key === 'languages');
     expect(call.args.value.object).toMatchObject({ name: 'Spanish', glottocode: 'stan1288' });
     expect(call.args.value.meta).toMatchObject({ name: 'English', iso639P3: 'eng' });
+    // Through the one writer, so the record is the shape every other
+    // importer writes: a tag, and a 3-letter code doubling as one.
+    expect(call.args.value.object).toEqual({
+      name: 'Spanish',
+      glottocode: 'stan1288',
+      iso639P3: 'spa',
+      tag: 'spa',
+      latitude: null,
+      longitude: null,
+    });
+    expect(call.args.value.meta.tag).toBe('eng');
+  });
+
+  it('leaves a language the project already names alone', async () => {
+    const client = stubClient();
+    client.projects.get = async () => ({
+      ...PROJECT,
+      config: { igt: { languages: { object: { name: 'Castilian', tag: 'spa' }, meta: {} } } },
+    });
+    await runCldfImport({ client, projectId: 'p1', build: fixtureBuild() });
+    expect(callsOf(client, 'projects.setConfig').find((c) => c.args.key === 'languages')).toBe(
+      undefined,
+    );
   });
 
   it('imports the lexicon, stamping each item with its CLDF entry id', async () => {

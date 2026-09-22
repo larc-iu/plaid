@@ -15,6 +15,7 @@ import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
+import { recordProjectLanguages } from '../projectLanguages.js';
 import {
   IGT_NAMESPACE,
   readVocabFields,
@@ -454,14 +455,8 @@ async function runCldfImportImpl({ client, projectId, build, onProgress, shouldS
   const warnings = [...build.warnings];
 
   // The dataset's LanguageTable is where the project's language identity comes
-  // from. Only set when the dataset actually named one.
-  if (build.languages.object || build.languages.meta) {
-    const empty = { name: '', glottocode: '', iso639P3: '', latitude: null, longitude: null };
-    await client.projects.setConfig(projectId, IGT_NAMESPACE, 'languages', {
-      object: { ...empty, ...(build.languages.object || {}) },
-      meta: { ...empty, ...(build.languages.meta || {}) },
-    });
-  }
+  // from, and it knows more than a tag: a name, a Glottocode and coordinates.
+  await recordProjectLanguages(client, project, build.languages);
 
   if (build.lexicon.length) {
     // Each vocabulary the dataset names, into the project vocabulary of that
