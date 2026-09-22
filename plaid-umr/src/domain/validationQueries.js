@@ -2,11 +2,18 @@
 //
 // The checks are the umrtools validator's and they need WHOLE GRAPHS, so
 // unlike plaid-ud's tab this cannot be answered by aggregate queries: the
-// documents have to be loaded. What the query does instead is say which
+// documents have to be loaded. What the queries do instead is say which
 // documents are worth loading, and the loads then run a few at a time. On
 // the thousand-document corpora the agent scale review names, reading every
-// document with a body one after another was the whole cost of the tab, and
-// most of those documents have no UMR annotation at all.
+// document with a body one after another was the whole cost of the tab.
+//
+// A document is worth loading when it holds a graph OR holds words. The
+// second half is not optional: `checkUnalignedToken` warns about every word
+// carrying no node, so a document nobody has annotated yet reports one
+// warning per word, and that report is how a corpus manager sees it is not
+// annotated. Asking only for the graphs read clean over a corpus that had
+// barely been started. A document with neither has nothing to check: every
+// check walks either the nodes or the words.
 import { UmrDocument } from './UmrDocument.js';
 
 // How many document reads are in flight at once. Enough to cover the round
@@ -21,6 +28,18 @@ const READERS = 4;
  */
 export const documentsWithNodes = (projectId, conceptLayerId) => ({
   where: [['span', '?s', { layer: conceptLayerId, doc: { var: '?d' } }]],
+  return: { group: ['?d'], aggregates: [['count']] },
+  scope: { projectIds: [projectId] },
+});
+
+/**
+ * The ids of the project's documents that hold at least one word, from one
+ * query. A document with no words and no graph has nothing for any check to
+ * walk; one with words and no graph is an unannotated document, which the
+ * report names word by word.
+ */
+export const documentsWithWords = (projectId, wordLayerId) => ({
+  where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
   return: { group: ['?d'], aggregates: [['count']] },
   scope: { projectIds: [projectId] },
 });
@@ -42,19 +61,32 @@ async function mapLimit(items, limit, work) {
 /**
  * The official checks over every document of the project.
  *
+ * `conceptLayerId` and `wordLayerId` are what the scan asks the server about
+ * before it reads anything; without both it reads every document, as it did
+ * before there were queries to narrow it.
+ *
  * `onProgress(done, total, name)` is called as each document lands. With
  * several reads in flight the documents finish out of order, so `name` is
  * the one that just landed rather than the one being read.
  *
  * @returns {Promise<Array<{ documentId, documentName, sentenceIndex, level, code, message, var }>>}
  */
-export async function validateProject(client, projectId, conceptLayerId, { onProgress } = {}) {
+export async function validateProject(
+  client,
+  projectId,
+  { conceptLayerId = null, wordLayerId = null, onProgress } = {},
+) {
   const docs = await client.projects.listDocuments(projectId);
   let candidates = docs;
-  if (conceptLayerId) {
-    const answer = await client.query(documentsWithNodes(projectId, conceptLayerId));
-    const annotated = new Set((answer?.results || []).map(([docId]) => String(docId)));
-    candidates = docs.filter((d) => annotated.has(String(d.id)));
+  if (conceptLayerId && wordLayerId) {
+    const [nodes, words] = await Promise.all([
+      client.query(documentsWithNodes(projectId, conceptLayerId)),
+      client.query(documentsWithWords(projectId, wordLayerId)),
+    ]);
+    const worthReading = new Set(
+      [...(nodes?.results || []), ...(words?.results || [])].map(([docId]) => String(docId)),
+    );
+    candidates = docs.filter((d) => worthReading.has(String(d.id)));
   }
   let done = 0;
   const perDocument = await mapLimit(candidates, READERS, async (summary) => {

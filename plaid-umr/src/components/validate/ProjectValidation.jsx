@@ -45,9 +45,12 @@ export const ProjectValidation = () => {
     if (!client || !layerInfo?.isConfigured) return;
     setBusy(true);
     try {
-      // The concept layer, so the scan asks the server which documents hold
-      // a graph before it reads any of them.
-      const found = await validateProject(client, projectId, layerInfo.conceptLayer?.id);
+      // The concept and word layers, so the scan asks the server which
+      // documents hold a graph or any words before it reads any of them.
+      const found = await validateProject(client, projectId, {
+        conceptLayerId: layerInfo.conceptLayer?.id,
+        wordLayerId: layerInfo.wordTokenLayer?.id,
+      });
       // The position in the report is the row's identity: two identical
       // problems in one sentence are two rows, and nothing else tells them
       // apart.
