@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Badge } from '@ui/components/ui/badge';
 import { FieldsManager } from '../settings/FieldsManager.jsx';
 import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
+import { scopeBadgeClass } from '@/domain/scopeColors';
 
 export const FieldsStep = ({ data, onDataChange }) => {
   // Seed defaults once, in an effect (NOT during render — calling the parent's
@@ -41,15 +42,15 @@ export const FieldsStep = ({ data, onDataChange }) => {
       <div>
         <div className="text-sm">
           Configure annotation fields for your project.{' '}
-          <Badge variant="secondary" className="border-transparent bg-blue-100 text-blue-700">
+          <Badge variant="secondary" className={scopeBadgeClass('Word')}>
             Word
           </Badge>{' '}
           scope fields apply to words,{' '}
-          <Badge variant="secondary" className="border-transparent bg-teal-100 text-teal-700">
+          <Badge variant="secondary" className={scopeBadgeClass('Morpheme')}>
             Morpheme
           </Badge>{' '}
           scope fields apply to morphemes, and{' '}
-          <Badge variant="secondary" className="border-transparent bg-green-100 text-green-700">
+          <Badge variant="secondary" className={scopeBadgeClass('Sentence')}>
             Sentence
           </Badge>{' '}
           scope fields apply to entire sentences.

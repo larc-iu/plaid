@@ -17,6 +17,7 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
 import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { scopeBadgeClass } from '@/domain/scopeColors';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
 // two scopes (a FieldWorks import gives "Gloss" and "POS" at both Word and
@@ -376,13 +377,6 @@ export const FieldsManager = ({
     key: fieldKey(field),
   }));
 
-  // Color classes for scope badges (Word=blue, Morpheme=teal, Sentence=green)
-  const scopeBadgeClasses = {
-    Word: 'border-transparent bg-blue-100 text-blue-700',
-    Morpheme: 'border-transparent bg-teal-100 text-teal-700',
-    Sentence: 'border-transparent bg-green-100 text-green-700',
-  };
-
   return (
     <div className="flex flex-col gap-8">
       {/* Annotation Fields Section. In setup (showTitle) the step supplies the
@@ -424,7 +418,7 @@ export const FieldsManager = ({
               {tableData.map((record) => (
                 <tr key={record.id} className="group hover:bg-muted/50">
                   <td className="border-t px-3 py-2 align-middle">
-                    <Badge variant="secondary" className={scopeBadgeClasses[record.scope]}>
+                    <Badge variant="secondary" className={scopeBadgeClass(record.scope)}>
                       {record.scope}
                     </Badge>
                   </td>
@@ -580,7 +574,7 @@ export const FieldsManager = ({
         </p>
         <div className="mb-6 text-sm text-muted-foreground">
           Which tokens carry no{' '}
-          <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+          <Badge variant="secondary" className={scopeBadgeClass('Word')}>
             Word
           </Badge>{' '}
           scope annotations, and where the built-in tokenizer splits words.
@@ -610,7 +604,7 @@ export const FieldsManager = ({
               <div className="mb-4 text-xs text-muted-foreground">
                 Typed between letters, these join the word instead of splitting it. They stay on the
                 word's form in the lexicon, and a token spelled with them takes{' '}
-                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+                <Badge variant="secondary" className={scopeBadgeClass('Word')}>
                   Word
                 </Badge>{' '}
                 scope annotations.
@@ -650,7 +644,7 @@ export const FieldsManager = ({
               <p className="mb-1 text-sm font-medium">Ignored Tokens</p>
               <div className="mb-4 text-xs text-muted-foreground">
                 These specific tokens will be ignored for{' '}
-                <Badge variant="secondary" className={scopeBadgeClasses['Word']}>
+                <Badge variant="secondary" className={scopeBadgeClass('Word')}>
                   Word
                 </Badge>{' '}
                 scope annotations:

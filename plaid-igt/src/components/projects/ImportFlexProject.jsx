@@ -33,13 +33,8 @@ import { useProjectImportRun } from '@/hooks/useProjectImportRun';
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
+import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
-
-const SCOPE_BADGE = {
-  Word: 'border-transparent bg-blue-100 text-blue-700',
-  Morpheme: 'border-transparent bg-teal-100 text-teal-700',
-  Sentence: 'border-transparent bg-green-100 text-green-700',
-};
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`, which also names the route a resume comes back to).
@@ -837,7 +832,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               <p className="mb-2 font-medium">Annotation fields</p>
               <div className="flex flex-wrap gap-2">
                 {liveConfig.fields.map((f) => (
-                  <Badge key={`${f.scope}:${f.name}`} className={SCOPE_BADGE[f.scope]}>
+                  <Badge key={`${f.scope}:${f.name}`} className={scopeBadgeClass(f.scope)}>
                     {f.name} · {f.scope}
                   </Badge>
                 ))}

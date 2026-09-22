@@ -16,7 +16,8 @@ import { isValueAllowed, readTagsetName, resolveTagset, tagsetEnforces } from '@
 import { searchDomains } from '../search/searchQueries.js';
 import { buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
-import { SCOPE_CLS, plural, useRun } from './bulkShared.js';
+import { plural, useRun } from './bulkShared.js';
+import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
   ChangeGrid,
@@ -44,13 +45,13 @@ const tagsetForTarget = (target, layerInfo, project) => {
 // field's before → after.
 const FieldChange = ({ row, target }) => {
   const lines = [];
-  if (row.word != null) lines.push({ label: 'Word', cls: SCOPE_CLS.word, from: row.word });
+  if (row.word != null) lines.push({ label: 'Word', cls: scopeTextClass('word'), from: row.word });
   if (row.morpheme != null)
-    lines.push({ label: 'Morpheme', cls: SCOPE_CLS.morpheme, from: row.morpheme });
+    lines.push({ label: 'Morpheme', cls: scopeTextClass('morpheme'), from: row.morpheme });
   const scope = target.kind === 'morpheme' ? 'morpheme' : target.scope;
   lines.push({
     label: target.kind === 'morpheme' ? 'Morpheme form' : target.field,
-    cls: SCOPE_CLS[scope],
+    cls: scopeTextClass(scope),
     from: row.old,
     to: row.new,
   });

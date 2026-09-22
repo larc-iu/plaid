@@ -60,8 +60,3 @@ export const useRun = () => {
 // Shared by the respell and field previews: `lines` is [{ label, cls, from,
 // to }], where a line without `to` is context (the word a gloss sits under)
 // rather than a change.
-export const SCOPE_CLS = {
-  word: 'text-blue-700',
-  morpheme: 'text-teal-700',
-  sentence: 'text-green-700',
-};

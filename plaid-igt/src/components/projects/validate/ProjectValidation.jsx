@@ -18,6 +18,7 @@ import {
 import { runHitsSearch } from '../search/searchRunner.js';
 import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
+import { scopeBadgeClass } from '@/domain/scopeColors';
 
 // Values in the project that its own tagsets say are wrong.
 //
@@ -31,13 +32,6 @@ import { hitTo, rememberCaret } from '../search/hitLinks.js';
 // the field's whole value inventory ([value, count]) and the diff against the
 // tagset happens here, so nothing loads a document until you click into a
 // specific value and ask where it is.
-
-const SCOPE_CLS = {
-  word: 'border-transparent bg-blue-100 text-blue-700',
-  morpheme: 'border-transparent bg-teal-100 text-teal-700',
-  sentence: 'border-transparent bg-green-100 text-green-700',
-  document: 'border-transparent bg-amber-100 text-amber-700',
-};
 
 // Every span in a layer regardless of value: the REGEXP UDF matches on
 // contains, so "." means "has at least one character".
@@ -302,7 +296,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       {zeroRows.length > 0 && (
         <div className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-            <Badge variant="secondary" className={SCOPE_CLS.morpheme}>
+            <Badge variant="secondary" className={scopeBadgeClass('morpheme')}>
               morpheme
             </Badge>
             <span className="font-medium">Form</span>
@@ -358,7 +352,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       {fields.map((g) => (
         <div key={g.key} className="overflow-hidden rounded-md border">
           <div className="flex items-center gap-2 border-b bg-muted/30 px-3 py-2">
-            <Badge variant="secondary" className={SCOPE_CLS[g.scope]}>
+            <Badge variant="secondary" className={scopeBadgeClass(g.scope)}>
               {g.scope}
             </Badge>
             <span className="font-medium">{g.field}</span>

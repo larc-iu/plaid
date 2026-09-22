@@ -4,7 +4,8 @@ import { cn } from '@ui/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
-import { SCOPE_CLS, plural, useRun } from './bulkShared.js';
+import { plural, useRun } from './bulkShared.js';
+import { scopeTextClass } from '@/domain/scopeColors';
 import {
   ApplyBar,
   Change,
@@ -22,9 +23,16 @@ const RespellChange = ({ row, includeMorphemes }) => {
   return (
     <ChangeGrid
       lines={[
-        { label: 'Word', cls: SCOPE_CLS.word, from: row.old, to: row.new },
+        { label: 'Word', cls: scopeTextClass('word'), from: row.old, to: row.new },
         ...(chain
-          ? [{ label: 'Morphemes', cls: SCOPE_CLS.morpheme, from: chain.old, to: chain.new }]
+          ? [
+              {
+                label: 'Morphemes',
+                cls: scopeTextClass('morpheme'),
+                from: chain.old,
+                to: chain.new,
+              },
+            ]
           : []),
       ]}
     />

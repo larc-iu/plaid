@@ -5,6 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
+import { scopeBadgeClass } from '@/domain/scopeColors';
 
 export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
   const navigate = useNavigate();
@@ -223,19 +224,13 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
     const fieldsData = setupData.fields;
     if (!fieldsData?.fields?.length) return null;
 
-    const scopeBadgeClasses = {
-      Word: 'border-transparent bg-blue-100 text-blue-700',
-      Morpheme: 'border-transparent bg-teal-100 text-teal-700',
-      Sentence: 'border-transparent bg-green-100 text-green-700',
-    };
-
     return (
       <div className="rounded-lg border bg-card p-4">
         <p className="mb-2 font-medium">Annotation Fields</p>
         <ul className="list-disc pl-5 text-sm">
           {fieldsData.fields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
-              {field.name} - <Badge className={scopeBadgeClasses[field.scope]}>{field.scope}</Badge>
+              {field.name} - <Badge className={scopeBadgeClass(field.scope)}>{field.scope}</Badge>
             </li>
           ))}
         </ul>
