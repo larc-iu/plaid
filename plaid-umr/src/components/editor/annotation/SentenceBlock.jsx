@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { curvePath, layoutSentence, routeBetween } from '../../../domain/umrLayout.js';
 import { LINE_FAMILIES, lineFamily } from './docLines.js';
-import { keys } from '../../../lib/keymap.js';
+import { CANVAS_ACTIONS, keys } from '../../../lib/keymap.js';
 import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
@@ -38,25 +38,6 @@ const CONST_GAP = 28;
 const CONST_STEP = 30;
 const CONST_TOP = 16;
 const ALWAYS_PINNED = ['author', 'root', 'document-creation-time'];
-
-// Every action of a node, for the keymap lookup and for the menu.
-const ACTIONS = [
-  'node.relation',
-  'node.attributes',
-  'node.variable',
-  'node.anchor',
-  'node.move',
-  'node.earlier',
-  'node.later',
-  'node.reentrancy',
-  'node.root',
-  'node.delete',
-  'node.deleteNode',
-  'node.coref',
-  'node.temporal',
-  'node.modal',
-  'canvas.newRoot',
-];
 
 // The head on an edge, as a marker on its own path. Defined inside the
 // block's SVG rather than once for the page, because the colors are custom
@@ -598,12 +579,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   // ----- deleting -----
 
-  // Shift+Backspace deletes the edge into the focused node, with what only
-  // it reached. Mod+Shift+Backspace deletes the node itself with everything
+  // Shift+Backspace deletes the edge into a node, with what only it
+  // reached. Mod+Shift+Backspace deletes the node itself with everything
   // under it. Either asks first when more than one node goes; a leaf goes
   // without a question, since history keeps it.
-  const deleteIntoFocused = async (wholeNode) => {
-    const node = nodesById.get(focusedId);
+  //
+  // The node is the one `runAction` was given, not whichever happens to be
+  // focused: it was the one action that read the focus behind runAction's
+  // back, which held only because every route focuses first.
+  const deleteInto = async (wholeNode, id) => {
+    const node = nodesById.get(id);
     if (!node) return;
     const edge = wholeNode ? null : treeEdgeInto(node.id);
     // A root has no edge to delete; the node itself is the other chord's.
@@ -672,7 +657,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else if (e.key === 'Enter') await runAction('node.concept', id);
       return;
     }
-    const action = keys.which(ACTIONS, e);
+    const action = keys.which(CANVAS_ACTIONS, e);
     if (!action) return;
     e.preventDefault();
     await runAction(action, id);
@@ -722,10 +707,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         await run(() => doc.setRoot(id));
         break;
       case 'node.delete':
-        await deleteIntoFocused(false);
+        await deleteInto(false, id);
         break;
       case 'node.deleteNode':
-        await deleteIntoFocused(true);
+        await deleteInto(true, id);
         break;
       case 'node.coref':
         askPick('coref', id);

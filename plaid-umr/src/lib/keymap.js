@@ -146,3 +146,10 @@ export const KEY_ACTIONS = [
 ];
 
 export const keys = createKeymap(KEY_ACTIONS);
+
+// The canvas actions a key can reach, in one list, for `keys.which`. Derived
+// rather than restated: a row added to the table above used to need adding
+// to a second list in SentenceBlock as well, and a key bound in one and
+// missing from the other did nothing at all. The `fixed` rows are left out
+// because the canvas handles those positional keys itself, by name.
+export const CANVAS_ACTIONS = KEY_ACTIONS.filter((a) => !a.fixed).map((a) => a.id);
