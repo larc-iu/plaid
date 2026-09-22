@@ -4,7 +4,7 @@
 // its history entry back out) itself.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act } from 'react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { configureUi } from '../../lib/uiConfig.js';
 import { DocumentModel } from '../../domain/DocumentModel.js';
@@ -62,15 +62,26 @@ const Probe = () => {
 
 const flush = () => act(async () => {});
 
+// Past the end of this task, where an approved exit stops counting as one.
+const tick = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
 // The screen stays mounted only for the test that mounted it: a draft left
 // registered by a failing assertion would follow the next test into its own
 // history.
 let view = null;
 
+// On its own route, so a copy or a delete takes the screen away as it does in
+// the app: what ends a draft is the screen holding it going.
 const mount = async () => {
   view = await renderComponent(
     <MemoryRouter initialEntries={['/projects/p1/documents/d1/details']}>
-      <DocumentDetailsPage />
+      <Routes>
+        <Route path="/projects/:p/documents/:d/details" element={<DocumentDetailsPage />} />
+        <Route path="*" element={<p>somewhere else</p>} />
+      </Routes>
       <Probe />
     </MemoryRouter>,
   );
@@ -114,6 +125,7 @@ afterEach(async () => {
   if (view) await view.unmount();
   view = null;
   await flush();
+  await tick();
   configureUi(RESTORE);
 });
 
@@ -162,7 +174,9 @@ describe('the document details screen', () => {
 
     expect(path).toBe('/projects/p1/documents/d2/annotate');
     // And the extra entry came out on the way, so Back is not spent on it.
+    await tick();
     expect(idx()).toBe(0);
+    expect(hasUnsavedDraft()).toBe(null);
   });
 
   it('deletes without a second question, and takes its history entry with it', async () => {
@@ -180,6 +194,7 @@ describe('the document details screen', () => {
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm.mock.calls[0][0].title).toBe('Delete “One”');
     expect(path).toBe('/projects/p1/documents');
+    await tick();
     expect(idx()).toBe(0);
     expect(hasUnsavedDraft()).toBe(null);
   });

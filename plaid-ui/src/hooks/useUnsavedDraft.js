@@ -26,14 +26,20 @@ import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
 // each sentence) and the second to mount must not silence the first.
 const drafts = new Map();
 
+// An exit the reader has approved, on its way out right now. The answer covers
+// that one exit, so nothing asks about it again as it goes: the click this
+// module re-dispatches passes the click listener, and the traversal it starts
+// does not come back through the Back question. It lasts exactly as long as
+// the exit does. A draft is never dropped for it: what ends a draft is the
+// screen holding it going away.
+let leaving = 0;
+
 /** What is typed and unsaved right now, as a phrase, or null. */
 export const hasUnsavedDraft = () => {
+  if (leaving) return null;
   for (const what of drafts.values()) return what;
   return null;
 };
-
-// Said yes to leaving: the drafts were the user's to lose, so all of them go.
-const forget = () => drafts.clear();
 
 // One question, wherever it is asked from. It states the fact.
 const question = (what) => ({
@@ -57,16 +63,10 @@ const sameUrl = (a, b) => {
   return key(a) === key(b);
 };
 
-// Take the extra entry out and WAIT for the traversal to land. A `go(-1)` left
-// in flight while the router pushes the page the user just asked for would pop
-// that page straight off again, so every caller that is about to navigate
-// awaits this first. Resolves immediately when the entry is not ours or gone.
-const dropStop = () =>
+// `history.go(n)`, resolved once the traversal has landed. A browser that
+// never sends the event would otherwise hang whatever is waiting on it.
+const traverse = (n) =>
   new Promise((resolve) => {
-    if (!installed || window.history.state?.[STOP] !== installed.token) {
-      resolve();
-      return;
-    }
     let settled = false;
     const done = () => {
       if (settled) return;
@@ -75,11 +75,27 @@ const dropStop = () =>
       window.removeEventListener('popstate', done);
       resolve();
     };
-    // A browser that never sends the event would otherwise hang the click.
     const timer = setTimeout(done, 1000);
     window.addEventListener('popstate', done);
-    window.history.go(-1);
+    window.history.go(n);
   });
+
+// Take the extra entry out and WAIT for the traversal to land. A `go(-1)` left
+// in flight while the router pushes the page the user just asked for would pop
+// that page straight off again, so every caller that is about to navigate
+// awaits this first. Resolves immediately when the entry is not ours or gone.
+const dropStop = async () => {
+  if (!installed || window.history.state?.[STOP] !== installed.token) return;
+  await traverse(-1);
+};
+
+// The approved exit has had its turn. If the screen is still standing here
+// with something typed on it, the question stands again, and Back needs the
+// entry that was taken out of its way put back.
+const settle = () => {
+  if (leaving || !installed || !drafts.size) return;
+  installed.arm();
+};
 
 const install = (ask) => {
   if (installed) {
@@ -99,6 +115,7 @@ const install = (ask) => {
     if (typeof current?.idx === 'number') next.idx = current.idx + 1;
     window.history.pushState(next, '');
   };
+  state.arm = arm;
 
   const onBeforeUnload = (e) => {
     if (!hasUnsavedDraft()) return;
@@ -110,9 +127,20 @@ const install = (ask) => {
   // the rest of the way or put the entry back.
   const onPopState = () => {
     if (!hasUnsavedDraft()) return;
-    Promise.resolve(state.ask()).then((ok) => {
-      if (ok) window.history.go(-1);
-      else arm();
+    Promise.resolve(state.ask()).then(async (ok) => {
+      if (!ok) {
+        arm();
+        return;
+      }
+      // Back the rest of the way. The traversal sends a popstate of its own,
+      // which is this same exit arriving and not a second Back to ask about.
+      leaving += 1;
+      try {
+        await traverse(-1);
+      } finally {
+        leaving -= 1;
+        settle();
+      }
     });
   };
 
@@ -141,9 +169,17 @@ const install = (ask) => {
     e.stopPropagation();
     Promise.resolve(state.ask()).then((ok) => {
       if (!ok) return;
-      // The draft is forgotten by now, so this same listener waves the second
-      // click through and the link does what it would have done.
-      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      // The answer covers this one click, so this same listener waves the
+      // second one through and the link does what it would have done. The
+      // draft itself stays registered: if the click turns out not to take the
+      // page, the text is still on the screen and the next way out asks again.
+      leaving += 1;
+      try {
+        anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      } finally {
+        leaving -= 1;
+        settle();
+      }
     });
   };
 
@@ -185,8 +221,23 @@ export const useUnsavedGuard = () => {
     if (!what) return true;
     const ok = await confirm(question(what));
     if (!ok) return false;
-    forget();
+    // The drafts are NOT forgotten here. The answer is about one way out, and
+    // what ends a draft is the screen holding it going away: its own effect
+    // takes it out of the map on the way. A caller that asks and then does not
+    // leave (a navigation the app declines, a tab it refuses to change) leaves
+    // the text where it was, and the next way out asks about it again.
+    //
+    // The exit starts here: taking the entry out is itself a traversal, and
+    // the popstate it sends must not come back as the Back question. It ends a
+    // macrotask later, which is after the navigation the caller makes when
+    // this resolves and long before anyone can reach for Back. If the screen
+    // is still standing there by then, the entry goes back in front of it.
+    leaving += 1;
     await dropStop();
+    setTimeout(() => {
+      leaving -= 1;
+      settle();
+    }, 0);
     return true;
   }, [confirm]);
 };
