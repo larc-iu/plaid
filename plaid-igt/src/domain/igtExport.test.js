@@ -247,3 +247,33 @@ describe('LaTeX gloss small caps', () => {
     expect(out).toContain("\\glft `I saw NASA.' //");
   });
 });
+
+describe('LaTeX cells stay one word each', () => {
+  const words = (...cells) => ({
+    annotations: {},
+    tokens: cells.map(([form, gloss]) => ({
+      content: form,
+      annotations: {},
+      morphemes: [{ metadata: { form }, annotations: { Gloss: span(gloss) } }],
+    })),
+  });
+  const F = { morphFields: ['Gloss'], wordFields: [], sentFields: [] };
+
+  it('braces a gloss with a space in it, in both formats', () => {
+    const s = words(['kalit', 'look after'], ['wa', 'go out-PST']);
+    expect(formatGb4e(s, F)).toContain('     {look after} {go out-\\textsc{pst}}\\\\');
+    expect(formatExpex(s, F)).toContain('\\glb {look after} {go out-\\textsc{pst}} //');
+  });
+
+  it('braces a form with a space in it', () => {
+    expect(formatGb4e(words(['a b', 'x']), F)).toContain('\\gll {a b}\\\\');
+  });
+
+  it('keeps a whitespace-only cell as {} so the columns stay aligned', () => {
+    expect(formatGb4e(words(['a', '  '], ['b', 'dog']), F)).toContain('     {} dog\\\\');
+  });
+
+  it('turns a line break inside a cell into one space', () => {
+    expect(formatExpex(words(['a', 'look\n\nafter']), F)).toContain('\\glb {look after} //');
+  });
+});

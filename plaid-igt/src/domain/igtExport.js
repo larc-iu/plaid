@@ -13,9 +13,10 @@
 // two morphemes is "=" when either is a clitic (metadata.morphType), else "-"
 // — see domain/affixMarkers.js; markers are display-only, never stored.
 // Words with no morphemes fall back to their surface form. LaTeX formats
-// need equal token counts per line, so empty glosses become {}, and set the
-// gloss line's grammatical abbreviations in small caps (texGloss). Untokenized
-// baseline text (punctuation) gets its own column with empty gloss cells.
+// need equal token counts per line, so an empty cell becomes {} and a cell
+// with a space in it is braced (texWord). They also set the gloss line's
+// grammatical abbreviations in small caps (texGloss). Untokenized baseline
+// text (punctuation) gets its own column with empty gloss cells.
 
 import { joinMorphemes } from './affixMarkers.js';
 import { isLexicalPart } from './tagsets.js';
@@ -162,7 +163,6 @@ const LATEX_SPECIALS = {
   '^': '\\textasciicircum{}',
 };
 const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).join('');
-const texCell = (s) => (s === '' ? '{}' : texEscape(s));
 
 // A gloss as a paper sets it: each grammatical abbreviation in small caps,
 // written in lowercase because \textsc only changes lowercase letters and
@@ -185,7 +185,18 @@ const texGloss = (s) => {
   }
   return out + texEscape(s.slice(at));
 };
-const texGlossCell = (s) => (s === '' ? '{}' : texGloss(s));
+
+// gb4e and ExPex split each line into words at spaces, so a cell is always one
+// word: a blank one is {} and one with a space inside ("look after") is braced.
+// A run of whitespace becomes one space, since a blank line inside \gll or
+// \gla would end the paragraph.
+const texWord = (render) => (s) => {
+  const text = (s ?? '').replace(/\s+/gu, ' ').trim();
+  if (text === '') return '{}';
+  return text.includes(' ') ? `{${render(text)}}` : render(text);
+};
+const texCell = texWord(texEscape);
+const texGlossCell = texWord(texGloss);
 
 export function formatGb4e(sentence, fields) {
   const lines = tiers(sentence, fields);
