@@ -457,6 +457,35 @@
                          (crud/update-by-id! tx :documents eid attrs)
                          eid))))
 
+(def metadata-reference-kinds
+  "The kinds of row whose id a `copy` rewrites inside metadata, named as
+  the keys of a `plaid.sql.document-rows/read-rows` map.
+
+  Apps keep ids of a document's own rows inside metadata (a span that
+  names its sentence token, say), so a copy has to rewrite them or the
+  copy points back into the source. These are the kinds a copy mints
+  fresh ids for, and so the kinds a metadata value can name and still
+  name the same thing in the copy: the document itself and the five
+  tables that hang off it.
+
+  A kind absent here is project-scoped (a layer, a vocabulary entry) and
+  a copy stays inside its project, so those ids already name the right
+  thing. plaid-igt rewrites the same list when it imports a native
+  archive (`src/import/native/references.js`), and pins it there against
+  this one, so a new document-scoped table joins both lists or its
+  references dangle on one side. A restore (`plaid.history.restore`)
+  re-inserts rows under the ids they already had, so it rewrites nothing
+  and needs no list. Pinned by `plaid.sql.document-copy-test`."
+  [:document :texts :tokens :spans :relations :vocab-links])
+
+(defn- rows-of
+  "The rows of one kind in a `read-rows` map: the document is one row, the
+  other kinds are vectors of them."
+  [rows kind]
+  (if (= :document kind)
+    [(:document rows)]
+    (clojure.core/get rows kind)))
+
 (defn- rewrite-refs
   "`v` with every string that is exactly a key of `ids` replaced by its
   value, through nested maps and vectors. Only whole strings count: map
@@ -485,9 +514,10 @@
   names its sentence token, say). In the copy's metadata, a value that is
   exactly the id of a copied row, or of the source document, becomes the
   id of the copy's row or of the copy, so it names the same thing in the
-  copy that it named in the source. Nested maps and vectors are walked.
-  Map keys, strings that merely contain an id, and ids of rows outside
-  the document (layers, vocabulary entries) are left as they are.
+  copy that it named in the source: `metadata-reference-kinds` is the
+  list of kinds that covers. Nested maps and vectors are walked. Map
+  keys, strings that merely contain an id, and ids of rows outside the
+  document (layers, vocabulary entries) are left as they are.
 
   What does not come across: comments (the copy's entities are new, so
   an old thread has nothing to be about) and, unless `include-media?`,
@@ -528,25 +558,36 @@
                                 (throw (ex-info (psc/err-msg-not-found "Document" src-id)
                                                 {:code 404 :id src-id})))
                               (let [rows (drows/read-rows tx src-id)
-                                    ;; One fresh id per source row, minted up
+                                    ;; One fresh id per source row of every kind
+                                    ;; in `metadata-reference-kinds`, minted up
                                     ;; front: everything that points at a row
                                     ;; (a token at its text, a span at its
                                     ;; tokens, a relation at its spans, a
                                     ;; metadata value naming any of them) is
-                                    ;; rewritten through these maps.
-                                    fresh (fn [rs] (into {} (map (fn [r] [(:id r) (psc/new-uuid)])) rs))
-                                    text-ids (fresh (:texts rows))
-                                    token-ids (fresh (:tokens rows))
-                                    span-ids (fresh (:spans rows))
-                                    relation-ids (fresh (:relations rows))
-                                    link-ids (fresh (:vocab-links rows))
+                                    ;; rewritten through these maps. The
+                                    ;; document's fresh id is the copy's own.
+                                    fresh-ids (into {}
+                                                    (map (fn [kind]
+                                                           [kind (into {}
+                                                                       (map (fn [r]
+                                                                              [(:id r) (if (= :document kind)
+                                                                                         new-id
+                                                                                         (psc/new-uuid))]))
+                                                                       (rows-of rows kind))]))
+                                                    metadata-reference-kinds)
+                                    text-ids (clojure.core/get fresh-ids :texts)
+                                    token-ids (clojure.core/get fresh-ids :tokens)
+                                    span-ids (clojure.core/get fresh-ids :spans)
+                                    relation-ids (clojure.core/get fresh-ids :relations)
+                                    link-ids (clojure.core/get fresh-ids :vocab-links)
                                     ;; Metadata is JSON, so an id in it is a
                                     ;; string. Forward references (a token
                                     ;; naming a span) work because every id
                                     ;; is minted before any row is written.
-                                    ref-ids (into {(str (:id src)) (str new-id)}
-                                                  (map (fn [[old new]] [(str old) (str new)]))
-                                                  (concat text-ids token-ids span-ids relation-ids link-ids))
+                                    ref-ids (into {}
+                                                  (comp (mapcat val)
+                                                        (map (fn [[old new]] [(str old) (str new)])))
+                                                  fresh-ids)
                                     with-refs (fn [r]
                                                 (cond-> r
                                                   (seq (:metadata r))
