@@ -215,12 +215,41 @@ def test_an_extra_edge_on_one_side_of_the_cut_is_left_alone():
 
 
 def test_a_split_that_crosses_no_suppressed_relation_takes_none():
-    """The suppressor here stands over w5's relation, and a cut before w4
-    leaves w5 and its head on the same side."""
-    client = ud_client(documents={'ud1': with_enhanced([suppressor('e-1', 'sp-l3', 'sp-l4')])})
+    """The suppressor here stands over w2's relation, whose head is w4, and a
+    cut before w5 leaves both of them on the same side of it."""
+    client = ud_client(documents={'ud1': with_enhanced([suppressor('e-1', 'sp-l3', 'sp-l2a')])})
     ws = Workspace(client, load_project(client, PID))
     call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
     assert ws.ops[-1]['suppressor_ids'] == []
+
+
+def test_a_split_sweeps_a_dangling_suppressor_that_crosses_it():
+    """A suppressor whose basic relation is already gone still has two ends,
+    and the cut can still put them in different sentences. Nothing that writes
+    a basic relation knows a suppressor is there, so a re-pointed head, a
+    re-parse or a rewrite rule leaves one lying over a pair with nothing under
+    it: reaching them through the crossing basic relation found every
+    suppressor but those, which are the ones that outlive the split. The
+    editor's `relationsCrossing` asks `allDependencyRelations`, both layers'
+    rows, so it takes this one with the cut.
+
+    Neither of these two lies over a basic relation ("mar" heads "a", not the
+    other way round, and nothing heads "." but "Vamos"). The cut before w5
+    falls between the ends of the first and leaves both ends of the second
+    behind it."""
+    client = ud_client(documents={'ud1': with_enhanced([
+        suppressor('e-d', 'sp-l3', 'sp-l4'),
+        suppressor('e-same-side', 'sp-l2a', 'sp-l3')])})
+    ws = Workspace(client, load_project(client, PID))
+    out = call_tool(ws, 'split_sentence', {'document': 'Viaje', 'ref': 's1.w5'})
+    op = ws.ops[-1]
+    assert op['suppressor_ids'] == ['e-d'], 'the one whose ends straddle the cut, and only it'
+    assert op['relation_ids'] == ['r-4'], 'no extra edge here, so the tree alone'
+    assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
+    execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert deleted == ['r-4', 'e-d']
+    assert len(client.batches) == 1, 'in the same batch as the split itself'
 
 
 def test_a_split_in_a_treebank_with_no_enhanced_rows_stages_none(ws):

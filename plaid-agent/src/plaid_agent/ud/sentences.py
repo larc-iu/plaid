@@ -98,23 +98,42 @@ def _crossing_extras(sentence: Sentence, char_pos: int) -> List[str]:
     return out
 
 
-def crossing_suppressors(sentence: Sentence, char_pos: int) -> List[str]:
-    """The enhanced layer's suppressors over the relations
-    ``crossing_relations`` names.
+def crossing_suppressors(doc: UdDoc, sentence: Sentence, char_pos: int) -> List[str]:
+    """Every suppressor of the enhanced layer that a boundary at ``char_pos``
+    would leave spanning two sentences.
 
-    A suppressor lies over the same pair as the basic relation it suppresses,
-    so it crosses exactly when that one does, and it belongs to the relation
-    under it: left behind by the delete, it suppresses nothing and quietly
-    suppresses the next relation drawn over the same pair, which a person then
-    sees born faded with nothing on screen saying why. The editor deletes them
-    with the split, because its own `relationsCrossing` asks the enhanced
-    layer's rows as well as the tree's (plaid-ud ``utils/udReconcile.js``).
-    Reconcile-on-open catches what anyone else leaves, and it only runs on an
-    OPEN: the panel is app chrome, so the document can be open across a plan,
-    and merging the two sentences back puts the pair within one sentence again
-    with the stale suppressor still over it.
+    Asked of the suppressor ROWS themselves, not of the basic relations under
+    them. A suppressor has two ends of its own, a pair of lemma spans, and the
+    cut can put them in different sentences whether or not a basic relation
+    still stands under them. Reaching them through the crossing basic relation
+    saw only the ones a relation covers, and a DANGLING suppressor (a
+    re-pointed head, a re-parse, a rewrite rule: none of them knows it is
+    there) has no such cover, so it was exactly the kind the split left
+    behind. This is what the editor does: its `relationsCrossing` asks
+    `allDependencyRelations`, which is both layers' rows, suppressors included
+    (plaid-ud ``utils/udReconcile.js``).
+
+    It belongs to the pair it lies over and goes with it: left behind it
+    suppresses nothing, and it quietly suppresses the next relation drawn over
+    the same pair, which a person then sees born faded with nothing on screen
+    saying why. Reconcile-on-open catches what anyone else leaves, and it only
+    runs on an OPEN: the panel is app chrome, so the document can be open
+    across a plan, and merging the two sentences back puts the pair within one
+    sentence again with the stale suppressor still over it.
+
+    Both ends are resolved among the words of the sentence being cut, by lemma
+    span, with the same conservatism as the tree: an end that is not one of
+    them is left alone, and a self-relation is on one side by definition.
     """
-    return [w.suppressor_id for w in _crossing_words(sentence, char_pos) if w.suppressor_id]
+    word_of = {w.fields['lemma'].id: w for w in sentence.words if w.fields.get('lemma')}
+    out = []
+    for (source_span, target_span), rel_id in doc.suppressors.items():
+        source, target = word_of.get(source_span), word_of.get(target_span)
+        if source is None or target is None or source is target:
+            continue
+        if (target.token.begin < char_pos) != (source.token.begin < char_pos):
+            out.append(rel_id)
+    return out
 
 
 def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> str:
@@ -160,7 +179,7 @@ def t_split_sentence(ws: Workspace, document: str = None, ref: str = None) -> st
         'relation_ids': losing,
         # A suppressor is no arc of its own, so it is not counted: it stands
         # over one of `losing` and goes with it.
-        'suppressor_ids': crossing_suppressors(sentence, thing.token.begin),
+        'suppressor_ids': crossing_suppressors(doc, sentence, thing.token.begin),
         'label': f'split s{sentence.index} before "{thing.form}" ({ref})',
     })
     lost = f', dropping {len(losing)} dependency relation(s) that would cross it' if losing else ''
