@@ -2,7 +2,8 @@
   "Mount state for the SQL datasource. Replaces plaid.server.xtdb.
   Starts a HikariCP pool around SQLite, runs Migratus migrations, and
   prompts to create an admin user if none exists."
-  (:require [migratus.core :as migratus]
+  (:require [clojure.string :as str]
+            [migratus.core :as migratus]
             [mount.core :refer [defstate]]
             [plaid.migrate.codepoint-offsets :as codepoint-offsets]
             [plaid.server.config :refer [config]]
@@ -111,7 +112,7 @@
    from `sqlite_master`, but a quoted identifier is what makes that
    irrelevant."
   [table]
-  (str "ANALYZE \"" (clojure.string/replace table "\"" "\"\"") "\";"))
+  (str "ANALYZE \"" (str/replace table "\"" "\"\"") "\";"))
 
 (defn- analyze-tables!
   "ANALYZE the database ONE TABLE PER STATEMENT, pausing between them.
@@ -196,7 +197,7 @@
     (nil? v) nil
     (integer? v) (long v)
     (number? v) (long v)
-    (string? v) (try (Long/parseLong (clojure.string/trim v))
+    (string? v) (try (Long/parseLong (str/trim v))
                      (catch NumberFormatException _
                        (throw (ex-info ":slow-query-threshold-ms must be numeric"
                                        {:value v :code 500}))))
@@ -231,12 +232,12 @@
           lock (try (.tryLock channel)
                     (catch java.nio.channels.OverlappingFileLockException _ nil))]
       (if (nil? lock)
-        (let [holder (try (clojure.string/trim (slurp lock-file))
+        (let [holder (try (str/trim (slurp lock-file))
                           (catch Exception _ ""))]
           (.close channel)
           (throw (ex-info (str "Another plaid instance appears to be running against " db-path
                                " — the instance lock " (.getPath lock-file) " is held"
-                               (when-not (clojure.string/blank? holder)
+                               (when-not (str/blank? holder)
                                  (str " (last holder PID " holder ")"))
                                ". Stop the other instance first, or point this one at a"
                                " different [database] path.")
