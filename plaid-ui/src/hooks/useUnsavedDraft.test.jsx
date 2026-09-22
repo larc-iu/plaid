@@ -37,6 +37,30 @@ const Harness = ({ what }) => {
   );
 };
 
+// One screen, one editor per sentence: what UMR's text mode puts on the page.
+const Graphs = ({ count: graphs }) => (
+  <div>
+    {Array.from({ length: graphs }, (_, i) => (
+      <Graph key={i} />
+    ))}
+    <a
+      href="#/projects/p1/documents"
+      id="away"
+      onClick={(e) => {
+        e.preventDefault();
+        followed += 1;
+      }}
+    >
+      Documents
+    </a>
+  </div>
+);
+
+const Graph = () => {
+  useUnsavedDraft('The graph you have typed', 'graphs');
+  return null;
+};
+
 const flush = () => act(async () => {});
 
 // Past the end of this task, which is where an approved exit stops counting as
@@ -167,6 +191,32 @@ describe('an unsaved draft', () => {
     const event = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  // Leave loses every editor on the screen, so the question says how many
+  // rather than naming the first of them and taking all three.
+  it('counts the graphs when a screen holds more than one', async () => {
+    view = await renderComponent(<Graphs count={3} />);
+    clickOn('away');
+    await flush();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Leave without saving?',
+        description: '3 graphs are not saved. Leaving loses them.',
+        confirmLabel: 'Leave',
+      }),
+    );
+  });
+
+  it('names the one when a screen holds one', async () => {
+    view = await renderComponent(<Graphs count={1} />);
+    clickOn('away');
+    await flush();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'The graph you have typed is not saved. Leaving loses it.',
+      }),
+    );
   });
 
   it('leaves a tab trigger to the tab strip, so nobody is asked twice', async () => {

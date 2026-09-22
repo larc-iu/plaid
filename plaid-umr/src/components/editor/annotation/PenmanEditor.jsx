@@ -21,8 +21,9 @@ export function PenmanEditor({ initial, onApply, onCancel, plan, applying = fals
   const ref = useRef(null);
   const dirty = text !== base;
   // Typed and not applied. Every way out of this screen asks first: the tab
-  // strip, a link, the browser's Back, a reload.
-  useUnsavedDraft(dirty ? 'The graph you have typed' : null);
+  // strip, a link, the browser's Back, a reload. One editor per sentence, so
+  // several can be typed in at once and the question counts them.
+  useUnsavedDraft(dirty ? 'The graph you have typed' : null, 'graphs');
   useEffect(() => {
     if (initial === base) return;
     if (!dirty) setText(initial);

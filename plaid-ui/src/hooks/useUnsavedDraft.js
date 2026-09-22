@@ -21,9 +21,10 @@ import { useConfirm } from '../components/shared/ConfirmProvider.jsx';
 // that is what makes the extra history entry invisible: it carries the SAME
 // url, so landing on it re-renders the page instead of navigating anywhere.
 
-// token -> what that call site would lose. A map rather than one slot, because
-// a screen can hold two half-typed editors at once (UMR puts a text editor on
-// each sentence) and the second to mount must not silence the first.
+// token -> `{ what, several }`, the call site's names for what it would lose,
+// one and many. A map rather than one slot, because a screen can hold two
+// half-typed editors at once (UMR puts a text editor on each sentence) and the
+// second to mount must not silence the first.
 const drafts = new Map();
 
 // An exit the reader has approved, on its way out right now. The answer covers
@@ -37,17 +38,33 @@ let leaving = 0;
 /** What is typed and unsaved right now, as a phrase, or null. */
 export const hasUnsavedDraft = () => {
   if (leaving) return null;
-  for (const what of drafts.values()) return what;
+  for (const { what } of drafts.values()) return what;
   return null;
 };
 
+// How many are unsaved, and what they are. Leaving loses every one of them, so
+// the question counts them rather than naming the first and taking all three.
+// Two DIFFERENT things typed on one screen is not a shape any screen has
+// today, since a tab holding one is unmounted when another is open, and naming
+// what they have in common is honest about all of them either way.
+const several = (drafted) => {
+  const nouns = new Set(drafted.map((d) => d.several).filter(Boolean));
+  return `${drafted.length} ${nouns.size === 1 ? [...nouns][0] : 'things you have typed'}`;
+};
+
 // One question, wherever it is asked from. It states the fact.
-const question = (what) => ({
-  title: 'Leave without saving?',
-  description: `${what} is not saved. Leaving loses it.`,
-  confirmLabel: 'Leave',
-  destructive: true,
-});
+const question = () => {
+  const drafted = [...drafts.values()];
+  return {
+    title: 'Leave without saving?',
+    description:
+      drafted.length === 1
+        ? `${drafted[0].what} is not saved. Leaving loses it.`
+        : `${several(drafted)} are not saved. Leaving loses them.`,
+    confirmLabel: 'Leave',
+    destructive: true,
+  };
+};
 
 // ---------------------------------------------------------------------------
 // The blocker: installed while any draft exists, torn down when the last goes.
@@ -211,15 +228,14 @@ const uninstall = () => {
 
 /**
  * Ask before leaving, if there is anything to lose. Resolves true to go ahead,
- * with the drafts forgotten and the history entry taken back out. Hand it to
- * `Tabs` as `guard`, or await it before a navigation of your own.
+ * with the history entry taken back out. Hand it to `Tabs` as `guard`, or
+ * await it before a navigation of your own.
  */
 export const useUnsavedGuard = () => {
   const confirm = useConfirm();
   return useCallback(async () => {
-    const what = hasUnsavedDraft();
-    if (!what) return true;
-    const ok = await confirm(question(what));
+    if (!hasUnsavedDraft()) return true;
+    const ok = await confirm(question());
     if (!ok) return false;
     // The drafts are NOT forgotten here. The answer is about one way out, and
     // what ends a draft is the screen holding it going away: its own effect
@@ -258,11 +274,14 @@ export const dropUnsavedDrafts = async () => {
 };
 
 /**
- * Register a half-typed value, so that leaving asks first. `what` names it in
- * the question ("The baseline text you have typed"); null while there is
- * nothing to lose.
+ * Register a half-typed value, so that leaving asks first.
+ *
+ * `what` names it in the question ("The baseline text you have typed"), and is
+ * null while there is nothing to lose. `plural` names them in the plural
+ * ("graphs"), for a screen that can hold several at once: the question counts
+ * those rather than naming the first of them, because Leave loses all of them.
  */
-export const useUnsavedDraft = (what) => {
+export const useUnsavedDraft = (what, plural = null) => {
   const guard = useUnsavedGuard();
   // The blocker outlives any one render, so it asks through a box rather than
   // through the callback it happened to be installed with.
@@ -274,11 +293,11 @@ export const useUnsavedDraft = (what) => {
 
   useEffect(() => {
     if (!what) return undefined;
-    drafts.set(token, what);
+    drafts.set(token, { what, several: plural });
     install(() => guardRef.current());
     return () => {
       drafts.delete(token);
       uninstall();
     };
-  }, [what, token]);
+  }, [what, plural, token]);
 };
