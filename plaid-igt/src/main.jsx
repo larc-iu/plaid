@@ -4,6 +4,7 @@ import { Toaster } from '@ui/components/ui/sonner';
 import { configureUi } from '@ui/lib/uiConfig.js';
 import { configureAuth } from '@ui/services/auth.js';
 import { attachCompose } from '@/lib/composeInput.js';
+import { APP_ROUTES } from './appRoutes.js';
 import App from './App';
 // The provenance palette the apps share, then this app's own tokens.
 import '@ui/index.css';
@@ -20,6 +21,7 @@ configureUi({
   configNamespace: 'igt',
   appName: 'Plaid IGT',
   attachCompose,
+  appRoutes: APP_ROUTES,
 });
 
 // Where a signed-out session lands. The app's routing table is the app's.

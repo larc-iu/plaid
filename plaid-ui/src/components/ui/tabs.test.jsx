@@ -107,6 +107,35 @@ describe('a screen holding an unsaved draft', () => {
 
   const flush = () => act(async () => {});
 
+  // A real click is a mousedown and then a click, and BOTH reach the screen's
+  // guards: Radix acts on the mousedown, and the click listener the draft
+  // installs sees the anchor Radix rendered. Only one of them may ask. What
+  // keeps the other quiet is the `role="tab"` Radix leaves on that anchor, and
+  // this is the test that has it in its hands.
+  it('asks once for a real click on a tab, and it is the strip that asks', async () => {
+    followed = 0;
+    confirm.mockReset();
+    confirm.mockResolvedValue(false);
+    const view = await renderComponent(<Screen />);
+    const tabTwo = [...view.container.querySelectorAll('a')].find((a) => a.textContent === 'Two');
+    expect(tabTwo.getAttribute('role')).toBe('tab');
+
+    await view.step(() => {
+      tabTwo.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      tabTwo.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush();
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    // Refused, so the screen is where it was and the link beside the tabs is
+    // still there to be asked about in its turn.
+    expect(view.container.textContent).toContain('Documents');
+    expect(followed).toBe(0);
+
+    await view.unmount();
+    await flush();
+  });
+
   it('asks on a tab click and on a link click, and keeps both when refused', async () => {
     followed = 0;
     confirm.mockReset();
