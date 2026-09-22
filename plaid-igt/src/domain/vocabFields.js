@@ -32,6 +32,7 @@
 // in this tree is not spare.
 
 import { readTagsets } from './tagsets.js';
+import { withLangSuffix } from './fieldNames.js';
 
 /**
  * The core field inventory, in display order. `immutable` fields cannot be
@@ -129,12 +130,23 @@ export const isBuiltInField = (name) => BUILT_IN_BASES.has(fieldBaseName(name));
  * not already say it in its name gets it appended, so the primary language
  * of a multilingual lexicon reads "Gloss (pt)" beside its "Gloss (en)"
  * rather than a bare "Gloss" that does not say which it is.
+ *
+ * A label is NOT the field's name: the base is humanized ("morphType" reads
+ * "Morph Type"), so nothing may store one or look a field up by one. This is
+ * the one place the two deliberately differ, and the only writer that leaves
+ * the app with it is the vocabulary TSV export, whose header is for a person
+ * reading the file (serializeVocabTsv takes the labels and the names apart,
+ * and reads every cell by name).
+ *
+ * The bracket itself is `withLangSuffix`'s, the one writer of a language in a
+ * field's name, so a label and a name say a language the same way and
+ * `fieldNameLang` reads either back.
  */
 export const fieldLabel = (field) => {
   const name = typeof field === 'string' ? field : field?.name;
   const lang = typeof field === 'string' ? null : str(field?.lang);
   const base = humanizeFieldName(name);
-  return lang && fieldBaseName(name) === name ? `${base} (${lang})` : base;
+  return lang && fieldBaseName(name) === name ? withLangSuffix(base, lang) : base;
 };
 
 /**

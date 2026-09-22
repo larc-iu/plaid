@@ -1,5 +1,25 @@
-import { describe, it, expect } from 'vitest';
-import { parseFieldName, fieldNameLang, resolveFieldLang, withLangSuffix } from './fieldNames.js';
+import { describe, it, expect, vi } from 'vitest';
+
+// `withLangSuffix` is watched rather than replaced: every call runs the real
+// one, so the rest of this file tests the module itself, and a writer that
+// spells the bracket by hand instead can still be told apart from one that
+// goes through it.
+const { wroteSuffix } = vi.hoisted(() => ({ wroteSuffix: vi.fn() }));
+vi.mock('./fieldNames.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    withLangSuffix: (...args) => {
+      wroteSuffix(...args);
+      return actual.withLangSuffix(...args);
+    },
+  };
+});
+
+const { parseFieldName, fieldNameLang, resolveFieldLang, withLangSuffix } = await import(
+  './fieldNames.js'
+);
+const { fieldLabel } = await import('./vocabFields.js');
 
 describe('parseFieldName', () => {
   it('splits a writing-system suffix off the base', () => {
@@ -46,6 +66,23 @@ describe('withLangSuffix', () => {
       base: 'Note (old)',
       ws: 'fr',
     });
+  });
+
+  // The label a vocabulary field is SHOWN under is not its name (the base is
+  // humanized), but the bracket in it is the same bracket, so a label reads
+  // back the same way a name does.
+  it('writes the language in a vocabulary field label too', () => {
+    wroteSuffix.mockClear();
+    expect(fieldLabel({ name: 'gloss', lang: 'pt' })).toBe('Gloss (pt)');
+    expect(wroteSuffix).toHaveBeenCalledWith('Gloss', 'pt');
+    expect(fieldNameLang(fieldLabel({ name: 'gloss', lang: 'pt' }))).toBe('pt');
+  });
+
+  it('is not asked when the label says the language already', () => {
+    wroteSuffix.mockClear();
+    expect(fieldLabel({ name: 'gloss (en)', lang: 'en' })).toBe('Gloss (en)');
+    expect(fieldLabel('morphType')).toBe('Morph Type');
+    expect(wroteSuffix).not.toHaveBeenCalled();
   });
 });
 
