@@ -6,7 +6,8 @@
   history reads back like any other document's (reconstruction at the
   latest op equals the live read). Checked against a scenario touching
   every entity kind, plus what a copy must not do to the source."
-  (:require [clojure.set :as set]
+  (:require [clojure.java.io :as io]
+            [clojure.set :as set]
             [clojure.test :refer :all]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request with-admin api-call
@@ -14,10 +15,13 @@
                                     assert-created assert-ok assert-no-content
                                     assert-status with-clean-db]]
             [plaid.history.read :as hread]
+            [plaid.media.storage :as media]
             [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.sql.document-rows :as drows]
-            [plaid.test-helpers :refer :all]))
+            [plaid.test-helpers :refer :all])
+  (:import [java.nio.file Files]
+           [java.nio.file.attribute FileAttribute]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
 (use-fixtures :each with-clean-db)
@@ -316,3 +320,79 @@
       (testing "history reads the rewritten metadata back"
         (is (= (live new-id)
                (comparable (hread/get-with-layer-data-at db new-id (latest-op-ts)))))))))
+
+;; ============================================================
+;; The media file and the commit
+;; ============================================================
+
+(defn- media-files
+  "The names of the files sitting in the media directory."
+  []
+  (->> (.listFiles (io/file (media/ensure-media-dir!)))
+       (filter #(.isFile ^java.io.File %))
+       (map #(.getName ^java.io.File %))
+       set))
+
+(defn- with-temp-media-dir
+  "Point the media directory at a fresh temp dir for the body. Every
+  reader of the directory in `plaid.media.storage` goes through
+  `get-media-dir`, which derives it from the database path — in tests
+  that is the in-memory database, so the real one would be `data/media`
+  in the working tree."
+  [f]
+  (let [tmp (Files/createTempDirectory "plaid-copy-media-" (make-array FileAttribute 0))]
+    (try
+      (with-redefs [media/get-media-dir (constantly (.toString tmp))]
+        (f))
+      (finally
+        (when (Files/exists tmp (make-array java.nio.file.LinkOption 0))
+          (with-open [paths (Files/walk tmp (make-array java.nio.file.FileVisitOption 0))]
+            (doseq [path (reverse (vec (.toList paths)))]
+              (Files/deleteIfExists path))))))))
+
+(deftest a-failed-batch-leaves-no-media-file-behind
+  ;; The copy's media file used to be written as soon as the operation
+  ;; returned, which inside an atomic batch is BEFORE the commit. A batch
+  ;; that copied a document with media and then failed rolled the copy
+  ;; back and left the file under an id no document has.
+  (with-temp-media-dir
+    (fn []
+      (let [proj (create-test-project admin-request "CopyMedia")
+            doc-id (create-test-document admin-request proj "Recorded")
+            _ (spit (io/file (media/ensure-media-dir!) (str doc-id ".mp3")) "audio bytes")
+            before (media-files)
+            docs-before (count (:body (api-call admin-request
+                                                {:method :get
+                                                 :path (str "/api/v1/projects/" proj "/documents")})))
+            res (api-call admin-request
+                          {:method :post
+                           :path "/api/v1/batch"
+                           :body [{:path (str "/api/v1/documents/" doc-id "/copy")
+                                   :method "post"
+                                   :body {:name "Copy"}}
+                                  ;; Anything that fails: the batch is atomic,
+                                  ;; so the copy above rolls back with it.
+                                  {:path (str "/api/v1/documents/" (random-uuid))
+                                   :method "get"
+                                   :body nil}]})]
+        (is (>= (:status res) 400) "the batch failed")
+        (is (= before (media-files))
+            "a rolled-back copy must not leave a media file under its id")
+        (is (= docs-before
+               (count (:body (api-call admin-request
+                                       {:method :get
+                                        :path (str "/api/v1/projects/" proj "/documents")}))))
+            "and no document either")))))
+
+(deftest a-copy-outside-a-batch-takes-the-media-file-with-it
+  (with-temp-media-dir
+    (fn []
+      (let [proj (create-test-project admin-request "CopyMedia")
+            doc-id (create-test-document admin-request proj "Recorded")
+            _ (spit (io/file (media/ensure-media-dir!) (str doc-id ".mp3")) "audio bytes")
+            res (copy! admin-request doc-id {:name "Copy"})
+            new-id (-> res :body :id)]
+        (assert-created res)
+        (is (nil? (-> res :body :media-error)))
+        (is (= #{(str doc-id ".mp3") (str new-id ".mp3")} (media-files))
+            "the copy has its own file")))))

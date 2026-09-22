@@ -689,11 +689,17 @@
 
   What does not come across: comments (the copy's entities are new, so
   an old thread has nothing to be about) and, unless `include-media?`,
-  the media file. The media copy happens after the transaction commits
-  and is best effort, the way `delete` treats the same file.
+  the media file. The media copy waits for the commit and is best
+  effort, the way `delete` treats the same file: nothing writes a file
+  for a document a rollback is about to take away.
 
   Returns `{:success true :extra {:id <new-id>}}`, with `:media-error`
-  alongside the id when the source had media the copy could not take."
+  alongside the id when the source had media the copy could not take.
+  INSIDE AN ATOMIC BATCH the copy runs after the outer transaction
+  commits, so the response is already out and a failure to copy the file
+  is logged and nothing more: the batch's other writes stand and the new
+  document simply has no media. Outside a batch the copy runs inline, as
+  it always did, and `:media-error` still reports it."
   ([db src-id new-name user-id]
    (copy db src-id new-name user-id nil))
   ([db src-id new-name user-id {:keys [include-media?] :or {include-media? true}}]
@@ -785,11 +791,21 @@
                                        (:vocab-links rows)))
                                 {:id new-id})))]
      (if (and (:success result) include-media? (media/media-exists? src-id))
-       (let [{:keys [success error]} (media/copy-media-file! src-id new-id)]
-         (if success
-           result
-           (do (log/warn "Failed to copy media file for" src-id "to" new-id ":" error)
-               (assoc-in result [:extra :media-error] error))))
+       ;; `after-commit!` runs this inline outside an atomic batch (where
+       ;; the operation above has already committed), and holds it until
+       ;; the outer commit inside one. The atom therefore carries the
+       ;; error back only on the inline path — a deferred copy has no
+       ;; response left to put it in, and says so in the log.
+       (let [media-error (atom nil)]
+         (op/after-commit!
+          (fn []
+            (let [{:keys [success error]} (media/copy-media-file! src-id new-id)]
+              (when-not success
+                (log/warn "Failed to copy media file for" src-id "to" new-id ":" error)
+                (reset! media-error error)))))
+         (if-let [error @media-error]
+           (assoc-in result [:extra :media-error] error)
+           result))
        result))))
 
 (defn cascade-delete!
