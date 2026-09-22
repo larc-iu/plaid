@@ -85,7 +85,9 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
 
     ``skipped`` and ``kept`` cannot both stand: a sentence with a graph is
     skipped when ``overwrite`` is off, and one a person built is kept when it
-    is on.
+    is on. What is kept is what a person made, contributed or verified (the
+    three protected states of the provenance convention), so the line says
+    that rather than naming one of them.
     """
     def s(n):
         return '' if n == 1 else 's'
@@ -94,7 +96,7 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
     if skipped:
         tail.append(f'Skipped {skipped} sentence{s(skipped)} that already had a graph.')
     if kept:
-        tail.append(f'Kept {kept} verified sentence{s(kept)}.')
+        tail.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
     if failed:
         tail.append(f'Failed {failed} sentence{s(failed)}'
                     + (f': {first_error}' if first_error else '.'))

@@ -200,4 +200,4 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
     assert service.client.writes == [], f'a {why} graph is not deleted'
     assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
-                                'message': 'Kept 1 verified sentence.'}
+                                'message': 'Kept 1 sentence a person had worked on.'}

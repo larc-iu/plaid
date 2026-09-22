@@ -362,7 +362,7 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     assert service.client.writes == [], f'a {why} graph is not deleted'
     assert service.model.calls == [], f'a {why} sentence costs no model call'
     assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
-                                'message': 'Kept 1 verified sentence.'}
+                                'message': 'Kept 1 sentence a person had worked on.'}
 
 
 def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
@@ -388,7 +388,7 @@ def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
     # Only the machine sentence's anchor is deleted.
     assert service.client.payloads('tokens.bulk_delete') == [['n1']]
     assert result['notice'] == {'level': 'success', 'title': 'Drafted 1 sentence',
-                                'message': 'Kept 1 verified sentence.'}
+                                'message': 'Kept 1 sentence a person had worked on.'}
     # And only the machine sentence was sent to the model.
     assert len(service.model.calls) == 1
     assert 'Sentence 1:' in service.model.prompts[0]
