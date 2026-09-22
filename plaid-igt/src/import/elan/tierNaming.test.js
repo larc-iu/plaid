@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fieldWorksFieldNames, parseFlexTierName, suggestFieldNames } from './tierNaming.js';
+import { fieldNameLang } from '../../domain/fieldNames.js';
 
 describe('parseFlexTierName', () => {
   it('splits a FieldWorks tier name into its item type and writing system', () => {
@@ -162,5 +163,38 @@ describe('fieldWorksFieldNames', () => {
 
   it('names nothing that is not FieldWorks-shaped', () => {
     expect(fieldWorksFieldNames([entry('k1', 'ft'), entry('k2', 'Gloss')])).toEqual({});
+  });
+
+  // A field name's parenthesized suffix is its WRITING SYSTEM. FLEx's own
+  // ELAN export writes a `-pos-` word tier beside the `-txt-` one, and the
+  // two share a base, so the item code used to go in the brackets: "Word
+  // (pos)" reads back as a field in the language `pos`, which the next
+  // document open records on the layer and both FLEx exporters then tag its
+  // values with.
+  it('never puts a FLEx item code where a language tag is read', () => {
+    const named = fieldWorksFieldNames([
+      entry('k1', 'Word-txt-oni'),
+      entry('k2', 'Word-pos-oni'),
+      entry('k3', 'Morph-msa-oni'),
+      entry('k4', 'Morph-cf-oni'),
+      entry('k5', 'Morph-hn-oni'),
+      entry('k6', 'Morph-punct-oni'),
+    ]);
+    expect(named).toEqual({
+      k1: 'Word Text',
+      k2: 'Word POS',
+      k3: 'Morph Morphosyntax',
+      k4: 'Morph Citation Form',
+      k5: 'Morph Homograph Number',
+      k6: 'Morph Punctuation',
+    });
+    for (const name of Object.values(named)) expect(fieldNameLang(name)).toBeNull();
+  });
+
+  it('still tags the language when the codes and the languages both differ', () => {
+    const named = fieldWorksFieldNames([entry('k1', 'Word-txt-oni'), entry('k2', 'Word-pos-en')]);
+    expect(named).toEqual({ k1: 'Word Text (oni)', k2: 'Word POS (en)' });
+    expect(fieldNameLang(named.k1)).toBe('oni');
+    expect(fieldNameLang(named.k2)).toBe('en');
   });
 });

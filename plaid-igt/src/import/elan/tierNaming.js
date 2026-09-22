@@ -22,10 +22,27 @@
 
 import { isLangTag, parseFieldName } from '../../domain/fieldNames.js';
 
+// What each FLEx item code is called in a field name, for the codes that have
+// no name of their own in the IGT field vocabulary. Spelled out rather than
+// left as the code, because a field name's parenthesized suffix is its
+// WRITING SYSTEM and nothing else: "Word (pos)" read back through
+// fieldNameLang is a field in the language `pos`, which the next document
+// open records on the layer and both FLEx exporters then tag its values with.
+const ITEM_WORDS = {
+  txt: 'Text',
+  msa: 'Morphosyntax',
+  pos: 'POS',
+  cf: 'Citation Form',
+  hn: 'Homograph Number',
+  punct: 'Punctuation',
+};
+
 // FLEx's <item type> vocabulary, which is what a tier name's middle segment is
 // drawn from. Anything else means the name is not of this shape at all, so
 // `interlinear-title-en` is left alone rather than read as a "title" item.
-const ITEM_TYPES = new Set(['txt', 'gls', 'lit', 'note', 'msa', 'pos', 'cf', 'hn', 'punct']);
+// The three with a name of their own (below) plus the ones named above, so a
+// code cannot be known to one and not the other.
+const ITEM_TYPES = new Set(['gls', 'lit', 'note', ...Object.keys(ITEM_WORDS)]);
 
 /**
  * `Translation-gls-nl` → {base: 'Translation', itemType: 'gls', ws: 'nl'}, or
@@ -90,7 +107,7 @@ function byItemType({ base, itemType }) {
   if (itemType === 'gls') return base;
   if (itemType === 'lit') return `Literal ${base}`;
   if (itemType === 'note') return `${base} Note`;
-  return `${base} (${itemType})`;
+  return `${base} ${ITEM_WORDS[itemType]}`;
 }
 
 /**
