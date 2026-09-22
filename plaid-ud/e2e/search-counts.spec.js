@@ -86,7 +86,9 @@ test('a relation lookup puts the label in the ARC, and matches', async ({ page }
   // NOT `e: H -> W; e.label = re"subj"`: the compiler reads `e.something` as a
   // feature of a NODE called e, so that form searches for a FEATS span reading
   // `label=subj` and matches nothing, with no error to show for it.
-  await expect(page.locator('textarea')).toHaveValue('pattern { H -[re"subj"]-> W }', {
+  // The head is `*`: a named head is bound to a word, and a root's head is
+  // the sentence anchor, which is none.
+  await expect(page.locator('textarea')).toHaveValue('pattern { * -[re"subj"]-> W }', {
     timeout: 8000,
   });
   await expect(page.getByText(/1 matching sentence/)).toBeVisible({ timeout: 8000 });

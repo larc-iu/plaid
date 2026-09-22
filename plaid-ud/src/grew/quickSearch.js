@@ -60,11 +60,19 @@ export function quickPattern(field, match, text) {
     // compiler reads `e.something` as a feature of a NODE called e, so
     // `e.label = re"subj"` compiles to a search for a FEATS span reading
     // `label=subj` on a word: no error, no warning, no matches.
-    if (match !== 'exact') return `pattern { H -[${value}]-> W }`;
+    //
+    // The head is `*`, never a named node. A named head is bound to a WORD,
+    // and a root's head is the sentence anchor, which is no word: the server
+    // stores a root as a loop on its own word, so `H -[root]-> W` is refused
+    // outright (compile.js) and `H -[re"root"]-> W` compiles and finds
+    // nothing, because H and W are bound injectively. `*` binds the dependent
+    // alone, which is the word this search is for, and finds roots beside
+    // everything else.
+    if (match !== 'exact') return `pattern { * -[${value}]-> W }`;
     // A relation is looked for in both graphs, as `contains` and `matches`
     // look: `E:` names the same label among the enhanced graph's own edges.
-    if (BARE_LABEL.test(needle)) return `pattern { H -[${needle}|E:${needle}]-> W }`;
-    return `pattern { H -[${exactRegex(needle)}]-> W }`;
+    if (BARE_LABEL.test(needle)) return `pattern { * -[${needle}|E:${needle}]-> W }`;
+    return `pattern { * -[${exactRegex(needle)}]-> W }`;
   }
 
   if (field === 'feats') {
