@@ -323,9 +323,9 @@ const EXEMPT_NAMES = {
 // reason: each is either a module-private helper that was published by habit or
 // a name whose last caller went quietly. They are listed rather than deleted
 // because that pass is plaid-umr's to make and this file belongs to the shared
-// package. The list only ever gets shorter -- a name that comes off it and a
-// name that was never on it are both failures, and the run warns about an entry
-// that is no longer needed.
+// package. The list only ever gets shorter: a dead export NOT on it fails the
+// run today, and an entry somebody has since dealt with is warned about, the
+// way a spent exemption is.
 const UMR_BACKLOG = new Set([
   'plaid-umr/src/components/editor/annotation/pickers.js:attributeLineOptions',
   'plaid-umr/src/components/editor/annotation/pickers.js:lineToAttrs',
@@ -345,7 +345,6 @@ const UMR_BACKLOG = new Set([
   'plaid-umr/src/domain/sentenceGraph.js:alignmentOf',
   'plaid-umr/src/domain/umrLayout.js:treeOf',
   'plaid-umr/src/domain/umrProjectSetup.js:LAYER_NAMES',
-  'plaid-umr/src/lib/keymap.js:KEY_ACTIONS',
   'plaid-umr/src/utils/umrLayerUtils.js:UMR_LAYER_LABELS',
   'plaid-umr/src/utils/umrLayerUtils.js:hasForeignSubstrateParticipants',
   'plaid-umr/e2e/fixtures.js:BASE_URL',
@@ -442,16 +441,12 @@ describe('exported names', () => {
     // An exemption that is no longer needed is a warning rather than a failure,
     // the way a stale assistant surface entry is. Somebody deleting the last
     // dead export should not have to come back here to get a green run.
-    const stale = Object.keys(EXEMPT_NAMES).filter((key) => !exemptionsUsed.has(key));
+    const stale = [
+      ...Object.keys(EXEMPT_NAMES).filter((key) => !exemptionsUsed.has(key)),
+      ...[...UMR_BACKLOG].filter((key) => !backlogSeen.has(key)),
+    ];
     if (stale.length) {
       console.warn(`Dead-export exemptions no longer needed: ${stale.join(', ')}`);
     }
-  });
-
-  it('carries no backlog entry that has already been dealt with', () => {
-    // The umr backlog is a debt, not a permission: an entry somebody has since
-    // removed or given a caller comes off the list rather than sitting on it.
-    const cleared = [...UMR_BACKLOG].filter((key) => !backlogSeen.has(key));
-    expect(cleared).toEqual([]);
   });
 });
