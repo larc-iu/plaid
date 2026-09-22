@@ -301,13 +301,17 @@ def test_a_sentence_number_the_document_lacks_is_refused_without_writing():
 
 # --- the write contract ------------------------------------------------------
 
-def _drafted_document():
+def _drafted_document(node_metadata=None):
     """The same document with sentence 1 already drafted: one node anchored to
-    the first word."""
+    the first word. By default the node is a machine's, unverified, which is
+    what an `overwrite` run is allowed to replace."""
+    metadata = {'umr': {'var': 's1d', 'attrs': []}}
+    metadata.update({'prov': 'inferred', 'provSource': SOURCE}
+                    if node_metadata is None else node_metadata)
     return _document(
         node_tokens=[('n1', 0, 3)],
         concept_spans=[{'id': 'sp1', 'tokens': ['n1'], 'value': 'dog',
-                        'metadata': {'umr': {'var': 's1d', 'attrs': []}}}])
+                        'metadata': metadata}])
 
 
 def test_a_sentence_that_already_has_a_graph_is_skipped_and_counted():
@@ -338,6 +342,56 @@ def test_overwrite_deletes_the_old_anchors_before_writing_the_new_graph():
     # rather than s1d2.
     assert [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')] == \
         ['s1b', 's1d', 's1n']
+    assert result['kept'] == 0
+
+
+# The machine-writer contract, rule 2: `overwrite` is an opt-in to replace the
+# MACHINE's own drafts, never a person's work. A sentence somebody built or
+# confirmed is kept, counted, and named in the report.
+@pytest.mark.parametrize('node_metadata, why', [
+    ({}, 'hand-made'),
+    ({'prov': 'inferred', 'provSource': SOURCE, 'provConfirmed': True}, 'verified'),
+    ({'prov': 'contributed', 'provSource': 'user:a@b.com'}, 'contributed'),
+])
+def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, why):
+    service = _service(documents=[_drafted_document(node_metadata)])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+
+    [result] = helper.results
+    assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
+    assert service.client.writes == [], f'a {why} graph is not deleted'
+    assert service.model.calls == [], f'a {why} sentence costs no model call'
+    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
+                                'message': 'Kept 1 verified sentence.'}
+
+
+def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
+    """Two sentences, one drafted by the service and one by a person: the
+    machine's is replaced, the person's is kept, and the run says so."""
+    body = 'The dog barks\nThe cat sleeps\n'
+    document = _document(
+        body=body, sentences=((0, 14), (14, 30)),
+        words=[(0, 3), (4, 7), (8, 13), (14, 17), (18, 21), (22, 28)],
+        node_tokens=[('n1', 0, 3), ('n2', 14, 17)],
+        concept_spans=[
+            {'id': 'sp1', 'tokens': ['n1'], 'value': 'dog',
+             'metadata': {'umr': {'var': 's1d', 'attrs': []},
+                          'prov': 'inferred', 'provSource': SOURCE}},
+            {'id': 'sp2', 'tokens': ['n2'], 'value': 'cat',
+             'metadata': {'umr': {'var': 's2c', 'attrs': []}}},
+        ])
+    service = _service(documents=[document])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+
+    [result] = helper.results
+    assert (result['drafted'], result['kept'], result['skipped']) == (1, 1, 0)
+    # Only the machine sentence's anchor is deleted.
+    assert service.client.payloads('tokens.bulk_delete') == [['n1']]
+    assert result['notice'] == {'level': 'success', 'title': 'Drafted 1 sentence',
+                                'message': 'Kept 1 verified sentence.'}
+    # And only the machine sentence was sent to the model.
+    assert len(service.model.calls) == 1
+    assert 'Sentence 1:' in service.model.prompts[0]
 
 
 def test_a_constant_belongs_to_no_sentence_and_does_not_count_as_a_graph():

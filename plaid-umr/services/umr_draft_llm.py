@@ -43,7 +43,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
-                          stamp_inferred, service_source)
+                          is_protected, stamp_inferred, service_source)
 from plaid_client.service import check_unchanged, progress_heartbeat, requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
 
@@ -595,9 +595,22 @@ def read_sentences(info):
                         key=lambda t: t['begin'])
         s = sentence_of(pieces[0]['begin']) if pieces else None
         if s:
+            # The whole metadata, not just the `umr` half: the flat provenance
+            # keys beside it are what says whether a person made this node
+            # (see `person_made`).
             s['nodes'].append({'id': span['id'], 'var': meta.get('var'),
-                               'piece_ids': [p['id'] for p in pieces]})
+                               'piece_ids': [p['id'] for p in pieces],
+                               'metadata': span.get('metadata') or {}})
     return sentences
+
+
+def person_made(sentence):
+    """Whether any node of this sentence's graph was built or confirmed by a
+    person: human-made, contributed or verified material, which the
+    machine-writer contract (plaid_client.provenance, rule 2) says a service
+    must not replace. `overwrite` redrafts MACHINE graphs only, and a sentence
+    this is true of is kept and counted instead."""
+    return any(is_protected(node['metadata']) for node in sentence['nodes'])
 
 
 def taken_variables(info):
@@ -658,16 +671,21 @@ def build_user_prompt(sentence, gloss_lines, language) -> str:
 
 # --- what the requester is told -------------------------------------------------
 
-def build_draft_notice(drafted, skipped, failed, first_error=None):
+def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0):
     """The toast the editor shows when a run finishes. The service owns the
     wording and the severity; the editor maps `level` to a colour. A run that
-    drafted nothing must not congratulate anyone."""
+    drafted nothing must not congratulate anyone.
+
+    `skipped` and `kept` cannot both stand: a sentence with a graph is skipped
+    when `overwrite` is off, and one a person built is kept when it is on."""
     def s(n):
         return '' if n == 1 else 's'
 
     tail = []
     if skipped:
         tail.append(f'Skipped {skipped} sentence{s(skipped)} that already had a graph.')
+    if kept:
+        tail.append(f'Kept {kept} verified sentence{s(kept)}.')
     if failed:
         tail.append(f'Failed {failed} sentence{s(failed)}'
                     + (f': {first_error}' if first_error else '.'))
@@ -680,6 +698,9 @@ def build_draft_notice(drafted, skipped, failed, first_error=None):
         return {'level': 'warning', 'title': 'Document not modified',
                 'message': (f"{subject}. Enable 'Overwrite existing graphs' to draft over them."
                             + (f' Failed {failed} sentence{s(failed)}.' if failed else ''))}
+    if kept:
+        return {'level': 'warning', 'title': 'Document not modified',
+                'message': ' '.join(tail)}
     if failed:
         return {'level': 'warning', 'title': 'Nothing drafted',
                 'message': f'Failed {failed} sentence{s(failed)}'
@@ -751,9 +772,11 @@ class UmrDraftService(BaseService):
                 Param.number('sentence', 'Sentence', default=1, min=1,
                              description='Which sentence to draft, when the scope is one sentence.'),
                 Param.boolean('overwrite', 'Overwrite existing graphs', default=False,
-                              description='Draft over sentences that already have nodes, '
-                                          'discarding those graphs. When off, they are left '
-                                          'untouched and counted.'),
+                              description='Draft over sentences whose graph is machine-made, '
+                                          'discarding those graphs. A sentence a person built '
+                                          'or confirmed is kept either way, and so is every '
+                                          'sentence with a graph when this is off. What is '
+                                          'kept is counted in the report.'),
             ],
         )
         self.model: Optional[ChatModel] = None
@@ -805,16 +828,22 @@ class UmrDraftService(BaseService):
             in_scope = [s for s in sentences if s['index'] == wanted]
             if not in_scope:
                 raise ValueError(f'The document has no sentence {wanted}.')
-        targets = [s for s in in_scope if s['words'] and (overwrite or not s['nodes'])]
-        skipped = len([s for s in in_scope if s['words'] and s['nodes']]) if not overwrite else 0
+        # With `overwrite` on, a sentence whose graph a person built or
+        # confirmed is KEPT and counted (the machine-writer contract): the
+        # tick redrafts machine graphs only, as igt's analyzers do.
+        with_graph = [s for s in in_scope if s['words'] and s['nodes']]
+        kept = len([s for s in with_graph if person_made(s)]) if overwrite else 0
+        skipped = len(with_graph) if not overwrite else 0
+        targets = [s for s in in_scope
+                   if s['words'] and (not s['nodes'] or (overwrite and not person_made(s)))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         if not targets:
-            notice = build_draft_notice(0, skipped, 0)
+            notice = build_draft_notice(0, skipped, 0, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'failed': 0,
+                                      'skipped': skipped, 'kept': kept, 'failed': 0,
                                       'sentences_failed': [], 'notice': notice})
             return
 
@@ -871,11 +900,11 @@ class UmrDraftService(BaseService):
         drafted = len(plans)
         first_error = failures[0]['reason'] if failures else None
         if not plans:
-            notice = build_draft_notice(0, skipped, len(failures), first_error)
+            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
             return
 
@@ -896,11 +925,11 @@ class UmrDraftService(BaseService):
                     check_unchanged(self.client, document_id, read_version)
                     self._write(info, plans, doomed, frag, progress)
 
-            notice = build_draft_notice(drafted, skipped, len(failures), first_error)
+            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': drafted,
-                                      'skipped': skipped, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
 
     def _write(self, info, plans, doomed, frag, progress) -> None:

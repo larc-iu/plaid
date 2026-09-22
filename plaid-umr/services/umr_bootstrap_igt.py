@@ -43,8 +43,8 @@ from plaid_client.service import check_unchanged
 # the same three-pass write. One reading of the storage model for both.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from umr_draft_llm import (DraftProgress, UMR_NAMESPACE, build_draft_notice,  # noqa: E402
-                           gloss_layers_of, next_variable, read_sentences, resolve_layers,
-                           taken_variables)
+                           gloss_layers_of, next_variable, person_made, read_sentences,
+                           resolve_layers, taken_variables)
 
 DEFAULT_SERVICE_ID = 'umr-bootstrap-igt'
 
@@ -263,9 +263,11 @@ class UmrBootstrapService(BaseService):
                 Param.number('sentence', 'Sentence', default=1, min=1,
                              description='Which sentence, when the scope is one sentence.'),
                 Param.boolean('overwrite', 'Overwrite existing graphs', default=False,
-                              description='Write over sentences that already have nodes, '
-                                          'discarding those graphs. When off, they are left '
-                                          'untouched and counted.'),
+                              description='Write over sentences whose graph is machine-made, '
+                                          'discarding those graphs. A sentence a person built '
+                                          'or confirmed is kept either way, and so is every '
+                                          'sentence with a graph when this is off. What is '
+                                          'kept is counted in the report.'),
             ],
         )
         self.abbreviations = dict(ABBREVIATIONS)
@@ -319,8 +321,14 @@ class UmrBootstrapService(BaseService):
             in_scope = [s for s in sentences if s['index'] == wanted]
             if not in_scope:
                 raise ValueError(f'The document has no sentence {wanted}.')
-        targets = [s for s in in_scope if s['words'] and (overwrite or not s['nodes'])]
-        skipped = len([s for s in in_scope if s['words'] and s['nodes']]) if not overwrite else 0
+        # With `overwrite` on, a sentence whose graph a person built or
+        # confirmed is KEPT and counted (the machine-writer contract): the
+        # tick redrafts machine graphs only, as igt's analyzers do.
+        with_graph = [s for s in in_scope if s['words'] and s['nodes']]
+        kept = len([s for s in with_graph if person_made(s)]) if overwrite else 0
+        skipped = len(with_graph) if not overwrite else 0
+        targets = [s for s in in_scope
+                   if s['words'] and (not s['nodes'] or (overwrite and not person_made(s)))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         taken = taken_variables(info)
@@ -343,11 +351,11 @@ class UmrBootstrapService(BaseService):
         drafted = len(plans)
         first_error = failures[0]['reason'] if failures else None
         if not plans:
-            notice = build_draft_notice(0, skipped, len(failures), first_error)
+            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
             return
 
@@ -360,11 +368,11 @@ class UmrBootstrapService(BaseService):
                 with self.client.documents.locked(document_id):
                     check_unchanged(self.client, document_id, read_version)
                     self._write(info, plans, doomed, frag, progress)
-            notice = build_draft_notice(drafted, skipped, len(failures), first_error)
+            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': drafted,
-                                      'skipped': skipped, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
 
     # The draft service's writer, unchanged: anchors, then nodes, then edges.

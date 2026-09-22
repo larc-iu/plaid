@@ -294,7 +294,8 @@ A document's **Comments** tab holds comments on the document and on its sentence
 
 A project's **Services** settings name which service each task runs with by default.
 The **Draft** button on the Annotate tab runs a drafting service over the document or one sentence: a language model proposes a sentence graph from the words and their glosses, written as machine annotation for you to correct.
-Sentences that already have a graph are skipped unless the run is told to overwrite them.
+Sentences that already have a graph are skipped.
+**Overwrite existing graphs** redrafts the ones a service wrote; a graph you built or confirmed is kept, and the run's report counts what it kept.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
 
 == Compare

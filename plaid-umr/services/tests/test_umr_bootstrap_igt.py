@@ -8,6 +8,7 @@ Run: pytest -q services/tests, from plaid-umr. Runs from the base env.
 import json
 import pathlib
 
+import pytest
 from plaid_client import testing as servicetest
 
 import test_umr_draft_llm as draft_tests
@@ -157,11 +158,17 @@ def test_a_sentence_with_nothing_to_go_on_is_a_counted_failure():
     assert service.client.writes == []
 
 
-def test_a_sentence_with_a_graph_is_skipped_unless_overwritten():
-    document = _document(
+def _with_graph(node_metadata):
+    """The document with sentence 1 already annotated: one node on the last
+    word, whose provenance is the caller's."""
+    return _document(
         node_tokens=[('n1', 8, 13)],
         concept_spans=[{'id': 'c1', 'tokens': ['n1'], 'value': 'bark-01',
-                        'metadata': {'umr': {'var': 's1b', 'attrs': []}}}])
+                        'metadata': {'umr': {'var': 's1b', 'attrs': []}, **node_metadata}}])
+
+
+def test_a_sentence_with_a_graph_is_skipped_unless_overwritten():
+    document = _with_graph({'prov': 'inferred', 'provSource': 'service:umr-draft-llm'})
     service = _service(documents=[document])
     helper = servicetest.run(service, REQUEST)
     [result] = helper.results
@@ -175,3 +182,22 @@ def test_a_sentence_with_a_graph_is_skipped_unless_overwritten():
     # The freed variable is used again rather than s1b2.
     assert [n['metadata']['umr']['var'] for n in _ops(service.client, 'spans.bulk_create')] == [
         's1d', 's1b']
+
+
+# The same rule as the drafting service, from the same reader: `overwrite`
+# replaces the machine's own skeletons, never a person's graph.
+@pytest.mark.parametrize('node_metadata, why', [
+    ({}, 'hand-made'),
+    ({'prov': 'inferred', 'provSource': 'service:umr-bootstrap-igt', 'provConfirmed': True},
+     'verified'),
+    ({'prov': 'contributed', 'provSource': 'user:a@b.com'}, 'contributed'),
+])
+def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, why):
+    service = _service(documents=[_with_graph(node_metadata)])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True})
+
+    [result] = helper.results
+    assert (result['drafted'], result['skipped'], result['kept']) == (0, 0, 1), why
+    assert service.client.writes == [], f'a {why} graph is not deleted'
+    assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
+                                'message': 'Kept 1 verified sentence.'}
