@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Every exported name in the shared package and the two live apps has at least
+// Every exported name in the shared package and the three live apps has at least
 // one importer somewhere else in the tree. An export nobody imports is either
 // dead code or a module-private helper that was published by habit, and both
 // read to the next person as "something out there depends on this".
@@ -50,13 +50,18 @@ const IMPORTER_TREES = [
   'plaid-ud/src',
   'plaid-ud/e2e',
   'plaid-ud/test',
+  'plaid-umr/src',
+  'plaid-umr/e2e',
+  'plaid-umr/test',
   'plaid-dict/src',
   'plaid-agent/tests',
   'plaid-client-js/test',
 ];
 
-// Where a dead export is a finding. The two live apps and the package they
-// share, plus the e2e helper modules beside their specs.
+// Where a dead export is a finding. The three live apps and the package they
+// share, plus the e2e helper modules beside their specs. plaid-umr was outside
+// both lists until 2026-09-21, which meant the next plaid-ui export written
+// for umr alone would have been reported dead the moment igt's suite ran.
 const CENSUS_TREES = [
   'plaid-ui/src',
   'plaid-ui/e2e',
@@ -64,6 +69,8 @@ const CENSUS_TREES = [
   'plaid-igt/e2e',
   'plaid-ud/src',
   'plaid-ud/e2e',
+  'plaid-umr/src',
+  'plaid-umr/e2e',
 ];
 
 const SOURCE = /\.(js|jsx|mjs)$/;
@@ -243,7 +250,7 @@ const MIRRORED_WHOLE = new Set([
 // point, the bundler starts at it.
 const viteEntries = () => {
   const found = new Set();
-  for (const app of ['plaid-ui', 'plaid-igt', 'plaid-ud', 'plaid-dict']) {
+  for (const app of ['plaid-ui', 'plaid-igt', 'plaid-ud', 'plaid-umr', 'plaid-dict']) {
     const html = path.join(repo, app, 'index.html');
     if (!fs.existsSync(html)) continue;
     const src = fs.readFileSync(html, 'utf8');
@@ -267,7 +274,14 @@ const packageEntries = () => {
       for (const child of Object.values(value)) collect(dir, child);
     }
   };
-  for (const dir of ['plaid-ui', 'plaid-igt', 'plaid-ud', 'plaid-dict', 'plaid-client-js']) {
+  for (const dir of [
+    'plaid-ui',
+    'plaid-igt',
+    'plaid-ud',
+    'plaid-umr',
+    'plaid-dict',
+    'plaid-client-js',
+  ]) {
     const file = path.join(repo, dir, 'package.json');
     if (!fs.existsSync(file)) continue;
     const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -297,7 +311,46 @@ const EXEMPT_NAMES = {
   // from a file it was handed at `register()`: there is no importer anywhere and
   // there cannot be one.
   'plaid-igt/e2e/live/aliasHooks.mjs:resolve': 'a node loader hook, called by the runtime',
+  // plaid-umr's feedback.jsx is plaid-ud's, and re-exports the full set for the
+  // same reason: it is the one import site for a screen's toasts.
+  'plaid-umr/src/utils/feedback.jsx:notifyInfo': 'one import site for every toast form',
+  'plaid-umr/src/utils/feedback.jsx:notifyPromise': 'one import site for every toast form',
+  'plaid-umr/src/utils/feedback.jsx:notifyWithAction': 'one import site for every toast form',
 };
+
+// plaid-umr joined the census on 2026-09-21, four months after it was written,
+// and arrived carrying these. They are NOT exempt and none of them has a
+// reason: each is either a module-private helper that was published by habit or
+// a name whose last caller went quietly. They are listed rather than deleted
+// because that pass is plaid-umr's to make and this file belongs to the shared
+// package. The list only ever gets shorter -- a name that comes off it and a
+// name that was never on it are both failures, and the run warns about an entry
+// that is no longer needed.
+const UMR_BACKLOG = new Set([
+  'plaid-umr/src/components/editor/annotation/pickers.js:attributeLineOptions',
+  'plaid-umr/src/components/editor/annotation/pickers.js:lineToAttrs',
+  'plaid-umr/src/domain/adjudication.js:REPORT_VERSION',
+  'plaid-umr/src/domain/adjudication.js:SCORE_LABELS',
+  'plaid-umr/src/domain/commentAnchors.js:anchorCaption',
+  'plaid-umr/src/domain/format/inventory.js:REIFICATIONS',
+  'plaid-umr/src/domain/format/inventory.js:EVENT_EXEMPT',
+  'plaid-umr/src/domain/format/inventory.js:NAMED_ENTITY_TREE',
+  'plaid-umr/src/domain/format/inventory.js:NAMED_ENTITY_TYPES',
+  'plaid-umr/src/domain/format/inventory.js:isInverse',
+  'plaid-umr/src/domain/format/inventory.js:inverseOf',
+  'plaid-umr/src/domain/format/penman.js:isVariableToken',
+  'plaid-umr/src/domain/ilg.js:sortIlg',
+  'plaid-umr/src/domain/lexicon.js:lemmaOf',
+  'plaid-umr/src/domain/sentenceGraph.js:COREF_RELATIONS',
+  'plaid-umr/src/domain/sentenceGraph.js:alignmentOf',
+  'plaid-umr/src/domain/umrLayout.js:treeOf',
+  'plaid-umr/src/domain/umrProjectSetup.js:LAYER_NAMES',
+  'plaid-umr/src/lib/keymap.js:KEY_ACTIONS',
+  'plaid-umr/src/utils/umrLayerUtils.js:UMR_LAYER_LABELS',
+  'plaid-umr/src/utils/umrLayerUtils.js:hasForeignSubstrateParticipants',
+  'plaid-umr/e2e/fixtures.js:BASE_URL',
+  'plaid-umr/e2e/fixtures.js:reportDiagnostics',
+]);
 
 // ---------------------------------------------------------------------------
 // The census
@@ -306,6 +359,7 @@ const censusFiles = [...new Set(CENSUS_TREES.flatMap(walk))].filter((f) => !exem
 
 const findings = [];
 const exemptionsUsed = new Set();
+const backlogSeen = new Set();
 
 for (const file of censusFiles) {
   if (whole.has(file)) continue;
@@ -316,6 +370,10 @@ for (const file of censusFiles) {
     const key = `${file}:${name}`;
     if (key in EXEMPT_NAMES) {
       exemptionsUsed.add(key);
+      continue;
+    }
+    if (UMR_BACKLOG.has(key)) {
+      backlogSeen.add(key);
       continue;
     }
     // How the name is used inside its own file, which is what tells a
@@ -388,5 +446,12 @@ describe('exported names', () => {
     if (stale.length) {
       console.warn(`Dead-export exemptions no longer needed: ${stale.join(', ')}`);
     }
+  });
+
+  it('carries no backlog entry that has already been dealt with', () => {
+    // The umr backlog is a debt, not a permission: an entry somebody has since
+    // removed or given a caller comes off the list rather than sitting on it.
+    const cleared = [...UMR_BACKLOG].filter((key) => !backlogSeen.has(key));
+    expect(cleared).toEqual([]);
   });
 });

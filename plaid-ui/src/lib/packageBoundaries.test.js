@@ -78,15 +78,26 @@ describe('what a package file may not know', () => {
       'import',
       'tokenize',
       'analyze',
+      // The rest of what the three apps route on. The list stopped at
+      // `analyze` while umr was being written, so its tabs were unguarded.
+      'guidelines',
+      'comments',
+      'details',
+      'compare',
+      'validate',
+      'activity',
+      'configuration',
+      'import-export',
+      'search',
     ].join('|');
     const ROUTE = new RegExp(`['"\`][^'"\`]*/(${SEGMENTS})\\b`);
     expect(offenders(ROUTE, { skip: [SIBLING_APPS] })).toEqual([]);
   });
 
-  it('names neither app on screen', () => {
+  it('names no app on screen', () => {
     // In a string, not in an identifier: `IGT_URL` is this package's own name
     // for a sibling's address, and that is what siblingApps.js is.
-    const NAMED = /['"`][^'"`]*\b(Plaid IGT|Plaid UD|interlinear|treebank)\b/i;
+    const NAMED = /['"`][^'"`]*\b(Plaid IGT|Plaid UD|Plaid UMR|interlinear|treebank)\b/i;
     expect(offenders(NAMED, { skip: [SIBLING_APPS] })).toEqual([]);
   });
 });
