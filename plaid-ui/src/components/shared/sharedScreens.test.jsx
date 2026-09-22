@@ -46,8 +46,21 @@ vi.mock('./CommentsBrowser.jsx', () => ({
     </p>
   ),
 }));
+// The account menu is a dropdown of its own; what the shell is asked about
+// here is what happens when Sign out is chosen.
+vi.mock('./UserButton', () => ({
+  UserButton: ({ onLogout }) => (
+    <button type="button" onClick={() => onLogout()}>
+      Sign out
+    </button>
+  ),
+}));
+
+const { confirm } = vi.hoisted(() => ({ confirm: vi.fn(async () => false) }));
+vi.mock('./ConfirmProvider.jsx', () => ({ useConfirm: () => confirm }));
 
 const { AppShell } = await import('./AppShell.jsx');
+const { useUnsavedDraft } = await import('../../hooks/useUnsavedDraft.js');
 const { DocumentTabStrip } = await import('./DocumentTabStrip.jsx');
 const { ProjectTabStrip } = await import('./ProjectTabStrip.jsx');
 const { ProjectListPage } = await import('./ProjectListPage.jsx');
@@ -72,6 +85,12 @@ const client = {
 // The app's own tab strip, which every project-level screen is handed.
 const Strip = ({ project }) => <p>strip: {project?.name ?? 'loading'}</p>;
 
+// A screen under the shell with something typed on it and not saved.
+const Typing = () => {
+  useUnsavedDraft('The name you have typed');
+  return <p>the screen</p>;
+};
+
 let view = null;
 const mount = async (element, path = '/projects/p1') => {
   view = await renderComponent(<MemoryRouter initialEntries={[path]}>{element}</MemoryRouter>);
@@ -91,6 +110,8 @@ const mountAt = (pattern, element, path) =>
 const text = () => view.container.textContent;
 
 beforeEach(() => {
+  confirm.mockReset();
+  confirm.mockResolvedValue(false);
   auth.user = USER;
   auth.logout = vi.fn();
   auth.getClient = () => client;
@@ -127,6 +148,32 @@ describe('the shared chrome', () => {
     expect(text()).toContain('the screen');
     // An admin is offered the server's admin area, which is one app's.
     expect(all(view.container, 'header a').some((a) => a.textContent === 'Admin')).toBe(true);
+  });
+
+  // Signing out takes the screen underneath with it, so it is a way out like
+  // any other. The shell asks before it goes.
+  it('AppShell asks before signing out with something typed on the screen', async () => {
+    await mount(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/projects/:projectId" element={<Typing />} />
+        </Route>
+      </Routes>,
+    );
+    const signOut = all(view.container, 'button').find((b) => b.textContent === 'Sign out');
+
+    await view.step(() => signOut.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'The name you have typed is not saved. Leaving loses it.',
+      }),
+    );
+    // Refused: still signed in, still on the screen.
+    expect(auth.logout).not.toHaveBeenCalled();
+
+    confirm.mockResolvedValue(true);
+    await view.step(() => signOut.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(auth.logout).toHaveBeenCalled();
   });
 
   it('DocumentTabStrip draws the breadcrumb and every tab as a link', async () => {
