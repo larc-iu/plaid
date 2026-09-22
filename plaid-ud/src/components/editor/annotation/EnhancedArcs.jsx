@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
-import { resolveColor, baseRel } from '../../../utils/udVocab.js';
-import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
-import { DeprelEditor } from './DeprelEditor.jsx';
+import { provMark } from '../../../utils/provenanceUi.js';
+import { ArcLabel } from './ArcLabel.jsx';
+import { afterDeleting, arcColor, commitsLabel, stepThrough, trimLabel } from './arcLabelRules.js';
 import { useEditorSession } from './editorSession.js';
-import { ARC_BASE, LOWER_BAND_TOP, arcHeight, arcPath } from '../../../utils/arcLayout.js';
+import { ARC_BASE, arcHeight, bandArc, sortByLabelX } from '../../../utils/arcLayout.js';
 import { positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
@@ -12,7 +11,8 @@ import './DependencyTree.css';
 // above them and what the graph has beside the tree is drawn under them, which
 // is where the interfaces people know put it. Position is the whole of the
 // mark, so an arc here is drawn exactly as one above is, dash for unreviewed
-// and all, and the two never share a space to tangle in.
+// and all, and the two never share a space to tangle in. The shape of one is
+// `bandArc` and its label is `ArcLabel`, the same two the tree draws through.
 //
 // It draws, renames and deletes. It does not DRAW NEW edges: that is
 // Ctrl/Cmd+drag in the tree above, whose grab areas and drag state already
@@ -36,21 +36,16 @@ export const EnhancedArcs = forwardRef(
 
     const positionOf = (spanId) => tokenPositions.find((p) => positionMatchesSpanId(p, spanId));
     const isRoot = (relation) => relation.source === relation.target;
-    const labelXOf = (relation) => {
-      const head = positionOf(relation.source);
-      if (isRoot(relation)) return head?.x || 0;
-      return ((head?.x || 0) + (positionOf(relation.target)?.x || 0)) / 2;
-    };
-    const sorted = [...relations].sort((a, b) => labelXOf(a) - labelXOf(b));
+    // Left to right across the sentence, as the tree walks its own labels.
+    const sorted = sortByLabelX(relations, (spanId) => positionOf(spanId)?.x);
 
     const select = (id) => {
       setFocusedId(id);
       labelRefs.current.get(id)?.focus();
     };
     const selectAdjacent = (id, delta) => {
-      const i = sorted.findIndex((r) => r.id === id);
-      if (i < 0) return;
-      select(sorted[(i + delta + sorted.length) % sorted.length].id);
+      const next = stepThrough(sorted, id, delta);
+      if (next) select(next.id);
     };
 
     useImperativeHandle(ref, () => ({
@@ -74,17 +69,10 @@ export const EnhancedArcs = forwardRef(
       if (!editingId && focusedId) labelRefs.current.get(focusedId)?.focus();
     }, [editingId, focusedId]);
 
-    // The write contract the tree's labels follow: a changed label commits, and
-    // an unchanged one commits only when it was deliberately re-entered over a
-    // relation still awaiting review, which confirms it.
     const commitLabel = (relation, v, typed) => {
-      const t = (v || '').trim();
-      if (!t) return;
-      const changed = t !== (relation.value || 'dep');
-      if (changed || (typed && needsReview(relation.metadata))) onRelationUpdate(relation.id, t);
+      const t = trimLabel(v);
+      if (t && commitsLabel(relation, t, typed)) onRelationUpdate(relation.id, t);
     };
-
-    const baseline = LOWER_BAND_TOP;
 
     const renderArc = (relation) => {
       const head = positionOf(relation.source);
@@ -92,26 +80,18 @@ export const EnhancedArcs = forwardRef(
       if (!head || !dependent) return null;
 
       const root = isRoot(relation);
-      const height = root ? ARC_BASE : arcHeight(layout.levels.get(relation.id) || 1);
-      // Leave the head a few pixels along, so the drop does not sit under an
-      // arrowhead pointing up at that same word.
-      const offset = dependent.x > head.x ? 5 : -5;
-      const d = root
-        ? `M ${head.x} ${baseline} l 0 ${height}`
-        : arcPath(head.x + offset, dependent.x, baseline, -height);
+      const shape = bandArc({
+        fromX: head.x,
+        toX: dependent.x,
+        toRoot: root,
+        height: root ? ARC_BASE : arcHeight(layout.levels.get(relation.id) || 1),
+      });
 
       const mark = provMark(relation.metadata);
       const active =
         editingId === relation.id || hoveredId === relation.id || focusedId === relation.id;
-      const color = active
-        ? '#2563eb'
-        : mark
-          ? PROV_MARK_COLORS[mark]
-          : resolveColor(baseRel(relation.value || 'dep'), deprelColors);
+      const color = arcColor(relation, active, deprelColors);
 
-      const labelX = labelXOf(relation);
-      const labelY = baseline + height + 11;
-      const arrowX = dependent.x;
       const open = () => {
         if (isReadOnly) return;
         setFocusedId(relation.id);
@@ -121,7 +101,7 @@ export const EnhancedArcs = forwardRef(
       const body = (
         <>
           <path
-            d={d}
+            d={shape.d}
             stroke={color}
             strokeWidth={active ? 2 : 1}
             strokeDasharray={mark ? '5,4' : undefined}
@@ -131,105 +111,64 @@ export const EnhancedArcs = forwardRef(
             onClick={open}
           />
           {/* The arrowhead points UP, into the word. */}
-          <polygon
-            points={`${arrowX - 3},${baseline} ${arrowX + 3},${baseline} ${arrowX},${baseline - 5}`}
-            fill={color}
-            className="tree-arc-arrow"
-            onClick={open}
-          />
+          <polygon points={shape.arrow} fill={color} className="tree-arc-arrow" onClick={open} />
         </>
       );
 
-      const label =
-        editingId === relation.id ? (
-          <foreignObject
-            x={labelX - 50}
-            y={labelY - 14}
-            width="100"
-            height="26"
-            style={{ overflow: 'visible' }}
-          >
-            <DeprelEditor
-              relation={relation}
-              onCommit={(v, typed) => {
-                commitLabel(relation, v, typed);
-                setEditingId(null);
-                setFocusedId(relation.id);
-              }}
-              onCancel={() => {
-                setEditingId(null);
-                setFocusedId(relation.id);
-              }}
-              onDelete={() => {
-                // The next arc along takes the focus, rather than the page
-                // body, where no key reaches this band.
-                const i = sorted.findIndex((r) => r.id === relation.id);
-                const next = sorted[i + 1] || sorted[i - 1] || null;
-                onRelationDelete(relation.id);
-                setEditingId(null);
-                setFocusedId(next?.id || null);
-              }}
-              onTab={(v, shiftKey, typed) => {
-                commitLabel(relation, v, typed);
-                const i = sorted.findIndex((r) => r.id === relation.id);
-                const next = sorted[(i + (shiftKey ? -1 : 1) + sorted.length) % sorted.length];
-                setEditingId(next?.id || null);
-                setFocusedId(next?.id || null);
-              }}
-            />
-          </foreignObject>
-        ) : (
-          <text
-            x={labelX}
-            y={labelY}
-            fill={color}
-            className={`tree-deprel-text ${focusedId === relation.id ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}`}
-            tabIndex="-1"
-            onMouseEnter={() => setHoveredId(relation.id)}
-            onMouseLeave={() => setHoveredId(null)}
-            onFocus={() => setFocusedId(relation.id)}
-            onBlur={() => {
-              if (!editingId) setFocusedId(null);
-            }}
-            onKeyDown={(e) => {
-              if ((e.key === 'd' || e.key === 'D') && (e.ctrlKey || e.metaKey)) {
-                // Back up to the tree. Kept from the document, where every
-                // sentence's tree listens for this chord as its way IN.
-                e.preventDefault();
-                e.nativeEvent.stopPropagation();
-                onExitUp?.(dependent.token?.id);
-              } else if (e.key === 'Enter') {
-                e.preventDefault();
-                open();
-              } else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
-                e.preventDefault();
-                selectAdjacent(relation.id, 1);
-              } else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
-                e.preventDefault();
-                selectAdjacent(relation.id, -1);
-              } else if (e.key === 'ArrowDown') {
-                if (dependent.token?.id && onExitDown) {
-                  e.preventDefault();
-                  onExitDown(dependent.token.id);
-                }
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setFocusedId(null);
-                e.currentTarget.blur();
-              }
-            }}
-            onClick={open}
-            ref={(el) => {
-              if (el) labelRefs.current.set(relation.id, el);
-              else labelRefs.current.delete(relation.id);
-            }}
-          >
-            {relation.value || 'dep'}
-            {provState(relation.metadata) !== PROV_STATES.HUMAN && (
-              <title>{provCellTitle('deprel', relation.metadata)}</title>
-            )}
-          </text>
-        );
+      const label = (
+        <ArcLabel
+          relation={relation}
+          at={shape.label}
+          color={color}
+          editing={editingId === relation.id}
+          focused={focusedId === relation.id}
+          onOpen={open}
+          onHover={(on) => setHoveredId(on ? relation.id : null)}
+          onFocusIn={() => setFocusedId(relation.id)}
+          onFocusOut={() => {
+            if (!editingId) setFocusedId(null);
+          }}
+          onStep={(delta) => selectAdjacent(relation.id, delta)}
+          onExitDown={() => {
+            if (!dependent.token?.id || !onExitDown) return false;
+            onExitDown(dependent.token.id);
+            return true;
+          }}
+          onEscape={() => setFocusedId(null)}
+          onChord={(e) => {
+            if ((e.key !== 'd' && e.key !== 'D') || !(e.ctrlKey || e.metaKey)) return false;
+            // Back up to the tree. Kept from the document, where every
+            // sentence's tree listens for this chord as its way IN.
+            e.preventDefault();
+            e.nativeEvent.stopPropagation();
+            onExitUp?.(dependent.token?.id);
+            return true;
+          }}
+          onClick={open}
+          onCommit={(v, typed) => {
+            commitLabel(relation, v, typed);
+            setEditingId(null);
+            setFocusedId(relation.id);
+          }}
+          onCancel={() => {
+            setEditingId(null);
+            setFocusedId(relation.id);
+          }}
+          onDelete={() => {
+            const next = afterDeleting(sorted, relation.id);
+            onRelationDelete(relation.id);
+            setEditingId(null);
+            setFocusedId(next?.id || null);
+          }}
+          onTab={(v, shiftKey, typed) => {
+            commitLabel(relation, v, typed);
+            const next = stepThrough(sorted, relation.id, shiftKey ? -1 : 1);
+            setEditingId(next?.id || null);
+            setFocusedId(next?.id || null);
+          }}
+          labelRef={labelRefs.current}
+        />
+      );
 
       return { key: relation.id, body, label };
     };

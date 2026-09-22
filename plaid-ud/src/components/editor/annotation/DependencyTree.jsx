@@ -1,8 +1,15 @@
 import { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { needsReview, provState, PROV_STATES } from '@larc-iu/plaid-client';
 import { resolveColor, baseRel } from '../../../utils/udVocab.js';
-import { provCellTitle, provMark, PROV_MARK_COLORS } from '../../../utils/provenanceUi.js';
-import { DeprelEditor } from './DeprelEditor.jsx';
+import { provMark } from '../../../utils/provenanceUi.js';
+import { ArcLabel } from './ArcLabel.jsx';
+import {
+  afterDeleting,
+  arcColor,
+  commitsLabel,
+  labelChanged,
+  stepThrough,
+  trimLabel,
+} from './arcLabelRules.js';
 import { useEditorSession } from './editorSession.js';
 import {
   ROOT_BAR_HEIGHT,
@@ -13,6 +20,7 @@ import {
   bandBaselineUnder,
   dragPreview,
   grabRect,
+  sortByLabelX,
   svgWidth,
   treeArc,
   treeFrame,
@@ -21,16 +29,6 @@ import {
 import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
-
-// Machine-made or contributed, not yet human-verified (provenance convention).
-// The deprel label renders marked until a human edits or accepts it.
-const isInferredRelation = (relation) => needsReview(relation?.metadata);
-
-// Which mark an unreviewed relation wears: violet for a machine's, amber for a
-// contributor's, matching the annotation cells. Paired with a dashed stroke so
-// the state never relies on colour alone (a configured DEPREL colour could
-// itself be purple: see the dash below).
-const relationMark = (relation) => provMark(relation?.metadata);
 
 // The modifier that turns a tree gesture into an enhanced-graph one. Cmd as
 // well as Ctrl, by the app's convention, and here by necessity too: Ctrl+click
@@ -486,29 +484,12 @@ export const DependencyTree = forwardRef(
       }
     };
 
-    // Sort relations by label X position for logical tab order
-    const sortedRelations = [...relations].sort((a, b) => {
-      // Calculate label positions for both relations
-      const getLabelX = (relation) => {
-        const isSelfPointing = relation.source === relation.target;
-        const sourcePos = adjustedTokenPositions.find((p) =>
-          positionMatchesSpanId(p, relation.source),
-        );
-
-        if (isSelfPointing) {
-          // ROOT relation - label is centered above the source token
-          return sourcePos?.x || 0;
-        } else {
-          // Regular relation - label is at midpoint between source and target
-          const targetPos = adjustedTokenPositions.find((p) =>
-            positionMatchesSpanId(p, relation.target),
-          );
-          return ((sourcePos?.x || 0) + (targetPos?.x || 0)) / 2;
-        }
-      };
-
-      return getLabelX(a) - getLabelX(b);
-    });
+    // The labels in the order the keyboard walks them: left to right across
+    // the sentence, a root over its own word. The band below walks its own by
+    // the same rule.
+    const xOfSpan = (spanId) =>
+      adjustedTokenPositions.find((p) => positionMatchesSpanId(p, spanId))?.x;
+    const sortedRelations = sortByLabelX(relations, xOfSpan);
 
     // Global keydown: only the Ctrl+D entry point (jump into the dependency
     // labels) and Escape (bail out of any in-progress interaction) live here.
@@ -585,11 +566,8 @@ export const DependencyTree = forwardRef(
     };
     // Move selection to the adjacent label in visual (left-to-right) order.
     const selectAdjacentRelation = (relationId, delta) => {
-      if (sortedRelations.length === 0) return;
-      const idx = sortedRelations.findIndex((r) => r.id === relationId);
-      if (idx < 0) return;
-      const next = sortedRelations[(idx + delta + sortedRelations.length) % sortedRelations.length];
-      selectRelation(next.id);
+      const next = stepThrough(sortedRelations, relationId, delta);
+      if (next) selectRelation(next.id);
     };
 
     // Imperative entry from the grid: ArrowUp out of the top annotation row lands
@@ -637,22 +615,18 @@ export const DependencyTree = forwardRef(
     };
 
     // Render dependency arc
-    // Commit an edited deprel label. A changed label always commits; an
-    // UNCHANGED label commits only when the human actually typed/picked it
-    // (`typed`) and the relation is a machine prediction — re-entering the
-    // machine's own label is a confirmation (provenance write contract), while
-    // merely opening the editor and leaving is not.
+    // Commit an edited deprel label, by the write contract in ArcLabel.
     const commitLabel = (relation, v, typed) => {
-      const t = (v || '').trim();
+      const t = trimLabel(v);
       if (!t) return;
-      const changed = t !== (relation.value || 'dep');
       // A relabel writes to the enhanced graph and leaves the tree's label as
       // it was. The same label again is no relabel, so nothing is written.
       if (relabeling === relation.id) {
-        if (changed) onEnhancedRelationCreate(relation.source, relation.target, t);
+        if (labelChanged(relation, t))
+          onEnhancedRelationCreate(relation.source, relation.target, t);
         return;
       }
-      if (changed || (typed && isInferredRelation(relation))) onRelationUpdate(relation.id, t);
+      if (commitsLabel(relation, t, typed)) onRelationUpdate(relation.id, t);
     };
 
     // Whether the enhanced graph has this basic relation. Ctrl/Cmd+click on it,
@@ -704,8 +678,6 @@ export const DependencyTree = forwardRef(
         frame,
       });
       const pathId = `arc-${relation.id}`;
-      const labelX = shape.label.x;
-      const labelY = shape.label.y;
 
       // Unreviewed relations read as their provenance hue + a dashed stroke:
       // the dash is the unambiguous cue, so it can't be confused with a settled
@@ -713,13 +685,9 @@ export const DependencyTree = forwardRef(
       // Approved relations color by the base DEPREL (configured map → deterministic
       // auto); selection/hover/focus keep the highlight blue. `color` drives the
       // arc stroke, arrowhead fill, and resting label fill, so the label matches.
-      const mark = relationMark(relation);
-      const inferred = !!mark;
+      const inferred = !!provMark(relation.metadata);
       const active = isSelected || isHovered || isFocused;
-      const restColor = mark
-        ? PROV_MARK_COLORS[mark]
-        : resolveColor(baseRel(relation.value || 'dep'), deprelColors);
-      const color = active ? '#2563eb' : restColor;
+      const color = arcColor(relation, active, deprelColors);
       const strokeWidth = active ? 2 : 1;
       // A relation the enhanced graph leaves out is faded, arc and label both:
       // what the graph has instead, if anything, hangs under the words. Not
@@ -760,139 +728,78 @@ export const DependencyTree = forwardRef(
       );
 
       const label = (
-        <>
-          {/* DEPREL label */}
-          {editingRelation?.id === relation.id ? (
-            <foreignObject
-              x={labelX - 50}
-              y={labelY - 12}
-              width="100"
-              height="26"
-              style={{ overflow: 'visible' }}
-            >
-              <DeprelEditor
-                relation={relation}
-                onCommit={(v, typed) => {
-                  commitLabel(relation, v, typed);
-                  // Stay on this label (selected, not editing) so arrow/Tab nav
-                  // continues; the refocus effect returns focus to its <text>.
+        <ArcLabel
+          relation={relation}
+          at={shape.label}
+          color={color}
+          editing={editingRelation?.id === relation.id}
+          focused={isFocused}
+          // A basic relation the enhanced graph leaves out is faded, arc and
+          // label both. `--suppressed` is the state and styles nothing (it is
+          // what a test asks about), `--dimmed` is the look.
+          className={`${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
+          // A suppressed relation's hover record is the fact a reader cannot
+          // get from the faded label alone.
+          title={isSuppressed ? 'Not in the enhanced graph' : undefined}
+          onOpen={() => {
+            if (!isReadOnly) openEditor(relation);
+          }}
+          onHover={(on) => setHoveredRelation(on ? relation.id : null)}
+          onFocusIn={() => setFocusedRelation(relation.id)}
+          onFocusOut={() => {
+            // Clear selection only when focus leaves for good (not while the
+            // editor is taking over). The editor transitions re-set
+            // focusedRelation, so a transient clear here is harmless.
+            if (!editingRelation) setFocusedRelation(null);
+          }}
+          onStep={(delta) => selectAdjacentRelation(relation.id, delta)}
+          onExitDown={() => {
+            const tid = tokenIdForRelation(relation);
+            if (!tid || !onExitDown) return false;
+            onExitDown(tid);
+            return true;
+          }}
+          onEscape={() => setFocusedRelation(null)}
+          onChord={(e) => {
+            if ((e.key !== 'e' && e.key !== 'E') || !isEnhancedGesture(e)) return false;
+            // Taken whether or not it applies here, so the browser's own
+            // Ctrl/Cmd+E never fires from inside the tree.
+            e.preventDefault();
+            toggleSuppressed(relation);
+            return true;
+          }}
+          onClick={(e) => handleArcClick(e, relation)}
+          onCommit={(v, typed) => {
+            commitLabel(relation, v, typed);
+            // Stay on this label (selected, not editing) so arrow/Tab nav
+            // continues; the refocus effect returns focus to its <text>.
+            closeEditor();
+            setFocusedRelation(relation.id);
+          }}
+          onCancel={() => {
+            closeEditor();
+            setFocusedRelation(relation.id);
+          }}
+          // Mid-relabel there is nothing of the enhanced graph's to delete
+          // yet, and the tree's relation is not what was asked about.
+          onDelete={
+            relabeling === relation.id
+              ? undefined
+              : () => {
+                  const next = afterDeleting(sortedRelations, relation.id);
+                  onRelationDelete(relation.id);
                   closeEditor();
-                  setFocusedRelation(relation.id);
-                }}
-                onCancel={() => {
-                  closeEditor();
-                  setFocusedRelation(relation.id);
-                }}
-                // Mid-relabel there is nothing of the enhanced graph's to
-                // delete yet, and the tree's relation is not what was asked
-                // about. Withheld, the editor offers no bin and reads the
-                // chord as a cancel.
-                onDelete={
-                  relabeling === relation.id
-                    ? undefined
-                    : () => {
-                        // The next label along takes the focus: focus on the
-                        // page body leaves every key here dead until the
-                        // annotator clicks.
-                        const i = sortedRelations.findIndex((r) => r.id === relation.id);
-                        const next = sortedRelations[i + 1] || sortedRelations[i - 1] || null;
-                        onRelationDelete(relation.id);
-                        closeEditor();
-                        setFocusedRelation(next?.id || null);
-                      }
-                }
-                onTab={(v, shiftKey, typed) => {
-                  commitLabel(relation, v, typed);
-                  const idx = sortedRelations.findIndex((r) => r.id === relation.id);
-                  const nextIdx = shiftKey
-                    ? idx > 0
-                      ? idx - 1
-                      : sortedRelations.length - 1
-                    : idx < sortedRelations.length - 1
-                      ? idx + 1
-                      : 0;
-                  const next = sortedRelations[nextIdx];
-                  openEditor(next || null);
                   setFocusedRelation(next?.id || null);
-                }}
-              />
-            </foreignObject>
-          ) : (
-            <text
-              x={labelX}
-              y={labelY}
-              fill={color}
-              className={`tree-deprel-text ${isFocused ? 'tree-deprel-text--focused' : ''}${mark ? ' tree-deprel-text--marked' : ''}${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
-              tabIndex="-1"
-              onMouseEnter={() => setHoveredRelation(relation.id)}
-              onMouseLeave={() => setHoveredRelation(null)}
-              onFocus={() => {
-                // Focusing SELECTS the label (highlight + keyboard target); it no
-                // longer opens the editor — Enter/click does. This is what lets
-                // arrows move between labels and focus return here after Enter.
-                setFocusedRelation(relation.id);
-              }}
-              onBlur={() => {
-                // Clear selection only when focus leaves for good (not while the
-                // editor is taking over). The editor transitions re-set
-                // focusedRelation, so a transient clear here is harmless.
-                if (!editingRelation) {
-                  setFocusedRelation(null);
                 }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  if (!isReadOnly) {
-                    openEditor(relation);
-                  }
-                } else if ((e.key === 'e' || e.key === 'E') && isEnhancedGesture(e)) {
-                  // Taken whether or not it applies here, so the browser's own
-                  // Ctrl/Cmd+E never fires from inside the tree.
-                  e.preventDefault();
-                  toggleSuppressed(relation);
-                } else if (e.key === 'ArrowRight' || (e.key === 'Tab' && !e.shiftKey)) {
-                  e.preventDefault();
-                  selectAdjacentRelation(relation.id, 1);
-                } else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
-                  e.preventDefault();
-                  selectAdjacentRelation(relation.id, -1);
-                } else if (e.key === 'ArrowDown') {
-                  // Drop into the grid: this label's dependent token column.
-                  const tid = tokenIdForRelation(relation);
-                  if (tid && onExitDown) {
-                    e.preventDefault();
-                    onExitDown(tid);
-                  }
-                } else if (e.key === 'Escape') {
-                  e.preventDefault();
-                  setFocusedRelation(null);
-                  e.currentTarget.blur();
-                }
-              }}
-              onClick={(e) => handleArcClick(e, relation)}
-              ref={(el) => {
-                if (el) {
-                  labelRefs.current.set(relation.id, el);
-                } else {
-                  labelRefs.current.delete(relation.id);
-                }
-              }}
-            >
-              {relation.value || 'dep'}
-              {/* Hover record for machine-made relations (SVG-native tooltip).
-                  One <title> to a label, and a suppressed relation's is the
-                  fact a reader cannot get from the faded label alone. */}
-              {isSuppressed ? (
-                <title>Not in the enhanced graph</title>
-              ) : (
-                provState(relation.metadata) !== PROV_STATES.HUMAN && (
-                  <title>{provCellTitle('deprel', relation.metadata)}</title>
-                )
-              )}
-            </text>
-          )}
-        </>
+          }
+          onTab={(v, shiftKey, typed) => {
+            commitLabel(relation, v, typed);
+            const next = stepThrough(sortedRelations, relation.id, shiftKey ? -1 : 1);
+            openEditor(next || null);
+            setFocusedRelation(next?.id || null);
+          }}
+          labelRef={labelRefs.current}
+        />
       );
 
       return { key: relation.id, body, label };
