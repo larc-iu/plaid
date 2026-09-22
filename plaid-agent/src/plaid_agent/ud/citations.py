@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 from ..core.citations import bare_re, brace_re, resolve_citations as core_resolve
 from ..core.limits import MAX_FOCUS
-from .project import COLUMNS, UdDoc, parse_ref, resolve
+from .project import ALL_COLUMNS, UdDoc, deps_of, parse_ref, resolve
 from .tools import Workspace
 
 REF = r's\d+(?:\.w\d+(?:-\d+)?)?(?:\s*,\s*(?:s\d+\.)?w?\d+(?:-\d+)?)*'
@@ -83,18 +83,22 @@ def _card(doc: UdDoc, sentence_index: int, focus: List[int],
         if len(t.words) > 1:
             span = f'{t.words[0].index}-{t.words[-1].index}'
             rows.append({'id': span, 'form': t.surface, 'lemma': '', 'upos': '', 'xpos': '',
-                         'feats': '', 'head': '', 'deprel': '', 'token': True,
+                         'feats': '', 'head': '', 'deprel': '', 'deps': '', 'token': True,
                          'focus': any(w.index in marked for w in t.words)})
         for w in t.words:
             rows.append({'id': str(w.index), 'form': w.form,
                          'lemma': w.marked('lemma'), 'upos': w.marked('upos'),
                          'xpos': w.marked('xpos'), 'feats': w.marked('features'),
                          'head': '' if w.head is None else str(w.head),
-                         'deprel': w.deprel or '', 'token': False,
-                         'focus': w.index in marked})
+                         'deprel': w.deprel or '',
+                         # The enhanced graph, on the sentences that have one
+                         # of their own. A column nothing fills is dropped
+                         # below, so a treebank without it sees no change.
+                         'deps': deps_of(w) if s.has_enhanced else '',
+                         'token': False, 'focus': w.index in marked})
     # A column nothing in this sentence fills is noise in a narrow panel, so it
     # is left out. ID and FORM always stay: they are what a reference points at.
-    keep = [c.lower() for c in COLUMNS]
+    keep = [c.lower() for c in ALL_COLUMNS]
     keep = [c for c in keep if c in ('id', 'form') or any(r[c] for r in rows)]
     # The INDEX is what a reference names and what the card prints. The ID is
     # what the editor's ?sent= deep link needs. Both, or the link lands on the

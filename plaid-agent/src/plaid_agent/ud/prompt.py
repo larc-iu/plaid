@@ -41,6 +41,10 @@ is refused. Where it is a suggestion, an unlisted value is allowed, and worth me
 propose one.
 - Every word has exactly one head. set_head replaces whatever head a word had, so re-attaching is one call, \
 not a delete and a create. head=0 with deprel "root" marks the sentence root, and a sentence has one.
+- A sentence may carry an ENHANCED graph beside its tree. Where it does, reads print a DEPS column: each \
+word's heads in that graph as head:relation, several separated by |, and _ where the graph gives the word no \
+head. A sentence without the column has an enhanced graph equal to its tree. You can read and cite the \
+enhanced graph; no tool changes it, and it is edited on the canvas.
 {find_first}
 {stage_now}
 {one_turn}

@@ -43,6 +43,13 @@ MISSING = '_'
 SPAN_KEYS = ('form', 'lemma', 'upos', 'xpos', 'features')
 #: The relation layer's flag, on the lemma span layer.
 RELATION_KEY = 'dependency'
+#: The ENHANCED relation layer's flag, beside it on the lemma span layer. The
+#: assistant READS this layer and never writes it: see the note on
+#: :func:`_enhanced_of`.
+ENHANCED_KEY = 'enhancedDependency'
+#: What marks a row of that layer a suppressor rather than an extra edge
+#: (``metadata.suppress``, as plaid-ud's ``enhancedGraph.js`` writes it).
+SUPPRESS_KEY = 'suppress'
 
 UPOS_TAGS = ('ADJ', 'ADP', 'ADV', 'AUX', 'CCONJ', 'DET', 'INTJ', 'NOUN', 'NUM', 'PART',
              'PRON', 'PROPN', 'PUNCT', 'SCONJ', 'SYM', 'VERB', 'X')
@@ -101,6 +108,9 @@ class UdProject:
     word_layer_id: str           # role `syntactic-word`: where annotations live
     span_layers: Dict[str, str]  # 'upos' -> layer id
     relation_layer_id: Optional[str]
+    # The enhanced graph's layer, where the project has one (an older project
+    # gains it the first time a maintainer opens a document). Read-only here.
+    enhanced_relation_layer_id: Optional[str] = None
     vocab: Dict[str, Any] = dc_field(default_factory=dict)
     modes: Dict[str, str] = dc_field(default_factory=dict)
     descriptions: Dict[str, Dict[str, str]] = dc_field(default_factory=dict)
@@ -121,7 +131,8 @@ class UdProject:
         each annotation layer for its spans or relations.
         """
         ids = [self.text_layer_id, self.sentence_layer_id, self.token_layer_id,
-               self.word_layer_id, *self.span_layers.values(), self.relation_layer_id]
+               self.word_layer_id, *self.span_layers.values(), self.relation_layer_id,
+               self.enhanced_relation_layer_id]
         return [i for i in dict.fromkeys(ids) if i]
 
     def layer(self, field: str) -> str:
@@ -168,12 +179,15 @@ def load_project(client, project_id: str) -> UdProject:
                          + '. A maintainer can finish setting it up on the project page.')
 
     relation_layer_id, relation_config = None, {}
+    enhanced_layer_id = None
     for sl in word.get('span_layers') or []:
         if sl['id'] != span_layers['lemma']:
             continue
         for rl in sl.get('relation_layers') or []:
             if _ud(rl.get('config'), RELATION_KEY) is True:
                 relation_layer_id, relation_config = rl['id'], rl.get('config') or {}
+            elif _ud(rl.get('config'), ENHANCED_KEY) is True:
+                enhanced_layer_id = rl['id']
     if not relation_layer_id:
         raise ValueError('This project has no dependency relation layer '
                          '(a maintainer can finish setting it up on the project page).')
@@ -185,6 +199,7 @@ def load_project(client, project_id: str) -> UdProject:
         text_layer_id=text_layer['id'], sentence_layer_id=sent['id'],
         token_layer_id=token['id'], word_layer_id=word['id'],
         span_layers=span_layers, relation_layer_id=relation_layer_id,
+        enhanced_relation_layer_id=enhanced_layer_id,
         vocab={
             'upos': _vocab(configs.get('upos'), UPOS_TAGS),
             'xpos': _vocab(configs.get('xpos')),
@@ -225,6 +240,10 @@ class Word:
     deprel: Optional[str] = None
     relation_id: Optional[str] = None
     relation_metadata: Optional[dict] = None
+    #: This word's heads in the ENHANCED graph, ``[(head id, relation)]`` as
+    #: CoNLL-U's DEPS column writes them. Empty where the sentence says
+    #: nothing about the enhanced graph, which means it equals its tree.
+    enhanced: List[Tuple[int, str]] = dc_field(default_factory=list)
 
     def value(self, name: str) -> str:
         sp = self.fields.get(name)
@@ -270,6 +289,10 @@ class Sentence:
     text: str
     tokens: List[Token] = dc_field(default_factory=list)
     metadata: dict = dc_field(default_factory=dict)
+    #: Whether this sentence's enhanced graph differs from its tree, which is
+    #: what the stored layer holds: no rows means the two are the same, and
+    #: the DEPS column is then left off the read entirely.
+    has_enhanced: bool = False
 
     @property
     def words(self) -> List[Word]:
@@ -396,7 +419,8 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
 
     # Dependencies are relations between LEMMA spans. A self-relation is the
     # root, which CoNLL-U writes as head 0.
-    for rel in _relations(word_layer, project.relation_layer_id):
+    basic = _relations(word_layer, project.relation_layer_id)
+    for rel in basic:
         target = by_lemma_span.get(rel.get('target'))
         source = by_lemma_span.get(rel.get('source'))
         if target is None:
@@ -405,8 +429,75 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
         target.deprel = rel.get('value') or None
         target.relation_id = rel.get('id')
         target.relation_metadata = rel.get('metadata')
+    _read_enhanced(word_layer, project, basic, by_lemma_span, sentences)
     return UdDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences,
                  raw.get('metadata') or {}, raw.get('version'))
+
+
+def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
+                   by_lemma_span: Dict[str, Word], sentences: List[Sentence]) -> None:
+    """Fill in each word's heads in the ENHANCED graph, where the sentence has
+    one.
+
+    The stored layer holds only what DIFFERS from the tree (plaid-ud
+    ``src/domain/enhancedGraph.js``, which is the one reading of this rule and
+    what this ports): an EXTRA edge is an ordinary relation, and a SUPPRESSOR
+    is a valueless relation over the same pair as a basic one, saying the
+    enhanced graph leaves that one out. The graph is the tree, less what is
+    suppressed, plus the extras, and a sentence with no rows has a graph equal
+    to its tree.
+
+    READ-ONLY, by ruling (2026-09-21): the assistant shows and cites the
+    enhanced graph and has no tool that changes it. What its head ops owe the
+    layer is tidying a suppressor over a relation they remove, which is
+    ``plan._suppressor_over``.
+    """
+    rows = _relations(word_layer, project.enhanced_relation_layer_id)
+    if not rows:
+        return
+    suppressed = {(r.get('source'), r.get('target')) for r in rows if _suppresses(r)}
+    basic_by_target = {r.get('target'): r for r in basic}
+    extras: Dict[str, List[Tuple[int, str]]] = {}
+    touched = set()
+    for row in rows:
+        target = by_lemma_span.get(row.get('target'))
+        source = by_lemma_span.get(row.get('source'))
+        if target is None:
+            continue
+        touched.add(target.id)
+        if _suppresses(row):
+            continue
+        head = 0 if source is target else (source.index if source else None)
+        if head is None:
+            continue
+        extras.setdefault(target.id, []).append((head, row.get('value') or ''))
+    for s in sentences:
+        words = s.words
+        if not any(w.id in touched for w in words):
+            continue
+        s.has_enhanced = True
+        for w in words:
+            edges: List[Tuple[int, str]] = []
+            lemma = w.fields.get('lemma')
+            rel = basic_by_target.get(lemma.id) if lemma else None
+            if (w.head is not None and w.deprel and rel is not None
+                    and (rel.get('source'), rel.get('target')) not in suppressed):
+                edges.append((w.head, w.deprel))
+            edges += extras.get(w.id, [])
+            # One head and relation once, in DEPS order: the same edge can be
+            # held twice, as a basic relation nothing suppresses and as a row
+            # of the enhanced layer saying the same thing.
+            w.enhanced = sorted(dict.fromkeys(edges))
+
+
+def _suppresses(row: dict) -> bool:
+    return ((row.get('metadata') or {}).get(SUPPRESS_KEY)) is True
+
+
+def deps_of(w: Word) -> str:
+    """One word's DEPS value: every head the enhanced graph gives it, or ``_``
+    where it gives it none."""
+    return '|'.join(f'{h}:{rel}' for h, rel in w.enhanced) or MISSING
 
 
 # --- addressing -------------------------------------------------------------
@@ -446,24 +537,36 @@ def resolve(doc: UdDoc, ref: str):
 # --- rendering ---------------------------------------------------------------
 
 COLUMNS = ('ID', 'FORM', 'LEMMA', 'UPOS', 'XPOS', 'FEATS', 'HEAD', 'DEPREL')
+#: The enhanced graph's column, added to a sentence that has one of its own.
+#: A treebank that never touches the enhanced graph reads exactly as before.
+DEPS = 'DEPS'
+ALL_COLUMNS = COLUMNS + (DEPS,)
+
+
+def columns_of(s: Sentence) -> Tuple[str, ...]:
+    return ALL_COLUMNS if s.has_enhanced else COLUMNS
 
 
 def _rows(s: Sentence) -> List[List[str]]:
     """One CoNLL-U-shaped row per surface token and per word, in reading order.
     A multi-word token gets its range line first, with empty annotation columns,
     exactly as CoNLL-U writes it."""
+    width = len(columns_of(s))
     rows: List[List[str]] = []
     for t in s.tokens:
         if len(t.words) > 1:
             rows.append([f'{t.words[0].index}-{t.words[-1].index}', t.surface]
-                        + [MISSING] * (len(COLUMNS) - 2))
+                        + [MISSING] * (width - 2))
         for w in t.words:
             head = MISSING if w.head is None else str(w.head)
             deprel = w.deprel or MISSING
             if w.deprel and w.relation_metadata is not None:
                 deprel += review_mark(w.relation_metadata)
-            rows.append([str(w.index), w.form, w.marked('lemma'), w.marked('upos'),
-                         w.marked('xpos'), w.marked('features'), head, deprel])
+            row = [str(w.index), w.form, w.marked('lemma'), w.marked('upos'),
+                   w.marked('xpos'), w.marked('features'), head, deprel]
+            if s.has_enhanced:
+                row.append(deps_of(w))
+            rows.append(row)
     return rows
 
 
@@ -482,7 +585,7 @@ def render_sentence(s: Sentence, *, header: bool = True) -> str:
         for k in sorted(s.metadata):
             if k not in ('sent_id', 'text') and isinstance(s.metadata[k], str) and s.metadata[k]:
                 out.append(f'# {k} = {s.metadata[k]}')
-    out.append('\t'.join(COLUMNS))
+    out.append('\t'.join(columns_of(s)))
     for r in rows:
         out.append('\t'.join(r))
     return '\n'.join(out)

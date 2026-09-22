@@ -62,7 +62,8 @@ TOOLS = [
         []),
     _fn('read_document',
         'Read a document as tab-separated CoNLL-U rows: one line per word with its form, lemma, UPOS, '
-        'XPOS, features, head and deprel, and a range line for each multi-word token. A value followed '
+        'XPOS, features, head and deprel, and a range line for each multi-word token. A sentence whose '
+        'enhanced graph differs from its tree carries a DEPS column as well. A value followed '
         'by ~ was made by a machine and nobody has confirmed it; ^ is a contributor\'s unreviewed work. '
         'Up to 40 sentences per call, fewer when they are long: the first line says which sentences '
         'were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search '

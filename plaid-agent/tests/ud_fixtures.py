@@ -5,12 +5,18 @@ full-width rule and the range line are exercised by every test that reads the
 fixture rather than by one test that remembers to.
 """
 
+import copy
+
 from core.fake_client import BaseFakeClient, ExtFakeClient
 
 PID = 'up1'
 TEXT_LAYER, SENT_LAYER, TOK_LAYER, WORD_LAYER = 'u-tl', 'u-sent', 'u-tok', 'u-word'
 FORM, LEMMA, UPOS, XPOS, FEATS = 'u-form', 'u-lemma', 'u-upos', 'u-xpos', 'u-feats'
 DEPREL = 'u-dep'
+#: The enhanced graph's layer, beside the tree's on Lemma. Every project has
+#: one (plaid-ud makes it at setup and back-fills an older project), and a
+#: document carries rows in it only where its graph differs from its tree.
+ENHANCED = 'u-edep'
 TEXT_ID = 'u-text'
 
 
@@ -32,7 +38,9 @@ def project_raw():
                       'relation_layers': [
                           {'id': DEPREL, 'name': 'Dependencies',
                            'config': {'ud': {'dependency': True,
-                                             'vocabDescriptions': {'obl': 'oblique nominal'}}}}]},
+                                             'vocabDescriptions': {'obl': 'oblique nominal'}}}},
+                          {'id': ENHANCED, 'name': 'Enhanced Dependencies',
+                           'config': {'ud': {'enhancedDependency': True}}}]},
                      {'id': UPOS, 'name': 'UPOS', 'config': {'ud': {'upos': True, 'vocabMode': 'closed'}}},
                      {'id': XPOS, 'name': 'XPOS', 'config': {'ud': {'xpos': True, 'vocab': ['vmip1p0', 'ncms000']}}},
                      {'id': FEATS, 'name': 'Features', 'config': {'ud': {
@@ -106,6 +114,25 @@ def document_raw():
                  ]},
             ]}],
     }
+
+
+def with_enhanced(rows):
+    """The fixture document with ``rows`` in its enhanced relation layer.
+
+    An extra edge is an ordinary relation between two lemma spans; a
+    suppressor is a valueless one over the same pair as a basic relation,
+    carrying ``metadata.suppress``.
+    """
+    doc = copy.deepcopy(document_raw())
+    lemma = next(sl for sl in doc['text_layers'][0]['token_layers'][2]['span_layers']
+                 if sl['id'] == LEMMA)
+    lemma['relation_layers'].append({'id': ENHANCED, 'relations': list(rows)})
+    return doc
+
+
+def suppressor(rid, source, target):
+    return {'id': rid, 'source': source, 'target': target, 'value': None,
+            'metadata': {'suppress': True}}
 
 
 def audit_raw():

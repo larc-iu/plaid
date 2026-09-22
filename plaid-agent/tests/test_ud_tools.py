@@ -6,7 +6,8 @@ from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.toolkit import TOOLS, WRITE_TOOLS, call_tool
 from plaid_agent.ud.tools import Workspace
-from ud_fixtures import DEPREL, LEMMA, PID, UPOS, WORD_LAYER, ud_client
+from ud_fixtures import (DEPREL, ENHANCED, LEMMA, PID, UPOS, WORD_LAYER, suppressor,
+                         ud_client, with_enhanced)
 
 
 @pytest.fixture
@@ -33,6 +34,45 @@ def test_the_overview_says_which_vocabularies_are_rules(ws):
 def test_read_document_returns_conllu(ws):
     out = run(ws, 'read_document', document='Viaje')
     assert '2-3\tal\t' in out and 'NOUN~' in out
+
+
+# --- the enhanced graph, read-only (RULED 2026-09-21) --------------------------
+
+def _enhanced_ws(rows):
+    client = ud_client(documents={'ud1': with_enhanced(rows)})
+    return Workspace(client, load_project(client, PID))
+
+
+def test_a_read_shows_the_enhanced_graph_where_a_sentence_has_one():
+    """The layer holds only what differs from the tree, so a read prints DEPS
+    on the sentences that differ and leaves the column off everywhere else. A
+    suppressed relation is a word the enhanced graph gives no head."""
+    ws = _enhanced_ws([
+        # An extra: "mar" (word 4) is given a second head in the graph.
+        {'id': 'e-1', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'nsubj'},
+        # And the tree's punct (word 5) is left out of the graph.
+        suppressor('e-2', 'sp-l1', 'sp-l4')])
+    out = run(ws, 'read_document', document='Viaje')
+    s1, s2 = out.split('# sent_id = s2')
+    assert 'DEPS' in s1 and 'DEPS' not in s2, 'only the sentence that has one'
+    rows = {line.split('\t')[0]: line.split('\t') for line in s1.splitlines() if '\t' in line}
+    assert rows['4'][-1] == '1:nsubj|1:obl', 'the tree edge and the extra, once each'
+    assert rows['5'][-1] == '_', 'the graph leaves the tree relation out'
+    assert rows['1'][-1] == '0:root'
+
+
+def test_a_citation_carries_the_enhanced_graph_only_where_there_is_one():
+    from plaid_agent.ud.citations import resolve_citations
+    rows = [{'id': 'e-1', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'nsubj'}]
+    ws = _enhanced_ws(rows)
+    run(ws, 'read_document', document='Viaje')
+    card = resolve_citations(ws, '<example doc="Viaje" ref="s1.w4"/>')[0]
+    assert 'deps' in card['columns']
+    assert [r['deps'] for r in card['rows'] if r['id'] == '4'] == ['1:nsubj|1:obl']
+    # And a treebank with no enhanced annotation reads exactly as before.
+    plain = Workspace(ud_client(), load_project(ud_client(), PID))
+    run(plain, 'read_document', document='Viaje')
+    assert 'deps' not in resolve_citations(plain, '<example doc="Viaje" ref="s1.w4"/>')[0]['columns']
 
 
 def test_read_document_takes_a_range(ws):
