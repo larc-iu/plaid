@@ -200,9 +200,9 @@ test('text mode stamps what it makes and confirms what it changes', async () => 
   // The nodes it made are the writer's (a verifier leaves no keys), and
   // every node it changed is confirmed rather than left as the draft's.
   assert.ok(confirms(calls).length >= 1, 'text mode confirmed what it edited');
-  const created = calls.filter((c) => c.name === 'spans.create');
+  const created = calls.filter((c) => c.name === 'spans.bulkCreate').flatMap((c) => c.args[0]);
   assert.ok(created.length >= 1);
-  created.forEach((c) => assert.deepEqual(Object.keys(c.args[3]), ['umr']));
+  created.forEach((op) => assert.deepEqual(Object.keys(op.metadata), ['umr']));
 });
 
 test('a service write nobody has touched stays machine-made', async () => {

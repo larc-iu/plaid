@@ -29,6 +29,10 @@ export function recordingClient() {
         record('spans.create', layer, tokens, value, metadata);
         return { id: id() };
       },
+      bulkCreate: async (ops) => {
+        record('spans.bulkCreate', ops);
+        return { ids: ops.map(() => id()) };
+      },
       update: async (spanId, value) => record('spans.update', spanId, value),
       patchMetadata: async (spanId, patch) => record('spans.patchMetadata', spanId, patch),
       setTokens: async (spanId, tokens) => record('spans.setTokens', spanId, tokens),
@@ -37,6 +41,10 @@ export function recordingClient() {
       create: async (layer, source, target, value, metadata) => {
         record('relations.create', layer, source, target, value, metadata);
         return { id: id() };
+      },
+      bulkCreate: async (ops) => {
+        record('relations.bulkCreate', ops);
+        return { ids: ops.map(() => id()) };
       },
       update: async (relId, value) => record('relations.update', relId, value),
       patchMetadata: async (relId, patch) => record('relations.patchMetadata', relId, patch),

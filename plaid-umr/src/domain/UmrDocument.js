@@ -1294,10 +1294,16 @@ export class UmrDocument extends DocumentModel {
   }
 
   /**
-   * Apply a PENMAN text to a sentence as ONE operation: the plan's writes in
-   * dependency order, then a reload, since a dozen ids come back along the
-   * way. A new node is unaligned until anchored on the canvas. Resolves to
-   * the number of changes, or false.
+   * Apply a PENMAN text to a sentence as ONE operation, in THREE requests:
+   * everything that needs no id made along the way (the renames, the
+   * deletions, the concept, attribute, order and root changes, and the new
+   * nodes' anchors), then the new nodes, then the new edges. The importer
+   * writes in the same three passes, and for the same reason: an op cannot
+   * use an id made in its own batch. A new node is unaligned until anchored
+   * on the canvas. Resolves to the number of changes, or false.
+   *
+   * It was a round trip per node, edge and patch, in series, under the
+   * write lock: a 30-node graph pasted into text mode was about 90 of them.
    */
   async applyPenman(sentenceIndex, text) {
     const info = this.layerInfo;
@@ -1314,58 +1320,29 @@ export class UmrDocument extends DocumentModel {
       'Failed to apply the text',
       async () => {
         const idByVar = new Map(sentence.nodes.map((n) => [n.var, n.id]));
+        const L = this._layers(info);
+        // Text mode is a person writing the graph, so it stamps like the
+        // canvas: what it makes carries the create stamp, what it changes
+        // carries the edit stamp (write-contract rule 3).
+        const stamp = this.writer.createStamp;
+        const editSpan = (spanId) =>
+          this.writer.editStamp(L.spans.find((x) => x.id === spanId)?.metadata);
+        const editRelation = (relId) =>
+          this.writer.editStamp(L.relations.find((x) => x.id === relId)?.metadata);
         // Each span's umr namespace as written so far. A patch replaces the
         // namespace whole, so one built from the state read before any write
         // put back what an earlier patch took off: the old root's attribute
         // change restored its root mark, and the new root's mark reverted its
         // attributes.
         const written = new Map();
-        // Text mode is a person writing the graph, so it stamps like the
-        // canvas: what it makes carries the create stamp, what it changes
-        // carries the edit stamp (write-contract rule 3).
-        const stamp = this.writer.createStamp;
-        const L = this._layers(info);
-        const editSpan = (spanId) =>
-          this.writer.editStamp(L.spans.find((x) => x.id === spanId)?.metadata);
-        const editRelation = (relId) =>
-          this.writer.editStamp(L.relations.find((x) => x.id === relId)?.metadata);
-        const patchUmr = async (spanId, changes) => {
+        const umrPatchFor = (spanId, changes) => {
           const span = L.spans.find((x) => x.id === spanId);
           const next = { ...(written.get(spanId) ?? umrOf(span)), ...changes };
           Object.keys(next).forEach((k) => next[k] === undefined && delete next[k]);
           written.set(spanId, next);
-          await client.spans.patchMetadata(spanId, {
-            [UMR_NAMESPACE]: next,
-            ...editSpan(spanId),
-          });
+          return { [UMR_NAMESPACE]: next, ...editSpan(spanId) };
         };
         const gone = new Set(plan.delete);
-        // A variable typed over: the node keeps its anchor, its edges and its
-        // document-level relations, and answers to the new name from here on.
-        for (const r of plan.rename) {
-          await patchUmr(r.nodeId, { var: r.to });
-          idByVar.delete(r.from);
-          idByVar.set(r.to, r.nodeId);
-        }
-        // Deletes next, so a variable given to a new node is free.
-        if (plan.delete.length) {
-          const tokenIds = plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id));
-          await client.tokens.bulkDelete(tokenIds);
-          plan.delete.forEach((id) => {
-            const n = this.node(id);
-            if (n) idByVar.delete(n.var);
-          });
-        }
-        for (const edgeId of plan.edgesDelete) await client.relations.delete(edgeId);
-        // The root moves: the old marks come off first, so no two nodes wear
-        // one, whether the new root is made below or was there already.
-        if (plan.root) {
-          const renamed = new Map(plan.rename.map((r) => [r.nodeId, r.to]));
-          const olds = sentence.nodes.filter(
-            (n) => n.root && (renamed.get(n.id) ?? n.var) !== plan.root && !gone.has(n.id),
-          );
-          for (const o of olds) await patchUmr(o.id, { root: undefined });
-        }
         // A sentence the import kept as text keeps its alignment block too.
         // Mending the graph here is the first time anything can be anchored
         // to it, and the block is written no longer once the sentence has
@@ -1382,33 +1359,113 @@ export class UmrDocument extends DocumentModel {
           });
           return pieces.length ? pieces : this.piecesFor(sentence, []);
         };
-        for (const c of plan.create) {
-          const { ids } = await client.tokens.bulkCreate(
-            anchorFor(c.var).map((piece) => ({
+        // The new nodes' anchors, all in one create: each node's pieces are
+        // a run of the list, so its ids come back at a known offset.
+        const pieceOps = [];
+        const pieceRuns = plan.create.map((c) => {
+          const at = pieceOps.length;
+          anchorFor(c.var).forEach((piece) =>
+            pieceOps.push({
               tokenLayerId: info.nodeTokenLayer.id,
               text: textId,
               begin: piece.begin,
               end: piece.end,
-            })),
+            }),
           );
-          // Unaligned, like every node text mode makes unless the file it is
-          // mending said which words it covers: it records its sentence (see
-          // _reconcile).
-          const meta = { var: c.var, attrs: c.attrs, sentence: sentence.tokenId };
-          if (plan.root === c.var) meta.root = true;
-          const span = await client.spans.create(info.conceptLayer.id, ids, c.concept, {
-            ...stamp,
-            [UMR_NAMESPACE]: meta,
+          return { at, count: pieceOps.length - at };
+        });
+
+        // Pass 1. The anchors go LAST in it, so their ids are the batch's
+        // last result.
+        const firstPass = await client.batched(async (b) => {
+          // A variable typed over: the node keeps its anchor, its edges and
+          // its document-level relations, and answers to the new name from
+          // here on.
+          for (const r of plan.rename) {
+            b.spans.patchMetadata(r.nodeId, umrPatchFor(r.nodeId, { var: r.to }));
+            idByVar.delete(r.from);
+            idByVar.set(r.to, r.nodeId);
+          }
+          // Deletes next, so a variable given to a new node is free.
+          if (plan.delete.length) {
+            b.tokens.bulkDelete(plan.delete.flatMap((id) => this.node(id).pieces.map((p) => p.id)));
+            plan.delete.forEach((id) => {
+              const n = this.node(id);
+              if (n) idByVar.delete(n.var);
+            });
+          }
+          for (const edgeId of plan.edgesDelete) b.relations.delete(edgeId);
+          // The root moves: the old marks come off first, so no two nodes
+          // wear one, whether the new root is made below or was there
+          // already.
+          if (plan.root) {
+            const renamed = new Map(plan.rename.map((r) => [r.nodeId, r.to]));
+            sentence.nodes
+              .filter(
+                (n) => n.root && (renamed.get(n.id) ?? n.var) !== plan.root && !gone.has(n.id),
+              )
+              .forEach((o) => b.spans.patchMetadata(o.id, umrPatchFor(o.id, { root: undefined })));
+          }
+          for (const c of plan.concept) {
+            b.spans.update(c.nodeId, c.concept);
+            const verify = editSpan(c.nodeId);
+            if (verify) b.spans.patchMetadata(c.nodeId, verify);
+          }
+          for (const a of plan.attrs) {
+            b.spans.patchMetadata(a.nodeId, umrPatchFor(a.nodeId, { attrs: a.attrs }));
+          }
+          for (const o of plan.orders) {
+            b.relations.patchMetadata(o.edgeId, {
+              [UMR_NAMESPACE]: { order: o.order },
+              ...editRelation(o.edgeId),
+            });
+          }
+          // The root the text names, when it is a node that was already
+          // there: a new one carries the mark in its own metadata.
+          if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
+            const rootId = idByVar.get(plan.root);
+            if (rootId) b.spans.patchMetadata(rootId, umrPatchFor(rootId, { root: true }));
+          }
+          if (pieceOps.length) b.tokens.bulkCreate(pieceOps);
+        });
+        const pieceIds = pieceOps.length ? firstPass.at(-1)?.body?.ids || [] : [];
+        if (pieceIds.length !== pieceOps.length) {
+          throw new Error(
+            `The server returned ${pieceIds.length} anchor ids for ${pieceOps.length} anchors.`,
+          );
+        }
+
+        // Pass 2. The new nodes, on the anchors pass 1 made.
+        if (plan.create.length) {
+          const spanOps = plan.create.map((c, i) => {
+            // Unaligned, like every node text mode makes unless the file it
+            // is mending said which words it covers: it records its
+            // sentence (see _reconcile).
+            const meta = { var: c.var, attrs: c.attrs, sentence: sentence.tokenId };
+            if (plan.root === c.var) meta.root = true;
+            const { at, count } = pieceRuns[i];
+            return {
+              spanLayerId: info.conceptLayer.id,
+              tokens: pieceIds.slice(at, at + count),
+              value: c.concept,
+              metadata: { ...stamp, [UMR_NAMESPACE]: meta },
+            };
           });
-          idByVar.set(c.var, span?.id || span);
+          const secondPass = await client.batched(async (b) => {
+            b.spans.bulkCreate(spanOps);
+          });
+          const spanIds = secondPass.at(-1)?.body?.ids || [];
+          if (spanIds.length !== spanOps.length) {
+            throw new Error(
+              `The server returned ${spanIds.length} node ids for ${spanOps.length} nodes.`,
+            );
+          }
+          plan.create.forEach((c, i) => idByVar.set(c.var, spanIds[i]));
         }
-        for (const c of plan.concept) {
-          await client.spans.update(c.nodeId, c.concept);
-          const verify = editSpan(c.nodeId);
-          if (verify) await client.spans.patchMetadata(c.nodeId, verify);
-        }
-        for (const a of plan.attrs) await patchUmr(a.nodeId, { attrs: a.attrs });
-        const edgesAdd = [
+
+        // Pass 3. The new edges, now that both ends have ids.
+        const edgeOps = [];
+        [
           ...plan.edgesAdd,
           ...plan.create.flatMap((c) =>
             c.edges.map((e) => ({
@@ -1418,28 +1475,25 @@ export class UmrDocument extends DocumentModel {
               order: e.order,
             })),
           ),
-        ];
-        for (const e of edgesAdd) {
+        ].forEach((e) => {
           const source = idByVar.get(e.sourceVar);
           const target = idByVar.get(e.targetVar);
           if (!source || !target) {
             console.warn('applyPenman: an edge lost its end', e);
-            continue;
+            return;
           }
-          await client.relations.create(info.relationLayer.id, source, target, e.role, {
-            ...stamp,
-            [UMR_NAMESPACE]: { order: e.order },
+          edgeOps.push({
+            relationLayerId: info.relationLayer.id,
+            source,
+            target,
+            value: e.role,
+            metadata: { ...stamp, [UMR_NAMESPACE]: { order: e.order } },
           });
-        }
-        for (const o of plan.orders) {
-          await client.relations.patchMetadata(o.edgeId, {
-            [UMR_NAMESPACE]: { order: o.order },
-            ...editRelation(o.edgeId),
+        });
+        if (edgeOps.length) {
+          await client.batched(async (b) => {
+            b.relations.bulkCreate(edgeOps);
           });
-        }
-        if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
-          const newId = idByVar.get(plan.root);
-          if (newId) await patchUmr(newId, { root: true });
         }
         await this._reload();
       },

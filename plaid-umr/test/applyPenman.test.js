@@ -7,6 +7,7 @@ import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
 import { rawFromPlan } from './rawFromPlan.js';
+import { recordingClient } from './recordingClient.js';
 
 const FILE = `################################################################################
 # :: snt1	Lindsay left in order to eat lunch .
@@ -33,47 +34,21 @@ s1e: 6-6
 
 const load = () => {
   const plan = planImport(parseUmrFile(FILE).sentences, []);
-  const calls = [];
-  let n = 0;
-  const id = () => `new${++n}`;
-  const client = {
-    tokens: {
-      bulkCreate: async (ops) => {
-        calls.push(['tokens.bulkCreate', ops]);
-        return { ids: ops.map(() => id()) };
-      },
-      bulkDelete: async (ids) => calls.push(['tokens.bulkDelete', ids]),
-    },
-    spans: {
-      create: async (layer, tokens, value, metadata) => {
-        calls.push(['spans.create', value, metadata]);
-        return { id: id() };
-      },
-      update: async (spanId, value) => calls.push(['spans.update', spanId, value]),
-      patchMetadata: async (spanId, patch) => calls.push(['spans.patchMetadata', spanId, patch]),
-    },
-    relations: {
-      create: async (layer, source, target, value, metadata) => {
-        calls.push(['relations.create', source, target, value, metadata]);
-        return { id: id() };
-      },
-      delete: async (relId) => calls.push(['relations.delete', relId]),
-      patchMetadata: async (relId, patch) => calls.push(['relations.patchMetadata', relId, patch]),
-    },
-    documents: { get: async () => null },
-    withOperation: async (label, fn) => {
-      calls.push(['operation', label]);
-      return fn(() => {});
-    },
-  };
+  const { client, calls, requests } = recordingClient();
   const doc = new UmrDocument({ raw: rawFromPlan(plan), client });
   // The reload after apply is stubbed: the writes are what is checked.
   doc._reload = async () => {};
   doc.onError = (msg) => {
     throw new Error(msg);
   };
-  return { doc, calls };
+  return { doc, calls, requests };
 };
+
+// The ops of one kind, whichever pass carried them: a bulk create is one
+// call holding many.
+const opsOf = (calls, name) => calls.filter((c) => c.name === name).flatMap((c) => c.args[0]);
+const patches = (calls, name) =>
+  calls.filter((c) => c.name === name).map((c) => ({ id: c.args[0], patch: c.args[1] }));
 
 test('penmanOf writes the sentence back as PENMAN', () => {
   const { doc } = load();
@@ -109,21 +84,30 @@ test('applyPenman adds a node with its edge, changes a concept and an attribute,
   assert.equal(plan.edgesDelete.length, 0);
   const changes = await doc.applyPenman(1, text);
   assert.equal(changes, 3);
-  const names = calls.map((c) => c[0]);
-  assert.deepEqual(names, [
-    'operation',
-    'tokens.bulkCreate',
-    'spans.create',
-    'spans.patchMetadata',
-    'relations.create',
-  ]);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    [
+      'operation',
+      'spans.patchMetadata',
+      'tokens.bulkCreate',
+      'spans.bulkCreate',
+      'relations.bulkCreate',
+    ],
+  );
   // The new node is aligned to no word, so it stands over its whole sentence
   // and records it (umrReconcile.js).
-  assert.equal(calls[1][1][0].begin, doc.sentence(1).begin);
-  assert.equal(calls[1][1][0].end, doc.sentence(1).end);
-  assert.equal(calls[2][1], 'lunch');
-  assert.equal(calls[4][3], ':ARG1');
-  assert.match(calls[0][1], /3 changes/);
+  const [anchor] = opsOf(calls, 'tokens.bulkCreate');
+  assert.equal(anchor.begin, doc.sentence(1).begin);
+  assert.equal(anchor.end, doc.sentence(1).end);
+  assert.deepEqual(
+    opsOf(calls, 'spans.bulkCreate').map((o) => o.value),
+    ['lunch'],
+  );
+  assert.deepEqual(
+    opsOf(calls, 'relations.bulkCreate').map((o) => o.value),
+    [':ARG1'],
+  );
+  assert.match(calls[0].args[0], /3 changes/);
 });
 
 test('an edge into a deleted node is left to the cascade, not deleted twice', async () => {
@@ -134,7 +118,7 @@ test('an edge into a deleted node is left to the cascade, not deleted twice', as
   // go with them, so nothing is deleted by id.
   assert.equal(plan.edgesDelete.length, 0);
   await doc.applyPenman(1, text);
-  assert.ok(!calls.some((c) => c[0] === 'relations.delete'));
+  assert.ok(!calls.some((c) => c.name === 'relations.delete'));
 });
 
 test("a fragment the text never showed is not the text's to delete", async () => {
@@ -157,13 +141,13 @@ test('re-rooting onto a node the text creates clears the old mark first', async 
   const plan = doc.planPenman(1, text);
   assert.equal(plan.root, 's1x');
   await doc.applyPenman(1, text);
-  const names = calls.map((c) => c[0]);
-  const unmark = calls.find((c) => c[0] === 'spans.patchMetadata');
+  const names = calls.map((c) => c.name);
+  const [unmark] = patches(calls, 'spans.patchMetadata');
   assert.ok(unmark, 'the old root loses its mark');
-  assert.equal(unmark[2].umr.root, undefined);
-  assert.ok(names.indexOf('spans.patchMetadata') < names.indexOf('spans.create'));
-  const created = calls.find((c) => c[0] === 'spans.create');
-  assert.equal(created[2].umr.root, true);
+  assert.equal(unmark.patch.umr.root, undefined);
+  assert.ok(names.indexOf('spans.patchMetadata') < names.indexOf('spans.bulkCreate'));
+  const [created] = opsOf(calls, 'spans.bulkCreate');
+  assert.equal(created.metadata.umr.root, true);
 });
 
 test('applyPenman deletes a node the text no longer has and re-roots', async () => {
@@ -173,12 +157,11 @@ test('applyPenman deletes a node the text no longer has and re-roots', async () 
   assert.deepEqual(plan.delete.length, 2);
   assert.equal(plan.root, 's1e');
   await doc.applyPenman(1, text);
-  const names = calls.map((c) => c[0]);
-  assert.ok(names.includes('tokens.bulkDelete'));
-  const rootPatches = calls.filter((c) => c[0] === 'spans.patchMetadata');
-  assert.ok(rootPatches.some((c) => c[2].umr.root === true));
+  assert.ok(calls.some((c) => c.name === 'tokens.bulkDelete'));
+  const rootPatches = patches(calls, 'spans.patchMetadata');
+  assert.ok(rootPatches.some((p) => p.patch.umr.root === true));
   // The old root was deleted with its subtree, so no mark to clear.
-  assert.ok(!rootPatches.some((c) => c[2].umr.root === undefined && c[2].umr.var === 's1l'));
+  assert.ok(!rootPatches.some((p) => p.patch.umr.root === undefined && p.patch.umr.var === 's1l'));
 });
 
 // Every metadata patch replaces the umr namespace whole. Built from the state
@@ -194,9 +177,7 @@ test('moving the root and changing either root attribute keeps both changes', as
   await doc.applyPenman(1, text);
   // The last patch of each span is what it ends up as.
   const last = new Map();
-  calls
-    .filter((c) => c[0] === 'spans.patchMetadata')
-    .forEach(([, spanId, patch]) => last.set(spanId, patch.umr));
+  patches(calls, 'spans.patchMetadata').forEach(({ id, patch }) => last.set(id, patch.umr));
   const byVar = (v) => [...last.values()].find((m) => m.var === v);
   assert.equal(byVar('s1l').root, undefined);
   assert.deepEqual(
@@ -281,4 +262,41 @@ test('the plan names what a deletion takes that the text does not show', () => {
   const two = doc.planPenman(1, doc.penmanOf(1).replaceAll('s1l', 's1g').replaceAll('s1e', 's1x'));
   assert.deepEqual(two.rename, []);
   assert.deepEqual(two.losses.map((l) => l.var).sort(), ['s1e', 's1l']);
+});
+
+// The cost of an Apply. It used to be about three round trips per node, in
+// series, holding the document's write lock: a graph pasted from another
+// tool took seconds with "applying" on screen. Three batches now, whatever
+// the graph's size.
+test('a 30-node apply is three requests, not ninety', async () => {
+  const { doc, calls, requests } = load();
+  const children = Array.from(
+    { length: 30 },
+    (_, i) => `    :ARG${i} (s1t${i} / thing-${i} :refer-number singular)`,
+  ).join('\n');
+  const text = `(s1l / leave-02\n${children})`;
+  const plan = doc.planPenman(1, text);
+  assert.equal(plan.create.length, 30);
+  assert.ok(plan.delete.length >= 3, 'the old children go');
+  assert.equal(await doc.applyPenman(1, text), plan.changes);
+  assert.deepEqual(
+    requests.map((r) => r.name),
+    ['batch', 'batch', 'batch'],
+  );
+  // One anchor, one node and one edge per new node, carried by those three.
+  assert.equal(opsOf(calls, 'tokens.bulkCreate').length, 30);
+  assert.equal(opsOf(calls, 'spans.bulkCreate').length, 30);
+  assert.equal(opsOf(calls, 'relations.bulkCreate').length, 30);
+});
+
+test('an apply that makes nothing new is one request', async () => {
+  const { doc, requests } = load();
+  const text = doc.penmanOf(1).replace('leave-02', 'depart-01').replace('s1l /', 's1l /');
+  const plan = doc.planPenman(1, text);
+  assert.ok(plan.changes > 0);
+  assert.equal(await doc.applyPenman(1, text), plan.changes);
+  assert.deepEqual(
+    requests.map((r) => r.name),
+    ['batch'],
+  );
 });
