@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
-from ..core.limits import (MAX_RESULT_CHARS, MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
-                          READ_LIMITS)
+from ..core.limits import (MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
+                           READ_LIMITS, RENDER_BUDGET)
 from ..core.workspace import BaseWorkspace
 from ..core.tools import ToolError, server_refused, truncate
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
@@ -291,7 +291,7 @@ def _sentence_numbers(sentences) -> List[int]:
 def t_read_document(ws: Workspace, document: str = None, from_sentence: int = None,
                     to_sentence: int = None, sentences=None) -> str:
     doc = ws.doc(document)
-    budget = MAX_RESULT_CHARS - 100
+    budget = RENDER_BUDGET
     # Named sentences beat a range: a reader that already knows where to look
     # should not have to page a long document to get there.
     if sentences:

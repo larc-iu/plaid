@@ -211,6 +211,33 @@ def test_the_prompt_says_how_many_documents_the_overview_really_shows():
     assert '{overview_docs}' not in seen
 
 
+@pytest.mark.parametrize('app', APPS)
+def test_read_document_promises_the_number_of_sentences_it_shows(app):
+    """Each description wrote the number out by hand, so raising the table
+    would have left all three tools promising forty."""
+    import importlib
+    tools = importlib.import_module(f'plaid_agent.{app}.toolkit').TOOLS
+    spec = next(t['function'] for t in tools if t['function']['name'] == 'read_document')
+    assert f'Up to {limits.MAX_SENTENCES_PER_READ} sentences per call' in spec['description']
+
+
+def test_the_sandbox_hands_back_what_every_other_tool_result_may_cost():
+    """Its comment said "like every tool result" beside a number of its own."""
+    from plaid_agent.core import sandbox
+    assert sandbox.OUTPUT_MAX is limits.MAX_RESULT_CHARS
+
+
+def test_every_read_renders_against_the_one_render_budget():
+    """`MAX_RESULT_CHARS - 100` was written out in all three apps, with the
+    100 (room for the header the tool writes around the render) nowhere."""
+    from plaid_agent.igt import reads as igt_reads
+    from plaid_agent.ud import tools as ud_tools
+    from plaid_agent.umr import tools as umr_tools
+    assert limits.RENDER_BUDGET == limits.MAX_RESULT_CHARS - limits.RENDER_HEADER_ROOM
+    for mod in (igt_reads, ud_tools, umr_tools):
+        assert mod.RENDER_BUDGET is limits.RENDER_BUDGET
+
+
 def test_the_bulk_cap_is_the_plan_cap():
     """IGT called it MAX_BULK and its refusal said "more than the N one plan
     may hold", which is `PLAN_MAX_OPS` under another name."""

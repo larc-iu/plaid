@@ -626,7 +626,7 @@ def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
     w = scan_ws(FakeClient())
     whole = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
-    monkeypatch.setattr(reads, 'MAX_RESULT_CHARS', whole.index('\n[s2]') + 300)
+    monkeypatch.setattr(reads, 'RENDER_BUDGET', whole.index('\n[s2]') + 200)
     out = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert 'Showing s1-s1. The rest did not fit in one call.' in out
     assert 'read_document with from_sentence=2 for the next batch' in out

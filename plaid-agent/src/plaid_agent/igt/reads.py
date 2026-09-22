@@ -13,7 +13,7 @@ from collections import Counter
 from typing import Dict, List, Optional
 
 from ..core.args import clamp_limit, read_int, sentence_number
-from ..core.limits import MAX_RESULT_CHARS, READ_LIMITS
+from ..core.limits import READ_LIMITS, RENDER_BUDGET
 from ..core.tools import ToolError, server_refused, truncate
 
 from .project import (Word, Morpheme, document_lines, joiner, render_document, render_overview,
@@ -61,7 +61,7 @@ def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sen
     doc = ws.doc(document)
     return render_document(doc, ws.project, start=sentence_number(from_sentence, 'from_sentence') or 1,
                            end=sentence_number(to_sentence, 'to_sentence'),
-                           ref_name=ws.corpus.ref_name(doc.id), budget=MAX_RESULT_CHARS - 100)
+                           ref_name=ws.corpus.ref_name(doc.id), budget=RENDER_BUDGET)
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,

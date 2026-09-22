@@ -18,7 +18,7 @@ from ..core.filetools import t_read_file
 from ..core.webtools import t_read_url, t_web_search
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
-from ..core.limits import OVERVIEW_DOCS
+from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
@@ -85,7 +85,8 @@ TOOLS = [
          'offset': {'type': 'integer'}}, []),
     _fn('read_document',
         'Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word '
-        'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per '
+        'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to '
+        f'{MAX_SENTENCES_PER_READ} sentences per '
         'call, fewer when they are long: the header says which were shown and where to continue.',
         {'document': _DOC,
          'from_sentence': {'type': ['integer', 'string'],

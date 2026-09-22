@@ -18,6 +18,7 @@ from ..core.filetools import t_read_file
 from ..core.webtools import t_read_url, t_web_search
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
+from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 
 from .bulk import t_replace_in_field
@@ -65,7 +66,8 @@ TOOLS = [
         'XPOS, features, head and deprel, and a range line for each multi-word token. A sentence whose '
         'enhanced graph differs from its tree carries a DEPS column as well. A value followed '
         'by ~ was made by a machine and nobody has confirmed it; ^ is a contributor\'s unreviewed work. '
-        'Up to 40 sentences per call, fewer when they are long: the first line says which sentences '
+        f'Up to {MAX_SENTENCES_PER_READ} sentences per call, fewer when they are long: the first '
+        'line says which sentences '
         'were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search '
         'told you, or an earlier read did), name them in `sentences` and get them all in ONE call. '
         'Paging a long document with from_sentence/to_sentence costs a call per page and will run out '

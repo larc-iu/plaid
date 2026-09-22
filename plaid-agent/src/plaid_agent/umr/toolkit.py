@@ -17,6 +17,7 @@ from ..core import filetools, webtools
 from ..core.filetools import t_read_file
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
+from ..core.limits import MAX_SENTENCES_PER_READ
 from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
 from ..core.webtools import t_read_url, t_web_search
 
@@ -60,7 +61,8 @@ TOOLS = [
     _fn('read_document',
         'Read a document sentence by sentence: the words with their numbers, the gloss lines the '
         'project maps, the sentence graph as PENMAN, which words each node is aligned to, and any '
-        'document-level triple written in that sentence\'s block. Up to 40 sentences per call, '
+        'document-level triple written in that sentence\'s block. Up to '
+        f'{MAX_SENTENCES_PER_READ} sentences per call, '
         'fewer when their graphs are large: the first line says which sentences were shown and '
         'where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (find_nodes told you, '
         'or an earlier read did), name them in `sentences` and get them all in ONE call.',

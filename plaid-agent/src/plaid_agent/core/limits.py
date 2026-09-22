@@ -13,6 +13,13 @@ what an app annotates stays in the app.
 # the thread of the question it asked.
 MAX_RESULT_CHARS = 12000
 
+# What a RENDER may cost, which is the result's budget less room for the
+# header the tool writes around it (which sentences were shown, where to
+# continue). The render is given this and the header is added afterwards, so
+# the two together stay inside MAX_RESULT_CHARS.
+RENDER_HEADER_ROOM = 100
+RENDER_BUDGET = MAX_RESULT_CHARS - RENDER_HEADER_ROOM
+
 # What the query engine will return before it stops. `group` is the backstop
 # for grouped rows and `row` the hard cap for ids and entities. Both are high
 # on purpose: an aggregate comes back unordered, so the whole group set has to

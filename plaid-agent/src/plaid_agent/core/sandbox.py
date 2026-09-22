@@ -23,9 +23,12 @@ import atexit
 import threading
 from typing import Any, Callable, Dict, List, Optional
 
+from .limits import MAX_RESULT_CHARS
 from .tools import ToolError
 
-OUTPUT_MAX = 12000                 # characters of output handed back, like every tool result
+# Characters of output handed back. Literally every tool result's budget, not
+# a number of its own that happens to match.
+OUTPUT_MAX = MAX_RESULT_CHARS
 # Every run happens in the turn's own worker, so TURN_EXEC_SECONDS is the only
 # interpreter budget there is, and the one the help and the timeout message
 # name. There used to be a second one for a fresh worker per call, which no

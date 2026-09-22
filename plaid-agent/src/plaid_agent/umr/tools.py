@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
-from ..core.limits import (MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
-                           READ_LIMITS, SAMPLE_LINES)
+from ..core.limits import (MAX_SENTENCES_PER_READ, OVERVIEW_DOCS, READ_LIMITS, RENDER_BUDGET,
+                           SAMPLE_LINES)
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
@@ -209,7 +209,7 @@ def _sentence_numbers(sentences) -> List[int]:
 def t_read_document(ws: Workspace, document: str = None, from_sentence=None,
                     to_sentence=None, sentences=None) -> str:
     doc = ws.doc(document)
-    budget = MAX_RESULT_CHARS - 100
+    budget = RENDER_BUDGET
     if sentences:
         picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
         return truncate(render_document(doc, ws.project, doc.gloss, indexes=picked, budget=budget))
