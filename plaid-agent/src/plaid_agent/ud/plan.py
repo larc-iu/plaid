@@ -517,30 +517,22 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
                              + ', and a parse would throw the edits away')
 
 
-def _deleted_by_the_plan(ops) -> set:
-    """Spans and relations other ops in the plan delete. A patch of one is a
-    404 and the batch it shares is atomic, so a confirmation of something the
-    plan throws away would refuse the whole plan after the user approved it.
-    A cleared field is the case that arises: the value is machine-made and
-    unconfirmed, which is exactly why it is being cleared and exactly what a
-    confirmation of the document reaches for."""
-    return ok.removed_ids(KIND, ops, only_certain=True)
-
-
 def normalize_ops(ops: List[Dict[str, Any]]):
     """Drop ops a later op supersedes, and say so. Returns (ops, notes)."""
     notes: List[str] = []
     out: List[Dict[str, Any]] = []
     last: Dict[Any, int] = {}
-    gone = _deleted_by_the_plan(ops)
     for op in ops:
         kind = op.get('kind')
-        # A change to something this plan deletes. The tools refuse the pair
-        # while it is being staged, in both orders, and a scope drops what an
-        # explicit change already covers, so reaching here means the plan was
-        # built some way neither covers. Refusing the whole plan says so,
-        # where dropping the change left a card promising it.
-        if ok.doomed_writes(KIND, op, gone):
+        # A change to something the OTHER ops of this plan delete. A patch of
+        # a deleted span or relation is a 404 and the batch it shares is
+        # atomic, so it would refuse the whole plan after the user approved
+        # it. The tools refuse the pair while it is being staged, in both
+        # orders, and a scope drops what an explicit change already covers,
+        # so reaching here means the plan was built some way neither covers.
+        # Refusing the whole plan says so, where dropping the change left a
+        # card promising it.
+        if ok.doomed_writes(KIND, op, ops):
             raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
         # What an op writes to is the registry's own declaration, the same one
         # the workspace supersedes by while the plan is built. Written here as

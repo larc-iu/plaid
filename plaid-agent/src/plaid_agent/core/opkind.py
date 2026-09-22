@@ -319,18 +319,29 @@ def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
     return out
 
 
-def doomed_writes(reg: Mapping[str, OpKind], op: Dict[str, Any], gone: set) -> set:
-    """What ``op`` needs that ``gone`` takes away, never counting what ``op``
-    itself removes.
+def doomed_writes(reg: Mapping[str, OpKind], op: Dict[str, Any],
+                  ops: Sequence[Dict[str, Any]], *, only_certain: bool = True) -> set:
+    """What ``op`` writes to that the OTHER operations of ``ops`` remove.
 
-    A kind may both need an entity and remove it (see
-    :attr:`OpKind.token_keys`). A whole-plan check reads every operation's
-    deletions at once, so without this an operation of such a kind would be
-    refused for deleting what it writes to, meaning itself.
+    The other ones, and no more: a kind may both NEED an entity and REMOVE
+    it (:attr:`OpKind.token_keys` naming what :attr:`OpKind.deletes` also
+    names, which is how a second delete of one relation is refused), so an
+    operation must never be refused for its own deletion. Taking that
+    deletion out of the plan-wide set instead took the id out of the
+    comparison altogether, and the pair this exists to refuse went through
+    however many other operations removed it.
+
+    ``only_certain`` leaves out what an op merely GUESSES it removes, such
+    as the words a text edit names before the server diffs the text.
     """
-    if not gone:
+    others = list(ops)
+    for i, other in enumerate(others):
+        if other is op:
+            del others[i]  # this op, once: two ops may be the same dict
+            break
+    if not others:
         return set()
-    return written_to(reg, op) & (gone - set(removed_ids(reg, [op])))
+    return written_to(reg, op) & removed_ids(reg, others, only_certain=only_certain)
 
 
 def delete_clash(reg: Mapping[str, OpKind], planned: Sequence[Dict[str, Any]],

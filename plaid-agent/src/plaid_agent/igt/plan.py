@@ -717,13 +717,6 @@ def _doomed_ids(ops) -> set:
     return ok.removed_ids(KIND, ops)
 
 
-def _certainly_doomed(ops) -> set:
-    """Ids the plan certainly deletes, as against the ones a text edit only
-    guesses at. Staging refuses a change naming one of these, so reaching
-    here with one means a plan was built some way the guard does not cover."""
-    return ok.removed_ids(KIND, ops, only_certain=True)
-
-
 def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     """Resolve interactions between ops in one plan: drop links to entries the
     plan deletes or merges away, refuse a merge whose survivor is removed by
@@ -748,20 +741,21 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     seen_delete = set()
     respell_at: Dict[tuple, int] = {}
     doomed = _doomed_ids(ops)
-    certain = _certainly_doomed(ops)
     dead = _dead_tokens(ops)
     for op in ops:
         k = op.get('kind')
-        # What this op writes to and the plan deletes: the word a change sits
-        # on, the entry a link points at, the span a comment is anchored to,
-        # the material a confirmation the model NAMED confirms.
-        writes = ok.written_to(KIND, op) - set(ok.removed_ids(KIND, [op]))
+        # What this op writes to and the OTHER ops delete: the word a change
+        # sits on, the entry a link points at, the span a comment is anchored
+        # to, the material a confirmation the model NAMED confirms.
+        # `ok.doomed_writes` is the one home of that rule, shared with ud and
+        # umr, and it leaves out what this op itself removes.
+        #
         # A CERTAIN delete is refused as the plan is built, in both orders, so
         # a card never promises a change that will not happen. Reaching here
         # with one means the plan was built some way the staging guard does not
         # cover, and refusing the whole plan says so rather than applying most
         # of it.
-        if writes & certain:
+        if ok.doomed_writes(KIND, op, ops):
             raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
                              'another change in this plan')
         # A text edit's word ids are a GUESS (the server diffs the text and
@@ -769,7 +763,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # is moot if the word goes, and the plan was already approved. A
         # confirmation covers several things and keeps the ones that survive,
         # below.
-        if writes & doomed and k != 'confirm':
+        if ok.doomed_writes(KIND, op, ops, only_certain=False) and k != 'confirm':
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue

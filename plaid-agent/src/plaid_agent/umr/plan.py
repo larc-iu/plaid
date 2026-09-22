@@ -395,15 +395,13 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # A change to something the plan deletes. The tools refuse the pair in
     # either order as it is staged; reaching here means the plan was built some
     # way neither covers.
-    gone = ok.removed_ids(KIND, ops, only_certain=True)
-    if gone:
-        for op in ops:
-            # An op never clashes with its own deletion: a delete of a
-            # relation names it so that a SECOND delete of the same one is
-            # refused (ok.doomed_writes).
-            if ok.doomed_writes(KIND, op, gone):
-                raise ValueError(f'{op.get("label") or op.get("kind")}: this plan deletes what '
-                                 f'it writes to')
+    for op in ops:
+        # What the OTHER ops remove: an op never clashes with its own
+        # deletion, since a delete of a relation names it so that a SECOND
+        # delete of the same one is refused (ok.doomed_writes).
+        if ok.doomed_writes(KIND, op, ops):
+            raise ValueError(f'{op.get("label") or op.get("kind")}: this plan deletes what '
+                             f'it writes to')
 
 
 def normalize_ops(ops: List[Dict[str, Any]]):

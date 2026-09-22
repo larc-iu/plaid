@@ -210,6 +210,29 @@ def test_removing_a_triple_the_plan_already_cascades_is_refused_either_way(ws):
     assert len(ws.ops) == 1, 'and neither does the refused call in the other order'
 
 
+def test_a_plan_built_some_other_way_still_refuses_a_doubly_deleted_relation():
+    """The backstop under the staging guard, asked directly. It reads what the
+    OTHER ops of the plan remove: subtracting an op's OWN removals from the
+    whole-plan set instead took the relation id out of the comparison
+    altogether, so the pair the guard exists for went through here in both
+    orders."""
+    from plaid_agent.umr.plan import validate_ops
+    node = {'kind': 'delete_node', 'span_id': 'mc-d', 'token_ids': ['tk-d'],
+            'relation_ids': ['md-1'], 'label': 'remove a node'}
+    triple = {'kind': 'delete_triple', 'relation_id': 'md-1', 'label': 'remove a triple'}
+    for ops in ([node, triple], [triple, node]):
+        with pytest.raises(ValueError) as e:
+            validate_ops(ops)
+        assert 'this plan deletes what it writes to' in str(e.value)
+    # Two single deletes of one relation are the same pair without the node:
+    # the second is a 404 that takes the whole approved batch with it.
+    with pytest.raises(ValueError):
+        validate_ops([triple, {**triple, 'label': 'remove it again'}])
+    # Each on its own stands: an op never clashes with its own deletion.
+    validate_ops([node])
+    validate_ops([triple])
+
+
 # --- attributes -------------------------------------------------------------------
 
 def test_set_attributes_replaces_the_whole_line_and_keeps_places(ws):
