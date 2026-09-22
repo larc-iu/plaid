@@ -171,7 +171,7 @@ describe('formatGb4e', () => {
   it('emits two aligned lines with {} for empty glosses and the translation', () => {
     const out = formatGb4e(SENT, FIELDS);
     expect(out).toContain('\\gll perro-s corr-en .\\\\');
-    expect(out).toContain('     dog-PL run-3PL {}\\\\');
+    expect(out).toContain('     dog-\\textsc{pl} run-\\textsc{3pl} {}\\\\');
     expect(out).toContain("\\glt `The dogs run.'");
     expect(out.startsWith('\\begin{exe}')).toBe(true);
     expect(out.endsWith('\\end{exe}')).toBe(true);
@@ -198,9 +198,52 @@ describe('formatExpex', () => {
   it('emits the gla/glb/glft block', () => {
     const out = formatExpex(SENT, FIELDS);
     expect(out).toContain('\\gla perro-s corr-en . //');
-    expect(out).toContain('\\glb dog-PL run-3PL {} //');
+    expect(out).toContain('\\glb dog-\\textsc{pl} run-\\textsc{3pl} {} //');
     expect(out).toContain("\\glft `The dogs run.' //");
     expect(out.startsWith('\\ex')).toBe(true);
     expect(out.endsWith('\\xe')).toBe(true);
+  });
+});
+
+describe('LaTeX gloss small caps', () => {
+  // One word per gloss, so each case reads as the gloss line alone.
+  const glossed = (...glosses) => ({
+    annotations: { Translation: span('I saw NASA.') },
+    tokens: glosses.map((g, i) => ({
+      content: i === 0 ? 'NASA' : `w${i}`,
+      annotations: {},
+      morphemes: [
+        { metadata: { form: i === 0 ? 'NASA' : `w${i}` }, annotations: { Gloss: span(g) } },
+      ],
+    })),
+  });
+  const F = { morphFields: ['Gloss'], wordFields: [], sentFields: ['Translation'] };
+  const glossLine = (s) => formatGb4e(s, F).split('\n')[3].trim().replace(/\\\\$/, '');
+
+  it('sets each grammatical part in lowercase small caps', () => {
+    expect(glossLine(glossed('1SG.NOM', 'dog-PL', 'go=3SG'))).toBe(
+      '\\textsc{1sg}.\\textsc{nom} dog-\\textsc{pl} go=\\textsc{3sg}',
+    );
+  });
+
+  it('leaves lexical glosses as written, in a caseless script too', () => {
+    expect(glossLine(glossed('dog', 'Lindsay', '犬', 'look.after'))).toBe(
+      'dog Lindsay 犬 look.after',
+    );
+  });
+
+  it('treats a capital I as grammatical, by the tagsets case rule', () => {
+    expect(glossLine(glossed('I', 'A'))).toBe('\\textsc{i} \\textsc{a}');
+  });
+
+  it('leaves a part with no letters bare and still escapes between parts', () => {
+    expect(glossLine(glossed('3', 'NOM_x', '100%'))).toBe('3 \\textsc{nom}\\_x 100\\%');
+  });
+
+  it('touches neither the forms nor the translation', () => {
+    const out = formatExpex(glossed('NOM'), F);
+    expect(out).toContain('\\gla NASA //');
+    expect(out).toContain('\\glb \\textsc{nom} //');
+    expect(out).toContain("\\glft `I saw NASA.' //");
   });
 });
