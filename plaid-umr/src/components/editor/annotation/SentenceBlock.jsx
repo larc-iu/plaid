@@ -1,7 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { arrowStep } from '@ui/lib/bidi.js';
-import { curvePath, layoutSentence, routeBetween } from '../../../domain/umrLayout.js';
+import {
+  curvePath,
+  layoutSentence,
+  routeBetween,
+  stageLeftOffset,
+} from '../../../domain/umrLayout.js';
 import { LINE_FAMILIES, lineFamily } from './docLines.js';
 import { CANVAS_ACTIONS, keys } from '../../../lib/keymap.js';
 import { useCanvasMeasure } from './useCanvasMeasure.js';
@@ -152,8 +157,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // The node the open menu is about, readable once `menu` itself has been
   // cleared (the menu closes before it hands focus on).
   const menuNodeRef = useRef(null);
-  // How far the canvas has scrolled sideways. The margin sticks to the
-  // visible left edge, so a line to a constant ends where the chip is seen.
+  // How far the canvas has scrolled sideways, on the stage's own physical
+  // axis (stageLeftOffset). The margin sticks to the visible left edge, so a
+  // line to a constant ends where the chip is seen.
+  const scrollerRef = useRef(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy' |
   // 'child', nodeId }`.
@@ -216,6 +223,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // measurement.
   const width = Math.ceil(layout.right + 16);
   const pad = Math.ceil(-layout.left);
+  // An RTL canvas opens at its right edge, so it starts a whole overflow
+  // width along the stage before anything is scrolled, and the width changes
+  // as the graph is laid out.
+  useLayoutEffect(() => {
+    if (scrollerRef.current) setScrollLeft(stageLeftOffset(scrollerRef.current, direction));
+  }, [direction, width, pad]);
 
   // A focused node that the last edit removed is no longer focused.
   useEffect(() => {
@@ -1159,9 +1172,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       )}
       <div
         className="umr-canvas"
+        ref={scrollerRef}
         dir={direction}
         hidden={textMode && !readOnly}
-        onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
+        onScroll={(e) => setScrollLeft(stageLeftOffset(e.currentTarget, direction))}
         onMouseOver={(e) => {
           const el = e.target.closest?.('[data-node-id]');
           setHoveredId(el ? el.dataset.nodeId : null);

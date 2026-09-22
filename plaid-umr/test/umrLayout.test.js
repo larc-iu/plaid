@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { placeRow, layoutSentence, pointOn, DEFAULT_OPTIONS } from '../src/domain/umrLayout.js';
+import {
+  placeRow,
+  layoutSentence,
+  pointOn,
+  stageLeftOffset,
+  DEFAULT_OPTIONS,
+} from '../src/domain/umrLayout.js';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
@@ -248,4 +254,20 @@ test('labels clear the boxes and each other in every corpus', () => {
     colliding.every((c) => /^(arapaho|kukama)/.test(c)),
     colliding.join('\n'),
   );
+});
+
+// The canvas scrolls sideways and the document constants are pinned to its
+// visible left edge. An RTL scroller counts scrollLeft from its RIGHT edge,
+// negative leftwards, and opens there.
+test('the stage offset is the distance scrolled from the canvas\u2019s left edge', () => {
+  const box = { scrollLeft: 0, scrollWidth: 1000, clientWidth: 400 };
+  assert.equal(stageLeftOffset(box, 'ltr'), 0);
+  assert.equal(stageLeftOffset(box, 'rtl'), 600);
+  assert.equal(stageLeftOffset({ ...box, scrollLeft: 250 }, 'ltr'), 250);
+  assert.equal(stageLeftOffset({ ...box, scrollLeft: -250 }, 'rtl'), 350);
+  // Scrolled to the far end, either way, the stage's left edge is in view.
+  assert.equal(stageLeftOffset({ ...box, scrollLeft: 600 }, 'ltr'), 600);
+  assert.equal(stageLeftOffset({ ...box, scrollLeft: -600 }, 'rtl'), 0);
+  // Nothing overflows: there is nowhere to scroll.
+  assert.equal(stageLeftOffset({ scrollLeft: 0, scrollWidth: 400, clientWidth: 400 }, 'rtl'), 0);
 });

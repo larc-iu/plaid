@@ -146,4 +146,74 @@ describe('SentenceBlock in a right-to-left document', () => {
     expect(r.container.querySelector('.umr-canvas').getAttribute('dir')).toBe('ltr');
     await r.unmount();
   });
+
+  // A line from a node to a document constant ends at the sticky margin,
+  // which rides the canvas's visible left edge. An RTL scroller counts
+  // `scrollLeft` from its RIGHT edge and opens there, so reading it as a
+  // distance from the left drew the line a whole overflow width away from
+  // the chip it points at, off screen, before anyone had scrolled anything.
+  const withDocTriple = () => {
+    const { sentence, nodesById } = fixture();
+    const author = {
+      id: 'c1',
+      var: 'author',
+      concept: 'author',
+      wordIds: [],
+      pieces: [],
+      aligned: false,
+      constant: true,
+      sentence: 1,
+      attrs: [],
+      out: [],
+      in: [],
+    };
+    nodesById.set('c1', author);
+    return {
+      nodesById,
+      sentence: {
+        ...sentence,
+        triples: [
+          { id: 'tr1', source: 'c1', target: 'n1', rel: ':full-affirmative', group: 'modal' },
+        ],
+      },
+    };
+  };
+
+  // A canvas 400 wide holding 1000 of stage: 600 of it is off to one side.
+  const overflowing = (canvas) => {
+    Object.defineProperty(canvas, 'scrollWidth', { value: 1000, configurable: true });
+    Object.defineProperty(canvas, 'clientWidth', { value: 400, configurable: true });
+  };
+
+  const docEdgeX = async (direction) => {
+    const { sentence, nodesById } = withDocTriple();
+    const r = await renderComponent(
+      <SentenceBlock
+        sentence={sentence}
+        nodesById={nodesById}
+        dataVersion={1}
+        direction={direction}
+      />,
+    );
+    const canvas = r.container.querySelector('.umr-canvas');
+    overflowing(canvas);
+    // Nothing has been scrolled: the canvas is at its own start edge.
+    await r.step(() => canvas.dispatchEvent(new Event('scroll')));
+    await r.step(() =>
+      r.container
+        .querySelector('[data-node-id]')
+        .dispatchEvent(new MouseEvent('mouseover', { bubbles: true })),
+    );
+    const d = r.container.querySelector('.umr-doc-edge')?.getAttribute('d');
+    await r.unmount();
+    return Number(d?.match(/^M (-?[\d.]+) /)?.[1]);
+  };
+
+  it('draws the line to a document constant where the chip is, in either script', async () => {
+    // Left to right, at rest: the margin is the stage's own left edge.
+    expect(await docEdgeX('ltr')).toBe(180);
+    // Right to left, at rest: the canvas opens showing the far end of the
+    // stage, and the margin rides the left edge of that view.
+    expect(await docEdgeX('rtl')).toBe(780);
+  });
 });

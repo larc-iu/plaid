@@ -9,6 +9,23 @@
 // by pulling its nodes off their anchors, and a node over its own token is the
 // point of the canvas. See docs/umr/CANVAS.md.
 
+/**
+ * How far the canvas has scrolled from the left of the STAGE, whose axis is
+ * physical in either script (canvas.css). The document constants are pinned
+ * in a sticky margin at the canvas's visible left edge, and this is where a
+ * line drawn to one has to end.
+ *
+ * In a right-to-left scroller `scrollLeft` is 0 at the RIGHT edge and runs
+ * negative leftwards, and the canvas opens at that edge, so reading it as a
+ * distance from the left put every one of those lines a whole overflow width
+ * out -- off screen -- from the first paint on.
+ *
+ * @param box  the scroller, or anything with its three measurements
+ * @param direction  'rtl' or 'ltr'
+ */
+export const stageLeftOffset = ({ scrollLeft = 0, scrollWidth = 0, clientWidth = 0 }, direction) =>
+  direction === 'rtl' ? Math.max(0, scrollWidth - clientWidth) + scrollLeft : scrollLeft;
+
 export const DEFAULT_OPTIONS = Object.freeze({
   // The room between the bottom of a row's tallest node and the top of the
   // next row: the lanes, and the labels floating over the children. Rows are
