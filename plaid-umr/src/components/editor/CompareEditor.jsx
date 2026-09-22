@@ -15,7 +15,7 @@ import { ServiceRunButton } from '@ui/components/services/ServiceRunButton.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useDocumentEditor } from './useDocumentEditor.js';
+import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { UmrDocument } from '../../domain/UmrDocument.js';
 import {
   conceptsDiffer,

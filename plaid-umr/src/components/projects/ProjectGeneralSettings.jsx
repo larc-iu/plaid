@@ -11,7 +11,7 @@ const BUNDLED_NAMES = Object.values(FRAME_LANGUAGES)
   .map((f) => f.name)
   .join(', ');
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { useManagedProject } from './useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';

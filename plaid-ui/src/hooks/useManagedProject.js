@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext.jsx';
-import { notifyError } from '../../utils/feedback.jsx';
-import { canManageProject } from '@ui/domain/permissions.js';
-import { useLatestCall } from '@ui/hooks/useLatestCall.js';
+import { useAuth } from '../contexts/useAuth.js';
+import { canManageProject } from '../domain/permissions.js';
+import { useLatestCall } from './useLatestCall.js';
+import { notifyError } from '../lib/notify.js';
+import { appRoutes } from '../lib/uiConfig.js';
 
-// Shared loader + guard for manager-only project settings tabs (UD
-// Customization, General): fetch the project, expose a refetch for after
-// saves, and bounce non-managers back to /projects once the project loads.
+// Loader and guard for the manager-only project screens (Activity, Validation,
+// the settings sections): fetch the project, expose a refetch for after a save,
+// and bounce anyone who may not manage it back to the project list.
 export const useManagedProject = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export const useManagedProject = () => {
   const [loading, setLoading] = useState(true);
 
   // One route component serves every project id, so walking from A to B starts
-  // a second read without ending the first and A can answer last. These tabs
+  // a second read without ending the first and A can answer last. These screens
   // hand the loaded project's LAYER IDS to their Save, so a stale project
   // landing here writes A's settings onto A's layers while the reader is
   // reading B's.
@@ -60,7 +61,7 @@ export const useManagedProject = () => {
   const canConfigure = canManageProject(loaded, user);
 
   useEffect(() => {
-    if (loaded && !canConfigure) navigate('/projects');
+    if (loaded && !canConfigure) navigate(appRoutes().projects);
   }, [loaded, canConfigure, navigate]);
 
   return { projectId, project: loaded, loading, fetchProject, canConfigure };

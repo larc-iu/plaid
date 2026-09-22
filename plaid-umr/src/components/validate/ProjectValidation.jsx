@@ -6,7 +6,7 @@ import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table.jsx';
 import { textIncludes } from '@ui/domain/collation.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useManagedProject } from '../projects/useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, humanizeError } from '../../utils/feedback.jsx';
@@ -118,56 +118,57 @@ export const ProjectValidation = () => {
   const configured = layerInfo?.isConfigured;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6">
+    <div className="w-full">
       <ProjectTabs projectId={projectId} project={project} />
-
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Problems in this project&apos;s UMR annotation, one row each. An import, a service or
-            the API can store annotation the checks refuse, which is why it arrives here rather than
-            being blocked.
-          </p>
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Problems in this project&apos;s UMR annotation, one row each. An import, a service or
+              the API can store annotation the checks refuse, which is why it arrives here rather
+              than being blocked.
+            </p>
+          </div>
+          <Button variant="outline" onClick={scan} disabled={busy || !configured}>
+            {busy ? 'Checking…' : 'Check again'}
+          </Button>
         </div>
-        <Button variant="outline" onClick={scan} disabled={busy || !configured}>
-          {busy ? 'Checking…' : 'Check again'}
-        </Button>
+
+        {!configured && (
+          <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            Set up the project&apos;s UMR layers first.
+          </p>
+        )}
+
+        {configured && problems?.length === 0 && !busy && (
+          <p className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
+            <Check className="h-4 w-4 text-green-600" />
+            Every check passed.
+          </p>
+        )}
+
+        {configured && !!problems?.length && (
+          <DataTable
+            id="umr-validation"
+            scope={projectId}
+            rows={problems}
+            columns={columns}
+            rowKey={(p) => p.key}
+            defaultSort={{ key: 'document', dir: 'asc' }}
+            noun="problem"
+            loading={busy}
+            empty="Every check passed."
+            search={{
+              placeholder: 'Search problems…',
+              match: (p, q) =>
+                textIncludes(p.documentName || '', q) ||
+                textIncludes(p.message || '', q) ||
+                textIncludes(p.code || '', q),
+            }}
+          />
+        )}
       </div>
-
-      {!configured && (
-        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          Set up the project&apos;s UMR layers first.
-        </p>
-      )}
-
-      {configured && problems?.length === 0 && !busy && (
-        <p className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
-          <Check className="h-4 w-4 text-green-600" />
-          Every check passed.
-        </p>
-      )}
-
-      {configured && !!problems?.length && (
-        <DataTable
-          id="umr-validation"
-          scope={projectId}
-          rows={problems}
-          columns={columns}
-          rowKey={(p) => p.key}
-          defaultSort={{ key: 'document', dir: 'asc' }}
-          noun="problem"
-          loading={busy}
-          empty="Every check passed."
-          search={{
-            placeholder: 'Search problems…',
-            match: (p, q) =>
-              textIncludes(p.documentName || '', q) ||
-              textIncludes(p.message || '', q) ||
-              textIncludes(p.code || '', q),
-          }}
-        />
-      )}
     </div>
   );
 };

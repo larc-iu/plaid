@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useManagedProject } from '../projects/useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError, notifySuccess, humanizeError } from '../../utils/feedback.jsx';
@@ -223,141 +223,144 @@ export const ProjectValidation = () => {
   const configured = layerInfo?.isConfigured;
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6">
+    <div className="w-full">
       <ProjectTabs projectId={projectId} project={project} />
-
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Values stored in this project that its vocabularies do not list. A parser, an import or
-            the API can write one whatever the list says, which is why they arrive here rather than
-            being refused.
-          </p>
+      <div className="mx-auto w-full max-w-4xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Values stored in this project that its vocabularies do not list. A parser, an import
+              or the API can write one whatever the list says, which is why they arrive here rather
+              than being refused.
+            </p>
+          </div>
+          <Button variant="outline" onClick={scan} disabled={busy || !configured}>
+            {busy ? 'Checking…' : 'Check again'}
+          </Button>
         </div>
-        <Button variant="outline" onClick={scan} disabled={busy || !configured}>
-          {busy ? 'Checking…' : 'Check again'}
-        </Button>
-      </div>
 
-      {!configured && (
-        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          Set up the project&apos;s UD layers first.
-        </p>
-      )}
+        {!configured && (
+          <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            Set up the project&apos;s UD layers first.
+          </p>
+        )}
 
-      {configured && busy && !report && (
-        <p className="text-sm text-muted-foreground">Reading the project…</p>
-      )}
+        {configured && busy && !report && (
+          <p className="text-sm text-muted-foreground">Reading the project…</p>
+        )}
 
-      {configured &&
-        report?.map((field) => {
-          const count =
-            field.kind === 'feats'
-              ? field.features.reduce((n, e) => n + e.values.length, 0)
-              : field.values.length;
-          return (
-            <div key={field.key} className="mb-4 rounded-lg border">
-              <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <h2 className="font-medium">{field.label}</h2>
-                  <Badge variant={field.enforced ? 'secondary' : 'outline'}>
-                    {field.enforced ? 'closed' : 'open'}
-                  </Badge>
+        {configured &&
+          report?.map((field) => {
+            const count =
+              field.kind === 'feats'
+                ? field.features.reduce((n, e) => n + e.values.length, 0)
+                : field.values.length;
+            return (
+              <div key={field.key} className="mb-4 rounded-lg border">
+                <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-medium">{field.label}</h2>
+                    <Badge variant={field.enforced ? 'secondary' : 'outline'}>
+                      {field.enforced ? 'closed' : 'open'}
+                    </Badge>
+                  </div>
+                  {count > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={adding === field.key}
+                      onClick={() => adopt(field)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add {plural(count, 'value', 'values')}
+                    </Button>
+                  )}
                 </div>
-                {count > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={adding === field.key}
-                    onClick={() => adopt(field)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add {plural(count, 'value', 'values')}
-                  </Button>
+
+                {count === 0 ? (
+                  <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                    <Check className="h-4 w-4 text-green-600" />
+                    Everything stored is on the list.
+                  </p>
+                ) : field.kind === 'feats' ? (
+                  <div className="px-3 py-2">
+                    {field.features.map((entry) => (
+                      <div key={entry.key} className="mb-2 last:mb-0">
+                        <p className="text-sm font-medium">
+                          {entry.key}
+                          {!entry.known && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              not in the inventory
+                            </span>
+                          )}
+                        </p>
+                        <ul className="ml-4">
+                          {entry.values.map((v) => {
+                            // The span stores the whole `Key=Value` string, which
+                            // is what the same query looks for.
+                            const pair = `${entry.key}=${v.value}`;
+                            const key = `${field.key}:${pair}`;
+                            const open = expanded === key;
+                            return (
+                              <li key={v.value}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 py-0.5 text-left text-sm text-muted-foreground hover:bg-muted/40"
+                                  onClick={() => locate(field, pair)}
+                                >
+                                  {open ? (
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                  )}
+                                  <code>{v.value}</code>
+                                  <span className="text-xs">
+                                    {plural(v.count, 'time', 'times')}
+                                  </span>
+                                </button>
+                                {open && <Occurrences found={where[key]} projectId={projectId} />}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <ul>
+                    {field.values.map((v) => {
+                      const key = `${field.key}:${v.value}`;
+                      const open = expanded === key;
+                      const found = where[key];
+                      return (
+                        <li key={v.value} className="border-b last:border-b-0">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted/40"
+                            onClick={() => locate(field, v.value)}
+                          >
+                            {open ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                            <code>{v.value}</code>
+                            <span className="text-xs text-muted-foreground">
+                              {plural(v.count, 'time', 'times')}
+                            </span>
+                          </button>
+                          {open && <Occurrences found={found} projectId={projectId} />}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
-
-              {count === 0 ? (
-                <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                  <Check className="h-4 w-4 text-green-600" />
-                  Everything stored is on the list.
-                </p>
-              ) : field.kind === 'feats' ? (
-                <div className="px-3 py-2">
-                  {field.features.map((entry) => (
-                    <div key={entry.key} className="mb-2 last:mb-0">
-                      <p className="text-sm font-medium">
-                        {entry.key}
-                        {!entry.known && (
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            not in the inventory
-                          </span>
-                        )}
-                      </p>
-                      <ul className="ml-4">
-                        {entry.values.map((v) => {
-                          // The span stores the whole `Key=Value` string, which
-                          // is what the same query looks for.
-                          const pair = `${entry.key}=${v.value}`;
-                          const key = `${field.key}:${pair}`;
-                          const open = expanded === key;
-                          return (
-                            <li key={v.value}>
-                              <button
-                                type="button"
-                                className="flex w-full items-center gap-2 py-0.5 text-left text-sm text-muted-foreground hover:bg-muted/40"
-                                onClick={() => locate(field, pair)}
-                              >
-                                {open ? (
-                                  <ChevronDown className="h-3.5 w-3.5" />
-                                ) : (
-                                  <ChevronRight className="h-3.5 w-3.5" />
-                                )}
-                                <code>{v.value}</code>
-                                <span className="text-xs">{plural(v.count, 'time', 'times')}</span>
-                              </button>
-                              {open && <Occurrences found={where[key]} projectId={projectId} />}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <ul>
-                  {field.values.map((v) => {
-                    const key = `${field.key}:${v.value}`;
-                    const open = expanded === key;
-                    const found = where[key];
-                    return (
-                      <li key={v.value} className="border-b last:border-b-0">
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted/40"
-                          onClick={() => locate(field, v.value)}
-                        >
-                          {open ? (
-                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                          )}
-                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                          <code>{v.value}</code>
-                          <span className="text-xs text-muted-foreground">
-                            {plural(v.count, 'time', 'times')}
-                          </span>
-                        </button>
-                        {open && <Occurrences found={found} projectId={projectId} />}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+      </div>
     </div>
   );
 };

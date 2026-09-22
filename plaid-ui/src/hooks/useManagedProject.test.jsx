@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../test/renderComponent.jsx';
+import { configureUi } from '../lib/uiConfig.js';
 
 // One route component serves every project id, so walking from A to B keeps
 // this hook mounted and starts a second read without ending the first. Nothing
@@ -8,10 +9,10 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // project it hands them: A landing last puts A's layers under a Save the reader
 // makes on B.
 
-vi.mock('../../utils/feedback.jsx', () => ({ notifyError: vi.fn() }));
+vi.mock('../lib/notify.js', () => ({ notifyError: vi.fn() }));
 
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), user: { id: 'u', isAdmin: true } }));
-vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
+vi.mock('../contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
 const { useManagedProject } = await import('./useManagedProject.js');
 
@@ -49,10 +50,18 @@ const app = (
   </MemoryRouter>
 );
 
+// The suite runs under plaid-igt's vitest, whose setup file configures the
+// package for the whole run; the bounce this hook makes needs an app's project
+// list, so the test names one and puts back what the setup left.
+const RESTORE = { appPrefix: 'plaid_igt', configNamespace: 'igt', appName: 'Plaid IGT' };
+
 beforeEach(() => {
   seen = null;
   auth.user = { id: 'u', isAdmin: true };
+  configureUi({ ...RESTORE, appRoutes: { projects: '/projects' } });
 });
+
+afterEach(() => configureUi(RESTORE));
 
 describe('the managed project when the reader walks to another one', () => {
   it('keeps the project it was last asked for, however late the other answers', async () => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useDocumentEditor } from '../editor/useDocumentEditor.js';
+import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
 import { fullTimestamp, timeAgo } from '@ui/lib/formatTime.js';

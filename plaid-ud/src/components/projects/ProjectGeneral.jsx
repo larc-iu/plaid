@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { useManagedProject } from './useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';

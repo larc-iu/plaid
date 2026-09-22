@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { useDocumentEditor } from './useDocumentEditor.js';
+import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError } from '../../utils/feedback.jsx';
 

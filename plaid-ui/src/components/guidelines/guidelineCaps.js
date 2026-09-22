@@ -12,8 +12,8 @@ import { useEffect, useState } from 'react';
 //
 // Both sides count the same units (Clojure's `count` over a String and JS's
 // `.length` are both UTF-16 code units), so the two numbers are comparable.
-export const TITLE_MAX_FALLBACK = 100;
-export const BODY_MAX_FALLBACK = 20000;
+const TITLE_MAX_FALLBACK = 100;
+const BODY_MAX_FALLBACK = 20000;
 
 const positive = (value, fallback) => (Number.isInteger(value) && value > 0 ? value : fallback);
 

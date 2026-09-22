@@ -23,11 +23,13 @@ realized), one concept span per node carrying
 rule (`s{N}{initial}{counter}`, unique per document), so a model that invents
 its own naming cannot collide with what is already stored.
 
-The PENMAN reader here is this file's own (`parse_penman`), a port of the
-app's `src/domain/format/penman.js`, rather than the `penman` PyPI package:
-the app's grammar is the one `umrtools/validate.py` scans, the service needs
-child ORDER (attributes and edges share one order space) and it must ship in
-the release jar without adding a dependency.
+The storage model itself -- which layer is which, how a document reads back as
+sentence graphs, what PENMAN means and how a variable is minted -- is
+`plaid_client.workflows.umr`, shared with the skeleton service and with the
+assistant in plaid-agent. Its PENMAN reader is a port of the app's
+`src/domain/format/penman.js` rather than the `penman` PyPI package: the app's
+grammar is the one `umrtools/validate.py` scans, and the service needs child
+ORDER, because attributes and edges share one order space.
 
     python services/umr_draft_llm.py --url http://localhost:8085 --model openai/gpt-4o-mini
     python services/umr_draft_llm.py --url ... --model ollama/llama3.1
@@ -38,14 +40,16 @@ Requirements (on top of plaid-client): litellm.
 """
 
 import argparse
-import contextlib
 import re
 from typing import Any, Dict, List, Optional
 
-from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
-                          is_protected, stamp_inferred, service_source)
-from plaid_client.service import check_unchanged, progress_heartbeat, requester_message
+from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
+from plaid_client.service import check_unchanged, requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
+from plaid_client.workflows.umr import (UMR_NAMESPACE, DraftProgress, anchor_pieces,
+                                        build_draft_notice, gloss_values, next_variable,
+                                        parse_penman, project_language, read_document,
+                                        resolve_layers, write_graphs)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -127,188 +131,6 @@ variable of the graph exactly once. Write nothing else: no prose, no explanation
 no code fences, no other comment lines."""
 
 
-# --- the PENMAN reader ----------------------------------------------------------
-# A port of src/domain/format/penman.js: the grammar umrtools/validate.py scans,
-# not a generic PENMAN one. Never raises; what it cannot read becomes an error.
-
-#: Concepts, atoms and variables stop at whitespace, brackets, a colon or a
-#: comment (validate.py:390).
-_TOKEN = re.compile(r'[^\s():#]+')
-#: The UMR variable convention, UFAL's regex (validate.py:142). The letter run
-#: may be non-ASCII, so a plain [a-z] would be wrong; Python's `re` has no
-#: `\p{Ll}`, so this takes any letter where the spec takes a lowercase one. It
-#: only ever reads MORE tokens as node references, never fewer, and the service
-#: re-generates every variable it writes, so the difference costs nothing.
-_VARIABLE = re.compile(r'^s[0-9]+[^\W\d_]+[0-9]*$', re.UNICODE)
-_VARIABLE_PREFIX = re.compile(r's[0-9]+[^\W\d_]+[0-9]*', re.UNICODE)
-#: A relation label: a colon then letters, digits and hyphens (validate.py:391).
-_RELATION = re.compile(r':[-A-Za-z0-9]+')
-_STRING = re.compile(r'"(?:\\.|[^"\\])*"')
-_DEFINITION = re.compile(r'\(\s*([^\s():#]+)\s*/')
-
-
-def _mask_literals(text: str) -> str:
-    """Blank strings and comments so the definition scan cannot mistake their
-    contents for graph text. Lengths are preserved."""
-    out = []
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if ch == '"':
-            m = _STRING.match(text, i)
-            length = len(m.group(0)) if m else len(text) - i
-            out.append(' ' * length)
-            i += length
-        elif ch == '#':
-            while i < len(text) and text[i] != '\n':
-                out.append(' ')
-                i += 1
-        else:
-            out.append(ch)
-            i += 1
-    return ''.join(out)
-
-
-def _variable_from(token: str) -> str:
-    m = _VARIABLE_PREFIX.match(token)
-    return m.group(0) if m else token
-
-
-class _Scanner:
-    def __init__(self, text: str):
-        self.text = text
-        self.i = 0
-
-    @property
-    def done(self) -> bool:
-        return self.i >= len(self.text)
-
-    def peek(self) -> str:
-        return self.text[self.i] if self.i < len(self.text) else ''
-
-    def skip(self) -> None:
-        while True:
-            while not self.done and self.text[self.i].isspace():
-                self.i += 1
-            if self.peek() == '#':
-                while not self.done and self.text[self.i] != '\n':
-                    self.i += 1
-                continue
-            return
-
-    def take(self, pattern) -> Optional[str]:
-        m = pattern.match(self.text, self.i)
-        if not m:
-            return None
-        self.i = m.end()
-        return m.group(0)
-
-    def rest(self) -> str:
-        end = self.text.find('\n', self.i)
-        return self.text[self.i:(len(self.text) if end == -1 else end)].strip()
-
-
-def parse_penman(text: str) -> Dict[str, Any]:
-    """Read PENMAN text into ``{root, nodes, errors}``.
-
-    ``nodes`` maps a variable to ``{'var', 'concept', 'children'}`` in written
-    order; each child is ``{'rel', 'kind', 'value'}`` with ``kind`` one of
-    ``'node'`` (the value is the target variable), ``'string'`` (quotes kept)
-    or ``'atom'``. Whether a bare token is a reference or an atom cannot be
-    decided locally (a reference may point forward), so the text is scanned for
-    definitions first.
-    """
-    source = text if isinstance(text, str) else ''
-    errors: List[str] = []
-    nodes: Dict[str, Any] = {}
-    defined = {_variable_from(m.group(1)) for m in _DEFINITION.finditer(_mask_literals(source))}
-    scanner = _Scanner(source)
-
-    def read_value(children, rel):
-        scanner.skip()
-        ch = scanner.peek()
-        if ch == '(':
-            child = read_node()
-            children.append({'rel': rel, 'kind': 'node', 'value': child})
-            return
-        if ch == '"':
-            raw = scanner.take(_STRING)
-            if raw is None:
-                errors.append(f'Unterminated string: {scanner.rest()}')
-                scanner.i = len(scanner.text)
-                return
-            children.append({'rel': rel, 'kind': 'string', 'value': raw})
-            return
-        token = scanner.take(_TOKEN)
-        if token is None:
-            errors.append(f"Expected a value after '{rel}', found "
-                          f"'{scanner.rest() or 'end of graph'}'.")
-            return
-        if token in defined:
-            children.append({'rel': rel, 'kind': 'node', 'value': token})
-            return
-        if _VARIABLE.match(token):
-            errors.append(f"The node id '{token}' is unknown. No such node is defined.")
-            children.append({'rel': rel, 'kind': 'node', 'value': token})
-            return
-        children.append({'rel': rel, 'kind': 'atom', 'value': token})
-
-    def read_node():
-        scanner.i += 1  # the '('
-        scanner.skip()
-        variable = scanner.take(_VARIABLE_PREFIX) or scanner.take(_TOKEN)
-        if variable is None:
-            errors.append(f"Expected a node variable, found '{scanner.rest()}'.")
-            return None
-        scanner.skip()
-        if scanner.peek() == '/':
-            scanner.i += 1
-            scanner.skip()
-        else:
-            errors.append(f"Expected a slash and a concept after '{variable}'.")
-        concept = None if scanner.peek() == ')' else scanner.take(_TOKEN)
-        if concept is None:
-            errors.append(f"Expected a concept for '{variable}'.")
-        node = {'var': variable, 'concept': concept or '', 'children': []}
-        if variable in nodes:
-            errors.append(f"The node id '{variable}' is not unique.")
-        else:
-            nodes[variable] = node
-
-        while True:
-            scanner.skip()
-            if scanner.done:
-                errors.append(f"The graph ended without closing node '{variable}'.")
-                return variable
-            ch = scanner.peek()
-            if ch == ')':
-                scanner.i += 1
-                return variable
-            if ch == ':':
-                rel = scanner.take(_RELATION)
-                if rel is None:
-                    errors.append(f"Expected a relation label, found '{scanner.rest()}'.")
-                    scanner.i += 1
-                    continue
-                read_value(node['children'], rel)
-                continue
-            errors.append(f"Expected a relation or a closing bracket, found '{scanner.rest()}'.")
-            if scanner.take(_TOKEN) is None:
-                scanner.i += 1
-
-    scanner.skip()
-    if scanner.done:
-        return {'root': None, 'nodes': nodes, 'errors': ['The reply carries no graph.']}
-    if scanner.peek() != '(':
-        return {'root': None, 'nodes': nodes,
-                'errors': [f"Expected the root node's opening bracket, found '{scanner.rest()}'."]}
-    root = read_node()
-    scanner.skip()
-    if not scanner.done:
-        errors.append(f"Unexpected content after the last closing bracket: '{scanner.rest()}'.")
-    return {'root': root, 'nodes': nodes, 'errors': errors}
-
-
 #: One alignment line: a variable, an optional space, a colon, then ranges.
 #: Spacing varies across released files (`s1p: 1-1`, `s1a :0-0`), and both parse.
 _ALIGNMENT_LINE = re.compile(r'^\s*([^\s:]+)\s*:\s*(.+?)\s*$')
@@ -364,38 +186,7 @@ def split_reply(text: str):
     return '\n'.join(lines), ''
 
 
-# --- the storage model ----------------------------------------------------------
-
-def next_variable(sentence_index: int, concept: str, taken) -> str:
-    """The project's variable rule (src/domain/sentenceGraph.js `nextVariable`):
-    ``s{N}{concept's first letter}`` plus a counter until it is unused. A
-    concept whose first character is not a lowercase letter falls back to `x`,
-    which is why the Chinese data is full of `s1x35`."""
-    first = str(concept or '')[:1].lower()
-    letter = first if first.isalpha() and first.islower() else 'x'
-    base = f's{sentence_index}{letter}'
-    if base not in taken:
-        return base
-    n = 2
-    while f'{base}{n}' in taken:
-        n += 1
-    return f'{base}{n}'
-
-
-def anchor_pieces(ranges, words, sentence_extent):
-    """The anchor tokens for one node: one piece per aligned word range, or one
-    piece over the whole sentence when the concept is not overtly realized
-    (which is how the importer stores a node aligned to no word: what says it
-    is unaligned is its sentence record, not the anchor)."""
-    pieces = []
-    for begin, end in ranges or []:
-        first = words[begin - 1] if 0 < begin <= len(words) else None
-        last = words[end - 1] if 0 < end <= len(words) else None
-        if first is None or last is None:
-            continue
-        pieces.append((first['begin'], last['end']))
-    return pieces or [tuple(sentence_extent)]
-
+# --- one sentence as writes -----------------------------------------------------
 
 def plan_sentence(graph, alignment, sentence, taken):
     """One sentence's draft as writes: ``(pieces, nodes, edges)``.
@@ -472,159 +263,6 @@ def validate_graph(graph) -> Optional[str]:
     return None
 
 
-# --- reading the document -------------------------------------------------------
-
-def _flag(layer, flag) -> bool:
-    return ((layer or {}).get('config') or {}).get(UMR_NAMESPACE, {}).get(flag) is True
-
-
-def _find_flagged(layers, flag):
-    for layer in layers or []:
-        if _flag(layer, flag):
-            return layer
-    return None
-
-
-def resolve_layers(document):
-    """The layers this service reads and writes, by the same rules as
-    `src/utils/umrLayerUtils.js`: the substrate by its cross-app
-    `config.plaid.role`, everything UMR owns by its `config.umr` flag. Raises
-    rather than guessing, so a mistagged project fails loudly."""
-    text_layers = document.get('text_layers') or []
-    text_layer = find_by_role(text_layers, ROLES.BASELINE) or (text_layers[0] if text_layers else None)
-    if not text_layer:
-        raise ValueError('The project has no baseline text layer.')
-    token_layers = text_layer.get('token_layers') or []
-    node_layer = _find_flagged(token_layers, 'nodes')
-    concept_layer = _find_flagged((node_layer or {}).get('span_layers'), 'concepts')
-    relation_layer = _find_flagged((concept_layer or {}).get('relation_layers'), 'relations')
-    info = {
-        'text_layer': text_layer,
-        'text_id': (text_layer.get('text') or {}).get('id'),
-        'body': (text_layer.get('text') or {}).get('body') or '',
-        'sentence_layer': find_by_role(token_layers, ROLES.SENTENCE),
-        'word_layer': find_by_role(token_layers, ROLES.WORD),
-        'morpheme_layer': find_by_role(token_layers, ROLES.MORPHEME),
-        'node_layer': node_layer,
-        'concept_layer': concept_layer,
-        'relation_layer': relation_layer,
-    }
-    missing = [name for name in ('sentence_layer', 'word_layer', 'node_layer',
-                                'concept_layer', 'relation_layer') if not info[name]]
-    if missing:
-        raise ValueError('The document is not set up for UMR: it is missing the '
-                         + ', '.join(name.replace('_', ' ') for name in missing) + '.')
-    return info
-
-
-def _cp_slice(body, begin, end):
-    """The body between two CODE POINT offsets. Plaid's offsets are code points
-    everywhere; Python strings are too, so this is a plain slice, named so the
-    rule is visible."""
-    return body[begin:end]
-
-
-def gloss_layers_of(info):
-    """Another app's annotation layers over the substrate, which the prompt can
-    read as gloss lines: a span layer says its scope in `config.igt.scope`, and
-    one that says nothing takes the scope of the token layer it hangs off
-    (src/utils/umrLayerUtils.js). UMR's own layers are never gloss lines."""
-    out = []
-    for token_layer, default_scope in ((info['sentence_layer'], 'sentence'),
-                                       (info['word_layer'], 'word'),
-                                       (info['morpheme_layer'], 'morpheme')):
-        for layer in (token_layer or {}).get('span_layers') or []:
-            config = layer.get('config') or {}
-            if config.get(UMR_NAMESPACE):
-                continue
-            declared = str((config.get('igt') or {}).get('scope') or '').lower()
-            scope = 'word' if declared == 'token' else (declared or default_scope)
-            values = {}
-            for span in layer.get('spans') or []:
-                tokens = span.get('tokens') or []
-                value = span.get('value')
-                if tokens and value not in (None, ''):
-                    values[tokens[0]] = str(value)
-            out.append({'name': layer.get('name') or 'Field', 'scope': scope, 'values': values})
-    return out
-
-
-def read_sentences(info):
-    """The document's sentences, each with its words, its morphemes grouped
-    under them, and the concept nodes already anchored in it. A CONSTANT
-    (`metadata.umr.constant`) belongs to no sentence, which matters because its
-    anchor is a zero-width token at offset 0 and would otherwise fall inside
-    the first sentence."""
-    body = info['body']
-    sentence_tokens = sorted(info['sentence_layer'].get('tokens') or [],
-                             key=lambda t: (t['begin'], t['end']))
-    sentences = []
-    for i, token in enumerate(sentence_tokens):
-        sentences.append({'index': i + 1, 'token_id': token['id'],
-                          'begin': token['begin'], 'end': token['end'],
-                          'text': _cp_slice(body, token['begin'], token['end']).strip(),
-                          'words': [], 'morphemes': [], 'nodes': []})
-
-    def sentence_of(begin):
-        for s in sentences:
-            if s['begin'] <= begin < s['end']:
-                return s
-        return None
-
-    for token in sorted(info['word_layer'].get('tokens') or [],
-                        key=lambda t: (t['begin'], t['end'])):
-        s = sentence_of(token['begin'])
-        if not s:
-            continue
-        s['words'].append({'id': token['id'], 'index': len(s['words']) + 1,
-                           'begin': token['begin'], 'end': token['end'],
-                           'text': _cp_slice(body, token['begin'], token['end'])})
-    for token in sorted((info['morpheme_layer'] or {}).get('tokens') or [],
-                        key=lambda t: (t['begin'], t['end'], t.get('precedence') or 0)):
-        s = sentence_of(token['begin'])
-        if s:
-            s['morphemes'].append({'id': token['id'], 'begin': token['begin'],
-                                   'end': token['end']})
-
-    node_tokens = {t['id']: t for t in (info['node_layer'].get('tokens') or [])}
-    for span in info['concept_layer'].get('spans') or []:
-        meta = (span.get('metadata') or {}).get(UMR_NAMESPACE) or {}
-        if meta.get('constant') is True:
-            continue
-        pieces = sorted((node_tokens[i] for i in (span.get('tokens') or []) if i in node_tokens),
-                        key=lambda t: t['begin'])
-        s = sentence_of(pieces[0]['begin']) if pieces else None
-        if s:
-            # The whole metadata, not just the `umr` half: the flat provenance
-            # keys beside it are what says whether a person made this node
-            # (see `person_made`).
-            s['nodes'].append({'id': span['id'], 'var': meta.get('var'),
-                               'piece_ids': [p['id'] for p in pieces],
-                               'metadata': span.get('metadata') or {}})
-    return sentences
-
-
-def person_made(sentence):
-    """Whether any node of this sentence's graph was built or confirmed by a
-    person: human-made, contributed or verified material, which the
-    machine-writer contract (plaid_client.provenance, rule 2) says a service
-    must not replace. `overwrite` redrafts MACHINE graphs only, and a sentence
-    this is true of is kept and counted instead."""
-    return any(is_protected(node['metadata']) for node in sentence['nodes'])
-
-
-def taken_variables(info):
-    """Every variable the document already uses. Variables are unique per
-    DOCUMENT, not per sentence, because the document graph cites an earlier
-    sentence's nodes by name."""
-    taken = set()
-    for span in info['concept_layer'].get('spans') or []:
-        var = ((span.get('metadata') or {}).get(UMR_NAMESPACE) or {}).get('var')
-        if var:
-            taken.add(var)
-    return taken
-
-
 # --- the prompt -----------------------------------------------------------------
 
 def gloss_lines_for(sentence, layers):
@@ -667,82 +305,6 @@ def build_user_prompt(sentence, gloss_lines, language) -> str:
         parts.append(f'{name}: {text}')
     parts.append(f'Write the UMR graph for sentence {sentence["index"]}, then its alignment.')
     return '\n\n'.join(parts)
-
-
-# --- what the requester is told -------------------------------------------------
-
-def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0):
-    """The toast the editor shows when a run finishes. The service owns the
-    wording and the severity; the editor maps `level` to a colour. A run that
-    drafted nothing must not congratulate anyone.
-
-    `skipped` and `kept` cannot both stand: a sentence with a graph is skipped
-    when `overwrite` is off, and one a person built is kept when it is on."""
-    def s(n):
-        return '' if n == 1 else 's'
-
-    tail = []
-    if skipped:
-        tail.append(f'Skipped {skipped} sentence{s(skipped)} that already had a graph.')
-    if kept:
-        tail.append(f'Kept {kept} verified sentence{s(kept)}.')
-    if failed:
-        tail.append(f'Failed {failed} sentence{s(failed)}'
-                    + (f': {first_error}' if first_error else '.'))
-    if drafted:
-        return {'level': 'success', 'title': f'Drafted {drafted} sentence{s(drafted)}',
-                'message': ' '.join(tail)}
-    if skipped:
-        subject = ('1 sentence already has a graph' if skipped == 1
-                   else f'All {skipped} sentences already have graphs')
-        return {'level': 'warning', 'title': 'Document not modified',
-                'message': (f"{subject}. Enable 'Overwrite existing graphs' to draft over them."
-                            + (f' Failed {failed} sentence{s(failed)}.' if failed else ''))}
-    if kept:
-        return {'level': 'warning', 'title': 'Document not modified',
-                'message': ' '.join(tail)}
-    if failed:
-        return {'level': 'warning', 'title': 'Nothing drafted',
-                'message': f'Failed {failed} sentence{s(failed)}'
-                           + (f': {first_error}' if first_error else '.')}
-    return {'level': 'warning', 'title': 'Nothing to draft',
-            'message': 'The document has no sentences in scope.'}
-
-
-# --- progress -------------------------------------------------------------------
-
-class DraftProgress:
-    """A fixed percentage budget over the phases, so the bar moves for the same
-    reason on every document:
-
-        2-10    reading the document and the project
-        10-85   drafting, one model call per sentence
-        85-100  writing
-
-    `report` is a CANCELLATION CHECKPOINT (ResponseHelper.progress raises), so
-    every call in the write phase sits inside `critical()`.
-    """
-
-    READ, DRAFT, WRITE = (2, 10), (10, 85), (85, 100)
-
-    def __init__(self, helper=None):
-        self._helper = helper
-
-    @staticmethod
-    def _percent(phase, fraction):
-        low, high = phase
-        return int(low + (high - low) * min(max(fraction, 0.0), 1.0))
-
-    def report(self, phase, fraction, message):
-        if self._helper:
-            self._helper.progress(self._percent(phase, fraction), message)
-
-    def heartbeat(self, phase, fraction, message):
-        """Keep saying `message` through one model call, which reports nothing
-        of its own and can outlast a requester's patience with silence."""
-        if not self._helper:
-            return contextlib.nullcontext()
-        return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
 
 
 # --- the service ----------------------------------------------------------------

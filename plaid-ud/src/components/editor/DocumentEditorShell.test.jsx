@@ -63,7 +63,7 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
 vi.mock('./hooks/useEditorServices.js', () => ({ useEditorServices: () => ({}) }));
 
 const { DocumentEditorShell } = await import('./DocumentEditorShell.jsx');
-const { useDocumentEditor } = await import('./useDocumentEditor.js');
+const { useDocumentEditor } = await import('@ui/hooks/useDocumentEditor.js');
 
 let view;
 let go;

@@ -8,7 +8,7 @@ import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { useHistoryView } from '@ui/hooks/useHistoryView.js';
 import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
-import { useDocumentEditor } from './useDocumentEditor.js';
+import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
 import { usePrecedent } from './hooks/usePrecedent.js';

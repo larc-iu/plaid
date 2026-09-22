@@ -39,6 +39,21 @@ const DEFAULTS = {
   // wrong app name is silent, and a second module instance is exactly what
   // this catches.
   appName: null,
+  // Where this app keeps the screens shared code has to link to. A screen that
+  // lives here (the Activity panel's rows, the Comments tab's jump links, the
+  // bounce out of a project a reader may not manage) has to address a place in
+  // the app that mounted it, and the apps do not agree: plaid-igt opens a
+  // document at /projects/:p/documents/:d and plaid-ud at the same path plus
+  // /annotate. `packageBoundaries.test.js` is what keeps them from being
+  // guessed at here.
+  //
+  //   { projects, documents(projectId), document(projectId, documentId),
+  //     sentence(projectId, documentId, sentenceId) }
+  //
+  // No default: a shared screen reads it only when it has a link to draw, and
+  // an app that mounts such a screen without naming its routes is told so
+  // rather than linking somewhere plausible and wrong.
+  appRoutes: null,
 };
 
 let config = { ...DEFAULTS };
@@ -68,6 +83,17 @@ export const appName = () => {
     throw new Error('plaid-ui: no appName. Call configureUi({appName}) from the app entry.');
   }
   return config.appName;
+};
+
+/** Where the app keeps the screens shared code links to. Throws if unnamed. */
+export const appRoutes = () => {
+  if (!config.appRoutes) {
+    throw new Error(
+      'plaid-ui: no appRoutes. Call configureUi({appRoutes}) from the app entry ' +
+        'before mounting a shared screen that links into the app.',
+    );
+  }
+  return config.appRoutes;
 };
 
 /** The app's namespace in a config bucket. Throws if the app never named one. */

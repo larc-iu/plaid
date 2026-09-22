@@ -3,8 +3,14 @@
 // prefix, so a list mounted without this fails loudly rather than remembering
 // its sort somewhere nobody chose.
 import { configureUi } from '@ui/lib/uiConfig.js';
+import { APP_ROUTES } from '../appRoutes.js';
 
-configureUi({ appPrefix: 'plaid_ud', configNamespace: 'ud', appName: 'Plaid UD' });
+configureUi({
+  appPrefix: 'plaid_ud',
+  configNamespace: 'ud',
+  appName: 'Plaid UD',
+  appRoutes: APP_ROUTES,
+});
 
 // Nothing scrolls in a test environment, and jsdom does not define
 // scrollIntoView at all, so a component that scrolls something into view after

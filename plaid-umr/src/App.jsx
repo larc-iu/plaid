@@ -13,6 +13,9 @@ import { DocumentList } from './components/documents/DocumentList';
 import { AnnotationEditor } from './components/editor/AnnotationEditor.jsx';
 import { DocumentEditorShell } from './components/editor/DocumentEditorShell.jsx';
 import { DocumentDetails } from './components/documents/DocumentDetails.jsx';
+import { ProjectTabs } from './components/projects/ProjectTabs.jsx';
+import { UMR_ASSISTANT } from './components/assistant/adapter.js';
+import { buildAnchorIndex } from './domain/commentAnchors.js';
 import './App.css';
 
 // Screens a session opens rarely download when first opened. The editor and
@@ -26,24 +29,24 @@ const ProjectSettings = lazyNamed(
   'ProjectSettings',
 );
 const ProjectGuidelinesPage = lazyNamed(
-  () => import('./components/projects/ProjectGuidelinesPage.jsx'),
+  () => import('@ui/components/shared/ProjectGuidelinesPage.jsx'),
   'ProjectGuidelinesPage',
 );
 const ProjectAssistantPage = lazyNamed(
-  () => import('./components/projects/ProjectAssistantPage.jsx'),
+  () => import('@ui/components/shared/ProjectAssistantPage.jsx'),
   'ProjectAssistantPage',
 );
 const ProjectActivity = lazyNamed(
-  () => import('./components/projects/ProjectActivity.jsx'),
-  'ProjectActivity',
+  () => import('@ui/components/shared/ProjectActivityPage.jsx'),
+  'ProjectActivityPage',
 );
 const ProjectValidation = lazyNamed(
   () => import('./components/validate/ProjectValidation.jsx'),
   'ProjectValidation',
 );
 const DocumentComments = lazyNamed(
-  () => import('./components/documents/DocumentComments.jsx'),
-  'DocumentComments',
+  () => import('@ui/components/shared/DocumentCommentsPage.jsx'),
+  'DocumentCommentsPage',
 );
 const ProjectConfiguration = lazyNamed(
   () => import('./components/projects/ProjectConfiguration.jsx'),
@@ -120,7 +123,7 @@ function App() {
               path="projects/:projectId/guidelines"
               element={
                 <Suspended>
-                  <ProjectGuidelinesPage />
+                  <ProjectGuidelinesPage tabs={ProjectTabs} />
                 </Suspended>
               }
             />
@@ -131,7 +134,7 @@ function App() {
               path="projects/:projectId/assistant"
               element={
                 <Suspended>
-                  <ProjectAssistantPage />
+                  <ProjectAssistantPage tabs={ProjectTabs} adapter={UMR_ASSISTANT} />
                 </Suspended>
               }
             />
@@ -139,7 +142,7 @@ function App() {
               path="projects/:projectId/activity"
               element={
                 <Suspended>
-                  <ProjectActivity />
+                  <ProjectActivity tabs={ProjectTabs} />
                 </Suspended>
               }
             />
@@ -190,7 +193,7 @@ function App() {
                 path="comments"
                 element={
                   <Suspended>
-                    <DocumentComments />
+                    <DocumentComments buildAnchors={buildAnchorIndex} />
                   </Suspended>
                 }
               />

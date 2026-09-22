@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useManagedProject } from './useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
 import { HEADERS, proposeIlg } from '../../domain/ilg.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';

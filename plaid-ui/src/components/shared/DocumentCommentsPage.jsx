@@ -1,17 +1,19 @@
 import { useEffect, useMemo } from 'react';
-import { CommentsBrowser } from '@ui/components/shared/CommentsBrowser';
-import { useDocumentEditor } from '../editor/useDocumentEditor.js';
-import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { buildAnchorIndex } from '../../domain/commentAnchors.js';
-import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { CommentsBrowser } from './CommentsBrowser.jsx';
+import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
+import { useDocumentModel } from '../../domain/useDocumentModel.js';
+import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { appRoutes } from '../../lib/uiConfig.js';
 
 // The document's Comments tab: every thread in it, the document's own pinned
 // first, each one a sentence you can jump to.
 //
-// Comments are sentence and document level here, by ruling. A thread anchored
-// to anything else came from another app sharing this substrate and describes
-// as outdated, which is honest: this app cannot show you an IGT gloss.
-export const DocumentComments = () => {
+// Comments are sentence and document level in the editing apps, by ruling. A
+// thread anchored to anything else came from another app sharing this substrate
+// and describes as outdated, which is honest: this app cannot show you an IGT
+// gloss. `buildAnchors(doc)` is the app's reading of what a thread is attached
+// to, since only the app knows what its documents look like.
+export const DocumentCommentsPage = ({ buildAnchors }) => {
   const { projectId, documentId, doc, project, comments, canComment, canDeleteAnyComment } =
     useDocumentEditor();
   useDocumentModel(doc);
@@ -26,10 +28,10 @@ export const DocumentComments = () => {
   useEffect(() => comments?.watchLive(), [comments]);
 
   // Anchor labels come from the document and change only when its DATA does,
-  // so they key on the same version the grid's caches do.
+  // so they key on the same version the editor's caches do.
   const version = doc?.dataVersion ?? 0;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const anchors = useMemo(() => buildAnchorIndex(doc), [doc, version]);
+  const anchors = useMemo(() => buildAnchors(doc), [doc, version]);
 
   return (
     <div className="w-full max-w-4xl">
@@ -39,9 +41,7 @@ export const DocumentComments = () => {
         pinnedId={documentId}
         canWrite={canComment}
         canDeleteAny={canDeleteAnyComment}
-        jumpHref={(sentenceId) =>
-          `/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceId}`
-        }
+        jumpHref={(sentenceId) => appRoutes().sentence(projectId, documentId, sentenceId)}
         jumpTitle="Show this sentence in the editor"
         emptyText="No comments on this document yet. Add one here, or from a sentence in the editor."
         positionLabel="In text order"

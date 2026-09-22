@@ -16,7 +16,7 @@ import {
   SENTENCE_METADATA_KEY,
 } from '../../utils/udMetadata.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
-import { useManagedProject } from './useManagedProject.js';
+import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
 import { MetadataFieldList } from '../common/MetadataFieldList.jsx';

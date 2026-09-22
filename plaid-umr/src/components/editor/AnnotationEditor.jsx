@@ -10,7 +10,7 @@ import { useReconcileOnOpen } from '@ui/hooks/useReconcileOnOpen.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
-import { useDocumentEditor } from './useDocumentEditor.js';
+import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { TOKEN_ROLE_WORDS, UMR_LAYER_WORDS } from '../../domain/restoreSummary.js';
 import { UmrCanvas } from './annotation/UmrCanvas.jsx';
