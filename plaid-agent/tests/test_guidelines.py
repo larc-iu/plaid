@@ -19,8 +19,8 @@ sys.path.insert(0, 'tests')
 
 from plaid_agent.core.guidelines import (  # noqa: E402
     t_add_guideline, t_revise_guideline, t_rewrite_guideline,
-    FENCE_END, FENCE_TOP, Guideline, in_context, in_reading_order, load, opening_line,
-    section, t_read_guideline)
+    FENCE_END, FENCE_TOP, Guideline, TITLE_CHARS_FALLBACK, in_context, in_reading_order,
+    load, opening_line, section, t_read_guideline, title_cap)
 from plaid_agent.core.limits import GUIDELINES_INLINE_CHARS  # noqa: E402
 from plaid_agent.core.tools import ToolError  # noqa: E402
 
@@ -442,3 +442,33 @@ def test_a_draft_needs_a_title(ws):
     with pytest.raises(ToolError):
         t_add_guideline(ws, title='  ', body='B')
     assert not ws.ops
+
+
+def test_the_title_cap_is_the_one_the_server_publishes(ws):
+    """The server enforces it (`plaid.sql.guideline/max-title-length`, published
+    on GET /info), the editor reads it (plaid-ui `guidelineCaps.js`), and so
+    does this: a title the server would refuse is refused where it was drafted,
+    not after a round trip that arrives as a raw 400."""
+    class Server:
+        def __init__(self, limits):
+            self._limits = limits
+
+        def limits(self):
+            return self._limits
+
+    class C:
+        def __init__(self, limits):
+            self.server = Server(limits)
+
+    assert title_cap(C({'guideline_title_length': 40})) == 40
+    # Not reported, reported as nonsense, or no /info at all: the fallback.
+    assert title_cap(C({})) == TITLE_CHARS_FALLBACK
+    assert title_cap(C({'guideline_title_length': 'lots'})) == TITLE_CHARS_FALLBACK
+    assert title_cap(FakeClient()) == TITLE_CHARS_FALLBACK
+
+    ws.client.server = Server({'guideline_title_length': 12})
+    with pytest.raises(ToolError, match='at most 12 characters'):
+        t_add_guideline(ws, 'A title too long for this server', 'Body.')
+    assert not ws.ops
+    t_add_guideline(ws, 'Short', 'Body.')
+    assert ws.ops[-1]['kind'] == 'add_guideline'

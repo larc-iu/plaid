@@ -342,6 +342,14 @@ WRITE_NAMES = ('add_guideline', 'revise_guideline', 'rewrite_guideline')
 # guideline rather than an essay. The server's own ceiling is far higher.
 DRAFT_BODY_CHARS = 4000
 
+# What a title may be where the server will not say. The server publishes its
+# own on ``GET /info`` as ``limits.guidelineTitleLength``, the way the record's
+# byte budget reads ``userDataValueBytes`` (``conversation.record_budget``) and
+# the editor reads the same figure (plaid-ui ``guidelineCaps.js``). This is the
+# fallback for a server too old to publish it, or one that will not answer: the
+# write is refused either way, just later and less kindly.
+TITLE_CHARS_FALLBACK = 100
+
 
 def _resolve_one(ws, title: str):
     """The one guideline with this title, or a refusal naming the trouble.
@@ -365,11 +373,22 @@ def _resolve_one(ws, title: str):
     return found[0]
 
 
-def _check_draft(title: str, body: str) -> None:
+def title_cap(client, default: int = TITLE_CHARS_FALLBACK) -> int:
+    """How long a guideline title this server takes."""
+    try:
+        reported = (client.server.limits() or {}).get('guideline_title_length')
+    except Exception:  # noqa: BLE001 - an unreachable or older server has no figure
+        return default
+    return int(reported) if isinstance(reported, int) and reported > 0 else default
+
+
+def _check_draft(ws, title: str, body: str) -> None:
     if title is not None and not str(title).strip():
         raise ToolError('A guideline needs a title.')
-    if title is not None and len(str(title)) > 100:
-        raise ToolError('A guideline title is at most 100 characters.')
+    if title is not None:
+        cap = title_cap(ws.client)
+        if len(str(title)) > cap:
+            raise ToolError(f'A guideline title is at most {cap} characters.')
     if body is not None and len(str(body)) > DRAFT_BODY_CHARS:
         raise ToolError(f'Keep a guideline under {DRAFT_BODY_CHARS} characters. A guideline states one '
                         f'convention; anything longer is several, and belongs in several guidelines.')
@@ -377,7 +396,7 @@ def _check_draft(title: str, body: str) -> None:
 
 def t_add_guideline(ws, title: str, body: str) -> str:
     """PLAN: write down a convention as a new guideline."""
-    _check_draft(title, body)
+    _check_draft(ws, title, body)
     existing = [g for g in (getattr(ws.project, 'guidelines', None) or [])
                 if g.title.casefold() == str(title).strip().casefold()]
     note = (f' (this project already has a guideline titled "{title}"; say so in your reply)'
@@ -424,7 +443,7 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
                         f'change. Quote more around it until it is unique.')
     if find == replace:
         return 'That guideline already says this. Nothing planned.'
-    _check_draft(None, body.replace(find, replace))
+    _check_draft(ws, None, body.replace(find, replace))
     ws.add_ops([{'kind': 'revise_guideline', **_staged_against(g),
                  # The RESULT, worked out here rather than at approval, so the
                  # write is the same one a rewrite makes and the plan cannot
@@ -437,7 +456,7 @@ def t_revise_guideline(ws, title: str, find: str, replace: str) -> str:
 def t_rewrite_guideline(ws, title: str, body: str) -> str:
     """PLAN: replace a guideline's text wholesale."""
     g = _resolve_one(ws, title)
-    _check_draft(None, body)
+    _check_draft(ws, None, body)
     if str(body) == g.body:
         return 'That guideline already says this. Nothing planned.'
     ws.add_ops([{'kind': 'rewrite_guideline', **_staged_against(g),
