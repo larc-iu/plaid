@@ -6,8 +6,11 @@
 //  - pass resumeProjectId to run against a project created by a prior partial
 //    attempt instead of creating a duplicate (onProjectCreated reports a fresh
 //    creation so the caller can remember it);
-//  - substrate layers are adopted by shared role; span layers are reused by
-//    name+parent; vocabularies already linked are not re-created;
+//  - substrate layers are adopted by shared role, span layers are reused by
+//    name+parent, and vocabularies already linked are not re-created;
+//  - a text layer, token layer or vocabulary an interrupted run made but did
+//    not get to tag or link is finished rather than made again (see "ONE RULE
+//    FOR COMPLETE" below);
 //  - the initialized flag is only written when no step failed.
 //
 // Returns { projectId, resources, failures, alreadyInitialized }.
@@ -32,6 +35,25 @@ import {
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
+
+// The text layer's name is internal (it is matched by role, never surfaced),
+// so it is also what identifies one this setup made before it was tagged.
+const BASELINE_LAYER_NAME = 'Main Text';
+
+// ONE RULE FOR "COMPLETE". Everything setup makes takes two requests: a
+// create, and a write that says what the thing is (the role tag on a text or
+// token layer, the link on a vocabulary). A lost response between the two
+// leaves something no later look for the finished shape can see, and a resume
+// that only looks for the finished shape makes a second one and strands the
+// first. So every kind is looked for twice: first as finished, then as
+// half made, by the name and shape it carries before the second write.
+//
+// `unfinishedLayer` is that second look for a text or token layer. The
+// vocabulary's is at step 8, where the unlinked ones are read.
+const unfinishedLayer = (layers, name, matches = () => true) =>
+  (layers || []).find(
+    (l) => l.name === name && !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY] && matches(l),
+  ) || null;
 
 // The whole setup (project + layers + config + vocabularies) is ONE logical
 // operation in the audit log; each write keeps its own description underneath.
@@ -100,22 +122,30 @@ async function executeProjectSetupImpl({
   // another Plaid app may already have set up (matched by shared role).
   const existingTextLayers = existingProject?.textLayers || [];
   const adoptedBaseline = findBaselineTextLayer(existingTextLayers);
+  // Made by an interrupted run and not yet tagged. Nothing else makes a text
+  // layer of this name in this project, so it is finished rather than made a
+  // second time (which left the untagged one behind for good).
+  const halfMadeBaseline = adoptedBaseline
+    ? null
+    : unfinishedLayer(existingTextLayers, BASELINE_LAYER_NAME);
+  const baselineLayer = adoptedBaseline ?? halfMadeBaseline;
 
-  let textLayerId = adoptedBaseline?.id ?? null;
-  let needsBaselineTag = false;
-  if (textLayerId) {
+  let textLayerId = baselineLayer?.id ?? null;
+  let needsBaselineTag = !!halfMadeBaseline;
+  if (adoptedBaseline) {
     updateProgress(20, 'Using shared text layer...');
     // Adopted baseline already carries role=baseline — no re-stamp needed.
+  } else if (halfMadeBaseline) {
+    updateProgress(20, 'Using existing text layer...');
   } else if (isNewProject) {
     updateProgress(20, 'Creating text layer...');
-    const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
+    const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
     textLayerId = textLayer.id;
     resources.textLayer = textLayer;
     needsBaselineTag = true;
   } else if (setupData.layerSelection?.textLayerType === 'new') {
     updateProgress(20, 'Creating text layer...');
-    // Text layer name is internal (matched by role, never surfaced) — auto-named.
-    const textLayer = await client.textLayers.create(currentProjectId, 'Main Text');
+    const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
     textLayerId = textLayer.id;
     resources.textLayer = textLayer;
     needsBaselineTag = true;
@@ -138,20 +168,19 @@ async function executeProjectSetupImpl({
   let morphemeLayerId = null;
 
   if (textLayerId) {
-    const existingTokenLayers = adoptedBaseline?.tokenLayers || [];
+    const existingTokenLayers = baselineLayer?.tokenLayers || [];
 
-    // A layer an interrupted run left behind: made, but not yet told what it
-    // is (the create landed and its answer did not). Nothing else makes a
-    // layer of this name here, so it is adopted and tagged rather than made
-    // a second time.
+    // The same second look as the text layer's, with the shape a token layer
+    // also carries: two of one name under one parent are different layers
+    // unless their overlap mode and parent match too.
     const untagged = (name, overlapMode, parentId) =>
-      existingTokenLayers.find(
+      unfinishedLayer(
+        existingTokenLayers,
+        name,
         (l) =>
-          l.name === name &&
-          !l.config?.[PLAID_NAMESPACE]?.[ROLE_KEY] &&
           (l.overlapMode ?? null) === (overlapMode ?? null) &&
           (l.parentTokenLayer ?? l.parentTokenLayerId ?? null) === (parentId ?? null),
-      ) || null;
+      );
 
     const ensureTokenLayer = async (
       found,
@@ -319,12 +348,33 @@ async function executeProjectSetupImpl({
     );
   }
 
-  // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused.
+  // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused, and
+  // so is one an interrupted run made and did not get to link.
   if (setupData.vocabulary?.vocabularies?.length > 0) {
     updateProgress(70, 'Configuring vocabularies...');
     const enabledVocabs = setupData.vocabulary.vocabularies.filter((vocab) => vocab.enabled);
     const linkedVocabs = existingProject?.vocabs || [];
     const vocabulariesProcessed = [];
+
+    // The vocabulary's half-made shape: created, not linked. A project read
+    // names only the linked ones, so the rest are read once and only on a
+    // resume, where a half-made one can exist. Never fatal: without the list
+    // this is the behaviour it had before, which is to make a second one.
+    let unlinked = null;
+    const madeEarlier = async (name) => {
+      if (!existingProject) return null;
+      if (!unlinked) {
+        const linkedIds = new Set(linkedVocabs.map((v) => v.id));
+        let all = [];
+        try {
+          all = (await client.vocabLayers.list()) || [];
+        } catch (listError) {
+          console.warn('Could not list vocabularies while resuming setup:', listError);
+        }
+        unlinked = all.filter((v) => !linkedIds.has(v.id));
+      }
+      return unlinked.find((v) => v.name === name) ?? null;
+    };
 
     for (const vocab of enabledVocabs) {
       try {
@@ -334,18 +384,28 @@ async function executeProjectSetupImpl({
             vocabulariesProcessed.push(alreadyLinked);
             continue;
           }
-          updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
-          const newVocab = await client.vocabLayers.create(vocab.name);
+          let newVocab = await madeEarlier(vocab.name);
+          if (!newVocab) {
+            updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
+            newVocab = await client.vocabLayers.create(vocab.name);
+          }
           // A new vocabulary starts with the core fields plus Status and its
           // list, the same setup every creation path does (statusFieldSeed).
+          // Written only where it is missing, so finishing one an earlier run
+          // started does not overwrite what that run already put there.
+          const igt = newVocab.config?.[IGT_NAMESPACE] || {};
           const add = statusFieldSeed({ fieldsConfig: seedDefaultFields(), tagsets: {} });
-          await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
-          await client.vocabLayers.setConfig(
-            newVocab.id,
-            IGT_NAMESPACE,
-            'fields',
-            add.fieldsConfig,
-          );
+          if (!igt.tagsets) {
+            await client.vocabLayers.setConfig(newVocab.id, IGT_NAMESPACE, 'tagsets', add.tagsets);
+          }
+          if (!igt.fields) {
+            await client.vocabLayers.setConfig(
+              newVocab.id,
+              IGT_NAMESPACE,
+              'fields',
+              add.fieldsConfig,
+            );
+          }
           await client.projects.linkVocab(currentProjectId, newVocab.id);
           vocabulariesProcessed.push(newVocab);
         } else {
