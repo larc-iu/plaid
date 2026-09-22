@@ -6,7 +6,6 @@ import {
   ABSTRACT_CONCEPTS,
   ROLESETS_91,
   DISCOURSE_CONCEPTS,
-  ATTRIBUTES,
 } from '../../../domain/format/inventory.js';
 import { sensesFor, rolesetsStartingWith, argsOf, argSummary } from '../../../domain/lexicon.js';
 import {
