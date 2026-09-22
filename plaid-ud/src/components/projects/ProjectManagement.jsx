@@ -26,13 +26,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@ui/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@ui/components/ui/select';
 import { MAINTAINER_HINT, NO_ACCESS_HINT } from '@ui/domain/permissions.js';
 
 // What each level grants, said where the choice is made. The Invites screen
