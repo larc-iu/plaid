@@ -208,6 +208,27 @@ describe('a writer', () => {
     await unmount();
   });
 
+  // The server caps a body at 20,000 characters and answers a longer one with
+  // a 400. Saying so where it was typed keeps the text on screen with the
+  // count beside it, instead of after a round trip.
+  it('refuses a body over the cap before the save, and counts it', async () => {
+    const long = 'x'.repeat(20001);
+    const client = fakeClient({
+      get: vi.fn(async (id) => ({ ...INDEX.find((g) => g.id === id), body: long })),
+    });
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'button', 'Alpha').click());
+    await step(() => byText(container, 'button', 'Edit').click());
+
+    expect(container.textContent).toContain('20,001 of 20,000 characters');
+    await step(() => byText(container, 'button', 'Save').click());
+    expect(client.guidelines.update).not.toHaveBeenCalled();
+
+    // Still editing, with every word still there.
+    expect(container.querySelector('#guideline-title')?.value).toBe('Alpha');
+    await unmount();
+  });
+
   it('pins a guideline without restating the rest of it', async () => {
     const { container, client, step, unmount } = await mount({ canWrite: true });
     await step(() => byText(container, 'button', 'Alpha').click());
