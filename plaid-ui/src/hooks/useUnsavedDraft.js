@@ -134,6 +134,34 @@ const install = (ask) => {
   };
   state.arm = arm;
 
+  // react-router's `replace` writes a fresh `{usr, key, idx}` over the entry it
+  // is standing on, and that takes the mark off the extra entry with it: the
+  // entry stays in the stack, nothing can identify it to take it out again,
+  // and Back lands on an entry with this page's own URL and looks like it did
+  // nothing. So the mark goes back on.
+  //
+  // Where the replace also changed the URL (a `?sent=` deep link answering a
+  // citation) that entry has become a page of its own, and going back off it
+  // would take the reader somewhere they did not ask to go, so a fresh extra
+  // entry is stood up in front of it instead. The one the replace consumed
+  // stays behind, carrying the URL the screen had a moment ago.
+  //
+  // The wrapper lives as long as the blocker does. Only one blocker is ever
+  // installed, and teardown puts back exactly the function this took.
+  const replaceState = window.history.replaceState;
+  const replace = (data, url) => replaceState.call(window.history, data, '', url);
+  window.history.replaceState = (data, unused, url) => {
+    const wasOurs = window.history.state?.[STOP] === state.token;
+    const before = window.location.href;
+    replace(data, url);
+    if (!wasOurs) return;
+    if (window.location.href === before) {
+      replace({ ...window.history.state, [STOP]: state.token }, window.location.href);
+    } else {
+      arm();
+    }
+  };
+
   const onBeforeUnload = (e) => {
     if (!hasUnsavedDraft()) return;
     e.preventDefault();
@@ -206,6 +234,7 @@ const install = (ask) => {
   document.addEventListener('click', onClick, true);
 
   state.teardown = () => {
+    window.history.replaceState = replaceState;
     window.removeEventListener('beforeunload', onBeforeUnload);
     window.removeEventListener('popstate', onPopState);
     document.removeEventListener('click', onClick, true);

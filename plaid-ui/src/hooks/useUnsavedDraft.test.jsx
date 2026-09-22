@@ -103,7 +103,7 @@ beforeEach(() => {
   // A router-shaped entry for the page itself, so the extra entry has an `idx`
   // to carry forward, as it does under HashRouter.
   pageKey = `page${(pages += 1)}`;
-  window.history.pushState({ idx: 0, key: pageKey }, '');
+  window.history.pushState({ idx: 0, key: pageKey }, '', '/');
 });
 
 afterEach(async () => {
@@ -251,6 +251,43 @@ describe('an unsaved draft', () => {
     // Past the page's own entry, to whatever the reader came from. The
     // traversal's own popstate is this same exit landing, not a second Back.
     expect(window.history.state?.key).not.toBe(pageKey);
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+
+  // What react-router's `replace` writes over the entry it stands on: a fresh
+  // `{usr, key, idx}`, with no idea that the entry it is overwriting is the one
+  // standing in Back's way.
+  const routerReplace = (url) =>
+    window.history.replaceState(
+      { usr: null, key: 'fresh', idx: window.history.state?.idx },
+      '',
+      url ?? window.location.href,
+    );
+
+  it('keeps its entry when the app replaces the state it stands on', async () => {
+    await mount('The graph you have typed');
+    expect(idx()).toBe(1);
+    routerReplace();
+    // Still one entry, and still one this hook can take back out again.
+    expect(idx()).toBe(1);
+    await view.unmount();
+    view = null;
+    await flush();
+    await tick();
+    expect(idx()).toBe(0);
+  });
+
+  it('stands a fresh entry in front of a page a replace put where its own was', async () => {
+    await mount('The graph you have typed');
+    // A citation answered in place: same screen, new `?sent=`, replace.
+    routerReplace('/#/projects/p1/documents/d1?sent=3');
+    expect(idx()).toBe(2);
+    // Back is guarded again, on the entry the replace turned into a page.
+    await act(async () => {
+      window.history.back();
+    });
+    await flush();
+    await tick();
     expect(confirm).toHaveBeenCalledTimes(1);
   });
 
