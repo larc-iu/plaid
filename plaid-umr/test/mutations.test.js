@@ -143,6 +143,9 @@ test('a document read at an earlier time refuses every write', async () => {
   const landslide = byVar(doc, 's1l');
   assert.equal(await doc.setConcept(landslide.id, 'slide-01'), false);
   assert.equal(await doc.applyPenman(1, doc.penmanOf(1).replace('landslide-01', 'x')), false);
+  // Naming the document is a write like any other.
+  assert.equal(await doc.rename('Later'), false);
+  assert.equal(doc.name, 'doc');
   assert.deepEqual(calls, []);
   assert.match(errors[0], /earlier state of the document cannot be edited/);
 });
@@ -392,4 +395,36 @@ test('an audit label says what changed, and a relation by both its ends', async 
       'Delete :location from s1l to s1c',
     ],
   );
+});
+
+// The document as a thing rather than as a graph: what it is called and a copy
+// of it. Both are DocumentModel's, and the Details tab calls them on whatever
+// document it is handed.
+test('rename writes the new name, and shows it before the round trip', async () => {
+  const { doc, calls } = load();
+  assert.equal(await doc.rename('  Landslide report  '), true);
+  assert.equal(doc.name, 'Landslide report');
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ['operation', 'documents.update'],
+  );
+  assert.equal(calls[0].args[0], 'Rename document');
+  assert.deepEqual(calls[1].args, ['doc', 'Landslide report']);
+  // A blank name and the name it already has are both nothing to write.
+  assert.equal(await doc.rename('Landslide report'), false);
+  assert.equal(await doc.rename('   '), false);
+  assert.equal(calls.length, 2);
+});
+
+test('copyTo sends the copy and answers with the new document', async () => {
+  const { doc, calls } = load();
+  assert.deepEqual(await doc.copyTo('doc (copy)'), { id: 'new1', name: 'doc (copy)' });
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ['operation', 'documents.copy'],
+  );
+  assert.equal(calls[0].args[0], 'Copy document');
+  assert.deepEqual(calls[1].args, ['doc', 'doc (copy)']);
+  // The document copied from is untouched: the copy is a different document.
+  assert.equal(doc.name, 'doc');
 });

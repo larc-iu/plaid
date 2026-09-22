@@ -141,6 +141,48 @@ export class DocumentModel {
     );
   }
 
+  /**
+   * Rename the document. Optimistic like every other update: the new name is
+   * in the raw document before the round trip, so the breadcrumb and the tab
+   * strip follow immediately rather than after it. Returns false when the
+   * name is blank, unchanged, or the write failed.
+   *
+   * Here rather than in each app's document because what a document MEANS is
+   * the subclass's and what it is CALLED is not: the Details screen all three
+   * mount calls this one method.
+   */
+  async rename(name) {
+    const next = (name || '').trim();
+    if (!next || next === this.name) return false;
+    return this._withSaving('Failed to rename document', async () => {
+      this._applyRawPatch((raw) => {
+        raw.name = next;
+      });
+      await this._client.documents.update(this.id, next);
+    });
+  }
+
+  /**
+   * Copy the document into the same project. NOT optimistic and not a patch of
+   * this document: the copy is a different document with a server-minted id,
+   * and the caller navigates to it. Resolves to `{ id, name }` for the copy,
+   * or null when it failed (the screen has already been told).
+   *
+   * The server answers with the id alone, so the name in the result is the one
+   * asked for, which is the copy's name.
+   *
+   * Same project only, and comments do not travel, which is the server's
+   * ruling, not this method's choice.
+   */
+  async copyTo(name) {
+    const next = (name || '').trim() || `${this.name} (copy)`;
+    let created = null;
+    const ok = await this._withSaving('Failed to copy document', async () => {
+      created = await this._client.documents.copy(this.id, next);
+    });
+    return ok && created?.id ? { ...created, name: next } : null;
+  }
+
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same instance.

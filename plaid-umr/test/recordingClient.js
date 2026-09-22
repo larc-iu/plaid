@@ -50,7 +50,15 @@ export function recordingClient() {
       patchMetadata: async (relId, patch) => record('relations.patchMetadata', relId, patch),
       delete: async (relId) => record('relations.delete', relId),
     },
-    documents: { get: async () => null },
+    documents: {
+      get: async () => null,
+      update: async (documentId, name) => record('documents.update', documentId, name),
+      // The server answers a copy with the new document's id alone.
+      copy: async (documentId, name) => {
+        record('documents.copy', documentId, name);
+        return { id: id() };
+      },
+    },
     // Not a round trip of its own: it only labels the ones inside it.
     withOperation: async (label, fn) => {
       calls.push({ name: 'operation', args: [label] });
