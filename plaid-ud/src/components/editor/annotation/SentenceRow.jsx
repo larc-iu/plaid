@@ -6,7 +6,8 @@ import {
   computeArcLayout,
   computeLowerBand,
   buildIndexById,
-  TREE_OVERHANG,
+  bandTop,
+  svgWidth,
 } from '../../../utils/arcLayout.js';
 import { sentenceArcs, extraEdges } from '../../../domain/enhancedGraph.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
@@ -282,16 +283,15 @@ export const SentenceRow = React.memo(
           />
 
           {/* The enhanced graph's extra edges, under the words. Hung from the
-          measured bottom of the word row: `y` is a word's centre in the tree's
-          coordinates, which start TREE_OVERHANG above this block. */}
+          measured bottom of the word row, and as wide as the tree over it. */}
           {extras.length > 0 && tokenPositions.length > 0 && (
             <EnhancedArcs
               ref={lowerRef}
               relations={extras}
               tokenPositions={tokenPositions}
               layout={lowerBand}
-              top={tokenPositions[0].y - TREE_OVERHANG + (tokenPositions[0].height || 0) / 2}
-              minWidth={Math.max(...tokenPositions.map((p) => p.x)) + 50}
+              top={bandTop(tokenPositions[0])}
+              minWidth={svgWidth(tokenPositions)}
               onExitDown={focusGridCell}
               onExitUp={(tokenId) =>
                 treeRef.current?.focusRelationForToken(tokenId) || treeRef.current?.focusFirst()

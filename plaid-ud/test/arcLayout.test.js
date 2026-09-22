@@ -15,6 +15,8 @@ import {
   arcPath,
   arrowPoints,
   bandArc,
+  bandBaselineUnder,
+  bandTop,
   dragPreview,
   grabRect,
   labelXOf,
@@ -579,4 +581,16 @@ test('out of the ROOT bar and over no word, the preview hangs from the bar', () 
   // It never climbs above the bar it came out of.
   const up = dragPreview({ from: null, to: null, pointer: { x: 250, y: 0 }, frame: FRAME });
   assert.equal(up.d, `M 250 ${ROOT_LINE} L 250 ${ROOT_GRAB}`);
+});
+
+test('the band hangs from the same underside seen from either box', () => {
+  // The tree overlay starts TREE_OVERHANG above the sentence block, so the
+  // band's own top (a block coordinate) and the line an arc in the hand drops
+  // from (an overlay one) are the same place counted twice. When they drift,
+  // the preview of an enhanced edge leaves the band it lands in.
+  const w = { x: 100, y: 180, height: 24 };
+  assert.equal(bandTop(w) + TREE_OVERHANG + LOWER_BAND_TOP, bandBaselineUnder(w, 500));
+  // A word not measured yet has no underside: the band hangs from the bottom
+  // of the overlay rather than from nothing.
+  assert.equal(bandBaselineUnder(undefined, 500), 500);
 });

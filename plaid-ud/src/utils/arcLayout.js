@@ -377,6 +377,14 @@ export const bandArc = ({ fromX, toX, toRoot = false, height, baseline = LOWER_B
 export const bandBaselineUnder = (position, treeHeight) =>
   position ? position.y + (position.height || 0) / 2 + LOWER_BAND_TOP : treeHeight;
 
+// Where the band of enhanced edges hangs, in the sentence block's own
+// coordinates: the measured underside of the first word. The tree overlay's
+// coordinates start TREE_OVERHANG above that block, which is the whole of the
+// difference between this and `bandBaselineUnder` — the two answer the same
+// question from the two boxes, so `bandTop(w) + TREE_OVERHANG + LOWER_BAND_TOP`
+// is `bandBaselineUnder(w)`.
+export const bandTop = (position) => position.y + (position.height || 0) / 2 - TREE_OVERHANG;
+
 // Where a relation's label sits along the sentence, which is the order the
 // labels are walked in. `xOf` answers a relation endpoint's x.
 export const labelXOf = (relation, xOf) =>
