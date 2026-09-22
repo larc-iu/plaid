@@ -1,16 +1,18 @@
 """The PENMAN reader and writer, and the round trip through storage.
 
-The port has to agree with plaid-umr's own reader, because the assistant's
-diff compares its serialization against a text a person edited in the app. Two
-readings of one graph would show up as phantom changes on a plan card.
+The reader is ``plaid_client.workflows.umr.penman``, shared with the two
+bundled UMR services. It has to agree with plaid-umr's own reader, because the
+assistant's diff compares its serialization against a text a person edited in
+the app: two readings of one graph would show up as phantom changes on a plan
+card. ``test_penman_mirror.py`` holds it to the app's.
 """
 
 import pytest
 
 from umr_fixtures import SENTENCE_1_PENMAN, SENTENCE_2_PENMAN, umr_ws
 
-from plaid_agent.umr.penman import (next_variable, parse_attribute_line, parse_penman,
-                                    serialize_penman, tree_edges)
+from plaid_client.workflows.umr import (next_variable, parse_attribute_line, parse_penman,
+                                        serialize_penman, tree_edges)
 from plaid_agent.umr.project import penman_of
 
 

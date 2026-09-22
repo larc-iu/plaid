@@ -14,12 +14,15 @@ project whose layers carry the standard roles:
   words + morphemes and classify them under the provenance write contract,
   parse and align a proposer's interleaved ``GLOSS(seg)`` output, and write
   the analyses (morpheme chains + gloss spans) in budgeted batches.
+- ``plaid_client.workflows.umr`` — Uniform Meaning Representation: resolve the
+  UMR layers, read a document as sentence graphs, read and write PENMAN, and
+  write drafted graphs in three batched passes.
 
 Official service files (``igt_tokenize_punkt.py``, ``igt_transcribe_whisper.py``,
 ...) are single standalone scripts that import these frameworks — use them as
 templates for your own services.
 """
 
-from . import asr, igt, tokenization
+from . import asr, igt, tokenization, umr
 
-__all__ = ['asr', 'igt', 'tokenization']
+__all__ = ['asr', 'igt', 'tokenization', 'umr']

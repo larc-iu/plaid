@@ -53,14 +53,17 @@ def document_raw():
     which is what a "what is unfinished" read has to find."""
     return {
         'id': 'umr1', 'name': 'Story', 'version': 4, 'metadata': {'genre': 'narrative'},
+        # A document read carries each layer's config exactly as a project read
+        # does, which is how a reader tells the layers apart.
         'text_layers': [{
-            'id': TEXT_LAYER, 'name': 'Text', 'text': {'id': TEXT_ID, 'body': BODY},
+            'id': TEXT_LAYER, 'name': 'Text', 'config': {'plaid': {'role': 'baseline'}},
+            'text': {'id': TEXT_ID, 'body': BODY},
             'token_layers': [
-                {'id': SENT_LAYER, 'tokens': [
+                {'id': SENT_LAYER, 'config': {'plaid': {'role': 'sentence'}}, 'tokens': [
                     {'id': 'ms-1', 'begin': 0, 'end': 17, 'metadata': {'umr': {'snt': 1}}},
                     {'id': 'ms-2', 'begin': 17, 'end': 31, 'metadata': {'umr': {'snt': 2}}}],
                  'span_layers': []},
-                {'id': WORD_LAYER, 'tokens': [
+                {'id': WORD_LAYER, 'config': {'plaid': {'role': 'word'}}, 'tokens': [
                     {'id': 'mw-1', 'begin': 0, 'end': 3},
                     {'id': 'mw-2', 'begin': 4, 'end': 7},
                     {'id': 'mw-3', 'begin': 8, 'end': 14},
@@ -70,20 +73,21 @@ def document_raw():
                     {'id': 'mw-7', 'begin': 24, 'end': 28},
                     {'id': 'mw-8', 'begin': 29, 'end': 30}],
                  'span_layers': [
-                     {'id': GLOSS_LAYER, 'spans': [
+                     {'id': GLOSS_LAYER, 'config': {'igt': {'scope': 'word', 'lang': 'en'}},
+                      'spans': [
                          {'id': 'mg-1', 'value': 'the', 'tokens': ['mw-1']},
                          {'id': 'mg-2', 'value': 'dog', 'tokens': ['mw-2']},
                          {'id': 'mg-3', 'value': 'bark.PST', 'tokens': ['mw-3']},
                          {'id': 'mg-5', 'value': 'it', 'tokens': ['mw-5']},
                          {'id': 'mg-6', 'value': 'run.PST', 'tokens': ['mw-6']},
                          {'id': 'mg-7', 'value': 'away', 'tokens': ['mw-7']}]}]},
-                {'id': NODE_LAYER, 'tokens': [
+                {'id': NODE_LAYER, 'config': {'umr': {'nodes': True}}, 'tokens': [
                     {'id': 'mn-1', 'begin': 8, 'end': 14},   # barked
                     {'id': 'mn-2', 'begin': 4, 'end': 7},    # dog
                     {'id': 'mn-3', 'begin': 20, 'end': 23},  # ran
                     {'id': 'mn-4', 'begin': 17, 'end': 19}],  # It
                  'span_layers': [
-                     {'id': CONCEPT_LAYER, 'spans': [
+                     {'id': CONCEPT_LAYER, 'config': {'umr': {'concepts': True}}, 'spans': [
                          {'id': 'mc-b', 'value': 'bark-01', 'tokens': ['mn-1'],
                           'metadata': {'umr': {'var': 's1b', 'root': True, 'attrs': [
                               {'rel': ':aspect', 'value': 'performance', 'order': 1}]}}},
@@ -95,12 +99,14 @@ def document_raw():
                          {'id': 'mc-t', 'value': 'thing', 'tokens': ['mn-4'],
                           'metadata': {'umr': {'var': 's2t', 'attrs': []}}}],
                       'relation_layers': [
-                          {'id': RELATION_LAYER, 'relations': [
+                          {'id': RELATION_LAYER, 'config': {'umr': {'relations': True}},
+                           'relations': [
                               {'id': 'mr-1', 'source': 'mc-b', 'target': 'mc-d', 'value': ':ARG0',
                                'metadata': {'umr': {'order': 0}}},
                               {'id': 'mr-2', 'source': 'mc-r', 'target': 'mc-t', 'value': ':ARG0',
                                'metadata': {'umr': {'order': 0}}}]},
-                          {'id': DOC_LAYER, 'relations': [
+                          {'id': DOC_LAYER, 'config': {'umr': {'documentGraph': True}},
+                           'relations': [
                               {'id': 'md-1', 'source': 'mc-t', 'target': 'mc-d',
                                'value': ':same-entity',
                                'metadata': {'umr': {'group': 'coref'}}}]}]}]},

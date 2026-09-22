@@ -29,7 +29,8 @@ def _with_morphemes(tokens):
         'config': {'plaid': {'role': 'morpheme'}}, 'span_layers': [],
     })
     document = copy.deepcopy(document_raw())
-    document['text_layers'][0]['token_layers'].append({'id': MORPH_LAYER, 'tokens': tokens})
+    document['text_layers'][0]['token_layers'].append(
+        {'id': MORPH_LAYER, 'config': {'plaid': {'role': 'morpheme'}}, 'tokens': tokens})
     return umr_client(project=project, documents={'umr1': document})
 
 

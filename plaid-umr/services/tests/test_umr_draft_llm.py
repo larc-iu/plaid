@@ -424,7 +424,7 @@ def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
 # --- what the model gets wrong -----------------------------------------------
 
 @pytest.mark.parametrize('reply,fragment', [
-    ('I am sorry, I cannot help with that.', "root node's opening bracket"),
+    ('I am sorry, I cannot help with that.', 'opening bracket of the root node'),
     ('(v1 / bark-01 :ARG0 (v2 / dog)', 'without closing'),
     ('(v1 / )', 'Expected a concept'),
     ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', 'No such node is defined'),
@@ -587,39 +587,19 @@ def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes():
     assert service.client.kinds[-1] == 'unlock'
 
 
-# --- the pure readers --------------------------------------------------------
-
-def test_penman_reads_re_entrancy_as_an_edge_and_not_as_an_atom():
-    graph = umr.parse_penman('(s1w / want-01 :ARG0 (s1b / boy) :ARG1 (s1g / go-02 :ARG0 s1b))')
-    assert graph['errors'] == []
-    assert graph['root'] == 's1w'
-    assert [c['kind'] for c in graph['nodes']['s1g']['children']] == ['node']
-    assert graph['nodes']['s1g']['children'][0]['value'] == 's1b'
-
-
-def test_penman_keeps_a_quoted_string_whole():
-    graph = umr.parse_penman('(s1n / name :op1 "New York" :wiki "Q60")')
-    kinds = [(c['rel'], c['kind'], c['value']) for c in graph['nodes']['s1n']['children']]
-    assert kinds == [(':op1', 'string', '"New York"'), (':wiki', 'string', '"Q60"')]
+# --- reading the reply -------------------------------------------------------
+# The notation itself is `plaid_client.workflows.umr.penman`, tested there and
+# held to the app's reader by plaid-agent's mirror test. What is this service's
+# own is splitting a reply in two and reading the alignment block.
 
 
 def test_a_reply_wrapped_in_a_code_fence_is_still_read():
     graph_text, alignment = umr.split_reply(
         '```\n(v1 / bark-01)\n```\n# alignment:\nv1: 1-1\n')
-    assert umr.parse_penman(graph_text)['root'] == 'v1'
+    assert umr.parse_penman(graph_text).root == 'v1'
     assert umr.parse_alignment(alignment) == {'v1': [(1, 1)]}
 
 
 def test_an_alignment_line_that_cannot_be_read_leaves_its_node_unaligned():
     assert umr.parse_alignment('v1: 1-1\nv2: ???\nv3: 0-0\nv4 :2-3') == {
         'v1': [(1, 1)], 'v2': [], 'v3': [], 'v4': [(2, 3)]}
-
-
-def test_the_variable_rule_matches_the_apps_own():
-    taken = set()
-    assert umr.next_variable(1, 'bark-01', taken) == 's1b'
-    taken.add('s1b')
-    assert umr.next_variable(1, 'boy', taken) == 's1b2'
-    # A concept that does not start with a lowercase letter falls back to x,
-    # which is why the Chinese data is full of s1x35.
-    assert umr.next_variable(3, '生活-01', set()) == 's3x'

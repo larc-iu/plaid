@@ -26,25 +26,25 @@ elects the root and `null` removes a default.
     python services/umr_bootstrap_igt.py --url http://localhost:8085
     python services/umr_bootstrap_igt.py --url ... --abbreviations arapaho.json
 
+The storage model -- which layer is which, how a document reads back as
+sentence graphs, the variable rule, the three-pass write and what a run reports
+-- is `plaid_client.workflows.umr`, shared with the drafting service and with
+the assistant in plaid-agent. What is here is the gloss table and how a gloss
+becomes a concept.
+
 Requirements (on top of plaid-client): none.
 """
 
 import argparse
 import json
-import os
 import re
-import sys
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
 from plaid_client.service import check_unchanged
-
-# The draft service's readers and writer: the same layers, the same anchors,
-# the same three-pass write. One reading of the storage model for both.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from umr_draft_llm import (DraftProgress, UMR_NAMESPACE, build_draft_notice,  # noqa: E402
-                           gloss_layers_of, next_variable, person_made, read_sentences,
-                           resolve_layers, taken_variables)
+from plaid_client.workflows.umr import (DraftProgress, build_draft_notice, gloss_values,
+                                        next_variable, read_document, resolve_layers,
+                                        write_graphs)
 
 DEFAULT_SERVICE_ID = 'umr-bootstrap-igt'
 
@@ -184,10 +184,10 @@ def headwords_of(vocabularies) -> Dict[str, str]:
     return out
 
 
-def links_by_token(info) -> Dict[str, List[str]]:
+def links_by_token(layers) -> Dict[str, List[str]]:
     """Entry ids by the word or morpheme token linked to them."""
     out: Dict[str, List[str]] = {}
-    for layer in (info['word_layer'], info['morpheme_layer']):
+    for layer in (layers.word_layer, layers.morpheme_layer):
         for vocab in (layer or {}).get('vocabs') or []:
             for link in vocab.get('vocab_links') or []:
                 item = (link.get('vocab_item') or {}).get('id')
@@ -198,27 +198,27 @@ def links_by_token(info) -> Dict[str, List[str]]:
     return out
 
 
-def plan_sentence(sentence, gloss_layers, links, headwords, table, taken):
-    """One sentence's skeleton as writes: ``(pieces, nodes, edges)``, in the
-    draft service's shape, so the same writer takes it. Edges are always []."""
+def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken):
+    """One sentence's skeleton as writes: ``(pieces, nodes, edges)``, the shape
+    `write_graphs` takes. Edges are always []."""
     pieces = []
     nodes = []
     root_at = None
-    for word in sentence['words']:
-        if not _LETTER.search(word['text']) and not re.search(r'\d', word['text']):
+    for word in sentence.words:
+        if not _LETTER.search(word.text) and not re.search(r'\d', word.text):
             continue
-        morphemes = [m for m in sentence['morphemes']
-                     if word['begin'] <= m['begin'] and m['end'] <= word['end']]
-        tokens = [word['id']] + [m['id'] for m in morphemes]
+        morphemes = sentence.morphemes_of(word)
+        tokens = [word.id] + [m.id for m in morphemes]
         entry = next((e for t in tokens for e in links.get(t, []) if e in headwords), None)
         glosses = []
         for layer in gloss_layers:
-            if layer['scope'] == 'word':
-                value = layer['values'].get(word['id'])
+            of = values.get(layer.id) or {}
+            if layer.scope == 'word':
+                value = of.get(word.id)
                 if value:
                     glosses.append(value)
-            elif layer['scope'] == 'morpheme':
-                glosses.extend(v for v in (layer['values'].get(m['id']) for m in morphemes) if v)
+            elif layer.scope == 'morpheme':
+                glosses.extend(v for v in (of.get(m.id) for m in morphemes) if v)
         read = [read_gloss(g, table) for g in glosses]
         lexical = next((r['lexical'] for r in read if r['lexical']), None)
         concept = concept_from(headwords[entry]) if entry else concept_from(lexical or '')
@@ -231,11 +231,11 @@ def plan_sentence(sentence, gloss_layers, links, headwords, table, taken):
                 if rel not in seen:
                     seen.add(rel)
                     attrs.append({'rel': rel, 'value': value, 'order': len(attrs)})
-        var = next_variable(sentence['index'], concept, taken)
+        var = next_variable(sentence.index, concept, taken)
         taken.add(var)
         if root_at is None and any(r['eventive'] for r in read):
             root_at = len(nodes)
-        pieces.append((word['begin'], word['end']))
+        pieces.append((word.begin, word.end))
         nodes.append({'concept': concept, 'meta': {'var': var, 'attrs': attrs},
                       'piece_indexes': [len(pieces) - 1]})
     if nodes:
@@ -297,11 +297,11 @@ class UmrBootstrapService(BaseService):
 
         progress = DraftProgress(response_helper)
         progress.report(DraftProgress.READ, 0.0, 'Reading the document…')
-        document = self.client.documents.get(document_id, include_body=True)
-        read_version = document.get('version')
-        info = resolve_layers(document)
-        sentences = read_sentences(info)
-        gloss_layers = gloss_layers_of(info)
+        raw = self.client.documents.get(document_id, include_body=True)
+        read_version = raw.get('version')
+        layers = resolve_layers(raw)
+        document = read_document(raw, layers, gloss=gloss_values(raw, layers))
+        sentences = document.sentences
 
         # The project's vocabularies, for the headword a linked word takes.
         headwords: Dict[str, str] = {}
@@ -314,35 +314,35 @@ class UmrBootstrapService(BaseService):
                 headwords = headwords_of(vocabularies)
             except Exception as exc:
                 print(f'Could not read the vocabularies: {exc}')
-        links = links_by_token(info)
+        links = links_by_token(layers)
 
         in_scope = sentences
         if scope == 'sentence':
-            in_scope = [s for s in sentences if s['index'] == wanted]
+            in_scope = [s for s in sentences if s.index == wanted]
             if not in_scope:
                 raise ValueError(f'The document has no sentence {wanted}.')
         # With `overwrite` on, a sentence whose graph a person built or
         # confirmed is KEPT and counted (the machine-writer contract): the
         # tick redrafts machine graphs only, as igt's analyzers do.
-        with_graph = [s for s in in_scope if s['words'] and s['nodes']]
-        kept = len([s for s in with_graph if person_made(s)]) if overwrite else 0
+        with_graph = [s for s in in_scope if s.words and s.nodes]
+        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
         skipped = len(with_graph) if not overwrite else 0
         targets = [s for s in in_scope
-                   if s['words'] and (not s['nodes'] or (overwrite and not person_made(s)))]
+                   if s.words and (not s.nodes or (overwrite and not s.person_made))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        taken = taken_variables(info)
+        taken = document.taken_variables
         if overwrite:
             for s in targets:
-                for node in s['nodes']:
-                    taken.discard(node['var'])
+                for node in s.nodes:
+                    taken.discard(node.var)
         plans = []
         failures = []
         for sentence in targets:
-            pieces, nodes, edges = plan_sentence(sentence, gloss_layers, links, headwords,
-                                                 self.abbreviations, taken)
+            pieces, nodes, edges = plan_sentence(sentence, layers.gloss_layers, document.gloss,
+                                                 links, headwords, self.abbreviations, taken)
             if not nodes:
-                failures.append({'sentence': sentence['index'],
+                failures.append({'sentence': sentence.index,
                                  'reason': 'no word has a vocabulary link or a gloss'})
                 continue
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
@@ -362,24 +362,18 @@ class UmrBootstrapService(BaseService):
         frag = stamp_inferred(service_source(self.service_id), detail={'method': 'glosses'})
         progress.report(DraftProgress.WRITE, 0.0, f'Writing {drafted} skeletons…')
         doomed = [pid for plan in plans if overwrite
-                  for node in plan['sentence']['nodes'] for pid in node['piece_ids']]
+                  for node in plan['sentence'].nodes for pid in node.piece_ids]
         with response_helper.critical():
             with self.client.operation(f'UMR skeleton from glosses ({drafted} sentences)'):
                 with self.client.documents.locked(document_id):
                     check_unchanged(self.client, document_id, read_version)
-                    self._write(info, plans, doomed, frag, progress)
+                    write_graphs(self.client, layers, plans, doomed, frag, progress)
             notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': drafted,
                                       'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
-
-    # The draft service's writer, unchanged: anchors, then nodes, then edges.
-    def _write(self, info, plans, doomed, frag, progress) -> None:
-        from umr_draft_llm import UmrDraftService
-        UmrDraftService._write(self, info, plans, doomed, frag, progress)
-
 
 def main():
     UmrBootstrapService().run()

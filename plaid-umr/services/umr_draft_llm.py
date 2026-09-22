@@ -46,17 +46,12 @@ from typing import Any, Dict, List, Optional
 from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
 from plaid_client.service import check_unchanged, requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
-from plaid_client.workflows.umr import (UMR_NAMESPACE, DraftProgress, anchor_pieces,
-                                        build_draft_notice, gloss_values, next_variable,
-                                        parse_penman, project_language, read_document,
-                                        resolve_layers, write_graphs)
+from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, build_draft_notice,
+                                        gloss_values, next_variable, parse_penman,
+                                        project_language, read_document, resolve_layers,
+                                        write_graphs)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
-
-#: The app's private config namespace. Substrate layers are found by their
-#: cross-app `config.plaid.role`; the layers UMR owns carry a flag under this
-#: one (src/utils/umrLayerUtils.js).
-UMR_NAMESPACE = 'umr'
 
 SUMMARY = """\
 **Draft with a language model** writes a first UMR graph for each sentence of
@@ -195,10 +190,9 @@ def plan_sentence(graph, alignment, sentence, taken):
     carries the `umr` half of its metadata; an edge names its endpoints by node
     index. Attributes and edges share ONE order space, the child's position in
     the PENMAN node, so the canvas and the exporter read them back in the order
-    the model wrote them.
+    the model wrote them. The shape `write_graphs` takes.
     """
-    nodes_by_var = graph['nodes']
-    order_of_var = list(nodes_by_var)
+    order_of_var = list(graph.nodes)
     index_of_var = {}
     variables = {}
     pieces = []
@@ -206,41 +200,39 @@ def plan_sentence(graph, alignment, sentence, taken):
     edges = []
 
     for var in order_of_var:
-        variables[var] = next_variable(sentence['index'], nodes_by_var[var]['concept'], taken)
+        variables[var] = next_variable(sentence.index, graph.nodes[var].concept, taken)
         taken.add(variables[var])
 
     for var in order_of_var:
-        node = nodes_by_var[var]
+        node = graph.nodes[var]
         first_piece = len(pieces)
-        unaligned_extent = (sentence['begin'], sentence['end'])
-        extents = anchor_pieces(alignment.get(var), sentence['words'], unaligned_extent)
+        unaligned_extent = (sentence.begin, sentence.end)
+        extents = anchor_pieces(alignment.get(var), sentence.words, unaligned_extent)
         pieces.extend(extents)
-        attrs = []
-        for order, child in enumerate(node['children']):
-            if child['kind'] != 'node':
-                attrs.append({'rel': child['rel'], 'value': child['value'], 'order': order})
+        attrs = [{'rel': child.rel, 'value': child.value, 'order': order}
+                 for order, child in enumerate(node.children) if child.kind != 'node']
         meta = {'var': variables[var], 'attrs': attrs}
-        if var == graph['root']:
+        if var == graph.root:
             meta['root'] = True
         # A node aligned to no word records its sentence, as the app does: the
         # record is what says so, and the anchor covers the whole sentence, so
         # an edit to the text around it resizes the anchor rather than taking
         # the node with it (plaid-umr src/domain/umrReconcile.js).
-        if list(extents) == [unaligned_extent] and sentence.get('token_id'):
-            meta['sentence'] = sentence['token_id']
+        if list(extents) == [unaligned_extent]:
+            meta['sentence'] = sentence.id
         index_of_var[var] = len(nodes)
-        nodes.append({'concept': node['concept'], 'meta': meta,
+        nodes.append({'concept': node.concept, 'meta': meta,
                       'piece_indexes': list(range(first_piece, len(pieces)))})
 
     for var in order_of_var:
-        for order, child in enumerate(nodes_by_var[var]['children']):
-            if child['kind'] != 'node':
+        for order, child in enumerate(graph.nodes[var].children):
+            if child.kind != 'node':
                 continue
-            target = index_of_var.get(child['value'])
+            target = index_of_var.get(child.value)
             if target is None:
                 continue
             edges.append({'source': index_of_var[var], 'target': target,
-                          'role': child['rel'], 'order': order})
+                          'role': child.rel, 'order': order})
     return pieces, nodes, edges
 
 
@@ -248,48 +240,47 @@ def validate_graph(graph) -> Optional[str]:
     """What is wrong with a parsed graph, in one line for the requester, or
     None. Everything here would otherwise land as an unreadable node the
     annotator has to find and delete."""
-    if graph['errors']:
-        return graph['errors'][0]
-    if not graph['root'] or graph['root'] not in graph['nodes']:
+    if graph.errors:
+        return graph.errors[0].message
+    if not graph.root or graph.root not in graph.nodes:
         return 'The reply carries no graph.'
-    for var, node in graph['nodes'].items():
-        if not node['concept']:
+    for var, node in graph.nodes.items():
+        if not node.concept:
             return f"The node {var} has no concept."
-        for child in node['children']:
-            if not str(child['rel']).startswith(':'):
-                return f"The relation {child['rel']} on {var} does not start with a colon."
-            if child['kind'] == 'node' and child['value'] not in graph['nodes']:
-                return f"{var} {child['rel']} names {child['value']}, which no node defines."
+        for child in node.children:
+            if not str(child.rel).startswith(':'):
+                return f"The relation {child.rel} on {var} does not start with a colon."
+            if child.kind == 'node' and child.value not in graph.nodes:
+                return f"{var} {child.rel} names {child.value}, which no node defines."
     return None
 
 
 # --- the prompt -----------------------------------------------------------------
 
-def gloss_lines_for(sentence, layers):
+def gloss_lines_for(sentence, gloss_layers, values):
     """The project's own annotation of this sentence, as `(name, text)` lines.
 
     Deliberately flat: each layer is named and its values are listed against
     the word numbers, rather than reproducing the `.umr` token block. The model
     needs to know what the words mean, not what an ILG line looks like."""
     lines = []
-    for layer in layers:
-        if layer['scope'] == 'sentence':
-            value = layer['values'].get(sentence['token_id'])
+    for layer in gloss_layers:
+        of = values.get(layer.id) or {}
+        if layer.scope == 'sentence':
+            value = of.get(sentence.id)
             if value:
-                lines.append((layer['name'], value))
+                lines.append((layer.name, value))
             continue
-        if layer['scope'] == 'word':
-            items = [layer['values'].get(w['id']) for w in sentence['words']]
+        if layer.scope == 'word':
+            items = [of.get(w.id) for w in sentence.words]
         else:
             items = []
-            for w in sentence['words']:
-                parts = [layer['values'].get(m['id']) or '_'
-                         for m in sentence['morphemes']
-                         if w['begin'] <= m['begin'] and m['end'] <= w['end']]
+            for w in sentence.words:
+                parts = [of.get(m.id) or '_' for m in sentence.morphemes_of(w)]
                 items.append('-'.join(parts) if any(p != '_' for p in parts) else None)
         if not any(items):
             continue
-        lines.append((layer['name'],
+        lines.append((layer.name,
                       '  '.join(f'{i + 1} {item}' for i, item in enumerate(items) if item)))
     return lines
 
@@ -298,12 +289,12 @@ def build_user_prompt(sentence, gloss_lines, language) -> str:
     parts = []
     if language:
         parts.append(f'Language: {language}.')
-    parts.append(f'Sentence {sentence["index"]}: {sentence["text"]}')
-    numbered = '\n'.join(f'  {w["index"]} {w["text"]}' for w in sentence['words'])
+    parts.append(f'Sentence {sentence.index}: {sentence.text}')
+    numbered = '\n'.join(f'  {w.index} {w.text}' for w in sentence.words)
     parts.append(f'Words (numbered):\n{numbered}')
     for name, text in gloss_lines:
         parts.append(f'{name}: {text}')
-    parts.append(f'Write the UMR graph for sentence {sentence["index"]}, then its alignment.')
+    parts.append(f'Write the UMR graph for sentence {sentence.index}, then its alignment.')
     return '\n\n'.join(parts)
 
 
@@ -366,11 +357,11 @@ class UmrDraftService(BaseService):
 
         progress = DraftProgress(response_helper)
         progress.report(DraftProgress.READ, 0.0, 'Reading the document…')
-        document = self.client.documents.get(document_id, include_body=True)
-        read_version = document.get('version')
-        info = resolve_layers(document)
-        sentences = read_sentences(info)
-        gloss_layers = gloss_layers_of(info)
+        raw = self.client.documents.get(document_id, include_body=True)
+        read_version = raw.get('version')
+        layers = resolve_layers(raw)
+        document = read_document(raw, layers, gloss=gloss_values(raw, layers))
+        sentences = document.sentences
 
         # The project's language, the one thing the prompt needs that the
         # document does not carry. Context only: a project that has not set one
@@ -379,25 +370,23 @@ class UmrDraftService(BaseService):
         if project_id:
             progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
             try:
-                project = self.client.projects.get(project_id)
-                language = str(((project.get('config') or {}).get(UMR_NAMESPACE) or {})
-                               .get('language') or '').strip()
+                language = project_language(self.client.projects.get(project_id))
             except Exception as exc:
                 print(f'Could not read the project language: {exc}')
 
         in_scope = sentences
         if scope == 'sentence':
-            in_scope = [s for s in sentences if s['index'] == wanted]
+            in_scope = [s for s in sentences if s.index == wanted]
             if not in_scope:
                 raise ValueError(f'The document has no sentence {wanted}.')
         # With `overwrite` on, a sentence whose graph a person built or
         # confirmed is KEPT and counted (the machine-writer contract): the
         # tick redrafts machine graphs only, as igt's analyzers do.
-        with_graph = [s for s in in_scope if s['words'] and s['nodes']]
-        kept = len([s for s in with_graph if person_made(s)]) if overwrite else 0
+        with_graph = [s for s in in_scope if s.words and s.nodes]
+        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
         skipped = len(with_graph) if not overwrite else 0
         targets = [s for s in in_scope
-                   if s['words'] and (not s['nodes'] or (overwrite and not person_made(s)))]
+                   if s.words and (not s.nodes or (overwrite and not s.person_made))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         if not targets:
@@ -413,13 +402,13 @@ class UmrDraftService(BaseService):
         # named; the rest of the document is still drafted, because a run that
         # threw away twenty good graphs over one bad reply would be worse than
         # useless on a long document.
-        taken = taken_variables(info)
+        taken = document.taken_variables
         if overwrite:
             # The graphs about to be replaced free their variables, so a redraft
             # of sentence 1 writes s1b again rather than s1b2.
             for s in targets:
-                for node in s['nodes']:
-                    taken.discard(node['var'])
+                for node in s.nodes:
+                    taken.discard(node.var)
         stamp_detail = {**self.model.describe()}
         if language:
             stamp_detail['language'] = language
@@ -429,30 +418,31 @@ class UmrDraftService(BaseService):
         failures = []
         total = len(targets)
         for n, sentence in enumerate(targets):
-            message = f'Drafting sentence {sentence["index"]} ({n + 1} of {total})…'
+            message = f'Drafting sentence {sentence.index} ({n + 1} of {total})…'
             progress.report(DraftProgress.DRAFT, n / total, message)
-            prompt = build_user_prompt(sentence, gloss_lines_for(sentence, gloss_layers), language)
+            gloss_lines = gloss_lines_for(sentence, layers.gloss_layers, document.gloss)
+            prompt = build_user_prompt(sentence, gloss_lines, language)
             try:
                 with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
                     reply = self.model.complete(SYSTEM_PROMPT, prompt)
             except Exception as exc:
                 # The provider's own error text is the operator's: it can carry
                 # the endpoint, the request body and the key that was refused.
-                print(f'Model call failed for sentence {sentence["index"]}: {exc}')
-                failures.append({'sentence': sentence['index'],
+                print(f'Model call failed for sentence {sentence.index}: {exc}')
+                failures.append({'sentence': sentence.index,
                                  'reason': requester_message(exc, secrets=self.REQUEST_SECRETS)})
                 continue
             if reply.truncated:
                 # Half a graph is not a graph: a cut-off reply is a failure, not
                 # a partial result to write.
-                failures.append({'sentence': sentence['index'],
+                failures.append({'sentence': sentence.index,
                                  'reason': 'the reply was cut off at the token limit'})
                 continue
             graph_text, alignment_text = split_reply(reply.text)
             graph = parse_penman(graph_text)
             problem = validate_graph(graph)
             if problem:
-                failures.append({'sentence': sentence['index'], 'reason': problem})
+                failures.append({'sentence': sentence.index, 'reason': problem})
                 continue
             pieces, nodes, edges = plan_sentence(graph, parse_alignment(alignment_text),
                                                  sentence, taken)
@@ -476,7 +466,7 @@ class UmrDraftService(BaseService):
         # write cannot throw a finished run away and call it stopped.
         progress.report(DraftProgress.WRITE, 0.0, f'Writing {drafted} graphs…')
         doomed = [pid for plan in plans if overwrite
-                  for node in plan['sentence']['nodes'] for pid in node['piece_ids']]
+                  for node in plan['sentence'].nodes for pid in node.piece_ids]
         with response_helper.critical():
             with self.client.operation(f'UMR draft ({drafted} sentences)'):
                 with self.client.documents.locked(document_id):
@@ -485,7 +475,7 @@ class UmrDraftService(BaseService):
                     # at and the graphs they were allowed to replace are both
                     # out of date, so nothing is written.
                     check_unchanged(self.client, document_id, read_version)
-                    self._write(info, plans, doomed, frag, progress)
+                    write_graphs(self.client, layers, plans, doomed, frag, progress)
 
             notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])
@@ -493,64 +483,6 @@ class UmrDraftService(BaseService):
                                       'sentences': len(sentences), 'drafted': drafted,
                                       'skipped': skipped, 'kept': kept, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
-
-    def _write(self, info, plans, doomed, frag, progress) -> None:
-        """Anchors, then nodes, then edges: three passes, because an op cannot
-        reference an id produced earlier in the same batch. The same order the
-        `.umr` importer writes in (src/domain/umrImport.js)."""
-        if doomed:
-            progress.report(DraftProgress.WRITE, 0.1,
-                            f'Clearing {len(doomed)} anchors…')
-            # The anchors cascade: their concept spans go, and with them the
-            # edges and document-level triples that hung off those spans.
-            self.client.tokens.bulk_delete(doomed)
-
-        piece_ops = []
-        for plan in plans:
-            plan['piece_base'] = len(piece_ops)
-            piece_ops.extend({'token_layer_id': info['node_layer']['id'],
-                              'text': info['text_id'], 'begin': begin, 'end': end}
-                             for begin, end in plan['pieces'])
-        progress.report(DraftProgress.WRITE, 0.3, f'Writing {len(piece_ops)} anchors…')
-        piece_ids = self.client.tokens.bulk_create(piece_ops)['ids'] if piece_ops else []
-        if len(piece_ids) != len(piece_ops):
-            raise RuntimeError(f'The server returned {len(piece_ids)} anchor ids for '
-                               f'{len(piece_ops)} anchors.')
-
-        span_ops = []
-        for plan in plans:
-            plan['node_base'] = len(span_ops)
-            base = plan['piece_base']
-            for node in plan['nodes']:
-                span_ops.append({
-                    'span_layer_id': info['concept_layer']['id'],
-                    'tokens': [piece_ids[base + i] for i in node['piece_indexes']],
-                    'value': node['concept'],
-                    # The provenance stamp is flat and the app's own half sits
-                    # beside it under its namespace, exactly as the importer
-                    # and the canvas write it.
-                    'metadata': {**frag, UMR_NAMESPACE: node['meta']},
-                })
-        progress.report(DraftProgress.WRITE, 0.6, f'Writing {len(span_ops)} nodes…')
-        span_ids = self.client.spans.bulk_create(span_ops)['ids'] if span_ops else []
-        if len(span_ids) != len(span_ops):
-            raise RuntimeError(f'The server returned {len(span_ids)} node ids for '
-                               f'{len(span_ops)} nodes.')
-
-        edge_ops = []
-        for plan in plans:
-            base = plan['node_base']
-            for edge in plan['edges']:
-                edge_ops.append({
-                    'relation_layer_id': info['relation_layer']['id'],
-                    'source': span_ids[base + edge['source']],
-                    'target': span_ids[base + edge['target']],
-                    'value': edge['role'],
-                    'metadata': {**frag, UMR_NAMESPACE: {'order': edge['order']}},
-                })
-        if edge_ops:
-            progress.report(DraftProgress.WRITE, 0.9, f'Writing {len(edge_ops)} relations…')
-            self.client.relations.bulk_create(edge_ops)
 
 
 def main():

@@ -15,12 +15,13 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import clamp_limit, read_int, sentence_number, whole
+from plaid_client.workflows.umr import parse_attribute_line
+
 from ..core.limits import (MAX_SENTENCES_PER_READ, OVERVIEW_DOCS, READ_LIMITS, RENDER_BUDGET,
                            SAMPLE_LINES)
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
-from .penman import parse_attribute_line
 from .plan import (GRAPH_KINDS, KIND, attrs_scope_targets, docs_of_op, graphs_of_op,
                    sentence_graph_key)
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject,

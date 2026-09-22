@@ -18,11 +18,10 @@ storage model to the `.umr` format the app exports. That renderer is a port of
 `src/domain/sentenceGraph.js` (`buildDocumentGraph`, `toUmrSentences`) and
 `src/domain/format/umrFile.js` plus `penman.js` (`serializeUmrFile`,
 `serializePenman`), and `services/tests/test_umr_ancast.py` holds it to the
-app's own output over a released corpus, line for line. Both files are read the
-way `umr_draft_llm.py` reads a document (`resolve_layers`, `read_sentences`),
-extended to the edges, the attributes and the document-level triples. The two
-services do not import each other: everything in `services/*.py` ships as a
-standalone script.
+app's own output over a released corpus, line for line. Both files are read through
+`plaid_client.workflows.umr`, the one reading of the storage model that the
+drafting services and the assistant share; what is here is the `.umr` writer
+and the scoring.
 
 One thing the renderer leaves out on purpose: the gloss lines (`Word Gloss`,
 `Morphemes` and the rest of the project's interlinear mapping). AnCast reads
@@ -45,15 +44,13 @@ import math
 import re
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, Param, ROLES, TASKS, find_by_role
+from plaid_client import BaseService, Param, TASKS
 from plaid_client.service import check_unchanged
+from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, group_of, penman_nodes,
+                                        read_document, resolve_layers, serialize_penman,
+                                        tree_edges)
 
 DEFAULT_SERVICE_ID = 'umr-ancast'
-
-#: The app's private config namespace. Substrate layers are found by their
-#: cross-app `config.plaid.role`, and the layers UMR owns carry a flag under
-#: this one (src/utils/umrLayerUtils.js).
-UMR_NAMESPACE = 'umr'
 
 #: The report's shape, so a reader can refuse one it does not understand. 2:
 #: a match is an object carrying both concepts and whether it was a leftover.
@@ -78,384 +75,48 @@ A sentence AnCast cannot read is reported as unscored rather than dropped.
 """
 
 
-# --- reading the document -------------------------------------------------------
-# The layer rules are src/utils/umrLayerUtils.js: the substrate by its cross-app
-# `config.plaid.role`, everything UMR owns by its `config.umr` flag.
-
-def _flag(layer, flag) -> bool:
-    return ((layer or {}).get('config') or {}).get(UMR_NAMESPACE, {}).get(flag) is True
-
-
-def _find_flagged(layers, flag):
-    for layer in layers or []:
-        if _flag(layer, flag):
-            return layer
-    return None
-
-
-def resolve_layers(document):
-    """The layers this service reads, by the same rules as
-    `src/utils/umrLayerUtils.js`. Raises rather than guessing, so a mistagged
-    project fails loudly."""
-    text_layers = document.get('text_layers') or []
-    text_layer = find_by_role(text_layers, ROLES.BASELINE) or (text_layers[0] if text_layers else None)
-    if not text_layer:
-        raise ValueError('The project has no baseline text layer.')
-    token_layers = text_layer.get('token_layers') or []
-    node_layer = _find_flagged(token_layers, 'nodes')
-    concept_layer = _find_flagged((node_layer or {}).get('span_layers'), 'concepts')
-    relation_layers = (concept_layer or {}).get('relation_layers')
-    info = {
-        'text_layer': text_layer,
-        'text_id': (text_layer.get('text') or {}).get('id'),
-        'body': (text_layer.get('text') or {}).get('body') or '',
-        'sentence_layer': find_by_role(token_layers, ROLES.SENTENCE),
-        'word_layer': find_by_role(token_layers, ROLES.WORD),
-        'node_layer': node_layer,
-        'concept_layer': concept_layer,
-        'relation_layer': _find_flagged(relation_layers, 'relations'),
-        'document_graph_layer': _find_flagged(relation_layers, 'documentGraph'),
-    }
-    missing = [name for name in ('sentence_layer', 'word_layer', 'node_layer', 'concept_layer',
-                                 'relation_layer', 'document_graph_layer') if not info[name]]
-    if missing:
-        raise ValueError('The document is not set up for UMR: it is missing the '
-                         + ', '.join(name.replace('_', ' ') for name in missing) + '.')
-    return info
-
-
-def _cp_slice(body, begin, end):
-    """The body between two CODE POINT offsets. Plaid's offsets are code points
-    everywhere and so are Python strings, so this is a plain slice, named so
-    the rule is visible."""
-    return body[begin:end]
-
-
-def _umr_meta(entity):
-    return ((entity or {}).get('metadata') or {}).get(UMR_NAMESPACE) or {}
-
-
-def _order_of(meta):
-    """`metadata.umr.order ?? 0`: absent is 0, and a stored 0 is 0."""
-    order = meta.get('order')
-    return 0 if order is None else order
-
-
-#: The roles a graph may cycle through (src/domain/sentenceGraph.js). An edge
-#: with one of these into a node does not make it a child, so the root of
-#: `(s / say-01 :ARG1 (b / believe-01 :quote s))` is still say-01.
-CYCLE_ROLES = frozenset((':quote', ':modal-predicate'))
-
-
-def group_of(rel: str) -> str:
-    """Which document-level group a relation belongs to, for a relation written
-    by a path that did not record it. `:contains` is in two groups, which is why
-    the import records the group rather than leaving it to this."""
-    name = str(rel or '')
-    if name in (':same-entity', ':same-event', ':subset-of', ':subset'):
-        return 'coref'
-    if name in (':before', ':after', ':contained', ':overlap', ':depends-on', ':contains'):
-        return 'temporal'
-    return 'modal'
-
-
-def alignment_of(node, words):
-    """The 1-based inclusive word ranges a node's pieces cover. A zero-width
-    piece covers nothing, so an unaligned node gives []."""
-    ranges = []
-    for piece in node['pieces']:
-        covered = [w for w in words
-                   if piece['begin'] < w['end'] and w['begin'] < piece['end']]
-        if not covered:
-            continue
-        ranges.append((covered[0]['index'], covered[-1]['index']))
-    return ranges
-
-
-def roots_of(sentence, nodes_by_id):
-    """The sentence's roots (src/domain/sentenceGraph.js `rootsOf`). A node
-    marked as the root is one whatever reaches it, since a released graph may
-    cycle back into its root through more than `:quote`. Otherwise: nodes no
-    in-sentence edge reaches, cycle roles aside. A graph with neither still
-    needs a root to write from, so the node that reaches the most others stands
-    in, ties to the first in anchor order."""
-    index = sentence['index']
-
-    def in_sentence(node_id):
-        node = nodes_by_id.get(node_id)
-        return node is not None and node['sentence'] == index
-
-    marked = [n for n in sentence['nodes'] if n['root']]
-    derived = [n for n in sentence['nodes']
-               if not n['root'] and not any(in_sentence(e['source']) and e['role'] not in CYCLE_ROLES
-                                            for e in n['in'])]
-    roots = marked + derived
-    if roots or not sentence['nodes']:
-        return roots
-
-    def reach(start):
-        seen = {start['id']}
-        stack = [start]
-        while stack:
-            node = stack.pop()
-            for edge in node['out']:
-                if in_sentence(edge['target']) and edge['target'] not in seen:
-                    seen.add(edge['target'])
-                    stack.append(nodes_by_id[edge['target']])
-        return len(seen)
-
-    best, best_reach = sentence['nodes'][0], -1
-    for node in sentence['nodes']:
-        size = reach(node)
-        if size > best_reach:
-            best, best_reach = node, size
-    return [best]
-
-
-def _node_order(node):
-    """Nodes read by anchor position, then by variable, so the alignment block
-    is stable across reloads. The app compares variables with `localeCompare`.
-    A variable is `s`, digits, lowercase letters and digits, on which a plain
-    code-point comparison agrees with it."""
-    return (node['pieces'][0]['begin'] if node['pieces'] else 0, str(node['var']))
-
-
-def read_document_graph(info):
-    """The document as sentences with their words, nodes, edges and
-    document-level triples: a port of `buildDocumentGraph`
-    (src/domain/sentenceGraph.js), which is the one reading the canvas and the
-    exporter share.
-
-    This is `umr_draft_llm.py`'s `read_sentences` carried further. That one
-    needs the words and whether a sentence has any nodes at all. This one
-    needs every node's concept, variable, attributes, root mark and anchor,
-    every edge's role and order, and every document-level triple.
-    """
-    body = info['body']
-    sentence_tokens = sorted(info['sentence_layer'].get('tokens') or [],
-                             key=lambda t: (t['begin'], t['end']))
-    sentences = []
-    for i, token in enumerate(sentence_tokens):
-        meta = _umr_meta(token)
-        sentences.append({
-            'index': i + 1, 'token_id': token['id'],
-            'begin': token['begin'], 'end': token['end'],
-            'text': meta.get('text') or _cp_slice(body, token['begin'], token['end']).rstrip('\n'),
-            'snt': meta.get('snt'),
-            'meta': list(meta.get('meta') or []),
-            'raw_graph': meta.get('rawGraph'),
-            'raw_alignment': meta.get('rawAlignment'),
-            'words': [], 'nodes': [], 'edges': [], 'triples': [],
-        })
-
-    def sentence_of(begin):
-        # Half-open containment, the way `beginsIn` reads it: a zero-width piece
-        # at a sentence's begin belongs to that sentence.
-        for s in sentences:
-            if s['begin'] <= begin < s['end']:
-                return s
-        return None
-
-    for token in sorted(info['word_layer'].get('tokens') or [],
-                        key=lambda t: (t['begin'], t['end'])):
-        s = sentence_of(token['begin'])
-        if not s:
-            continue
-        s['words'].append({'id': token['id'], 'index': len(s['words']) + 1,
-                           'begin': token['begin'], 'end': token['end'],
-                           'text': _cp_slice(body, token['begin'], token['end'])})
-
-    node_tokens = {t['id']: t for t in (info['node_layer'].get('tokens') or [])}
-    nodes_by_id: Dict[str, Any] = {}
-    constants = []
-    for span in info['concept_layer'].get('spans') or []:
-        meta = _umr_meta(span)
-        pieces = sorted((node_tokens[i] for i in (span.get('tokens') or []) if i in node_tokens),
-                        key=lambda t: (t['begin'], t['end']))
-        attrs = sorted((meta.get('attrs') or []),
-                       key=lambda a: 0 if a.get('order') is None else a['order'])
-        node = {'id': span['id'], 'var': meta.get('var'), 'concept': span.get('value') or '',
-                'attrs': attrs, 'constant': meta.get('constant') is True,
-                'root': meta.get('root') is True, 'pieces': pieces,
-                # Aligned to words, which is what the absence of a sentence
-                # record says. A node aligned to nothing stands over its whole
-                # sentence, so reading the anchor would align it to every word
-                # (see plaid-umr src/domain/sentenceGraph.js).
-                'aligned': not meta.get('sentence') and any(p['end'] > p['begin'] for p in pieces),
-                'sentence': None, 'out': [], 'in': [], 'alignment': []}
-        nodes_by_id[span['id']] = node
-        if node['constant']:
-            # A constant (`author`, `root`, `document-creation-time`) belongs to
-            # no sentence: its anchor is a zero-width token at offset 0, which
-            # would otherwise fall inside the first sentence.
-            constants.append(node)
-            continue
-        s = sentence_of(pieces[0]['begin']) if pieces else None
-        if s:
-            node['sentence'] = s['index']
-            s['nodes'].append(node)
-
-    for rel in info['relation_layer'].get('relations') or []:
-        source = nodes_by_id.get(rel.get('source'))
-        target = nodes_by_id.get(rel.get('target'))
-        if not source or not target:
-            continue
-        edge = {'id': rel['id'], 'source': rel['source'], 'target': rel['target'],
-                'role': rel.get('value') or '', 'order': _order_of(_umr_meta(rel))}
-        source['out'].append(edge)
-        target['in'].append(edge)
-        if source['sentence'] is not None:
-            sentences[source['sentence'] - 1]['edges'].append(edge)
-
-    # Document-level triples go to the LATER of the two sentences involved: the
-    # one whose block the file writes them in. A triple between two constants
-    # belongs to the sentences its metadata lists.
-    for rel in info['document_graph_layer'].get('relations') or []:
-        source = nodes_by_id.get(rel.get('source'))
-        target = nodes_by_id.get(rel.get('target'))
-        if not source or not target:
-            continue
-        meta = _umr_meta(rel)
-        triple = {'id': rel['id'], 'source': rel['source'], 'target': rel['target'],
-                  'rel': rel.get('value') or '',
-                  'group': meta.get('group') or group_of(rel.get('value') or '')}
-        later = max(source['sentence'] or 0, target['sentence'] or 0)
-        if later > 0:
-            sentences[later - 1]['triples'].append(triple)
-        elif source['constant'] and target['constant']:
-            for n in meta.get('sentences') or []:
-                if 1 <= n <= len(sentences):
-                    sentences[n - 1]['triples'].append(triple)
-
-    for s in sentences:
-        for node in s['nodes']:
-            node['alignment'] = alignment_of(node, s['words']) if node['aligned'] else []
-        s['nodes'].sort(key=_node_order)
-        s['edges'].sort(key=lambda e: e['order'])
-        s['roots'] = roots_of(s, nodes_by_id)
-
-    return {'sentences': sentences, 'constants': constants, 'nodes_by_id': nodes_by_id}
-
-
 # --- from graphs to the sentences the writer takes -------------------------------
 # A port of `toUmrSentences` (src/domain/sentenceGraph.js).
 
-def _walk(graph, visit):
-    """Depth-first pre-order over child order, descending into a node the first
-    time an edge reaches it. Iterative so a pathological graph cannot blow the
-    stack."""
-    root, nodes = graph.get('root'), graph.get('nodes') or {}
-    if not root or root not in nodes:
-        return
-    seen = {root}
-    stack = [[root, 0]]
-    while stack:
-        frame = stack[-1]
-        node = nodes.get(frame[0])
-        if node is None or frame[1] >= len(node['children']):
-            stack.pop()
-            continue
-        index = frame[1]
-        frame[1] += 1
-        child = node['children'][index]
-        if child['kind'] != 'node':
-            continue
-        already = child['value'] in seen
-        visit(frame[0], index, child, already)
-        if not already and child['value'] in nodes:
-            seen.add(child['value'])
-            stack.append([child['value'], 0])
-
-
-def tree_edges(graph):
-    """The edges at which each node is written out, by first visit: (parent
-    variable, child index) pairs."""
-    first: Dict[str, Any] = {}
-
-    def visit(parent, index, child, already):
-        if already or child['value'] in first:
-            return
-        first[child['value']] = (parent, index)
-
-    _walk(graph, visit)
-    return set(first.values())
-
-
-def _expansion_sites(graph):
-    """Where each node is written out when the graph carries `inline` markers:
-    the marked edge wins, so a graph that came from a file is written back at
-    the same sites."""
-    marked: Dict[str, Any] = {}
-    first: Dict[str, Any] = {}
-    any_marked = [False]
-
-    def visit(parent, index, child, already):
-        if child.get('inline') is True:
-            any_marked[0] = True
-            marked.setdefault(child['value'], (parent, index))
-        if not already:
-            first.setdefault(child['value'], (parent, index))
-
-    _walk(graph, visit)
-    if not any_marked[0]:
-        return set(first.values())
-    return {marked.get(target, key) for target, key in first.items()}
-
-
-def to_umr_sentences(graph):
-    """The sentence objects `serialize_umr_file` takes.
+def to_umr_sentences(document):
+    """The sentence objects `serialize_umr_file` takes, from a document read by
+    `plaid_client.workflows.umr` (a port of `toUmrSentences` in
+    src/domain/sentenceGraph.js).
 
     Child order under a node follows the stored `order` across attributes and
     edges, and a re-entrant node is expanded at the first edge reached from the
     root. Nodes the root does not reach (a second fragment) are not written: the
     file has one graph per sentence.
     """
-    sentences, nodes_by_id = graph['sentences'], graph['nodes_by_id']
     out = []
-    for s in sentences:
-        nodes: Dict[str, Any] = {}
-        for node in s['nodes']:
-            children = []
-            for attr in node['attrs']:
-                value = str(attr.get('value', ''))
-                children.append({'rel': attr.get('rel'), 'value': value,
-                                 'kind': 'string' if value.startswith('"') else 'atom',
-                                 'order': 0 if attr.get('order') is None else attr['order']})
-            for edge in node['out']:
-                target = nodes_by_id.get(edge['target'])
-                if target is None or target['sentence'] != s['index']:
-                    continue
-                children.append({'rel': edge['role'], 'kind': 'node', 'value': target['var'],
-                                 'inline': False, 'order': edge['order']})
-            children.sort(key=lambda c: c['order'])
-            nodes[node['var']] = {'var': node['var'], 'concept': node['concept'],
-                                  'children': children}
-        root = s['roots'][0]['var'] if s['roots'] else None
+    for s in document.sentences:
+        root = s.roots[0].var if s.roots else None
         penman = None
         if root:
-            penman = {'root': root, 'nodes': nodes, 'errors': []}
+            nodes = penman_nodes(document, s)
+            penman = Graph(root=root, nodes=nodes)
             for parent, index in tree_edges(penman):
-                nodes[parent]['children'][index]['inline'] = True
+                nodes[parent].children[index].inline = True
 
-        alignment = {node['var']: node['alignment'] for node in s['nodes']}
+        alignment = {node.var: node.alignment for node in s.nodes}
 
-        groups: Dict[str, List[Any]] = {'temporal': [], 'modal': [], 'coref': []}
-        for triple in s['triples']:
-            bucket = groups.get(triple['group'])
+        groups = {'temporal': [], 'modal': [], 'coref': []}
+        for triple in s.triples:
+            bucket = groups.get(triple.group)
             if bucket is None:
                 # A group nothing recognizes: the relation decides, rather than
                 # the triple going missing from the file.
-                bucket = groups[group_of(triple['rel'])]
-            bucket.append((_name_of(nodes_by_id, triple['source']), triple['rel'],
-                           _name_of(nodes_by_id, triple['target'])))
+                bucket = groups[group_of(triple.rel)]
+            bucket.append((_name_of(document, triple.source), triple.rel,
+                           _name_of(document, triple.target)))
         has_triples = any(groups[name] for name in groups)
 
-        words = [w['text'] for w in s['words']]
+        words = [w.text for w in s.words]
         out.append({
-            'index': s['index'],
-            'snt': s['snt'] or s['index'],
-            'sentence_text': s['text'],
-            'meta': s['meta'],
+            'index': s.index,
+            'snt': s.snt or s.index,
+            'sentence_text': s.text,
+            'meta': s.meta,
             # Index and Words only. AnCast reads none of the gloss lines, and
             # the project's interlinear mapping lives in the app.
             'ilg': [
@@ -464,17 +125,17 @@ def to_umr_sentences(graph):
             ],
             'words': words,
             'graph': penman,
-            'raw_graph': s['raw_graph'],
-            'raw_alignment': s['raw_alignment'],
+            'raw_graph': s.raw_graph,
+            'raw_alignment': s.raw_alignment,
             'alignment': alignment,
-            'doc_graph': ({'var': f's{s["index"]}s0', **groups} if has_triples else None),
+            'doc_graph': ({'var': f's{s.index}s0', **groups} if has_triples else None),
         })
     return out
 
 
-def _name_of(nodes_by_id, node_id):
-    node = nodes_by_id.get(node_id)
-    return node['var'] if node else None
+def _name_of(document, node_id):
+    node = document.nodes_by_id.get(node_id)
+    return node.var if node else None
 
 
 # --- the .umr writer -------------------------------------------------------------
@@ -488,42 +149,6 @@ SEPARATOR = '#' * 80
 _MODERN_HEADERS = {'index': 'Index', 'words': 'Words'}
 
 
-def serialize_penman(graph, indent: int = 4) -> str:
-    """Write a graph back as PENMAN, in the canonical shape the UFAL spec
-    shows: the root on the first line, every child on its own line, four spaces
-    per level, and closing brackets accumulating at the end of the last line of
-    a subtree."""
-    root = (graph or {}).get('root')
-    nodes = (graph or {}).get('nodes') or {}
-    if not root or root not in nodes:
-        return ''
-    sites = _expansion_sites(graph)
-    written = {root}
-
-    def pad(depth):
-        return ' ' * (indent * depth)
-
-    def lines(variable, depth):
-        node = nodes[variable]
-        out = [f'{pad(depth)}({variable} / {node["concept"]}']
-        for index, child in enumerate(node['children']):
-            child_pad = pad(depth + 1)
-            expand_here = (child['kind'] == 'node' and child['value'] in nodes
-                           and child['value'] not in written
-                           and (variable, index) in sites)
-            if expand_here:
-                written.add(child['value'])
-                sub = lines(child['value'], depth + 1)
-                sub[0] = f'{child_pad}{child["rel"]} {sub[0][len(child_pad):]}'
-                out.extend(sub)
-            else:
-                out.append(f'{child_pad}{child["rel"]} {child["value"]}')
-        out[-1] += ')'
-        return out
-
-    return '\n'.join(lines(root, 0))
-
-
 def _format_spans(spans) -> str:
     if not spans:
         return '0-0'
@@ -534,9 +159,9 @@ def _serialize_alignment(sentence) -> List[str]:
     alignment = sentence.get('alignment') or {}
     lines = []
     written = set()
-    nodes = (sentence.get('graph') or {}).get('nodes')
-    if nodes:
-        for variable in nodes:
+    graph = sentence.get('graph')
+    if graph and graph.nodes:
+        for variable in graph.nodes:
             written.add(variable)
             lines.append(f'{variable}: {_format_spans(alignment.get(variable))}')
     for variable, spans in alignment.items():
@@ -617,23 +242,23 @@ def serialize_umr_file(sentences) -> str:
     return '\n'.join(out) + '\n' if out else ''
 
 
-def read_umr(document):
+def read_umr(raw):
     """One document, read once: its graph and its `.umr` text. The handler needs
     both and a document is read the once, because reading a long one is not
     free."""
-    graph = read_document_graph(resolve_layers(document))
-    return graph, serialize_umr_file(to_umr_sentences(graph))
+    document = read_document(raw, resolve_layers(raw))
+    return document, serialize_umr_file(to_umr_sentences(document))
 
 
-def render_umr(document) -> str:
+def render_umr(raw) -> str:
     """One document, from Plaid's storage model to `.umr` text."""
-    return read_umr(document)[1]
+    return read_umr(raw)[1]
 
 
-def words_of(graph) -> List[List[str]]:
+def words_of(document) -> List[List[str]]:
     """Each sentence's words, for the check that two documents are over one
     text."""
-    return [[w['text'] for w in s['words']] for s in graph['sentences']]
+    return [[w.text for w in s.words] for s in document.sentences]
 
 
 # --- driving ancast --------------------------------------------------------------

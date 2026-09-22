@@ -1,8 +1,8 @@
-"""PENMAN notation, ported from plaid-umr's ``src/domain/format/penman.js``.
+"""PENMAN notation, the grammar the UMR validator scans.
 
-A sentence graph is written the way the UMR validator scans it, not the way a
-generic PENMAN library would: a node is ``(variable / concept)`` followed by
-any number of ``:relation value`` children, where a value is a child node, a
+A sentence graph is written the way ``umrtools/validate.py`` reads it, not the
+way a generic PENMAN library would: a node is ``(variable / concept)`` followed
+by any number of ``:relation value`` children, where a value is a child node, a
 bare variable (re-entrancy), a quoted string or an atom.
 
 Whether a bare token is a node reference or an atom cannot be decided locally,
@@ -11,28 +11,27 @@ because a reference may point forward. So the text is scanned once for
 A token shaped like a variable that was never defined is still read as a
 reference, so the caller sees the dangling edge rather than a silent atom.
 
-This is a PORT, not an adaptation: the app writes a graph back to the same
-sites it read it from, and the assistant's diff compares its own serialization
-against the app's. Two readings of one text would show up as phantom changes
-on a plan card.
+This is the Python side of ``plaid-umr/src/domain/format/penman.js``, and it is
+a PORT rather than an adaptation: a writer writes a graph back to the sites it
+read it from, and a diff compares its own serialization against the app's. Two
+readings of one text would show up as phantom changes.
+``plaid-agent/tests/test_penman_mirror.py`` holds the two sides together.
 """
 
+import re
+import unicodedata
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import regex as re
-
 # Concepts, atoms and variables all stop at whitespace, brackets, a colon or
-# the start of a comment.
+# the start of a comment (validate.py:390).
 TOKEN = re.compile(r'[^\s():#]+')
 
-# The UMR variable convention, UFAL's own. The letter run may be non-ASCII, so
-# the Unicode property escape is load-bearing.
-VARIABLE = re.compile(r'^s[0-9]+\p{Ll}+[0-9]*$')
-
-# The same, unanchored at the end: released files write ``(s6t/ thing)`` with
-# no space, and the validator reads the variable off the front just like this.
-VARIABLE_PREFIX = re.compile(r's[0-9]+\p{Ll}+[0-9]*')
+#: The front of the UMR variable convention, UFAL's own (validate.py:142):
+#: ``s`` then digits. The letter run after it is matched by hand, because the
+#: spec's ``\p{Ll}`` is a Unicode general category and Python's ``re`` has no
+#: property escapes. See ``variable_length``.
+_VARIABLE_HEAD = re.compile(r's[0-9]+')
 
 RELATION = re.compile(r':[-A-Za-z0-9]+')
 STRING = re.compile(r'"(?:\\.|[^"\\])*"')
@@ -42,9 +41,48 @@ ATOM = 'atom'
 STRING_KIND = 'string'
 
 
+def is_lower_letter(ch: str) -> bool:
+    """Unicode general category Ll, which is what the spec's ``\\p{Ll}`` and the
+    app's own regex mean. ``str.islower`` is wider (it takes the Other_Lowercase
+    characters too), so the category is read directly."""
+    return len(ch) == 1 and unicodedata.category(ch) == 'Ll'
+
+
+def variable_length(text: str, pos: int = 0) -> int:
+    """How many characters at ``pos`` form a UMR variable, or 0.
+
+    ``s`` + digits + at least one lowercase letter + optional digits, which is
+    UFAL's ``^s[0-9]+\\p{Ll}+[0-9]*$``. Released files write ``(s6t/ thing)``
+    with no space before the slash, and the validator reads the variable off the
+    front just like this, so the match is a PREFIX and the caller decides
+    whether the whole token had to be one.
+    """
+    source = text or ''
+    m = _VARIABLE_HEAD.match(source, pos)
+    if not m:
+        return 0
+    i = m.end()
+    letters = 0
+    while i < len(source) and is_lower_letter(source[i]):
+        i += 1
+        letters += 1
+    if not letters:
+        return 0
+    while i < len(source) and '0' <= source[i] <= '9':
+        i += 1
+    return i - pos
+
+
 def is_variable(token: str) -> bool:
-    """Whether a token has the shape of a UMR variable."""
-    return bool(VARIABLE.match(token or ''))
+    """Whether a token is, in whole, a UMR variable."""
+    text = token or ''
+    return bool(text) and variable_length(text) == len(text)
+
+
+def variable_from(token: str) -> str:
+    """The variable at the front of a token, or the token. ``s6t/`` is ``s6t``."""
+    length = variable_length(token or '')
+    return (token or '')[:length] if length else token
 
 
 @dataclass
@@ -101,13 +139,8 @@ def _mask_literals(text: str) -> str:
     return ''.join(out)
 
 
-def _variable_from(token: str) -> str:
-    m = VARIABLE_PREFIX.match(token or '')
-    return m.group(0) if m else token
-
-
 def _defined_variables(masked: str) -> Set[str]:
-    return {_variable_from(m.group(1)) for m in re.finditer(r'\(\s*([^\s():#]+)\s*/', masked)}
+    return {variable_from(m.group(1)) for m in re.finditer(r'\(\s*([^\s():#]+)\s*/', masked)}
 
 
 class _Scanner:
@@ -153,6 +186,14 @@ class _Scanner:
             return None
         self.advance(len(m.group(0)))
         return m.group(0)
+
+    def take_variable(self) -> Optional[str]:
+        length = variable_length(self.text, self.i)
+        if not length:
+            return None
+        found = self.text[self.i:self.i + length]
+        self.advance(length)
+        return found
 
     def rest(self) -> str:
         end = self.text.find('\n', self.i)
@@ -203,7 +244,7 @@ def parse_penman(text: str) -> Graph:
         open_at = sc.here()
         sc.advance(1)  # the '('
         sc.skip()
-        variable = sc.take(VARIABLE_PREFIX) or sc.take(TOKEN)
+        variable = sc.take_variable() or sc.take(TOKEN)
         if variable is None:
             fail(f"Expected a node variable id, found '{sc.rest()}'.", sc.here())
             return None
@@ -357,11 +398,14 @@ def serialize_penman(graph: Optional[Graph], indent: int = 4) -> str:
 
 
 def next_variable(sentence_index: int, concept: str, taken) -> str:
-    """The next free variable for a concept in a sentence, by the standard
-    rule: ``s`` + the sentence number + the concept's first letter (``x`` when
-    that is not a lowercase letter) + a counter from 2 on."""
+    """The next free variable for a concept in a sentence, by the standard rule
+    (``sentenceGraph.js`` ``nextVariable``): ``s`` + the sentence number + the
+    concept's first letter (``x`` where that is not a lowercase letter) + a
+    counter from 2 on. A variable is unique per DOCUMENT, not per sentence,
+    because the document graph cites an earlier sentence's nodes by name, so
+    ``taken`` is the document's."""
     first = (str(concept or '')[:1]).lower()
-    letter = first if re.match(r'\p{Ll}', first or '') else 'x'
+    letter = first if is_lower_letter(first) else 'x'
     base = f's{sentence_index}{letter}'
     if base not in taken:
         return base

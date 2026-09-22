@@ -15,7 +15,8 @@ approves names each of them.
 
 from typing import Any, Dict, List, Tuple
 
-from .penman import Graph, parse_penman
+from plaid_client.workflows.umr import Graph, parse_penman
+
 from .project import GNode, Sentence, UmrDoc, UmrProject, penman_of, reachable_from_root
 
 
