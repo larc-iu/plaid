@@ -1,6 +1,7 @@
 # plaid-ui
 
-The screens and primitives `plaid-igt`, `plaid-ud` and `plaid-dict` share.
+The screens and primitives `plaid-igt`, `plaid-ud`, `plaid-umr` and `plaid-dict`
+share.
 
 Not published. Each app aliases `@ui` to `plaid-ui/src` in its Vite and Vitest
 config, the way they all alias `@larc-iu/plaid-client` to `plaid-client-js/src`,
@@ -14,7 +15,7 @@ import { usePagedList } from '@ui/hooks/usePagedList.js';
 
 ## Why it exists
 
-Three apps, one substrate. A screen that is the same in two of them: the data
+Four apps, one substrate. A screen that is the same in two of them: the data
 table, the list chrome, a confirm dialog, later the service-run dialog, the
 comments browser, the activity panel, the assistant tab, was going to be
 written twice and fixed once. The run lifecycle alone took two bug hunts to get
@@ -96,8 +97,8 @@ annotation editor are allowed to look different, while the same violet must mean
 ## Tests
 
 The package's tests run under **plaid-igt's** vitest, which includes this
-directory: the tests need a React and a happy-dom, and running them under all
-three apps would run them three times to learn the same thing.
+directory: the tests need a React and a happy-dom, and running them under every
+app would run them four times to learn the same thing.
 
 `components/shared/data-table.usage.test.js` is the exception that reads outward:
 it scans every app's `src/` for `<DataTable>` call sites, because a call site in
