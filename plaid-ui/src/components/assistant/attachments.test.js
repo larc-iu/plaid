@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   MAX_BYTES,
+  NotUtf8Error,
   chunk,
   convOfFileKey,
   lineCount,
@@ -21,6 +22,18 @@ import {
 // The server's own count: clojure.data.json escapes non-ASCII as \uXXXX and
 // "/" as \/. This is the same arithmetic plaid_agent/core/conversation.py
 // `_bytes` does, written out the long way so the two can be checked against it.
+// A picked file, as the browser hands one over: bytes, not a string. The
+// decode is the reader's, which is the point of the test below.
+const fileOf = (name, text) => ({
+  name,
+  arrayBuffer: async () => new TextEncoder().encode(text).buffer,
+});
+
+const bytesFile = (name, bytes) => ({
+  name,
+  arrayBuffer: async () => new Uint8Array(bytes).buffer,
+});
+
 const serverBytes = (s) => {
   const json = JSON.stringify(s)
     .replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
@@ -98,6 +111,25 @@ describe('what may be attached', () => {
     expect(refuse({ name: 'corpus.csv', size: MAX_BYTES + 1 })).toContain('import screen');
   });
 
+  // Excel on Windows writes cp1252 unless "CSV UTF-8" is picked. Decoded
+  // leniently, 0xE9 is U+FFFD and nothing on screen says so.
+  it('refuses a file that is not UTF-8, by name', async () => {
+    // "café\n" in cp1252: the 0xE9 is not a valid UTF-8 sequence.
+    const file = bytesFile('wordlist.csv', [0x63, 0x61, 0x66, 0xe9, 0x0a]);
+    await expect(readAttachment(file)).rejects.toBeInstanceOf(NotUtf8Error);
+    await expect(readAttachment(file)).rejects.toThrow(/wordlist\.csv is not UTF-8 text/);
+  });
+
+  it('reads a UTF-8 file with a BOM as its text, without the mark', async () => {
+    const withBom = {
+      name: 'w.csv',
+      arrayBuffer: async () =>
+        new Uint8Array([0xef, 0xbb, 0xbf, 0x63, 0x61, 0x66, 0xc3, 0xa9]).buffer,
+    };
+    const pending = await readAttachment(withBom);
+    expect(pending.text).toBe('café');
+  });
+
   it('counts the lines a person would, and not a last empty one', () => {
     expect(lineCount('a\nb\n')).toBe(2);
     expect(lineCount('a\nb')).toBe(2);
@@ -108,7 +140,7 @@ describe('what may be attached', () => {
 describe('storing a file', () => {
   it('writes every part under the conversation, and the message carries only the reference', async () => {
     const { records, store: s } = store();
-    const file = { name: 'wordlist.csv', text: async () => 'хьун,вода\n'.repeat(400) };
+    const file = fileOf('wordlist.csv', 'хьун,вода\n'.repeat(400));
     const pending = await readAttachment(file, 1500);
     expect(pending.parts.length).toBeGreaterThan(1);
     await uploadAttachments(s, 'c1', [pending]);

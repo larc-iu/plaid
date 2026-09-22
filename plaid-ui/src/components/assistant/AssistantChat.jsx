@@ -501,8 +501,13 @@ export const AssistantChat = ({
           continue;
         }
         // One at a time, in the order they were picked: the note the service
-        // writes lists them in this order too.
-        read.push(await readAttachment(file, budget));
+        // writes lists them in this order too. A file that cannot be read is
+        // said so by name and the rest are still attached.
+        try {
+          read.push(await readAttachment(file, budget));
+        } catch (e) {
+          notifyError(humanizeError(e, `${file.name} could not be read.`));
+        }
       }
       if (read.length) setAttachments((prev) => [...prev, ...read]);
     } catch (e) {

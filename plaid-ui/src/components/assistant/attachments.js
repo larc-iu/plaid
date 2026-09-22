@@ -176,11 +176,35 @@ const newId = () =>
     ? crypto.randomUUID()
     : `f${Date.now()}${Math.random().toString(16).slice(2)}`;
 
+// A file the browser cannot read as UTF-8. Excel on Windows writes CSV as
+// cp1252 unless "CSV UTF-8" is picked, and `file.text()` decodes leniently:
+// every accented letter comes through as U+FFFD, the chip says nothing, the
+// note the service writes shows the damage as if it were the file's contents,
+// and the model then plans writes over forms that are not the ones in the
+// file. So the decode is strict and the file is refused by name.
+export class NotUtf8Error extends Error {
+  constructor(name) {
+    super(`${name} is not UTF-8 text. Save it as UTF-8 and attach it again.`);
+    this.name = 'NotUtf8Error';
+  }
+}
+
+// `fatal: true` throws on the first byte that is not UTF-8 rather than
+// standing a replacement character in for it. A UTF-8 BOM is still stripped
+// (`ignoreBOM` is false by default), which is what the service does too.
+const decodeUtf8 = (buffer, name) => {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    throw new NotUtf8Error(name || 'That file');
+  }
+};
+
 // One picked file, read and measured, waiting for the message it belongs to.
 // It holds the TEXT, which is what makes it pending: nothing of it is stored
 // until the message is sent.
 export const readAttachment = async (file, budget = VALUE_BYTES - HEADROOM) => {
-  const text = await file.text();
+  const text = decodeUtf8(await file.arrayBuffer(), file.name);
   return {
     id: newId(),
     name: file.name,

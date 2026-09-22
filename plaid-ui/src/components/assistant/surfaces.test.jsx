@@ -300,7 +300,11 @@ describe('AssistantChat with no way to track the conversation', () => {
 // out pointing at a file that is not there.
 describe('AssistantChat attachments', () => {
   const TEXT = 'word,translation\nnis,milk\n';
-  const FILE = { name: 'wordlist.csv', size: TEXT.length, text: async () => TEXT };
+  const FILE = {
+    name: 'wordlist.csv',
+    size: TEXT.length,
+    arrayBuffer: async () => new TextEncoder().encode(TEXT).buffer,
+  };
 
   const drop = (m, files) =>
     m.step(() => {
@@ -374,7 +378,7 @@ describe('AssistantChat attachments', () => {
     const client = fakeClient();
     const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
     await flush(m);
-    await drop(m, [{ name: 'photo.png', size: 10, text: async () => '' }]);
+    await drop(m, [{ name: 'photo.png', size: 10, arrayBuffer: async () => new ArrayBuffer(0) }]);
     await flush(m);
     expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('It reads text'));
     expect(m.container.querySelector('[aria-label="Remove photo.png"]')).toBeNull();
