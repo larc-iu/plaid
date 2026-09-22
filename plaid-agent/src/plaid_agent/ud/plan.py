@@ -544,7 +544,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
         # explicit change already covers, so reaching here means the plan was
         # built some way neither covers. Refusing the whole plan says so,
         # where dropping the change left a card promising it.
-        if gone and ok.written_to(KIND, op) & gone:
+        if ok.doomed_writes(KIND, op, gone):
             raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
         # What an op writes to is the registry's own declaration, the same one
         # the workspace supersedes by while the plan is built. Written here as

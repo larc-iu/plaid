@@ -279,16 +279,27 @@ KIND = ok.registry([
     # The project's annotation manual. Shared with the other apps: a guideline
     # has the same shape whatever the project annotates.
     *_guidelines.kinds(OpKind),
+    # What a node delete really removes: the concept span, the anchor tokens
+    # the write names, and the cascade the server runs over them (every edge
+    # and every document-level triple on the node). All of it is declared, so
+    # a plan that also touches one of those relations is refused as it is
+    # built instead of failing the batch the user approved.
     OpKind('delete_node', ('removed node', 'removed nodes'), required=('token_ids',),
            apply=_apply_delete_node,
            target=lambda op: ('node', op.get('span_id')),
-           deletes=lambda op: [op.get('span_id')],
+           deletes=lambda op: [op.get('span_id')] + list(op.get('relation_ids') or []),
            deletes_tokens=lambda op: list(op.get('token_ids') or []),
-           compact_each=('span_id', 'token_ids', 'var', 'ref', 'label'),
+           compact_each=('span_id', 'token_ids', 'relation_ids', 'var', 'ref', 'label'),
            compact_label=_group_label),
+    # `relation_id` is named as something the op NEEDS as well as something it
+    # removes: a single relation delete of an id already gone is a 404 that
+    # takes its whole batch with it, so a plan holding this and a node delete
+    # that cascades the same relation is refused in either order (the pair
+    # staged happily before, and one of the two orders failed at approval).
     OpKind('delete_edge', ('removed relation', 'removed relations'), required=('relation_id',),
            apply=_apply_delete_relation,
            target=lambda op: ('edge-gone', op.get('relation_id')),
+           token_keys=('relation_id',),
            deletes=lambda op: [op['relation_id']],
            compact_each=('relation_id', 'source', 'target', 'ref', 'label'),
            compact_label=_group_label),
@@ -296,6 +307,7 @@ KIND = ok.registry([
                              'removed document-level relations'),
            required=('relation_id',), apply=_apply_delete_relation,
            target=lambda op: ('triple-gone', op.get('relation_id')),
+           token_keys=('relation_id',),
            deletes=lambda op: [op['relation_id']]),
     OpKind('set_concept', _CONCEPT, required=('span_id',), apply=_apply_set_concept,
            target=lambda op: ('concept', op.get('span_id')), token_keys=('span_id',),
@@ -397,7 +409,10 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     gone = ok.removed_ids(KIND, ops, only_certain=True)
     if gone:
         for op in ops:
-            if ok.written_to(KIND, op) & gone:
+            # An op never clashes with its own deletion: a delete of a
+            # relation names it so that a SECOND delete of the same one is
+            # refused (ok.doomed_writes).
+            if ok.doomed_writes(KIND, op, gone):
                 raise ValueError(f'{op.get("label") or op.get("kind")}: this plan deletes what '
                                  f'it writes to')
 

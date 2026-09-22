@@ -183,6 +183,17 @@ def test_a_dropped_node_is_written_as_deleting_its_anchor_tokens(client, ws):
     assert [(e[0], e[1], e[2]) for e in log] == [('tokens', 'bulk_delete', (['mn-2'],))]
 
 
+def test_a_node_delete_declares_its_cascade_and_the_row_counts_the_triples(ws):
+    """Deleting the anchor tokens takes the concept span, the edges on it and
+    the document-level triples on it. The row said only "remove (s1d / dog)",
+    and a coreference chain went with it that nobody approving could see."""
+    diff = diff_for(ws, '(s1b / bark-01\n    :aspect performance)')
+    op = next(o for o in diff.ops if o['kind'] == 'delete_node')
+    # mr-1 is the :ARG0 edge into the node, md-1 the coreference triple.
+    assert op['relation_ids'] == ['md-1', 'mr-1']
+    assert op['label'] == 'remove (s1d / dog) and 1 document-level relation'
+
+
 def test_a_re_root_takes_the_mark_off_before_the_new_root_wears_one(client, ws):
     text = ('(s1y / yard\n    :location (s1b / bark-01\n        :ARG0 (s1d / dog\n'
             '            :refer-number singular)\n        :aspect performance))')

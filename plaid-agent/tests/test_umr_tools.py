@@ -189,6 +189,27 @@ def test_deleting_a_triple_names_the_relation_it_found(client, ws):
     assert ('relations', 'delete', ('md-1',), {}) in client.log
 
 
+def test_removing_a_triple_the_plan_already_cascades_is_refused_either_way(ws):
+    """Deleting a node cascades the document-level triples on it, and a
+    single relation delete of an id already gone is a 404 that takes the whole
+    approved batch with it. The pair staged happily before, and which of the
+    two orders failed was not something the model could know."""
+    drop_s1d = {'document': 'Story', 'sentence': 1,
+                'text': '(s1b / bark-01\n    :aspect performance)'}
+    triple = {'document': 'Story', 'a': 's2t', 'rel': ':same-entity', 'b': 's1d'}
+    call_tool(ws, 'apply_penman', drop_s1d)
+    graph_ops = len(ws.ops)
+    out = run(ws, 'delete_triple', **triple)
+    assert 'this plan deletes' in out
+    assert len(ws.ops) == graph_ops, 'the refused call stages nothing'
+
+    ws.ops.clear()
+    run(ws, 'delete_triple', **triple)
+    out = call_tool(ws, 'apply_penman', drop_s1d)
+    assert 'this plan deletes' in out
+    assert len(ws.ops) == 1, 'and neither does the refused call in the other order'
+
+
 # --- attributes -------------------------------------------------------------------
 
 def test_set_attributes_replaces_the_whole_line_and_keeps_places(ws):

@@ -150,11 +150,24 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
     for node in sentence.nodes:
         if node.id in written and node.var not in new_vars:
             gone_ids.add(node.id)
+            # The server's cascade: deleting the anchor tokens takes the
+            # concept span, every edge on it and every document-level triple
+            # on it. Declared, so a change to one of them elsewhere in the
+            # plan is refused rather than failing the approved batch, and
+            # counted on the row, because a coreference chain is a loss the
+            # user cannot see from "remove (s1d / dog)".
+            triples = [t.id for t in node.doc_out] + [t.id for t in node.doc_in]
+            edges = [e.id for e in node.out] + [e.id for e in node.into]
+            label = f'remove ({node.var} / {node.concept})'
+            if triples:
+                label += (f' and {len(triples)} document-level relation'
+                          + ('s' if len(triples) > 1 else ''))
             deletes.append({
                 'kind': 'delete_node', 'document_id': did, 'ref': f's{sentence.index}.{node.var}',
                 'span_id': node.id, 'var': node.var,
                 'token_ids': [p.id for p in node.pieces],
-                'label': f'remove ({node.var} / {node.concept})'})
+                'relation_ids': sorted(set(edges + triples)),
+                'label': label})
     # An edge into or out of a deleted node goes with it (the server's
     # cascade), and a second delete would be a 404.
     edges_delete = [op for op in edges_delete

@@ -81,10 +81,15 @@ class OpKind:
     ``at_kind``   the app's word for what ``at`` names, so the card knows how
                   to resolve it. Empty where an operation is placed some other
                   way, or at its document alone.
-    ``token_keys``keys naming an entity the operation WRITES TO, so an
-                  operation whose subject another operation in the same plan
-                  deletes can be dropped instead of failing the batch. Never
-                  the entity the operation itself removes.
+    ``token_keys``keys naming an entity the operation NEEDS TO BE THERE when
+                  it runs, so an operation whose subject another operation in
+                  the same plan deletes can be refused or dropped instead of
+                  failing the batch. Usually what it writes to. It may also be
+                  what the operation itself removes, where removing something
+                  already gone is an error rather than a no-op (a single
+                  ``delete`` is a 404 and takes its whole batch with it); an
+                  operation never clashes with its own deletion, which is what
+                  :func:`doomed_writes` is for.
     ``writes``    ``op -> ids``: what it writes to that no key of its own names
                   plainly, because the id is nested in a payload or because
                   which ids count depends on how the operation was made. Read
@@ -312,6 +317,20 @@ def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
     if spec.writes:
         out.update(_ids(spec.writes, op))
     return out
+
+
+def doomed_writes(reg: Mapping[str, OpKind], op: Dict[str, Any], gone: set) -> set:
+    """What ``op`` needs that ``gone`` takes away, never counting what ``op``
+    itself removes.
+
+    A kind may both need an entity and remove it (see
+    :attr:`OpKind.token_keys`). A whole-plan check reads every operation's
+    deletions at once, so without this an operation of such a kind would be
+    refused for deleting what it writes to, meaning itself.
+    """
+    if not gone:
+        return set()
+    return written_to(reg, op) & (gone - set(removed_ids(reg, [op])))
 
 
 def delete_clash(reg: Mapping[str, OpKind], planned: Sequence[Dict[str, Any]],

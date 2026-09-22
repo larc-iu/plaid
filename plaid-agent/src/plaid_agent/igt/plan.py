@@ -755,7 +755,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # What this op writes to and the plan deletes: the word a change sits
         # on, the entry a link points at, the span a comment is anchored to,
         # the material a confirmation the model NAMED confirms.
-        writes = ok.written_to(KIND, op)
+        writes = ok.written_to(KIND, op) - set(ok.removed_ids(KIND, [op]))
         # A CERTAIN delete is refused as the plan is built, in both orders, so
         # a card never promises a change that will not happen. Reaching here
         # with one means the plan was built some way the staging guard does not
