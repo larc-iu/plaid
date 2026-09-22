@@ -13,6 +13,7 @@
             [plaid.rest-api.v1.metadata :as metadata]
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
+            [plaid.sql.guideline :as guideline]
             [plaid.sql.user-data :as user-data]))
 
 (defn- mb->bytes [mb]
@@ -36,6 +37,10 @@
          :metadata-string-length metadata/max-metadata-string-length
          :metadata-total-bytes   metadata/max-metadata-total-bytes
          :user-data-value-bytes  user-data/max-value-bytes
+         ;; What an editor has to know before someone types: a guideline
+         ;; refused at save is a page of writing held in a draft.
+         :guideline-title-length guideline/max-title-length
+         :guideline-body-length  guideline/max-body-length
          ;; The window a document lock is held for. A client reads the
          ;; `expires-at` on the acquire response first, since that names the
          ;; moment; this is what it plans with before it has one, and what it

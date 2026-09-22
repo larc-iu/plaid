@@ -6,6 +6,7 @@
                                     with-admin with-clean-db]]
             [plaid.server.config :as config]
             [plaid.server.locks :as locks]
+            [plaid.sql.guideline :as guideline]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -28,11 +29,19 @@
       ;; not, so a client reads absence as "unknown" rather than as zero.
       (doseq [k [:batch-operations :metadata-depth :metadata-key-count
                  :metadata-string-length :metadata-total-bytes
-                 :user-data-value-bytes :lock-expiration-ms]]
+                 :user-data-value-bytes :lock-expiration-ms
+                 :guideline-title-length :guideline-body-length]]
         (is (pos-int? (get limits k)) (str k " should be a positive number")))
       (doseq [[k v] limits]
         (is (pos-int? v) (str k " should be a positive number, not " (pr-str v))))
       (is (not-any? nil? (vals limits)) "an unset limit is omitted, never null")))
+
+  (testing "the guideline caps are the ones the writes actually enforce"
+    ;; The editor caps the title at the number it reads here; without them an
+    ;; over-long body is only discovered by the save being refused.
+    (let [limits (-> (get-info) :body :limits)]
+      (is (= guideline/max-title-length (:guideline-title-length limits)))
+      (is (= guideline/max-body-length (:guideline-body-length limits)))))
 
   (testing "the lock window is the one the lock table actually enforces"
     ;; Both clients carried a hard-coded 60000 for this because there was

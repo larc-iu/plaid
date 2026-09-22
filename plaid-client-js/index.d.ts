@@ -552,6 +552,10 @@ interface ServerLimits {
   metadataStringLength?: number;
   metadataTotalBytes?: number;
   userDataValueBytes?: number;
+  guidelineTitleLength?: number;
+  guidelineBodyLength?: number;
+  /** How long a document lock is held before it lapses. */
+  lockExpirationMs?: number;
 }
 
 interface ServerHealth {
