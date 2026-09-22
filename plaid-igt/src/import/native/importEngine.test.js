@@ -294,7 +294,7 @@ describe('deriveSetupData', () => {
     ]);
   });
 
-  it('maps both ignoredTokens shapes', () => {
+  it('maps both ignoredTokens shapes, and names none where the archive names none', () => {
     const base = buildArchive().manifest;
     const withWl = {
       ...base,
@@ -303,15 +303,19 @@ describe('deriveSetupData', () => {
     expect(deriveSetupData(withWl, 'x').fields.ignoredTokens).toEqual({
       mode: 'unicode-punctuation',
       unicodePunctuationExceptions: ['-'],
+      explicitIgnoredTokens: [],
     });
     const withBl = {
       ...base,
       schema: { ...base.schema, ignoredTokens: { type: 'blacklist', blacklist: ['.'] } },
     };
     expect(deriveSetupData(withBl, 'x').fields.ignoredTokens).toEqual({
-      mode: 'explicit',
+      mode: 'explicit-list',
+      unicodePunctuationExceptions: [],
       explicitIgnoredTokens: ['.'],
     });
+    const none = { ...base, schema: { ...base.schema, ignoredTokens: undefined } };
+    expect(deriveSetupData(none, 'x').fields.ignoredTokens).toBeUndefined();
   });
 });
 

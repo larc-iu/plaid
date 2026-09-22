@@ -15,7 +15,7 @@ import {
 } from '@ui/components/ui/select';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
-import { defaultIgnoredTokensSetup } from '@/domain/igtConfig';
+import { IGNORED_TOKEN_MODES, defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 
@@ -585,9 +585,9 @@ export const FieldsManager = ({
             <input
               type="radio"
               name="ignored-tokens-mode"
-              value="unicode-punctuation"
-              checked={ignoredTokens.mode === 'unicode-punctuation'}
-              onChange={() => handleIgnoredTokensModeChange('unicode-punctuation')}
+              value={IGNORED_TOKEN_MODES.punctuation}
+              checked={ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation}
+              onChange={() => handleIgnoredTokensModeChange(IGNORED_TOKEN_MODES.punctuation)}
               className="mt-1"
             />
             <span>
@@ -598,7 +598,7 @@ export const FieldsManager = ({
             </span>
           </label>
 
-          {ignoredTokens.mode === 'unicode-punctuation' && (
+          {ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation && (
             <div className="ml-8 rounded-md border p-4">
               <p className="mb-1 text-sm font-medium">Characters that behave as letters</p>
               <div className="mb-4 text-xs text-muted-foreground">
@@ -626,9 +626,9 @@ export const FieldsManager = ({
             <input
               type="radio"
               name="ignored-tokens-mode"
-              value="explicit-list"
-              checked={ignoredTokens.mode === 'explicit-list'}
-              onChange={() => handleIgnoredTokensModeChange('explicit-list')}
+              value={IGNORED_TOKEN_MODES.explicit}
+              checked={ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit}
+              onChange={() => handleIgnoredTokensModeChange(IGNORED_TOKEN_MODES.explicit)}
               className="mt-1"
             />
             <span>
@@ -639,7 +639,7 @@ export const FieldsManager = ({
             </span>
           </label>
 
-          {ignoredTokens.mode === 'explicit-list' && (
+          {ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit && (
             <div className="ml-8 rounded-md border p-4">
               <p className="mb-1 text-sm font-medium">Ignored Tokens</p>
               <div className="mb-4 text-xs text-muted-foreground">

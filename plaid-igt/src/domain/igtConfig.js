@@ -97,11 +97,44 @@ export const DEFAULT_IGNORED_TOKENS = Object.freeze({
   type: 'unicodePunctuation',
   whitelist: Object.freeze([]),
 });
-export const defaultIgnoredTokensSetup = () => ({
-  mode: 'unicode-punctuation',
-  unicodePunctuationExceptions: [],
-  explicitIgnoredTokens: [],
+
+/**
+ * The two names the edited shape's `mode` may take. The shape a screen edits
+ * holds BOTH lists, so switching mode and back does not lose what was typed,
+ * which is why it is not the stored shape.
+ */
+export const IGNORED_TOKEN_MODES = Object.freeze({
+  punctuation: 'unicode-punctuation',
+  explicit: 'explicit-list',
 });
+
+/**
+ * The stored rule as the setup wizard and the settings screen edit it. With
+ * nothing stored, the default rule.
+ *
+ * ONE TRANSLATION. These two functions are the only place the two shapes meet:
+ * setup, the settings screen and the archive importer each had their own copy,
+ * one of them already spelling the explicit mode differently, and a third rule
+ * would have had to be taught to all of them. A fresh object every call, since
+ * the caller edits what it is given.
+ */
+export const ignoredTokensSetup = (stored) => {
+  const explicit = stored?.type === 'blacklist';
+  return {
+    mode: explicit ? IGNORED_TOKEN_MODES.explicit : IGNORED_TOKEN_MODES.punctuation,
+    unicodePunctuationExceptions: explicit ? [] : [...(stored?.whitelist || [])],
+    explicitIgnoredTokens: explicit ? [...(stored?.blacklist || [])] : [],
+  };
+};
+
+/** The other way: what goes on the word layer. Anything but an explicit list
+ * is the punctuation rule, which is the default and the safe fall-through. */
+export const storedIgnoredTokens = (setup) =>
+  setup?.mode === IGNORED_TOKEN_MODES.explicit
+    ? { type: 'blacklist', blacklist: setup.explicitIgnoredTokens || [] }
+    : { type: 'unicodePunctuation', whitelist: setup?.unicodePunctuationExceptions || [] };
+
+export const defaultIgnoredTokensSetup = () => ignoredTokensSetup(DEFAULT_IGNORED_TOKENS);
 
 /**
  * Is a token excluded from word-level annotation under an ignored-tokens config

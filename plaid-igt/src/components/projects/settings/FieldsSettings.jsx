@@ -10,6 +10,8 @@ import {
   findMorphemeTokenLayer,
   readScope,
   readIgnoredTokens,
+  ignoredTokensSetup,
+  storedIgnoredTokens,
   IGT_NAMESPACE,
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
@@ -56,23 +58,7 @@ const extractFields = (project) => {
   }));
   if (fields.length === 0 && !ignoredTokensConfig) return null;
 
-  // Convert ignored tokens API format back to component format
-  let ignoredTokens = null;
-  if (ignoredTokensConfig) {
-    if (ignoredTokensConfig.type === 'unicodePunctuation') {
-      ignoredTokens = {
-        mode: 'unicode-punctuation',
-        unicodePunctuationExceptions: ignoredTokensConfig.whitelist || [],
-        explicitIgnoredTokens: [],
-      };
-    } else {
-      ignoredTokens = {
-        mode: 'explicit-list',
-        unicodePunctuationExceptions: [],
-        explicitIgnoredTokens: ignoredTokensConfig.blacklist || [],
-      };
-    }
-  }
+  const ignoredTokens = ignoredTokensConfig ? ignoredTokensSetup(ignoredTokensConfig) : null;
   return { fields, ignoredTokens };
 };
 
@@ -122,22 +108,11 @@ export const FieldsSettings = ({
 
       // Save ignored tokens configuration to token layer
       if (data.ignoredTokens) {
-        const ignoredTokensConfig = {
-          type:
-            data.ignoredTokens.mode === 'unicode-punctuation' ? 'unicodePunctuation' : 'blacklist',
-        };
-
-        if (ignoredTokensConfig.type === 'unicodePunctuation') {
-          ignoredTokensConfig.whitelist = data.ignoredTokens.unicodePunctuationExceptions || [];
-        } else {
-          ignoredTokensConfig.blacklist = data.ignoredTokens.explicitIgnoredTokens || [];
-        }
-
         await client.tokenLayers.setConfig(
           primary.id,
           IGT_NAMESPACE,
           'ignoredTokens',
-          ignoredTokensConfig,
+          storedIgnoredTokens(data.ignoredTokens),
         );
       }
 

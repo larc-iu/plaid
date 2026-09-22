@@ -48,6 +48,7 @@ import {
   findMorphemeTokenLayer,
   findAlignmentTokenLayer,
   readScope,
+  ignoredTokensSetup,
 } from '../../domain/igtConfig.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
@@ -77,15 +78,9 @@ export function deriveSetupData(manifest, projectName) {
     },
     fields: {
       fields,
-      ignoredTokens:
-        ignored == null
-          ? undefined
-          : ignored.type === 'blacklist'
-            ? { mode: 'explicit', explicitIgnoredTokens: ignored.blacklist || [] }
-            : {
-                mode: 'unicode-punctuation',
-                unicodePunctuationExceptions: ignored.whitelist || [],
-              },
+      // Left out entirely when the archive names no rule, so setup writes
+      // none rather than the default over whatever the project has.
+      ignoredTokens: ignored == null ? undefined : ignoredTokensSetup(ignored),
     },
     vocabulary: {
       vocabularies: (manifest.vocabularies || []).map((v) => ({

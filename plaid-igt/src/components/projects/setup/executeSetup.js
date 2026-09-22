@@ -32,6 +32,7 @@ import {
   findWordTokenLayer,
   findMorphemeTokenLayer,
   findAlignmentTokenLayer,
+  storedIgnoredTokens,
 } from '../../../domain/igtConfig.js';
 import { seedDefaultFields } from '../../../domain/vocabFields.js';
 import { statusFieldSeed } from '../../../domain/vocabDictionary.js';
@@ -328,23 +329,11 @@ async function executeProjectSetupImpl({
   // Step 7: Configure ignored tokens on the word token layer
   if (tokenLayerId && setupData.fields?.ignoredTokens) {
     updateProgress(60, 'Configuring ignored tokens...');
-    const ignoredTokensConfig = {
-      type:
-        setupData.fields.ignoredTokens.mode === 'unicode-punctuation'
-          ? 'unicodePunctuation'
-          : 'blacklist',
-    };
-    if (ignoredTokensConfig.type === 'unicodePunctuation') {
-      ignoredTokensConfig.whitelist =
-        setupData.fields.ignoredTokens.unicodePunctuationExceptions || [];
-    } else {
-      ignoredTokensConfig.blacklist = setupData.fields.ignoredTokens.explicitIgnoredTokens || [];
-    }
     await client.tokenLayers.setConfig(
       tokenLayerId,
       IGT_NAMESPACE,
       'ignoredTokens',
-      ignoredTokensConfig,
+      storedIgnoredTokens(setupData.fields.ignoredTokens),
     );
   }
 

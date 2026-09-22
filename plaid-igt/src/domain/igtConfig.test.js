@@ -18,6 +18,11 @@ import {
   hasLanguageIdentity,
   markImportStarted,
   readImportState,
+  IGNORED_TOKEN_MODES,
+  DEFAULT_IGNORED_TOKENS,
+  defaultIgnoredTokensSetup,
+  ignoredTokensSetup,
+  storedIgnoredTokens,
 } from './igtConfig.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { buildRawDoc } from './test-helpers.js';
@@ -258,5 +263,57 @@ describe('the import record', () => {
     const client = { projects: { setConfig: async (...args) => written.push(args) } };
     await markImportStarted(client, 'p1', 'Plaid IGT archive', null);
     expect(written[0][3].choices).toBe(null);
+  });
+});
+
+// The ignored-tokens rule has a stored shape and an edited one, and setup, the
+// settings screen and the archive importer each translated between them
+// themselves. One of them already spelled the explicit mode differently, and a
+// third rule would have had to be taught to all three.
+describe('the ignored-tokens rule in its two shapes', () => {
+  it('reads the punctuation rule and its letter-like exceptions', () => {
+    expect(ignoredTokensSetup({ type: 'unicodePunctuation', whitelist: ['\u02bc'] })).toEqual({
+      mode: IGNORED_TOKEN_MODES.punctuation,
+      unicodePunctuationExceptions: ['\u02bc'],
+      explicitIgnoredTokens: [],
+    });
+  });
+
+  it('reads an explicit list', () => {
+    expect(ignoredTokensSetup({ type: 'blacklist', blacklist: ['.', ','] })).toEqual({
+      mode: IGNORED_TOKEN_MODES.explicit,
+      unicodePunctuationExceptions: [],
+      explicitIgnoredTokens: ['.', ','],
+    });
+  });
+
+  it('is the default rule for a layer that stores none', () => {
+    expect(ignoredTokensSetup(null)).toEqual(defaultIgnoredTokensSetup());
+    expect(defaultIgnoredTokensSetup().mode).toBe(IGNORED_TOKEN_MODES.punctuation);
+  });
+
+  it('hands back a fresh object, since the screen edits what it is given', () => {
+    const a = defaultIgnoredTokensSetup();
+    a.unicodePunctuationExceptions.push('x');
+    expect(defaultIgnoredTokensSetup().unicodePunctuationExceptions).toEqual([]);
+    expect(DEFAULT_IGNORED_TOKENS.whitelist).toEqual([]);
+  });
+
+  it('goes back to the stored shape either way', () => {
+    for (const stored of [
+      { type: 'unicodePunctuation', whitelist: ['\u02bc'] },
+      { type: 'blacklist', blacklist: ['.'] },
+    ]) {
+      expect(storedIgnoredTokens(ignoredTokensSetup(stored))).toEqual(stored);
+    }
+    expect(storedIgnoredTokens(defaultIgnoredTokensSetup())).toEqual({
+      type: 'unicodePunctuation',
+      whitelist: [],
+    });
+  });
+
+  it('falls to the punctuation rule for a mode it does not know', () => {
+    expect(storedIgnoredTokens({ mode: 'explicit' }).type).toBe('unicodePunctuation');
+    expect(storedIgnoredTokens(null).type).toBe('unicodePunctuation');
   });
 });

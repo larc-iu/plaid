@@ -5,6 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
+import { IGNORED_TOKEN_MODES } from '@/domain/igtConfig';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 
 export const ConfirmationStep = ({ setupData, isNewProject, projectId, client }) => {
@@ -239,11 +240,11 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             <p className="mb-1 text-sm font-medium">Ignored Tokens Configuration:</p>
             <p className="text-sm">
               Mode:{' '}
-              {fieldsData.ignoredTokens.mode === 'unicode-punctuation'
+              {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation
                 ? 'Unicode Punctuation'
                 : 'Explicit List'}
             </p>
-            {fieldsData.ignoredTokens.mode === 'unicode-punctuation' &&
+            {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation &&
               fieldsData.ignoredTokens.unicodePunctuationExceptions?.length > 0 && (
                 <p className="text-sm">
                   Exceptions: {fieldsData.ignoredTokens.unicodePunctuationExceptions.join(', ')}
