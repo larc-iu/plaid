@@ -87,6 +87,31 @@ def test_find_nodes_by_attribute_reads_the_metadata_the_engine_cannot(ws):
     assert 's1d' not in out
 
 
+def test_a_corpus_read_shows_hits_from_documents_down_the_whole_corpus():
+    """The engine ranks the documents with the most hits first, and those are
+    the largest documents. Taking the top of that list showed the corpus as
+    its twelve biggest texts; the documents are spread down the list instead,
+    and each shows a few (the fault UD's search was fixed for)."""
+    from umr_fixtures import document_raw
+    from plaid_agent.umr.corpus import RENDER_DOC_BUDGET
+    docs = {}
+    for i in range(30):
+        raw = document_raw()
+        raw['id'], raw['name'] = f'd{i}', f'Doc {i}'
+        docs[f'd{i}'] = raw
+    w = umr_ws(umr_client(documents=docs))
+    w.client.query = lambda body: {'return': 'aggregate',
+                                   'results': [[f'd{i}', 100 - i] for i in range(30)]}
+    out = run(w, 'find_nodes', concept='dog', limit=24)
+    names = {line.split('"')[1] for line in out.splitlines() if line.startswith('"')}
+    assert len(names) == RENDER_DOC_BUDGET
+    assert not names <= {f'Doc {i}' for i in range(RENDER_DOC_BUDGET)}, \
+        'the twelve with the most hits are the twelve largest documents'
+    # Each document shows its share and no more.
+    assert all(sum(1 for line in out.splitlines() if line.startswith(f'"{name}"')) <= 2
+               for name in names)
+
+
 def test_find_nodes_refuses_a_request_that_names_nothing_to_look_for(ws):
     assert 'Give concept, role or attribute' in run(ws, 'find_nodes')
 

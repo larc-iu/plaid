@@ -18,7 +18,7 @@ displayed rather than the size of the corpus.
 import re
 from typing import Any, Dict, List
 
-from ..core.corpus import Corpus as BaseCorpus, rx
+from ..core.corpus import Corpus as BaseCorpus, rx, spread
 from ..core.limits import GROUP_LIMIT, READ_LIMITS
 from ..core.args import clamp_limit
 from ..core.tools import ToolError, truncate
@@ -112,12 +112,15 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
         var = '?n'
 
     if document:
-        doc_ids = [ws.resolve_document_id(document)]
+        picks = [(ws.resolve_document_id(document), limit)]
         totals = {}
     else:
         rows = corpus.documents_with(where, var)
         totals = dict(rows)
-        doc_ids = [d for d, _n in rows][:RENDER_DOC_BUDGET]
+        # A few from each of several documents, not every hit from the one
+        # with the most (which is the largest document).
+        picks = list(spread(rows, limit, RENDER_DOC_BUDGET))
+    doc_ids = [did for did, _quota in picks]
     if not doc_ids:
         return 'No node matched.'
 
@@ -134,14 +137,16 @@ def t_find_nodes(ws: Workspace, concept: str = None, role: str = None, attribute
     ws.read_ahead(doc_ids)
     shown: List[str] = []
     found = 0
-    for did in doc_ids:
+    for did, quota in picks:
         doc = ws.doc(did)
+        here = 0
         for s in doc.sentences:
             for node in s.nodes:
                 if not matches(node):
                     continue
                 found += 1
-                if len(shown) < limit:
+                if len(shown) < limit and here < quota:
+                    here += 1
                     extra = ''
                     if role:
                         extra = ' ' + ' '.join(f'{e.role} {doc.nodes_by_id[e.target].var}'
@@ -188,7 +193,7 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
     limit = clamp_limit(limit, *READ_LIMITS['search'])
     corpus = ws.corpus
     if document:
-        doc_ids = [ws.resolve_document_id(document)]
+        picks = [(ws.resolve_document_id(document), limit)]
         totals = {}
     else:
         spec = _spec(pattern, regex, whole, case_sensitive)
@@ -196,15 +201,19 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
                   else corpus.node('?n', value=spec))
         rows = corpus.documents_with([clause], '?w' if where == 'words' else '?n')
         totals = dict(rows)
-        doc_ids = [d for d, _n in rows][:RENDER_DOC_BUDGET]
+        # A few from each of several documents, not every hit from the one
+        # with the most (which is the largest document).
+        picks = list(spread(rows, limit, RENDER_DOC_BUDGET))
+    doc_ids = [did for did, _quota in picks]
     if not doc_ids:
         return f'No sentence matches "{pattern}".'
 
     ws.read_ahead(doc_ids)
     shown: List[str] = []
     found = 0
-    for did in doc_ids:
+    for did, quota in picks:
         doc = ws.doc(did)
+        here = 0
         for s in doc.sentences:
             if where == 'words':
                 hit = [w.text for w in s.words
@@ -215,7 +224,8 @@ def t_search(ws: Workspace, pattern: str = None, where: str = 'words', document:
             if not hit:
                 continue
             found += 1
-            if len(shown) < limit:
+            if len(shown) < limit and here < quota:
+                here += 1
                 shown.append(f'"{doc.name}" s{s.index}  {s.text}\n      {", ".join(hit)}')
     if not shown:
         return f'No sentence matches "{pattern}".'
@@ -330,12 +340,16 @@ def t_frequency_list(ws: Workspace, what: str = 'concept', document: str = None,
 
 def _attribute_counts(ws: Workspace, document: str, limit: int) -> str:
     """Attributes live in a span's metadata, which the engine does not index,
-    so this reads documents. One document, or the few with the most nodes."""
+    so this reads documents. One document, or a few spread down the corpus."""
     corpus = ws.corpus
     if document:
         doc_ids = [ws.resolve_document_id(document)]
     else:
-        doc_ids = [d for d, _n in corpus.documents_with([corpus.node('?n')], '?n')][:RENDER_DOC_BUDGET]
+        # Spread down the ranked list rather than the top of it: the documents
+        # with the most nodes are the largest, and their attributes are one
+        # kind of text's.
+        doc_ids = spread(corpus.documents_with([corpus.node('?n')], '?n'),
+                         limit, RENDER_DOC_BUDGET).ids
     if not doc_ids:
         return 'No attributes found.'
     ws.read_ahead(doc_ids)
@@ -357,6 +371,6 @@ def _attribute_counts(ws: Workspace, document: str, limit: int) -> str:
         out.append(f'  ... and {len(rows) - limit} more')
     if not document and len(doc_ids) >= RENDER_DOC_BUDGET:
         out.append(f'(note) Attributes are metadata, which the query engine does not index, so '
-                   f'this counts the {RENDER_DOC_BUDGET} documents with the most nodes. Name a '
+                   f'this counts {RENDER_DOC_BUDGET} documents spread over the corpus. Name a '
                    f'document for a complete answer.')
     return '\n'.join(out)

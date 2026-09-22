@@ -16,11 +16,10 @@ and the document lookups that turn an entity id back into a printable
 reference, are in ``corpus.py``.
 """
 
-import math
 from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..core.corpus import rx
+from ..core.corpus import rx, spread
 from ..core.limits import ROW_LIMIT
 from ..core.tools import ToolError
 from .corpus import Corpus, RENDER_DOC_BUDGET, Unanalyzed, review_stamps
@@ -93,18 +92,14 @@ def _spread_fetch(c: Corpus, where: List[Any], find: List[str], doc_var: str, li
     docs = sorted([(r[0], r[-1]) for r in grouped if r[0]], key=lambda x: -x[1])
     if not docs:
         return [], limit, 0
-    if len(docs) > RENDER_DOC_BUDGET:
-        chosen = [docs[i * len(docs) // RENDER_DOC_BUDGET] for i in range(RENDER_DOC_BUDGET)]
-    else:
-        chosen = docs
-    per_doc = max(1, math.ceil(limit / len(chosen)))
+    picked = spread(docs, limit, RENDER_DOC_BUDGET)
     # One small fetch per document: a single fetch with one limit was filled
     # by the first document alone whenever the pattern was common.
     rows: List[list] = []
-    for did, _ in chosen:
-        rows += c.entities(where + [['in', f'{doc_var}.doc', [did]]], find, per_doc * rows_per_hit + 1,
-                           [[f'{doc_var}.begin']])
-    return rows, per_doc, len(docs)
+    for did in picked.ids:
+        rows += c.entities(where + [['in', f'{doc_var}.doc', [did]]], find,
+                           picked.per_doc * rows_per_hit + 1, [[f'{doc_var}.begin']])
+    return rows, picked.per_doc, picked.documents
 
 
 def _spread_note(shown: List[str], docs: int) -> List[str]:

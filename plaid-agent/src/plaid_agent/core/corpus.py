@@ -14,8 +14,9 @@ full of it. So every read records whether it was cut, and every report that
 states a tally says so when one was.
 """
 
+import math
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from .limits import GROUP_LIMIT, ROW_LIMIT
 from .tools import ToolError
@@ -70,6 +71,58 @@ def rx(pattern: str, *, regex: bool = False, whole: bool = False,
     if not case_sensitive:
         spec['flags'] = 'i'
     return spec
+
+
+class Spread:
+    """Which documents a corpus-wide read shows hits from, and how many each
+    may show. What :func:`spread` returns; iterating it gives
+    ``(document id, how many of its hits may be shown)``.
+    """
+
+    def __init__(self, picks: List[Tuple[str, int]], per_doc: int, documents: int):
+        self.picks = picks
+        #: The cap every picked document shares, for a caller that renders
+        #: rows rather than counting them.
+        self.per_doc = per_doc
+        #: How many documents have hits at all, which is what a read says when
+        #: it shows fewer.
+        self.documents = documents
+
+    def __iter__(self):
+        return iter(self.picks)
+
+    def __len__(self) -> int:
+        return len(self.picks)
+
+    @property
+    def ids(self) -> List[str]:
+        return [did for did, _quota in self.picks]
+
+
+def spread(docs: List[tuple], limit: int, budget: int) -> Spread:
+    """Which documents a corpus-wide read loads, and how many hits each may
+    show: a few from each of several, not thirty from the one with the most.
+
+    ``docs`` is ``[(document id, hits)]`` as the engine ranked it, most first,
+    and ``budget`` is the app's ``RENDER_DOC_BUDGET`` (a hit costs a different
+    amount to render in each app, so the budget is the app's own).
+
+    Taking documents off the top until the limit was full showed every hit
+    from one blog post and called it the corpus. The picks are evenly spaced
+    down the ranked list instead: the documents with the most hits are the
+    largest documents, which cost the most to load (the twelve largest in EWT
+    took nine seconds) and are one kind of text. Loading a document is one
+    round trip, so how many each may show is capped as well.
+    """
+    if not docs:
+        return Spread([], max(1, int(limit)), 0)
+    if len(docs) > budget:
+        chosen = [docs[i * len(docs) // budget] for i in range(budget)]
+    else:
+        chosen = list(docs)
+    per_doc = max(1, math.ceil(limit / len(chosen)))
+    return Spread([(did, min(int(n or per_doc), per_doc)) for did, n in chosen],
+                  per_doc, len(docs))
 
 
 def query_refused(e: Exception) -> ToolError:

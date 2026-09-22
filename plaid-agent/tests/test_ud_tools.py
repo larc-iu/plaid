@@ -625,17 +625,20 @@ def test_a_search_spreads_its_hits_over_several_documents():
     from plaid_agent.ud.corpus import RENDER_DOC_BUDGET
     from plaid_agent.ud.stats import _spread
     docs = [('a', 20), ('b', 15), ('c', 9), ('d', 1)]
-    assert _spread(docs, 30) == [('a', 8), ('b', 8), ('c', 8), ('d', 1)]
-    assert _spread(docs, 2) == [('a', 1), ('b', 1), ('c', 1), ('d', 1)]
+    assert list(_spread(docs, 30)) == [('a', 8), ('b', 8), ('c', 8), ('d', 1)]
+    assert list(_spread(docs, 2)) == [('a', 1), ('b', 1), ('c', 1), ('d', 1)]
     many = [(str(i), 50) for i in range(40)]
     picks = _spread(many, 30)
     assert len(picks) == RENDER_DOC_BUDGET
     # Spaced down the ranked list, not the top of it: the top is the largest
     # documents, which cost the most to load and are one kind of text.
-    assert [d for d, _ in picks] == [str(i * 40 // RENDER_DOC_BUDGET) for i in range(RENDER_DOC_BUDGET)]
+    assert picks.ids == [str(i * 40 // RENDER_DOC_BUDGET) for i in range(RENDER_DOC_BUDGET)]
+    # How many documents had hits at all, which is what a read says when it
+    # shows fewer.
+    assert picks.documents == 40
     # A document whose count the engine did not give still gets its share.
-    assert _spread([('a', None)], 3) == [('a', 3)]
-    assert _spread([], 3) == []
+    assert list(_spread([('a', None)], 3)) == [('a', 3)]
+    assert list(_spread([], 3)) == []
 
 
 def test_a_read_that_does_not_fit_says_where_to_continue(ws, monkeypatch):

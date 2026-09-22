@@ -4,12 +4,12 @@ These go through the query engine (see :mod:`.corpus`) and load a document
 only to print the hits it actually has.
 """
 
-import math
 from collections import defaultdict
 from typing import Any, Dict, List
 
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
+from ..core.corpus import spread
 from ..core.tools import ToolError, server_refused, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
@@ -27,27 +27,9 @@ def _hit_line(doc: UdDoc, s: Sentence, w: Word, value: str) -> str:
     return f'  {word_ref(s, w)}  {value}   {kwic(doc, s, w)}'
 
 
-def _spread(docs: List[tuple], limit: int) -> List[tuple]:
-    """Which documents a corpus-wide search reads, and how many hits each may
-    show: a few from each of several, not thirty from the one with the most.
-
-    The engine said how many hits each document has, most first. Taking
-    documents until the limit was full showed every hit from one blog post
-    and called it the corpus. Loading a document is one round trip, so the
-    count is capped as well.
-    """
-    if not docs:
-        return []
-    # Evenly spaced down the ranked list, not the top of it: the documents
-    # with the most hits are the largest documents, which cost the most to
-    # load (the twelve largest in EWT took nine seconds) and are one kind of
-    # text. Spaced picks load in a fifth of the time and range over sizes.
-    if len(docs) > RENDER_DOC_BUDGET:
-        chosen = [docs[i * len(docs) // RENDER_DOC_BUDGET] for i in range(RENDER_DOC_BUDGET)]
-    else:
-        chosen = list(docs)
-    per_doc = max(1, math.ceil(limit / len(chosen)))
-    return [(did, min(int(n or per_doc), per_doc)) for did, n in chosen]
+def _spread(docs: List[tuple], limit: int):
+    """This app's render budget, applied to :func:`core.corpus.spread`."""
+    return spread(docs, limit, RENDER_DOC_BUDGET)
 
 
 def _hits_in(doc: UdDoc, field: str, matches) -> List[tuple]:
