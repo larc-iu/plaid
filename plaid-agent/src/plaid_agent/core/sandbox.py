@@ -262,6 +262,36 @@ def load_proxy(ws, view: Callable[[Any], Any]) -> Callable[[str], Any]:
     return load
 
 
+def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
+        layer_index: Callable, display: Callable) -> Dict[str, Callable]:
+    """The names the code runs against. An app supplies what only it knows:
+    how one of its documents looks as plain data (``view``), its tool table,
+    and how its layer names are read back from the project.
+
+    ``documents`` and ``query`` are the same wherever they are offered, so they
+    are written here: three copies of the query wrapper is three places for the
+    refusal to stop being turned into something the code can catch.
+    """
+    from . import filetools
+    from .query import QueryRefused, parse_query, rewrite, run as run_query
+
+    def documents():
+        return [{'id': d['id'], 'name': d.get('name') or ''} for d in ws.documents()]
+
+    def query(q):
+        try:
+            parsed = parse_query(q)
+            idx = layer_index(ws)
+            docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
+            return run_query(ws.client, rewrite(parsed, idx, display(idx), docs), ws.project.id)
+        except (QueryRefused, ToolError) as e:
+            raise ValueError(str(e))
+
+    return {'documents': documents, 'load': load_proxy(ws, view), 'query': query,
+            'plan': plan_proxy(ws, call_tool, write_tools),
+            **filetools.api(ws)}
+
+
 def run_tool(ws, code: Optional[str], api: Callable[[Any], Dict[str, Callable]]) -> str:
     """The ``run_code`` tool, for every app. One worker per turn, opened on the
     first call and released by the workspace's ``close()``; ``api(ws)`` is what

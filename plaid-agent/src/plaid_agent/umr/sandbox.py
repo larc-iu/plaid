@@ -11,7 +11,6 @@ write to.
 from typing import Any, Callable, Dict
 
 from ..core import filetools, sandbox
-from ..core.query import QueryRefused, parse_query, rewrite, run as run_query
 from .project import UmrDoc, ilg_lines, penman_of, resolve_ilg
 from .tools import Workspace
 
@@ -98,28 +97,11 @@ def view(doc: UmrDoc, project=None) -> Dict[str, Any]:
 
 
 def api(ws: Workspace) -> Dict[str, Callable]:
-    from .query import _display, _layer_index
-
-    def documents():
-        return [{'id': d['id'], 'name': d.get('name') or ''} for d in ws.documents()]
-
-    def query(q):
-        try:
-            parsed = parse_query(q)
-            idx = _layer_index(ws)
-            docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
-            return run_query(ws.client, rewrite(parsed, idx, _display(idx), docs), ws.project.id)
-        except QueryRefused as e:
-            raise ValueError(str(e))
-
     # The toolkit is the last module imported (it reads every tool module, this
     # one included), so it is asked for here rather than at the top.
+    from .query import _display, _layer_index
     from .toolkit import WRITE_TOOLS, call_tool
-    return {'documents': documents,
-            'load': sandbox.load_proxy(ws, lambda doc: view(doc, ws.project)),
-            'query': query,
-            'plan': sandbox.plan_proxy(ws, call_tool, WRITE_TOOLS),
-            **filetools.api(ws)}
+    return sandbox.api(ws, lambda doc: view(doc, ws.project), call_tool, WRITE_TOOLS, _layer_index, _display)
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
