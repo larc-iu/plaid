@@ -1334,15 +1334,38 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
-  // Delete a relation from the tree or from the enhanced layer. A basic
-  // relation takes the suppressor lying over it along (see _suppressorIdsOver).
+  // Delete a relation from the tree or from the enhanced layer. Either way it
+  // takes with it a suppressor the delete leaves saying nothing:
+  //
+  //   - a BASIC relation takes the suppressor lying over it, which said the
+  //     graph left that relation out and now has no relation to leave out.
+  //   - an EXTRA that was the only one over a pair the tree joins takes it
+  //     too. That shape is a RELABEL (`nmod` in the tree, `nmod:of` in the
+  //     graph, stored as a suppressor plus an extra), and deleting the label
+  //     asks for the label to go, not for the word to be cut out of the
+  //     enhanced graph, so the tree's relation comes back into it. Grew's
+  //     `del_edge` reads the same condition (rewrite/diff.js, `relabelUndone`).
+  //     A pair whose suppressor stands alone is a plain leaving-out, which
+  //     this must not undo.
   async deleteRelation(relationId) {
     return this._withSaving('Failed to delete relation', async () => {
       const info = this.layerInfo;
       const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);
+      const rows = info.enhancedRelationLayer?.relations || [];
+      const extra = basic ? null : rows.find((r) => r.id === relationId && !isSuppressor(r));
+      const lastExtraOverPair =
+        extra &&
+        !rows.some(
+          (r) =>
+            r.id !== relationId &&
+            !isSuppressor(r) &&
+            r.source === extra.source &&
+            r.target === extra.target,
+        );
+      const freed = basic || (lastExtraOverPair ? extra : null);
       const doomed = new Set([
         relationId,
-        ...(basic ? this._suppressorIdsOver(info, [basic]) : []),
+        ...(freed ? this._suppressorIdsOver(info, [freed]) : []),
       ]);
       // Optimistic: drop the arc locally before the round trip.
       this._applyRawPatch((next, infoNext) => {

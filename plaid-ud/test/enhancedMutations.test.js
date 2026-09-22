@@ -6,6 +6,10 @@ import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
 import { enhancedEdges, isSuppressor } from '../src/domain/enhancedGraph.js';
+import { parseGrs } from '../src/grew/parser.js';
+import { graphFromSentence } from '../src/grew/rewrite/graph.js';
+import { rewriteSentence } from '../src/grew/rewrite/engine.js';
+import { diffGraphs } from '../src/grew/rewrite/diff.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps } from './helpers/stubClient.js';
 
@@ -55,6 +59,18 @@ const open = (input = INPUT, options = { enhanced: true }) => {
 
 const lemmaValue = (doc, spanId) =>
   doc.layerInfo.lemmaLayer.spans.find((s) => s.id === spanId)?.value;
+
+// The document's enhanced graph, as `head>dependent:label` lines.
+const graphOf = (doc) =>
+  enhancedEdges(
+    doc.layerInfo.relationLayer.relations,
+    doc.layerInfo.enhancedRelationLayer.relations,
+  )
+    .map(
+      (e) =>
+        `${e.source === e.target ? 'ROOT' : lemmaValue(doc, e.source)}>${lemmaValue(doc, e.target)}:${e.value}`,
+    )
+    .sort();
 
 test('an enhanced edge gives a word a second head and leaves its tree alone', async () => {
   const { doc, log, lemma, rows, graph } = open();
@@ -191,6 +207,84 @@ test('a relation drawn over a pair someone else left a suppressor on is not born
     ),
     'the new relation is missing from the enhanced graph',
   );
+});
+
+test('deleting the label a relabel gave puts the tree relation back in the graph', async () => {
+  // Ruling of 2026-09-21: the bin does what Grew's `del_edge` does. A relabel
+  // is one suppressor plus one extra, so deleting the extra alone left the
+  // word with no enhanced head at all and `_` in DEPS.
+  const { doc, lemma, rows, graph } = open();
+  const id = await doc.createEnhancedRelation(lemma('come'), lemma('leave'), 'conj:and');
+  assert.equal(rows().length, 2, 'a relabel is a suppressor plus an extra');
+  assert.ok(!graph().includes('come>leave:conj'));
+
+  await doc.deleteRelation(id);
+  assert.deepEqual(rows(), []);
+  assert.ok(graph().includes('come>leave:conj'), "the tree's relation is back in the graph");
+});
+
+test('one of two labels over a suppressed pair leaves the suppressor standing', async () => {
+  // The rare graph that wants both labels over one pair. Only the LAST extra
+  // over the pair undoes the relabel.
+  const { doc, lemma, rows, graph } = open();
+  const first = await doc.createEnhancedRelation(lemma('come'), lemma('leave'), 'conj:and');
+  const second = await doc.createEnhancedRelation(lemma('come'), lemma('leave'), 'conj:but');
+
+  await doc.deleteRelation(first);
+  assert.equal(rows().filter(isSuppressor).length, 1);
+  assert.ok(!graph().includes('come>leave:conj'));
+
+  await doc.deleteRelation(second);
+  assert.deepEqual(rows(), []);
+  assert.ok(graph().includes('come>leave:conj'));
+});
+
+test('a relation simply left out of the graph stays out when an extra elsewhere goes', async () => {
+  const { doc, lemma, basic, rows, graph } = open();
+  await doc.setRelationSuppressed(basic('obj').id, true);
+  const id = await doc.createEnhancedRelation(lemma('leave'), lemma('she'), 'nsubj');
+
+  await doc.deleteRelation(id);
+  assert.equal(rows().filter(isSuppressor).length, 1);
+  assert.ok(!graph().includes('leave>home:obj'));
+});
+
+test('the bin and a Grew del_edge leave the same enhanced graph', async () => {
+  // The same gesture on the same data must end in one state. The editor's
+  // path is `deleteRelation`; the rewrite's is `diffGraphs` (`relabelUndone`).
+  const RELABELLED = [
+    '# text = she came and left home',
+    '1\tshe\tshe\tPRON\t_\t_\t2\tnsubj\t2:nsubj\t_',
+    '2\tcame\tcome\tVERB\t_\t_\t0\troot\t0:root\t_',
+    '3\tand\tand\tCCONJ\t_\t_\t4\tcc\t4:cc\t_',
+    '4\tleft\tleave\tVERB\t_\t_\t2\tconj\t2:conj:and\t_',
+    '5\thome\thome\tNOUN\t_\t_\t4\tobj\t4:obj\t_',
+  ].join('\n');
+
+  const { doc: byHand } = open(RELABELLED);
+  const extra = byHand.layerInfo.enhancedRelationLayer.relations.find(
+    (r) => r.value === 'conj:and',
+  );
+  await byHand.deleteRelation(extra.id);
+
+  const byRule = new ConlluDocument({ raw: rawDocFromConllu(RELABELLED, 'e', { enhanced: true }) });
+  const before = graphFromSentence(byRule.sentences[0]);
+  const { graph: after, applications } = rewriteSentence(
+    parseGrs('pattern { V -[E:conj:and]-> W } commands { del_edge V -[E:conj:and]-> W }'),
+    before,
+  );
+  assert.equal(applications.length, 1);
+  const { writes } = diffGraphs(before, after, byRule.layerInfo);
+  // Both halves of the relabel go, and nothing else: an applier of one op is
+  // enough, and this says so if that ever stops being true.
+  assert.deepEqual(new Set(writes.main.map((w) => w.op)), new Set(['deleteRelation']));
+  assert.deepEqual(writes.lemmaCreates, []);
+  const gone = new Set(writes.main.map((w) => w.id));
+  const layer = byRule.layerInfo.enhancedRelationLayer;
+  layer.relations = layer.relations.filter((r) => !gone.has(r.id));
+
+  assert.deepEqual(graphOf(byHand), graphOf(byRule));
+  assert.ok(graphOf(byHand).includes('come>leave:conj'));
 });
 
 test('a project with no enhanced layer refuses an enhanced edge', async () => {
