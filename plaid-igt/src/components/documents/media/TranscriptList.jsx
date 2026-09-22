@@ -23,7 +23,7 @@ import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { whenIdle } from '../../../domain/whenIdle.js';
 import { formatTime } from './formatTime.js';
-import { rangeProblem } from '../../../domain/alignmentTimes.js';
+import { MIN_SEGMENT, rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
@@ -66,9 +66,6 @@ const leavingBy = (e) => {
   if (e.key === 'ArrowDown' && collapsed && el.selectionEnd === el.value.length) return 1;
   return 0;
 };
-// The shortest segment a keyboard edit may leave behind.
-const MIN_SEGMENT = 0.01;
-
 // The time column is the same fixed width in every row, so the speaker and
 // text columns line up down the list whatever the row shows there: two rows of
 // digit boxes, plain times, or an hours box on a long recording.
@@ -586,7 +583,7 @@ const NewSegmentRow = memo(function NewSegmentRow({
   const [speaker, setSpeaker] = useState(getStickySpeaker);
   const [busy, setBusy] = useState(false);
   const ref = useRef(null);
-  const ready = currentTime > prevEnd + 0.01;
+  const ready = currentTime > prevEnd + MIN_SEGMENT;
   const canCreate = ready && draft.trim().length > 0;
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);

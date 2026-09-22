@@ -23,6 +23,14 @@ export const hasValidTimes = (t) => {
   return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
 };
 
+/**
+ * The shortest segment anything may leave behind: a hundredth of a second,
+ * which is a tenth of the shortest a dragged edge may make (a drag is aimed
+ * by eye, a typed or keyed time is meant). Every caller that needs the
+ * number reads it from here.
+ */
+export const MIN_SEGMENT = 0.01;
+
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const speakerOf = (t) => (t.metadata?.speaker || '').trim();
@@ -86,7 +94,7 @@ export function rangeProblem(
   id,
   timeBegin,
   timeEnd,
-  { duration, minWidth = 0.01, format = String } = {},
+  { duration, minWidth = MIN_SEGMENT, format = String } = {},
 ) {
   if (timeEnd - timeBegin < minWidth) return 'A segment must end after it starts.';
   if (Number.isFinite(duration) && duration > 0 && timeEnd > duration + 0.001) {

@@ -4,6 +4,7 @@ import {
   clampResize,
   conflictingPairs,
   hasValidTimes,
+  MIN_SEGMENT,
   mayOverlap,
   rangeProblem,
   timeBounds,
@@ -112,5 +113,16 @@ describe('hasValidTimes', () => {
     expect(hasValidTimes(at(2, 1))).toBe(false);
     expect(hasValidTimes({})).toBe(false);
     expect(hasValidTimes(null)).toBe(false);
+  });
+});
+
+// The shortest segment anything may leave behind had three homes: this
+// module's own default, a constant on the transcript list, and a literal a few
+// hundred lines under it.
+describe('MIN_SEGMENT', () => {
+  it('is what rangeProblem refuses a shorter segment than', () => {
+    const tokens = [{ id: 'a', metadata: { timeBegin: 1, timeEnd: 2 } }];
+    expect(rangeProblem(tokens, 'a', 1, 1 + MIN_SEGMENT)).toBeNull();
+    expect(rangeProblem(tokens, 'a', 1, 1 + MIN_SEGMENT / 2)).toMatch(/must end after it starts/);
   });
 });
