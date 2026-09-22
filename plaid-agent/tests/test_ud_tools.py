@@ -75,6 +75,41 @@ def test_a_citation_carries_the_enhanced_graph_only_where_there_is_one():
     assert 'deps' not in resolve_citations(plain, '<example doc="Viaje" ref="s1.w4"/>')[0]['columns']
 
 
+def test_a_head_write_takes_the_suppressors_it_would_strand_with_it():
+    """A suppressor stands over a BASIC relation and says the enhanced graph
+    leaves that one out. Left behind by a write that moves or removes the
+    relation, it suppresses nothing, and it silently suppresses the next
+    relation drawn over the same pair: the person redraws the arc and it is
+    born faded, with no enhanced head and nothing on screen saying why. The
+    editor clears them at both moments; only reconcile-on-open, which runs on
+    an open and not after an assistant's plan, caught the agent's."""
+    # The tree's punct (word 5 under word 1) is left out of the graph, and so
+    # is a pair nothing joins yet (word 4 under word 1 is `obl`; word 5 under
+    # word 4 would be a new relation over an old suppressor).
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l4'),
+                       suppressor('e-2', 'sp-l3', 'sp-l4')])
+    run(ws, 'set_head', document='Viaje', ref='s1.w5', head=4, deprel='punct')
+    assert ws.ops[0]['suppressor_ids'] == ['e-1', 'e-2']
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert deleted == ['r-4', 'e-1', 'e-2']
+    assert len(ws.client.batches) == 1, 'in the same batch as the relation itself'
+
+
+def test_removing_a_head_takes_the_suppressor_over_it():
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l4')])
+    run(ws, 'del_relation', document='Viaje', refs=['s1.w5'])
+    assert ws.ops[0]['suppressor_ids'] == ['e-1']
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert deleted == ['r-4', 'e-1']
+
+
+def test_a_head_write_in_a_treebank_with_no_enhanced_rows_stages_none(ws):
+    run(ws, 'set_head', document='Viaje', ref='s1.w5', head=4, deprel='punct')
+    assert ws.ops[0]['suppressor_ids'] == []
+
+
 def test_read_document_takes_a_range(ws):
     out = run(ws, 'read_document', document='Viaje', from_sentence=2)
     assert '# sent_id = s2' in out and '# sent_id = s1' not in out

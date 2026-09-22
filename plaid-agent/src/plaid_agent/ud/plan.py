@@ -153,8 +153,26 @@ def _apply_merge_sentences(ctx: Context, op) -> int:
     return 1
 
 
+def _suppressors(ctx: Context, op) -> None:
+    """The enhanced layer's suppressors this write strands, deleted in the
+    same batch as the relation they stand over.
+
+    A suppressor is a valueless row of the enhanced layer over the same pair
+    as a basic relation, saying the enhanced graph leaves that one out. It
+    belongs to the relation under it: left behind, it suppresses nothing, and
+    it quietly suppresses the next relation drawn over the same pair, which a
+    person then sees born faded with nothing on screen saying why. The editor
+    clears them at the same two moments (plaid-ud ``ConlluDocument``,
+    ``createRelation`` and ``deleteRelation``); reconcile-on-open is what
+    catches whatever anyone else leaves, and it only runs on an OPEN.
+    """
+    for sid in op.get('suppressor_ids') or ():
+        ctx.b.add(lambda batch, i=sid: batch.relations.delete(i))
+
+
 def _apply_del_relation(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
+    _suppressors(ctx, op)
     return 1
 
 
@@ -166,6 +184,7 @@ def _apply_set_head(ctx: Context, op) -> int:
     # a failure falls.
     if op.get('relation_id'):
         ctx.b.add(lambda batch, i=op['relation_id']: batch.relations.delete(i))
+    _suppressors(ctx, op)
     ctx.b.add(lambda batch, o=op, s=src, t=target: batch.relations.create(
         o['relation_layer_id'], s, t, o['deprel'], ctx.stamp() or None))
     return 1
@@ -307,7 +326,9 @@ def _resolve_discard_scope(res: Resolution, op):
         ref = word_ref(sentence, w)
         if f == 'deprel':
             yield {'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
-                   'document_id': did, 'ref': ref, 'label': f'discard the unconfirmed head of {ref}'}
+                   'document_id': did, 'ref': ref,
+                   'suppressor_ids': [w.suppressor_id] if w.suppressor_id else [],
+                   'label': f'discard the unconfirmed head of {ref}'}
         else:
             yield {'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,
                    'span_id': span.id, 'value': '', 'field': f, 'document_id': did,
@@ -335,14 +356,16 @@ KIND = ok.registry([
            required=('word_id', 'head_id', 'lemma_layer_id', 'relation_layer_id', 'deprel'),
            target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id', 'head_id'), extra={'entity': _relation_entity},
-           deletes=lambda op: [op.get('relation_id')],
+           deletes=lambda op: [op.get('relation_id')] + list(op.get('suppressor_ids') or []),
            compact_each=('word_id', 'head_id', 'word_form', 'head_form', 'lemma_span_id',
-                         'head_lemma_span_id', 'relation_id', 'ref'), compact_label=_set_head_label),
+                         'head_lemma_span_id', 'relation_id', 'suppressor_ids', 'ref'),
+           compact_label=_set_head_label),
     OpKind('del_relation', _REMOVED_DEP, stage=IDS, apply=_apply_del_relation,
            required=('relation_id',), target=lambda op: ('head', op.get('word_id')),
            token_keys=('word_id',), extra={'entity': _relation_entity},
-           deletes=lambda op: [op['relation_id']],
-           compact_each=('word_id', 'relation_id', 'ref'), compact_label=_del_relation_label),
+           deletes=lambda op: [op['relation_id']] + list(op.get('suppressor_ids') or []),
+           compact_each=('word_id', 'relation_id', 'suppressor_ids', 'ref'),
+           compact_label=_del_relation_label),
     # A confirmation writes to the span or the relation it names, so one whose
     # subject another change in the same plan throws away is refused as the
     # plan is built rather than dropped from a card the user approved.

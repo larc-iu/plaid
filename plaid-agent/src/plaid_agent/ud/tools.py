@@ -525,6 +525,13 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
         raise ToolError('The deprel "root" belongs to head 0. Give the head word\'s id.')
     head_word = sentence.word(head) if head else word
     lemma, head_lemma = word.fields.get('lemma'), head_word.fields.get('lemma')
+    # The suppressors this write leaves stranded: the one over the relation it
+    # replaces, and one already lying over the pair it creates, which would
+    # otherwise leave the new relation faded and the word with no enhanced
+    # head. The editor's `createRelation` clears both.
+    stale = [word.suppressor_id,
+             doc.suppressor_over(head_lemma.id if head_lemma else None,
+                                 lemma.id if lemma else None)]
     ws.add_op({'kind': 'set_head', 'word_id': word.id, 'head_id': head_word.id,
                'lemma_layer_id': ws.project.layer('lemma'),
                'relation_layer_id': ws.project.relation_layer_id,
@@ -534,6 +541,7 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
                'lemma_span_id': lemma.id if lemma else None,
                'head_lemma_span_id': head_lemma.id if head_lemma else None,
                'relation_id': word.relation_id, 'deprel': deprel, 'document_id': doc.id,
+               'suppressor_ids': [i for i in dict.fromkeys(stale) if i],
                'label': (f'{word_ref(sentence, word)} root' if head == 0
                          else f'{word_ref(sentence, word)} {deprel} of word {head}'),
                'ref': word_ref(sentence, word)})
@@ -552,6 +560,8 @@ def t_del_relation(ws: Workspace, document: str = None, refs=None) -> str:
             word_ref(ws.sentence_of(doc, w), w) for w in words) + ' already have no head.'
     ws.add_ops([{'kind': 'del_relation', 'word_id': w.id, 'relation_id': w.relation_id,
                  'document_id': doc.id,
+                 # The suppressor over it goes with it (see Word.suppressor_id).
+                 'suppressor_ids': [w.suppressor_id] if w.suppressor_id else [],
                  'label': f'remove the head of {word_ref(ws.sentence_of(doc, w), w)}',
                  'ref': word_ref(ws.sentence_of(doc, w), w)}
                 for w in words if w.relation_id])
@@ -729,6 +739,7 @@ def t_discard_predictions(ws: Workspace, document: str = None, refs=None, field:
             if f == 'deprel':
                 staged.append({'kind': 'del_relation', 'word_id': w.id, 'relation_id': relation_id,
                                'document_id': doc.id, 'ref': ref,
+                               'suppressor_ids': [w.suppressor_id] if w.suppressor_id else [],
                                'label': f'discard the unconfirmed head of {ref}'})
             else:
                 staged.append({'kind': 'set_span', 'layer_id': span.layer_id, 'token_id': w.id,

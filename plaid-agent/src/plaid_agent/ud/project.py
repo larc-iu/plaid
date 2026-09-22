@@ -244,6 +244,11 @@ class Word:
     #: CoNLL-U's DEPS column writes them. Empty where the sentence says
     #: nothing about the enhanced graph, which means it equals its tree.
     enhanced: List[Tuple[int, str]] = dc_field(default_factory=list)
+    #: The suppressor lying over this word's basic relation, if there is one.
+    #: It belongs to that relation and goes when it goes: left behind it would
+    #: suppress nothing, and would quietly suppress the next relation drawn
+    #: over the same pair.
+    suppressor_id: Optional[str] = None
 
     def value(self, name: str) -> str:
         sp = self.fields.get(name)
@@ -314,6 +319,16 @@ class UdDoc:
     sentences: List[Sentence]
     metadata: dict
     version: Optional[int]
+    #: The enhanced layer's suppressors, by the pair of lemma spans each lies
+    #: over. What a writer of a BASIC relation has to look in, since a
+    #: suppressor belongs to the relation under it.
+    suppressors: Dict[Tuple[str, str], str] = dc_field(default_factory=dict)
+
+    def suppressor_over(self, source_span_id: str, target_span_id: str) -> Optional[str]:
+        """The suppressor over this pair of lemma spans, if there is one."""
+        if not source_span_id or not target_span_id:
+            return None
+        return self.suppressors.get((source_span_id, target_span_id))
 
     @property
     def word_count(self) -> int:
@@ -429,13 +444,14 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
         target.deprel = rel.get('value') or None
         target.relation_id = rel.get('id')
         target.relation_metadata = rel.get('metadata')
-    _read_enhanced(word_layer, project, basic, by_lemma_span, sentences)
+    suppressors = _read_enhanced(word_layer, project, basic, by_lemma_span, sentences)
     return UdDoc(raw['id'], raw.get('name') or '', text.get('id'), body, sentences,
-                 raw.get('metadata') or {}, raw.get('version'))
+                 raw.get('metadata') or {}, raw.get('version'), suppressors)
 
 
 def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
-                   by_lemma_span: Dict[str, Word], sentences: List[Sentence]) -> None:
+                   by_lemma_span: Dict[str, Word],
+                   sentences: List[Sentence]) -> Dict[Tuple[str, str], str]:
     """Fill in each word's heads in the ENHANCED graph, where the sentence has
     one.
 
@@ -449,13 +465,14 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
 
     READ-ONLY, by ruling (2026-09-21): the assistant shows and cites the
     enhanced graph and has no tool that changes it. What its head ops owe the
-    layer is tidying a suppressor over a relation they remove, which is
-    ``plan._suppressor_over``.
+    layer is tidying the suppressors around a basic relation they move or
+    delete, which is why the map of them comes back from here.
     """
     rows = _relations(word_layer, project.enhanced_relation_layer_id)
     if not rows:
-        return
-    suppressed = {(r.get('source'), r.get('target')) for r in rows if _suppresses(r)}
+        return {}
+    suppressed = {(r.get('source'), r.get('target')): r['id']
+                  for r in rows if _suppresses(r)}
     basic_by_target = {r.get('target'): r for r in basic}
     extras: Dict[str, List[Tuple[int, str]]] = {}
     touched = set()
@@ -480,14 +497,16 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
             edges: List[Tuple[int, str]] = []
             lemma = w.fields.get('lemma')
             rel = basic_by_target.get(lemma.id) if lemma else None
-            if (w.head is not None and w.deprel and rel is not None
-                    and (rel.get('source'), rel.get('target')) not in suppressed):
+            if rel is not None:
+                w.suppressor_id = suppressed.get((rel.get('source'), rel.get('target')))
+            if w.head is not None and w.deprel and rel is not None and not w.suppressor_id:
                 edges.append((w.head, w.deprel))
             edges += extras.get(w.id, [])
             # One head and relation once, in DEPS order: the same edge can be
             # held twice, as a basic relation nothing suppresses and as a row
             # of the enhanced layer saying the same thing.
             w.enhanced = sorted(dict.fromkeys(edges))
+    return suppressed
 
 
 def _suppresses(row: dict) -> bool:
