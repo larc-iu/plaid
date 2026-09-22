@@ -43,6 +43,7 @@
 
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
+import { hasValidTimes } from '../domain/alignmentTimes.js';
 import { lexiconView } from '../domain/vocabDictionary.js';
 import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
@@ -268,11 +269,6 @@ function punctWordXml(indent, content, options) {
 // token). Anything else — partial overlaps, ambiguity — is skipped; we never
 // invent alignment. Times are stored in seconds (metadata.timeBegin/timeEnd);
 // FLEx/ELAN expect integer milliseconds.
-
-const hasValidTimes = (t) => {
-  const { timeBegin, timeEnd } = t?.metadata ?? {};
-  return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
-};
 
 // The single alignment token an analysis phrase inherits from: an exact extent
 // match, else a unique token whose extent contains the sentence. Null when

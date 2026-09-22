@@ -21,6 +21,7 @@ import {
   readLanguages,
 } from '../domain/igtConfig.js';
 import { otherTokenLayers } from '../domain/otherLayers.js';
+import { bareMediaType, extensionForMediaType } from '../domain/media/mediaTypes.js';
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
@@ -100,40 +101,6 @@ const flexReadme = ({ stem, lexicon, docCount }) =>
     '',
   ].join('\n');
 
-// The mediaUrl the server hands out is the bare endpoint path
-// (/api/v1/documents/<id>/media — no filename), so the archive filename's
-// extension comes from the response Content-Type. Extensions matter: media
-// re-upload on import is validated by filename extension server-side.
-const MEDIA_EXTS = {
-  'audio/wav': '.wav',
-  'audio/x-wav': '.wav',
-  'audio/wave': '.wav',
-  'audio/vnd.wave': '.wav', // what the core serves for .wav uploads
-  'audio/mpeg': '.mp3',
-  'audio/mp4': '.m4a',
-  'audio/aac': '.aac',
-  'audio/ogg': '.ogg',
-  'audio/flac': '.flac',
-  'audio/x-flac': '.flac',
-  'audio/webm': '.weba',
-  'video/mp4': '.mp4',
-  'video/webm': '.webm',
-  'video/quicktime': '.mov',
-  'video/x-msvideo': '.avi',
-  'video/mpeg': '.mpg',
-};
-const extOfContentType = (contentType) => {
-  const mime = String(contentType ?? '')
-    .split(';')[0]
-    .trim()
-    .toLowerCase();
-  if (MEDIA_EXTS[mime]) return MEDIA_EXTS[mime];
-  // Generic fallback: subtype minus x-/vnd. decorations, when it looks like
-  // a plausible extension token.
-  const subtype = (mime.split('/')[1] ?? '').replace(/^(x-|vnd\.)/, '');
-  return /^[a-z0-9-]{1,8}$/.test(subtype) ? `.${subtype}` : '';
-};
-
 /**
  * Fetch a document's media by the `mediaUrl` its document record carries. That
  * URL names the file's version (`?v=`), so the browser cache can never hand
@@ -151,13 +118,10 @@ async function fetchDocumentMedia(client, mediaUrl) {
   const contentType = res.headers.get('content-type');
   return {
     bytes: new Uint8Array(await res.arrayBuffer()),
-    ext: extOfContentType(contentType),
+    ext: extensionForMediaType(contentType),
     // CLDF's MediaTable.Media_Type wants the media type itself, not the
     // extension the archive filename gets.
-    mime: String(contentType ?? '')
-      .split(';')[0]
-      .trim()
-      .toLowerCase(),
+    mime: bareMediaType(contentType),
   };
 }
 

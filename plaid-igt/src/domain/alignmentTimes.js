@@ -13,6 +13,16 @@
 // that got in some other way). The ELAN export puts each speaker on its own
 // tier, where cross-talk is legal, and must drop a time for same-tier overlap.
 
+/**
+ * Does this alignment token carry a real stretch of time? Both exporters ask
+ * before writing one: a token whose times are missing or inverted is a token
+ * with no time, and inventing one would misalign the file.
+ */
+export const hasValidTimes = (t) => {
+  const { timeBegin, timeEnd } = t?.metadata ?? {};
+  return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
+};
+
 const timeBeginOf = (t) => t.metadata?.timeBegin ?? 0;
 const timeEndOf = (t) => t.metadata?.timeEnd ?? timeBeginOf(t);
 const speakerOf = (t) => (t.metadata?.speaker || '').trim();

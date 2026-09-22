@@ -3,6 +3,7 @@ import {
   assignLanes,
   clampResize,
   conflictingPairs,
+  hasValidTimes,
   mayOverlap,
   rangeProblem,
   timeBounds,
@@ -92,5 +93,24 @@ describe('assignLanes', () => {
     ]);
     expect(count).toBe(2);
     expect(assignLanes(TOKENS).count).toBe(1);
+  });
+});
+
+// Both exporters ask this before writing a time, and each had its own copy.
+describe('hasValidTimes', () => {
+  const at = (timeBegin, timeEnd) => ({ metadata: { timeBegin, timeEnd } });
+
+  it('takes a real stretch, including an instant', () => {
+    expect(hasValidTimes(at(1, 2))).toBe(true);
+    expect(hasValidTimes(at(0, 0))).toBe(true);
+  });
+
+  it('refuses a missing, non-finite or inverted one', () => {
+    expect(hasValidTimes(at(undefined, 2))).toBe(false);
+    expect(hasValidTimes(at(1, null))).toBe(false);
+    expect(hasValidTimes(at(NaN, 2))).toBe(false);
+    expect(hasValidTimes(at(2, 1))).toBe(false);
+    expect(hasValidTimes({})).toBe(false);
+    expect(hasValidTimes(null)).toBe(false);
   });
 });

@@ -52,6 +52,8 @@ import { morphFormOf } from '../domain/igtExport.js';
 import { MEDIA_FILE_FIELD } from '../domain/igtConfig.js';
 import { joinerBetween } from '../domain/affixMarkers.js';
 import { xmlEscape, phraseSpeakerFor } from './flextext.js';
+import { hasValidTimes } from '../domain/alignmentTimes.js';
+import { mediaTypeForName } from '../domain/media/mediaTypes.js';
 
 const EAF_VERSION = '2.8';
 const SCHEMA_URL = 'http://www.mpi.nl/tools/elan/EAFv2.8.xsd';
@@ -102,11 +104,6 @@ const DEFAULT_TIER_NAMES = Object.freeze({
 
 const attr = (name, value) =>
   value === null || value === undefined || value === '' ? '' : ` ${name}="${xmlEscape(value)}"`;
-
-const hasValidTimes = (t) => {
-  const { timeBegin, timeEnd } = t?.metadata ?? {};
-  return Number.isFinite(timeBegin) && Number.isFinite(timeEnd) && timeEnd >= timeBegin;
-};
 
 /**
  * The alignment tokens lying WHOLLY inside a sentence, in text order. A token
@@ -178,31 +175,8 @@ const morphText = (morphemes, i, withMarkers) => {
 };
 
 // MIME_TYPE is required on MEDIA_DESCRIPTOR. When the caller has the served
-// content type we use it; otherwise it is guessed from the filename extension,
-// falling back to audio/x-wav (ELAN re-detects the real type when it opens the
-// media, so the attribute is a hint rather than a contract).
-const MIME_BY_EXT = {
-  wav: 'audio/x-wav',
-  mp3: 'audio/mpeg',
-  m4a: 'audio/mp4',
-  aac: 'audio/aac',
-  ogg: 'audio/ogg',
-  flac: 'audio/flac',
-  weba: 'audio/webm',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-  avi: 'video/x-msvideo',
-  mpg: 'video/mpeg',
-};
-const mimeFor = (mediaType, location) => {
-  if (mediaType) return mediaType;
-  const ext = String(location ?? '')
-    .split('.')
-    .pop()
-    .toLowerCase();
-  return MIME_BY_EXT[ext] || 'audio/x-wav';
-};
+// content type we use it; otherwise the file name says (domain/media/mediaTypes.js).
+const mimeFor = (mediaType, location) => mediaType || mediaTypeForName(location);
 
 // The media file name to reference when the caller has not computed a relative
 // href. Same reasoning as the .flextext exporter: the server's mediaUrl is a
