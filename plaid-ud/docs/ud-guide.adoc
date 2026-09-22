@@ -623,6 +623,7 @@ For writing your own scripts against a project, see the link:api-py.html[Python 
 = Keyboard Shortcuts
 
 Every shortcut that takes Ctrl also takes Cmd on a Mac.
+The shortcuts below are fixed and cannot be rebound.
 The editor carries a short version of this under **Gestures and marks**, above the first sentence.
 
 == Annotation grid
