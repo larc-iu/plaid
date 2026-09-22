@@ -10,8 +10,8 @@ import inspect
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
-from .args import clamp_limit, read_int
-from .limits import MAX_RESULT_CHARS, READ_LIMITS
+from .args import clamp_limit, read_int, sentence_number, sentence_numbers
+from .limits import MAX_RESULT_CHARS, MAX_SENTENCES_PER_READ, READ_LIMITS, RENDER_BUDGET
 
 
 class ToolError(Exception):
@@ -130,3 +130,24 @@ def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) 
     for d in page:
         out.append(f'  "{d.get("name")}"')
     return '\n'.join(out)
+
+
+def read_document(ws, document: str = None, from_sentence=None, to_sentence=None,
+                  sentences=None) -> str:
+    """One document, a page of sentences at a time, or the sentences named.
+
+    Named sentences beat a range: a reader that already knows where to look
+    should not have to page a long document to get there. How a sentence is
+    RENDERED is the app's (:meth:`BaseWorkspace.render`); which ones, and how
+    many at once, is not.
+    """
+    doc = ws.doc(document)
+    if sentences:
+        picked = sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
+        return truncate(ws.render(doc, indexes=picked, budget=RENDER_BUDGET))
+    lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
+    hi = (sentence_number(to_sentence, 'to_sentence')
+          or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1))
+    if hi - lo + 1 > MAX_SENTENCES_PER_READ:
+        hi = lo + MAX_SENTENCES_PER_READ - 1
+    return truncate(ws.render(doc, from_sentence=lo, to_sentence=hi, budget=RENDER_BUDGET))

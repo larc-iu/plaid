@@ -719,8 +719,8 @@ def test_a_search_spreads_its_hits_over_several_documents():
 def test_a_read_that_does_not_fit_says_where_to_continue(ws, monkeypatch):
     """The header promised forty sentences while the text was cut off inside
     the ninth, and the model planned its paging on the promise."""
-    from plaid_agent.ud import tools
-    monkeypatch.setattr(tools, 'RENDER_BUDGET', 420)
+    from plaid_agent.core import tools as core_tools
+    monkeypatch.setattr(core_tools, 'RENDER_BUDGET', 420)
     out = run(ws, 'read_document', document='Viaje')
     assert 'Showing sentences 1 to 1 of the 1 to 2 asked for: the rest did not fit. Continue with from_sentence=2.' in out
     assert '# sent_id = s1' in out and '# sent_id = s2' not in out and '[truncated' not in out

@@ -17,15 +17,14 @@ from ..core import docload, opkind
 from ..core.args import sentence_number
 from plaid_client.workflows.umr import parse_attribute_line
 
-from ..core.limits import (MAX_SENTENCES_PER_READ, OVERVIEW_DOCS, RENDER_BUDGET,
-                           SAMPLE_LINES)
+from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
 from ..core.workspace import BaseWorkspace
 from .diff import plan_penman
 from .plan import (GRAPH_KINDS, KIND, attrs_scope_targets, graphs_of_op, sentence_graph_key)
 from .project import (DOC_CONSTANTS, GNode, GROUPS, Sentence, UmrDoc, UmrProject,
                       gloss_headers, group_of, load_document, node_ref, place_attributes,
-                      render_document, render_document_graph)
+                      render_document, render_document_graph, resolve)
 
 # What counts as one change here, appended to the plan-is-full refusal.
 PLAN_NOTE = ('Replacing a sentence graph counts as one change per node, relation and attribute '
@@ -46,6 +45,20 @@ class Workspace(BaseWorkspace):
     # an anchor token, so nothing reads a planned value back.
     SPAN_KIND = ''
     DOC_CACHE = _DOC_CACHE
+
+    def render(self, doc, **kw) -> str:
+        return render_document(doc, self.project, doc.gloss, **kw)
+
+    def comment_anchor(self, doc: 'UmrDoc', ref: str) -> str:
+        # A sentence's comments hang off its token, as in the other apps.
+        try:
+            thing = resolve(doc, ref)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        if not isinstance(thing, Sentence):
+            raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on '
+                            f'the document.')
+        return thing.id
 
     def __init__(self, client, project: UmrProject, on_progress=None):
         super().__init__(client, project, on_progress)
@@ -157,33 +170,6 @@ def t_project_overview(ws: Workspace) -> str:
     if len(docs) > OVERVIEW_DOCS:
         out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
     return '\n'.join(out)
-
-
-def _sentence_numbers(sentences) -> List[int]:
-    """The sentence numbers a ``sentences`` argument names. Accepts what a read
-    prints: 3, "3", "s3", and "s3.s3e" (the node's sentence), in any mix."""
-    out: List[int] = []
-    for item in (sentences if isinstance(sentences, list) else [sentences]):
-        n = sentence_number(str(item).split('.')[0] if isinstance(item, str) else item, 'sentences')
-        if n is not None and n not in out:
-            out.append(n)
-    return out
-
-
-def t_read_document(ws: Workspace, document: str = None, from_sentence=None,
-                    to_sentence=None, sentences=None) -> str:
-    doc = ws.doc(document)
-    budget = RENDER_BUDGET
-    if sentences:
-        picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
-        return truncate(render_document(doc, ws.project, doc.gloss, indexes=picked, budget=budget))
-    lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
-    hi = (sentence_number(to_sentence, 'to_sentence')
-          or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1))
-    if hi - lo + 1 > MAX_SENTENCES_PER_READ:
-        hi = lo + MAX_SENTENCES_PER_READ - 1
-    return truncate(render_document(doc, ws.project, doc.gloss, from_sentence=lo, to_sentence=hi,
-                                    budget=budget))
 
 
 def t_document_graph(ws: Workspace, document: str = None) -> str:
@@ -428,5 +414,5 @@ def t_delete_triple(ws: Workspace, document: str = None, a: str = None, rel: str
 
 __all__ = ['PLAN_NOTE', 'Workspace',
            't_add_triple', 't_apply_penman', 't_delete_triple', 't_document_graph',
-           't_project_overview', 't_read_document', 't_set_attribute_for_concept',
+           't_project_overview', 't_set_attribute_for_concept',
            't_set_attributes']

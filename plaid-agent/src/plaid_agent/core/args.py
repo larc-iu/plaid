@@ -10,7 +10,7 @@ was wrong in the same voice as every other refusal.
 """
 
 import re
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 
 def whole(i, name: str = 'number') -> int:
@@ -93,3 +93,15 @@ def sentence_number(raw: Any, name: str = 'sentence') -> Optional[int]:
     if not first.isdigit():
         raise ValueError(f'"{raw}" does not name a sentence. Use a number or a reference like "s34".')
     return int(first)
+
+
+def sentence_numbers(sentences) -> List[int]:
+    """The sentence numbers a ``sentences`` argument names, in order and with
+    no repeats. Accepts what a read prints and what a search returns: 34,
+    "34", "s34", and a reference into a sentence, in any mix."""
+    out: List[int] = []
+    for item in (sentences if isinstance(sentences, list) else [sentences]):
+        n = sentence_number(item, 'sentences')
+        if n is not None and n not in out:
+            out.append(n)
+    return out

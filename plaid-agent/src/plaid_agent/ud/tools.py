@@ -14,11 +14,10 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
-from ..core.args import sentence_number, whole
-from ..core.limits import (MAX_SCOPE_DOCS, MAX_SENTENCES_PER_READ, OVERVIEW_DOCS,
-                           RENDER_BUDGET)
+from ..core.args import whole
+from ..core.limits import MAX_SCOPE_DOCS, OVERVIEW_DOCS
 from ..core.workspace import BaseWorkspace
-from ..core.tools import ToolError, server_refused, truncate
+from ..core.tools import ToolError, server_refused
 from .plan import (KIND, RESHAPES_DOCUMENT, RESHAPES_TOKEN, REWRITES_DOCUMENT, docs_of_op,
                    scope_clears)
 from .project import (Sentence, Token, UdDoc, UdProject, Word, load_document, render_document,
@@ -56,6 +55,17 @@ class Workspace(BaseWorkspace):
     SPAN_KIND = 'set_span'
     DOC_CACHE = _DOC_CACHE
     RESTORE_TOOL = 'restore_document'
+
+    def render(self, doc, **kw) -> str:
+        return render_document(doc, **kw)
+
+    def comment_anchor(self, doc: 'UdDoc', ref: str) -> str:
+        # A sentence's comments hang off its token.
+        thing = resolve(doc, ref)
+        if not isinstance(thing, Sentence):
+            raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on '
+                            f'the document.')
+        return thing.id
 
     def __init__(self, client, project: UdProject, on_progress=None):
         super().__init__(client, project, on_progress)
@@ -239,34 +249,6 @@ def t_project_overview(ws: Workspace) -> str:
     if len(docs) > OVERVIEW_DOCS:
         out.append(f'  ... and {len(docs) - OVERVIEW_DOCS} more (list_documents pages through them)')
     return '\n'.join(out)
-
-
-def _sentence_numbers(sentences) -> List[int]:
-    """The sentence numbers a ``sentences`` argument names. Accepts what a read
-    prints and what a search returns: 34, "34", "s34", and "s34.w2" (the word's
-    sentence), in any mix."""
-    out: List[int] = []
-    for item in (sentences if isinstance(sentences, list) else [sentences]):
-        n = sentence_number(item, 'sentences')
-        if n is not None and n not in out:
-            out.append(n)
-    return out
-
-
-def t_read_document(ws: Workspace, document: str = None, from_sentence: int = None,
-                    to_sentence: int = None, sentences=None) -> str:
-    doc = ws.doc(document)
-    budget = RENDER_BUDGET
-    # Named sentences beat a range: a reader that already knows where to look
-    # should not have to page a long document to get there.
-    if sentences:
-        picked = _sentence_numbers(sentences)[:MAX_SENTENCES_PER_READ]
-        return truncate(render_document(doc, indexes=picked, budget=budget))
-    lo = max(1, sentence_number(from_sentence, 'from_sentence') or 1)
-    hi = sentence_number(to_sentence, 'to_sentence') or min(len(doc.sentences), lo + MAX_SENTENCES_PER_READ - 1)
-    if hi - lo + 1 > MAX_SENTENCES_PER_READ:
-        hi = lo + MAX_SENTENCES_PER_READ - 1
-    return truncate(render_document(doc, from_sentence=lo, to_sentence=hi, budget=budget))
 
 
 # --- planning helpers ----------------------------------------------------------

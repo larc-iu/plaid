@@ -193,6 +193,17 @@ class BaseWorkspace:
 
     # --- the plan ---------------------------------------------------------
 
+    def render(self, doc, **kw) -> str:
+        """One of this app's documents as the model reads it. Takes
+        ``from_sentence``/``to_sentence`` or ``indexes``, and a ``budget`` in
+        characters."""
+        raise NotImplementedError
+
+    def comment_anchor(self, doc, ref: str) -> str:
+        """The id a comment on ``ref`` hangs off, or a refusal saying what a
+        comment may sit on. A comment is anchored on a TOKEN in every app."""
+        raise NotImplementedError
+
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan refers to, with the version each was read at,
         so approval can refuse a plan made against data that has moved on."""

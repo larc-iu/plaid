@@ -28,13 +28,14 @@ from .restore import t_restore_document
 from .sandbox import t_code_help, t_run_code
 from .sentences import t_merge_sentences, t_split_sentence
 from .shape import t_set_words
+from ..core.history import comments as t_comments
 from .stats import (COUNTABLE, CONSISTENCY, SEARCHABLE, WORKLIST_KINDS, t_check_consistency,
-                    t_comments, t_frequency_list, t_search, t_worklist)
+                    t_frequency_list, t_search, t_worklist)
 from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
     plan_status as t_plan_status
-from ..core.tools import list_documents as t_list_documents
+from ..core.tools import list_documents as t_list_documents, read_document as t_read_document
 from .tools import (FIELDS, Workspace, t_add_comment, t_confirm, t_del_relation,
-                    t_discard_predictions, t_project_overview, t_read_document, t_run_parse,
+                    t_discard_predictions, t_project_overview, t_run_parse,
                     t_set_feature, t_set_field, t_set_head)
 
 # Offered only where the monty worker binary is present, and only where the

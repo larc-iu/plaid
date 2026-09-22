@@ -177,15 +177,17 @@ def test_the_sweep_covers_every_shared_read():
 
 
 def test_every_app_caps_a_scope_and_a_read_at_the_same_number():
+    from plaid_agent.core import tools as core_tools
     from plaid_agent.igt import tools as igt_tools
     from plaid_agent.igt import project as igt_project
     from plaid_agent.ud import tools as ud_tools
     from plaid_agent.umr import tools as umr_tools
     assert igt_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
     assert ud_tools.MAX_SCOPE_DOCS is limits.MAX_SCOPE_DOCS
-    assert ud_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
+    # UD and UMR read a document through `core.tools.read_document`; plaid-igt
+    # has its own, which pages the same way.
+    assert core_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
     assert igt_project.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
-    assert umr_tools.MAX_SENTENCES_PER_READ is limits.MAX_SENTENCES_PER_READ
     assert igt_project.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
     assert ud_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
     assert umr_tools.OVERVIEW_DOCS is limits.OVERVIEW_DOCS
@@ -230,11 +232,10 @@ def test_the_sandbox_hands_back_what_every_other_tool_result_may_cost():
 def test_every_read_renders_against_the_one_render_budget():
     """`MAX_RESULT_CHARS - 100` was written out in all three apps, with the
     100 (room for the header the tool writes around the render) nowhere."""
+    from plaid_agent.core import tools as core_tools
     from plaid_agent.igt import reads as igt_reads
-    from plaid_agent.ud import tools as ud_tools
-    from plaid_agent.umr import tools as umr_tools
     assert limits.RENDER_BUDGET == limits.MAX_RESULT_CHARS - limits.RENDER_HEADER_ROOM
-    for mod in (igt_reads, ud_tools, umr_tools):
+    for mod in (igt_reads, core_tools):
         assert mod.RENDER_BUDGET is limits.RENDER_BUDGET
 
 

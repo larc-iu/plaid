@@ -23,17 +23,15 @@ from ..core.webtools import t_read_url, t_web_search
 
 from .corpus import (COUNTABLE, SEARCHABLE, WORKLIST_KINDS, t_find_nodes, t_frequency_list,
                      t_search, t_worklist)
-from ..core.history import recent_changes as t_recent_changes
-from .history import t_comments
+from ..core.history import comments as t_comments, recent_changes as t_recent_changes
 from .project import DOC_CONSTANTS, GROUPS
 from .query import t_query, t_query_help
 from .sandbox import t_code_help, t_run_code
 from ..core.plan import discard_plan as t_discard_plan, drop_planned as t_drop_planned, \
     plan_status as t_plan_status
-from ..core.tools import list_documents as t_list_documents
+from ..core.tools import list_documents as t_list_documents, read_document as t_read_document
 from .tools import (Workspace, t_add_triple, t_apply_penman, t_delete_triple, t_document_graph,
-                    t_project_overview, t_read_document, t_set_attribute_for_concept,
-                    t_set_attributes)
+                    t_project_overview, t_set_attribute_for_concept, t_set_attributes)
 
 # Offered only where the monty worker binary is present, and only where the
 # operator configured a search backend (see tools_for): a model that cannot run

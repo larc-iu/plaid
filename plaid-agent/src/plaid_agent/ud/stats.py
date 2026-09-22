@@ -10,7 +10,7 @@ from typing import Dict, List
 from .corpus import RENDER_DOC_BUDGET, Corpus, rx
 from .project import Sentence, UdDoc, Word, kwic, word_ref
 from ..core.corpus import spread
-from ..core.tools import ToolError, server_refused, truncate
+from ..core.tools import ToolError, truncate
 from .tools import FIELDS, Workspace
 from ..core.args import clamp_limit
 from ..core.limits import READ_LIMITS
@@ -375,36 +375,3 @@ def t_worklist(ws: Workspace, kind: str = 'unverified', field: str = None,
 # --- history and comments --------------------------------------------------------
 # `recent_changes` is `core.history`'s: nothing in reading the audit log is
 # this app's, and it used to be written out here, in plaid-umr and in plaid-igt.
-
-def t_comments(ws: Workspace, document: str = None, ref: str = None, limit: int = None) -> str:
-    """What people have written to each other on a sentence or a document.
-    These are notes between annotators, never annotation."""
-    from .project import Sentence as _S
-    limit = clamp_limit(limit, *READ_LIMITS['comments'])
-    doc = ws.doc(document)
-    kw = {'document_id': doc.id}
-    if ref:
-        thing = ws.word(document, ref)
-        if not isinstance(thing, _S):
-            raise ToolError(f'{ref} is not a sentence. A comment sits on a sentence or on the document.')
-        kw = {'entity_id': thing.id}  # the app anchors a sentence's comments on its token
-    try:
-        got = ws.client.comments.list(ws.project.id, **kw) or []
-    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
-        raise server_refused('The comments', e)
-    if not got:
-        return f'No comments on {ref}.' if ref else f'No comments in "{doc.name}".'
-    # A comment names the entity it is anchored to. Turn that back into the
-    # positional reference the rest of the tools speak.
-    where = {}
-    for sn in doc.sentences:
-        where[sn.id] = f's{sn.index}'
-    out = []
-    for cm in got[:limit]:
-        who = (cm.get('user') or {}).get('display_name') or (cm.get('user') or {}).get('id') or '?'
-        at = where.get(cm.get('entity_id'), doc.name)
-        out.append(f'  {at}  {who} ({(cm.get("time") or "")[:10]}): {cm.get("body") or ""}')
-    head = f'{len(got)} comment(s) in "{doc.name}"' + (f' on {ref}' if ref else '')
-    if len(got) > limit:
-        head += f', showing {limit}'
-    return truncate(head + ':\n' + '\n'.join(out))

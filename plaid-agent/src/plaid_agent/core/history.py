@@ -1,14 +1,18 @@
-"""What the project's log says: who changed what, when, under which label.
+"""What the project's log says, and what people have written to each other.
 
-The audit log is not annotation and it is not corpus data, so it is read from
-the server directly rather than through the query engine. It is also long -- a
-corpus of a thousand documents has thousands of entries and megabytes of ops --
-which is the whole design of the read below: newest first, a page at a time,
-stopped as soon as the asked-for number of entries is in hand.
+Neither is annotation, and neither is corpus data, so both are read from the
+server directly rather than through the query engine: a comment outlives the
+thing it is anchored to.
 
-One reading for every app, because there is nothing app-specific in it: the
-entries name people, documents and operations, and each app's tools address a
-document by name, which :meth:`BaseWorkspace.resolve_document_id` already does.
+The log is also long -- a corpus of a thousand documents has thousands of
+entries and megabytes of ops -- which is the whole design of the read below:
+newest first, a page at a time, stopped as soon as the asked-for number of
+entries is in hand.
+
+One reading for every app, because there is nothing app-specific in either but
+what a reference names: the entries name people, documents and operations, and
+each app's tools address a document by name, which
+:meth:`BaseWorkspace.resolve_document_id` already does.
 """
 
 import re
@@ -83,3 +87,35 @@ def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = No
         out.append(f'  {e.get("time")}  {who}  {docs}: {what} ({len(e.get("ops") or [])} op(s))')
         out.append(f'      as_of={after}')
     return truncate('\n'.join(out))
+
+
+def comments(ws, document: str = None, ref: str = None, limit: int = None) -> str:
+    """What people have written to each other on a document, or on one thing in
+    it. These are notes between annotators, never annotation.
+
+    What ``ref`` names is the app's (:meth:`BaseWorkspace.comment_anchor`);
+    everything else about reading a thread is not.
+    """
+    limit = clamp_limit(limit, *READ_LIMITS['comments'])
+    doc = ws.doc(document)
+    kw: Dict[str, Any] = {'document_id': doc.id}
+    if ref:
+        kw = {'entity_type': 'token', 'entity_id': ws.comment_anchor(doc, ref)}
+    try:
+        got = ws.client.comments.list(ws.project.id, **kw) or []
+    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
+        raise server_refused('The comments', e) from None
+    if not got:
+        return f'No comments on {ref}.' if ref else f'No comments in "{doc.name}".'
+    # A comment names the entity it is anchored to. Turn that back into the
+    # positional reference the rest of the tools speak.
+    where = {s.id: f's{s.index}' for s in doc.sentences}
+    out = []
+    for cm in got[:limit]:
+        who = (cm.get('user') or {}).get('display_name') or (cm.get('user') or {}).get('id') or '?'
+        at = where.get(cm.get('entity_id'), doc.name)
+        out.append(f'  {at}  {who} ({(cm.get("time") or "")[:10]}): {cm.get("body") or ""}')
+    line = f'{len(got)} comment(s) in "{doc.name}"' + (f' on {ref}' if ref else '')
+    if len(got) > limit:
+        line += f', showing {limit}'
+    return truncate(line + ':\n' + '\n'.join(out))
