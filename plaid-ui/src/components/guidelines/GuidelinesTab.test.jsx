@@ -100,6 +100,21 @@ describe('the guidelines list', () => {
     await unmount();
   });
 
+  // A title is the project's own words, so it reads in its own direction: an
+  // Arabic guideline title in a left-to-right list, and the other way round.
+  it('lets a title choose its own direction, in the list and in the read pane', async () => {
+    const { container, step, unmount } = await mount();
+    expect(all(container, 'button[class*="border-b"] span.font-medium').map((n) => n.dir)).toEqual([
+      'auto',
+      'auto',
+      'auto',
+    ]);
+
+    await step(() => byText(container, 'button', 'Alpha').click());
+    expect(container.querySelector('h2').dir).toBe('auto');
+    await unmount();
+  });
+
   it('says so when the project has no guidelines yet', async () => {
     const client = fakeClient({ list: vi.fn().mockResolvedValue([]) });
     const { container, unmount } = await mount({ client });

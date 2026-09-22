@@ -16,7 +16,9 @@ export const AttachmentChip = ({ file, onRemove = null, className = '' }) => (
     )}
   >
     <FileText className="h-3 w-3 shrink-0 text-muted-foreground" />
-    <span className="truncate font-medium">{file.name}</span>
+    <span dir="auto" className="truncate font-medium">
+      {file.name}
+    </span>
     <span className="shrink-0 text-muted-foreground">{fileSize(file.bytes)}</span>
     {onRemove && (
       <button

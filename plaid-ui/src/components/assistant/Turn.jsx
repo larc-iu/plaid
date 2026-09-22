@@ -133,7 +133,10 @@ export const Turn = ({
             {item.where.name}
           </div>
         )}
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground">
+        <div
+          dir="auto"
+          className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground"
+        >
           {item.text}
         </div>
         {/* What was attached to this question. It stays on the message for the

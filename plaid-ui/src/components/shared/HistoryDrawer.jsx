@@ -204,7 +204,9 @@ export const HistoryDrawer = ({
           <div className="flex flex-col items-start gap-2">
             <Badge>Historical state</Badge>
             {selectedEntry.label && (
-              <p className="line-clamp-2 text-xs font-medium">{selectedEntry.label}</p>
+              <p dir="auto" className="line-clamp-2 text-xs font-medium">
+                {selectedEntry.label}
+              </p>
             )}
             <p className="text-xs text-muted-foreground">{fullTimestamp(selectedEntry.time)}</p>
             <div className="flex flex-wrap gap-2">

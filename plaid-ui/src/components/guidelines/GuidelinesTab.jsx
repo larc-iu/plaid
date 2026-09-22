@@ -49,7 +49,9 @@ const GuidelineRow = ({ entry, selected, onSelect }) => (
       {entry.pinned && (
         <Pin className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Pinned" />
       )}
-      <span className="truncate text-sm font-medium">{entry.title}</span>
+      <span dir="auto" className="truncate text-sm font-medium">
+        {entry.title}
+      </span>
     </span>
   </button>
 );
@@ -357,7 +359,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+                <h2 dir="auto" className="flex items-center gap-1.5 text-lg font-semibold">
                   {opened.pinned && <Pin className="h-4 w-4 shrink-0 text-muted-foreground" />}
                   {opened.title}
                 </h2>
