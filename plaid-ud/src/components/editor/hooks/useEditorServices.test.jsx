@@ -132,7 +132,7 @@ const makeDoc = (over = {}) => ({
     sentenceTokenLayer: { id: 'sent-1' },
     wordTokenLayer: { id: 'word-1' },
   },
-  _reload: vi.fn(async () => {
+  reload: vi.fn(async () => {
     statusAtReload = statuses.at(-1) ?? null;
     seq.push('reload');
   }),
@@ -319,7 +319,7 @@ describe('a parse run that fails outright', () => {
 
   it('frees the lock when the reload after a success throws', async () => {
     const doc = makeDoc({
-      _reload: vi.fn(async () => {
+      reload: vi.fn(async () => {
         seq.push('reload');
         throw new Error('The document could not be read back');
       }),

@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
-import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
-import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
-import { writeRunRecord, clearRunRecord } from '@ui/domain/runRecord.js';
-import { notifySuccess, notifyError } from '../../../utils/feedback.jsx';
+import { useServiceRun } from '@ui/hooks/useServiceRun.js';
+import { useRunProgress } from '@ui/hooks/useRunProgress.js';
+import { notifySuccess } from '../../../utils/feedback.jsx';
 import { BUILTIN_TOKENIZE_SEGMENTER, languageParamSeed } from '../../../utils/serviceDefaults.js';
 import { readProjectLanguage } from '../../../utils/udLayerUtils.js';
 import { parseNotice } from '../../../domain/parseNotice.js';
-import { reloadAfterRun } from '@ui/lib/runReload.js';
 
 // How long a service may say NOTHING, not a cap on the run: the client
 // restarts this clock on every progress event. A model load plus a neural
@@ -36,16 +34,8 @@ const TOKENIZE_BUILTINS = [
 // The shell owns this hook and hands it down, so the Text Editor's dialog and
 // the Annotate toolbar's button are the same run, not two.
 export const useEditorServices = ({ client, projectId, doc, project, acquireWriteLock }) => {
-  const {
-    availableServices,
-    isDiscovering,
-    discoverServices,
-    requestService,
-    cancelRequest,
-    isProcessing,
-    progressPercent,
-    progressMessage,
-  } = useServiceRequest(client);
+  const request = useServiceRequest(client);
+  const { isDiscovering, discoverServices, cancelRequest, isProcessing } = request;
 
   useEffect(() => {
     if (projectId) discoverServices(projectId);
@@ -59,116 +49,54 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     [projectLanguage],
   );
 
-  const parseSpot = useServiceSpot({
+  const parse = useServiceRun({
+    request,
     task: TASKS.PARSE,
-    project,
-    services: availableServices,
     storageId: 'parse',
     seedParams: seedLanguage,
-  });
-  const tokenizeSpot = useServiceSpot({
-    task: TASKS.TOKENIZE,
     project,
-    services: availableServices,
-    builtins: TOKENIZE_BUILTINS,
-    storageId: 'tokenize',
-  });
-
-  const parseRun = useRunProgress();
-  const tokenizeRun = useRunProgress();
-  useMirroredProgress(parseRun, {
-    percent: progressPercent,
-    message: progressMessage,
-    active: parseRun.running,
-  });
-  useMirroredProgress(tokenizeRun, {
-    percent: progressPercent,
-    message: progressMessage,
-    active: tokenizeRun.running && !!tokenizeSpot.service,
-  });
-
-  // The banner is the only surface once the dialog is shut and the user has
-  // moved to the other tab.
-  const lockRef = useRef(null);
-  useEffect(() => {
-    if (progressMessage) lockRef.current?.setStatus(progressMessage);
-  }, [progressMessage]);
-
-  // One service run, start to finish: the lock, the record, the request, the
-  // reload. `args` are merged under the fixed ones the app supplies.
-  const runService = useCallback(
-    async ({ spot, run, label, serviceId, args, timeout, copy }) => {
-      const missing = Object.values(spot.params.errors);
-      if (missing.length) {
-        notifyError(missing[0], 'Missing required option');
-        return;
-      }
-      const lock = acquireWriteLock(label, { onCancel: cancelRequest });
-      if (!lock) return;
-      lockRef.current = lock;
-      run.start([label]);
-      let stillOut = false; // the request survived our giving up on it
-      try {
-        await requestService(
-          projectId,
-          doc.id,
-          serviceId,
-          // The service's own declared arguments spread FIRST, so the fixed
-          // ones below always win over a same-named argument.
-          { ...spot.params.coerced(), ...args },
-          {
-            timeout,
-            ...copy,
-            // Written down before the request is submitted, so a reload in
-            // that window can still find the run.
-            onRequestId: (requestId) => writeRunRecord(doc.id, { requestId, projectId, label }),
-          },
-        );
-        // Re-reading a large document is seconds of work, so it is named
-        // rather than left as dead air.
-        run.report({ percent: null, message: 'Loading results…' });
-        lock.setStatus('Loading results…');
-        await reloadAfterRun(() => doc._reload());
-      } catch (error) {
-        // requestService has already said it out loud; log so a failed run
-        // does not toast twice.
-        console.error(`${label} failed:`, error);
-        stillOut = error?.pending === true;
-      } finally {
-        if (!stillOut) clearRunRecord(doc.id);
-        run.finish();
-        lockRef.current = null;
-        lock.release();
-      }
+    projectId,
+    doc,
+    acquireWriteLock,
+    label: 'Parse',
+    timeout: PARSE_SILENCE_MS,
+    copy: {
+      successTitle: 'Parsed',
+      successMessage: 'The parser finished.',
+      errorTitle: 'Parse failed',
+      errorMessage: 'The parse did not run.',
+      stoppedTitle: 'Parse',
+      // This parser's write phase is one critical block with no checkpoint in
+      // it, so a run it reports as stopped stopped before writing.
+      stoppedMessage: 'Nothing was written.',
+      // The service authors the words and picks the severity. A run that
+      // skipped every sentence warns rather than congratulates (C8).
+      notice: parseNotice,
     },
-    [acquireWriteLock, cancelRequest, requestService, projectId, doc],
-  );
+  });
 
-  const runParse = useCallback(
-    () =>
-      runService({
-        spot: parseSpot,
-        run: parseRun,
-        label: 'Parse',
-        serviceId: parseSpot.service?.serviceId,
-        args: { documentId: doc.id },
-        timeout: PARSE_SILENCE_MS,
-        copy: {
-          successTitle: 'Parsed',
-          successMessage: 'The parser finished.',
-          errorTitle: 'Parse failed',
-          errorMessage: 'The parse did not run.',
-          stoppedTitle: 'Parse',
-          // This parser's write phase is one critical block with no checkpoint
-          // in it, so a run it reports as stopped stopped before writing.
-          stoppedMessage: 'Nothing was written.',
-          // The service authors the words and picks the severity. A run that
-          // skipped every sentence warns rather than congratulates (C8).
-          notice: parseNotice,
-        },
-      }),
-    [runService, parseSpot, parseRun, doc],
-  );
+  const tokenize = useServiceRun({
+    request,
+    task: TASKS.TOKENIZE,
+    storageId: 'tokenize',
+    builtins: TOKENIZE_BUILTINS,
+    project,
+    projectId,
+    doc,
+    acquireWriteLock,
+    label: 'Tokenize',
+    copy: {
+      successTitle: 'Tokenized',
+      successMessage: 'The document is tokenized.',
+      errorTitle: 'Tokenize failed',
+      errorMessage: 'The tokenizer did not run.',
+      stoppedTitle: 'Tokenize',
+    },
+  });
+
+  // The builtin runs in the browser, so it reports its own progress rather than
+  // the request's; it still needs a run to show in the banner.
+  const builtinRun = useRunProgress();
 
   // The built-in runs here in the browser and reloads on its own, so it takes
   // the lock but writes no record: it dies with the page that started it.
@@ -176,43 +104,29 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     async (textContent) => {
       const lock = acquireWriteLock('Tokenize');
       if (!lock) return;
-      tokenizeRun.start(['Tokenize']);
+      builtinRun.start(['Tokenize']);
       try {
         const ok = await doc.tokenize(textContent);
         if (ok) notifySuccess('The document is tokenized.', 'Tokenized');
       } finally {
-        tokenizeRun.finish();
+        builtinRun.finish();
         lock.release();
       }
     },
-    [acquireWriteLock, doc, tokenizeRun],
+    [acquireWriteLock, doc, builtinRun],
   );
 
   const runTokenize = useCallback(
     (textContent) => {
-      if (!tokenizeSpot.service) return runBuiltinTokenize(textContent);
+      if (!tokenize.spot.service) return runBuiltinTokenize(textContent);
       const layers = doc.layerInfo;
-      return runService({
-        spot: tokenizeSpot,
-        run: tokenizeRun,
-        label: 'Tokenize',
-        serviceId: tokenizeSpot.service.serviceId,
-        args: {
-          documentId: doc.id,
-          textLayerId: layers.textLayer?.id,
-          sentenceLayerId: layers.sentenceTokenLayer?.id,
-          primaryTokenLayerId: layers.wordTokenLayer?.id,
-        },
-        copy: {
-          successTitle: 'Tokenized',
-          successMessage: 'The document is tokenized.',
-          errorTitle: 'Tokenize failed',
-          errorMessage: 'The tokenizer did not run.',
-          stoppedTitle: 'Tokenize',
-        },
+      return tokenize.start({
+        textLayerId: layers.textLayer?.id,
+        sentenceLayerId: layers.sentenceTokenLayer?.id,
+        primaryTokenLayerId: layers.wordTokenLayer?.id,
       });
     },
-    [runBuiltinTokenize, runService, tokenizeSpot, tokenizeRun, doc],
+    [runBuiltinTokenize, tokenize, doc],
   );
 
   return {
@@ -220,7 +134,12 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     isProcessing,
     cancelRequest,
     discoverServices: useCallback(() => discoverServices(projectId), [discoverServices, projectId]),
-    parse: { spot: parseSpot, run: parseRun, start: runParse, cancel: cancelRequest },
-    tokenize: { spot: tokenizeSpot, run: tokenizeRun, start: runTokenize, cancel: cancelRequest },
+    parse,
+    // The banner watches whichever run is out: the service's, or the builtin's.
+    tokenize: {
+      ...tokenize,
+      run: tokenize.spot.service ? tokenize.run : builtinRun,
+      start: runTokenize,
+    },
   };
 };
