@@ -10,7 +10,7 @@
     "format": "prettier --write \"**/*.{js,mjs,jsx,css}\"",
     "format:check": "prettier --check \"**/*.{js,mjs,jsx,css}\"",
     "preview": "vite preview",
-    "test": "npm run lint && npm run test:unit && npm run test:components",
+    "test": "npm run test:unit && npm run test:components",
     "test:unit": "node --test 'test/*.test.js'",
     "test:components": "vitest run",
     "test:components:watch": "vitest",

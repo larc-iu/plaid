@@ -111,7 +111,10 @@
     (p/shell {:dir app} "npm" "ci")
     (p/shell {:dir app} "npm" "test")
     ;; Lint is part of the gate too: plaid-igt fails on any warning, so the
-    ;; tree cannot drift the way it did when nothing ran it.
+    ;; tree cannot drift the way it did when nothing ran it. It is the GATE's
+    ;; step rather than each app's `npm test`, so every app is linted exactly
+    ;; once and the gate says in one place what it is. plaid-ud and plaid-umr
+    ;; used to lint here and again inside their own `npm test`.
     (p/shell {:dir app} "npm" "run" "lint"))
   ;; The JS client's own suite (the request layer, batching, OCC stamps,
   ;; pagination, service RPC). It was never in the gate either.
