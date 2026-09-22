@@ -964,7 +964,31 @@ interface MessagesBundle {
     timeout?: number,
     onProgress?: (progress: any) => void,
     signal?: AbortSignal,
+    opts?: {
+      /** A request id you mint, so you know it before submitting; resubmitting one rejoins that request. */
+      requestId?: string;
+      /** Called with the request id as soon as the server has taken the request. */
+      onAccepted?: (requestId: string) => void;
+    },
   ): Promise<any>;
+  /**
+   * Rejoin a request made earlier: the latest progress is replayed, then the
+   * result, or at once if it already finished. Only its submitter (or an
+   * admin). Rejects with a 404 when the request is unknown or expired.
+   */
+  attachServiceRequest(
+    projectId: string,
+    requestId: string,
+    timeout?: number,
+    onProgress?: (progress: any) => void,
+    signal?: AbortSignal,
+  ): Promise<any>;
+  /**
+   * Ask the service to stop a request made earlier. The request still ends
+   * with whatever the service then reports. 404 if unknown or expired, 409
+   * once finished.
+   */
+  cancelServiceRequest(projectId: string, requestId: string): Promise<void>;
 }
 
 interface ProjectsBundle {
@@ -1002,6 +1026,12 @@ interface ProjectsBundle {
     asOf?: string,
   ): Promise<any[]>;
   auditPage(projectId: string, opts?: AuditPageOptions): Promise<Page>;
+  /**
+   * When the calling user last wrote to each document of the project, as a
+   * `{documentId: timestamp}` map; documents they never wrote to are absent.
+   * The keys are document ids, so the response is not key-transformed.
+   */
+  myLastEdits(projectId: string): Promise<Record<string, string>>;
   linkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   unlinkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
@@ -1210,10 +1240,20 @@ export declare class PlaidClient {
     credentials: { email?: string; password: string; displayName?: string },
     options?: PlaidClientOptions,
   ): Promise<{ client: PlaidClient; userId: string; kind: string }>;
+  /** The server's base URL, without a trailing slash. */
+  readonly baseUrl: string;
+  /** The bearer token every request carries. */
+  token: string;
   timeout: number | null;
   batchTimeout: number | null;
+  /** The document strict mode is entered for, or null. */
+  readonly strictModeDocumentId: string | null;
+  /** The DocumentLockLost of the most recent `locked()` block that lost its lock, or null. */
+  documentLockLost: DocumentLockLost | null;
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
+  /** The latest version seen for each document written through this client, keyed by document id. */
+  documentVersions: Record<string, number>;
 
   // Batches.
   //
@@ -1298,6 +1338,8 @@ export function cpIndexOf(s: string, sub: string, fromCp?: number): number;
 export const PLAID_NAMESPACE: "plaid";
 /** The config key, under `plaid`, holding a layer's role. */
 export const ROLE_KEY: "role";
+/** Layer config key naming the metadata keys a token born of a SPLIT inherits. */
+export const PRESERVE_ON_SPLIT_KEY: "preserveOnSplit";
 
 /** The server's cap on operations per batch request; a larger batch goes as consecutive requests. */
 export const MAX_BATCH_OPS: 1000;
@@ -1330,6 +1372,7 @@ export const TASKS: {
   readonly TRANSCRIBE: "transcribe";
   readonly LINK_VOCAB: "link-vocab";
   readonly ANALYZE: "analyze";
+  readonly DRAFT_GRAPH: "draft-graph";
   readonly TRANSLATE: "translate";
   readonly ASSIST: "assist";
   readonly DETECT_SPEECH: "detect-speech";
@@ -1362,7 +1405,7 @@ export function coerceParamValues(
 // replace unverified machine material but must never touch human/verified
 // material without an explicit overwrite opt-in; any human edit verifies.
 // See the manual, "Provenance".
-type ProvState = "human" | "machine" | "verified";
+type ProvState = "human" | "machine" | "contributed" | "verified";
 export const PROV: {
   readonly key: "prov";
   readonly sourceKey: "provSource";
@@ -1370,12 +1413,16 @@ export const PROV: {
   readonly probKey: "provProb";
   readonly detailKey: "provDetail";
   readonly INFERRED: "inferred";
+  readonly CONTRIBUTED: "contributed";
 };
 export const PROV_STATES: {
   readonly HUMAN: "human";
   readonly MACHINE: "machine";
+  readonly CONTRIBUTED: "contributed";
   readonly VERIFIED: "verified";
 };
+/** The provenance keys Plaid itself owns — what a split carries and a reshape keeps. */
+export const PROVENANCE_KEYS: readonly string[];
 /** Optional prediction extras: prob = a probability in [0,1] for the chosen value
  * (flat + queryable; omit unless it honestly is one); detail = an open map of
  * producer extras (top-k alternatives, model version, raw scores; keep it small).
@@ -1420,3 +1467,79 @@ export function verifyOnEdit(
 ): { readonly provConfirmed: true } | null;
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export function serviceSource(serviceId: string): string;
+/** Canonical provSource for a contributor: 'user:<userId>'. */
+export function userSource(userId: string): string;
+/** The metadata fragment a contributor's work carries. */
+export function stampContributed(userId: string): {
+  prov: "contributed";
+  provSource: string;
+};
+/** Where an entity came from, confirmed or not: what a verified entity's tooltip needs. */
+export function provOrigin(
+  metadata: object | null | undefined,
+): null | "inferred" | "contributed";
+/** Whether a verifier still has to look at this entity: machine-made or contributed, unconfirmed. */
+export function needsReview(metadata: object | null | undefined): boolean;
+/** The fragment a CONTRIBUTOR's edit merges in: the contributed stamp, dropping any confirmation. */
+export function contributeOnEdit(
+  metadata: object | null | undefined,
+  userId: string,
+): { prov: "contributed"; provSource: string; provConfirmed: null };
+/** Merge a fragment the way the server's PATCH does (a null value deletes the key). Returns a new object. */
+export function mergeMetadata(
+  metadata: object | null | undefined,
+  fragment: object | null | undefined,
+): Record<string, any>;
+
+// --- Review: whose work is reviewed (a project-config norm) -------------------
+/** The config key, under the `plaid` namespace, holding the review lists. */
+export const REVIEW_KEY: "review";
+/** The project roles a review list may name. */
+export const PROJECT_ROLES: readonly ["reader", "writer", "maintainer"];
+/** A project's review lists, normalized. */
+export function readReview(config?: object | null): {
+  users: string[];
+  roles: string[];
+};
+/** A person's role in a project from its ACL lists; an admin with no entry is a maintainer. */
+export function projectRole(
+  project: object | null | undefined,
+  userId: string | null | undefined,
+  opts?: { isAdmin?: boolean },
+): "maintainer" | "writer" | "reader" | null;
+/** Whether this person's work is reviewed here: named in review.users, or holding a role in review.roles. */
+export function isReviewed(
+  project: object | null | undefined,
+  userId: string | null | undefined,
+  opts?: { isAdmin?: boolean },
+): boolean;
+/** The review lists with one person added to or removed from `users`. Pure. */
+export function withReviewedUser(
+  review: { users?: string[]; roles?: string[] } | null | undefined,
+  userId: string,
+  reviewed: boolean,
+): { users: string[]; roles: string[] };
+/** What one writer's writes carry and what their review gestures act on. */
+export function writerPolicy(contributorId?: string | null): {
+  readonly contributorId: string | null;
+  readonly isContributor: boolean;
+  /** The metadata a NEW entity carries: null for a verifier. */
+  readonly createStamp: Record<string, any> | null;
+  /** The fragment an EDIT merges, or null when there is nothing to merge. */
+  readonly editStamp: (
+    metadata: object | null | undefined,
+  ) => Record<string, any> | null;
+  /** The fragment an explicit confirm gesture merges, or null. */
+  readonly confirmStamp: (
+    metadata: object | null | undefined,
+  ) => Record<string, any> | null;
+  /** What an adopted suggestion is written with. */
+  readonly adoptStamp: (
+    source: string,
+    detail?: Record<string, any>,
+  ) => Record<string, any>;
+  /** Whether this writer's review gesture acts on the entity. */
+  readonly reviewable: (metadata: object | null | undefined) => boolean;
+  /** The same test over a provState. */
+  readonly reviewableState: (state: string) => boolean;
+};
