@@ -145,6 +145,21 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     return merged.size ? merged : null;
   };
 
+  // Take a parsed batch, under the answers a resume was given (or none).
+  // The near misses are what the batch reads like before any of them is
+  // decided, so they are found first and the merge applied over the top.
+  const adoptBatch = (parsed, given) => {
+    givenRef.current = given ?? null;
+    const result = compareSchemas(parsed);
+    setFiles(parsed);
+    setNearMissGroups(result.nearMisses);
+    const merges = given?.nearMissChoices ?? {};
+    setNearMissChoices(merges);
+    const canonical = canonicalOf(merges);
+    applySchema(parsed, canonical ? compareSchemas(parsed, canonical) : result, given);
+    if (typeof given?.recordMediaName === 'boolean') setRecordMediaName(given.recordMediaName);
+  };
+
   /** Re-read the batch under a new set of merge decisions. */
   const chooseNearMiss = (fold, choice) => {
     const choices = { ...nearMissChoices, [fold]: choice };
@@ -178,18 +193,19 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     }
     const parsed = [];
     for (const file of eafs) parsed.push(readEaf(await file.text(), file.name));
-    // The near misses are what the batch reads like before any of them is
-    // decided, so they are found first and the merge applied over the top.
-    const result = compareSchemas(parsed);
-    setFiles(parsed);
-    setNearMissGroups(result.nearMisses);
-    givenRef.current = given ?? null;
-    const merges = given?.nearMissChoices ?? {};
-    setNearMissChoices(merges);
-    const canonical = canonicalOf(merges);
-    applySchema(parsed, canonical ? compareSchemas(parsed, canonical) : result, given);
-    if (typeof given?.recordMediaName === 'boolean') setRecordMediaName(given.recordMediaName);
+    adoptBatch(parsed, given);
     return true;
+  };
+
+  /**
+   * Take the mapping a resumed import was answered with over a batch already
+   * read. The record is fetched while the person is choosing the files, so
+   * the two do not always land in that order; the batch keeps its own copy
+   * of the answers (givenRef) and this is what hands them over late.
+   */
+  const applyRecorded = (given) => {
+    if (!files || !given) return;
+    adoptBatch(files, given);
   };
 
   /**
@@ -250,6 +266,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
     nearMissChoices,
     undecidedNearMisses: nearMissGroups.filter((g) => !nearMissChoices[g.fold]),
     readFiles,
+    applyRecorded,
     removeEaf,
     removeMedia: (file) => setMediaFiles((prev) => prev.filter((f) => f !== file)),
     chooseNearMiss,

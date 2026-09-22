@@ -18,7 +18,7 @@
 // completion live in refs for this page session, so Retry re-runs against the
 // same project and the engine skips documents already marked done.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Check, RefreshCw, AlertTriangle } from 'lucide-react';
 import {
@@ -69,6 +69,22 @@ export const ImportElanProject = () => {
     : null;
   const { stage, setStage, progress, runError, results, projectIdRef, stop, start } =
     useProjectImportRun({ client, kind: 'ELAN', resumeId });
+
+  // The record may still be on its way when the files are read: nothing gates
+  // the file input on that fetch, and a person who drops a folder straight
+  // away gets a mapping suggested afresh and then locked read-only, with the
+  // hand-mapped tier tree gone and no way to put it back. So the answers are
+  // applied once both the parse and the record are in hand, as the CLDF
+  // wizard does with its options.
+  const choicesApplied = useRef(false);
+  useEffect(() => {
+    if (!batch.files || !resumeChoices || choicesApplied.current) return;
+    choicesApplied.current = true;
+    batch.applyRecorded(resumeChoices);
+    // `batch` is a new object every render; the parse and the record are what
+    // this waits on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.files, resumeChoices]);
 
   const handleFiles = async (fileList) => {
     // Cancelling the file dialog is not an error to report at someone.

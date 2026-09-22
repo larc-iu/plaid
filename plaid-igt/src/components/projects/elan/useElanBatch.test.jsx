@@ -112,6 +112,30 @@ describe('useElanBatch on a resume', () => {
     await again.unmount();
   });
 
+  it('takes the recorded mapping when the record lands after the files are read', async () => {
+    // The record is fetched while the person is choosing the files, and
+    // nothing gates the file input on it. Dropping a folder before it lands
+    // suggested the mapping afresh and then locked it, and the second
+    // speaker's hand-mapped tier tree was gone with no way to put it back.
+    const first = await mount();
+    await first.step(() => first.read().readFiles(picked(TWO_SPEAKERS)));
+    const bo = keyOf(first.read(), 'Bo');
+    await first.step(() => first.read().setRole(bo, ROLES.UTTERANCE));
+    await first.step(() => first.read().setName(bo, 'Second voice'));
+    await first.step(() => first.read().setRecordMediaName(false));
+    const recorded = first.read().choices;
+    await first.unmount();
+
+    const again = await mount();
+    await again.step(() => again.read().readFiles(picked(TWO_SPEAKERS), null));
+    expect(again.read().roles[bo]).toBe(ROLES.OFF);
+    await again.step(() => again.read().applyRecorded(recorded));
+    expect(again.read().roles[bo]).toBe(ROLES.UTTERANCE);
+    expect(again.read().fieldNames[bo]).toBe('Second voice');
+    expect(again.read().recordMediaName).toBe(false);
+    await again.unmount();
+  });
+
   it('keeps the merge decisions and the recorded mapping when an .eaf is taken out', async () => {
     // Removing a file re-derives the schema from what is left. Dropping the
     // merge decisions there un-folds the tiers the recorded mapping is filed
