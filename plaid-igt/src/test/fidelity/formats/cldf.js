@@ -62,7 +62,7 @@ const FOREIGN_LAYER = {
 };
 
 const LANGUAGE_SHAPE =
-  '{ name: "", glottocode: "", iso639P3: "", latitude: null, longitude: null }';
+  '{ name: "", glottocode: "", iso639P3: "", tag: "", latitude: null, longitude: null }';
 
 const carried = { carried: true };
 
@@ -100,11 +100,11 @@ export default {
     'project.tagsetOrdered': TAGSET,
     'project.languageObject': {
       carried: 'changed',
-      how: `Written to the LanguageTable and read back from the row the examples name. Name, Glottocode and ISO 639-3 code come back. The writing-system tag is not written, and the import writes the language with no tag key. A language with no name goes out as "Unidentified object language" and comes back with name "". A project that named no object language comes back with languages.object set to ${LANGUAGE_SHAPE}.`,
+      how: `Written to the LanguageTable and read back from the row the examples name, through the one writer every importer uses (src/import/projectLanguages.js). Name, Glottocode and ISO 639-3 code come back. The writing-system tag is not written, and a 3-letter code stands in for it on the way back. A language with no name goes out as "Unidentified object language" and comes back with name "". A project that named no object language comes back with languages.object set to ${LANGUAGE_SHAPE}, and one that named neither language comes back with no languages key at all.`,
     },
     'project.languageMeta': {
       carried: 'changed',
-      how: `Written as its own LanguageTable row, or as the object language's row when the two are the same language, and read back from the examples' Meta_Language_ID. Name, Glottocode and ISO 639-3 code come back, the writing-system tag does not, and a meta language with only a tag is not written. Whenever the import sets languages at all, a meta language the project did not name comes back as ${LANGUAGE_SHAPE}.`,
+      how: `Written as its own LanguageTable row, or as the object language's row when the two are the same language, and read back from the examples' Meta_Language_ID. Name, Glottocode and ISO 639-3 code come back, the writing-system tag is not written and a 3-letter code stands in for it on the way back, and a meta language with only a tag is not written. Whenever the import sets languages at all, a meta language the project did not name comes back as ${LANGUAGE_SHAPE}.`,
     },
     'project.languageCoordinates': carried,
     'project.speakers': {

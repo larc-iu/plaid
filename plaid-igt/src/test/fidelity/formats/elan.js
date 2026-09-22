@@ -82,16 +82,12 @@ export default {
   name: 'ELAN',
   check: 'roundTrip',
   // A round trip's other question: does a project that has been through one
-  // stop changing? ELAN's does not, for two reasons, both known and tolerated
-  // (user, 2026-09-17: ELAN round-trip nits do not matter):
-  //
-  //   Two documents of one name trade places every pass, as
-  //   document.duplicateName describes.
-  //
-  //   A morpheme form spelling a joint ("-en") survives the first pass, since
-  //   the marker the export adds beside it is the one the import takes off,
-  //   and loses it on the second, where the export adds none (there is no
-  //   morph type left to add one for).
+  // stop changing? ELAN's does not, for one reason, known and tolerated
+  // (user, 2026-09-17: ELAN round-trip nits do not matter): two documents of
+  // one name trade places every pass, as document.duplicateName describes. A
+  // morpheme form spelling its own joint used to be a second reason, and is
+  // not: it loses the joint on the FIRST pass (token.morphemeForm) and is
+  // then stable.
   settles: false,
   stamps: {
     // Project setup marks the project initialized, and the import record under `import` stays
@@ -399,7 +395,7 @@ export default {
     },
     'token.morphemeForm': {
       carried: 'changed',
-      how: 'The form comes back trimmed of leading and trailing whitespace. The first morpheme of a word loses a leading - or =, which the import reads as an affix marker.',
+      how: 'The form comes back trimmed of leading and trailing whitespace, and loses a leading - or =, which the import reads as an affix marker. Every morpheme, not only the first: the export writes the joint the chain calls for in front of a non-initial morpheme and the import takes one leading joint off what it reads, which cancel out, but a form that spells its own joint is written with no joint in front of it (so that a marker a person typed is not doubled on screen) and the import takes that very character off. A morph tier cannot tell the two apart.',
     },
     'token.morphemeFormEmpty': {
       carried: false,

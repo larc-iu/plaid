@@ -555,19 +555,28 @@ export default {
     },
     {
       keys: ['project.languageObject', 'project.languageMeta'],
-      // Each language comes back in the import's shape: name, Glottocode, ISO
-      // 639-3 code and coordinates (carried), with no tag. An unnamed one is
+      // Each language comes back in the record every importer writes (see
+      // src/import/projectLanguages.js): name, Glottocode, ISO 639-3 code and
+      // coordinates (carried), plus the writing-system tag, which CLDF does
+      // not carry and which a 3-letter code stands in for. An unnamed one is
       // that shape empty. A meta language that is the object language, by
-      // Glottocode or else by ISO code, reads back from the object's row.
+      // Glottocode or else by ISO code, reads back from the object's row. A
+      // project that named NEITHER language comes back with no languages key
+      // at all: the record is a first record of something, never a blank.
       apply(expected, actual, ctx) {
         const src = ctx.source.config?.igt?.languages || {};
-        const shape = (l) => ({
-          name: l?.name ?? '',
-          glottocode: l?.glottocode ?? '',
-          iso639P3: l?.iso639P3 ?? '',
-          latitude: l?.latitude ?? null,
-          longitude: l?.longitude ?? null,
-        });
+        const iso639P3 = /^[a-z]{3}$/;
+        const shape = (l) => {
+          const iso = iso639P3.test(l?.iso639P3 ?? '') ? l.iso639P3 : '';
+          return {
+            name: l?.name ?? '',
+            glottocode: l?.glottocode ?? '',
+            iso639P3: iso,
+            tag: iso,
+            latitude: l?.latitude ?? null,
+            longitude: l?.longitude ?? null,
+          };
+        };
         const object = shape(src.object);
         const meta = src.meta;
         const named = !!(meta?.name || meta?.glottocode || meta?.iso639P3);
@@ -576,10 +585,13 @@ export default {
           (meta.glottocode
             ? meta.glottocode === src.object?.glottocode
             : !!meta.iso639P3 && meta.iso639P3 === src.object?.iso639P3);
-        igt(expected).languages = {
+        const out = {
           object,
           meta: !named ? shape(null) : same ? { ...object } : shape(meta),
         };
+        const names = (l) => !!(l.name || l.glottocode || l.iso639P3 || l.tag);
+        if (!names(out.object) && !names(out.meta)) delete igt(expected).languages;
+        else igt(expected).languages = out;
       },
     },
     {

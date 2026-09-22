@@ -365,24 +365,24 @@ const tokenSteps = [
     // and has already taken morph types off both sides.
     //
     // A stored morpheme with no form comes back with its word's text as its
-    // form. Then every stored form comes back trimmed, and the first morpheme of
-    // a word loses a leading - or =. A form set here from the word's text goes
-    // through that too, since by then it is a form like any other.
+    // form. Then EVERY stored form comes back trimmed and with one leading -
+    // or = taken off it. A form set here from the word's text goes through that
+    // too, since by then it is a form like any other.
+    //
+    // Why every form and not only the first. The export writes the joint the
+    // chain calls for in front of a non-initial morpheme, and the import takes
+    // one leading joint off what it reads. Those cancel while the stored form
+    // does not itself begin with a joint. When it does, the export writes no
+    // joint in front of it (joinerBetween, so that a form a person typed with
+    // its marker is not doubled on screen), and the import takes that very
+    // character off: an .eaf morph tier cannot tell a form spelling its own
+    // joint from a plain form joined to the one before it. Either way the
+    // answer is the stored form less one leading joint, whatever its place in
+    // the word. This read as "the first morpheme only" until `bb fidelity` ran
+    // the round trip against a real core.
     apply(expected, actual, ctx) {
       const firstMarker = /^[-=]/;
       for (const d of docs(expected)) {
-        // Which morpheme is the word's first is read off the SOURCE, since a
-        // morpheme with no form (token.morphemeFormEmpty) is written as an
-        // empty annotation and is first there even though it does not come
-        // back. A morpheme the step adds below is in no source word, and is
-        // the only morpheme of its own.
-        const firstInSource = new Map();
-        for (const m of tokensIn(sourceDoc(ctx, d) ?? { tokens: [] }, 'morpheme')) {
-          const k = `${m.begin}-${m.end}`;
-          const held = firstInSource.get(k);
-          if (!held || (m.precedence ?? 0) < (held.precedence ?? 0)) firstInSource.set(k, m);
-        }
-        const firstKeys = new Set([...firstInSource.values()].map((m) => m.key));
         const stored = new Map();
         for (const m of tokensIn(d, 'morpheme')) {
           const k = `${m.begin}-${m.end}`;
@@ -404,14 +404,10 @@ const tokenSteps = [
             });
             continue;
           }
-          morphemes.sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
           morphemes.forEach((m) => {
             if (!('form' in m.metadata)) m.metadata.form = text;
             if (typeof m.metadata.form !== 'string') return;
-            m.metadata.form = m.metadata.form.trim();
-            if (!firstKeys.size || firstKeys.has(m.key)) {
-              m.metadata.form = m.metadata.form.replace(firstMarker, '');
-            }
+            m.metadata.form = m.metadata.form.trim().replace(firstMarker, '');
           });
         }
       }
