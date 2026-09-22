@@ -119,3 +119,31 @@ describe('SentenceBlock', () => {
     await r.unmount();
   });
 });
+
+// RTL. The words run right to left and the graph follows, because the nodes
+// are placed over measured word positions; what the block has to get right
+// is which box carries the direction and which keeps counting from the left.
+describe('SentenceBlock in a right-to-left document', () => {
+  it('gives the scroller and the word row the direction, and keeps the stage physical', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock sentence={sentence} nodesById={nodesById} dataVersion={1} direction="rtl" />,
+    );
+    // The scroller, so a long sentence opens at its start edge.
+    expect(r.container.querySelector('.umr-canvas').getAttribute('dir')).toBe('rtl');
+    expect(r.container.querySelector('.umr-tokens').getAttribute('dir')).toBe('rtl');
+    // The stage says nothing: its axis is the stylesheet's `direction: ltr`,
+    // because every node sits at a measured pixel offset from its left.
+    expect(r.container.querySelector('.umr-stage').hasAttribute('dir')).toBe(false);
+    await r.unmount();
+  });
+
+  it('leaves a left-to-right document alone', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock sentence={sentence} nodesById={nodesById} dataVersion={1} />,
+    );
+    expect(r.container.querySelector('.umr-canvas').getAttribute('dir')).toBe('ltr');
+    await r.unmount();
+  });
+});

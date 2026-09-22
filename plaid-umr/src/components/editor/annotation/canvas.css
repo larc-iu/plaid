@@ -56,6 +56,11 @@
   white-space: nowrap;
 }
 
+/* The per-sentence sideways scroller. It carries the DOCUMENT's direction
+   (SentenceBlock sets `dir`), so a sentence longer than the box opens at its
+   START edge in either script. Without it an RTL sentence overflowed past an
+   LTR scroll origin and opened showing its last words, which is the trap
+   plaid-ud's `.sentence-scroll` was given a `dir` for. */
 .umr-canvas {
   position: relative;
   overflow-x: auto;
@@ -63,8 +68,16 @@
   padding: 0 16px;
 }
 
+/* The stage's own axis is PHYSICAL, deliberately: every node sits at a
+   measured pixel offset from the stage's left edge, and the constants lane
+   and the lines drawn to it are computed from there too (SentenceBlock's
+   document lines). The graph still mirrors, because what is measured is the
+   word row, and the word row carries the document's direction itself
+   (TokenRow) -- so the words, the gloss lines and their names in the margin
+   flip as one, inside a stage that goes on counting from the left. */
 .umr-stage {
   position: relative;
+  direction: ltr;
   width: max-content;
   min-width: 100%;
 }
@@ -226,7 +239,7 @@
    has its node's dot at one end, and a separator beside it read as two. */
 .umr-chip:not(:last-child)::after {
   content: '·';
-  margin-left: 5px;
+  margin-inline-start: 5px;
   color: hsl(var(--muted-foreground));
 }
 .umr-chip-rel {
@@ -264,12 +277,13 @@
    name is level with its line. */
 .umr-legend {
   position: absolute;
-  right: 100%;
+  inset-inline-end: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 1px;
-  padding: 2px 12px 2px 0;
+  padding-block: 2px;
+  padding-inline: 0 12px;
   pointer-events: none;
 }
 .umr-legend-index,
@@ -387,9 +401,9 @@
 /* In the margin, like the names of the lines under the words. */
 .umr-ilg-header {
   position: absolute;
-  right: 100%;
+  inset-inline-end: 100%;
   top: 2px;
-  padding-right: 6px;
+  padding-inline-end: 6px;
   line-height: 1.2rem;
 }
 
@@ -516,7 +530,7 @@
 .umr-node-mark {
   position: absolute;
   top: -5px;
-  right: -5px;
+  inset-inline-end: -5px;
   width: 10px;
   height: 10px;
   border-radius: 999px;
@@ -603,7 +617,9 @@
    own hue, and coreference chips colored by chain. */
 /* In flow with no height, pulled back over the stage's left padding, and
    sticky: when a wide sentence scrolls sideways the constants stay in view
-   as drop targets, and a line to one is drawn to where it is seen. */
+   as drop targets, and a line to one is drawn to where it is seen.
+   PHYSICAL on purpose, in either script: the lane is part of the stage's
+   axis, and the lines to it are x offsets from the stage's left edge. */
 .umr-margin {
   position: sticky;
   left: 0;
@@ -740,7 +756,7 @@
 .umr-chain {
   position: absolute;
   top: -8px;
-  left: -8px;
+  inset-inline-start: -8px;
   min-width: 16px;
   height: 16px;
   border-radius: 999px;
@@ -868,7 +884,7 @@
 .umr-more {
   position: absolute;
   top: 2px;
-  right: 2px;
+  inset-inline-end: 2px;
   display: flex;
   align-items: center;
   justify-content: center;

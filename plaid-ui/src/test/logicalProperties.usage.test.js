@@ -57,6 +57,16 @@ const MIRRORED = [
     ],
   },
   {
+    // plaid-umr's canvas. Only the WORD ROW mirrors: the graph above it is
+    // placed at measured pixel offsets from the stage's left edge, and the
+    // stage says `direction: ltr` so that axis and the constants lane drawn
+    // along it stay put. What flips is the row of words, its gloss lines and
+    // the names of those lines in the margin, which is where a physical
+    // inset would land on the wrong side.
+    file: 'plaid-umr/src/components/editor/annotation/canvas.css',
+    prefixes: ['.umr-tokens', '.umr-word', '.umr-legend', '.umr-ilg-', '.umr-morph'],
+  },
+  {
     file: 'plaid-ud/src/components/editor/annotation/SentenceRow.css',
     prefixes: [
       '.sentence-',

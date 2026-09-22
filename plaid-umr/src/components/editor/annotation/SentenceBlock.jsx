@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { arrowStep } from '@ui/lib/bidi.js';
 import { curvePath, layoutSentence, routeBetween } from '../../../domain/umrLayout.js';
 import { LINE_FAMILIES, lineFamily } from './docLines.js';
 import { CANVAS_ACTIONS, keys } from '../../../lib/keymap.js';
@@ -407,15 +408,20 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       .filter((e) => layout.tree.treeEdgeIds.has(e.id))
       .map((e) => e.target)
       .sort((a, b) => (layout.nodes.get(a)?.x ?? 0) - (layout.nodes.get(b)?.x ?? 0));
-  const rowNeighbor = (id, dir) => {
+  // The next node along the row in READING order, which is the x order in an
+  // LTR sentence and its reverse in an RTL one: the words run right to left
+  // and the nodes are placed over them. `arrowStep` says which way a key
+  // means to go, so the two have to answer in the same order.
+  const rowNeighbor = (id, step) => {
     const me = layout.nodes.get(id);
     if (!me) return null;
+    const sign = direction === 'rtl' ? -1 : 1;
     const row = [...layout.nodes.entries()]
       .filter(([, p]) => p.row === me.row)
-      .sort((a, b) => a[1].x - b[1].x)
+      .sort((a, b) => sign * (a[1].x - b[1].x))
       .map(([nid]) => nid);
     const i = row.indexOf(id);
-    return row[i + dir] || null;
+    return row[i + step] || null;
   };
 
   // ----- editors -----
@@ -647,8 +653,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       e.preventDefault();
       if (e.key === 'ArrowUp') focusNode(treeEdgeInto(id)?.source);
       else if (e.key === 'ArrowDown') focusNode(treeChildren(id)[0]);
-      else if (e.key === 'ArrowLeft') focusNode(rowNeighbor(id, direction === 'rtl' ? 1 : -1));
-      else if (e.key === 'ArrowRight') focusNode(rowNeighbor(id, direction === 'rtl' ? -1 : 1));
+      else if (e.key === 'ArrowLeft')
+        focusNode(rowNeighbor(id, arrowStep(false, direction === 'rtl')));
+      else if (e.key === 'ArrowRight')
+        focusNode(rowNeighbor(id, arrowStep(true, direction === 'rtl')));
       else if (e.key === 'Tab') {
         // A child by typing instead: whatever mode was waiting is over,
         // child mode included, or its next click would act a second time.
@@ -1151,6 +1159,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       )}
       <div
         className="umr-canvas"
+        dir={direction}
         hidden={textMode && !readOnly}
         onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
         onMouseOver={(e) => {
