@@ -140,7 +140,8 @@ export function resolveIgtTargets(project, fields = []) {
  * one, before anything is written under it. `createTokens(specs)` answers the
  * new ids and lets an engine route the call through its own writer (the
  * archive import rewrites references in metadata as it goes); without it the
- * partition is written straight.
+ * partition is written straight. `onText` is told the new text's id before
+ * anything is written on it.
  */
 export async function createDocumentShell({
   client,
@@ -152,6 +153,7 @@ export async function createDocumentShell({
   sentences,
   textMetadata = undefined,
   onDocument = null,
+  onText = null,
   createTokens = null,
   progress = () => {},
   check = () => {},
@@ -171,6 +173,7 @@ export async function createDocumentShell({
     typeof textMetadata === 'function' ? textMetadata() : textMetadata,
   );
   const textId = text.id ?? text;
+  onText?.(textId);
 
   check();
   progress('Creating sentences');

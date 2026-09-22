@@ -9,6 +9,8 @@
 // is written in its place. Only a whole string counts. A key, part of a
 // longer string, or a value of any other type is data, never a reference.
 //
+// See REFERENCE_KINDS for which ids those are.
+//
 // A reference can point forward, at something the import makes later than the
 // entity holding it: a token naming a span, a document naming the next one.
 // What is known when an entity is written is rewritten then. What names
@@ -18,6 +20,20 @@
 // the server holds, so that a resumed import settles the same way.
 
 import { bulkInChunks } from '../../domain/bulk.js';
+
+/**
+ * The kinds of row whose id a metadata value can name and have rewritten: the
+ * document itself and the five tables that hang off it. Every other id in an
+ * archive is project-scoped (a layer, a vocabulary entry) and an import stays
+ * inside its project, so those already name the right thing.
+ *
+ * THE SAME LIST core's document copy rewrites, which it holds as
+ * `plaid.sql.document/metadata-reference-kinds` (plaid-core, `sql/document.clj`,
+ * named there as `[:document :texts :tokens :spans :relations :vocab-links]`
+ * after the tables and pinned by `plaid.sql.document-copy-test`). A new
+ * document-scoped table joins both lists or its references dangle on one side.
+ */
+export const REFERENCE_KINDS = ['document', 'text', 'token', 'span', 'relation', 'link'];
 
 const isPlainObject = (v) =>
   v != null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
@@ -76,8 +92,9 @@ function metadataPatch(before, after) {
 }
 
 /**
- * The archive ids of the tokens, spans and relations one document file holds:
- * what a reference in that document can name and the import will make.
+ * The archive ids one document file holds — its text, tokens, annotations,
+ * relations and lexicon links: what a reference in that document can name and
+ * the import will make.
  */
 export function archivedIds(docData) {
   const ids = new Set();
@@ -85,19 +102,32 @@ export function archivedIds(docData) {
     if (node?.id != null) ids.add(node.id);
   };
   const fields = (node) => Object.values(node?.fields || {}).forEach(add);
+  // An inlined lexicon link is a property of the node it sits on, so it names
+  // its own id `linkId`; the extras section holds whole links, with `id`.
+  const link = (node) => {
+    if (node?.linkId != null) ids.add(node.linkId);
+  };
+  if (docData?.baseline?.textId != null) ids.add(docData.baseline.textId);
   for (const s of docData.sentences || []) {
     add(s);
     fields(s);
     for (const w of s.words || []) {
       add(w);
       fields(w);
+      link(w.vocab);
       for (const m of w.morphemes || []) {
         add(m);
         fields(m);
+        link(m.vocab);
       }
     }
   }
-  for (const list of [docData.orphanTokens, docData.alignment, docData.extraSpans]) {
+  for (const list of [
+    docData.orphanTokens,
+    docData.alignment,
+    docData.extraSpans,
+    docData.extraVocabLinks,
+  ]) {
     (list || []).forEach(add);
   }
   const other = docData.otherLayers || {};
@@ -237,7 +267,9 @@ export async function relinkDocumentReferences({
     const namesAnother = (s) => archived.has(s) && s !== docData.id;
     if (![...entityMetadata(docData)].some((m) => holdsString(m, namesAnother))) continue;
     const raw = await client.documents.get(docId, true);
-    const patches = { token: [], span: [], relation: [], text: [], link: [] };
+    const patches = Object.fromEntries(
+      REFERENCE_KINDS.filter((k) => k !== 'document').map((k) => [k, []]),
+    );
     const consider = (kind, entity) => {
       const patch = metadataPatch(entity?.metadata, rewriteReferences(entity?.metadata, lookup));
       if (patch) patches[kind].push({ id: entity.id, metadata: patch });

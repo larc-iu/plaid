@@ -13,6 +13,7 @@ import {
 } from '../../export/testFixtures.js';
 import { CHUNK } from '../../domain/bulk.js';
 import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
+import { REFERENCE_KINDS } from './references.js';
 import {
   deriveSetupData,
   resolveNativeTargets,
@@ -1494,6 +1495,39 @@ describe('runNativeImport, references in metadata', () => {
     ]);
   });
 
+  // Core's document copy rewrites six kinds of row id; this import has to
+  // rewrite the same six or a value naming one of the other two dangles after
+  // an archive round trip. The list itself is pinned below.
+  it('writes a reference to the baseline text as the new text id', async () => {
+    const { client } = await importWith((archive) => {
+      archive.documents[0].data.sentences[0].metadata = { anchor: 'text1' };
+    });
+    const newText = callsOf(client, 'texts.create')[0].result.id;
+    const [sentence] = callsOf(client, 'tokens.bulkCreate').find(
+      ([, specs]) => specs[0].tokenLayerId === 'new-sl',
+    )[1];
+    // The text is made before the partition, so nothing has to be patched.
+    expect(sentence.metadata).toEqual({ anchor: newText });
+    expect(callsOf(client, 'tokens.bulkUpdate')).toEqual([]);
+  });
+
+  it('patches a reference to a lexicon link once the links are in', async () => {
+    // l2 is the link inlined on morpheme m1; links are the last thing a
+    // document writes, so a word naming one is settled afterwards.
+    const { client } = await importWith((archive) => {
+      archive.documents[0].data.sentences[0].words[0].metadata = { sense: 'l2' };
+    });
+    const linkIds = callsOf(client, 'vocabLinks.bulkCreate').flatMap((c) => c.result.ids);
+    const words = callsOf(client, 'tokens.bulkCreate').find(
+      ([, specs]) => specs[0].tokenLayerId === 'new-wl',
+    );
+    const patches = argsOf(client, 'tokens.bulkUpdate');
+    expect(patches).toHaveLength(1);
+    expect(patches[0][0]).toHaveLength(1);
+    expect(patches[0][0][0].id).toBe(words.result.ids[0]);
+    expect(linkIds).toContain(patches[0][0][0].metadata.sense);
+  });
+
   it("resolves another app's references through the same maps", async () => {
     // An annotation of another app naming a sentence of this one, and a
     // relation naming the token it starts from.
@@ -1626,6 +1660,18 @@ describe('runNativeImport, references in metadata', () => {
     ]);
     expect(callsOf(client, 'tokens.bulkUpdate')).toEqual([]);
     expect(callsOf(client, 'texts.patchMetadata')).toEqual([]);
+  });
+});
+
+// The same list core's document copy rewrites, which core holds as
+// `plaid.sql.document/metadata-reference-kinds` in
+// plaid-core/src/main/plaid/sql/document.clj, where it reads
+// `[:document :texts :tokens :spans :relations :vocab-links]` after the tables,
+// and where `plaid.sql.document-copy-test` pins it against this one. A new
+// document-scoped table joins both lists or its references dangle on one side.
+describe('the kinds of row a reference in metadata can name', () => {
+  it('is the list core rewrites on a copy, in this import s own words', () => {
+    expect(REFERENCE_KINDS).toEqual(['document', 'text', 'token', 'span', 'relation', 'link']);
   });
 });
 

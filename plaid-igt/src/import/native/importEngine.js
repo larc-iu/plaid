@@ -13,9 +13,10 @@
 // once per project after setup, and filled per document once this app's own
 // tokens and annotations exist.
 //
-// A metadata value that is exactly the archive id of a token, span, relation
-// or document the archive carries is a reference to it, and is rewritten to
-// the new id (./references.js).
+// A metadata value that is exactly the archive id of something the archive
+// carries — the document, its text, a token, an annotation, a relation or a
+// lexicon link — is a reference to it, and is rewritten to the new id
+// (./references.js, REFERENCE_KINDS).
 //
 // Resumability (same scheme as FLEx): a document is marked done
 // (metadata.nativeImported) only after every write succeeded; on resume, done
@@ -339,13 +340,18 @@ async function importNativeDocument({
   const tokenIdMap = new Map(); // archive token id → new token id
   const spanIdMap = new Map(); // archive span id → new span id
   const relationIdMap = new Map(); // archive relation id → new relation id
+  const textIdMap = new Map(); // archive text id → new text id
+  const linkIdMap = new Map(); // archive vocab-link id → new link id
   let docId = null;
-  // References in metadata, resolved through everything made so far. This
-  // document's own id is known from the moment the document row exists.
+  // References in metadata, resolved through everything made so far, over the
+  // six kinds of row a document owns (see REFERENCE_KINDS). This document's own
+  // id is known from the moment the document row exists.
   const lookup = (id) =>
     tokenIdMap.get(id) ??
     spanIdMap.get(id) ??
     relationIdMap.get(id) ??
+    textIdMap.get(id) ??
+    linkIdMap.get(id) ??
     (id === docData.id ? docId : docIdMap.get(id));
   const refs = documentReferences({ client, lookup, ahead: archivedIds(docData), check });
 
@@ -390,6 +396,10 @@ async function importNativeDocument({
       docId = id;
       if (docMaps && docData.id != null) docMaps.set(docData.id, { docId: id, tokenIdMap });
     },
+    onText: (id) => {
+      if (docData.baseline?.textId != null) textIdMap.set(docData.baseline.textId, id);
+      if (textMetadata?.later) refs.remember('text', id, textMetadata.metadata);
+    },
     createTokens: (specs) =>
       bulkTokens(
         specs,
@@ -400,8 +410,6 @@ async function importNativeDocument({
   });
   const textId = shell.textId; // for comments anchored to the text itself
   if (textId) {
-    if (textMetadata?.later) refs.remember('text', textId, textMetadata.metadata);
-
     check();
     progress('Creating words');
     const wordNodes = [
@@ -647,7 +655,14 @@ async function importNativeDocument({
         );
         return;
       }
-      linkSpecs.push({ itemId, tokenIds, metadata: ref.metadata, order });
+      // An inlined link names itself `linkId`, one in the extras section `id`.
+      linkSpecs.push({
+        itemId,
+        tokenIds,
+        metadata: ref.metadata,
+        order,
+        archiveId: ref.linkId ?? ref.id ?? null,
+      });
     };
     for (const s of sentences) {
       for (const w of s.words || []) {
@@ -663,13 +678,15 @@ async function importNativeDocument({
     linkSpecs.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
     for (let i = 0; i < linkSpecs.length; i += CHUNK) {
       check();
-      await refs.create(
+      const chunk = linkSpecs.slice(i, i + CHUNK);
+      const ids = await refs.create(
         'link',
-        linkSpecs
-          .slice(i, i + CHUNK)
-          .map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
+        chunk.map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
         async (sent) => (await client.vocabLinks.bulkCreate(sent))?.ids,
       );
+      chunk.forEach((l, j) => {
+        if (l.archiveId != null && ids?.[j]) linkIdMap.set(l.archiveId, ids[j]);
+      });
     }
   } else if (hasOtherTokens(docData)) {
     // Tokens need a text to sit on, and a document with an empty baseline gets
