@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { APPS, repoRoot } from './apps.js';
 
 // The rule that keeps both grids working in Arabic, checked against the source.
 //
@@ -17,19 +17,6 @@ import { fileURLToPath } from 'node:url';
 // renderer can, because happy-dom and jsdom lay nothing out and the bug only
 // exists once a browser does.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-// The repo root, found rather than counted: this package is reached through a
-// node_modules symlink, so how many levels up it sits depends on which app's
-// test run this is.
-const repoRoot = () => {
-  let dir = here;
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'plaid-igt', 'src'))) return dir;
-    dir = path.dirname(dir);
-  }
-  throw new Error(`No repo root above ${here}`);
-};
 const repo = repoRoot();
 
 // The blocks that flip, by the class prefixes their rules are written under.
@@ -102,6 +89,14 @@ const rules = (css) => {
 };
 
 describe('the mirrored blocks use logical properties', () => {
+  it('names a grid in every app', () => {
+    // Each live app draws one of these grids, and plaid-umr's canvas was
+    // outside this check for the two weeks it took to notice. An app with no
+    // entry here is an app whose grid nobody is holding to the rule.
+    const covered = APPS.filter(({ dir }) => MIRRORED.some((m) => m.file.startsWith(`${dir}/`)));
+    expect(covered.map((a) => a.tag)).toEqual(APPS.map((a) => a.tag));
+  });
+
   for (const { file, prefixes } of MIRRORED) {
     const css = fs.readFileSync(path.join(repo, file), 'utf8');
     const parsed = rules(css);

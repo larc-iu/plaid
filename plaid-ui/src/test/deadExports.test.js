@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { appTrees, repoRoot } from './apps.js';
 
 // Every exported name in the shared package and the three live apps has at least
 // one importer somewhere else in the tree. An export nobody imports is either
@@ -23,19 +24,6 @@ import { fileURLToPath } from 'node:url';
 // route screen, a re-export chain. Anything that reduces false positives, since
 // a false positive here reads as an invitation to delete live code.
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-// The repo root, found rather than counted: this package is reached through a
-// node_modules symlink, so how many levels up it sits depends on which app's
-// test run this is.
-const repoRoot = () => {
-  let dir = here;
-  while (dir !== path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'plaid-igt', 'src'))) return dir;
-    dir = path.dirname(dir);
-  }
-  throw new Error(`No repo root above ${here}`);
-};
 const repo = repoRoot();
 
 // Read for their IMPORTS. Wider than the census below on purpose: a tree here
@@ -45,33 +33,17 @@ const repo = repoRoot();
 const IMPORTER_TREES = [
   'plaid-ui/src',
   'plaid-ui/e2e',
-  'plaid-igt/src',
-  'plaid-igt/e2e',
-  'plaid-ud/src',
-  'plaid-ud/e2e',
-  'plaid-ud/test',
-  'plaid-umr/src',
-  'plaid-umr/e2e',
-  'plaid-umr/test',
+  ...appTrees('src', 'e2e', 'test'),
   'plaid-dict/src',
   'plaid-agent/tests',
   'plaid-client-js/test',
 ];
 
-// Where a dead export is a finding. The three live apps and the package they
-// share, plus the e2e helper modules beside their specs. plaid-umr was outside
-// both lists until 2026-09-21, which meant the next plaid-ui export written
-// for umr alone would have been reported dead the moment igt's suite ran.
-const CENSUS_TREES = [
-  'plaid-ui/src',
-  'plaid-ui/e2e',
-  'plaid-igt/src',
-  'plaid-igt/e2e',
-  'plaid-ud/src',
-  'plaid-ud/e2e',
-  'plaid-umr/src',
-  'plaid-umr/e2e',
-];
+// Where a dead export is a finding: every live app (`./apps.js`) and the
+// package they share, plus the e2e helper modules beside their specs. Both
+// lists read that one roster, so a fourth app is judged the day it arrives
+// rather than two weeks later.
+const CENSUS_TREES = ['plaid-ui/src', 'plaid-ui/e2e', ...appTrees('src', 'e2e')];
 
 const SOURCE = /\.(js|jsx|mjs)$/;
 
