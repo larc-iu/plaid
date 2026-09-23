@@ -1,5 +1,5 @@
 // Mutation mixin: word-token operations. See IgtDocument.js for the `this`
-// API (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.) and the
+// API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.) and the
 // splitToken template method.
 
 import {
@@ -32,7 +32,7 @@ export const tokenMutations = {
     const ids = tokenIds instanceof Set ? Array.from(tokenIds) : Array.from(tokenIds || []);
     if (ids.length <= 1) return false;
 
-    return this._withSaving('Failed to merge tokens', async () => {
+    return this._queueWrite('Failed to merge tokens', async () => {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
       const idSet = new Set(ids);
@@ -143,7 +143,7 @@ export const tokenMutations = {
   // (morpheme layer's parent is word); we mirror the cascade locally so the
   // UI updates without a refetch.
   async deleteToken(tokenId) {
-    return this._withSaving('Failed to delete token', async () => {
+    return this._queueWrite('Failed to delete token', async () => {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
       const target = wordTokens.find((t) => t.id === tokenId);
@@ -202,7 +202,7 @@ export const tokenMutations = {
       }
     }
 
-    return this._withSaving('Failed to create token', async () => {
+    return this._queueWrite('Failed to create token', async () => {
       const result = await this._client.tokens.create(primaryTokenLayer.id, text.id, begin, end);
       const newId = result?.id || result;
       this._applyRawPatch((next, infoNext) => {
@@ -241,7 +241,7 @@ export const tokenMutations = {
     }
 
     let createdCount = 0;
-    const ok = await this._withSaving('Failed to tokenize', async () => {
+    const ok = await this._queueWrite('Failed to tokenize', async () => {
       const existingTokens = primaryTokenLayer.tokens || [];
       const ignoredTokensConfig = getIgnoredTokensConfig(this.project);
       const untokenizedRanges = findUntokenizedRanges(body, existingTokens);
@@ -270,7 +270,7 @@ export const tokenMutations = {
   // spans + vocab links). Reload after — the cascade is too sprawling to
   // replay locally.
   async clearTokens() {
-    return this._withSaving('Failed to clear tokens', async () => {
+    return this._queueWrite('Failed to clear tokens', async () => {
       const info = this.layerInfo;
       const wordTokens = info.primaryTokenLayer?.tokens || [];
       if (wordTokens.length === 0) return;

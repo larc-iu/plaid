@@ -1,5 +1,5 @@
 // Mutation mixin: vocabulary-link operations. See IgtDocument.js for the
-// `this` API (_withSaving, _applyRawPatch, _reload, layerInfo, etc.).
+// `this` API (_queueWrite, _applyRawPatch, _reload, layerInfo, etc.).
 //
 // Vocab links live on the vocab layer (not the document), so optimistic
 // patches mutate the third arg of `_applyRawPatch` (a shallow clone of
@@ -113,7 +113,7 @@ export const vocabMutations = {
     if (!creates.length && !replaces.length) return 0;
     const metadata = stampInferred(provSource);
 
-    const ok = await this._withSaving('Failed to auto-link', async () => {
+    const ok = await this._queueWrite('Failed to auto-link', async () => {
       // Proposals can name an unanalyzed word's morpheme, which auto-link reads
       // by the form the word gives it. One bulk create turns those into tokens
       // before anything links to them, and before the batches below. A proposal
@@ -182,7 +182,7 @@ export const vocabMutations = {
     const confirm = this.confirmStamp(link.metadata);
     if (!confirm) return false;
 
-    return this._withSaving('Failed to confirm link', async () => {
+    return this._queueWrite('Failed to confirm link', async () => {
       await this._client.vocabLinks.patchMetadata(link.id, metadataOps(confirm));
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
@@ -209,7 +209,7 @@ export const vocabMutations = {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     const stamp = metadata || this.createStamp;
 
-    return this._withSaving('Failed to link vocab item', async () => {
+    return this._queueWrite('Failed to link vocab item', async () => {
       // Linking an unanalyzed word's morpheme writes the morpheme first: a link
       // needs a token to point at. Before the batch below, never inside it: a
       // create's id is only readable outside one. A word id passes through.
@@ -287,12 +287,12 @@ export const vocabMutations = {
     }
     const ids = [...new Set(tokenIds)].filter((id) => !findPriorLink(this._vocabularies, id).link);
     if (!ids.length) return false;
-    return this._withSaving('Failed to link entries', () =>
+    return this._queueWrite('Failed to link entries', () =>
       this._linkManyImpl(ids, targetVocab, vocabItem),
     );
   },
 
-  // The write half of linkVocabMany, run INSIDE a caller's _withSaving so a
+  // The write half of linkVocabMany, run INSIDE a caller's _queueWrite so a
   // create-and-link-all is one operation too. `ids` have no link of their own.
   async _linkManyImpl(ids, targetVocab, vocabItem) {
     const vocabItemId = vocabItem.id;
@@ -357,7 +357,7 @@ export const vocabMutations = {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!priorLink || !priorVocabId) return false;
 
-    return this._withSaving('Failed to unlink vocab item', async () => {
+    return this._queueWrite('Failed to unlink vocab item', async () => {
       await this._client.vocabLinks.delete(priorLink.id);
       this._applyRawPatch((next, info, vocabs) => {
         if (vocabs[priorVocabId]) {
@@ -393,7 +393,7 @@ export const vocabMutations = {
       .map((l) => l.tokens[0])
       .filter((id) => morphemeIds.has(id));
 
-    return this._withSaving('Failed to set entry type', async () => {
+    return this._queueWrite('Failed to set entry type', async () => {
       await this._client.batched(async (b) => {
         b.vocabItems.patchMetadata(itemId, [
           morphType == null
@@ -462,7 +462,7 @@ export const vocabMutations = {
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
     const stamp = metadata || this.createStamp;
-    return this._withSaving('Failed to link multi-word expression', async () => {
+    return this._queueWrite('Failed to link multi-word expression', async () => {
       const result = await this._client.vocabLinks.create(vocabItemId, tokens, stamp || undefined);
       const newLinkId = result?.id || result;
       this._applyRawPatch((next, info, vocabs) => {
@@ -493,7 +493,7 @@ export const vocabMutations = {
     if (!tokens) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    return this._withSaving('Failed to create and link multi-word expression', async () => {
+    return this._queueWrite('Failed to create and link multi-word expression', async () => {
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
       let newLinkId;
@@ -546,7 +546,7 @@ export const vocabMutations = {
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
     const stamp = this.createStamp || undefined;
-    return this._withSaving('Failed to change multi-word expression', async () => {
+    return this._queueWrite('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async (b) => {
         b.vocabLinks.delete(linkId);
         b.vocabLinks.create(vocabItemId, tokens, stamp);
@@ -589,7 +589,7 @@ export const vocabMutations = {
       : { ...(prior.metadata || {}) };
     const metadata = Object.keys(merged).length ? merged : null;
     const vocabItem = prior.vocabItem;
-    return this._withSaving('Failed to change multi-word expression', async () => {
+    return this._queueWrite('Failed to change multi-word expression', async () => {
       const results = await this._client.batched(async (b) => {
         b.vocabLinks.delete(linkId);
         b.vocabLinks.create(itemId, tokens, metadata || undefined);
@@ -612,7 +612,7 @@ export const vocabMutations = {
   async unlinkMwe(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!link) return false;
-    return this._withSaving('Failed to unlink multi-word expression', async () => {
+    return this._queueWrite('Failed to unlink multi-word expression', async () => {
       await this._client.vocabLinks.delete(linkId);
       this._applyRawPatch((next, info, vocabs) => {
         if (vocabs[vocabId]) {
@@ -630,7 +630,7 @@ export const vocabMutations = {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     const confirm = link ? this.confirmStamp(link.metadata) : null;
     if (!confirm) return false;
-    return this._withSaving('Failed to confirm multi-word expression', async () => {
+    return this._queueWrite('Failed to confirm multi-word expression', async () => {
       await this._client.vocabLinks.patchMetadata(linkId, metadataOps(confirm));
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);
@@ -666,7 +666,7 @@ export const vocabMutations = {
     }
     if (!creates.length) return 0;
     const metadata = stampInferred(provSource);
-    const ok = await this._withSaving('Failed to auto-link multi-word expressions', async () => {
+    const ok = await this._queueWrite('Failed to auto-link multi-word expressions', async () => {
       await this._client.vocabLinks.bulkCreate(creates.map((c) => ({ ...c, metadata })));
       await this._reload();
     });
@@ -682,7 +682,7 @@ export const vocabMutations = {
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
 
-    return this._withSaving('Failed to create and link vocab item', async () => {
+    return this._queueWrite('Failed to create and link vocab item', async () => {
       // Same as linkVocab: an unanalyzed word's morpheme becomes a token before
       // anything points at it, and before the batch below.
       const targetTokenId = isVirtualMorphemeId(tokenId)

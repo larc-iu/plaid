@@ -85,9 +85,8 @@ export const useTokenOperations = () => {
   // (pendingDelete drives the dialog in DocumentTokenize).
   const [pendingDelete, setPendingDelete] = useState(null); // {tokenId, content, annotations, links}
   // All structural doc mutations from this tab are funneled through one
-  // promise chain (same idiom as the Analyze island's _run). IgtDocument's
-  // _withSaving is single-flight — it DROPS a call that overlaps an in-flight
-  // one — so two quick clicks used to lose the second silently.
+  // promise chain (same idiom as the Analyze island's _run), so each click's
+  // write starts once the one before it has landed.
   const chainRef = useRef(Promise.resolve());
   const run = (fn) => {
     const next = chainRef.current.then(fn);

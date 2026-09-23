@@ -10,7 +10,7 @@
 // in place from the batch's returned ids: a refetch grows with the document
 // and was the lag between Enter and the row appearing. Every mutation here
 // still falls back to a reload when the server's answer lacks what the patch
-// needs, and `_withSaving` reloads on any failure.
+// needs, and `_queueWrite` reloads on any failure.
 //
 // Offsets (token begin/end, text-edit op index/value) are Unicode CODE POINTS,
 // so measurement and slicing use cpLength/cpSlice, not the UTF-16
@@ -202,7 +202,7 @@ export const alignmentMutations = {
     const textOps = [{ type: 'insert', index: insertBegin, value: insertedText }];
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
-    return this._withSaving('Failed to create alignment', async () => {
+    return this._queueWrite('Failed to create alignment', async () => {
       const results = await this._client.batched(async (b) => {
         b.texts.update(textId, textOps);
         b.tokens.create(alignmentTokenLayer.id, textId, tokenBegin, tokenEnd, undefined, meta);
@@ -334,7 +334,7 @@ export const alignmentMutations = {
     const seedSentence = cascadeWipesAllSentences && newTextLength > 0;
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
-    return this._withSaving('Failed to edit alignment', async () => {
+    return this._queueWrite('Failed to edit alignment', async () => {
       const results = await this._client.batched(async (b) => {
         b.texts.update(textId, textOps);
         b.tokens.create(
@@ -439,7 +439,7 @@ export const alignmentMutations = {
     }
 
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
-    return this._withSaving('Failed to align baseline text', async () => {
+    return this._queueWrite('Failed to align baseline text', async () => {
       const result = await this._client.tokens.create(
         alignmentTokenLayer.id,
         textId,
@@ -482,7 +482,7 @@ export const alignmentMutations = {
     }
 
     if (!deleteText) {
-      return this._withSaving('Failed to delete segment', async () => {
+      return this._queueWrite('Failed to delete segment', async () => {
         this._applyRawPatch((next, infoNext, vocabs) => {
           removeTokensLocally(next, textId, [alignmentId], vocabs);
         });
@@ -508,7 +508,7 @@ export const alignmentMutations = {
     // segment with text and fails for one with none: nothing to delete, no
     // cascade, and the segment the person had just confirmed deleting was
     // still there. The first real user found it on her empty segments.
-    return this._withSaving('Failed to delete segment', async () => {
+    return this._queueWrite('Failed to delete segment', async () => {
       this._applyRawPatch((next, infoNext, vocabs) => {
         removeTokensLocally(next, textId, [alignmentId], vocabs);
         if (textOps.length) applyTextEditsLocally(next, textId, textOps, vocabs);
@@ -526,7 +526,7 @@ export const alignmentMutations = {
     const have = new Set((info.alignmentTokenLayer?.tokens || []).map((t) => t.id));
     const wanted = [...new Set(ids)].filter((id) => have.has(id));
     if (!textId || !wanted.length) return false;
-    return this._withSaving('Failed to delete segments', async () => {
+    return this._queueWrite('Failed to delete segments', async () => {
       this._applyRawPatch((next, infoNext, vocabs) => {
         removeTokensLocally(next, textId, wanted, vocabs);
       });
@@ -580,7 +580,7 @@ export const alignmentMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to update alignment boundaries', async () => {
+    return this._queueWrite('Failed to update alignment boundaries', async () => {
       // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
       // drag must preserve the segment's provenance (prov/provSource/provDetail),
       // and per the cross-app convention a person's edit carries the writer's
@@ -608,7 +608,7 @@ export const alignmentMutations = {
       return false;
     }
     const value = (speaker || '').trim();
-    return this._withSaving('Failed to update speaker', async () => {
+    return this._queueWrite('Failed to update speaker', async () => {
       // A person's edit carries the writer's stamp (write-contract rule 3),
       // and choosing a segment's speaker is one.
       const verify = this.editStamp(token.metadata) || {};
@@ -637,7 +637,7 @@ export const alignmentMutations = {
     if (alignmentTokens.length === 0) return false;
     const ids = alignmentTokens.map((t) => t.id);
 
-    return this._withSaving('Failed to clear alignments', async () => {
+    return this._queueWrite('Failed to clear alignments', async () => {
       await this._client.tokens.bulkDelete(ids);
       await this._reload();
     });

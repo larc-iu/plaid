@@ -1,7 +1,7 @@
 // Mutation mixin: span (annotation) operations. See IgtDocument.js for the
-// `this` API (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
+// `this` API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.).
 //
-// Convention: resolve + guard the target span layer OUTSIDE `_withSaving`
+// Convention: resolve + guard the target span layer OUTSIDE `_queueWrite`
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding" via the saving wrapper.
 
@@ -99,7 +99,7 @@ const makeSpanUpdater = (scope) =>
       this.setError(`Annotation layer "${fieldName}" not found`);
       return false;
     }
-    return this._withSaving(`Failed to update ${fieldName}`, async () => {
+    return this._queueWrite(`Failed to update ${fieldName}`, async () => {
       // Glossing an unanalyzed word writes its morpheme before the span that
       // hangs off it: a span needs a token to point at. Any other id is handed
       // straight back (see materializeMorphemeId).
@@ -133,7 +133,7 @@ export const spanMutations = {
       (s) => Array.isArray(s.tokens) && s.tokens.includes(sentenceId),
     );
     if (!span || !this.reviewable(span.metadata)) return true;
-    return this._withSaving(`Failed to discard ${fieldName}`, async () => {
+    return this._queueWrite(`Failed to discard ${fieldName}`, async () => {
       await this._client.spans.delete(span.id);
       this._applyRawPatch((next, infoNext) => {
         const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
@@ -158,7 +158,7 @@ export const spanMutations = {
     );
     const confirm = span ? this.confirmStamp(span.metadata) : null;
     if (!confirm) return true;
-    return this._withSaving(`Failed to confirm ${fieldName}`, async () => {
+    return this._queueWrite(`Failed to confirm ${fieldName}`, async () => {
       await this._client.spans.patchMetadata(span.id, metadataOps(confirm));
       this._applyRawPatch((next, infoNext) => {
         const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);

@@ -13,7 +13,6 @@ import { notifyError } from '@/utils/feedback';
 import { PLAYBACK_RATE_STEP } from './useMediaOperations';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { whenIdle } from '../../../domain/whenIdle.js';
 import { formatTime } from './formatTime.js';
 import { MIN_SEGMENT, rangeProblem } from '../../../domain/alignmentTimes.js';
 import { TimecodeField } from './TimecodeField.jsx';
@@ -31,8 +30,8 @@ import { keys } from '@/lib/keymap.js';
 // edited unmounts and its successor mounts. Focus therefore always MOVES on a
 // text commit (to the next row, or to the new-segment row) and never tries to
 // stay. A time edit only patches metadata, so the row and its focus stay put.
-// The document single-flights its writes, so a commit waits for any write in
-// flight before issuing its own instead of being dropped.
+// The document queues its writes, so a commit made while another is saving
+// is sent after it rather than dropped.
 //
 // Play/pause inside a row is Shift+Space: the one modifier every platform
 // leaves alone in a text box (Ctrl+Space and Cmd+Space belong to macOS,
@@ -804,7 +803,6 @@ export function TranscriptList({
 
   const handleCommit = useCallback(
     async (id, { text, speaker }) => {
-      await whenIdle(doc);
       const token = doc.alignmentTokens.find((t) => t.id === id);
       if (!token) return false;
       const storedText = cpSlice(doc.body || '', token.begin, token.end);
@@ -828,7 +826,6 @@ export function TranscriptList({
   // anything else is refused with the reason, and the field goes back.
   const handleCommitTime = useCallback(
     async (id, which, seconds) => {
-      await whenIdle(doc);
       const sorted = [...doc.alignmentTokens].sort(byTime);
       const i = sorted.findIndex((t) => t.id === id);
       if (i < 0) return false;
@@ -853,13 +850,7 @@ export function TranscriptList({
   // becomes a segment by exactly the path a hand-drawn one does, and the
   // proposal then falls out of the list because a real segment now covers that
   // stretch of time.
-  const handleCreate = useCallback(
-    async (args) => {
-      await whenIdle(doc);
-      return doc.createAlignment(args);
-    },
-    [doc],
-  );
+  const handleCreate = useCallback((args) => doc.createAlignment(args), [doc]);
 
   const handleDelete = useCallback(
     (id, opts) => opsRef.current.handleDeleteAlignment(id, opts),

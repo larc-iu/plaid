@@ -9,7 +9,7 @@
 // creates) plus everything addressable now (word-level links/spans, first-slot
 // links/spans); batch 2 does links/spans for the newly created morphemes.
 // A batch-2 failure can therefore leave a word with copied segmentation but
-// missing links/glosses — _withSaving surfaces it loudly and the word, no
+// missing links/glosses — _queueWrite surfaces it loudly and the word, no
 // longer unanalyzed, won't be silently re-targeted.
 //
 // Ends with one _reload() instead of optimistic patches: a copy touches up to
@@ -74,7 +74,7 @@ export const analysisCopyMutations = {
     const todo = this._planAnalysisApply(proposals);
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const ok = await this._withSaving('Failed to copy previous analyses', () =>
+    const ok = await this._queueWrite('Failed to copy previous analyses', () =>
       this._applyAnalysesImpl(todo, stampInferred(provSource)),
     );
     return ok ? todo.length : false;
@@ -95,7 +95,7 @@ export const analysisCopyMutations = {
     );
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const ok = await this._withSaving('Failed to analyze words', async () => {
+    const ok = await this._queueWrite('Failed to analyze words', async () => {
       await this._applyAnalysesImpl(todo, this.createStamp || {});
       if (confirm.length) {
         await this._client.batched(async (b) => {
@@ -136,7 +136,7 @@ export const analysisCopyMutations = {
     }
     if (!targets.length) return 0;
 
-    return (await this._withSaving('Failed to re-analyze words', async () => {
+    return (await this._queueWrite('Failed to re-analyze words', async () => {
       // ---- phase 1: strip. Deleting a morpheme cascades its own spans and
       // links server-side, so only the word's and the surviving first
       // morpheme's are collected explicitly (a double delete fails the batch).
@@ -262,7 +262,7 @@ export const analysisCopyMutations = {
   },
 
   // The write half of a copy: batch-1/batch-2 per chunk (see the file
-  // comment), then one reload. Runs INSIDE a caller's _withSaving. `stamp`
+  // comment), then one reload. Runs INSIDE a caller's _queueWrite. `stamp`
   // is the metadata merged into every created/patched piece ({} for none).
   async _applyAnalysesImpl(todo, stamp) {
     const info = this.layerInfo;
@@ -498,7 +498,7 @@ export const analysisCopyMutations = {
 
     if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
 
-    return this._withSaving('Failed to discard word analysis', async () => {
+    return this._queueWrite('Failed to discard word analysis', async () => {
       await this._client.batched(async (b) => {
         linkIds.forEach((id) => b.vocabLinks.delete(id));
         spanIds.forEach((id) => b.spans.delete(id));
@@ -596,7 +596,7 @@ export const analysisCopyMutations = {
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
 
-    return this._withSaving('Failed to confirm word analysis', async () => {
+    return this._queueWrite('Failed to confirm word analysis', async () => {
       // An adoption can target the morpheme derive synthesized for a word
       // nobody has segmented, which is the ordinary case for a guessed gloss.
       // Write those morphemes before the batch that points spans at them: a

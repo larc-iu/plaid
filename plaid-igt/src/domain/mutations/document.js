@@ -1,5 +1,5 @@
 // Mutation mixin: document-level operations (baseline text, metadata, delete,
-// media upload/delete). See IgtDocument.js for the `this` API (_withSaving,
+// media upload/delete). See IgtDocument.js for the `this` API (_queueWrite,
 // _applyRawPatch, _reload, layerInfo, body, etc.).
 //
 // Renaming a document and copying it are NOT here: they are `rename` and
@@ -37,7 +37,7 @@ export const documentMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to save baseline text', async () => {
+    return this._queueWrite('Failed to save baseline text', async () => {
       const textId = primaryTextLayer.text?.id;
       const newLen = cpLength(newBody);
 
@@ -91,7 +91,7 @@ export const documentMutations = {
   },
 
   async setMetadata(metadata) {
-    return this._withSaving('Failed to save metadata', async () => {
+    return this._queueWrite('Failed to save metadata', async () => {
       await this._client.documents.setMetadata(this.id, metadata);
       this._applyRawPatch((next) => {
         next.metadata = metadata;
@@ -115,7 +115,7 @@ export const documentMutations = {
   // existing metadata so deactivated fields aren't dropped. Issued
   // sequentially (these are document-level, not token-level — not a batch).
   async saveNameAndMetadata(name, metadataPartial) {
-    return this._withSaving('Failed to save document', async () => {
+    return this._queueWrite('Failed to save document', async () => {
       const existingMetadata = this._raw?.metadata || {};
       const completeMetadata = { ...existingMetadata, ...metadataPartial };
       const nameChanged = name !== this._raw?.name;
@@ -133,7 +133,7 @@ export const documentMutations = {
   },
 
   async deleteDocument() {
-    return this._withSaving('Failed to delete document', async () => {
+    return this._queueWrite('Failed to delete document', async () => {
       await this._client.documents.delete(this.id);
       // Don't _reload — the document is gone and a fetch would 404.
     });
@@ -143,14 +143,14 @@ export const documentMutations = {
   // reload that follows (the document now carries its media) is not counted.
   async uploadMedia(file, { onProgress } = {}) {
     if (!file) return false;
-    return this._withSaving('Failed to upload media', async () => {
+    return this._queueWrite('Failed to upload media', async () => {
       await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
       await this._reload();
     });
   },
 
   async deleteMedia() {
-    return this._withSaving('Failed to delete media', async () => {
+    return this._queueWrite('Failed to delete media', async () => {
       await this._client.documents.deleteMedia(this.id);
       await this._reload();
     });

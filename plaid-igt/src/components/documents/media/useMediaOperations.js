@@ -6,7 +6,6 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
-import { whenIdle } from '../../../domain/whenIdle.js';
 import { transcodeToMp3 } from '../../../domain/media/transcodeToMp3.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useVadProposals, VAD_METADATA_KEY } from './useVadProposals.js';
@@ -87,8 +86,8 @@ const parseBool = (raw) => (raw === 'true' ? true : raw === 'false' ? false : un
 // Media tab operations, backed by the shared IgtDocument. This hook OWNS all
 // transient media UI state (playback position, selection, popover, ASR options)
 // as local React state, and delegates every mutation to the domain model
-// (doc.uploadMedia/deleteMedia/clearAlignments/etc., all _withSaving-wrapped so
-// they single-flight + toast + reload-on-error). The returned object is the
+// (doc.uploadMedia/deleteMedia/clearAlignments/etc., each queued behind the
+// write in flight, with a toast and a reload on error). The returned object is the
 // single source the timeline + player read from.
 export const useMediaOperations = () => {
   const { doc, client, acquireWriteLock, canWrite } = useDocumentCtx();
@@ -747,7 +746,6 @@ export const useMediaOperations = () => {
   // text (see SegmentRow). Keeping the text is the row's other answer.
   const handleDeleteAlignment = useCallback(
     async (alignmentId, { deleteText = true } = {}) => {
-      await whenIdle(doc);
       const ok = await doc.deleteAlignment(alignmentId, { deleteText });
       if (ok && deleteText) notifySuccess('Segment and its text deleted', 'Deleted');
       return ok;

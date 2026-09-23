@@ -1,5 +1,5 @@
 // Mutation mixin: sentence-boundary operations. See IgtDocument.js for the
-// `this` API (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
+// `this` API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.).
 //
 // The Sentences token layer is `:partitioning` — its tokens must tile
 // `[0, body.length)` with no gaps and no overlaps — and it is the ROOT of the
@@ -27,7 +27,7 @@ export const sentenceMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to merge sentence', async () => {
+    return this._queueWrite('Failed to merge sentence', async () => {
       // See domain/tokenReshape.js: the survivor takes on the provenance of
       // whichever side most needs review, so a machine-made sentence boundary
       // is not absorbed into a hand-made neighbour.
@@ -57,7 +57,7 @@ export const sentenceMutations = {
   async splitSentence(charPos) {
     const containing = this._sentenceToSplitAt(charPos);
     if (!containing) return false;
-    return this._withSaving('Failed to split sentence', () =>
+    return this._queueWrite('Failed to split sentence', () =>
       this._splitSentenceOnce(containing, charPos),
     );
   },
@@ -70,7 +70,7 @@ export const sentenceMutations = {
   async splitSentencesAt(positions) {
     const sorted = [...new Set(positions)].sort((a, b) => a - b);
     if (!sorted.length) return false;
-    return this._withSaving('Failed to split sentences', async () => {
+    return this._queueWrite('Failed to split sentences', async () => {
       for (const charPos of sorted) {
         const containing = this._sentenceToSplitAt(charPos, { quiet: true });
         if (containing) await this._splitSentenceOnce(containing, charPos);
@@ -146,7 +146,7 @@ export const sentenceMutations = {
         .map((sp) => sp.id),
     );
 
-    return this._withSaving('Failed to clear sentences', async () => {
+    return this._queueWrite('Failed to clear sentences', async () => {
       await this._client.batched(async (b) => {
         spanIds.forEach((id) => b.spans.delete(id));
         // Sequential merges into the first sentence in begin-order; the server

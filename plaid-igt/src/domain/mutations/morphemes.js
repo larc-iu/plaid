@@ -1,5 +1,5 @@
 // Mutation mixin: morpheme operations. See IgtDocument.js for the `this`
-// API (_withSaving, _applyRawPatch, _reload, layerInfo, body, etc.).
+// API (_queueWrite, _applyRawPatch, _reload, layerInfo, body, etc.).
 //
 // IGT morpheme model: morphemes share their parent word's begin/end (no
 // sub-range; MWTs are multiple morphemes at the same extent). Order within
@@ -8,8 +8,8 @@
 //
 // Guard convention (matches the rest of src/domain/mutations): "couldn't
 // resolve this id" / "no-op condition" guards do `setError + return false`
-// outside `_withSaving` so we don't trigger a needless `_reload` for an
-// invalid input. `throw` inside `_withSaving` is reserved for unexpected
+// outside `_queueWrite` so we don't trigger a needless `_reload` for an
+// invalid input. `throw` inside `_queueWrite` is reserved for unexpected
 // failure paths the server is reporting.
 
 import { cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
@@ -63,7 +63,7 @@ const formOf = (morpheme, body) => {
 
 export const morphemeMutations = {
   // Write one morpheme token onto `word` and patch it into local state, WITHOUT
-  // a `_withSaving` wrapper: the callers below are already inside one, and
+  // a `_queueWrite` wrapper: the callers below are already inside one, and
   // `_materializeMorpheme` runs inside theirs. Returns the new token's id.
   async _writeMorpheme(word, metadata) {
     const info = this.layerInfo;
@@ -202,7 +202,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to create morpheme', async () => {
+    return this._queueWrite('Failed to create morpheme', async () => {
       await this._writeMorpheme(word, created(this, form ? { form } : undefined));
     });
   },
@@ -225,7 +225,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to create morphemes', async () => {
+    return this._queueWrite('Failed to create morphemes', async () => {
       const existing = morphemesInWord(morphemeLayer.tokens, word);
       const basePrecedence = existing.length + 1;
 
@@ -301,7 +301,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to split morpheme', async () => {
+    return this._queueWrite('Failed to split morpheme', async () => {
       // Splitting a word nobody has analyzed writes the morpheme being split
       // before splitting it. Rare in practice (typing the first character of a
       // form materializes it, and a boundary comes after that), so this pays
@@ -422,7 +422,7 @@ export const morphemeMutations = {
     if (idx <= 0) return false;
     const previous = siblings[idx - 1];
 
-    return this._withSaving('Failed to merge morphemes', async () => {
+    return this._queueWrite('Failed to merge morphemes', async () => {
       const body = this.body;
       const previousForm = formOf(previous, body);
       const currentForm = formOf(target, body);
@@ -495,7 +495,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to delete morpheme', async () => {
+    return this._queueWrite('Failed to delete morpheme', async () => {
       const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
 
       await this._client.batched(async (b) => {
@@ -533,7 +533,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to update morpheme form', async () => {
+    return this._queueWrite('Failed to update morpheme form', async () => {
       if (resolved.virtual) {
         await this._materializeMorpheme(resolved, { form });
         return;
@@ -564,7 +564,7 @@ export const morphemeMutations = {
       return false;
     }
 
-    return this._withSaving('Failed to set morpheme type', async () => {
+    return this._queueWrite('Failed to set morpheme type', async () => {
       if (resolved.virtual) {
         // Clearing the type of a morpheme that has none asks for nothing, so
         // it stays virtual rather than being written into existence empty.

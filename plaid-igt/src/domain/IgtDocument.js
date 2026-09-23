@@ -349,7 +349,7 @@ export class IgtDocument extends DocumentModel {
   //    the rest, so a human can revise the joined value.
   // Then run validateIgtDocument over the healed state: residual heal failures
   // and un-healable app-contract violations come back as `findings` for the
-  // caller to log + toast. Loud + recoverable. Deliberately NOT via _withSaving
+  // caller to log + toast. Loud + recoverable. Deliberately NOT via _queueWrite
   // (a heal failure must not reload-and-revert the freshly loaded document).
   // Every heal write folds under ONE audit entry, relabelled by
   // `describeReconcile` to name the repair that ran (no entry at all when
@@ -513,10 +513,10 @@ export class IgtDocument extends DocumentModel {
   // These two methods serve as the canonical template for the mutation
   // mixins. Conventions to follow:
   //
-  // - Validate inputs (id lookups, layer presence) OUTSIDE `_withSaving`.
+  // - Validate inputs (id lookups, layer presence) OUTSIDE `_queueWrite`.
   //   Guard failures use `setError + return false` so an invalid id doesn't
   //   trigger a needless `_reload` via the catch path.
-  // - Wrap the server call + optimistic patch in `_withSaving(label, fn)`.
+  // - Wrap the server call + optimistic patch in `_queueWrite(label, fn)`.
   // - Inside `_applyRawPatch((next, info, vocabs) => ...)`, re-resolve
   //   layers/tokens via `info` — captured outer references point into the
   //   OLD raw doc and mutating through them is a real bug.
@@ -540,7 +540,7 @@ export class IgtDocument extends DocumentModel {
       return false;
     }
     const nextMetadata = { ...(token.metadata || {}), [`orthog:${orthographyName}`]: value };
-    return this._withSaving(`Failed to update ${orthographyName}`, async () => {
+    return this._queueWrite(`Failed to update ${orthographyName}`, async () => {
       await this._client.tokens.setMetadata(tokenId, nextMetadata);
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
@@ -561,7 +561,7 @@ export class IgtDocument extends DocumentModel {
       this.setError(`Token ${tokenId} not found`);
       return false;
     }
-    return this._withSaving('Failed to split token', async () => {
+    return this._queueWrite('Failed to split token', async () => {
       const leftEnd = token.begin + splitOffset + 1;
       const coincident = (info.morphemeTokenLayer?.tokens || [])
         .filter((m) => m.begin === token.begin && m.end === token.end)
@@ -700,7 +700,7 @@ function mergeRawVocabLinks(raw, vocabularies) {
 // Each mutation family lives in its own file under ./mutations/. Mixins are
 // plain objects of methods; Object.assign-ing them onto the prototype lets
 // every method see `this` as the IgtDocument instance and call the shared
-// helpers (_withSaving, _applyRawPatch, _reload, layerInfo, etc.).
+// helpers (_queueWrite, _applyRawPatch, _reload, layerInfo, etc.).
 Object.assign(
   IgtDocument.prototype,
   spanMutations,

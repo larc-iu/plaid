@@ -110,10 +110,10 @@ export class IgtEditor {
     this._lastDataVersion = -1;
     this._pendingFocus = null;
     // All doc mutations are funneled through this promise chain so they run
-    // strictly sequentially. IgtDocument._withSaving is single-flight (it drops
-    // a call that overlaps an in-flight one), and the structural handlers below
-    // optimistically touch the DOM — serializing here guarantees no mutation is
-    // ever silently dropped while the DOM was already changed (review H1).
+    // strictly sequentially, and a structural handler that has already
+    // touched the DOM learns whether its own write landed before the next
+    // one starts (review H1). The document queues its sends as well, so none
+    // is dropped either way.
     this._opChain = Promise.resolve();
     // Vocab-link popover UI state (not document data — toggling forces a render).
     this._popover = null; // { tokenId, kind } | null
@@ -464,7 +464,8 @@ export class IgtEditor {
 
   _render(force = false) {
     if (this._destroyed) return;
-    if (!force && this.doc.dataVersion === this._lastDataVersion) return;
+    const dataChanged = this.doc.dataVersion !== this._lastDataVersion;
+    if (!force && !dataChanged) return;
     this._lastDataVersion = this.doc.dataVersion;
     // Fresh alternatives memo for this pass (see _alternatives).
     this._altsMemo = new Map();
@@ -485,7 +486,7 @@ export class IgtEditor {
     // fresh toolbar comes back empty until this puts it back.
     this._paintStatus();
     this._fitPopover();
-    this._restorePendingFocus();
+    this._restorePendingFocus(dataChanged);
     // Size sentence textareas to their content (uncontrolledValue may have just
     // written a programmatic value, e.g. on load / reload). All the reads
     // happen between the two rounds of writes, so the page lays out twice
@@ -498,10 +499,17 @@ export class IgtEditor {
     });
   }
 
-  _restorePendingFocus() {
+  // `dataChanged` says whether this render follows a change to the document.
+  // A forced render of the same data (a precedent fetch landing, a comment
+  // arriving) can come before the write a target waits for has drawn its
+  // cells: one that finds no target leaves it for the next render.
+  _restorePendingFocus(dataChanged = true) {
     const pf = this._pendingFocus;
     this._pendingFocus = null;
     if (!pf) return;
+    const missed = () => {
+      if (!dataChanged && this._pendingFocus === null) this._pendingFocus = pf;
+    };
     // If the user already moved focus into another field while the structural op
     // was in flight, don't yank it back to the computed target (review: focus theft).
     // A DISABLED field is not that: the paste-split disables its source cell
@@ -532,6 +540,7 @@ export class IgtEditor {
         if (real) chip = this.container.querySelector(`[data-vocab-opener="${real}"]`);
       }
       if (chip) chip.focus();
+      else missed();
       return;
     }
     // A multi-word expression's bracket label, found by its first word: the
@@ -539,6 +548,7 @@ export class IgtEditor {
     if (pf.mweOf != null) {
       const label = this.container.querySelector(`[data-mwe-first="${pf.mweOf}"]`);
       if (label) label.focus();
+      else missed();
       return;
     }
     if (pf.cellKey != null) {
@@ -548,6 +558,7 @@ export class IgtEditor {
           ? this.container.querySelector(`.igt-field[data-confirm-word="${pf.wordId}"]`)
           : null);
       if (cell) cell.focus();
+      else missed();
       return;
     }
     let el = null;
@@ -556,7 +567,10 @@ export class IgtEditor {
         `.igt-morph-field[data-word="${pf.wordId}"][data-prec="${pf.precedence}"]`,
       );
     }
-    if (!el) return;
+    if (!el) {
+      missed();
+      return;
+    }
     el.focus();
     const c =
       pf.cursor === 'end'

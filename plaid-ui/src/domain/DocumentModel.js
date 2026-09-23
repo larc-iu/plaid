@@ -1,8 +1,9 @@
 // The lifecycle every editable document shares, whichever app's linguistics sit
 // on top: the raw document and who is writing it, a subscription a React hook
-// or a vanilla island can follow, the single-flight saving gate that runs each
-// mutation as one logical operation and resyncs on failure, the optimistic raw
-// patch, reload in place, and the snapshot beside the live document. What a
+// or a vanilla island can follow, the write queue that runs each mutation as
+// one logical operation in the order it was made and resyncs on failure (and
+// the older single-flight gate, which drops a write made during another), the
+// optimistic raw patch, reload in place, and the snapshot beside the live document. What a
 // document MEANS (its layers, rows, and every mutation) is the subclass's.
 //
 // Imports one sibling with no imports of its own, and nothing else: plaid-ud's
@@ -304,6 +305,9 @@ export class DocumentModel {
   // drained, not straight after the send, because a refetch then would drop
   // the edits still queued behind it from the screen.
   _queueWrite(label, send, operation = operationLabel(label), { reload = false } = {}) {
+    // A caller that patches first has asked `_canWrite` already. One whose
+    // send does all its work is refused here instead.
+    if (!this._canWrite(label)) return Promise.resolve(false);
     const generation = this._writeGeneration;
     this._queuedWrites += 1;
     if (!this._isSaving) {
