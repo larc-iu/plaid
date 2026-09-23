@@ -78,7 +78,8 @@ class DraftProgress:
         return progress_heartbeat(self._helper, self._percent(phase, fraction), message)
 
 
-def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Dict[str, Any]:
+def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0,
+                       linked=0) -> Dict[str, Any]:
     """The toast the editor shows when a run finishes. The service owns the
     wording and the severity; the editor maps ``level`` to a colour. A run that
     drafted nothing must not congratulate anyone.
@@ -87,7 +88,9 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
     skipped when ``overwrite`` is off, and one a person built is kept when it
     is on. What is kept is what a person made, contributed or verified (the
     three protected states of the provenance convention), so the line says
-    that rather than naming one of them.
+    that rather than naming one of them. ``linked`` counts the sentences kept
+    for another reason: nobody worked on them, but another sentence's graph
+    links into them, and replacing them would cut that link.
     """
     def s(n):
         return '' if n == 1 else 's'
@@ -97,6 +100,8 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
         tail.append(f'Skipped {skipped} sentence{s(skipped)} that already had a graph.')
     if kept:
         tail.append(f'Kept {kept} sentence{s(kept)} a person had worked on.')
+    if linked:
+        tail.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
     if failed:
         tail.append(f'Failed {failed} sentence{s(failed)}'
                     + (f': {first_error}' if first_error else '.'))
@@ -109,7 +114,7 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
         return {'level': 'warning', 'title': 'Document not modified',
                 'message': (f"{subject}. Enable 'Overwrite existing graphs' to draft over them."
                             + (f' Failed {failed} sentence{s(failed)}.' if failed else ''))}
-    if kept:
+    if kept or linked:
         return {'level': 'warning', 'title': 'Document not modified',
                 'message': ' '.join(tail)}
     if failed:

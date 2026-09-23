@@ -434,18 +434,20 @@ class UmrDraftService(BaseService):
         # (the machine-writer contract, `Sentence.redraftable`): the tick
         # redrafts machine graphs only, as igt's analyzers do.
         with_graph = [s for s in in_scope if s.words and s.nodes]
-        kept = len([s for s in with_graph if not s.redraftable]) if overwrite else 0
+        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
+        linked = (len([s for s in with_graph if not s.redraftable and not s.person_made])
+                  if overwrite else 0)
         skipped = len(with_graph) if not overwrite else 0
         targets = [s for s in in_scope
                    if s.words and (not s.nodes or (overwrite and s.redraftable))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         if not targets:
-            notice = build_draft_notice(0, skipped, 0, kept=kept)
+            notice = build_draft_notice(0, skipped, 0, kept=kept, linked=linked)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'kept': kept, 'failed': 0,
+                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': 0,
                                       'sentences_failed': [], 'notice': notice})
             return
 
@@ -503,11 +505,11 @@ class UmrDraftService(BaseService):
         drafted = len(plans)
         first_error = failures[0]['reason'] if failures else None
         if not plans:
-            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept)
+            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept, linked=linked)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
             return
 
@@ -526,11 +528,11 @@ class UmrDraftService(BaseService):
                     check_unchanged(self.client, document_id, read_version)
                     write_graphs(self.client, layers, plans, frag, progress)
 
-            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
+            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept, linked=linked)
             response_helper.progress(100, notice['title'])
             response_helper.complete({'document_id': document_id, 'status': 'success',
                                       'sentences': len(sentences), 'drafted': drafted,
-                                      'skipped': skipped, 'kept': kept, 'failed': len(failures),
+                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
                                       'sentences_failed': failures, 'notice': notice})
 
 

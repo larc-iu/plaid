@@ -409,7 +409,14 @@ def test_overwrite_keeps_a_sentence_whose_edges_or_triples_it_may_not_delete(
                                        'sentence': 1})
 
     [result] = helper.results
-    assert (result['drafted'], result['kept']) == (0, 1), why
+    # A person's work is counted as that. A machine link from another
+    # sentence is counted apart, and the notice does not claim a person.
+    by_link = "sentence 2" in why
+    assert (result['drafted'], result['kept'], result['linked']) == (
+        (0, 0, 1) if by_link else (0, 1, 0)), why
+    assert result['notice']['message'] == (
+        'Kept 1 sentence that another sentence links to.' if by_link
+        else 'Kept 1 sentence a person had worked on.'), why
     assert service.client.writes == [], f'{why} is not deleted'
 
 
