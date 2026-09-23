@@ -290,7 +290,8 @@ export class DocumentModel {
   // server's state to go on calls `_reloadInSend` instead.
   //
   // `shown: false` is for a write that put nothing on screen (a copy): its
-  // failure is reported and takes nothing back, and skips nothing behind it.
+  // failure is reported and takes nothing back, and skips nothing behind it,
+  // and a refusal ahead of it does not skip it.
   //
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
@@ -313,7 +314,10 @@ export class DocumentModel {
     }
     const run = async () => {
       try {
-        if (generation !== this._writeGeneration) return false;
+        // A refusal ahead took back what was planned on top of it. A write
+        // that put nothing on screen had nothing planned on it, so it is
+        // still sent: a copy asked for is made.
+        if (shown && generation !== this._writeGeneration) return false;
         await this._client.withOperation(operation, send);
         if (reload) this._reloadWhenDrained = true;
         return true;

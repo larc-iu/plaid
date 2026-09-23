@@ -2,7 +2,7 @@
 // offline against a stub client (see CLAUDE.md "Patterns to follow"):
 //   - updates/deletes patch the LOCAL document BEFORE awaiting the server, so
 //     the UI never flashes a stale value during the round trip;
-//   - on a server failure, _withSaving reverts by refetching the document.
+//   - on a server failure, the write queue reverts by refetching the document.
 // The raw document comes from test/helpers/rawDoc.js; the client is a plain
 // object with just the methods the mutation under test calls.
 import { test } from 'node:test';
@@ -62,7 +62,7 @@ test('updateRelation reverts via reload when the server rejects', async () => {
         throw new Error('boom');
       },
     },
-    // _withSaving's failure path refetches the document; serve the pristine copy.
+    // The queue's failure path refetches the document; serve the pristine copy.
     documents: { get: async () => structuredClone(pristine) },
   };
   const doc = new ConlluDocument({ raw, client: withOps(client) });

@@ -159,6 +159,18 @@ describe('a refetch and the edits around it', () => {
     expect(server.log).toEqual(['write gloss', 'copy {"gloss":"dog"}']);
   });
 
+  it('makes a copy asked for behind an edit that is then refused', async () => {
+    const { doc, server } = load();
+    const refused = deferred();
+    server.writes.push(refused);
+    const a = doc.set('a', 'AAA');
+    const copied = doc.copyTo('Copy');
+    refused.reject(new Error('500'));
+    expect(await a).toBe(false);
+    expect(await copied).toEqual({ id: 'copy-1', name: 'Copy' });
+    expect(server.log).toEqual(['copy {}']);
+  });
+
   it('skips nothing behind a copy that failed, since the copy showed nothing', async () => {
     const { doc, server } = load();
     server.copyFails = true;
