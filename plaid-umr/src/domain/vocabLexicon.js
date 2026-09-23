@@ -143,11 +143,25 @@ export function entriesStartingWith(lexicon, prefix, limit = 40) {
  * picker offers a project's own rolesets the way it offers the bundled ones.
  * A language being documented has no bundled frame file, and the vocabulary
  * is where its rolesets live.
+ *
+ * `entryId` is the entry the node was made from (`umr.entry` on the node),
+ * which is the answer whenever it still stands for the node's concept: two
+ * senses of one headword offer the same concept with different arguments.
+ * Without one, the concept is enough only when every entry that describes it
+ * agrees, and a node that could be either sense is offered neither.
  */
-export function argsOfEntry(lexicon, concept) {
+export function argsOfEntry(lexicon, concept, entryId = null) {
   if (!concept) return [];
-  const entry = (lexicon?.entries || []).find((e) => e.args && e.concept === concept);
-  return entry ? argsOf({ [concept]: entry.args }, concept) : [];
+  const chosen = entryId ? lexicon?.byId?.get(entryId) : null;
+  if (chosen && chosen.concept === concept) {
+    return chosen.args ? argsOf({ [concept]: chosen.args }, concept) : [];
+  }
+  const described = (lexicon?.entries || []).filter((e) => e.args && e.concept === concept);
+  if (!described.length) return [];
+  const key = (args) => JSON.stringify(Object.entries(args).sort(([a], [b]) => a.localeCompare(b)));
+  const first = key(described[0].args);
+  if (described.some((e) => key(e.args) !== first)) return [];
+  return argsOf({ [concept]: described[0].args }, concept);
 }
 
 // One line for a list: the concept, the gloss, and the arguments when the

@@ -5,6 +5,7 @@ import {
   nextArgKey,
   readArgs,
   readRoleset,
+  rolesetProblem,
   writeUmr,
 } from './vocabUmr.js';
 
@@ -87,6 +88,18 @@ describe('writing an entry’s roleset', () => {
   it('does not touch the entry’s own fields', () => {
     const fields = { gloss: 'go away', 'Parsing Note': 'check' };
     expect(writeUmr(fields, { roleset: 'leave-02', args: [] })).toMatchObject(fields);
+  });
+});
+
+describe('roleset names', () => {
+  // A UMR graph cannot hold these in a concept, so UMR could not use the name.
+  it('refuses what a concept cannot hold, and nothing else', () => {
+    expect(rolesetProblem('leave-02')).toBeNull();
+    expect(rolesetProblem('生活-01')).toBeNull();
+    expect(rolesetProblem('')).toBeNull();
+    for (const bad of ['look after-01', 'a(b)', 'x:y', 'say"', 'kai#1']) {
+      expect(rolesetProblem(bad)).toMatch(/^A roleset cannot hold/);
+    }
   });
 });
 

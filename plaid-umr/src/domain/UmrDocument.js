@@ -422,7 +422,9 @@ export class UmrDocument extends DocumentModel {
 
   /**
    * A new node in a sentence: anchored to `wordIds` (none for an abstract
-   * concept), under `parentId` with `role` when given. `onShown` is called
+   * concept), under `parentId` with `role` when given. `entry` is the
+   * vocabulary entry the concept was picked from, kept on the node so the
+   * role picker offers that entry's arguments. `onShown` is called
    * with the node's (pending) ids the moment it is on the canvas, so focus
    * can go to it before the server answers. Resolves to `{ nodeId, edgeId }`
    * with the server's ids once it has, or false on failure.
@@ -434,6 +436,7 @@ export class UmrDocument extends DocumentModel {
     parentId = null,
     role = null,
     attrs = [],
+    entry = null,
     onShown = null,
   }) {
     const sentence = this.sentence(sentenceIndex);
@@ -453,6 +456,7 @@ export class UmrDocument extends DocumentModel {
     // The first node of a sentence is its root. A later parentless node is a
     // fragment until it is connected, and the graph keeps its root.
     const meta = { var: variable, attrs };
+    if (entry) meta.entry = entry;
     if (!parent && sentence.nodes.length === 0) meta.root = true;
     // A node aligned to no word records its sentence, which is what says so
     // (see _reconcile): its anchor covers the whole sentence.
@@ -512,9 +516,18 @@ export class UmrDocument extends DocumentModel {
     return ok ? { nodeId: ids.get(spanId), edgeId: edgeId ? ids.get(edgeId) : null } : false;
   }
 
-  async setConcept(nodeId, concept) {
+  /**
+   * The node's concept. `entry` is the vocabulary entry it was picked from,
+   * or null for a concept typed or picked from anywhere else, which takes
+   * back the entry the node had: two senses of one headword offer the same
+   * concept with different arguments, so picking the other one is a change.
+   */
+  async setConcept(nodeId, concept, { entry = null } = {}) {
     const node = this.node(nodeId);
-    if (!node || !concept || node.concept === concept) return false;
+    if (!node || !concept) return false;
+    const had = node.metadata?.[UMR_NAMESPACE]?.entry ?? null;
+    const entryChanges = had !== entry && (node.concept !== concept || entry !== null);
+    if (node.concept === concept && !entryChanges) return false;
     const refused = conceptProblem(concept);
     if (refused) {
       this.setError(refused);
@@ -528,26 +541,32 @@ export class UmrDocument extends DocumentModel {
     // batch, as ud's cell edit does, so the tint clears with the value and
     // the document's version bumps once.
     const verify = this.writer.editStamp(node.metadata);
+    const ops = [
+      ...(entryChanges ? umrOps({ entry: entry ?? undefined }) : []),
+      ...metadataOps(verify),
+    ];
     this._applyRawPatch((next, infoNext) => {
       const span = this._layers(infoNext).spans.find((s) => s.id === node.id);
       if (!span) return;
       span.value = concept;
-      if (verify) span.metadata = applyMetadataOps(span.metadata, metadataOps(verify));
+      if (ops.length) span.metadata = applyMetadataOps(span.metadata, ops);
     });
     return this._queueWrite(
       label,
       async () => {
         const id = settledId(node.id);
-        if (verify) {
+        if (ops.length) {
           await this._client.batched(async (b) => {
-            b.spans.update(id, concept);
-            b.spans.patchMetadata(id, metadataOps(verify));
+            if (node.concept !== concept) b.spans.update(id, concept);
+            b.spans.patchMetadata(id, ops);
           });
         } else {
           await this._client.spans.update(id, concept);
         }
       },
-      `Change ${node.var} from ${node.concept} to ${concept}`,
+      node.concept === concept
+        ? `Change the entry of ${node.var} ${concept}`
+        : `Change ${node.var} from ${node.concept} to ${concept}`,
     );
   }
 

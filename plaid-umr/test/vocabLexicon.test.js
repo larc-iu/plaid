@@ -125,3 +125,52 @@ test('a roleset kept in the vocabulary names its arguments, in number order', ()
   assert.deepEqual(argsOfEntry(lex, null), []);
   assert.deepEqual(argsOfEntry(EMPTY_LEXICON, 'give-01'), []);
 });
+
+// Two senses of one headword, each describing its own arguments and naming no
+// roleset, so both offer the headword as their concept.
+const tapa = {
+  id: 'v2',
+  name: 'Lex',
+  items: [
+    { id: 'h1', form: 'tapa', metadata: {} },
+    {
+      id: 's1',
+      form: 'tapa',
+      metadata: {
+        parent: 'h1',
+        gloss: 'cut',
+        umr: { args: { ARG0: 'cutter', ARG1: 'thing cut' } },
+      },
+    },
+    {
+      id: 's2',
+      form: 'tapa',
+      metadata: {
+        parent: 'h1',
+        gloss: 'call',
+        umr: { args: { ARG0: 'caller', ARG2: 'name given' } },
+      },
+    },
+  ],
+};
+
+test('the arguments are those of the entry the node was made from', () => {
+  const lex = buildLexicon([tapa]);
+  const roles = (entryId) => argsOfEntry(lex, 'tapa', entryId).map((a) => a.description);
+  assert.deepEqual(roles('s2'), ['caller', 'name given']);
+  assert.deepEqual(roles('s1'), ['cutter', 'thing cut']);
+  // The headword describes no arguments of its own, and borrows none.
+  assert.deepEqual(roles('h1'), []);
+});
+
+test('without the entry, two senses that disagree offer neither', () => {
+  const lex = buildLexicon([tapa]);
+  assert.deepEqual(argsOfEntry(lex, 'tapa'), []);
+  // An entry that no longer stands for the node's concept says nothing.
+  assert.deepEqual(argsOfEntry(buildLexicon([vocab]), 'tapa', 'i3'), []);
+  // One entry, or several that agree, is still enough.
+  assert.deepEqual(
+    argsOfEntry(buildLexicon([vocab]), 'lunch-01').map((a) => a.role),
+    [':ARG0'],
+  );
+});

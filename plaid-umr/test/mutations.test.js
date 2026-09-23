@@ -438,3 +438,28 @@ test('copyTo sends the copy and answers with the new document', async () => {
   // The document copied from is untouched: the copy is a different document.
   assert.equal(doc.name, 'doc');
 });
+
+// Two senses of one headword offer the same concept with different
+// arguments, so the node keeps the entry it was picked from.
+test('a concept picked from a vocabulary entry keeps the entry on the node', async () => {
+  const { doc, calls } = load();
+  const s1 = doc.sentence(1);
+  const made = await doc.createNode({
+    sentenceIndex: 1,
+    concept: 'tapa',
+    entry: 'sense-cut',
+    wordIds: [s1.words[1].id],
+  });
+  const entryOf = (id) => doc.node(id).metadata?.umr?.entry;
+  assert.equal(entryOf(made.nodeId), 'sense-cut');
+  assert.equal(calls.find((c) => c.name === 'spans.create').args[3].umr.entry, 'sense-cut');
+  // The other sense, same concept: a change.
+  assert.equal(await doc.setConcept(made.nodeId, 'tapa', { entry: 'sense-call' }), true);
+  assert.equal(entryOf(made.nodeId), 'sense-call');
+  // The same concept typed again changes nothing.
+  assert.equal(await doc.setConcept(made.nodeId, 'tapa'), false);
+  assert.equal(entryOf(made.nodeId), 'sense-call');
+  // Another concept typed takes the entry back.
+  assert.equal(await doc.setConcept(made.nodeId, 'cut-01'), true);
+  assert.equal(entryOf(made.nodeId), undefined);
+});

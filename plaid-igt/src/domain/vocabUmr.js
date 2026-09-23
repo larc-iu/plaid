@@ -30,6 +30,19 @@ export const readRoleset = (metadata) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+// What a UMR concept cannot hold, as plaid-umr's `conceptProblem`
+// (`src/domain/format/penman.js`) has it: the characters PENMAN cannot carry
+// in a concept. plaid-umr's `test/pickers.test.js` holds the two together.
+const NOT_IN_ROLESET = /[\s():#"]/u;
+
+/** Why `name` cannot be a roleset, or null when it can. */
+export const rolesetProblem = (name) => {
+  const text = String(name ?? '').trim();
+  return NOT_IN_ROLESET.test(text)
+    ? `A roleset cannot hold spaces, brackets, colons, quotes or #: ${text}`
+    : null;
+};
+
 /**
  * The roleset's arguments as an ordered list of `{key, description}`, ARG0
  * first. Sorted by number rather than by string, so ARG10 follows ARG9.

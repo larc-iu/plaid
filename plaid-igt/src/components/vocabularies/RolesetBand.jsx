@@ -3,7 +3,14 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Button } from '@ui/components/ui/button';
-import { argKeyProblem, nextArgKey, readArgs, readRoleset, writeUmr } from '@/domain/vocabUmr';
+import {
+  argKeyProblem,
+  nextArgKey,
+  readArgs,
+  readRoleset,
+  rolesetProblem,
+  writeUmr,
+} from '@/domain/vocabUmr';
 
 // The entry's UMR roleset, shown only where a project that links this
 // vocabulary is set up for UMR (see domain/vocabUmr.js for why it is edited
@@ -16,6 +23,7 @@ import { argKeyProblem, nextArgKey, readArgs, readRoleset, writeUmr } from '@/do
 export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
   const bandId = useId();
   const roleset = readRoleset(fields);
+  const refused = rolesetProblem(roleset);
   const args = readArgs(fields);
 
   const write = (next) => setFields(writeUmr(fields, { roleset, args, ...next }));
@@ -36,11 +44,16 @@ export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
             value={roleset}
             disabled={disabled}
             placeholder="leave-02"
+            aria-invalid={refused ? true : undefined}
             onChange={(e) => write({ roleset: e.target.value })}
           />
-          <p className="text-xs text-muted-foreground">
-            The concept this entry stands for on a UMR graph. Empty means its headword.
-          </p>
+          {refused ? (
+            <p className="text-xs text-destructive">{refused}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              The concept this entry stands for on a UMR graph. Empty means its headword.
+            </p>
+          )}
         </div>
       </div>
       <div className="flex flex-col gap-2">

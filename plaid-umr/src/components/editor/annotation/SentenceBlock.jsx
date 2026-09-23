@@ -593,6 +593,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const newNode = {
         sentenceIndex: sentence.index,
         concept: text,
+        entry: entryPicked(text, option),
         wordIds: ed.wordIds,
         parentId: ed.parentId,
       };
@@ -603,12 +604,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       }
     } else if (ed.kind === 'concept') {
       closeEditor();
-      await doc.setConcept(ed.nodeId, text);
+      await doc.setConcept(ed.nodeId, text, { entry: entryPicked(text, option) });
     } else if (ed.kind === 'variable') {
       closeEditor();
       await doc.setVariable(ed.nodeId, text);
     }
   };
+
+  // The vocabulary entry a concept was picked from, so the role picker
+  // offers that entry's arguments. Typed text names no entry.
+  const entryPicked = (text, option) =>
+    option?.entryId && option.value === text ? option.entryId : null;
 
   // A new node's word, named by its number: one the sentence has. Typed
   // before a word was dropped on, a number names a word, never a concept.
@@ -997,11 +1003,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const overConst = drag?.over?.kind === 'const' ? drag.over.name : null;
 
   // The parent whose arguments a role editor lists first.
-  const parentConceptOf = (pending) => {
+  const parentOf = (pending) => {
     const id = pending.edgeId
       ? doc.edge(pending.edgeId)?.source
       : pending.sourceId || pending.newNode?.parentId;
-    return id ? nodesById.get(id)?.concept : null;
+    return id ? nodesById.get(id) : null;
   };
 
   // The vocabulary entries the given words are linked to, on the words
@@ -1018,7 +1024,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const editorOptions = (ed) => {
     if (!ed) return [];
-    if (ed.kind === 'role') return roleOptions(frames, parentConceptOf(ed.pending), lexicon);
+    if (ed.kind === 'role') {
+      const parent = parentOf(ed.pending);
+      return roleOptions(frames, parent?.concept, lexicon, parent?.metadata?.umr?.entry);
+    }
     if (ed.kind === 'new') {
       const words = ed.wordIds.length
         ? sentence.words.filter((w) => ed.wordIds.includes(w.id))

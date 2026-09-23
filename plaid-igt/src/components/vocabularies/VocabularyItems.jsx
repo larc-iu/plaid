@@ -73,7 +73,7 @@ import {
 import { useEntryList } from './useEntryList';
 import { EntryList } from './EntryList';
 import { soleProjectLinking } from '@/domain/vocabProject';
-import { linksUmrProject } from '@/domain/vocabUmr';
+import { linksUmrProject, readRoleset, rolesetProblem } from '@/domain/vocabUmr';
 import { EntryEditor } from './EntryEditor';
 import { ConcordancePanel } from './ConcordancePanel';
 import { EntryDialogs } from './EntryDialogs';
@@ -557,12 +557,14 @@ export const VocabularyItems = ({
   const dirty = isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false;
   // Only a CHANGED value is held to its tagset, so an off-tagset value an
   // import left behind does not lock the entry (see changedValuesAllowed).
-  const saveAllowed = changedValuesAllowed(
+  const tagsetsAllow = changedValuesAllowed(
     fields,
     draft.fields,
     (f) => tagsetFor(f.name),
     isNew ? {} : editableMetadata(selectedItem?.metadata),
   );
+  const rolesetRefused = rolesetProblem(readRoleset(draft.fields));
+  const saveAllowed = tagsetsAllow && !rolesetRefused;
 
   const cancelEdit = () => {
     if (isNew) {
@@ -668,6 +670,10 @@ export const VocabularyItems = ({
   const handleSave = async () => {
     if (!draft.form.trim()) {
       notifyError('The form cannot be empty', 'Invalid Form');
+      return;
+    }
+    if (rolesetRefused) {
+      notifyError(rolesetRefused, 'Not saved');
       return;
     }
     if (!saveAllowed) {

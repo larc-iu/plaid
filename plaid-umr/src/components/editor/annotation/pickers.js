@@ -15,7 +15,11 @@ import {
   entryLabel,
 } from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
-import { relationProblem, attrValueProblem } from '../../../domain/format/penman.js';
+import {
+  conceptProblem,
+  relationProblem,
+  attrValueProblem,
+} from '../../../domain/format/penman.js';
 
 // The relations of one document-level group, the validator's set first.
 export const docRelationOptions = (group, sets = 'validator') => {
@@ -49,16 +53,22 @@ const uniqEntries = (list) => {
 
 // Roles for an edge out of `parentConcept`: the parent's own arguments
 // first, with what each means, from the bundled frame file or, for a
-// project keeping its own rolesets, from the vocabulary entry.
-const parentArgs = (frames, lexicon, parentConcept) => {
+// project keeping its own rolesets, from the vocabulary entry the parent was
+// made from (`parentEntry`).
+const parentArgs = (frames, lexicon, parentConcept, parentEntry) => {
   if (!parentConcept) return [];
   const known = argsOf(frames, parentConcept);
-  return known.length ? known : argsOfEntry(lexicon, parentConcept);
+  return known.length ? known : argsOfEntry(lexicon, parentConcept, parentEntry);
 };
 
-export const roleOptions = (frames = null, parentConcept = null, lexicon = null) => {
+export const roleOptions = (
+  frames = null,
+  parentConcept = null,
+  lexicon = null,
+  parentEntry = null,
+) => {
   // Once: the vocabulary answer walks the entries, and a dictionary is long.
-  const own = parentArgs(frames, lexicon, parentConcept);
+  const own = parentArgs(frames, lexicon, parentConcept, parentEntry);
   return [
     ...(own.length
       ? [
@@ -110,11 +120,13 @@ export const conceptOptions = (words = [], frames = null, typed = '', vocab = nu
   const byPrefix = typed && !words.length ? rolesetsStartingWith(frames, typed) : [];
   const senseItem = (id) => ({ value: id, label: `${id} ${argSummary(frames?.[id])}` });
   const surface = uniq(words.map((w) => w.text));
+  // An entry whose concept a graph cannot hold (a headword with a space in
+  // it) is not offered: picking it would only be refused.
   const entries = vocab
     ? uniqEntries([
         ...(vocab.linked || []),
         ...(typed ? entriesStartingWith(vocab.lexicon || EMPTY_LEXICON, typed) : []),
-      ])
+      ]).filter((e) => !conceptProblem(e.concept))
     : [];
   const entryItem = (e) => ({ value: e.concept, label: entryLabel(e), entryId: e.id });
   return [
