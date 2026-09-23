@@ -55,3 +55,26 @@ export function settleIds(node, ids) {
     if (value !== null && typeof value === 'object') settleIds(value, ids);
   }
 }
+
+const isPlain = (v) =>
+  v !== null &&
+  typeof v === 'object' &&
+  (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype || !Object.getPrototypeOf(v));
+
+// `value` with every id in it that the server has since answered for turned
+// into the server's: a string, or plain objects and arrays of them, walked
+// deep. The same reference back when nothing changed, so a component can
+// follow the swap during render (`const f = followIds(x); if (f !== x) setX(f)`)
+// without rendering forever.
+export function followIds(value) {
+  if (typeof value === 'string') return settledId(value);
+  if (!isPlain(value)) return value;
+  let changed = false;
+  const next = Array.isArray(value) ? [] : {};
+  for (const [k, v] of Object.entries(value)) {
+    const f = followIds(v);
+    if (f !== v) changed = true;
+    next[k] = f;
+  }
+  return changed ? next : value;
+}

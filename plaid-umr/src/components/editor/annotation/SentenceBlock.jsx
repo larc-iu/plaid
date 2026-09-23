@@ -32,6 +32,7 @@ import {
   focusValue,
 } from './pickers.js';
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
+import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -129,7 +130,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   useEffect(() => {
     if (readOnly) setTextMode(false);
   }, [readOnly]);
-  const [applying, setApplying] = useState(false);
   const [focusedId, setFocusedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   // Whether focus is in this block. `focusedId` outlives it, because the
@@ -192,17 +192,22 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
+  // A node, edge or relation made a moment ago is on the canvas under a
+  // pending id until the server answers with its own (plaid-ui's
+  // domain/pendingIds.js). What this block holds by id follows the swap here,
+  // during render, so an open editor stays open and focus stays put.
+  const follow = (value, set) => {
+    const f = followIds(value);
+    if (f !== value) set(f);
+  };
+  follow(focusedId, setFocusedId);
+  follow(hoveredId, setHoveredId);
+  follow(menu, setMenu);
+  follow(mode, setMode);
+  follow(editor, setEditor);
+  follow(drag, setDrag);
   // Whether the last press on the graph began on empty space.
   const pressedEmptyRef = useRef(false);
-  // Writes from gestures run one after another: the document refuses a write
-  // while one is in flight, and three quick clicks in anchor mode are three
-  // writes, not one and two lost.
-  const queueRef = useRef(Promise.resolve());
-  const run = useCallback((fn) => {
-    const next = queueRef.current.then(fn, fn);
-    queueRef.current = next.catch(() => {});
-    return next;
-  }, []);
   const { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes } = useCanvasMeasure(
     `${dataVersion}:${sentence.index}`,
   );
@@ -410,6 +415,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     [nodeRefs],
   );
 
+  // A node just made is in the document before React has drawn it, so its
+  // element exists only from the next frame.
+  const focusWhenDrawn = ({ nodeId }) => requestAnimationFrame(() => focusNode(nodeId));
+
   const treeEdgeInto = (id) => {
     const node = nodesById.get(id);
     if (!node) return null;
@@ -500,9 +509,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const rel = normalizeRole(text);
       const p = ed.pending;
       closeEditor();
-      if (p.tripleId) await run(() => doc.setTripleRelation(p.tripleId, rel));
+      if (p.tripleId) await doc.setTripleRelation(p.tripleId, rel);
       else {
-        await run(() => doc.createTriple({ ...p.triple, rel, sentenceIndex: sentence.index }));
+        await doc.createTriple({ ...p.triple, rel, sentenceIndex: sentence.index });
       }
       return;
     }
@@ -555,13 +564,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const p = ed.pending;
       if (p.newNode) {
         setEditor(null);
-        const r = await run(() => doc.createNode({ ...p.newNode, role }));
-        if (r) focusNode(r.nodeId);
+        doc.createNode({ ...p.newNode, role, onShown: focusWhenDrawn });
         return;
       }
       closeEditor();
-      if (p.edgeId) await run(() => doc.setRole(p.edgeId, role));
-      else await run(() => doc.createEdge(p.sourceId, p.targetId, role));
+      if (p.edgeId) await doc.setRole(p.edgeId, role);
+      else await doc.createEdge(p.sourceId, p.targetId, role);
     } else if (ed.kind === 'new') {
       setEditor(null);
       // A number names a word only when no word was dropped on: a word whose
@@ -585,15 +593,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       if (ed.parentId) {
         askRole({ newNode }, { x: ed.x, y: ed.y });
       } else {
-        const r = await run(() => doc.createNode(newNode));
-        if (r) focusNode(r.nodeId);
+        doc.createNode({ ...newNode, onShown: focusWhenDrawn });
       }
     } else if (ed.kind === 'concept') {
       closeEditor();
-      await run(() => doc.setConcept(ed.nodeId, text));
+      await doc.setConcept(ed.nodeId, text);
     } else if (ed.kind === 'variable') {
       closeEditor();
-      await run(() => doc.setVariable(ed.nodeId, text));
+      await doc.setVariable(ed.nodeId, text);
     }
   };
 
@@ -638,8 +645,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         return;
       }
     }
-    if (edge) await run(() => doc.deleteEdge(edge.id));
-    else await run(() => doc.deleteNode(node.id));
+    // Gone from the canvas as soon as the call returns; the save follows.
+    if (edge) doc.deleteEdge(edge.id);
+    else doc.deleteNode(node.id);
     // A root has no parent to hand focus to, and focus on the page body
     // leaves every key dead until the annotator clicks. The sentence's own
     // first node takes it, and the block itself when nothing is left.
@@ -726,14 +734,14 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.earlier':
       case 'node.later': {
         const edge = treeEdgeInto(id);
-        if (edge) await run(() => doc.shiftEdge(edge.id, action === 'node.earlier' ? -1 : 1));
+        if (edge) await doc.shiftEdge(edge.id, action === 'node.earlier' ? -1 : 1);
         break;
       }
       case 'node.reentrancy':
         setMode({ kind: 'reentrancy', nodeId: id });
         break;
       case 'node.root':
-        await run(() => doc.setRoot(id));
+        await doc.setRoot(id);
         break;
       case 'node.delete':
         await deleteInto(false, id);
@@ -803,7 +811,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (mode.kind === 'move') {
       const edge = treeEdgeInto(mode.nodeId);
       setMode(null);
-      if (edge && id !== mode.nodeId) await run(() => doc.moveEdge(edge.id, id));
+      if (edge && id !== mode.nodeId) doc.moveEdge(edge.id, id);
       focusNode(mode.nodeId);
     } else if (mode.kind === 'reentrancy') {
       setMode(null);
@@ -842,14 +850,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     // A word takes no focus, so a click on one left it on the page, where
     // Escape and the arrows never reach the block: back to the node.
     nodeRefs.current.get(node.id)?.focus({ preventScroll: true });
-    await run(() => {
-      // Read at run time: an earlier click in the queue may have moved it.
-      const current = doc.node(node.id);
-      if (!current) return false;
-      const has = current.wordIds.includes(wordId);
-      const next = has ? current.wordIds.filter((w) => w !== wordId) : [...current.wordIds, wordId];
-      return doc.setAnchor(current.id, next);
-    });
+    // Read from the document, which already shows any earlier click still
+    // being saved.
+    const current = doc.node(node.id);
+    if (!current) return;
+    const has = current.wordIds.includes(wordId);
+    const next = has ? current.wordIds.filter((w) => w !== wordId) : [...current.wordIds, wordId];
+    await doc.setAnchor(current.id, next);
   };
 
   // A parentless node over a word. The concept picker opens prefilled with
@@ -951,7 +958,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else if (d.kind === 'move' && over?.kind === 'node') {
         const edge = doc.edge(d.edgeId);
         if (edge && over.id !== edge.source && over.id !== edge.target) {
-          await run(() => doc.moveEdge(d.edgeId, over.id));
+          await doc.moveEdge(d.edgeId, over.id);
         }
       }
     };
@@ -1152,12 +1159,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         <PenmanEditor
           initial={doc.penmanOf(sentence.index)}
           plan={(text) => doc.planPenman(sentence.index, text)}
-          applying={applying}
-          onApply={async (text) => {
-            setApplying(true);
-            const changes = await run(() => doc.applyPenman(sentence.index, text));
-            setApplying(false);
-            if (changes !== false) leaveTextMode();
+          onApply={(text) => {
+            // The editor applies only a text whose plan has no problem, and
+            // the plan is on the canvas as soon as this returns.
+            doc.applyPenman(sentence.index, text);
+            leaveTextMode();
           }}
           onCancel={async (dirty) => {
             if (dirty) {
@@ -1232,7 +1238,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 Under the graph it floated wherever the words ended. */}
             {lane.listed.map((t, i) => (
               <span
-                key={t.id}
+                key={stableKey(t.id)}
                 className="umr-doc-chip"
                 style={{
                   position: 'absolute',
@@ -1271,7 +1277,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             </defs>
             {docEdges.map((t) => (
               <path
-                key={t.id}
+                key={stableKey(t.id)}
                 d={t.path}
                 className="umr-doc-edge"
                 data-family={t.family}
@@ -1322,7 +1328,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   const lit = active && (e.source === active || e.target === active);
                   return (
                     <path
-                      key={e.id}
+                      key={stableKey(e.id)}
                       d={e.path}
                       className={[
                         'umr-edge',
@@ -1342,7 +1348,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             </svg>
             {sentence.nodes.map((node, i) => (
               <UmrNode
-                key={node.id}
+                key={stableKey(node.id)}
                 node={node}
                 nodeRef={nodeRef(node.id)}
                 position={measured ? layout.nodes.get(node.id) : null}
@@ -1378,7 +1384,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             {measured &&
               layout.edges.map((e) => (
                 <span
-                  key={e.id}
+                  key={stableKey(e.id)}
                   className={[
                     'umr-edge-label',
                     e.tree ? '' : 'umr-edge-label--reentrant',
@@ -1440,7 +1446,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               <AttributePopover
                 nodeId={editor.nodeId}
                 attrs={nodesById.get(editor.nodeId).attrs}
-                onChange={(attrs) => run(() => doc.setAttrs(editor.nodeId, attrs))}
+                onChange={(attrs) => doc.setAttrs(editor.nodeId, attrs)}
                 onClose={closeEditor}
               />
             )}
@@ -1473,7 +1479,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                         const id = editor.pending.edgeId;
                         const from = doc.edge(id)?.source;
                         closeEditor();
-                        await run(() => doc.deleteEdge(id, { subtree: false }));
+                        doc.deleteEdge(id, { subtree: false });
                         focusNode(from);
                       }
                     : editor.kind === 'docRole' && editor.pending.tripleId
@@ -1481,7 +1487,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                           const id = editor.pending.tripleId;
                           const at = editor.nodeId || focusedId;
                           closeEditor();
-                          await run(() => doc.deleteTriple(id));
+                          doc.deleteTriple(id);
                           focusNode(at);
                         }
                       : undefined

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { LINE_FAMILIES, lineFamily } from './docLines.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
 
 // The active node's document relations that reach ANOTHER sentence, drawn
 // across the blocks between them. A block draws what stays inside it; this
@@ -130,7 +131,7 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
       </defs>
       {drawn.rings.map(([id, r]) => (
         <rect
-          key={id}
+          key={stableKey(id)}
           className="umr-cross-ring"
           x={r.left - 4}
           y={r.top - 4}
@@ -141,7 +142,7 @@ export function CrossLinks({ listRef, graph, activeId, version }) {
       ))}
       {drawn.links.map((l) => (
         <path
-          key={l.id}
+          key={stableKey(l.id)}
           d={l.path}
           className="umr-cross-link"
           data-triple-id={l.id}

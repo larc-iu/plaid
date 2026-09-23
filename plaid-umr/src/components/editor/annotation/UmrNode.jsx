@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { PROV_STATES, provState } from '@larc-iu/plaid-client';
+import { stableKey } from '@ui/domain/pendingIds.js';
 
 // Provenance, the cross-app convention: a node a machine drafted or a
 // contributor made is tinted until somebody settles it, in the two hues
@@ -232,7 +233,7 @@ export const UmrNode = React.memo(function UmrNode({
             const out = t.source === node.id;
             const ends = tags.length > MAX_ENDS ? tags.slice(0, MAX_ENDS - 1) : tags;
             const endSpans = ends.map((one, i) => (
-              <React.Fragment key={one.id}>
+              <React.Fragment key={stableKey(one.id)}>
                 {i > 0 && ' '}
                 {tags.length === 1 ? (
                   one.otherVar
