@@ -201,11 +201,16 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   // could write the wrong orthography, leave out a language the first run kept
   // (and then fail on a field that is missing), or import the texts that were
   // unticked.
+  //
+  // Applied to every read of the file, not once per page: "Choose another
+  // file" reads it again and resets every choice to its default, and a resume
+  // locks the review, so defaults put back then could not be unticked. The
+  // ref holds the read they were last applied to.
   const resumeChoices = resumeRecord?.choices ?? null;
-  const choicesApplied = useRef(false);
+  const choicesAppliedTo = useRef(null);
   useEffect(() => {
-    if (!parsed || !resumeChoices || choicesApplied.current) return;
-    choicesApplied.current = true;
+    if (!parsed || !resumeChoices || choicesAppliedTo.current === parsed) return;
+    choicesAppliedTo.current = parsed;
     const known = (list, available) => new Set((list || []).filter((x) => available.has(x)));
     setSelectedTexts(
       known(resumeChoices.texts, new Set(parsed.build.documents.map((d) => d.guid))),

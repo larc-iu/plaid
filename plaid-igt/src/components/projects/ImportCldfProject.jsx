@@ -101,10 +101,12 @@ export const ImportCldfProject = () => {
   // both. Without it a changed gloss scope makes the engine look for a field
   // the project never created, and a changed grouping cuts the documents the
   // resume adds differently from the ones already there.
-  const choicesApplied = useRef(false);
+  // Keyed on the read rather than once per page, so a dataset read again
+  // gets them again.
+  const choicesAppliedTo = useRef(null);
   useEffect(() => {
-    if (!dataset || !resumeChoices || choicesApplied.current) return;
-    choicesApplied.current = true;
+    if (!dataset || !resumeChoices || choicesAppliedTo.current === dataset) return;
+    choicesAppliedTo.current = dataset;
     setOptions((o) => restoreImportOptions(dataset, o, resumeChoices));
   }, [dataset, resumeChoices]);
 
