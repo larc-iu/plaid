@@ -280,3 +280,19 @@ test('splitting a word into two shows before the server answers', async () => {
   assert.equal(await write, true);
   assert.ok(morphemes().every((m) => !isPendingId(m.id)));
 });
+
+test("splitting a word writes only the word's form key, never its whole metadata", async () => {
+  const { doc, release, calls } = open();
+  const word = doc.layerInfo.wordTokenLayer.tokens.find((w) => w.begin === 0);
+  // Something another tab wrote to the word after this copy was loaded is
+  // not in this copy, so a whole-map write would erase it.
+  word.metadata = { ...(word.metadata || {}), note: 'here' };
+  const write = doc.setWordMorphemes(word, ['sh', 'e']);
+  release();
+  assert.equal(await write, true);
+  assert.ok(!calls.some((c) => c.call === 'tokens.setMetadata'));
+  const patch = calls.find((c) => c.call === 'tokens.patchMetadata');
+  assert.deepEqual(patch.args[1], [{ op: 'set', path: ['form'], value: 'she' }]);
+  const shown = doc.layerInfo.wordTokenLayer.tokens.find((w) => w.id === word.id);
+  assert.equal(shown.metadata.form, 'she');
+});

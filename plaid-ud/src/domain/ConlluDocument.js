@@ -1,4 +1,5 @@
 import {
+  applyMetadataOps,
   cpLength,
   cpSlice,
   isMachine,
@@ -639,15 +640,15 @@ export class ConlluDocument extends DocumentModel {
     const wordSubstring = cpSlice(body, word.begin, word.end);
     const isMwt = cleanForms.length > 1;
     const existingMeta = word.metadata || {};
-    // Decide whether the word's metadata needs to change.
-    let nextWordMetadata = null;
+    // Decide whether the word's `form` needs to change. Only that key is
+    // written, so the word's other metadata is never sent from this copy.
+    let wordFormOps = null;
     if (isMwt) {
       if (existingMeta.form !== wordSubstring) {
-        nextWordMetadata = { ...existingMeta, form: wordSubstring };
+        wordFormOps = [{ op: 'set', path: ['form'], value: wordSubstring }];
       }
     } else if (existingMeta.form != null) {
-      const { form: _drop, ...remaining } = existingMeta;
-      nextWordMetadata = remaining;
+      wordFormOps = [{ op: 'delete', path: ['form'] }];
     }
 
     const existing = morphemeTokens.filter((m) => containsToken(word, m));
@@ -674,9 +675,9 @@ export class ConlluDocument extends DocumentModel {
     });
 
     this._applyRawPatch((next, info) => {
-      if (nextWordMetadata !== null) {
+      if (wordFormOps) {
         const w = (info.wordTokenLayer?.tokens || []).find((t) => t.id === settledId(word.id));
-        if (w) w.metadata = nextWordMetadata;
+        if (w) w.metadata = applyMetadataOps(w.metadata, wordFormOps);
       }
       const layer = info.morphemeTokenLayer;
       layer.tokens = (layer.tokens || [])
@@ -720,12 +721,10 @@ export class ConlluDocument extends DocumentModel {
             precedence,
           })),
         );
-        if (nextWordMetadata !== null) {
-          b.tokens.setMetadata(settledId(word.id), nextWordMetadata);
-        }
+        if (wordFormOps) b.tokens.patchMetadata(settledId(word.id), wordFormOps);
       });
       // bulkCreate sits at index 1 when we issued a bulkDelete, else index 0;
-      // setMetadata (if any) is the final op and we don't need its result.
+      // patchMetadata (if any) is the final op and we don't need its result.
       const created = setResults[existing.length ? 1 : 0]?.body?.ids || [];
       morphemes.forEach((m, i) => created[i] && ids.set(m.id, created[i]));
 

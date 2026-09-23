@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { metadataOps } from '@larc-iu/plaid-client';
+import { applyMetadataOps, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import { planMorphTypeSync } from './igtReconcile.js';
@@ -113,9 +113,12 @@ describe('span (annotation) mutations', () => {
     const doc = makeDoc({ raw });
     const ok = await doc.updateTokenSpan('w-1', 'POS', 'NOUN'); // no metadata = human
     expect(ok).toBe(true);
-    const setMeta = doc.client.calls.find((c) => c.kind === 'spans.setMetadata');
-    expect(setMeta).toBeTruthy();
-    expect(setMeta.args[1]).toEqual({
+    const patch = doc.client.calls.find((c) => c.kind === 'spans.patchMetadata');
+    expect(patch).toBeTruthy();
+    // Only the stamp's keys are sent, never the whole map.
+    expect(patch.args[1].map((o) => o.path[0])).toEqual(['provConfirmed']);
+    const onServer = { prov: 'inferred', provSource: 'service:stanza-parser' };
+    expect(applyMetadataOps(onServer, patch.args[1])).toEqual({
       prov: 'inferred',
       provSource: 'service:stanza-parser',
       provConfirmed: true,
@@ -131,7 +134,7 @@ describe('span (annotation) mutations', () => {
     ];
     const doc = makeDoc({ raw });
     await doc.updateTokenSpan('w-1', 'POS', 'NOUN');
-    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+    expect(kinds(doc.client)).not.toContain('spans.patchMetadata');
   });
 
   it('re-committing the same value on a machine span writes nothing (retyping never confirms)', async () => {
@@ -163,7 +166,7 @@ describe('span (annotation) mutations', () => {
     ];
     const doc = makeDoc({ raw });
     await doc.updateTokenSpan('w-1', 'POS', 'NOUN');
-    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+    expect(kinds(doc.client)).not.toContain('spans.patchMetadata');
   });
 
   it('updateMorphemeSpan upserts on the morpheme', async () => {
@@ -190,8 +193,10 @@ describe('orthography + morpheme form', () => {
   it('updateOrthography writes orthog:<name> metadata, reflected in token.orthographies', async () => {
     const doc = makeDoc();
     await doc.updateOrthography('w-1', 'IPA', 'ðə');
-    const meta = doc.client.calls.find((c) => c.kind === 'tokens.setMetadata').args[1];
-    expect(meta['orthog:IPA']).toBe('ðə');
+    const ops = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata').args[1];
+    // The one key, never the whole map from this copy.
+    expect(ops).toEqual([{ op: 'set', path: ['orthog:IPA'], value: 'ðə' }]);
+    expect(kinds(doc.client)).not.toContain('tokens.setMetadata');
     expect(doc.sentences[0].tokens[0].orthographies.IPA).toBe('ðə');
   });
 
@@ -1091,27 +1096,42 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     config: { igt: { documentMetadata: [{ name: 'Date' }, { name: 'Speakers' }] } },
   };
 
-  it('saveNameAndMetadata updates name + merges metadata over existing', async () => {
+  it('saveNameAndMetadata updates the name and patches only the fields that changed', async () => {
     const doc = makeDoc({
-      raw: buildRawDoc({ metadata: { Date: 'x' } }),
+      raw: buildRawDoc({ metadata: { Date: 'x', Speakers: 'z', other: 1 } }),
       project: metaProject,
     });
     const ok = await doc.saveNameAndMetadata('New Name', { Date: 'y', Speakers: 'z' });
     expect(ok).toBe(true);
     const k = kinds(doc.client);
     expect(k).toContain('documents.update');
-    expect(k).toContain('documents.setMetadata');
-    expect(doc.document.name).toBe('New Name');
-    expect(doc.document.metadata).toMatchObject({ Date: 'y', Speakers: 'z' });
+    expect(k).not.toContain('documents.setMetadata');
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([{ op: 'set', path: ['Date'], value: 'y' }]);
+    expect(doc.name).toBe('New Name');
+    expect(doc._raw.metadata).toEqual({ Date: 'y', Speakers: 'z', other: 1 });
   });
 
   it('saveNameAndMetadata skips documents.update when name is unchanged', async () => {
     const doc = makeDoc({ raw: buildRawDoc({ metadata: {} }), project: metaProject });
-    const ok = await doc.saveNameAndMetadata('Test Doc', { Date: 'q' });
+    const ok = await doc.saveNameAndMetadata('Test Doc', { Date: 'q', Speakers: '' });
     expect(ok).toBe(true);
     const k = kinds(doc.client);
     expect(k).not.toContain('documents.update');
-    expect(k).toContain('documents.setMetadata');
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([{ op: 'set', path: ['Date'], value: 'q' }]);
+  });
+
+  it('mergeMetadata patches the keys it names and deletes an undefined one', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ metadata: { keep: 1, vad: { a: 1 } } }) });
+    expect(await doc.mergeMetadata({ vad: undefined, seen: true })).toBe(true);
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([
+      { op: 'delete', path: ['vad'] },
+      { op: 'set', path: ['seen'], value: true },
+    ]);
+    expect(kinds(doc.client)).not.toContain('documents.setMetadata');
+    expect(doc._raw.metadata).toEqual({ keep: 1, seen: true });
   });
 
   it('saveBaselineText with surviving sentences is a plain texts.update (no lock, no wipe)', async () => {
@@ -1576,7 +1596,7 @@ describe('clearing an annotation cell', () => {
     const ok = await doc.updateTokenSpan('w-1', 'POS', '');
     expect(ok).toBe(true);
     expect(kinds(doc.client)).toEqual(expect.arrayContaining(['spans.delete']));
-    expect(kinds(doc.client)).not.toContain('spans.setMetadata');
+    expect(kinds(doc.client)).not.toContain('spans.patchMetadata');
     expect(doc.sentences[0].tokens[0].annotations.POS).toBeNull();
   });
 
@@ -1689,8 +1709,10 @@ describe('who is writing (provenance)', () => {
     const doc = docAs(ANN, REVIEW_ANN, client);
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', { ...MACHINE, provConfirmed: true });
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'NOM');
-    const set = client.calls.filter((c) => c.kind === 'spans.setMetadata').pop();
-    expect(set.args[1]).toEqual(CONTRIBUTED);
+    const patch = client.calls.filter((c) => c.kind === 'spans.patchMetadata').pop();
+    expect(applyMetadataOps({ ...MACHINE, provConfirmed: true }, patch.args[1])).toEqual(
+      CONTRIBUTED,
+    );
   });
 
   it("a contributor's discard leaves contributed work alone; a verifier's takes it", async () => {

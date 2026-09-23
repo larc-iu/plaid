@@ -5,7 +5,7 @@
 // Renaming a document and copying it are NOT here: they are `rename` and
 // `copyTo` on the shared DocumentModel, which every app's document inherits.
 
-import { cpLength } from '@larc-iu/plaid-client';
+import { applyMetadataOps, cpLength } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
@@ -94,42 +94,46 @@ export const documentMutations = {
     });
   },
 
-  async setMetadata(metadata) {
-    const label = 'Failed to save metadata';
+  // Edit the document's metadata with path ops that name only the keys being
+  // changed, so a key another tab or a service wrote since this copy was
+  // loaded survives. The local copy takes the same ops the server applies.
+  async patchMetadata(ops, label = 'Failed to save metadata') {
     if (!this._canWrite(label)) return false;
+    if (!ops.length) return true;
     this._applyRawPatch((next) => {
-      next.metadata = metadata;
+      next.metadata = applyMetadataOps(next.metadata, ops);
     });
-    return this._queueWrite(label, () => this._client.documents.setMetadata(this.id, metadata));
+    return this._queueWrite(label, () => this._client.documents.patchMetadata(this.id, ops));
   },
 
-  // Merge keys into the document's metadata, leaving the rest of the map
-  // alone. The wire call replaces the whole map, so the merge happens here.
-  // A key set to undefined is removed.
+  // Set top-level keys of the document's metadata, leaving the rest alone. A
+  // key set to undefined is removed.
   async mergeMetadata(partial) {
-    const merged = { ...(this._raw?.metadata || {}) };
-    for (const [key, value] of Object.entries(partial || {})) {
-      if (value === undefined) delete merged[key];
-      else merged[key] = value;
-    }
-    return this.setMetadata(merged);
+    const ops = Object.entries(partial || {}).map(([key, value]) =>
+      value === undefined ? { op: 'delete', path: [key] } : { op: 'set', path: [key], value },
+    );
+    return this.patchMetadata(ops);
   },
 
-  // Combined save for the analyze tab. Merges the partial metadata over the
-  // existing metadata so deactivated fields aren't dropped. Issued
-  // sequentially (these are document-level, not token-level — not a batch).
+  // Combined save for the Details tab: the name, and the fields whose value
+  // the form changed. A field left as it was is not written, so a value
+  // someone else saved to it meanwhile stays.
   async saveNameAndMetadata(name, metadataPartial) {
     const label = 'Failed to save document';
     if (!this._canWrite(label)) return false;
-    const completeMetadata = { ...(this._raw?.metadata || {}), ...metadataPartial };
+    const current = this._raw?.metadata || {};
+    const ops = Object.entries(metadataPartial || {})
+      .filter(([key, value]) => (value ?? '') !== (current[key] ?? ''))
+      .map(([key, value]) => ({ op: 'set', path: [key], value }));
     const nameChanged = name !== this._raw?.name;
+    if (!nameChanged && ops.length === 0) return true;
     this._applyRawPatch((next) => {
       if (nameChanged) next.name = name;
-      next.metadata = completeMetadata;
+      next.metadata = applyMetadataOps(next.metadata, ops);
     });
     return this._queueWrite(label, async () => {
       if (nameChanged) await this._client.documents.update(this.id, name);
-      await this._client.documents.setMetadata(this.id, completeMetadata);
+      if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
     });
   },
 

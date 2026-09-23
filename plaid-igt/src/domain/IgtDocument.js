@@ -1,4 +1,5 @@
 import {
+  applyMetadataOps,
   isReviewed,
   mergeMetadata,
   metadataOps,
@@ -549,13 +550,14 @@ export class IgtDocument extends DocumentModel {
     }
     const label = `Failed to update ${orthographyName}`;
     if (!this._canWrite(label)) return false;
-    const nextMetadata = { ...(token.metadata || {}), [`orthog:${orthographyName}`]: value };
+    // The one key, so the token's other metadata is never written from this copy.
+    const ops = [{ op: 'set', path: [`orthog:${orthographyName}`], value }];
     this._applyRawPatch((next, infoNext) => {
       const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
-      if (t) t.metadata = nextMetadata;
+      if (t) t.metadata = applyMetadataOps(t.metadata, ops);
     });
     return this._queueWrite(label, () =>
-      this._client.tokens.setMetadata(settledId(tokenId), nextMetadata),
+      this._client.tokens.patchMetadata(settledId(tokenId), ops),
     );
   }
 

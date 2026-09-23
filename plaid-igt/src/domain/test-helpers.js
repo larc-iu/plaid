@@ -225,6 +225,7 @@ export function makeFakeClient(opts = {}) {
         update: op('documents.update', () => ({})),
         copy: op('documents.copy', () => ({ id: nextId('doc') })),
         setMetadata: op('documents.setMetadata', () => ({})),
+        patchMetadata: op('documents.patchMetadata', () => ({})),
         acquireLock: op('documents.acquireLock', () => ({})),
         releaseLock: op('documents.releaseLock', () => ({})),
         uploadMedia: op('documents.uploadMedia', () => ({})),

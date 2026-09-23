@@ -40,8 +40,10 @@ const planSpan = (doc, targetLayer, targetTokenId, value, metadata) => {
     if (!metadata && existing.value === value) return null;
     // No caller fragment = a human edit, which carries the writer's stamp.
     const fragment = metadata || doc.editStamp(existing.metadata);
+    // Only the fragment's keys are sent, so a key written elsewhere since
+    // this copy was loaded survives. `merged` is the same edit made locally.
     const merged = fragment ? mergeMetadata(existing.metadata, fragment) : null;
-    return { kind: 'update', span: existing, value, merged };
+    return { kind: 'update', span: existing, value, fragment, merged };
   }
   const stamp = metadata || doc.createStamp;
   return { kind: 'create', id: pendingId(), token: targetTokenId, value, stamp };
@@ -77,10 +79,10 @@ const sendSpan = async (doc, layerId, plan, ids) => {
     await doc._client.spans.delete(serverId(plan.span.id));
   } else if (plan.kind === 'update') {
     const id = serverId(plan.span.id);
-    if (plan.merged) {
+    if (plan.fragment) {
       await doc._client.batched(async (b) => {
         b.spans.update(id, plan.value);
-        b.spans.setMetadata(id, plan.merged);
+        b.spans.patchMetadata(id, metadataOps(plan.fragment));
       });
     } else {
       await doc._client.spans.update(id, plan.value);
