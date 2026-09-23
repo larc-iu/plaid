@@ -65,8 +65,6 @@ export class DocumentModel {
     this._queuedWrites = 0;
     this._writeGeneration = 0;
     this._reloadWhenDrained = false;
-    // Whether a `_withSaving` mutation is running, its own single-flight gate.
-    this._savingOne = false;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -138,14 +136,14 @@ export class DocumentModel {
   async setTextDirection(value) {
     const next = value === LTR || value === RTL ? value : AUTO;
     if (this.textDirectionSetting === next) return false;
-    return this._withSaving(
-      'Failed to save the text direction',
-      async () => {
-        this._applyRawPatch((raw) => {
-          raw.metadata = withTextDirection(raw.metadata, next);
-        });
-        await this._client.documents.patchMetadata(this.id, textDirectionOps(next));
-      },
+    const label = 'Failed to save the text direction';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((raw) => {
+      raw.metadata = withTextDirection(raw.metadata, next);
+    });
+    return this._queueWrite(
+      label,
+      () => this._client.documents.patchMetadata(this.id, textDirectionOps(next)),
       'Set text direction',
     );
   }
@@ -163,12 +161,12 @@ export class DocumentModel {
   async rename(name) {
     const next = (name || '').trim();
     if (!next || next === this.name) return false;
-    return this._withSaving('Failed to rename document', async () => {
-      this._applyRawPatch((raw) => {
-        raw.name = next;
-      });
-      await this._client.documents.update(this.id, next);
+    const label = 'Failed to rename document';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((raw) => {
+      raw.name = next;
     });
+    return this._queueWrite(label, () => this._client.documents.update(this.id, next));
   }
 
   /**
@@ -182,13 +180,21 @@ export class DocumentModel {
    *
    * Same project only, and comments do not travel, which is the server's
    * ruling, not this method's choice.
+   *
+   * It takes its turn in the write queue, so the copy holds every edit made
+   * before it. It shows nothing, so a failure takes nothing back.
    */
   async copyTo(name) {
     const next = (name || '').trim() || `${this.name} (copy)`;
     let created = null;
-    const ok = await this._withSaving('Failed to copy document', async () => {
-      created = await this._client.documents.copy(this.id, next);
-    });
+    const ok = await this._queueWrite(
+      'Failed to copy document',
+      async () => {
+        created = await this._client.documents.copy(this.id, next);
+      },
+      undefined,
+      { shown: false },
+    );
     return ok && created?.id ? { ...created, name: next } : null;
   }
 
@@ -238,39 +244,6 @@ export class DocumentModel {
 
   // ----- mutation infrastructure -----
 
-  // Single-flight gate around a mutation: skip if already saving, clear the
-  // error at the start, report and surface a failure, refetch the document on
-  // failure. Returns true on success and false otherwise so callers can branch.
-  //
-  // Every mutation also runs as ONE logical operation in the audit log
-  // (`client.withOperation`): however many writes or batches it makes show up
-  // in the History drawer as a single expandable entry labeled `operation`
-  // (derived from the "Failed to ..." error label unless given explicitly).
-  // Nested mutations flatten into the outer operation.
-  //
-  // The gate is its own, not `isSaving`: an edit still being sent from the
-  // write queue does not make a rename wait or vanish, and a rename ending
-  // does not clear `isSaving` while the queue still has sends to make.
-  async _withSaving(label, fn, operation = operationLabel(label)) {
-    if (this._savingOne) return false;
-    if (!this._canWrite(label)) return false;
-    this._savingOne = true;
-    this._isSaving = true;
-    this._error = '';
-    this._emit();
-    try {
-      await this._client.withOperation(operation, fn);
-      return true;
-    } catch (err) {
-      await this._writeFailed(label, err, () => this._reload());
-      return false;
-    } finally {
-      this._savingOne = false;
-      this._isSaving = this._queuedWrites > 0;
-      this._emit();
-    }
-  }
-
   // Whether a write may go through this document at all. A document read at
   // `asOf` is a past state: nothing writes through it. A screen that let an
   // edit reach one would otherwise write a plan made against the past into
@@ -285,14 +258,15 @@ export class DocumentModel {
   }
 
   // Report a failed write and refetch the document, which takes back whatever
-  // the write had already shown. `reload` is the refetch the caller's place
-  // calls for: the queue's own, or `_reload` from outside it.
+  // the write had already shown. `reload` is the refetch that takes it back,
+  // or null for a write that showed nothing.
   async _writeFailed(label, err, reload) {
     console.error(`${label}:`, err);
     this._error = `${label}: ${err.message || 'Unknown error'}`;
     // The raw error rides along so the screen can word it (statuses, network
     // failures) while keeping the "Failed to ..." label as the title.
     if (this.onError) this.onError(this._error, err, label);
+    if (!reload) return;
     try {
       await reload();
     } catch (reloadErr) {
@@ -303,8 +277,8 @@ export class DocumentModel {
   // An optimistic write in two halves. The caller has already shown the edit
   // (`_canWrite`, then `_applyRawPatch`); `send` makes the server calls. Sends
   // run one at a time, in the order the edits were made, so an edit made while
-  // another is in flight is on screen at once and its send waits its turn,
-  // where `_withSaving` would drop it. A failed send reloads the document,
+  // another is in flight is on screen at once and its send waits its turn.
+  // A failed send reloads the document,
   // which takes the edits queued behind it off the screen as well, so their
   // sends are skipped. Resolves true when `send` landed, false otherwise.
   // `isSaving` holds while anything is queued.
@@ -314,7 +288,19 @@ export class DocumentModel {
   // drained, not straight after the send, because a refetch then would drop
   // the edits still queued behind it from the screen. A send that needs the
   // server's state to go on calls `_reloadInSend` instead.
-  _queueWrite(label, send, operation = operationLabel(label), { reload = false } = {}) {
+  //
+  // `shown: false` is for a write that put nothing on screen (a copy): its
+  // failure is reported and takes nothing back, and skips nothing behind it.
+  //
+  // Every write goes through here, one at a time, so nothing is ever sent
+  // beside a send or a refetch: a rename made while an edit is saving is sent
+  // after it, and a copy holds the edits made before it.
+  _queueWrite(
+    label,
+    send,
+    operation = operationLabel(label),
+    { reload = false, shown = true } = {},
+  ) {
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
     if (!this._canWrite(label)) return Promise.resolve(false);
@@ -332,6 +318,10 @@ export class DocumentModel {
         if (reload) this._reloadWhenDrained = true;
         return true;
       } catch (err) {
+        if (!shown) {
+          await this._writeFailed(label, err, null);
+          return false;
+        }
         this._reloadWhenDrained = false;
         await this._writeFailed(label, err, () => this._reloadAfterFailure());
         return false;
@@ -403,7 +393,7 @@ export class DocumentModel {
   // which of these it calls, never by what else happens to be running:
   //
   // - `_reload` (and `reload`), from OUTSIDE the write queue: a service run, a
-  //   restore, reconcile, a refused `_withSaving`. It waits for the queue to
+  //   restore, reconcile, the assistant. It waits for the queue to
   //   drain, and fetches again when an edit was made while the fetch was on
   //   the wire, so every edit lands on the server and stays on screen. Never
   //   call it from inside a send, which the queue is waiting on.
@@ -516,8 +506,8 @@ export class DocumentModel {
   // relabelled by `describeReconcile` to name the repair that ran, and never
   // after a failure, since the pass may have written half of what the label
   // would claim. A pass that wrote nothing creates no group. Deliberately not
-  // `_withSaving`: a failed heal must not reload and revert the freshly loaded
-  // document.
+  // a queued write: a failed heal must not reload and revert the freshly
+  // loaded document.
   //
   // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
   // ONE in-flight pass and its result. A bare single-flight gate handed the

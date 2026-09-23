@@ -41,7 +41,9 @@ describe('a mutation that fails', () => {
     const doc = new ConlluDocument({ raw: RAW, client: failingClient(err), projectId: 'proj-1' });
     doc.onError = vi.fn();
 
-    const ok = await doc._withSaving('Failed to create relation', async () => {});
+    const ok = await doc._queueWrite('Failed to create relation', async () => {
+      throw err;
+    });
 
     expect(ok).toBe(false);
     expect(doc.onError).toHaveBeenCalledTimes(1);
@@ -67,7 +69,9 @@ describe('a mutation that fails', () => {
       client: failingClient(new Error('the span layer is gone')),
       projectId: 'proj-1',
     });
-    const ok = await doc._withSaving('Failed to update annotation', async () => {});
+    const ok = await doc._queueWrite('Failed to update annotation', async () => {
+      throw new Error('the span layer is gone');
+    });
     expect(ok).toBe(false);
     expect(doc.error).toBe('Failed to update annotation: the span layer is gone');
   });

@@ -18,20 +18,30 @@ const deferred = () => {
 // A server holding `values`, a map the document mirrors as `raw.values`. A
 // test can hold the next GET or the next write open, or refuse a write.
 function fakeServer() {
-  const server = { values: {}, gets: [], writes: [] };
+  const server = { values: {}, name: 'Doc', gets: [], writes: [], log: [], copyFails: false };
   const client = {
     withOperation: (label, fn) => fn(() => {}),
     documents: {
       get: () => {
         const hold = server.gets.shift();
-        const snapshot = { id: 'd1', values: { ...server.values } };
+        const snapshot = { id: 'd1', name: server.name, values: { ...server.values } };
         return hold ? hold.promise.then(() => snapshot) : Promise.resolve(snapshot);
+      },
+      update: async (id, name) => {
+        server.name = name;
+        server.log.push(`rename ${name}`);
+      },
+      copy: async () => {
+        if (server.copyFails) throw new Error('refused');
+        server.log.push(`copy ${JSON.stringify(server.values)}`);
+        return { id: 'copy-1' };
       },
     },
     write: async (key, value) => {
       const hold = server.writes.shift();
       if (hold) await hold.promise;
       server.values[key] = value;
+      server.log.push(`write ${key}`);
     },
   };
   return { server, client };
@@ -48,7 +58,7 @@ class Doc extends DocumentModel {
 
 const load = () => {
   const { server, client } = fakeServer();
-  const doc = new Doc({ raw: { id: 'd1', values: {} }, client });
+  const doc = new Doc({ raw: { id: 'd1', name: 'Doc', values: {} }, client });
   doc.onError = () => {};
   return { doc, server };
 };
@@ -120,19 +130,45 @@ describe('a refetch and the edits around it', () => {
     expect(doc.raw.values).toEqual(server.values);
   });
 
-  it('keeps isSaving while an edit is queued behind a rename, and lets the rename run', async () => {
+  it('sends a rename after the edits made before it, and stays saving until both land', async () => {
     const { doc, server } = load();
     const held = deferred();
     server.writes.push(held);
     const a = doc.set('a', 'AAA');
-    const renamed = await doc._withSaving('Failed to rename', async () => {});
-    expect(renamed).toBe(true);
-    expect(doc.isSaving).toBe(true);
+    const renamed = doc.rename('New');
+    // On screen at once, sent in its turn.
+    expect(doc.raw.name).toBe('New');
+    expect(server.log).toEqual([]);
     held.resolve();
     expect(await a).toBe(true);
+    expect(doc.isSaving).toBe(true);
+    expect(await renamed).toBe(true);
     await drain(doc);
     expect(doc.isSaving).toBe(false);
-    expect(server.values).toEqual({ a: 'AAA' });
+    expect(server.log).toEqual(['write a', 'rename New']);
+  });
+
+  it('copies the document once the edits made before the copy have landed', async () => {
+    const { doc, server } = load();
+    const held = deferred();
+    server.writes.push(held);
+    doc.set('gloss', 'dog');
+    const copied = doc.copyTo('Copy');
+    held.resolve();
+    expect(await copied).toEqual({ id: 'copy-1', name: 'Copy' });
+    expect(server.log).toEqual(['write gloss', 'copy {"gloss":"dog"}']);
+  });
+
+  it('skips nothing behind a copy that failed, since the copy showed nothing', async () => {
+    const { doc, server } = load();
+    server.copyFails = true;
+    const copied = doc.copyTo('Copy');
+    const b = doc.set('b', 'BBB');
+    expect(await copied).toBe(null);
+    expect(await b).toBe(true);
+    await drain(doc);
+    expect(server.values).toEqual({ b: 'BBB' });
+    expect(doc.raw.values).toEqual(server.values);
   });
 
   it('waits for queued edits before a reload from outside, and keeps them on screen', async () => {

@@ -459,8 +459,8 @@ export class ConlluDocument extends DocumentModel {
   // Then run validateConlluDocument over the reloaded state: residual heal
   // failures and un-healable contracts (e.g. a node with >1 head) come back as
   // `findings` for the caller to log + toast.
-  // Deliberately NOT via _withSaving: this runs once on a freshly loaded doc,
-  // and a heal failure must not trigger _withSaving's reload-and-revert (which
+  // Deliberately NOT a queued write: this runs once on a freshly loaded doc,
+  // and a heal failure must not trigger the queue's reload-and-revert (which
   // would discard the just-loaded doc). A single-flight guard plus the editor's
   // per-document gate keep StrictMode's double-invoke from double-healing (which
   // would otherwise seed duplicate syntactic-words).
