@@ -244,18 +244,90 @@ def test_a_morpheme_reads_as_its_own_form_and_not_as_the_word_it_spans():
     assert [m.text for m in doc.sentences[0].morphemes_of(word)] == ['bark', '-ed']
 
 
+def _machine_drafted(raw):
+    """Every node and in-sentence edge stamped machine-made, as a draft leaves
+    them. The coreference triple is left as it was."""
+    concept = raw['text_layers'][0]['token_layers'][2]['span_layers'][0]
+    for span in concept['spans']:
+        span.setdefault('metadata', {})['prov'] = 'inferred'
+    for rel in concept['relation_layers'][0]['relations']:
+        rel.setdefault('metadata', {})['prov'] = 'inferred'
+    return concept
+
+
+def _without_triples(raw):
+    raw['text_layers'][0]['token_layers'][2]['span_layers'][0]['relation_layers'][1][
+        'relations'] = []
+    return raw
+
+
 def test_a_sentence_a_person_built_is_told_from_a_drafted_one():
     """A service that overwrites redrafts machine graphs only, so the whole
     metadata is kept on a node, not just its `umr` half: what says who made it
     is the flat provenance keys BESIDE that half."""
-    raw = _document()
-    spans = raw['text_layers'][0]['token_layers'][2]['span_layers'][0]['spans']
-    for span in spans:
-        span['metadata']['prov'] = 'inferred'
+    raw = _without_triples(_document())
+    concept = _machine_drafted(raw)
     assert not _read(raw).sentences[0].person_made
+    assert _read(raw).sentences[0].redraftable
     # One node a person confirmed makes the whole sentence one to keep.
-    spans[0]['metadata']['provConfirmed'] = True
+    concept['spans'][0]['metadata']['provConfirmed'] = True
     assert _read(raw).sentences[0].person_made
+    assert not _read(raw).sentences[0].redraftable
+
+
+def test_a_confirmed_edge_keeps_the_sentence():
+    """Replacing a graph deletes its anchors, which cascades every edge on its
+    nodes, so a person's edge counts as much as a person's node."""
+    raw = _without_triples(_document())
+    concept = _machine_drafted(raw)
+    concept['relation_layers'][0]['relations'][0]['metadata']['provConfirmed'] = True
+    s1 = _read(raw).sentences[0]
+    assert s1.person_made and not s1.redraftable
+
+
+def test_a_triple_another_sentence_writes_keeps_the_sentence():
+    """The coreference triple between s2t and s1d is written in sentence 2's
+    block. Redrafting sentence 1 would delete it with s1d, so sentence 1 is
+    kept even when the triple is machine-made, and sentence 2 too when a
+    person made it."""
+    raw = _document()
+    concept = _machine_drafted(raw)
+    doc = _read(raw)
+    assert doc.sentences[0].triples == []
+    assert [t.blocks for t in doc.sentences[1].triples] == [[2]]
+    # Human-made: neither sentence may be replaced.
+    assert not doc.sentences[0].redraftable
+    assert not doc.sentences[1].redraftable
+    # Machine-made: sentence 2 owns it and may replace it, sentence 1 may not.
+    concept['relation_layers'][1]['relations'][0]['metadata'] = {'prov': 'inferred'}
+    doc = _read(raw)
+    assert not doc.sentences[0].person_made
+    assert not doc.sentences[0].redraftable
+    assert doc.sentences[1].redraftable
+
+
+def test_an_edge_from_another_sentence_keeps_the_sentence():
+    raw = _without_triples(_document())
+    concept = _machine_drafted(raw)
+    concept['relation_layers'][0]['relations'].append(
+        {'id': 'r2', 'source': 'c-r', 'target': 'c-d', 'value': ':ARG1',
+         'metadata': {'prov': 'inferred', 'umr': {'order': 0}}})
+    doc = _read(raw)
+    assert not doc.sentences[0].redraftable
+    # The edge is sentence 2's own, so sentence 2 may still be redrafted.
+    assert doc.sentences[1].redraftable
+
+
+def test_the_writer_refuses_to_replace_a_sentence_it_may_not():
+    """The guard is on the write itself, not only in the services' choice of
+    targets, so no caller can replace a person's work by forgetting to ask."""
+    doc = _read()
+    plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
+              'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
+    client = _Client()
+    with pytest.raises(ValueError, match='Sentence 1'):
+        write_graphs(client, resolve_layers(_document()), plans, {})
+    assert client.calls == []
 
 
 # --- writing --------------------------------------------------------------------
@@ -284,14 +356,16 @@ class _Client:
 def test_a_drafted_graph_is_written_as_anchors_then_nodes_then_edges():
     """An op cannot reference an id produced earlier in the same batch, so the
     three passes are three batches, in the order the importer writes in."""
-    doc = _read()
-    layers = resolve_layers(_document())
+    raw = _without_triples(_document())
+    _machine_drafted(raw)
+    doc = _read(raw)
+    layers = resolve_layers(raw)
     plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7), (8, 14)],
               'nodes': [{'concept': 'dog', 'meta': {'var': 's1d'}, 'piece_indexes': [0]},
                         {'concept': 'bark-01', 'meta': {'var': 's1b'}, 'piece_indexes': [1]}],
               'edges': [{'source': 1, 'target': 0, 'role': ':ARG0', 'order': 0}]}]
     client = _Client()
-    write_graphs(client, layers, plans, ['n1'], {'prov': 'inferred'})
+    write_graphs(client, layers, plans, {'prov': 'inferred'})
 
     assert [name for name, _ in client.calls] == [
         'tokens.bulk_delete', 'tokens.bulk_create', 'spans.bulk_create',
@@ -311,11 +385,13 @@ def test_the_writer_refuses_a_short_answer_rather_than_writing_the_wrong_ids():
                 super().bulk_create(ops)
                 return {'ids': []}
 
-    doc = _read()
+    raw = _without_triples(_document())
+    _machine_drafted(raw)
+    doc = _read(raw)
     plans = [{'sentence': doc.sentences[0], 'pieces': [(4, 7)],
               'nodes': [{'concept': 'dog', 'meta': {}, 'piece_indexes': [0]}], 'edges': []}]
     with pytest.raises(RuntimeError, match='anchor ids'):
-        write_graphs(_Short(), resolve_layers(_document()), plans, [], {})
+        write_graphs(_Short(), resolve_layers(raw), plans, {})
 
 
 def test_reading_a_document_does_not_change_it():

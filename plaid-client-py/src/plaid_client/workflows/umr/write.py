@@ -120,20 +120,29 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0) -> Di
             'message': 'The document has no sentences in scope.'}
 
 
-def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], doomed: Sequence[str],
-                 frag: dict, progress: Optional[DraftProgress] = None) -> None:
+def write_graphs(client, layers: UmrLayers, plans: Sequence[dict], frag: dict,
+                 progress: Optional[DraftProgress] = None) -> None:
     """Anchors, then nodes, then edges, in three batches.
 
-    ``doomed`` are the anchor tokens of the graphs being replaced; deleting them
-    cascades their concept spans, and with those the edges and document-level
-    triples that hung off them. ``frag`` is the provenance stamp every write
-    carries: it is FLAT and the app's own half sits beside it under ``umr``,
-    exactly as the importer and the canvas write it.
+    A plan for a sentence that already has a graph REPLACES it: the old
+    graph's anchor tokens are deleted first, which cascades its concept spans
+    and with them every edge and document-level triple on them. So a plan for
+    a sentence that is not :attr:`Sentence.redraftable` is refused before
+    anything is written, whatever the caller decided. ``frag`` is the
+    provenance stamp every write carries: it is FLAT and the app's own half
+    sits beside it under ``umr``, exactly as the importer and the canvas write
+    it.
     """
     progress = progress or DraftProgress(None)
+    kept = [plan['sentence'].index for plan in plans
+            if plan['sentence'].nodes and not plan['sentence'].redraftable]
+    if kept:
+        raise ValueError(f'Sentence {kept[0]} has work a draft may not replace.')
+    doomed = [pid for plan in plans for node in plan['sentence'].nodes
+              for pid in node.piece_ids]
     if doomed:
         progress.report(DraftProgress.WRITE, 0.1, f'Clearing {len(doomed)} anchors…')
-        client.tokens.bulk_delete(list(doomed))
+        client.tokens.bulk_delete(doomed)
 
     piece_ops: List[dict] = []
     bases: List[Tuple[int, int]] = []

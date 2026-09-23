@@ -379,14 +379,16 @@ class UmrDraftService(BaseService):
             in_scope = [s for s in sentences if s.index == wanted]
             if not in_scope:
                 raise ValueError(f'The document has no sentence {wanted}.')
-        # With `overwrite` on, a sentence whose graph a person built or
-        # confirmed is KEPT and counted (the machine-writer contract): the
-        # tick redrafts machine graphs only, as igt's analyzers do.
+        # With `overwrite` on, a sentence is KEPT and counted when a person
+        # built or confirmed any node, edge or document-level triple of it, or
+        # when another sentence's block writes an edge or triple on its nodes
+        # (the machine-writer contract, `Sentence.redraftable`): the tick
+        # redrafts machine graphs only, as igt's analyzers do.
         with_graph = [s for s in in_scope if s.words and s.nodes]
-        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
+        kept = len([s for s in with_graph if not s.redraftable]) if overwrite else 0
         skipped = len(with_graph) if not overwrite else 0
         targets = [s for s in in_scope
-                   if s.words and (not s.nodes or (overwrite and not s.person_made))]
+                   if s.words and (not s.nodes or (overwrite and s.redraftable))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
         if not targets:
@@ -465,8 +467,6 @@ class UmrDraftService(BaseService):
         # final report is inside the same block, so a checkpoint after the last
         # write cannot throw a finished run away and call it stopped.
         progress.report(DraftProgress.WRITE, 0.0, f'Writing {drafted} graphs…')
-        doomed = [pid for plan in plans if overwrite
-                  for node in plan['sentence'].nodes for pid in node.piece_ids]
         with response_helper.critical():
             with self.client.operation(f'UMR draft ({drafted} sentences)'):
                 with self.client.documents.locked(document_id):
@@ -475,7 +475,7 @@ class UmrDraftService(BaseService):
                     # at and the graphs they were allowed to replace are both
                     # out of date, so nothing is written.
                     check_unchanged(self.client, document_id, read_version)
-                    write_graphs(self.client, layers, plans, doomed, frag, progress)
+                    write_graphs(self.client, layers, plans, frag, progress)
 
             notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept)
             response_helper.progress(100, notice['title'])

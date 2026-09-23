@@ -100,6 +100,10 @@ class Edge:
     target: str
     role: str
     order: int
+    #: The whole metadata, provenance keys and all.
+    metadata: Optional[dict] = None
+    #: The sentence whose block writes this edge: its source's.
+    sentence: Optional[int] = None
 
 
 @dataclass
@@ -110,6 +114,10 @@ class Triple:
     rel: str
     group: str
     sentences: List[int] = dc_field(default_factory=list)
+    #: The whole metadata, provenance keys and all.
+    metadata: Optional[dict] = None
+    #: The sentences whose block writes this triple (see :func:`read_document`).
+    blocks: List[int] = dc_field(default_factory=list)
 
 
 @dataclass
@@ -173,13 +181,43 @@ class Sentence:
                 return n
         return None
 
+    def _touching(self):
+        """Every edge and document-level triple on a node of this sentence, at
+        either end."""
+        for n in self.nodes:
+            yield from n.out
+            yield from n.into
+            yield from n.doc_out
+            yield from n.doc_in
+
     @property
     def person_made(self) -> bool:
-        """Whether any node of this sentence's graph was built or confirmed by a
-        person: human-made, contributed or verified material, which the
+        """Whether anything of this sentence's graph was built or confirmed by
+        a person: a node, an edge or a document-level triple on one of its
+        nodes that is human-made, contributed or verified, which the
         machine-writer contract (``plaid_client.provenance``, rule 2) says a
-        service must not replace."""
-        return any(is_protected(n.metadata or {}) for n in self.nodes)
+        service must not replace. Replacing a graph deletes its nodes, and with
+        them every edge and triple on them, so those count as much as the
+        nodes do."""
+        return (any(is_protected(n.metadata or {}) for n in self.nodes)
+                or any(is_protected(r.metadata or {}) for r in self._touching()))
+
+    @property
+    def redraftable(self) -> bool:
+        """Whether an overwrite may replace this sentence's graph. Replacing it
+        deletes every edge and triple on its nodes, so it may not when a person
+        made any of them, nor when one is written in ANOTHER sentence's block:
+        an edge from another sentence's node, or a triple the later sentence
+        writes. Those belong to a graph the run was not asked to redraft."""
+        if self.person_made:
+            return False
+        for r in self._touching():
+            if isinstance(r, Triple):
+                if r.blocks != [self.index]:
+                    return False
+            elif r.sentence != self.index:
+                return False
+        return True
 
     def morphemes_of(self, word: Word) -> List[Morpheme]:
         return [m for m in self.morphemes if word.begin <= m.begin and m.end <= word.end]
@@ -383,7 +421,8 @@ def read_document(raw: dict, layers: UmrLayers,
             continue
         edge = Edge(id=rel['id'], source=rel['source'], target=rel['target'],
                     role=rel.get('value') or '',
-                    order=umr_metadata(rel).get('order') or 0)
+                    order=umr_metadata(rel).get('order') or 0,
+                    metadata=rel.get('metadata'), sentence=source.sentence)
         source.out.append(edge)
         target.into.append(edge)
         if source.sentence is not None:
@@ -398,18 +437,19 @@ def read_document(raw: dict, layers: UmrLayers,
         triple = Triple(id=rel['id'], source=rel['source'], target=rel['target'],
                         rel=rel.get('value') or '',
                         group=meta.get('group') or group_of(rel.get('value') or ''),
-                        sentences=list(meta.get('sentences') or []))
+                        sentences=list(meta.get('sentences') or []),
+                        metadata=rel.get('metadata'))
         source.doc_out.append(triple)
         target.doc_in.append(triple)
         # The triple is written in the block of the LATER of its two sentences.
         # One between two constants belongs to the sentences its metadata lists.
         later = max(source.sentence or 0, target.sentence or 0)
         if later > 0:
-            sentences[later - 1].triples.append(triple)
+            triple.blocks = [later]
         elif source.constant and target.constant:
-            for n in triple.sentences:
-                if 1 <= n <= len(sentences):
-                    sentences[n - 1].triples.append(triple)
+            triple.blocks = [n for n in triple.sentences if 1 <= n <= len(sentences)]
+        for n in triple.blocks:
+            sentences[n - 1].triples.append(triple)
 
     for s in sentences:
         for node in s.nodes:

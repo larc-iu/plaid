@@ -85,7 +85,8 @@ def _token(token_id, begin, end):
 
 
 def _document(*, body=BODY, sentences=((0, 14),), words=WORDS, node_tokens=(),
-              concept_spans=(), relations=(), gloss_spans=None, version=7):
+              concept_spans=(), relations=(), doc_relations=(), gloss_spans=None,
+              version=7):
     """A UMR document: the substrate by its shared roles, the node / concept /
     relation layers by their `config.umr` flags, and one word-scoped gloss
     field from another app sharing the project."""
@@ -104,7 +105,7 @@ def _document(*, body=BODY, sentences=((0, 14),), words=WORDS, node_tokens=(),
             {'id': 'relL', 'name': 'UMR relations', 'config': {'umr': {'relations': True}},
              'relations': list(relations)},
             {'id': 'docL', 'name': 'UMR document graph',
-             'config': {'umr': {'documentGraph': True}}, 'relations': []},
+             'config': {'umr': {'documentGraph': True}}, 'relations': list(doc_relations)},
         ],
     }
     return {
@@ -363,6 +364,53 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     assert service.model.calls == [], f'a {why} sentence costs no model call'
     assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
                                 'message': 'Kept 1 sentence a person had worked on.'}
+
+
+MACHINE = {'prov': 'inferred', 'provSource': SOURCE}
+
+
+def _two_drafted_sentences(relations=(), doc_relations=()):
+    """Two sentences, both drafted by the service: s1d on "The" and s2c on
+    "The" of the second."""
+    return _document(
+        body='The dog barks\nThe cat sleeps\n', sentences=((0, 14), (14, 30)),
+        words=[(0, 3), (4, 7), (8, 13), (14, 17), (18, 21), (22, 28)],
+        node_tokens=[('n1', 0, 3), ('n1b', 4, 7), ('n2', 14, 17)],
+        concept_spans=[
+            {'id': 'sp1', 'tokens': ['n1'], 'value': 'dog',
+             'metadata': {'umr': {'var': 's1d', 'attrs': []}, **MACHINE}},
+            {'id': 'sp1b', 'tokens': ['n1b'], 'value': 'bark-01',
+             'metadata': {'umr': {'var': 's1b', 'attrs': []}, **MACHINE}},
+            {'id': 'sp2', 'tokens': ['n2'], 'value': 'cat',
+             'metadata': {'umr': {'var': 's2c', 'attrs': []}, **MACHINE}},
+        ], relations=relations, doc_relations=doc_relations)
+
+
+# Redrafting a sentence deletes its anchors, which cascades every edge and
+# document-level triple on its nodes, so those are protected as the nodes are,
+# and so is anything another sentence's block writes.
+@pytest.mark.parametrize('relations, doc_relations, why', [
+    ([{'id': 'r1', 'source': 'sp1b', 'target': 'sp1', 'value': ':ARG0',
+       'metadata': {'umr': {'order': 0}, **MACHINE, 'provConfirmed': True}}], [],
+     'a confirmed edge'),
+    ([{'id': 'r1', 'source': 'sp1b', 'target': 'sp1', 'value': ':ARG0',
+       'metadata': {'umr': {'order': 0}}}], [], 'a hand-made edge'),
+    ([], [{'id': 't1', 'source': 'sp2', 'target': 'sp1', 'value': ':same-entity',
+           'metadata': {'umr': {'group': 'coref'}, **MACHINE}}],
+     "a triple sentence 2's block writes"),
+    ([{'id': 'r1', 'source': 'sp2', 'target': 'sp1', 'value': ':ARG1',
+       'metadata': {'umr': {'order': 0}, **MACHINE}}], [],
+     "an edge from sentence 2's node"),
+])
+def test_overwrite_keeps_a_sentence_whose_edges_or_triples_it_may_not_delete(
+        relations, doc_relations, why):
+    service = _service(documents=[_two_drafted_sentences(relations, doc_relations)])
+    helper = servicetest.run(service, {**REQUEST, 'overwrite': True, 'scope': 'sentence',
+                                       'sentence': 1})
+
+    [result] = helper.results
+    assert (result['drafted'], result['kept']) == (0, 1), why
+    assert service.client.writes == [], f'{why} is not deleted'
 
 
 def test_overwrite_redrafts_the_machine_sentences_beside_a_kept_one():
