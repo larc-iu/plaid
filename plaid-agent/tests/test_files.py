@@ -134,6 +134,30 @@ def test_a_later_file_does_not_rename_an_earlier_one():
     assert [a.name for a in Attachments.of(Store({}), 'c1', later)] == ['w.csv', 'w (2).csv']
 
 
+def test_a_file_from_a_turn_that_failed_does_not_take_the_name_the_model_hears():
+    """The turn that carried the first words.csv failed, so the model never
+    read its note. The corrected words.csv sent as a new message is the one it
+    hears of, and it answers to the plain name."""
+    failed = _display(ref('f1', 'words.csv', 'a')) + [{'kind': 'error', 'text': 'Failed.'}]
+    display = failed + _display(ref('f2', 'words.csv', 'a'))
+    files = Attachments.of(Store({}), 'c1', display)
+    assert files.get('words.csv').id == 'f2'
+    assert files.get('words (2).csv').id == 'f1'
+    note = filetools.note(files.named(display[-1]['files']))
+    assert '"words.csv"' in note and 'words (2)' not in note
+
+
+def test_a_stopped_turn_counts_as_unread_and_a_retried_one_as_read():
+    stopped = _display(ref('f1', 'w.csv', 'a')) + [
+        {'kind': 'error', 'text': 'Stopped.', 'stopped': True}]
+    later = stopped + _display(ref('f2', 'w.csv', 'a')) + [{'kind': 'assistant', 'text': 'ok'}]
+    assert [a.name for a in Attachments.of(Store({}), 'c1', later)] == ['w.csv', 'w (2).csv']
+    assert Attachments.of(Store({}), 'c1', later).get('w.csv').id == 'f2'
+    # The same file sent again (a retry) is a file the model was told about.
+    retried = stopped + _display(ref('f1', 'w.csv', 'a'))
+    assert Attachments.of(Store({}), 'c1', retried).get('w.csv').id == 'f1'
+
+
 def test_an_unknown_name_is_refused_with_what_there_is():
     files = attached(('wordlist.csv', WORDLIST))
     with pytest.raises(ValueError) as e:

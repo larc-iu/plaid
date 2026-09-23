@@ -234,9 +234,14 @@ class Attachments:
     the name the model is told, because the model never sees an id. So each is
     given a name of its own when the conversation is read, the way a file
     manager names a second copy: ``words.csv``, then ``words (2).csv``. The
-    names go by the order the files arrived in and nothing later changes an
-    earlier one, so the note written into an old message still names the file
-    it was written about.
+    names go by the order the model was told about the files, and nothing
+    later changes an earlier one, so the note written into an old message still
+    names the file it was written about.
+
+    A message whose turn failed or was stopped never reached the model, so
+    neither did its note. Its files are named after every file the model has
+    been told about: a corrected ``words.csv`` sent as a new message after a
+    failed one is the ``words.csv`` the model hears of, not ``words (2).csv``.
     """
 
     def __init__(self, items: List[Attachment]):
@@ -250,13 +255,22 @@ class Attachments:
         text when something asks. A conversation with files in it that no turn
         ever reads costs one list walk.
         """
-        seen: Dict[str, Dict[str, Any]] = {}
-        for item in display or []:
-            if not isinstance(item, dict) or item.get('kind') != 'user':
+        told: Dict[str, Dict[str, Any]] = {}
+        untold: Dict[str, Dict[str, Any]] = {}
+        items_ = [d for d in display or [] if isinstance(d, dict)]
+        for i, item in enumerate(items_):
+            if item.get('kind') != 'user':
                 continue
+            # Answered by an error (a failed or stopped turn): the model never
+            # read this message. The last message is the turn being sent.
+            answer = items_[i + 1] if i + 1 < len(items_) else None
+            into = untold if answer is not None and answer.get('kind') == 'error' else told
             for ref in item.get('files') or []:
                 if isinstance(ref, dict) and ref.get('id'):
-                    seen[str(ref['id'])] = ref
+                    into[str(ref['id'])] = ref
+        seen = dict(told)
+        for file_id, ref in untold.items():
+            seen.setdefault(file_id, ref)
 
         def read_part(file_id: str, n: int) -> Optional[str]:
             key = f'{file_key(store.app, store.project_id, conv_id, file_id)}:part:{n}'
