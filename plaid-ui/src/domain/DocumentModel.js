@@ -65,6 +65,9 @@ export class DocumentModel {
     this._queuedWrites = 0;
     this._writeGeneration = 0;
     this._reloadWhenDrained = false;
+    // True while the queue is running a send, its failure handling or its
+    // drained reload: a `_reload` then is the queue's own (see `_reload`).
+    this._sending = false;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -316,6 +319,7 @@ export class DocumentModel {
       this._emit();
     }
     const run = async () => {
+      this._sending = true;
       try {
         if (generation !== this._writeGeneration) return false;
         await this._client.withOperation(operation, send);
@@ -335,6 +339,7 @@ export class DocumentModel {
             console.error('Reload after a write failed:', err);
           }
         }
+        this._sending = false;
         this._queuedWrites -= 1;
         if (this._queuedWrites === 0) {
           this._isSaving = false;
@@ -387,12 +392,57 @@ export class DocumentModel {
   }
 
   // Re-fetch the raw document from the server, at this document's own
-  // snapshot. Used in `_withSaving` catch paths and as the "give up and resync"
-  // hook after a large multi-batch operation.
+  // snapshot, and put it on screen in place of whatever was there. Used after
+  // a failed write, after a send whose effect only the server knows, and after
+  // a service run.
+  //
+  // What the fetch cannot hold is an edit the server has not had yet, and the
+  // screen must never show one thing while the server gets another:
+  //
+  // - From inside the write queue (a send, a failure, the drained reload), the
+  //   edits queued behind the running send are not on the server, and the
+  //   refetch takes them off the screen, so their sends are skipped once it
+  //   lands. That includes an edit made while the refetch was on the wire,
+  //   which was planned against the screen being replaced. Skipped even when
+  //   the fetch fails, since after a failure that screen still holds the
+  //   refused edit.
+  // - From outside it, the reload waits for the queue to drain, and fetches
+  //   again when an edit was made while the fetch was on the wire, so every
+  //   edit lands on the server and stays on screen.
   async _reload() {
     if (!this._client || !this.id) return;
-    const updated = await this._client.documents.get(this.id, true, this._asOf || undefined);
+    if (this._sending) {
+      try {
+        await this._fetchAndAdopt();
+      } finally {
+        this._writeGeneration += 1;
+      }
+      return;
+    }
+    const editedSince = (seen) => this._dataVersion !== seen || this._queuedWrites > 0;
+    for (;;) {
+      while (this._queuedWrites > 0) await this._writeTail;
+      const seen = this._dataVersion;
+      const updated = await this._fetch();
+      if (editedSince(seen)) continue;
+      await this._adoptReload(updated);
+      if (editedSince(seen)) continue;
+      this._swapRaw(updated);
+      return;
+    }
+  }
+
+  _fetch() {
+    return this._client.documents.get(this.id, true, this._asOf || undefined);
+  }
+
+  async _fetchAndAdopt() {
+    const updated = await this._fetch();
     await this._adoptReload(updated);
+    this._swapRaw(updated);
+  }
+
+  _swapRaw(updated) {
     this._raw = updated;
     this._dataVersion++;
     this._emit();
