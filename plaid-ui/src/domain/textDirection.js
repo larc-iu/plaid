@@ -131,6 +131,8 @@ export const resolveDirection = (metadata, sample) => {
 
 const TEXT_DIRECTION_PATH = [METADATA_NAMESPACE, 'textDirection'];
 
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
 /**
  * The metadata PATCH ops that set (or clear) the override: one op on the key
  * itself, so whatever else another app keeps in the `plaid` namespace stays.
@@ -144,13 +146,20 @@ export const textDirectionOps = (value) =>
 
 /**
  * `metadata` as the server leaves it after `textDirectionOps(value)`, for the
- * optimistic copy. Returns a new object.
+ * optimistic copy. Returns a new object. Throws, as the server refuses, when
+ * the namespace holds something that is not an object.
  */
 export const withTextDirection = (metadata, value) => {
   const out = { ...(metadata || {}) };
   const set = value === LTR || value === RTL;
-  if (!set && !out[METADATA_NAMESPACE]) return out;
-  const ns = { ...out[METADATA_NAMESPACE] };
+  const current = out[METADATA_NAMESPACE];
+  if (current !== undefined && !isObject(current)) {
+    throw new Error(
+      `Metadata path ${JSON.stringify([METADATA_NAMESPACE])} holds a value that is not an object`,
+    );
+  }
+  if (!set && current === undefined) return out;
+  const ns = { ...current };
   if (set) ns.textDirection = value;
   else delete ns.textDirection;
   out[METADATA_NAMESPACE] = ns;

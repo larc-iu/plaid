@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
 import { useNavigate } from 'react-router-dom';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useUnsavedGuard, dropUnsavedDrafts } from '@ui/hooks/useUnsavedDraft.js';
@@ -18,7 +19,10 @@ export const useMetadataOperations = () => {
 
   const document = doc.document;
   const project = doc.project;
-  const metadataFields = readDocumentMetadata(project?.config) || [];
+  // `plaid` holds the settings every app shares, never a field's value.
+  const metadataFields = (readDocumentMetadata(project?.config) || []).filter(
+    (field) => field.name !== PLAID_NAMESPACE,
+  );
   // A metadata field names its tagset the same way an annotation field does.
   const tagsets = readTagsets(project?.config);
   const tagsetFor = (field) => (field?.tagset ? (tagsets[field.tagset] ?? null) : null);

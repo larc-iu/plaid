@@ -83,3 +83,17 @@ describe('the metadata tab copying its document', () => {
     await h.unmount();
   });
 });
+
+describe('the metadata tab and the shared plaid settings', () => {
+  it('never offers plaid as a field, even when the project declares one', async () => {
+    const d = doc({
+      project: { config: { igt: { documentMetadata: [{ name: 'plaid' }, { name: 'Date' }] } } },
+      document: { id: 'doc-1', name: 'Test Doc', metadata: { plaid: { textDirection: 'rtl' } } },
+    });
+    const h = await mount(d);
+    expect(h.api.metadataFields.map((f) => f.name)).toEqual(['Date']);
+    await h.step(() => h.api.handleEdit());
+    expect(Object.keys(h.api.editedMetadata)).toEqual(['Date']);
+    await h.unmount();
+  });
+});

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
 import { PREDEFINED_FIELDS } from '@/domain/igtConfig';
 import { Link } from 'react-router-dom';
 import { Plus, Trash2, RotateCcw, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
@@ -131,6 +132,13 @@ export const DocumentMetadataManager = ({
     // rather than an error.
     if (trimmedName.includes('.')) {
       notifyError('Field names cannot contain a period', 'Invalid Field Name');
+      return;
+    }
+
+    // `plaid` holds the settings every app shares (the text direction among
+    // them). A field's value written there would replace them.
+    if (trimmedName === PLAID_NAMESPACE) {
+      notifyError(`${PLAID_NAMESPACE} is reserved for document settings`, 'Invalid Field Name');
       return;
     }
 

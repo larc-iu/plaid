@@ -135,6 +135,18 @@ describe('withTextDirection', () => {
     });
   });
 
+  it.each([['x'], [null], [['a']], [3]])(
+    'refuses a namespace holding %j, as the server does',
+    (ns) => {
+      for (const value of [RTL, AUTO]) {
+        expect(() => applyMetadataOps({ plaid: ns }, textDirectionOps(value))).toThrow(
+          /not an object/,
+        );
+        expect(() => withTextDirection({ plaid: ns }, value)).toThrow(/not an object/);
+      }
+    },
+  );
+
   it('reads as automatic once cleared', () => {
     expect(readTextDirection(withTextDirection({ plaid: { textDirection: 'rtl' } }, AUTO))).toBe(
       AUTO,

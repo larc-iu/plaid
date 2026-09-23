@@ -13,6 +13,7 @@
 // and is kept so item 8 can add a tagset or a description to a field without
 // rewriting what is stored.
 
+import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
 import { isProvKey } from './provenanceUi.js';
 
 export const DOCUMENT_METADATA_KEY = 'documentMetadata';
@@ -28,12 +29,16 @@ export const SENT_ID = 'sent_id';
 /**
  * Keys a field may not claim, per level. `text` is derived from the document
  * body by the exporter, so a field that wrote it could silently desync the
- * `# text` line from the text it describes.
+ * `# text` line from the text it describes. `plaid` holds the settings every
+ * app shares (the text direction among them), never a field's value.
  */
 const RESERVED = {
-  document: new Set(),
-  sentence: new Set([SENT_ID, 'text']),
+  document: new Set([PLAID_NAMESPACE]),
+  sentence: new Set([SENT_ID, 'text', PLAID_NAMESPACE]),
 };
+
+// Keys no editor lists at any level, whether declared or stored.
+const hidden = (key) => isProvKey(key) || key === PLAID_NAMESPACE;
 
 /** The declared field names for a level, in the order the project set. */
 export function readMetadataFields(config, level) {
@@ -64,9 +69,9 @@ export function metadataFieldError(name, level, taken = []) {
   if (/[=\r\n]/.test(trimmed)) return 'A field name cannot contain "=" or a line break.';
   if (isProvKey(trimmed)) return `${trimmed} is reserved for provenance.`;
   if (RESERVED[level]?.has(trimmed)) {
-    return trimmed === SENT_ID
-      ? 'Every sentence already has sent_id.'
-      : `${trimmed} is written from the document text.`;
+    if (trimmed === SENT_ID) return 'Every sentence already has sent_id.';
+    if (trimmed === PLAID_NAMESPACE) return `${trimmed} is reserved for document settings.`;
+    return `${trimmed} is written from the document text.`;
   }
   if (taken.some((t) => t.trim() === trimmed)) return `${trimmed} is already a field.`;
   return null;
@@ -77,14 +82,15 @@ export function metadataFieldError(name, level, taken = []) {
  * already stored on the entity that nobody declared. A field removed from the
  * project, or one that arrived with an import, still holds a value, and hiding
  * it would make it invisible and un-deletable while it kept exporting.
- * Provenance keys are never content, and `sent_id` leads the sentence list.
+ * Provenance keys and the shared `plaid` settings are never content, and
+ * `sent_id` leads the sentence list.
  */
 export function metadataRows(declared, stored, level) {
   const names = [];
   if (level === 'sentence') names.push(SENT_ID);
-  for (const name of declared) if (!names.includes(name)) names.push(name);
+  for (const name of declared) if (!hidden(name) && !names.includes(name)) names.push(name);
   const extra = Object.keys(stored || {})
-    .filter((key) => !isProvKey(key) && !names.includes(key))
+    .filter((key) => !hidden(key) && !names.includes(key))
     .filter((key) => !(level === 'sentence' && key === 'text'))
     .sort();
   return [

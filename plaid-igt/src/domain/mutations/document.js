@@ -5,7 +5,7 @@
 // Renaming a document and copying it are NOT here: they are `rename` and
 // `copyTo` on the shared DocumentModel, which every app's document inherits.
 
-import { applyMetadataOps, cpLength } from '@larc-iu/plaid-client';
+import { applyMetadataOps, cpLength, PLAID_NAMESPACE } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
@@ -122,7 +122,9 @@ export const documentMutations = {
     const label = 'Failed to save document';
     if (!this._canWrite(label)) return false;
     const current = this._raw?.metadata || {};
+    // `plaid` holds the settings every app shares, never a field's value.
     const ops = Object.entries(metadataPartial || {})
+      .filter(([key]) => key !== PLAID_NAMESPACE)
       .filter(([key, value]) => (value ?? '') !== (current[key] ?? ''))
       .map(([key, value]) => ({ op: 'set', path: [key], value }));
     const nameChanged = name !== this._raw?.name;

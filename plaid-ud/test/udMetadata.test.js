@@ -94,3 +94,18 @@ test('metadataRows never shows a provenance key as content', () => {
   const stored = { prov: 'inferred', provSource: 'service:p', provConfirmed: true, Source: 'a' };
   assert.deepEqual(metadataRows([], stored, 'document'), [{ name: 'Source', declared: false }]);
 });
+
+test('the shared plaid namespace is never a field, at either level', () => {
+  assert.equal(metadataFieldError('plaid', 'document'), 'plaid is reserved for document settings.');
+  assert.equal(
+    metadataFieldError(' plaid ', 'sentence'),
+    'plaid is reserved for document settings.',
+  );
+  const stored = { plaid: { textDirection: 'rtl' }, author: 'x' };
+  assert.deepEqual(metadataRows([], stored, 'document'), [{ name: 'author', declared: false }]);
+  // Declared by an older project config, it is still not listed.
+  assert.deepEqual(metadataRows(['plaid', 'Source'], stored, 'document'), [
+    { name: 'Source', declared: true },
+    { name: 'author', declared: false },
+  ]);
+});
