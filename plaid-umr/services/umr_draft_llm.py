@@ -236,6 +236,35 @@ def plan_sentence(graph, alignment, sentence, taken):
     return pieces, nodes, edges
 
 
+#: The participant roles, which always point at a node: ``plaid-umr``'s
+#: ``KNOWN_RELATIONS`` entries of type ``participant`` (``inventory.js``), with
+#: the ``:ARGn`` range written as a pattern. A test pins the two together.
+PARTICIPANT_ROLES = frozenset({
+    ':actor', ':affectee', ':beneficiary', ':causer', ':co-actor', ':companion',
+    ':experiencer', ':force', ':goal', ':instrument', ':material', ':recipient', ':source',
+    ':start', ':theme', ':undergoer', ':stimulus', ':place'})
+ARG_ROLE = re.compile(r'^:ARG\d+$')
+
+#: The rolesets whose argument really is a value, as the app's validator has
+#: them (``validate.js``, after umrtools ``validate.py:1440``).
+VALUE_ARGUMENTS = frozenset({('have-polarity-91', ':ARG2'), ('rate-entity-91', ':ARG1'),
+                             ('have-quant-91', ':ARG2'),
+                             ('have-modal-strength-91', ':ARG2')})
+
+
+def edge_only(rel: str, concept: str) -> bool:
+    """Whether a role only ever points at a node, so a value under it is a
+    mistake: an inverse role, an ``:ARGn`` outside the few rolesets that take
+    a value there, or a participant role. The reader keeps such a value as an
+    attribute (``:ARG0 s1Y`` is not a variable), which is right for the file
+    and wrong for a draft."""
+    if rel.endswith('-of'):
+        return True
+    if ARG_ROLE.match(rel):
+        return (concept, rel) not in VALUE_ARGUMENTS
+    return rel in PARTICIPANT_ROLES
+
+
 def validate_graph(graph) -> Optional[str]:
     """What is wrong with a parsed graph, in one line for the requester, or
     None. Everything here would otherwise land as an unreadable node the
@@ -252,6 +281,8 @@ def validate_graph(graph) -> Optional[str]:
                 return f"The relation {child.rel} on {var} does not start with a colon."
             if child.kind == 'node' and child.value not in graph.nodes:
                 return f"{var} {child.rel} names {child.value}, which no node defines."
+            if child.kind != 'node' and edge_only(child.rel, node.concept):
+                return f"{var} {child.rel} takes a node, not the value {child.value}."
     return None
 
 

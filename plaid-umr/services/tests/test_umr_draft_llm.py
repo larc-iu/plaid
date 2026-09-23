@@ -476,6 +476,11 @@ def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
     ('(v1 / bark-01 :ARG0 (v2 / dog)', 'without closing'),
     ('(v1 / )', 'Expected a concept'),
     ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', 'No such node is defined'),
+    # An uppercase letter makes `s1Y` a value, not a variable, as the app
+    # reads it, so the edge would land as an attribute.
+    ('(v1 / bark-01 :ARG0 s1Y)\n\n# alignment:\nv1: 3-3\n', ':ARG0 takes a node'),
+    ('(v1 / bark-01 :actor "dog")\n\n# alignment:\nv1: 3-3\n', ':actor takes a node'),
+    ('(v1 / dog :ARG0-of barking)\n\n# alignment:\nv1: 2-2\n', ':ARG0-of takes a node'),
 ])
 def test_a_malformed_answer_is_counted_and_named_rather_than_written(reply, fragment):
     service = _service(model=_Model([reply]))
@@ -651,3 +656,23 @@ def test_a_reply_wrapped_in_a_code_fence_is_still_read():
 def test_an_alignment_line_that_cannot_be_read_leaves_its_node_unaligned():
     assert umr.parse_alignment('v1: 1-1\nv2: ???\nv3: 0-0\nv4 :2-3') == {
         'v1': [(1, 1)], 'v2': [], 'v3': [], 'v4': [(2, 3)]}
+
+
+def test_a_roleset_that_takes_a_value_as_its_argument_is_drafted():
+    reply = '(v1 / have-polarity-91 :ARG1 (v2 / dog) :ARG2 -)\n\n# alignment:\nv1: 0-0\nv2: 2-2\n'
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert (result['drafted'], result['failed']) == (1, 0)
+
+
+def test_the_participant_roles_are_the_apps():
+    """The roles a draft may not give a value are the app's participant roles,
+    read out of its inventory so the two cannot drift."""
+    import re
+    inventory = (SERVICES.parent / 'src' / 'domain' / 'format' / 'inventory.js').read_text()
+    body = inventory[inventory.index('export const KNOWN_RELATIONS'):]
+    named = set()
+    for names in re.findall(r"add\(\s*\[([^\]]*)\],\s*'participant'", body):
+        named |= set(re.findall(r"'(:[^']+)'", names))
+    assert named == umr.PARTICIPANT_ROLES
+    assert "add(ARG_ROLES, 'participant'" in body
