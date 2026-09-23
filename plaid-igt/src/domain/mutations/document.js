@@ -23,6 +23,10 @@ export const documentMutations = {
   // sentence partition when the save leaves none (brand-new text, a full
   // replacement that deleted every old sentence, or a previously emptied
   // layer) so the Analyze tab has something to show.
+  //
+  // The one write here that reloads instead of patching: what a whole-body
+  // update does to the tokens is the server's diff (plaid.algos.text), which
+  // this does not replay. The Baseline tab's textarea already shows the text.
   async saveBaselineText(newBody) {
     const info = this.layerInfo;
     const primaryTextLayer = info.primaryTextLayer;
@@ -91,12 +95,12 @@ export const documentMutations = {
   },
 
   async setMetadata(metadata) {
-    return this._queueWrite('Failed to save metadata', async () => {
-      await this._client.documents.setMetadata(this.id, metadata);
-      this._applyRawPatch((next) => {
-        next.metadata = metadata;
-      });
+    const label = 'Failed to save metadata';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next) => {
+      next.metadata = metadata;
     });
+    return this._queueWrite(label, () => this._client.documents.setMetadata(this.id, metadata));
   },
 
   // Merge keys into the document's metadata, leaving the rest of the map
@@ -115,20 +119,17 @@ export const documentMutations = {
   // existing metadata so deactivated fields aren't dropped. Issued
   // sequentially (these are document-level, not token-level — not a batch).
   async saveNameAndMetadata(name, metadataPartial) {
-    return this._queueWrite('Failed to save document', async () => {
-      const existingMetadata = this._raw?.metadata || {};
-      const completeMetadata = { ...existingMetadata, ...metadataPartial };
-      const nameChanged = name !== this._raw?.name;
-
-      if (nameChanged) {
-        await this._client.documents.update(this.id, name);
-      }
+    const label = 'Failed to save document';
+    if (!this._canWrite(label)) return false;
+    const completeMetadata = { ...(this._raw?.metadata || {}), ...metadataPartial };
+    const nameChanged = name !== this._raw?.name;
+    this._applyRawPatch((next) => {
+      if (nameChanged) next.name = name;
+      next.metadata = completeMetadata;
+    });
+    return this._queueWrite(label, async () => {
+      if (nameChanged) await this._client.documents.update(this.id, name);
       await this._client.documents.setMetadata(this.id, completeMetadata);
-
-      this._applyRawPatch((next) => {
-        if (nameChanged) next.name = name;
-        next.metadata = completeMetadata;
-      });
     });
   },
 
@@ -139,8 +140,9 @@ export const documentMutations = {
     });
   },
 
-  // `onProgress` gets `{ loaded, total }` in bytes as the file goes up; the
-  // reload that follows (the document now carries its media) is not counted.
+  // `onProgress` gets `{ loaded, total }` in bytes as the file goes up, which
+  // is what shows while it does; the reload that follows (the document now
+  // carries its media, at an address only the server knows) is not counted.
   async uploadMedia(file, { onProgress } = {}) {
     if (!file) return false;
     return this._queueWrite('Failed to upload media', async () => {
@@ -150,9 +152,11 @@ export const documentMutations = {
   },
 
   async deleteMedia() {
-    return this._queueWrite('Failed to delete media', async () => {
-      await this._client.documents.deleteMedia(this.id);
-      await this._reload();
+    const label = 'Failed to delete media';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next) => {
+      next.mediaUrl = null;
     });
+    return this._queueWrite(label, () => this._client.documents.deleteMedia(this.id));
   },
 };

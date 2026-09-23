@@ -84,15 +84,9 @@ export const useTokenOperations = () => {
   // material invisible here — opens a count-based confirm instead
   // (pendingDelete drives the dialog in DocumentTokenize).
   const [pendingDelete, setPendingDelete] = useState(null); // {tokenId, content, annotations, links}
-  // All structural doc mutations from this tab are funneled through one
-  // promise chain (same idiom as the Analyze island's _run), so each click's
-  // write starts once the one before it has landed.
-  const chainRef = useRef(Promise.resolve());
-  const run = (fn) => {
-    const next = chainRef.current.then(fn);
-    chainRef.current = next.catch(() => {});
-    return next;
-  };
+  // A structural edit runs now: the document shows it before the call
+  // returns and sends it after any write still in flight.
+  const run = (fn) => fn();
   const deleteToken = async (tokenId) => {
     const word = (doc.layerInfo.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
     const loss = countAnnotationLossForWord(doc.layerInfo, doc.vocabularies, word);

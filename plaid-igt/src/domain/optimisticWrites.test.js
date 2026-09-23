@@ -162,3 +162,72 @@ describe('an Analyze edit shows before the server answers', () => {
     expect(doc.isSaving).toBe(false);
   });
 });
+
+describe('a Media, Tokenize or document edit shows before the server answers', () => {
+  it('a new segment, with the text it adds to the baseline', async () => {
+    const { doc, release } = makeDoc();
+    const write = doc.createAlignment({ text: 'dog', timeBegin: 0, timeEnd: 1 });
+    await settle();
+    const [segment] = doc.alignmentTokens;
+    expect(isPendingId(segment.id)).toBe(true);
+    expect(doc.body).toContain('dog');
+
+    release();
+    expect(await write).toBe(true);
+    expect(isPendingId(doc.alignmentTokens[0].id)).toBe(false);
+  });
+
+  it('a sentence split, and a word split and made by hand', async () => {
+    const { doc, release } = makeDoc();
+    const split = doc.splitSentence(4);
+    const word = doc.splitToken('w-1', 1);
+    await settle();
+    expect(doc.layerInfo.sentenceTokenLayer.tokens).toHaveLength(2);
+    expect(doc.layerInfo.primaryTokenLayer.tokens.map((t) => [t.begin, t.end])).toEqual([
+      [0, 2],
+      [2, 3],
+      [4, 7],
+    ]);
+
+    release();
+    expect(await split).toBe(true);
+    expect(await word).toBe(true);
+    const ids = [
+      ...doc.layerInfo.sentenceTokenLayer.tokens,
+      ...doc.layerInfo.primaryTokenLayer.tokens,
+    ].map((t) => t.id);
+    expect(ids.some(isPendingId)).toBe(false);
+  });
+
+  it('an analysis spread to other words, and the metadata of the document', async () => {
+    const raw = buildRawDoc({
+      body: 'cat cat',
+      words: [
+        { id: 'w-1', begin: 0, end: 3 },
+        { id: 'w-2', begin: 4, end: 7 },
+      ],
+      morphemes: [],
+    });
+    const { doc, client, release } = makeDoc({ raw });
+    const analysis = {
+      word: { vocabItemId: 'vi-1', fields: { POS: 'N' } },
+      morphemes: [
+        { form: 'ca', fields: { Gloss: 'CAT' } },
+        { form: 't', fields: { Gloss: 'PL' } },
+      ],
+    };
+    const spread = doc.applyAnalysisToWords(['w-2'], analysis);
+    const named = doc.saveNameAndMetadata('Cats', { source: 'field notes' });
+    await settle();
+    expect(word(doc, 1).morphemes.map((m) => m.metadata.form)).toEqual(['ca', 't']);
+    expect(word(doc, 1).vocabItem?.form).toBe('CAT');
+    expect(word(doc, 1).annotations.POS?.value).toBe('N');
+    expect(doc.name).toBe('Cats');
+
+    release();
+    expect(await spread).toBe(1);
+    expect(await named).toBe(true);
+    expect(client.calls.some((c) => c.kind === 'documents.get')).toBe(false);
+    expect(word(doc, 1).morphemes.some((m) => isPendingId(m.id))).toBe(false);
+  });
+});

@@ -9,7 +9,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
-import { followIds, settledId } from '@ui/domain/pendingIds.js';
+import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
@@ -571,57 +571,61 @@ export class IgtDocument extends DocumentModel {
       this.setError(`Token ${tokenId} not found`);
       return false;
     }
-    return this._queueWrite('Failed to split token', async () => {
-      const leftEnd = token.begin + splitOffset + 1;
-      const coincident = (info.morphemeTokenLayer?.tokens || [])
-        .filter((m) => m.begin === token.begin && m.end === token.end)
-        .map((m) => m.id);
+    const label = 'Failed to split token';
+    if (!this._canWrite(label)) return false;
+    const leftEnd = token.begin + splitOffset + 1;
+    const coincident = (info.morphemeTokenLayer?.tokens || [])
+      .filter((m) => m.begin === token.begin && m.end === token.end)
+      .map((m) => m.id);
+    // What the two halves carry: see domain/tokenReshape.js. The server
+    // leaves the left half's metadata alone and gives the right half none,
+    // which would render one word as two different kinds of thing and leave
+    // a transcription of the whole word on a half of it.
+    const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
+    const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
+    const rightId = pendingId();
 
+    this._applyRawPatch((next, infoNext) => {
+      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (t) {
+        t.end = leftEnd;
+        if (leftPatch) t.metadata = mergeMetadata(t.metadata || {}, leftPatch);
+      }
+      if (infoNext.primaryTokenLayer) {
+        if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
+          infoNext.primaryTokenLayer.tokens = [];
+        infoNext.primaryTokenLayer.tokens.push({
+          id: rightId,
+          begin: leftEnd,
+          end: token.end,
+          metadata: rightMetadata ? { ...rightMetadata } : {},
+        });
+        infoNext.primaryTokenLayer.tokens.sort((a, b) => a.begin - b.begin);
+      }
+      if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
+        const removed = new Set(coincident);
+        infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
+          (m) => !removed.has(m.id),
+        );
+      }
+    });
+
+    return this._queueWrite(label, async () => {
+      const id = settledId(tokenId);
       const results = await this._client.batched(async (b) => {
-        if (coincident.length > 0) b.tokens.bulkDelete(coincident);
-        b.tokens.split(tokenId, leftEnd);
+        if (coincident.length > 0) b.tokens.bulkDelete(coincident.map(settledId));
+        b.tokens.split(id, leftEnd);
       });
       // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
       const newRightTokenId = results[results.length - 1]?.body?.id;
-
-      // What the two halves carry: see domain/tokenReshape.js. The server
-      // leaves the left half's metadata alone and gives the right half none,
-      // which would render one word as two different kinds of thing and leave
-      // a transcription of the whole word on a half of it.
-      const leftPatch = survivorPatch(token.metadata, {}, (m) => this.editStamp(m));
-      const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
       if (leftPatch || (newRightTokenId && rightMetadata)) {
         await this._client.batched(async (b) => {
-          if (leftPatch) b.tokens.patchMetadata(tokenId, metadataOps(leftPatch));
+          if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));
           if (newRightTokenId && rightMetadata)
             b.tokens.patchMetadata(newRightTokenId, metadataOps(rightMetadata));
         });
       }
-
-      this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
-        const originalEnd = token.end;
-        if (t) {
-          t.end = leftEnd;
-          if (leftPatch) t.metadata = mergeMetadata(t.metadata || {}, leftPatch);
-        }
-        if (newRightTokenId && infoNext.primaryTokenLayer) {
-          if (!Array.isArray(infoNext.primaryTokenLayer.tokens))
-            infoNext.primaryTokenLayer.tokens = [];
-          infoNext.primaryTokenLayer.tokens.push({
-            id: newRightTokenId,
-            begin: leftEnd,
-            end: originalEnd,
-            metadata: rightMetadata ? { ...rightMetadata } : {},
-          });
-        }
-        if (coincident.length > 0 && infoNext.morphemeTokenLayer?.tokens) {
-          const removed = new Set(coincident);
-          infoNext.morphemeTokenLayer.tokens = infoNext.morphemeTokenLayer.tokens.filter(
-            (m) => !removed.has(m.id),
-          );
-        }
-      });
+      this._settle(new Map([[rightId, newRightTokenId]]));
     });
   }
 }

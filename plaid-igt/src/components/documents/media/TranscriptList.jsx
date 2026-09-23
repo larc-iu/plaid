@@ -572,34 +572,31 @@ const NewSegmentRow = memo(function NewSegmentRow({
 }) {
   const [draft, setDraft] = useState('');
   const [speaker, setSpeaker] = useState(getStickySpeaker);
-  const [busy, setBusy] = useState(false);
   const ref = useRef(null);
   const ready = currentTime > prevEnd + MIN_SEGMENT;
   const canCreate = ready && draft.trim().length > 0;
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
 
+  // The new segment shows as soon as it is made, so the row empties at once
+  // for the next one; a segment refused (a check, or the server) puts the
+  // text back unless something else has been typed since.
   const submit = async () => {
-    if (!canCreate || busy) return;
-    setBusy(true);
-    try {
-      // `currentTime` is the displayed clock, which redraws a few times a
-      // second; the recording's own clock is the one that gets saved. While
-      // playing it can only be ahead of the display, never behind `prevEnd`.
-      const exact = readCurrentTime?.();
-      const ok = await onCreate({
-        text: draft.trim(),
-        timeBegin: prevEnd,
-        timeEnd: Math.max(currentTime, Number.isFinite(exact) ? exact : currentTime),
-        speaker: speaker.trim(),
-      });
-      if (ok) {
-        setDraft('');
-        setStickySpeaker(speaker);
-      }
-    } finally {
-      setBusy(false);
-    }
+    if (!canCreate) return;
+    const text = draft.trim();
+    // `currentTime` is the displayed clock, which redraws a few times a
+    // second; the recording's own clock is the one that gets saved. While
+    // playing it can only be ahead of the display, never behind `prevEnd`.
+    const exact = readCurrentTime?.();
+    setDraft('');
+    setStickySpeaker(speaker);
+    const ok = await onCreate({
+      text,
+      timeBegin: prevEnd,
+      timeEnd: Math.max(currentTime, Number.isFinite(exact) ? exact : currentTime),
+      speaker: speaker.trim(),
+    });
+    if (!ok) setDraft((typed) => typed || text);
   };
 
   const onKeyDown = (e) => {

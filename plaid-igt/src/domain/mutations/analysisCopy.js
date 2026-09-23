@@ -61,19 +61,22 @@ const opsForWord = (p) => {
   return n;
 };
 
-const findVocabItem = (vocabularies, vocabItemId) => {
-  if (!vocabItemId) return null;
-  for (const vocab of Object.values(vocabularies || {})) {
-    const item = (vocab.items || []).find((i) => i.id === vocabItemId);
-    if (item) return item;
-  }
-  return null;
-};
-
 // Entities per atomic batch when stripping analyses (bulkReplaceAnalyses) is
 // the ordinary bulk chunk: a chunk is at most five ops — a bulk delete per
 // entity kind, one bulk metadata update, and the rare precedence fix — so
 // what bounds it is the write-lock hold and not plaid-core's op cap.
+
+// The vocabulary an entry is in, and the shape a document read gives a link's
+// entry (id, layer, form), or null when no loaded vocabulary has it.
+const findVocabHome = (vocabularies, vocabItemId) => {
+  if (!vocabItemId) return null;
+  for (const vocab of Object.values(vocabularies || {})) {
+    const item = (vocab.items || []).find((i) => i.id === vocabItemId);
+    if (item)
+      return { vocabId: vocab.id, snapshot: { id: item.id, layer: vocab.id, form: item.form } };
+  }
+  return null;
+};
 
 export const analysisCopyMutations = {
   // Returns the number of words a copy was applied to (false on failure).
@@ -81,9 +84,11 @@ export const analysisCopyMutations = {
     const todo = this._planAnalysisApply(proposals);
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const ok = await this._queueWrite('Failed to copy previous analyses', () =>
-      this._applyAnalysesImpl(todo, stampInferred(provSource)),
-    );
+    const label = 'Failed to copy previous analyses';
+    if (!this._canWrite(label)) return false;
+    const plan = this._planAnalysesApply(todo, stampInferred(provSource));
+    this._showAnalysesApply(plan);
+    const ok = await this._queueWrite(label, () => this._sendAnalysesApply(plan));
     return ok ? todo.length : false;
   },
 
@@ -102,13 +107,17 @@ export const analysisCopyMutations = {
     );
     if (todo === false) return false;
     if (!todo.length) return 0;
-    const ok = await this._queueWrite('Failed to analyze words', async () => {
-      await this._applyAnalysesImpl(todo, this.createStamp || {});
-      if (confirm.length) {
+    const label = 'Failed to analyze words';
+    if (!this._canWrite(label)) return false;
+    const plan = this._planAnalysesApply(todo, this.createStamp || {});
+    this._showAnalysesApply(plan);
+    const confirmed = this._showConfirm(confirm);
+    const ok = await this._queueWrite(label, async () => {
+      await this._sendAnalysesApply(plan);
+      if (confirmed) {
         await this._client.batched(async (b) => {
-          this._queueConfirm(b, confirm);
+          this._sendConfirm(b, confirmed);
         });
-        await this._reload();
       }
     });
     return ok ? todo.length : false;
@@ -268,13 +277,19 @@ export const analysisCopyMutations = {
     return todo;
   },
 
-  // The write half of a copy: batch-1/batch-2 per chunk (see the file
-  // comment), then one reload. Runs INSIDE a caller's _queueWrite. `stamp`
-  // is the metadata merged into every created/patched piece ({} for none).
+  // A copy in three parts, so a person's "analyze every ‹x› like this" shows at
+  // once: the plan (every piece under a pending id), the patch, and the send.
+  // `_applyAnalysesImpl` runs all three, for the callers already inside a
+  // send. `stamp` is the metadata merged into every created/patched piece
+  // ({} for none).
   async _applyAnalysesImpl(todo, stamp) {
+    const plan = this._planAnalysesApply(todo, stamp);
+    this._showAnalysesApply(plan);
+    await this._sendAnalysesApply(plan);
+  },
+
+  _planAnalysesApply(todo, stamp) {
     const info = this.layerInfo;
-    const morphemeLayer = info.morphemeTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
     const wordLayersByName = new Map((info.spanLayers?.word || []).map((l) => [l.name, l]));
     const morphLayersByName = new Map((info.spanLayers?.morpheme || []).map((l) => [l.name, l]));
 
@@ -290,168 +305,240 @@ export const analysisCopyMutations = {
     const stampValue = (value) => withDetail({ value });
     const stampForm = (form) => (form == null ? stamp : withDetail({ form }));
 
-    // A large unanalyzed document can emit far more than one batch's worth of
-    // ops (this runs unattended from the auto-analysis pass). Pack words into
-    // chunks under the server cap; each chunk runs its own batch-1 + batch-2
-    // atomically. Partial progress across chunks is fine — a copied word is no
-    // longer unanalyzed, so it won't be silently re-targeted — and it keeps a
-    // too-big copy from failing forever and re-triggering the pass on reload.
+    // Every word here is unanalyzed by definition, so its first morpheme is
+    // usually the one derive synthesized rather than a stored token: it is
+    // made along with the rest, carrying the first slot's patch.
+    const { ids: firstIds, creates: firstCreates } = this._planMorphemes(todo.map((p) => p.m0.id));
+    const createdFirst = new Map(firstCreates.map((c) => [c.id, c]));
+    const words = [];
+    todo.forEach((p, i) => {
+      const m0Id = firstIds[i];
+      if (!m0Id) return;
+      const { token, analysis } = p;
+      const word = { m0Id, create: createdFirst.get(m0Id) || null, patch: null, extra: [] };
+      word.links = [];
+      word.spans = [];
+      const linkTo = (tokenId, vocabItemId, into) => {
+        const found = findVocabHome(this._vocabularies, vocabItemId);
+        if (found) into.links.push({ id: pendingId(), tokenId, ...found, metadata: stamp });
+      };
+      const spansOn = (tokenId, fields, layersByName, into) => {
+        for (const [name, value] of Object.entries(fields || {})) {
+          const layer = layersByName.get(name);
+          if (!layer) continue;
+          into.spans.push({
+            id: pendingId(),
+            layerId: layer.id,
+            tokenId,
+            value,
+            metadata: stampValue(value),
+          });
+        }
+      };
+      const slots = analysis.morphemes || [];
+      const s0 = slots[0] || null;
+      // First slot reuses the default morpheme. Only stamp the token when the
+      // copy actually changes its segmentation-tier data (form/morphType):
+      // links/spans carry their own provenance.
+      if (s0) {
+        const patch = {};
+        if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
+        if (s0.morphType != null) patch.morphType = s0.morphType;
+        const merged = { ...patch, ...stampForm(s0.form) };
+        if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
+          if (word.create) word.create.metadata = { ...word.create.metadata, ...merged };
+          else word.patch = merged;
+        }
+        linkTo(m0Id, s0.vocabItemId, word);
+        spansOn(m0Id, s0.fields, morphLayersByName, word);
+      }
+      // Remaining slots: new morphemes, with their own links and fields.
+      slots.slice(1).forEach((slot, j) => {
+        const m = {
+          id: pendingId(),
+          begin: token.begin,
+          end: token.end,
+          precedence: j + 2,
+          metadata: {
+            ...(slot.form != null ? { form: slot.form } : {}),
+            ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
+            ...stampForm(slot.form),
+          },
+          links: [],
+          spans: [],
+        };
+        linkTo(m.id, slot.vocabItemId, m);
+        spansOn(m.id, slot.fields, morphLayersByName, m);
+        word.extra.push(m);
+      });
+      // Word-level link + fields.
+      linkTo(token.id, analysis.word?.vocabItemId, word);
+      spansOn(token.id, analysis.word?.fields, wordLayersByName, word);
+      word.ops = opsForWord(p);
+      words.push(word);
+    });
+    return { words };
+  },
+
+  _showAnalysesApply({ words }) {
+    const textId = this.layerInfo.primaryTextLayer?.text?.id;
+    this._applyRawPatch((next, info, vocabs) => {
+      this._showMorphemes(info, words.map((w) => w.create).filter(Boolean));
+      const layer = info.morphemeTokenLayer;
+      words.forEach((w) => {
+        if (w.patch) {
+          const m = (layer.tokens || []).find((x) => x.id === w.m0Id);
+          if (m) m.metadata = mergeMetadata(m.metadata, w.patch);
+        }
+        w.extra.forEach((m) =>
+          layer.tokens.push({
+            id: m.id,
+            text: textId,
+            begin: m.begin,
+            end: m.end,
+            precedence: m.precedence,
+            metadata: m.metadata,
+          }),
+        );
+        for (const owner of [w, ...w.extra]) {
+          owner.links.forEach((l) => {
+            const v = vocabs[l.vocabId];
+            if (!v) return;
+            if (!Array.isArray(v.vocabLinks)) v.vocabLinks = [];
+            v.vocabLinks.push({
+              id: l.id,
+              tokens: [l.tokenId],
+              vocabItem: l.snapshot,
+              ...(Object.keys(l.metadata || {}).length ? { metadata: l.metadata } : {}),
+            });
+          });
+          owner.spans.forEach((s) => {
+            const sl = [
+              ...(info.spanLayers?.word || []),
+              ...(info.spanLayers?.morpheme || []),
+            ].find((x) => x.id === s.layerId);
+            if (!sl) return;
+            if (!Array.isArray(sl.spans)) sl.spans = [];
+            sl.spans.push({
+              id: s.id,
+              tokens: [s.tokenId],
+              value: s.value,
+              ...(Object.keys(s.metadata || {}).length ? { metadata: s.metadata } : {}),
+            });
+          });
+        }
+      });
+    });
+  },
+
+  // A large unanalyzed document can emit far more than one batch's worth of
+  // ops (this runs unattended from the auto-analysis pass). Words are packed
+  // into chunks under the server cap; each chunk runs its own writes
+  // atomically. Partial progress across chunks is fine: a copied word is no
+  // longer unanalyzed, so it won't be silently re-targeted, and it keeps a
+  // too-big copy from failing forever and re-triggering the pass on reload.
+  async _sendAnalysesApply({ words }) {
+    const info = this.layerInfo;
+    const morphemeLayer = info.morphemeTokenLayer;
+    const textId = info.primaryTextLayer?.text?.id;
+    const ids = new Map();
+    const serverId = (id) => ids.get(id) || settledId(id);
     const chunks = [];
     let cur = [];
     let curOps = 0;
-    for (const p of todo) {
-      const w = opsForWord(p);
-      if (cur.length && curOps + w > ANALYSIS_BATCH_BUDGET) {
+    for (const w of words) {
+      if (cur.length && curOps + w.ops > ANALYSIS_BATCH_BUDGET) {
         chunks.push(cur);
         cur = [];
         curOps = 0;
       }
-      cur.push(p);
-      curOps += w;
+      cur.push(w);
+      curOps += w.ops;
     }
     if (cur.length) chunks.push(cur);
 
-    {
-      // A batch is one op per KIND, not per entity: the ops below are collected
-      // across the whole chunk and sent as bulk creates, updates and deletes,
-      // so a chunk of a hundred words costs the same handful of server
-      // dispatches as a chunk of one. Spans group by layer as well, since a
-      // bulk span create takes one layer.
-      const bySpanLayer = (specs) => {
-        const byLayer = new Map();
-        for (const s of specs) {
-          if (!byLayer.has(s.spanLayerId)) byLayer.set(s.spanLayerId, []);
-          byLayer.get(s.spanLayerId).push(s);
+    // A batch is one op per KIND, not per entity: the ops below are collected
+    // across the whole chunk and sent as bulk creates, updates and deletes,
+    // so a chunk of a hundred words costs the same handful of server
+    // dispatches as a chunk of one. Spans group by layer as well, since a
+    // bulk span create takes one layer.
+    const sendLinksAndSpans = async (owners) => {
+      const links = owners.flatMap((o) => o.links);
+      const spans = owners.flatMap((o) => o.spans);
+      if (!links.length && !spans.length) return;
+      const byLayer = new Map();
+      spans.forEach((s) => {
+        if (!byLayer.has(s.layerId)) byLayer.set(s.layerId, []);
+        byLayer.get(s.layerId).push(s);
+      });
+      const out = await this._client.batched(async (b) => {
+        if (links.length) {
+          b.vocabLinks.bulkCreate(
+            links.map((l) => ({
+              vocabItem: serverId(l.snapshot.id),
+              tokens: [serverId(l.tokenId)],
+              metadata: l.metadata,
+            })),
+          );
         }
-        return byLayer;
-      };
+        for (const [layerId, specs] of byLayer) {
+          b.spans.bulkCreate(
+            specs.map((s) => ({
+              spanLayerId: layerId,
+              tokens: [serverId(s.tokenId)],
+              value: s.value,
+              metadata: s.metadata,
+            })),
+          );
+        }
+      });
+      let at = 0;
+      if (links.length) {
+        const linkIds = out[at++]?.body?.ids || [];
+        links.forEach((l, i) => ids.set(l.id, linkIds[i]));
+      }
+      for (const specs of byLayer.values()) {
+        const spanIds = out[at++]?.body?.ids || [];
+        specs.forEach((s, i) => ids.set(s.id, spanIds[i]));
+      }
+    };
 
-      for (const chunk of chunks) {
-        // Every word here is unanalyzed by definition, so its first morpheme is
-        // usually the one derive synthesized rather than a stored token. Write
-        // those first, in one bulk create, since batch 1 below addresses them
-        // by id and a create inside a batch does not hand its id back.
-        const firstIds = await this.materializeMorphemeIds(chunk.map((p) => p.m0.id));
-        chunk.forEach((p, i) => {
-          p.m0Id = firstIds[i];
-        });
-        const live = chunk.filter((p) => p.m0Id);
-
-        // ---- batch 1: structure + everything addressable now ----
-        const morphPatches = [];
-        const morphCreates = [];
-        const pendingMorphs = []; // created morphemes needing batch-2 links/spans, in create order
-        const linkCreates = [];
-        const spanCreates = [];
-        const collectLinkAndSpans = (tokenId, slot, layersByName) => {
-          const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-          if (item) linkCreates.push({ vocabItem: item.id, tokens: [tokenId], metadata: stamp });
-          for (const [name, value] of Object.entries(slot.fields || {})) {
-            const layer = layersByName.get(name);
-            if (!layer) continue;
-            spanCreates.push({
-              spanLayerId: layer.id,
-              tokens: [tokenId],
-              value,
-              metadata: stampValue(value),
-            });
-          }
-        };
-
-        for (const p of live) {
-          const { token, m0Id, analysis } = p;
-          const slots = analysis.morphemes || [];
-          const s0 = slots[0] || null;
-
-          // First slot reuses the existing default morpheme. Only stamp the
-          // token when the copy actually changes its segmentation-tier data
-          // (form/morphType) — links/spans carry their own provenance.
-          if (s0) {
-            const patch = {};
-            if (s0.form != null && s0.form !== token.content) patch.form = s0.form;
-            if (s0.morphType != null) patch.morphType = s0.morphType;
-            const merged = { ...patch, ...stampForm(s0.form) };
-            if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
-              morphPatches.push({ id: m0Id, metadata: metadataOps(merged) });
-            }
-            collectLinkAndSpans(m0Id, s0, morphLayersByName);
-          }
-          // Remaining slots: create stamped morpheme tokens; their links/spans
-          // wait for batch 2 (ids unknown until this batch lands).
-          slots.slice(1).forEach((slot, j) => {
-            morphCreates.push({
+    for (const chunk of chunks) {
+      // The default morphemes nobody had stored: one bulk create, before
+      // anything addresses them.
+      await this._sendMorphemes(chunk.map((w) => w.create).filter(Boolean), ids);
+      // ---- batch 1: the new morphemes, the first morphemes' patches, and
+      // the links and fields of the first morphemes and the words. The
+      // morpheme create goes FIRST so its ids are always results[0].
+      const extra = chunk.flatMap((w) => w.extra);
+      const patches = chunk.filter((w) => w.patch);
+      const results = await this._client.batched(async (b) => {
+        if (extra.length) {
+          b.tokens.bulkCreate(
+            extra.map((m) => ({
               tokenLayerId: morphemeLayer.id,
               text: textId,
-              begin: token.begin,
-              end: token.end,
-              precedence: j + 2,
-              metadata: {
-                ...(slot.form != null ? { form: slot.form } : {}),
-                ...(slot.morphType != null ? { morphType: slot.morphType } : {}),
-                ...stampForm(slot.form),
-              },
-            });
-            pendingMorphs.push(slot);
-          });
-          // Word-level link + fields.
-          const wordItem = findVocabItem(this._vocabularies, analysis.word?.vocabItemId);
-          if (wordItem) {
-            linkCreates.push({ vocabItem: wordItem.id, tokens: [token.id], metadata: stamp });
-          }
-          for (const [name, value] of Object.entries(analysis.word?.fields || {})) {
-            const layer = wordLayersByName.get(name);
-            if (!layer) continue;
-            spanCreates.push({
-              spanLayerId: layer.id,
-              tokens: [token.id],
-              value,
-              metadata: stampValue(value),
-            });
-          }
-        }
-
-        // The morpheme create goes FIRST so its ids are always results[0]:
-        // nothing else in this batch addresses a morpheme it makes.
-        const results = await this._client.batched(async (b) => {
-          if (morphCreates.length) b.tokens.bulkCreate(morphCreates);
-          if (morphPatches.length) b.tokens.bulkUpdate(morphPatches);
-          if (linkCreates.length) b.vocabLinks.bulkCreate(linkCreates);
-          for (const specs of bySpanLayer(spanCreates).values()) b.spans.bulkCreate(specs);
-        });
-
-        // ---- batch 2: links/spans for the created morphemes ----
-        const newIds = morphCreates.length ? results[0]?.body?.ids || [] : [];
-        const second = pendingMorphs
-          .map((slot, i) => ({ slot, id: newIds[i] }))
-          .filter(
-            ({ slot, id }) => id && (slot.vocabItemId || Object.keys(slot.fields || {}).length),
+              begin: m.begin,
+              end: m.end,
+              precedence: m.precedence,
+              metadata: m.metadata,
+            })),
           );
-        if (second.length) {
-          const secondLinks = [];
-          const secondSpans = [];
-          for (const { slot, id } of second) {
-            const item = findVocabItem(this._vocabularies, slot.vocabItemId);
-            if (item) secondLinks.push({ vocabItem: item.id, tokens: [id], metadata: stamp });
-            for (const [name, value] of Object.entries(slot.fields || {})) {
-              const layer = morphLayersByName.get(name);
-              if (!layer) continue;
-              secondSpans.push({
-                spanLayerId: layer.id,
-                tokens: [id],
-                value,
-                metadata: stampValue(value),
-              });
-            }
-          }
-          await this._client.batched(async (b) => {
-            if (secondLinks.length) b.vocabLinks.bulkCreate(secondLinks);
-            for (const specs of bySpanLayer(secondSpans).values()) b.spans.bulkCreate(specs);
-          });
         }
+        if (patches.length) {
+          b.tokens.bulkUpdate(
+            patches.map((w) => ({ id: serverId(w.m0Id), metadata: metadataOps(w.patch) })),
+          );
+        }
+      });
+      if (extra.length) {
+        const newIds = results[0]?.body?.ids || [];
+        extra.forEach((m, i) => ids.set(m.id, newIds[i]));
       }
-
-      await this._reload();
+      // ---- batch 2: every link and field, now that each token has an id.
+      await sendLinksAndSpans([...chunk, ...extra]);
     }
+    this._settle(ids);
   },
 
   // Discard every machine-unverified piece of one word's analysis at once —
@@ -593,19 +680,54 @@ export const analysisCopyMutations = {
     return { spanIds, tokenIds, linkIds };
   },
 
-  // Confirm what `wordTokenIds` carry of somebody else's unconfirmed work, on
-  // the batch `b`. Spreading an analysis is endorsing it, so the word it was
+  // Confirm what `wordTokenIds` carry of somebody else's unconfirmed work,
+  // shown at once. Spreading an analysis is endorsing it, so the word it was
   // copied from stops reading as a guess while its copies read as this
-  // person's own work.
-  _queueConfirm(b, wordTokenIds) {
+  // person's own work. Answers what `_sendConfirm` sends, or null when there
+  // is nothing to confirm.
+  _showConfirm(wordTokenIds) {
     const words = (wordTokenIds || []).map((id) => this.tokenLookup.get(id)).filter(Boolean);
-    if (!words.length) return false;
+    if (!words.length) return null;
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf(words);
-    if (!spanIds.length && !tokenIds.length && !linkIds.length) return false;
-    const confirmOps = metadataOps(this.confirmStamp(stampInferred('any')));
-    tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirmOps));
-    linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirmOps));
-    spanIds.forEach((id) => b.spans.patchMetadata(id, confirmOps));
+    if (!spanIds.length && !tokenIds.length && !linkIds.length) return null;
+    const confirm = this.confirmStamp(stampInferred('any'));
+    const spanSet = new Set(spanIds);
+    const tokenSet = new Set(tokenIds);
+    const linkSet = new Set(linkIds);
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
+        (layer?.tokens || []).forEach((t) => {
+          if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
+        });
+      }
+      for (const scope of ['word', 'morpheme']) {
+        (infoNext.spanLayers?.[scope] || []).forEach((sl) => {
+          (sl.spans || []).forEach((s) => {
+            if (spanSet.has(s.id)) s.metadata = mergeMetadata(s.metadata, confirm);
+          });
+        });
+      }
+      Object.values(vocabs || {}).forEach((vocab) => {
+        (vocab.vocabLinks || []).forEach((l) => {
+          if (linkSet.has(l.id)) l.metadata = mergeMetadata(l.metadata, confirm);
+        });
+      });
+    });
+    return { spanIds, tokenIds, linkIds, ops: metadataOps(confirm) };
+  },
+
+  _sendConfirm(b, { spanIds, tokenIds, linkIds, ops }) {
+    tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), ops));
+    linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), ops));
+    spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), ops));
+  },
+
+  // The same for a caller already inside a send, on its batch `b`. Answers
+  // whether there was anything to confirm.
+  _queueConfirm(b, wordTokenIds) {
+    const confirmed = this._showConfirm(wordTokenIds);
+    if (!confirmed) return false;
+    this._sendConfirm(b, confirmed);
     return true;
   },
 

@@ -11,6 +11,7 @@
 import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
@@ -26,55 +27,75 @@ export const sentenceMutations = {
       this.setError('Cannot merge: no previous sentence');
       return false;
     }
-
-    return this._queueWrite('Failed to merge sentence', async () => {
-      // See domain/tokenReshape.js: the survivor takes on the provenance of
-      // whichever side most needs review, so a machine-made sentence boundary
-      // is not absorbed into a hand-made neighbour.
-      const inherited = survivingProvenance([prev.metadata, sentence.metadata]);
-      const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
-      await this._client.batched(async (b) => {
-        b.tokens.merge(prev.id, sentenceId);
-        if (patch) b.tokens.patchMetadata(prev.id, metadataOps(patch));
-      });
-      this._applyRawPatch((next, infoNext) => {
-        const tokens = infoNext.sentenceTokenLayer?.tokens;
-        if (!Array.isArray(tokens)) return;
-        const p = tokens.find((t) => t.id === prev.id);
-        if (p) {
-          p.end = sentence.end;
-          if (patch) p.metadata = mergeMetadata(p.metadata || {}, patch);
-        }
-        infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
-        // Server reparents the merged-away sentence's spans (translation, notes,
-        // …) onto prev (token.clj merge-tokens); mirror so they don't vanish
-        // until the next reload.
-        reparentSpans(infoNext.spanLayers?.sentence, new Set([sentenceId]), prev.id);
-      });
+    const label = 'Failed to merge sentence';
+    if (!this._canWrite(label)) return false;
+    // See domain/tokenReshape.js: the survivor takes on the provenance of
+    // whichever side most needs review, so a machine-made sentence boundary
+    // is not absorbed into a hand-made neighbour.
+    const inherited = survivingProvenance([prev.metadata, sentence.metadata]);
+    const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
+    this._applyRawPatch((next, infoNext) => {
+      const tokens = infoNext.sentenceTokenLayer?.tokens;
+      if (!Array.isArray(tokens)) return;
+      const p = tokens.find((t) => t.id === prev.id);
+      if (p) {
+        p.end = sentence.end;
+        if (patch) p.metadata = mergeMetadata(p.metadata || {}, patch);
+      }
+      infoNext.sentenceTokenLayer.tokens = tokens.filter((t) => t.id !== sentenceId);
+      // Server reparents the merged-away sentence's spans (translation, notes,
+      // …) onto prev (token.clj merge-tokens); mirrored here.
+      reparentSpans(infoNext.spanLayers?.sentence, new Set([sentenceId]), prev.id);
     });
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        b.tokens.merge(settledId(prev.id), settledId(sentenceId));
+        if (patch) b.tokens.patchMetadata(settledId(prev.id), metadataOps(patch));
+      }),
+    );
   },
 
   async splitSentence(charPos) {
-    const containing = this._sentenceToSplitAt(charPos);
-    if (!containing) return false;
-    return this._queueWrite('Failed to split sentence', () =>
-      this._splitSentenceOnce(containing, charPos),
-    );
+    return this.splitSentencesAt([charPos], { quiet: false });
   },
 
   // Split sentences at several positions in ONE operation, each split seen
   // by the next: a later position inside a sentence an earlier one already
   // split lands in the new right half, which the local patch has by then.
   // Positions are taken in order and a position that no longer splits
-  // anything (a sentence already begins there) is passed over.
-  async splitSentencesAt(positions) {
+  // anything (a sentence already begins there) is passed over. Every new
+  // sentence shows at once.
+  async splitSentencesAt(positions, { quiet = true } = {}) {
     const sorted = [...new Set(positions)].sort((a, b) => a - b);
     if (!sorted.length) return false;
-    return this._queueWrite('Failed to split sentences', async () => {
-      for (const charPos of sorted) {
-        const containing = this._sentenceToSplitAt(charPos, { quiet: true });
-        if (containing) await this._splitSentenceOnce(containing, charPos);
+    const label =
+      sorted.length === 1 && !quiet ? 'Failed to split sentence' : 'Failed to split sentences';
+    if (!this._canWrite(label)) return false;
+    const splits = [];
+    for (const charPos of sorted) {
+      const containing = this._sentenceToSplitAt(charPos, { quiet });
+      if (!containing) continue;
+      splits.push(this._showSentenceSplit(containing, charPos));
+    }
+    if (!splits.length) return false;
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      const serverId = (id) => ids.get(id) || settledId(id);
+      // One request a split: each needs the id the one before it made.
+      for (const s of splits) {
+        const result = await this._client.tokens.split(serverId(s.leftId), s.charPos);
+        ids.set(s.rightId, result?.id || result);
       }
+      const patches = splits.flatMap((s) => [
+        ...(s.leftPatch ? [[serverId(s.leftId), s.leftPatch]] : []),
+        ...(s.rightMetadata && ids.get(s.rightId) ? [[ids.get(s.rightId), s.rightMetadata]] : []),
+      ]);
+      if (patches.length) {
+        await this._client.batched(async (b) => {
+          patches.forEach(([id, p]) => b.tokens.patchMetadata(id, metadataOps(p)));
+        });
+      }
+      this._settle(ids);
     });
   },
 
@@ -92,41 +113,36 @@ export const sentenceMutations = {
     return containing;
   },
 
-  async _splitSentenceOnce(containing, charPos) {
-    const originalEnd = containing.end;
-    const result = await this._client.tokens.split(containing.id, charPos);
-    const newRightId = result?.id || result;
-
+  // One split, shown: the left half keeps the sentence's identity and the
+  // right half is new, under a pending id. Answers what the send needs.
+  _showSentenceSplit(containing, charPos) {
     // Both halves of a split carry the same mark: see domain/tokenReshape.js.
     const leftPatch = survivorPatch(containing.metadata, {}, (m) => this.editStamp(m));
     const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
-    if (leftPatch || (newRightId && rightMetadata)) {
-      await this._client.batched(async (b) => {
-        if (leftPatch) b.tokens.patchMetadata(containing.id, metadataOps(leftPatch));
-        if (newRightId && rightMetadata)
-          b.tokens.patchMetadata(newRightId, metadataOps(rightMetadata));
-      });
-    }
-
+    const rightId = pendingId();
     this._applyRawPatch((next, infoNext) => {
       const tokens = infoNext.sentenceTokenLayer?.tokens;
       if (!Array.isArray(tokens)) return;
       const s = tokens.find((t) => t.id === containing.id);
-      if (s) s.end = charPos;
-      if (newRightId) {
-        tokens.push({
-          id: newRightId,
-          begin: charPos,
-          end: originalEnd,
-        });
+      if (s) {
+        s.end = charPos;
+        if (leftPatch) s.metadata = mergeMetadata(s.metadata || {}, leftPatch);
       }
+      tokens.push({
+        id: rightId,
+        begin: charPos,
+        end: containing.end,
+        ...(rightMetadata ? { metadata: rightMetadata } : {}),
+      });
+      tokens.sort((a, b) => a.begin - b.begin);
     });
+    return { leftId: containing.id, rightId, charPos, leftPatch, rightMetadata };
   },
 
   // Reset to a single sentence spanning the whole text. Sentence tokens are
   // merged into the first one (a bulkDelete + bulkCreate would cascade-delete
   // every nested word and morpheme). Sentence-scope spans (translations, …)
-  // are deleted, as the confirm dialog promises — a merge would otherwise
+  // are deleted, as the confirm dialog promises: a merge would otherwise
   // reparent them all onto the survivor.
   async clearSentences() {
     const info = this.layerInfo;
@@ -137,25 +153,36 @@ export const sentenceMutations = {
       return false;
     }
     if (sentenceTokens.length === 0) return false;
+    const label = 'Failed to clear sentences';
+    if (!this._canWrite(label)) return false;
 
     const first = sentenceTokens[0];
+    const last = sentenceTokens[sentenceTokens.length - 1];
     const sentenceIds = new Set(sentenceTokens.map((s) => s.id));
     const spanIds = (info.spanLayers?.sentence || []).flatMap((sl) =>
       (sl.spans || [])
         .filter((sp) => (sp.tokens || []).some((t) => sentenceIds.has(t)))
         .map((sp) => sp.id),
     );
-
-    return this._queueWrite('Failed to clear sentences', async () => {
-      await this._client.batched(async (b) => {
-        spanIds.forEach((id) => b.spans.delete(id));
+    const gone = new Set(spanIds);
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.sentenceTokenLayer;
+      const keep = (layer.tokens || []).find((t) => t.id === first.id);
+      if (keep) keep.end = last.end;
+      layer.tokens = keep ? [keep] : [];
+      (infoNext.spanLayers?.sentence || []).forEach((sl) => {
+        if (Array.isArray(sl.spans)) sl.spans = sl.spans.filter((sp) => !gone.has(sp.id));
+      });
+    });
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        spanIds.forEach((id) => b.spans.delete(settledId(id)));
         // Sequential merges into the first sentence in begin-order; the server
         // processes batch ops in order, so each merge sees the widened extent.
         for (let i = 1; i < sentenceTokens.length; i++) {
-          b.tokens.merge(first.id, sentenceTokens[i].id);
+          b.tokens.merge(settledId(first.id), settledId(sentenceTokens[i].id));
         }
-      });
-      await this._reload();
-    });
+      }),
+    );
   },
 };

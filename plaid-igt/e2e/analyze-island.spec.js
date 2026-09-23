@@ -29,6 +29,9 @@ const glossSpan = async () => {
 };
 
 async function openAnalyze(page, { reload = false } = {}) {
+  // Edits show before they are saved, so a reload that has to read the
+  // server's value waits for the save to finish first.
+  if (reload) await expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   // A `goto` to a URL that differs only in the fragment is a same-document
   // navigation, and this app is a hash router, so coming back to a document it

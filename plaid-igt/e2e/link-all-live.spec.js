@@ -69,7 +69,9 @@ test('the create row takes every same-form morpheme along', async ({ page }) => 
   await chip.click();
   await expect(page.locator('.igt-morph-col .igt-vocab__hint')).toHaveCount(3);
 
-  // And it is what the server holds, not only the optimistic patch.
+  // And it is what the server holds, not only the optimistic patch. The links
+  // show before they are saved, so the reload waits for the save to finish.
+  await expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
   await page.reload();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
   await expect(page.locator('.igt-morph-col .igt-vocab__hint')).toHaveCount(3);

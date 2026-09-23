@@ -7,9 +7,9 @@ import { alignableRange } from '../../../domain/mutations/alignment.js';
 // The timeline popover's operations, backed by the shared IgtDocument: make a
 // segment from new text, or over a stretch of the baseline text still free
 // between the neighbouring segments. The two mutations delegate straight to
-// the domain methods (which patch in place, reload on error, and toast).
-// `isProcessing` mirrors `doc.isSaving`. Editing and deleting an existing
-// segment happen in its transcript row, not here.
+// the domain methods (which show the segment at once, reload on error, and
+// toast). Editing and deleting an existing segment happen in its transcript
+// row, not here.
 export const useAlignmentEditor = (selection, onAlignmentCreated) => {
   const { doc } = useDocumentCtx();
   useDocumentModel(doc);
@@ -34,38 +34,49 @@ export const useAlignmentEditor = (selection, onAlignmentCreated) => {
 
   const canAlign = useCallback(() => getAvailableText().trim().length > 0, [getAvailableText]);
 
-  const createAlignment = useCallback(
-    async (text, speaker) => {
-      const ok = await doc.createAlignment({
-        text,
-        timeBegin: selection.start,
-        timeEnd: selection.end,
-        speaker,
-      });
+  // A segment shows the moment it is made, so the popover is done then: it
+  // answers true without waiting for the server, whose refusal reloads the
+  // document and says why. One refused before it showed answers false.
+  const shownOrRefused = useCallback(
+    async (write) => {
+      const before = doc.dataVersion;
+      const saving = write();
+      const ok = doc.dataVersion !== before || (await saving);
       if (ok && onAlignmentCreated) onAlignmentCreated();
       return ok;
     },
-    [doc, selection, onAlignmentCreated],
+    [doc, onAlignmentCreated],
+  );
+
+  const createAlignment = useCallback(
+    (text, speaker) =>
+      shownOrRefused(() =>
+        doc.createAlignment({
+          text,
+          timeBegin: selection.start,
+          timeEnd: selection.end,
+          speaker,
+        }),
+      ),
+    [doc, selection, shownOrRefused],
   );
 
   // `begin` and `end` are code-point offsets into the body.
   const alignBaseline = useCallback(
-    async (begin, end, speaker) => {
-      const ok = await doc.alignBaseline({
-        begin,
-        end,
-        timeBegin: selection.start,
-        timeEnd: selection.end,
-        speaker,
-      });
-      if (ok && onAlignmentCreated) onAlignmentCreated();
-      return ok;
-    },
-    [doc, selection, onAlignmentCreated],
+    (begin, end, speaker) =>
+      shownOrRefused(() =>
+        doc.alignBaseline({
+          begin,
+          end,
+          timeBegin: selection.start,
+          timeEnd: selection.end,
+          speaker,
+        }),
+      ),
+    [doc, selection, shownOrRefused],
   );
 
   return {
-    isProcessing: doc.isSaving,
     createAlignment,
     alignBaseline,
     getAvailableTextBoundaries,

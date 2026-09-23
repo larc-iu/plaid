@@ -41,14 +41,8 @@ export const TimeAlignmentPopover = ({
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef(null);
 
-  const {
-    isProcessing,
-    createAlignment,
-    alignBaseline,
-    getAvailableText,
-    getAvailableTextBoundaries,
-    canAlign,
-  } = useAlignmentEditor(selection, onAlignmentCreated);
+  const { createAlignment, alignBaseline, getAvailableText, getAvailableTextBoundaries, canAlign } =
+    useAlignmentEditor(selection, onAlignmentCreated);
 
   // A fresh popover every time it opens.
   useEffect(() => {
@@ -102,7 +96,7 @@ export const TimeAlignmentPopover = ({
   const ready = mode === 'align' ? !!picked : !!text.trim();
 
   const handleSave = async () => {
-    if (!ready || saving || isProcessing) return;
+    if (!ready || saving) return;
     setSaving(true);
     try {
       const sp = speaker.trim();
@@ -288,14 +282,14 @@ export const TimeAlignmentPopover = ({
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={handleCancel} disabled={saving || isProcessing}>
+            <Button variant="ghost" onClick={handleCancel} disabled={saving}>
               Cancel
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!ready || (mode === 'align' && !canAlign()) || saving || isProcessing}
+              disabled={!ready || (mode === 'align' && !canAlign()) || saving}
             >
-              {saving || isProcessing ? 'Saving…' : 'Save'}
+              {saving ? 'Saving…' : 'Save'}
             </Button>
           </div>
 

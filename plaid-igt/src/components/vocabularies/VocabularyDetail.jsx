@@ -329,11 +329,18 @@ export const VocabularyDetail = () => {
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
         notifySuccess('Vocabulary created successfully', 'Success');
       } else {
-        // Update existing vocabulary name
+        // A new name shows at once; a refused one reloads the vocabulary,
+        // which puts the old name back.
         if (editedName !== vocabulary.name) {
-          await client.vocabLayers.update(vocabularyId, editedName.trim());
-          // Update local state to reflect the change immediately
-          await updateVocabulary();
+          const name = editedName.trim();
+          setVocabulary((v) => ({ ...v, name }));
+          setIsEditing(false);
+          try {
+            await client.vocabLayers.update(vocabularyId, name);
+          } catch (err) {
+            await updateVocabulary();
+            throw err;
+          }
           notifySuccess('Vocabulary name updated successfully', 'Success');
         }
       }
@@ -411,12 +418,20 @@ export const VocabularyDetail = () => {
     await saveFields(next);
   };
 
-  // Write the schema and say whether it landed. The table shows the new
-  // schema only once the server holds it: shown first, a failed write left
-  // the next edit building on a type or tagset the server never had.
-  const saveFields = async (updatedFields, { quiet = false } = {}) => {
-    try {
-      if (!isNewVocabulary) {
+  // Write the schema. The table shows it at once and the write waits behind
+  // any schema write still in flight, so the next edit builds on what the
+  // server will hold. A refused write says so and reloads the vocabulary,
+  // which puts back what the table showed, and the writes queued behind it
+  // (made on the refused schema) are not sent. Resolves to whether it landed.
+  const schemaWrites = useRef({ tail: Promise.resolve(), generation: 0 });
+  const saveFields = (updatedFields, { quiet = false } = {}) => {
+    setFields(updatedFields);
+    if (isNewVocabulary) return Promise.resolve(true);
+    const queue = schemaWrites.current;
+    const generation = queue.generation;
+    const send = async () => {
+      if (generation !== queue.generation) return false;
+      try {
         await client.vocabLayers.setConfig(
           vocabularyId,
           IGT_NAMESPACE,
@@ -424,14 +439,18 @@ export const VocabularyDetail = () => {
           fieldsToConfig(updatedFields),
         );
         if (!quiet) notifySuccess('Fields updated successfully', 'Success');
+        return true;
+      } catch (err) {
+        queue.generation += 1;
+        console.error('Error saving custom fields:', err);
+        notifyError('Failed to save fields', 'Error');
+        await updateVocabulary();
+        return false;
       }
-      setFields(updatedFields);
-      return true;
-    } catch (err) {
-      console.error('Error saving custom fields:', err);
-      notifyError('Failed to save fields', 'Error');
-      return false;
-    }
+    };
+    const result = queue.tail.then(send);
+    queue.tail = result.catch(() => {});
+    return result;
   };
 
   // Point a field at one of the vocabulary's tagsets (or at none). By name,

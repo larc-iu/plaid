@@ -95,6 +95,8 @@ test('one row gives every unanalyzed twin the word’s analysis', async ({ page 
   // Human work, so nothing is left for anyone to confirm.
   await expect(page.locator('[class*="--machine"], [class*="--contributed"]')).toHaveCount(0);
 
+  // The analyses show before they are saved: the reload waits for the save.
+  await expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
   await page.reload();
   await page.locator('.igt-island .igt-token-col').first().waitFor({ state: 'visible' });
   await expect.poll(() => columns(page)).toEqual([want, want, want]);

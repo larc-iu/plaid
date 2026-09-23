@@ -213,11 +213,15 @@ describe('analysis prediction extras', () => {
     const spans = client.calls
       .filter((c) => c.kind === 'spans.bulkCreate')
       .flatMap((c) => c.args[0]);
-    expect(spans.map((s) => [s.value, s.metadata.provDetail])).toEqual([
-      ['cat', { value: 'cat' }],
-      ['N', { value: 'N' }],
-      ['PL', { value: 'PL' }],
-    ]);
+    // In whatever order the batches carry them.
+    const byValue = (a, b) => a[0].localeCompare(b[0]);
+    expect(spans.map((s) => [s.value, s.metadata.provDetail]).sort(byValue)).toEqual(
+      [
+        ['cat', { value: 'cat' }],
+        ['N', { value: 'N' }],
+        ['PL', { value: 'PL' }],
+      ].sort(byValue),
+    );
     for (const s of spans)
       expect(s.metadata).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
     const m0 = client.calls.find((c) => c.kind === 'tokens.bulkUpdate').args[0][0];

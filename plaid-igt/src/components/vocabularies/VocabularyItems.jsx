@@ -43,6 +43,7 @@ import {
   itemLabel,
 } from '@/domain/vocabDictionary';
 import { metadataUpdates } from '@/domain/metadataPatch';
+import { followIds, pendingId, recordSettled, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
 import {
   HomographDialog,
@@ -226,10 +227,13 @@ export const VocabularyItems = ({
   }, [emptyField, emptyCount]);
   const emptyOnly = scope.emptyOnly && !!emptyField && emptyCount > 0;
 
-  const selectedItem = useMemo(
-    () => (selectedId && !isNew ? items.find((i) => i.id === selectedId) || null : null),
-    [items, selectedId, isNew],
-  );
+  // An entry made a moment ago is known by a pending id until the server
+  // answers (see the writes below), and `?item=` can still hold it.
+  const selectedItem = useMemo(() => {
+    if (!selectedId || isNew) return null;
+    const id = settledId(selectedId);
+    return items.find((i) => i.id === id) || null;
+  }, [items, selectedId, isNew]);
   // --- the assistant docked beside the entry list ---------------------------
   // The vocabulary is the standing scope, the way a document is on Analyze. An
   // entry reaches the chat only through Ask, as a chip that clears when sent.
@@ -394,8 +398,9 @@ export const VocabularyItems = ({
   // Write one entry's metadata, the way the editor does: the whole map, or
   // none.
   const writeMetadata = async (id, metadata) => {
-    if (Object.keys(metadata).length) await client.vocabItems.setMetadata(id, metadata);
-    else await client.vocabItems.deleteMetadata(id);
+    const meta = followIds(metadata);
+    if (Object.keys(meta).length) await client.vocabItems.setMetadata(settledId(id), meta);
+    else await client.vocabItems.deleteMetadata(settledId(id));
   };
   // Repoint a pile of entries at once. The plans are whole maps and the write
   // is each one's patch against what that entry carries now, so nothing else
@@ -421,6 +426,35 @@ export const VocabularyItems = ({
         return Object.keys(metadata).length ? { ...rest, metadata } : rest;
       }),
     );
+  };
+
+  // Every write here shows first and is sent in its turn: the list is patched,
+  // then the write waits behind any still in flight, so two quick drags reach
+  // the server in the order they were made. An entry made here is in the list
+  // under a pending id until the server answers, and `settleEntries` swaps
+  // the server's in, in the list, in any reference to it, and in `?item=`.
+  // A refused write says so and fetches the list again, which puts back what
+  // the screen showed.
+  const writesRef = useRef(Promise.resolve());
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+  const settleEntries = (ids) => {
+    const known = new Map([...ids].filter(([, server]) => server));
+    if (!known.size) return;
+    recordSettled(known);
+    setItems((prev) => followIds(prev));
+    const open = selectedIdRef.current;
+    if (open && known.has(open)) goItem(known.get(open), { replace: true });
+  };
+  const sendInTurn = (label, write, failure) => {
+    const next = writesRef.current.then(() => client.withOperation(label, write));
+    writesRef.current = next.catch((err) => {
+      console.error(`${label}:`, err);
+      notifyError(failure, 'Error');
+      dispatch({ type: 'draft/unseed' });
+      return fetchItems({ quiet: true });
+    });
+    return next;
   };
 
   // The draft as of the latest render, for the async writes below that finish
@@ -624,61 +658,69 @@ export const VocabularyItems = ({
       notifyError('A field holds a value its tagset does not accept.', 'Not saved');
       return;
     }
-    try {
-      // The structure the form does not edit (sense place, examples, import
-      // identity) is carried over from the entry as it is NOW, so a renumber
-      // or an example added while the form was open is not written back
-      // over by this save.
-      const metadata = {
-        ...(isNew ? {} : reservedMetadata(selectedItem?.metadata)),
-        ...cleanMeta(draft.fields),
-      };
-      const form = draft.form.trim();
-      // The saved entry is folded into `items` locally rather than re-fetching
-      // the vocabulary: a re-fetch pulls every entry in the lexicon back over
-      // the wire (thousands, for a FLEx import) to learn what we just wrote,
-      // and re-seats the whole tab while it is in flight. `items` carries the
-      // server's shape, so the patch mirrors it: no `metadata` key at all when
-      // there is none, since that is what the API returns.
-      const saved = (id, meta = metadata) => ({
-        id,
-        layer: vocabularyId,
-        form,
-        ...(Object.keys(meta).length ? { metadata: meta } : {}),
-      });
-      if (isNew) {
-        const withPlace = liveNewParent
-          ? withParentSet(tree, { metadata }, liveNewParent)
-          : metadata;
-        const created = await client.vocabItems.create(
-          vocabularyId,
-          form,
-          Object.keys(withPlace).length ? withPlace : undefined,
-        );
-        if (created?.id) setItems((prev) => [...prev, saved(created.id, withPlace)]);
-        // Replace: the `?item=new` step becomes the entry it created, so Back
-        // does not return to an empty form for an entry that now exists.
-        goItem(created?.id || null, { replace: true });
-        if (created?.id) dispatch({ type: 'draft/form', form });
-        notifySuccess('Entry created', 'Success');
-      } else {
-        const item = selectedItem;
-        if (form !== item.form) {
-          await client.vocabItems.update(item.id, form);
-        }
-        if (Object.keys(metadata).length > 0) {
-          await client.vocabItems.setMetadata(item.id, metadata);
-        } else if (item.metadata && Object.keys(item.metadata).length > 0) {
-          await client.vocabItems.deleteMetadata(item.id);
-        }
-        setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
-        dispatch({ type: 'draft/form', form });
-        notifySuccess('Entry updated', 'Success');
-      }
-    } catch (err) {
-      console.error('Error saving vocabulary item:', err);
-      notifyError('Failed to save the entry', 'Error');
+    // The structure the form does not edit (sense place, examples, import
+    // identity) is carried over from the entry as it is NOW, so a renumber
+    // or an example added while the form was open is not written back over
+    // by this save.
+    const metadata = {
+      ...(isNew ? {} : reservedMetadata(selectedItem?.metadata)),
+      ...cleanMeta(draft.fields),
+    };
+    const form = draft.form.trim();
+    // The saved entry is folded into `items` locally rather than re-fetching
+    // the vocabulary: a re-fetch pulls every entry in the lexicon back over
+    // the wire (thousands, for a FLEx import) to learn what we just wrote,
+    // and re-seats the whole tab while it is in flight. `items` carries the
+    // server's shape, so the patch mirrors it: no `metadata` key at all when
+    // there is none, since that is what the API returns.
+    const saved = (id, meta = metadata) => ({
+      id,
+      layer: vocabularyId,
+      form,
+      ...(Object.keys(meta).length ? { metadata: meta } : {}),
+    });
+    if (isNew) {
+      const withPlace = liveNewParent ? withParentSet(tree, { metadata }, liveNewParent) : metadata;
+      const id = pendingId();
+      setItems((prev) => [...prev, saved(id, withPlace)]);
+      // Replace: the `?item=new` step becomes the entry it created, so Back
+      // does not return to an empty form for an entry that now exists.
+      goItem(id, { replace: true });
+      dispatch({ type: 'draft/form', form });
+      notifySuccess('Entry created', 'Success');
+      sendInTurn(
+        `Add entry "${form}"`,
+        async () => {
+          const meta = followIds(withPlace);
+          const created = await client.vocabItems.create(
+            vocabularyId,
+            form,
+            Object.keys(meta).length ? meta : undefined,
+          );
+          settleEntries(new Map([[id, created?.id]]));
+        },
+        'Failed to save the entry',
+      );
+      return;
     }
+    const item = selectedItem;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
+    dispatch({ type: 'draft/form', form });
+    notifySuccess('Entry updated', 'Success');
+    sendInTurn(
+      `Edit entry "${form}"`,
+      async () => {
+        const id = settledId(item.id);
+        if (form !== item.form) await client.vocabItems.update(id, form);
+        const meta = followIds(metadata);
+        if (Object.keys(meta).length > 0) {
+          await client.vocabItems.setMetadata(id, meta);
+        } else if (item.metadata && Object.keys(item.metadata).length > 0) {
+          await client.vocabItems.deleteMetadata(id);
+        }
+      },
+      'Failed to save the entry',
+    );
   };
 
   // What deleting the open entry would touch besides itself: the senses under
@@ -693,54 +735,55 @@ export const VocabularyItems = ({
   const deleteFreesSenses = !!tree.childrenOf.get(selectedItem?.id)?.length;
   const handleConfirmDelete = async () => {
     if (!selectedItem) return;
-    try {
-      const deletedId = selectedItem.id;
-      if (deleteRefPatches.length) {
-        // A headword with many senses, or a root with many variants, is one
-        // repoint per referring entry: the same walk the load-time repair
-        // does, so the same bulk write.
-        await client.withOperation(`Delete entry "${selectedItem.form}"`, async () => {
-          await bulkRepoint(deleteRefPatches, metadataNow(items));
-          await client.vocabItems.delete(deletedId);
-        });
-        foldPatches(deleteRefPatches);
-      } else {
-        await client.vocabItems.delete(deletedId);
-      }
-      dispatch({ type: 'dialog/close' });
-      goItem(null, { replace: true });
-      setItems((prev) => prev.filter((i) => i.id !== deletedId));
-      notifySuccess('Entry deleted', 'Success');
-    } catch (err) {
-      console.error('Error deleting vocabulary item:', err);
-      notifyError('Failed to delete the entry', 'Error');
-    }
+    const deletedId = selectedItem.id;
+    // A headword with many senses, or a root with many variants, is one
+    // repoint per referring entry: the same walk the load-time repair does,
+    // so the same bulk write.
+    const patches = deleteRefPatches;
+    const before = metadataNow(items);
+    dispatch({ type: 'dialog/close' });
+    goItem(null, { replace: true });
+    if (patches.length) foldPatches(patches);
+    setItems((prev) => prev.filter((i) => i.id !== deletedId));
+    notifySuccess('Entry deleted', 'Success');
+    sendInTurn(
+      `Delete entry "${selectedItem.form}"`,
+      async () => {
+        if (patches.length) await bulkRepoint(patches, before);
+        await client.vocabItems.delete(settledId(deletedId));
+      },
+      'Failed to delete the entry',
+    );
   };
 
   // ---- dictionary: placing senses, examples ----
   // Each of these writes the entry's stored metadata, not the draft: the
   // draft is re-seeded from the result unless the user has unsaved edits,
   // which stay theirs.
-  const commitMetadata = async (id, metadata, label) => {
-    await client.withOperation(label, async () => writeMetadata(id, metadata));
-    foldPatches([{ id, metadata }]);
+  const commitPatches = (patches, label, failure) => {
+    foldPatches(patches);
+    return sendInTurn(
+      label,
+      async () => {
+        for (const p of patches) await writeMetadata(p.id, p.metadata);
+      },
+      failure,
+    );
   };
+  const commitMetadata = (id, metadata, label, failure) =>
+    commitPatches([{ id, metadata }], label, failure);
   // Make `id` a sense of `parentId` (last), or, with null, its own entry.
   const handleMoveUnder = async (id, parentId) => {
     const moving = tree.byId.get(id);
     if (!moving) return;
-    try {
-      await commitMetadata(
-        id,
-        withParentSet(tree, moving, parentId),
-        parentId
-          ? `Make "${moving.form}" a sense of "${tree.byId.get(parentId)?.form ?? ''}"`
-          : `Make "${moving.form}" its own entry`,
-      );
-    } catch (err) {
-      console.error('Moving the entry failed:', err);
-      notifyError('Failed to move the entry', 'Error');
-    }
+    commitMetadata(
+      id,
+      withParentSet(tree, moving, parentId),
+      parentId
+        ? `Make "${moving.form}" a sense of "${tree.byId.get(parentId)?.form ?? ''}"`
+        : `Make "${moving.form}" its own entry`,
+      'Failed to move the entry',
+    );
   };
   // A new headword over `id`, with the same form, taking its place: the
   // entry becomes that headword's first sense. How one meaning becomes two.
@@ -758,95 +801,91 @@ export const VocabularyItems = ({
       });
       if (!ok) return;
     }
-    try {
-      let created = null;
-      await client.withOperation(`Add a headword over "${it.form}"`, async () => {
-        const above = tree.parentOf.get(id);
-        const place = above
-          ? { parent: above, senseOrder: it.metadata?.senseOrder ?? nextSenseOrder(tree, above) }
-          : {};
-        // What belongs to the ENTRY goes up with the new headword: its place
-        // among the entries spelled alike, the FLEx entry it came from, and
-        // every headword-only field. Left below, they would sit on a sense,
-        // where the form does not even show them. The morph type and lexeme
-        // form go to both: the interlinear line reads the morph type off the
-        // item a token is linked to, which stays the sense.
-        const { entry, sense } = splitEntryLevel(it.metadata, fields);
-        const headMeta = { ...entry, ...place };
-        created = await client.vocabItems.create(
+    const above = tree.parentOf.get(id);
+    const place = above
+      ? { parent: above, senseOrder: it.metadata?.senseOrder ?? nextSenseOrder(tree, above) }
+      : {};
+    // What belongs to the ENTRY goes up with the new headword: its place
+    // among the entries spelled alike, the FLEx entry it came from, and every
+    // headword-only field. Left below, they would sit on a sense, where the
+    // form does not even show them. The morph type and lexeme form go to
+    // both: the interlinear line reads the morph type off the item a token is
+    // linked to, which stays the sense.
+    const { entry, sense } = splitEntryLevel(it.metadata, fields);
+    const headMeta = { ...entry, ...place };
+    const headId = pendingId();
+    const senseMeta = { ...sense, parent: headId, senseOrder: 1 };
+    setItems((prev) => [
+      ...prev,
+      {
+        id: headId,
+        layer: vocabularyId,
+        form: it.form,
+        ...(Object.keys(headMeta).length ? { metadata: headMeta } : {}),
+      },
+    ]);
+    foldPatches([{ id, metadata: senseMeta }]);
+    // The split moved the headword-only fields off this item, so the open
+    // draft is re-seeded from it. Left alone it reads dirty without an edit,
+    // and a Save would put those fields back on the sense.
+    dispatch({ type: 'draft/unseed' });
+    sendInTurn(
+      `Add a headword over "${it.form}"`,
+      async () => {
+        const meta = followIds(headMeta);
+        const created = await client.vocabItems.create(
           vocabularyId,
           it.form,
-          Object.keys(headMeta).length ? headMeta : undefined,
+          Object.keys(meta).length ? meta : undefined,
         );
-        await writeMetadata(id, { ...sense, parent: created.id, senseOrder: 1 });
-      });
-      // One GET to resync rather than folding the new entry in by hand. The
-      // split moved the headword-only fields off this item, so the open draft
-      // is re-seeded from what came back. Left alone it reads dirty without an
-      // edit, and a Save would put those fields back on the sense.
-      dispatch({ type: 'draft/unseed' });
-      await fetchItems({ quiet: true });
-    } catch (err) {
-      console.error('Adding the headword failed:', err);
-      notifyError('Failed to add the headword', 'Error');
-    }
+        const ids = new Map([[headId, created?.id]]);
+        await writeMetadata(settledId(id), {
+          ...followIds(sense),
+          parent: created.id,
+          senseOrder: 1,
+        });
+        settleEntries(ids);
+      },
+      'Failed to add the headword',
+    );
   };
   // A drop in the sense tree: before or after a sense, into one, or out.
   const handleSenseDrop = async (id, target) => {
     const patches = planSenseDrop(tree, id, target);
     if (!patches.length) return;
     const moving = tree.byId.get(id);
-    try {
-      await client.withOperation(`Move "${moving?.form ?? ''}"`, async () => {
-        for (const p of patches) await writeMetadata(p.id, p.metadata);
-      });
-      foldPatches(patches);
-    } catch (err) {
-      console.error('Moving the sense failed:', err);
-      notifyError('Failed to move the sense', 'Error');
-    }
+    commitPatches(patches, `Move "${moving?.form ?? ''}"`, 'Failed to move the sense');
   };
   // The entries spelled like the open one, reordered by dragging in the
   // homograph dialog: their numbers are written 1..n under one operation.
   const handleHomographOrder = async (orderedIds) => {
     const patches = planHomographOrder(homographs, orderedIds);
     if (!patches.length) return;
-    try {
-      await client.withOperation(
-        `Reorder the entries spelled "${homographs[0]?.form ?? ''}"`,
-        async () => {
-          for (const p of patches) await writeMetadata(p.id, p.metadata);
-        },
-      );
-      foldPatches(patches);
-    } catch (err) {
-      console.error('Reordering homographs failed:', err);
-      notifyError('Failed to reorder the entries', 'Error');
-    }
+    commitPatches(
+      patches,
+      `Reorder the entries spelled "${homographs[0]?.form ?? ''}"`,
+      'Failed to reorder the entries',
+    );
   };
   const handleAddExample = async (docId, tokenId) => {
     if (!selectedItem) return;
     const next = withExampleAdded(selectedItem.metadata, { document: docId, token: tokenId });
     if (next === selectedItem.metadata) return;
-    try {
-      await commitMetadata(selectedItem.id, next, `Add an example to "${selectedItem.form}"`);
-    } catch (err) {
-      console.error('Adding the example failed:', err);
-      notifyError('Failed to add the example', 'Error');
-    }
+    commitMetadata(
+      selectedItem.id,
+      next,
+      `Add an example to "${selectedItem.form}"`,
+      'Failed to add the example',
+    );
   };
   const handleRemoveExample = async (index) => {
     if (!selectedItem) return;
-    try {
-      await commitMetadata(
-        selectedItem.id,
-        withExampleRemoved(selectedItem.metadata, index),
-        `Remove an example from "${selectedItem.form}"`,
-      );
-    } catch (err) {
-      console.error('Removing the example failed:', err);
-      notifyError('Failed to remove the example', 'Error');
-    }
+    commitMetadata(
+      selectedItem.id,
+      withExampleRemoved(selectedItem.metadata, index),
+      `Remove an example from "${selectedItem.form}"`,
+      'Failed to remove the example',
+    );
   };
 
   // ---- TSV export (Form + every field + Uses) ----

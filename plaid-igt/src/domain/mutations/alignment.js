@@ -7,16 +7,17 @@
 // linking audio/video time to text. Editing the alignment's text also edits
 // the body, which triggers the server's text-edit cascade. That cascade is
 // mirrored locally (../textEdits.js) so create/edit/delete patch the document
-// in place from the batch's returned ids: a refetch grows with the document
-// and was the lag between Enter and the row appearing. Every mutation here
-// still falls back to a reload when the server's answer lacks what the patch
-// needs, and `_queueWrite` reloads on any failure.
+// before the request goes out, a new segment under a pending id: a refetch
+// grows with the document and was the lag between Enter and the row
+// appearing. A create still falls back to a reload when the server's answer
+// lacks the ids, and `_queueWrite` reloads on any failure.
 //
 // Offsets (token begin/end, text-edit op index/value) are Unicode CODE POINTS,
 // so measurement and slicing use cpLength/cpSlice, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
 import { cpLength, cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
 
@@ -202,43 +203,12 @@ export const alignmentMutations = {
     const textOps = [{ type: 'insert', index: insertBegin, value: insertedText }];
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
-    return this._queueWrite('Failed to create alignment', async () => {
-      const results = await this._client.batched(async (b) => {
-        b.texts.update(textId, textOps);
-        b.tokens.create(alignmentTokenLayer.id, textId, tokenBegin, tokenEnd, undefined, meta);
-        if (seedSentence) {
-          b.tokens.bulkCreate([
-            {
-              tokenLayerId: sentenceTokenLayer.id,
-              text: textId,
-              begin: 0,
-              end: newTextLength,
-            },
-          ]);
-        }
-      });
-      const newId = results?.[1]?.body?.id;
-      const seededId = seedSentence ? results?.[2]?.body?.ids?.[0] : null;
-      if (!newId || (seedSentence && !seededId)) {
-        await this._reload(); // the batch answered without the ids the patch needs
-      } else {
-        this._applyRawPatch((next, infoNext, vocabs) => {
-          applyTextEditsLocally(next, textId, textOps, vocabs);
-          pushAlignmentToken(infoNext, {
-            id: newId,
-            text: textId,
-            begin: tokenBegin,
-            end: tokenEnd,
-            metadata: meta,
-          });
-          if (seededId) {
-            infoNext.sentenceTokenLayer.tokens = [
-              { id: seededId, text: textId, begin: 0, end: newTextLength },
-            ];
-          }
-        });
-      }
-      await this._rememberSpeaker(speaker);
+    return this._showSegmentWrite('Failed to create alignment', {
+      textId,
+      textOps,
+      token: { begin: tokenBegin, end: tokenEnd, metadata: meta },
+      seedLength: seedSentence ? newTextLength : null,
+      speaker,
     });
   },
 
@@ -334,52 +304,14 @@ export const alignmentMutations = {
     const seedSentence = cascadeWipesAllSentences && newTextLength > 0;
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
 
-    return this._queueWrite('Failed to edit alignment', async () => {
-      const results = await this._client.batched(async (b) => {
-        b.texts.update(textId, textOps);
-        b.tokens.create(
-          alignmentTokenLayer.id,
-          textId,
-          tokenBegin,
-          newAlignmentEnd,
-          undefined,
-          meta,
-        );
-        if (seedSentence) {
-          b.tokens.bulkCreate([
-            {
-              tokenLayerId: sentenceTokenLayer.id,
-              text: textId,
-              begin: 0,
-              end: newTextLength,
-            },
-          ]);
-        }
-      });
-      const newId = results?.[1]?.body?.id;
-      const seededId = seedSentence ? results?.[2]?.body?.ids?.[0] : null;
-      if (!newId || (seedSentence && !seededId)) {
-        await this._reload(); // the batch answered without the ids the patch needs
-      } else {
-        this._applyRawPatch((next, infoNext, vocabs) => {
-          // The delete removes the old alignment token (and any words inside
-          // the range, with their annotations); the insert shifts what follows.
-          applyTextEditsLocally(next, textId, textOps, vocabs);
-          pushAlignmentToken(infoNext, {
-            id: newId,
-            text: textId,
-            begin: tokenBegin,
-            end: newAlignmentEnd,
-            metadata: meta,
-          });
-          if (seededId) {
-            infoNext.sentenceTokenLayer.tokens = [
-              { id: seededId, text: textId, begin: 0, end: newTextLength },
-            ];
-          }
-        });
-      }
-      await this._rememberSpeaker(speaker);
+    // The delete removes the old alignment token (and any words inside the
+    // range, with their annotations); the insert shifts what follows.
+    return this._showSegmentWrite('Failed to edit alignment', {
+      textId,
+      textOps,
+      token: { begin: tokenBegin, end: newAlignmentEnd, metadata: meta },
+      seedLength: seedSentence ? newTextLength : null,
+      speaker,
     });
   },
 
@@ -439,20 +371,12 @@ export const alignmentMutations = {
     }
 
     const meta = { ...alignmentMeta(timeBegin, timeEnd, speaker), ...(this.createStamp || {}) };
-    return this._queueWrite('Failed to align baseline text', async () => {
-      const result = await this._client.tokens.create(
-        alignmentTokenLayer.id,
-        textId,
-        begin,
-        end,
-        undefined,
-        meta,
-      );
-      const newId = result?.id || result;
-      this._applyRawPatch((next, infoNext) => {
-        pushAlignmentToken(infoNext, { id: newId, text: textId, begin, end, metadata: meta });
-      });
-      await this._rememberSpeaker(speaker);
+    return this._showSegmentWrite('Failed to align baseline text', {
+      textId,
+      textOps: [],
+      token: { begin, end, metadata: meta },
+      seedLength: null,
+      speaker,
     });
   },
 
@@ -481,13 +405,13 @@ export const alignmentMutations = {
       return false;
     }
 
+    const label = 'Failed to delete segment';
+    if (!this._canWrite(label)) return false;
     if (!deleteText) {
-      return this._queueWrite('Failed to delete segment', async () => {
-        this._applyRawPatch((next, infoNext, vocabs) => {
-          removeTokensLocally(next, textId, [alignmentId], vocabs);
-        });
-        await this._client.tokens.delete(alignmentId);
+      this._applyRawPatch((next, infoNext, vocabs) => {
+        removeTokensLocally(next, textId, [alignmentId], vocabs);
       });
+      return this._queueWrite(label, () => this._client.tokens.delete(settledId(alignmentId)));
     }
 
     const currentText = this.body;
@@ -508,12 +432,12 @@ export const alignmentMutations = {
     // segment with text and fails for one with none: nothing to delete, no
     // cascade, and the segment the person had just confirmed deleting was
     // still there. The first real user found it on her empty segments.
-    return this._queueWrite('Failed to delete segment', async () => {
-      this._applyRawPatch((next, infoNext, vocabs) => {
-        removeTokensLocally(next, textId, [alignmentId], vocabs);
-        if (textOps.length) applyTextEditsLocally(next, textId, textOps, vocabs);
-      });
-      await this._client.tokens.delete(alignmentId);
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      removeTokensLocally(next, textId, [alignmentId], vocabs);
+      if (textOps.length) applyTextEditsLocally(next, textId, textOps, vocabs);
+    });
+    return this._queueWrite(label, async () => {
+      await this._client.tokens.delete(settledId(alignmentId));
       if (textOps.length) await this._client.texts.update(textId, textOps);
     });
   },
@@ -526,12 +450,12 @@ export const alignmentMutations = {
     const have = new Set((info.alignmentTokenLayer?.tokens || []).map((t) => t.id));
     const wanted = [...new Set(ids)].filter((id) => have.has(id));
     if (!textId || !wanted.length) return false;
-    return this._queueWrite('Failed to delete segments', async () => {
-      this._applyRawPatch((next, infoNext, vocabs) => {
-        removeTokensLocally(next, textId, wanted, vocabs);
-      });
-      await this._client.tokens.bulkDelete(wanted);
+    const label = 'Failed to delete segments';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      removeTokensLocally(next, textId, wanted, vocabs);
     });
+    return this._queueWrite(label, () => this._client.tokens.bulkDelete(wanted.map(settledId)));
   },
 
   // Resize: just metadata. No text edit, no cascade. Patches the alignment's
@@ -580,20 +504,22 @@ export const alignmentMutations = {
       return false;
     }
 
-    return this._queueWrite('Failed to update alignment boundaries', async () => {
-      // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
-      // drag must preserve the segment's provenance (prov/provSource/provDetail),
-      // and per the cross-app convention a person's edit carries the writer's
-      // stamp (write-contract rule 3: a verifier's confirms a machine-made or
-      // contributed segment, a contributor's marks it contributed). setMetadata
-      // would wipe prov, recording a machine-made segment as origin-less.
-      const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
-      await this._client.tokens.patchMetadata(alignmentId, metadataOps(patch));
-      this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-        if (t) t.metadata = mergeMetadata(t.metadata, patch);
-      });
+    const label = 'Failed to update alignment boundaries';
+    if (!this._canWrite(label)) return false;
+    // PATCH (shallow-merge), not setMetadata (full replace): a manual boundary
+    // drag must preserve the segment's provenance (prov/provSource/provDetail),
+    // and per the cross-app convention a person's edit carries the writer's
+    // stamp (write-contract rule 3: a verifier's confirms a machine-made or
+    // contributed segment, a contributor's marks it contributed). setMetadata
+    // would wipe prov, recording a machine-made segment as origin-less.
+    const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
+    this._applyRawPatch((next, infoNext) => {
+      const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
+      if (t) t.metadata = mergeMetadata(t.metadata, patch);
     });
+    return this._queueWrite(label, () =>
+      this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch)),
+    );
   },
 
   // Speaker-only edit (diarization): patch just the `speaker` label on an
@@ -608,38 +534,79 @@ export const alignmentMutations = {
       return false;
     }
     const value = (speaker || '').trim();
-    return this._queueWrite('Failed to update speaker', async () => {
-      // A person's edit carries the writer's stamp (write-contract rule 3),
-      // and choosing a segment's speaker is one.
-      const verify = this.editStamp(token.metadata) || {};
-      await this._client.tokens.patchMetadata(
-        alignmentId,
-        metadataOps({ speaker: value || null, ...verify }),
-      );
-      this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
-        if (t) {
-          t.metadata = mergeMetadata(t.metadata, verify);
-          if (value) t.metadata.speaker = value;
-          else delete t.metadata.speaker;
-        }
-      });
+    const label = 'Failed to update speaker';
+    if (!this._canWrite(label)) return false;
+    // A person's edit carries the writer's stamp (write-contract rule 3), and
+    // choosing a segment's speaker is one. A blank clears it (a delete op).
+    const patch = { speaker: value || null, ...(this.editStamp(token.metadata) || {}) };
+    this._applyRawPatch((next, infoNext) => {
+      const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
+      if (t) t.metadata = mergeMetadata(t.metadata, patch);
+    });
+    return this._queueWrite(label, async () => {
+      await this._client.tokens.patchMetadata(settledId(alignmentId), metadataOps(patch));
       await this._rememberSpeaker(value);
     });
   },
 
   // Delete every alignment token. No text edit; alignments live on their own
-  // layer and don't partition the body. Reload after because individual
-  // patches would be too noisy.
+  // layer and don't partition the body.
   async clearAlignments() {
     const info = this.layerInfo;
+    const textId = info.primaryTextLayer?.text?.id;
     const alignmentTokens = info.alignmentTokenLayer?.tokens || [];
     if (alignmentTokens.length === 0) return false;
+    const label = 'Failed to clear alignments';
+    if (!this._canWrite(label)) return false;
     const ids = alignmentTokens.map((t) => t.id);
+    this._applyRawPatch((next, infoNext, vocabs) => removeTokensLocally(next, textId, ids, vocabs));
+    return this._queueWrite(label, () => this._client.tokens.bulkDelete(ids.map(settledId)));
+  },
 
-    return this._queueWrite('Failed to clear alignments', async () => {
-      await this._client.tokens.bulkDelete(ids);
-      await this._reload();
+  // A segment written with a text edit or over text already there, shown at
+  // once: the edit mirrored locally (textEdits.js), the segment under a
+  // pending id, and a first sentence under another when the edit leaves the
+  // partition empty (`seedLength`, the body's new length). The segment and
+  // the sentence are made in ONE batch with the text edit.
+  _showSegmentWrite(label, { textId, textOps, token, seedLength, speaker }) {
+    if (!this._canWrite(label)) return false;
+    const info = this.layerInfo;
+    const alignmentLayerId = info.alignmentTokenLayer.id;
+    const sentenceLayerId = info.sentenceTokenLayer.id;
+    const segment = { id: pendingId(), text: textId, ...token };
+    const seeded =
+      seedLength != null ? { id: pendingId(), text: textId, begin: 0, end: seedLength } : null;
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      if (textOps.length) applyTextEditsLocally(next, textId, textOps, vocabs);
+      pushAlignmentToken(infoNext, { ...segment });
+      if (seeded) infoNext.sentenceTokenLayer.tokens = [{ ...seeded }];
+    });
+    return this._queueWrite(label, async () => {
+      const results = await this._client.batched(async (b) => {
+        if (textOps.length) b.texts.update(textId, textOps);
+        b.tokens.create(
+          alignmentLayerId,
+          textId,
+          segment.begin,
+          segment.end,
+          undefined,
+          segment.metadata,
+        );
+        if (seeded) {
+          b.tokens.bulkCreate([
+            { tokenLayerId: sentenceLayerId, text: textId, begin: 0, end: seeded.end },
+          ]);
+        }
+      });
+      const at = textOps.length ? 1 : 0;
+      const ids = new Map([[segment.id, results?.[at]?.body?.id]]);
+      if (seeded) ids.set(seeded.id, results?.[at + 1]?.body?.ids?.[0]);
+      if ([...ids.values()].some((id) => !id)) {
+        await this._reload(); // the batch answered without the ids the patch needs
+      } else {
+        this._settle(ids);
+      }
+      await this._rememberSpeaker(speaker);
     });
   },
 };

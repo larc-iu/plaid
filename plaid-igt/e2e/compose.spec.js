@@ -19,6 +19,8 @@ async function openAnalyze(page, projectId, documentId) {
 // already has loaded keeps the IgtDocument in memory, typed-in values and all.
 // Anything that has to prove a value reached the server reloads.
 async function reloadAnalyze(page, projectId, documentId) {
+  // Edits show before they are saved: wait for the save before leaving.
+  await expect(page.locator('.igt-status[data-state="saving"]')).toHaveCount(0);
   await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
   await page.reload();
   await page.waitForLoadState('networkidle');
