@@ -56,3 +56,20 @@ def test_merge_metadata_is_apply_over_metadata_ops():
     m = {'prov': 'inferred', 'provConfirmed': True, 'keep': 1}
     fragment = contribute_on_edit(m, 'u@example.org')
     assert merge_metadata(m, fragment) == apply_metadata_ops(m, metadata_ops(fragment))
+
+
+@pytest.mark.parametrize('key', ['', '   ', '\u2003', 'a\u0001b', 'a\u007f', 'x' * 201, '🙂' * 101])
+def test_apply_metadata_ops_refuses_the_top_level_keys_the_server_refuses(key):
+    with pytest.raises(ValueError, match='Invalid metadata key'):
+        apply_metadata_ops({}, [{'op': 'set', 'path': [key], 'value': 1}])
+    with pytest.raises(ValueError, match='Invalid metadata key'):
+        apply_metadata_ops({}, [{'op': 'delete', 'path': [key]}])
+
+
+@pytest.mark.parametrize('key', ['x' * 200, '\u00a0', 'N/A', '🙂' * 100])
+def test_apply_metadata_ops_takes_the_keys_the_server_takes(key):
+    assert apply_metadata_ops({}, [{'op': 'set', 'path': [key], 'value': 1}]) == {key: 1}
+
+
+def test_apply_metadata_ops_checks_only_the_first_key():
+    assert apply_metadata_ops({}, [{'op': 'set', 'path': ['a', ''], 'value': 1}]) == {'a': {'': 1}}

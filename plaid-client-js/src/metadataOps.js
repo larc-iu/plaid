@@ -5,6 +5,29 @@
  * nested metadata, the first a top-level key. See the manual, "Metadata".
  */
 
+// The longest top-level key the server takes, in UTF-16 code units (Java's
+// String length, which is what it counts).
+const MAX_KEY_LENGTH = 200;
+
+// Java's Character.isWhitespace, which the server's blank check uses: the
+// Unicode space separators except the three no-break spaces, and the ASCII
+// whitespace controls.
+const isJavaWhitespace = (c) =>
+  (/[\p{Zs}\p{Zl}\p{Zp}]/u.test(c) && c !== '\u00A0' && c !== '\u2007' && c !== '\u202F') ||
+  /[\t\n\u000B\f\r\u001C-\u001F]/.test(c);
+
+/**
+ * True when the server accepts `k` as a top-level metadata key: not blank,
+ * at most 200 UTF-16 code units, and no ASCII control character.
+ * @param {string} k
+ * @returns {boolean}
+ */
+const validMetadataKey = (k) =>
+  typeof k === 'string' &&
+  k.length <= MAX_KEY_LENGTH &&
+  !/[\u0000-\u001F\u007F]/.test(k) &&
+  ![...k].every(isJavaWhitespace);
+
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /**
@@ -42,7 +65,8 @@ const applyOp = (node, path, depth, o) => {
 /**
  * Apply ops to a local copy of an entity's metadata the way the server does,
  * for an optimistic update. Returns a new object and never mutates its input.
- * Throws where the server would refuse (a path through a non-object).
+ * Throws where the server would refuse (a path through a non-object, or a
+ * first key that is blank, over 200 characters or holds a control character).
  * @param {Object|null|undefined} metadata
  * @param {Array<{op: string, path: string[], value?: any}>} ops
  * @returns {Object}
@@ -51,6 +75,9 @@ export const applyMetadataOps = (metadata, ops) =>
   (ops || []).reduce((m, o) => {
     if (!Array.isArray(o.path) || o.path.length === 0) {
       throw new Error('A metadata op needs a non-empty path');
+    }
+    if (!validMetadataKey(o.path[0])) {
+      throw new Error('Invalid metadata key');
     }
     if (o.op !== 'set' && o.op !== 'delete') {
       throw new Error(`Unknown metadata op '${o.op}': expected set or delete`);

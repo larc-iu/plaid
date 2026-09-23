@@ -6,8 +6,35 @@ into the nested metadata, the first a top-level key. See the manual,
 """
 
 import copy
+import unicodedata
 
 _ABSENT = object()
+
+# The longest top-level key the server takes, in UTF-16 code units (Java's
+# String length, which is what it counts).
+_MAX_KEY_LENGTH = 200
+
+# Java's Character.isWhitespace, which the server's blank check uses: the
+# Unicode space separators except the three no-break spaces, and the ASCII
+# whitespace controls.
+_NO_BREAK_SPACES = {"\u00a0", "\u2007", "\u202f"}
+
+
+def _java_whitespace(c):
+    return (
+        unicodedata.category(c) in ("Zs", "Zl", "Zp") and c not in _NO_BREAK_SPACES
+    ) or c in "\t\n\u000b\f\r\u001c\u001d\u001e\u001f"
+
+
+def _valid_metadata_key(k):
+    """True when the server accepts ``k`` as a top-level metadata key: not
+    blank, at most 200 UTF-16 code units, and no ASCII control character."""
+    return (
+        isinstance(k, str)
+        and len(k.encode("utf-16-le")) // 2 <= _MAX_KEY_LENGTH
+        and not any(ord(c) <= 0x1F or ord(c) == 0x7F for c in k)
+        and not all(_java_whitespace(c) for c in k)
+    )
 
 
 def metadata_ops(fragment):
@@ -43,12 +70,15 @@ def apply_metadata_ops(metadata, ops):
     """Apply ops to a local copy of an entity's metadata the way the server
     does, for an optimistic update. Returns a new dict and never mutates its
     input. Raises ValueError where the server would refuse (a path through a
-    non-object)."""
+    non-object, or a first key that is blank, over 200 characters or holds a
+    control character)."""
     out = dict(metadata or {})
     for op in ops or []:
         path = op.get("path")
         if not isinstance(path, (list, tuple)) or not path:
             raise ValueError("A metadata op needs a non-empty path")
+        if not _valid_metadata_key(path[0]):
+            raise ValueError("Invalid metadata key")
         if op.get("op") not in ("set", "delete"):
             raise ValueError(f"Unknown metadata op {op.get('op')!r}: expected set or delete")
         if op["op"] == "set" and "value" not in op:

@@ -62,3 +62,17 @@ test("mergeMetadata is applyMetadataOps over metadataOps", () => {
   const fragment = contributeOnEdit(m, "u@example.org");
   assert.deepEqual(mergeMetadata(m, fragment), applyMetadataOps(m, metadataOps(fragment)));
 });
+
+test("applyMetadataOps refuses the top-level keys the server refuses", () => {
+  const bad = ["", "   ", "\u2003", "a\u0001b", "a\u007f", "x".repeat(201), "🙂".repeat(101)];
+  for (const k of bad) {
+    assert.throws(() => applyMetadataOps({}, [{ op: "set", path: [k], value: 1 }]), /Invalid metadata key/, JSON.stringify(k));
+    assert.throws(() => applyMetadataOps({}, [{ op: "delete", path: [k] }]), /Invalid metadata key/);
+  }
+  const good = ["x".repeat(200), "\u00a0", "N/A", "🙂".repeat(100)];
+  for (const k of good) {
+    assert.deepEqual(applyMetadataOps({}, [{ op: "set", path: [k], value: 1 }]), { [k]: 1 });
+  }
+  // Only the first key is checked, as on the server.
+  assert.deepEqual(applyMetadataOps({}, [{ op: "set", path: ["a", ""], value: 1 }]), { a: { "": 1 } });
+});
