@@ -250,10 +250,27 @@ const uninstall = () => {
   if (!gone) return;
   // Deferred: a draft that comes straight back (a new phrase for the same
   // field, a remount) must not take the history entry out and put it in again.
+  //
+  // A draft can still come and go faster than the traversal that takes the
+  // entry out. So one traversal at a time: a second would go back past this
+  // page, off the app or to a blank tab. It is this module's own, and its
+  // popstate is not the Back question. And a draft that came back while it
+  // was on its way gets the entry put back in front of it.
   queueMicrotask(async () => {
-    if (installed !== gone || drafts.size) return;
-    await dropStop();
-    if (installed !== gone || drafts.size) return;
+    if (installed !== gone || drafts.size || gone.dropping) return;
+    gone.dropping = true;
+    leaving += 1;
+    try {
+      await dropStop();
+    } finally {
+      leaving -= 1;
+      gone.dropping = false;
+    }
+    if (installed !== gone) return;
+    if (drafts.size) {
+      gone.arm();
+      return;
+    }
     installed = null;
     gone.teardown();
   });

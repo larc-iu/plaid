@@ -137,6 +137,48 @@ describe('an unsaved draft', () => {
     expect(idx()).toBe(0);
   });
 
+  // A draft can come and go faster than the traversal that takes the entry
+  // out: a field that reads as typed for one render on load, a rename that is
+  // refused and put back. The page must stay where it is either way.
+  // The test browser lands a traversal at once. A real one takes a moment,
+  // which is the window these two are about.
+  const slowTraversals = () => {
+    const go = window.history.go.bind(window.history);
+    return vi.spyOn(window.history, 'go').mockImplementation((n) => {
+      setTimeout(() => go(n), 5);
+    });
+  };
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+  it('stays on the page when a draft comes and goes twice before its entry is out', async () => {
+    const spy = slowTraversals();
+    await mount('The graph you have typed');
+    await view.rerender(<Harness what={null} />);
+    await view.rerender(<Harness what="The graph you have typed" />);
+    await view.rerender(<Harness what={null} />);
+    await settle();
+    spy.mockRestore();
+    expect(window.history.state?.key).toBe(pageKey);
+    expect(idx()).toBe(0);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('puts the entry back for a draft that returns while its entry is being taken out', async () => {
+    const spy = slowTraversals();
+    await mount('The graph you have typed');
+    await view.rerender(<Harness what={null} />);
+    await view.rerender(<Harness what="The graph you have typed" />);
+    await settle();
+    spy.mockRestore();
+    expect(window.history.state?.key).toBe(pageKey);
+    expect(idx()).toBe(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(hasUnsavedDraft()).toBe('The graph you have typed');
+  });
+
   it('asks before an in-app link takes the page, and stays put on no', async () => {
     await mount('The graph you have typed');
     expect(hasUnsavedDraft()).toBe('The graph you have typed');
