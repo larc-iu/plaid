@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
 import { planMorphTypeSync } from './igtReconcile.js';
@@ -240,18 +241,18 @@ describe('morpheme type', () => {
     const ok = await doc.setMorphemeType('m-1', 'enclitic');
     expect(ok).toBe(true);
     const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(call.args[1]).toEqual({ morphType: 'enclitic' });
+    expect(call.args[1]).toEqual([{ op: 'set', path: ['morphType'], value: 'enclitic' }]);
     expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({
       form: 'ab',
       morphType: 'enclitic',
     });
   });
 
-  it('setMorphemeType(null) clears the type (patch null deletes the key)', async () => {
+  it('setMorphemeType(null) clears the type with a delete op', async () => {
     const doc = typedDoc();
     await doc.setMorphemeType('m-1', null);
     const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(call.args[1]).toEqual({ morphType: null });
+    expect(call.args[1]).toEqual([{ op: 'delete', path: ['morphType'] }]);
     expect(doc.sentences[0].tokens[0].morphemes[0].metadata).toEqual({ form: 'ab' });
   });
 
@@ -315,7 +316,7 @@ describe('morph type from the linked lexicon entry', () => {
     const res = await doc.reconcileOnOpen();
     expect(res.syncedMorphTypes).toBe(1);
     const call = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(call.args).toEqual(['m-2', { morphType: 'enclitic' }]);
+    expect(call.args).toEqual(['m-2', [{ op: 'set', path: ['morphType'], value: 'enclitic' }]]);
     expect(doc.sentences[0].tokens[0].morphemes[1].metadata.morphType).toBe('enclitic');
     // idempotent
     doc.client.calls.length = 0;
@@ -331,7 +332,10 @@ describe('morph type from the linked lexicon entry', () => {
     const k = kinds(doc.client);
     expect(k).toContain('vocabItems.patchMetadata');
     const tokPatch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(tokPatch.args).toEqual(['m-2', { morphType: 'proclitic' }]);
+    expect(tokPatch.args).toEqual([
+      'm-2',
+      [{ op: 'set', path: ['morphType'], value: 'proclitic' }],
+    ]);
     expect(k.indexOf('batch.submit')).toBeGreaterThan(k.indexOf('vocabItems.patchMetadata'));
     const m = doc.sentences[0].tokens[0].morphemes[1];
     expect(m.morphType).toBe('proclitic');
@@ -564,13 +568,13 @@ describe('word-token structural ops', () => {
     expect(patches).toHaveLength(2);
     // The surviving half: confirmed by the edit. Its orthography is the user's
     // and is left for them to correct.
-    expect(patches[0].args[1]).toEqual({ provConfirmed: true });
+    expect(patches[0].args[1]).toEqual([{ op: 'set', path: ['provConfirmed'], value: true }]);
     // The new half: the origin and the confirmation, and nothing else.
-    expect(patches[1].args[1]).toEqual({
-      prov: 'inferred',
-      provSource: 'service:tok',
-      provConfirmed: true,
-    });
+    expect(patches[1].args[1]).toEqual([
+      { op: 'set', path: ['prov'], value: 'inferred' },
+      { op: 'set', path: ['provSource'], value: 'service:tok' },
+      { op: 'set', path: ['provConfirmed'], value: true },
+    ]);
   });
 
   it('splitToken writes no metadata at all for a word a person made', async () => {
@@ -598,11 +602,11 @@ describe('word-token structural ops', () => {
     const patches = doc._client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
     expect(patches).toHaveLength(1);
     expect(patches[0].args[0]).toBe('w-1');
-    expect(patches[0].args[1]).toEqual({
-      prov: 'inferred',
-      provSource: 'service:tok',
-      provConfirmed: true,
-    });
+    expect(patches[0].args[1]).toEqual([
+      { op: 'set', path: ['prov'], value: 'inferred' },
+      { op: 'set', path: ['provSource'], value: 'service:tok' },
+      { op: 'set', path: ['provConfirmed'], value: true },
+    ]);
   });
 
   it('splitToken deletes a coincident morpheme in the same batch', async () => {
@@ -891,7 +895,7 @@ describe('vocab links (read path must reflect optimistic write)', () => {
 
     const patches = doc.client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
     expect(patches).toHaveLength(1);
-    expect(patches[0].args).toEqual(['m-1', { morphType: 'stem' }]);
+    expect(patches[0].args).toEqual(['m-1', [{ op: 'set', path: ['morphType'], value: 'stem' }]]);
     // One operation, so one audit entry rather than a link now and a repair later.
     expect(doc.client.calls.filter((c) => c.kind === 'batch.submit')).toHaveLength(1);
     // And reconcile has nothing left to do.
@@ -1281,7 +1285,10 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     const doc = makeDoc({ raw });
     expect(await doc.updateAlignmentSpeaker('a-1', 'Ana')).toBe(true);
     const patch = doc.client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(patch.args[1]).toEqual({ speaker: 'Ana', provConfirmed: true });
+    expect(patch.args[1]).toEqual([
+      { op: 'set', path: ['speaker'], value: 'Ana' },
+      { op: 'set', path: ['provConfirmed'], value: true },
+    ]);
     expect(doc.alignmentTokens[0].metadata).toEqual({
       timeBegin: 0,
       timeEnd: 1,
@@ -1669,8 +1676,9 @@ describe('who is writing (provenance)', () => {
 
     await doc.updateMorphemeForm('m-1', 'ca');
     const patch = client.calls.find((c) => c.kind === 'tokens.patchMetadata');
-    expect(patch.args[1]).toEqual({ form: 'ca', ...CONTRIBUTED, provConfirmed: null });
-    // The local copy applies the patch as the server does: null deletes.
+    expect(patch.args[1]).toEqual(metadataOps({ form: 'ca', ...CONTRIBUTED, provConfirmed: null }));
+    expect(patch.args[1]).toContainEqual({ op: 'delete', path: ['provConfirmed'] });
+    // The local copy applies the patch as the server does.
     const m = doc.sentences[0].tokens[0].morphemes[0];
     expect(m.metadata.prov).toBe('contributed');
     expect('provConfirmed' in m.metadata).toBe(false);
@@ -1840,12 +1848,14 @@ describe('discardWordAnalysis', () => {
     expect(calls.filter((c) => c.kind === 'spans.delete').map((c) => c.args[0])).toEqual(['sp-1']);
     const reset = calls.find((c) => c.kind === 'tokens.patchMetadata');
     expect(reset.args[0]).toBe('m-1');
-    expect(reset.args[1]).toMatchObject({
-      form: null,
-      morphType: null,
-      prov: null,
-      provSource: null,
-    });
+    expect(reset.args[1]).toEqual(
+      expect.arrayContaining([
+        { op: 'delete', path: ['form'] },
+        { op: 'delete', path: ['morphType'] },
+        { op: 'delete', path: ['prov'] },
+        { op: 'delete', path: ['provSource'] },
+      ]),
+    );
     expect(kinds(doc.client)).not.toContain('tokens.update');
   });
 
@@ -1923,7 +1933,7 @@ describe('confirmSentenceSpan', () => {
     const doc = makeDoc({ raw });
     expect(await doc.confirmSentenceSpan(sid, 'Translation')).toBe(true);
     const patch = doc.client.calls.find((c) => c.kind === 'spans.patchMetadata');
-    expect(patch.args).toEqual(['tr-1', { provConfirmed: true }]);
+    expect(patch.args).toEqual(['tr-1', [{ op: 'set', path: ['provConfirmed'], value: true }]]);
     const span = doc.sentences[0].annotations.Translation;
     expect(span.value).toBe('the cat');
     expect(span.metadata).toMatchObject({ ...machine, provConfirmed: true });

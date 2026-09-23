@@ -15,10 +15,10 @@ import { FIELD_TYPES } from './vocabFields.js';
 /**
  * Bulk-update entries for every item whose value in `after.name` changes.
  *
- * Each write names ONE key: the new value, or null where the field can no
- * longer hold what was there, which is how a key is deleted. Nothing else on
- * the entry is sent, so a concurrent edit to another field cannot be undone by
- * this one.
+ * Each write is ONE metadata op on the field's key: a set of the new value,
+ * or a delete where the field can no longer hold what was there. Nothing else
+ * on the entry is sent, so a concurrent edit to another field cannot be undone
+ * by this one.
  *
  * `items` is the whole vocabulary, which is also what says which ids are live:
  * a reference to a deleted entry is not one that resolves.
@@ -38,7 +38,9 @@ export function fieldPruneWrites(items, after) {
       now = withRefIds(it.metadata, after, ids)[field] ?? null;
     }
     if (JSON.stringify(now) !== JSON.stringify(raw)) {
-      writes.push({ id: it.id, metadata: { [field]: now } });
+      const op =
+        now === null ? { op: 'delete', path: [field] } : { op: 'set', path: [field], value: now };
+      writes.push({ id: it.id, metadata: [op] });
     }
   }
   return writes;

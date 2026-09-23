@@ -212,13 +212,13 @@
       ;; One real rename, one no-op form, one metadata-only patch.
       (bulk-update-vocab-items admin-request
                                [{:id item :form "salutation"}
-                                {:id quiet :form "other" :metadata {"pos" "N"}}])
+                                {:id quiet :form "other" :metadata [{:op "set" :path ["pos"] :value "N"}]}])
       (assert-bumped! "vocab-item/bulk-merge" docs pre-versions)))
   (testing "a bulk update that renames nothing bumps nothing"
     (let [{:keys [item docs]} (setup-fixture! "ItemBulkMergeNoop")
           pre-versions (mapv (comp doc-version :doc) docs)]
       (bulk-update-vocab-items admin-request
-                               [{:id item :form "greeting" :metadata {"pos" "N"}}])
+                               [{:id item :form "greeting" :metadata [{:op "set" :path ["pos"] :value "N"}]}])
       (is (= pre-versions (mapv (comp doc-version :doc) docs))
           "an unchanged form left every linked document's version alone")
       (is (empty? (doc-bump-rows (latest-op-id "vocab-item/bulk-merge")))

@@ -5,7 +5,7 @@
 //  - accepting clears the inferred styling.
 // Seeds 'the dog runs' with a machine-inferred UPOS span on "dog".
 import { test, expect, seedAuth, readToken } from './fixtures.js';
-import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-client';
+import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY, metadataOps } from '@larc-iu/plaid-client';
 
 const BASE = 'http://localhost:8085';
 const UD_NS = 'ud';
@@ -114,11 +114,14 @@ test.beforeAll(async () => {
 
 // Each accept test confirms the prediction, so reset it to unconfirmed first.
 test.beforeEach(async () => {
-  await S.client.spans.patchMetadata(S.uposSpanId, {
-    prov: 'inferred',
-    provSource: 'service:test',
-    provConfirmed: null,
-  });
+  await S.client.spans.patchMetadata(
+    S.uposSpanId,
+    metadataOps({
+      prov: 'inferred',
+      provSource: 'service:test',
+      provConfirmed: null,
+    }),
+  );
 });
 
 test.afterAll(async () => {

@@ -5,7 +5,7 @@
 // directory and it joins the sweep. Skipped when the directory is absent (CI).
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { cpLength } from '@larc-iu/plaid-client';
+import { applyMetadataOps, cpLength } from '@larc-iu/plaid-client';
 import { readFwbackup } from './fwbackup.js';
 import { parseFwdata } from './fwdataParser.js';
 import { buildDocuments } from './buildDocuments.js';
@@ -50,21 +50,16 @@ function lexiconCapture() {
         });
         return { ids };
       },
-      // Models the real patch: a key present is set, a key absent is left, and
-      // a null DELETES. The sweep re-exports what this holds, so a fake that
-      // ignored nulls would export values the server would not have.
+      // Models the real patch: the metadata ops applied as the server applies
+      // them. The sweep re-exports what this holds, so a fake that ignored a
+      // delete would export values the server would not have.
       bulkUpdate: async (body) => {
         for (const { id, form, metadata } of body) {
           const item = byId.get(id);
           if (!item) continue;
           if (form !== undefined) item.form = form;
           if (!metadata) continue;
-          const next = { ...(item.metadata || {}) };
-          for (const [k, v] of Object.entries(metadata)) {
-            if (v === null) delete next[k];
-            else next[k] = v;
-          }
-          item.metadata = next;
+          item.metadata = applyMetadataOps(item.metadata, metadata);
         }
         return { count: body.length };
       },

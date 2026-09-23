@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 
 import {
   AUTO,
@@ -7,7 +8,8 @@ import {
   detectDirection,
   readTextDirection,
   resolveDirection,
-  textDirectionPatch,
+  textDirectionOps,
+  withTextDirection,
 } from './textDirection.js';
 
 // Real data, not lorem: each of these is the kind of string that actually
@@ -94,32 +96,48 @@ describe('resolveDirection', () => {
   });
 });
 
-describe('textDirectionPatch', () => {
-  it('sets the override', () => {
-    expect(textDirectionPatch({}, RTL)).toEqual({ plaid: { textDirection: 'rtl' } });
+describe('textDirectionOps', () => {
+  it('sets the one key', () => {
+    expect(textDirectionOps(RTL)).toEqual([
+      { op: 'set', path: ['plaid', 'textDirection'], value: 'rtl' },
+    ]);
   });
 
-  it('clears the key rather than storing auto', () => {
+  it('deletes the key rather than storing auto', () => {
     // A document set back to automatic has to read the same as one nobody has
     // ever touched, or the two would resolve the same way for different
     // reasons and only one of them would follow the text if it changed.
-    const before = { plaid: { textDirection: 'rtl' } };
-    expect(textDirectionPatch(before, AUTO)).toEqual({ plaid: {} });
-    expect(readTextDirection({ ...before, ...textDirectionPatch(before, AUTO) })).toBe(AUTO);
+    expect(textDirectionOps(AUTO)).toEqual([{ op: 'delete', path: ['plaid', 'textDirection'] }]);
+  });
+});
+
+describe('withTextDirection', () => {
+  // The optimistic copy has to be what the server makes of the ops.
+  const cases = [
+    [{}, RTL],
+    [{ plaid: { textDirection: 'rtl' } }, AUTO],
+    [{ plaid: { role: 'baseline' }, Speaker: 'Amina' }, RTL],
+    [{ plaid: { role: 'baseline', textDirection: 'ltr' } }, AUTO],
+    [{ Speaker: 'Amina' }, AUTO],
+    [undefined, LTR],
+  ];
+  it.each(cases)('matches the server on %j set to %s', (before, value) => {
+    expect(withTextDirection(before, value)).toEqual(
+      applyMetadataOps(before, textDirectionOps(value)),
+    );
   });
 
   it('keeps whatever else is in the namespace', () => {
-    // A document PATCH replaces a nested namespace wholesale, so the patch has
-    // to restate the rest of it.
     const before = { plaid: { role: 'baseline' }, Speaker: 'Amina' };
-    expect(textDirectionPatch(before, RTL)).toEqual({
+    expect(withTextDirection(before, RTL)).toEqual({
       plaid: { role: 'baseline', textDirection: 'rtl' },
+      Speaker: 'Amina',
     });
   });
 
-  it('leaves the rest of the metadata alone', () => {
-    expect(textDirectionPatch({ Speaker: 'Amina' }, RTL)).toEqual({
-      plaid: { textDirection: 'rtl' },
-    });
+  it('reads as automatic once cleared', () => {
+    expect(readTextDirection(withTextDirection({ plaid: { textDirection: 'rtl' } }, AUTO))).toBe(
+      AUTO,
+    );
   });
 });

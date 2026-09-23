@@ -1,4 +1,6 @@
+from core.fake_client import as_fragment
 from fixtures import FakeClient, MGLOSS, MORPH_LAYER, TEXT_ID, VOCAB
+from plaid_client import metadata_ops
 
 from plaid_agent.core.plan import Batcher
 from plaid_agent.igt.plan import execute_plan, summarize
@@ -32,7 +34,7 @@ def test_execute_set_span_variants():
     # deletes, so the update and its restamp come last.
     assert kinds == [('spans', 'create'), ('spans', 'delete'), ('spans', 'update'), ('spans', 'patch_metadata')]
     # Approval is a human decision: everything a plan writes is machine-made AND confirmed.
-    assert c.log[3][2][1] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
+    assert as_fragment(c.log[3][2][1]) == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     _, _, args, _ = c.log[0]
     assert args[:3] == ('L', ['T'], 'new') and args[3] == {'prov': 'inferred', 'provSource': 'service:igt:assist', 'provConfirmed': True}
     assert len(c.batches) == 1 and len(c.batches[0]) == 4
@@ -49,9 +51,9 @@ def test_human_stamp_mode_writes_no_provenance_and_clears_it_on_rewrites():
     execute_plan(c, ops, source='src', label='l', stamp_mode='human')
     by = {(r, m): a for r, m, a, k in c.log}
     assert by[('spans', 'create')][3] == {}
-    assert by[('spans', 'patch_metadata')][1] == {'prov': None, 'provSource': None, 'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert as_fragment(by[('spans', 'patch_metadata')][1]) == {'prov': None, 'provSource': None, 'provConfirmed': None, 'provProb': None, 'provDetail': None}
     assert by[('vocab_links', 'create')][2] == {}
-    patched = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'patch_metadata')][0][1]
+    patched = as_fragment([a for r, m, a, k in c.log if (r, m) == ('tokens', 'patch_metadata')][0][1])
     assert patched['form'] == 'gam' and patched['prov'] is None and patched['provConfirmed'] is None
     created = [k for r, m, a, k in c.log if (r, m) == ('tokens', 'create')][0]
     assert created['metadata'] == {'form': 'ar'}
@@ -70,8 +72,8 @@ def test_contributed_stamp_mode_stamps_the_approver_and_drops_confirmations():
     contributed = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
     assert by[('spans', 'create')][3] == contributed
     # a rewrite drops the confirmation and any machine keys, then stamps
-    assert by[('spans', 'patch_metadata')][1] == {'prov': 'contributed', 'provSource': 'user:ann@x.com',
-                                                  'provConfirmed': None, 'provProb': None, 'provDetail': None}
+    assert as_fragment(by[('spans', 'patch_metadata')][1]) == {'prov': 'contributed', 'provSource': 'user:ann@x.com',
+                                                               'provConfirmed': None, 'provProb': None, 'provDetail': None}
     assert by[('vocab_links', 'create')][2] == contributed
     with pytest.raises(ValueError, match='contributor'):
         execute_plan(c, ops, source='src', label='l', stamp_mode='contributed')
@@ -92,15 +94,16 @@ def test_confirm_and_discard_analysis_ops():
                       'notes': ['c1: 1 annotation left unconfirmed (deleted in this plan)',
                                 'dropped: c2 (everything it confirms is deleted in this plan)']}
     calls = [(r, m, a) for r, m, a, k in c.log]
-    assert ('tokens', 'patch_metadata', ('m-x', {'provConfirmed': True})) in calls
-    assert ('vocab_links', 'patch_metadata', ('l-a', {'provConfirmed': True})) in calls
-    assert ('spans', 'patch_metadata', ('sp-a', {'provConfirmed': True})) in calls
-    assert ('spans', 'patch_metadata', ('sp-gone', {'provConfirmed': True})) not in calls
+    confirm = metadata_ops({'provConfirmed': True})
+    assert ('tokens', 'patch_metadata', ('m-x', confirm)) in calls
+    assert ('vocab_links', 'patch_metadata', ('l-a', confirm)) in calls
+    assert ('spans', 'patch_metadata', ('sp-a', confirm)) in calls
+    assert ('spans', 'patch_metadata', ('sp-gone', confirm)) not in calls
     assert ('spans', 'delete', ('sp-gone',)) in calls
     assert ('vocab_links', 'delete', ('l-d',)) in calls and ('spans', 'delete', ('sp-gone2',)) in calls
     assert ('tokens', 'delete', ('m-4b',)) in calls
     reset = [a for r, m, a in calls if (r, m) == ('tokens', 'patch_metadata') and a[0] == 'm-4a'][0][1]
-    assert reset == {'form': None, 'morphType': None, 'prov': None, 'provSource': None, 'provConfirmed': None,
+    assert as_fragment(reset) == {'form': None, 'morphType': None, 'prov': None, 'provSource': None, 'provConfirmed': None,
                      'provProb': None, 'provDetail': None}
     assert [(a, k) for r, m, a, k in c.log if (r, m) == ('tokens', 'update')] == [(('m-4c',), {'precedence': 2})]
     import pytest
@@ -123,7 +126,8 @@ def test_execute_set_analysis_replaces_chain_and_glosses_new_morphemes_second_pa
     assert first[0][0] == 'delete' and first[0][1] == ('m-4b',)                       # extra morpheme dropped
     assert first[1][0] == 'delete' and first[1][1] == ('sp-old',)                     # old gloss on m0 dropped
     assert first[2][0] == 'patch_metadata' and first[2][1][0] == 'm-4a'
-    assert first[2][1][1]['form'] == 'gam' and first[2][1][1]['morphType'] == 'stem' and first[2][1][1]['prov'] == 'inferred'
+    patched = as_fragment(first[2][1][1])
+    assert patched['form'] == 'gam' and patched['morphType'] == 'stem' and patched['prov'] == 'inferred'
     assert first[3] == ('update', ('m-4a',), {'precedence': 1})                       # chain renumbered from 1
     assert first[4][0] == 'create' and first[4][1][:3] == (MGLOSS, ['m-4a'], 'fish')   # m0 glossed in pass one
     assert first[5][0] == 'create' and first[5][1] == (MORPH_LAYER, TEXT_ID, 18, 24)
@@ -168,9 +172,9 @@ def test_execute_links_entries_orthography_and_respells_last():
     assert b0[1] == ('vocab_links', 'delete', ('l-1',))
     assert b0[2][:2] == ('vocab_links', 'create') and b0[2][2][:2] == ('vi-erg', ['w-1'])
     assert b0[3] == ('vocab_links', 'delete', ('l-2',))
-    assert b0[4] == ('vocab_items', 'patch_metadata', ('vi-ali', {'pos': 'PN'}))
+    assert b0[4] == ('vocab_items', 'patch_metadata', ('vi-ali', [{'op': 'set', 'path': ['pos'], 'value': 'PN'}]))
     # The orthography is a token metadata patch, which travels as a bulk sub-op at the end of the batch.
-    assert b0[5] == ('tokens', 'patch_metadata', ('w-2', {'orthog:IPA': None}))
+    assert b0[5] == ('tokens', 'patch_metadata', ('w-2', [{'op': 'delete', 'path': ['orthog:IPA']}]))
     # The link to the new entry waits for its id.
     b1 = [(r, m, a) for r, m, a, k in c.batches[1]]
     assert len(b1) == 1 and b1[0][:2] == ('vocab_links', 'create') and b1[0][2][:2] == ('new-vocab_items-0', ['w-3'])
@@ -554,7 +558,7 @@ def test_execute_creates_documents_tokenized_like_the_editor():
            {'kind': 'create_document', 'name': 'Text 2', 'text': 'Ali-di gam, akuna!\n  Gam-ar.\n', 'metadata': {'Date': '2022'}, 'label': ''}]
     counts = execute_plan(c, ops, source='s', label='l', project=project)
     assert counts == {'document metadata values': 1, 'new documents': 1}
-    assert ('documents', 'patch_metadata', ('d1', {'Date': None}), {}) in c.log
+    assert ('documents', 'patch_metadata', ('d1', [{'op': 'delete', 'path': ['Date']}]), {}) in c.log
     assert ('documents', 'create', ('p1', 'Text 2', {'Date': '2022'}), {}) in c.log
     texts = [e for e in c.log if e[0] == 'texts' and e[1] == 'create']
     assert texts[0][2] == ('tl', 'new-doc', 'Ali-di gam, akuna!\n  Gam-ar.\n')
@@ -697,12 +701,13 @@ def test_updates_fold_into_bulk_sub_ops_by_resource_and_chunk():
     b = TrackingBatcher(c, budget=5000)
     for i in range(BULK_CHUNK + 5):
         b.update('spans', f's{i}', value='x')
-    b.update('spans', 's0', metadata={'k': 1})       # merges with s0's value
-    b.update('relations', 'r1', metadata={'k': 2})
+    k1 = [{'op': 'set', 'path': ['k'], 'value': 1}]
+    b.update('spans', 's0', metadata=k1)       # merges with s0's value
+    b.update('relations', 'r1', metadata=[{'op': 'set', 'path': ['k'], 'value': 2}])
     b.add(lambda batch: batch.spans.create('L', ['t'], 'v'))    # a plain sub-op, before the bulk ones
     b.flush()
     assert [(r, len(items)) for r, items in c.bulk_calls] == [('spans', BULK_CHUNK), ('spans', 5), ('relations', 1)]
-    assert c.bulk_calls[0][1][0] == {'id': 's0', 'value': 'x', 'metadata': {'k': 1}}
+    assert c.bulk_calls[0][1][0] == {'id': 's0', 'value': 'x', 'metadata': k1}
     assert b.applied == BULK_CHUNK + 5 + 1 + 1
     assert [m for r, m, a, k in c.batches[0]][:1] == ['create']
     assert len(c.batches) == 1

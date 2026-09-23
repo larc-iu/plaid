@@ -8,7 +8,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization,
 } from '../../utils/tokenizationUtils.js';
-import { mergeMetadata } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
@@ -68,7 +68,7 @@ export const tokenMutations = {
         for (let i = 1; i < toMerge.length; i++) {
           b.tokens.merge(firstToken.id, toMerge[i].id);
         }
-        if (patch) b.tokens.patchMetadata(firstToken.id, patch);
+        if (patch) b.tokens.patchMetadata(firstToken.id, metadataOps(patch));
       });
 
       const removedWordIds = new Set(toMerge.slice(1).map((t) => t.id));

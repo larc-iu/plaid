@@ -342,8 +342,8 @@ try {
     // A field type change: Entry -> Text drops the ids it can no longer show.
     {
       await client.vocabItems.bulkUpdate([
-        { id: ids[0], metadata: { seeAlso: ids[1] } },
-        { id: ids[1], metadata: { seeAlso: 'not-an-entry' } },
+        { id: ids[0], metadata: [{ op: 'set', path: ['seeAlso'], value: ids[1] }] },
+        { id: ids[1], metadata: [{ op: 'set', path: ['seeAlso'], value: 'not-an-entry' }] },
       ]);
       const before = await itemsNow();
       const writes = fieldPruneWrites(before, {
@@ -376,7 +376,9 @@ try {
 
     // The entry list's load-time repair: a reference to a deleted entry goes.
     {
-      await client.vocabItems.bulkUpdate([{ id: ids[0], metadata: { seeAlso: ids[2] } }]);
+      await client.vocabItems.bulkUpdate([
+        { id: ids[0], metadata: [{ op: 'set', path: ['seeAlso'], value: ids[2] }] },
+      ]);
       await client.vocabItems.delete(ids[2]);
       const items = await itemsNow();
       const { patches } = validateVocabRefs(items, [

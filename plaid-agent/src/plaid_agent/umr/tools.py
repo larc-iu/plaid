@@ -255,15 +255,13 @@ def t_set_attributes(ws: Workspace, document: str = None, sentence=None, var: st
     if [(a.get('rel'), a.get('value')) for a in node.attrs] == [(a['rel'], a['value']) for a in placed]:
         return f'Nothing to change: {node.var} already has those attributes.'
     shown = ' '.join(f'{a["rel"]} {a["value"]}' for a in placed) or '(none)'
-    # The DELTA over the namespace as it was read, never the composed object:
-    # the applier composes it, so a second op on this node in the same plan
-    # builds on this one rather than restoring the node as it was read
-    # (see plan._apply_span_meta).
+    # The one key that changes, never the composed namespace: a second op on
+    # this node in the same plan then cannot restore it as it was read (see
+    # plan._apply_span_meta).
     ws.add_ops(_staged([{
         'kind': 'set_attrs', 'document_id': doc.id, 'ref': node_ref(s, node),
         'sentence': s.index, 'sentence_id': s.id, 'span_id': node.id, 'var': node.var,
-        'attrs': placed, 'umr_base': dict(((node.metadata or {}).get('umr')) or {}),
-        'umr_set': {'attrs': placed}, 'label': f'{node.var}: attributes {shown}'}]))
+        'attrs': placed, 'umr_set': {'attrs': placed}, 'label': f'{node.var}: attributes {shown}'}]))
     return f'Planned the attributes of {node.var} in s{s.index}: {shown}.'
 
 

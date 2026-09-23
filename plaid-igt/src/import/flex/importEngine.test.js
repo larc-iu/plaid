@@ -2,6 +2,7 @@
 // call shapes (bulk bodies, metadata conventions, provenance stamps) and the
 // resume semantics without a live server. Live verification happens in e2e.
 import { describe, it, expect, beforeEach } from 'vitest';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { deriveImportConfig, resolveTargets, importLexicon, runImport } from './importEngine.js';
 
 // --- fixtures ----------------------------------------------------------------
@@ -285,6 +286,12 @@ const itemPatches = (client) =>
     .flatMap((c) => c.args.body)
     .map((e) => [e.id, e.metadata]);
 
+// The ops that place a sense under its entry.
+const place = (parent, senseOrder) => [
+  { op: 'set', path: ['parent'], value: parent },
+  { op: 'set', path: ['senseOrder'], value: senseOrder },
+];
+
 // A vocab bulkCreate carries many entries in one call; flatten them back to
 // per-item records so the assertions below stay item-shaped.
 const createdItems = (client) =>
@@ -427,9 +434,9 @@ describe('importLexicon', () => {
     expect(container.metadata).not.toHaveProperty('gloss');
     expect(container.metadata).toMatchObject({ morphType: 'root', Plural: 'махар' });
     expect(itemPatches(client)).toEqual([
-      [map.get('s2'), { parent: map.get('e2'), senseOrder: 1 }],
-      [map.get('s3'), { parent: map.get('e2'), senseOrder: 2 }],
-      [map.get('s3a'), { parent: map.get('s3'), senseOrder: 1 }],
+      [map.get('s2'), place(map.get('e2'), 1)],
+      [map.get('s3'), place(map.get('e2'), 2)],
+      [map.get('s3a'), place(map.get('s3'), 1)],
     ]);
   });
 
@@ -463,7 +470,11 @@ describe('importLexicon', () => {
       baselineWs: BASE_WS,
       variants: true,
     });
-    const patches = new Map(itemPatches(client));
+    // Every op here is a set of a whole key, so applying them to nothing
+    // gives back what each entry was patched with.
+    const patches = new Map(
+      itemPatches(client).map(([id, ops]) => [id, applyMetadataOps({}, ops)]),
+    );
     // A one-sense entry IS its sense's item; a multi-sense one is its container.
     expect(patches.get(map.get('s4'))).toEqual({
       variantOf: [map.get('s1')],
@@ -542,8 +553,8 @@ describe('importLexicon', () => {
     // Nothing to create: every sense is already there.
     expect(createdItems(client)).toHaveLength(0);
     expect(itemPatches(client)).toEqual([
-      ['old-s2', { parent: 'old-e2', senseOrder: 1 }],
-      ['old-s3', { parent: 'old-e2', senseOrder: 2 }],
+      ['old-s2', place('old-e2', 1)],
+      ['old-s3', place('old-e2', 2)],
     ]);
   });
 

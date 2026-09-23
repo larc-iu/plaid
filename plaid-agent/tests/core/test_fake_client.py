@@ -5,6 +5,7 @@ import inspect
 import pytest
 
 from core.fake_client import BaseFakeClient
+from plaid_client.http import PlaidAPIError
 
 
 def _client(**kw):
@@ -47,9 +48,15 @@ def test_a_write_is_recorded_and_a_batch_answers_per_op():
     assert out[0]['body']['id'] == 'new-spans-0'
     assert out[1]['body']['ids'] == ['new-tokens-1-0', 'new-tokens-1-1']
     # A bulk update is recorded as the per-item writes it stands for.
-    c.spans.bulk_update([{'id': 's1', 'value': 'x', 'metadata': {'prov': 'inferred'}}])
+    ops = [{'op': 'set', 'path': ['prov'], 'value': 'inferred'}]
+    c.spans.bulk_update([{'id': 's1', 'value': 'x', 'metadata': ops}])
     assert c.calls('spans', 'update') == [('spans', 'update', ('s1', 'x'), {})]
-    assert c.calls('spans', 'patch_metadata')[0][2] == ('s1', {'prov': 'inferred'})
+    assert c.calls('spans', 'patch_metadata')[0][2] == ('s1', ops)
+    # A metadata patch is a list of ops, as the server takes it.
+    with pytest.raises(PlaidAPIError):
+        c.spans.patch_metadata('s1', {'prov': 'inferred'})
+    with pytest.raises(PlaidAPIError):
+        c.spans.bulk_update([{'id': 's1', 'metadata': {'prov': 'inferred'}}])
     assert c.bulk_calls[0][0] == 'spans'
     with c.operation('a label'):
         pass

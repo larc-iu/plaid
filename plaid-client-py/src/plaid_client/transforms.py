@@ -30,6 +30,15 @@ def key_from_snake(key):
 OPAQUE_KEYS = ('metadata', 'config', 'bindings')
 
 
+def _is_opaque_request_value(key, value):
+    # A request's ``metadata`` may also be a list of metadata ops (a bulk
+    # update entry), whose values are user data too, so it passes through
+    # verbatim.
+    if isinstance(value, list):
+        return key == 'metadata'
+    return key in OPAQUE_KEYS and isinstance(value, dict)
+
+
 def transform_request(obj):
     """Recursively transform request object keys from snake_case to kebab-case.
     Preserves ``metadata`` and ``config`` contents without transformation.
@@ -44,7 +53,7 @@ def transform_request(obj):
     transformed = {}
     for key, value in obj.items():
         new_key = key_from_snake(key)
-        if key in OPAQUE_KEYS and isinstance(value, dict):
+        if _is_opaque_request_value(key, value):
             transformed[new_key] = value
         else:
             transformed[new_key] = transform_request(value)

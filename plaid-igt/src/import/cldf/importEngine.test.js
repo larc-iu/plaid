@@ -122,6 +122,12 @@ const callsOf = (client, kind) => client.calls.filter((c) => c.kind === kind);
 const itemPatches = (client) =>
   callsOf(client, 'vocabItems.bulkUpdate').flatMap((c) => c.args.body);
 
+// The ops that place a sense under its entry.
+const place = (parent, senseOrder) => [
+  { op: 'set', path: ['parent'], value: parent },
+  { op: 'set', path: ['senseOrder'], value: senseOrder },
+];
+
 const tokenCalls = (client) => callsOf(client, 'tokens.bulkCreate').map((c) => c.args);
 
 describe('deriveSetupData', () => {
@@ -372,8 +378,8 @@ describe('runCldfImport', () => {
     expect(items[0].metadata).not.toHaveProperty('definition');
     expect(items[0].metadata.pos).toBe('N');
     expect(itemPatches(client)).toEqual([
-      { id: map.get('e1/s1'), metadata: { parent: map.get('e1'), senseOrder: 1 } },
-      { id: map.get('e1/s2'), metadata: { parent: map.get('e1'), senseOrder: 2 } },
+      { id: map.get('e1/s1'), metadata: place(map.get('e1'), 1) },
+      { id: map.get('e1/s2'), metadata: place(map.get('e1'), 2) },
     ]);
   });
 
@@ -420,8 +426,8 @@ describe('runCldfImport', () => {
     });
     expect(callsOf(client, 'vocabItems.bulkCreate')).toHaveLength(0);
     expect(itemPatches(client)).toEqual([
-      { id: 'old-s1', metadata: { parent: 'old-e1', senseOrder: 1 } },
-      { id: 'old-s2', metadata: { parent: 'old-e1', senseOrder: 2 } },
+      { id: 'old-s1', metadata: place('old-e1', 1) },
+      { id: 'old-s2', metadata: place('old-e1', 2) },
     ]);
   });
 

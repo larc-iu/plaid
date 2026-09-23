@@ -16,7 +16,7 @@
 // so measurement and slicing use cpLength/cpSlice, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
-import { cpLength, cpSlice, mergeMetadata } from '@larc-iu/plaid-client';
+import { cpLength, cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
 
@@ -588,7 +588,7 @@ export const alignmentMutations = {
       // contributed segment, a contributor's marks it contributed). setMetadata
       // would wipe prov, recording a machine-made segment as origin-less.
       const patch = { timeBegin, timeEnd, ...(this.editStamp(token.metadata) || {}) };
-      await this._client.tokens.patchMetadata(alignmentId, patch);
+      await this._client.tokens.patchMetadata(alignmentId, metadataOps(patch));
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) t.metadata = mergeMetadata(t.metadata, patch);
@@ -599,8 +599,7 @@ export const alignmentMutations = {
   // Speaker-only edit (diarization): patch just the `speaker` label on an
   // alignment token. No text edit, no cascade, no token churn — so relabeling a
   // segment's speaker never rewrites the baseline or the sentence partition and
-  // never changes the token id. A blank value clears the label (patchMetadata
-  // deletes a key whose value is null).
+  // never changes the token id. A blank value clears the label (a delete op).
   async updateAlignmentSpeaker(alignmentId, speaker) {
     const info = this.layerInfo;
     const token = (info.alignmentTokenLayer?.tokens || []).find((t) => t.id === alignmentId);
@@ -613,7 +612,10 @@ export const alignmentMutations = {
       // A person's edit carries the writer's stamp (write-contract rule 3),
       // and choosing a segment's speaker is one.
       const verify = this.editStamp(token.metadata) || {};
-      await this._client.tokens.patchMetadata(alignmentId, { speaker: value || null, ...verify });
+      await this._client.tokens.patchMetadata(
+        alignmentId,
+        metadataOps({ speaker: value || null, ...verify }),
+      );
       this._applyRawPatch((next, infoNext) => {
         const t = (infoNext.alignmentTokenLayer?.tokens || []).find((x) => x.id === alignmentId);
         if (t) {

@@ -78,6 +78,8 @@ from typing import Any, Dict, List
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
+from plaid_client import metadata_ops
+
 from ..core.plan import (CLEAR_PROV, CONFIRM, PlanError, Stamps,  # noqa: F401 - PlanError is re-exported
                          TrackingBatcher, apply_add_comment, apply_restore_document, applying,
                          created_id, expand_ops)
@@ -148,7 +150,7 @@ def _apply_set_span(ctx: Context, op) -> int:
     if span_id and value == '':
         ctx.drop('spans', span_id)
     elif span_id:
-        ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
+        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
         ctx.b.add(lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
     else:
@@ -170,7 +172,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
             ctx.drop('spans', sid)
         first = morphemes[0]
         b.add(lambda batch, mid=m0['id'], f=first: batch.tokens.patch_metadata(
-            mid, {'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()}))
+            mid, metadata_ops({'form': f['form'], 'morphType': f.get('morph_type'), **ctx.restamp()})))
         # Keep the chain's numbering contiguous from 1 whatever the
         # first morpheme's precedence was before.
         b.add(lambda batch, mid=m0['id']: batch.tokens.update(mid, precedence=1))
@@ -194,7 +196,7 @@ def _apply_set_analysis(ctx: Context, op) -> int:
 
 
 def _apply_set_orthography(ctx: Context, op) -> int:
-    ctx.b.update('tokens', op['word_id'], metadata={op['key']: op.get('value') or None})
+    ctx.b.update('tokens', op['word_id'], metadata=metadata_ops({op['key']: op.get('value') or None}))
     return 1
 
 
@@ -227,7 +229,7 @@ def _apply_unlink(ctx: Context, op) -> int:
 
 
 def _apply_set_morph_type(ctx: Context, op) -> int:
-    ctx.b.update('tokens', op['morpheme_id'], metadata={'morphType': op.get('morph_type') or None})
+    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'morphType': op.get('morph_type') or None}))
     return 1
 
 
@@ -238,20 +240,21 @@ def _apply_create_entry(ctx: Context, op) -> int:
 
 
 def _apply_set_entry_field(ctx: Context, op) -> int:
-    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], {o['field']: o.get('value') or None}))
+    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(
+        o['item_id'], metadata_ops({o['field']: o.get('value') or None})))
     return 1
 
 
 def _apply_set_entry_metadata(ctx: Context, op) -> int:
     # A patch, so a null clears that key and the rest of the entry's metadata
     # is left alone.
-    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], o['patch']))
+    ctx.b.add(lambda batch, o=op: batch.vocab_items.patch_metadata(o['item_id'], metadata_ops(o['patch'])))
     return 1
 
 
 def _apply_set_doc_metadata(ctx: Context, op) -> int:
     ctx.b.add(lambda batch, o=op: batch.documents.patch_metadata(
-        o['document_id'], {o['field']: o.get('value') or None}))
+        o['document_id'], metadata_ops({o['field']: o.get('value') or None})))
     return 1
 
 
@@ -286,7 +289,7 @@ def _apply_rename_document(ctx: Context, op) -> int:
 
 
 def _apply_set_morpheme_form(ctx: Context, op) -> int:
-    ctx.b.update('tokens', op['morpheme_id'], metadata={'form': op['form']})
+    ctx.b.update('tokens', op['morpheme_id'], metadata=metadata_ops({'form': op['form']}))
     return 1
 
 
@@ -344,11 +347,11 @@ def _apply_edit_text(ctx: Context, op) -> int:
 
 def _apply_confirm(ctx: Context, op) -> int:
     for tid in op.get('token_ids') or []:
-        ctx.b.update('tokens', tid, metadata=CONFIRM)
+        ctx.b.update('tokens', tid, metadata=metadata_ops(CONFIRM))
     for lid in op.get('link_ids') or []:
-        ctx.b.add(lambda batch, i=lid: batch.vocab_links.patch_metadata(i, CONFIRM))
+        ctx.b.add(lambda batch, i=lid: batch.vocab_links.patch_metadata(i, metadata_ops(CONFIRM)))
     for sid in op.get('span_ids') or []:
-        ctx.b.update('spans', sid, metadata=CONFIRM)
+        ctx.b.update('spans', sid, metadata=metadata_ops(CONFIRM))
     return (len(op.get('token_ids') or []) + len(op.get('link_ids') or [])
             + len(op.get('span_ids') or []))
 
@@ -367,7 +370,7 @@ def _apply_discard_analysis(ctx: Context, op) -> int:
         ctx.drop('tokens', mid)
     if op.get('reset_first_id'):
         ctx.b.add(lambda batch, i=op['reset_first_id']: batch.tokens.patch_metadata(
-            i, {'form': None, 'morphType': None, **CLEAR_PROV}))
+            i, metadata_ops({'form': None, 'morphType': None, **CLEAR_PROV})))
     for r in op.get('renumber') or []:
         ctx.b.add(lambda batch, r=r: batch.tokens.update(r['id'], precedence=r['precedence']))
     return 1

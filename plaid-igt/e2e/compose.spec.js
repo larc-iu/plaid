@@ -65,7 +65,7 @@ async function restoreForm(page, projectId, documentId) {
   await reloadAnalyze(page, projectId, documentId);
 
   const { token, seeded } = await firstMorpheme();
-  await client.tokens.patchMetadata(token.id, { form: null });
+  await client.tokens.patchMetadata(token.id, [{ op: 'delete', path: ['form'] }]);
   // The clear is checked on the server, not on the screen: a commit still in
   // flight would put the form back after it, and this is the assertion that
   // goes red rather than the next spec that trips over the residue.

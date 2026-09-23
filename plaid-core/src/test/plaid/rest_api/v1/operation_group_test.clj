@@ -72,7 +72,7 @@
       (is (nil? (group-row gid))))
 
     (testing "first tagged write stamps group_id and creates the labeled group row"
-      (assert-ok (patch-meta admin-request span (group-query gid "Approve all") {"a" 1}))
+      (assert-ok (patch-meta admin-request span (group-query gid "Approve all") [{:op "set" :path ["a"] :value 1}]))
       (let [[op] (ops-of-type "span/patch-metadata")
             g (group-row gid)]
         (is (= gid (:group_id op)))
@@ -82,17 +82,17 @@
         (is (= (:ts op) (:created_at g)) "group row is created with the first member's ts")))
 
     (testing "later members join; the label is NOT rewritten from the write params"
-      (assert-ok (patch-meta admin-request span (group-query gid "Different label") {"b" 2}))
-      (assert-ok (patch-meta admin-request span (group-query gid) {"c" 3}))
+      (assert-ok (patch-meta admin-request span (group-query gid "Different label") [{:op "set" :path ["b"] :value 2}]))
+      (assert-ok (patch-meta admin-request span (group-query gid) [{:op "set" :path ["c"] :value 3}]))
       (is (= [gid gid gid] (mapv :group_id (ops-of-type "span/patch-metadata"))))
       (is (= "Approve all" (:message (group-row gid)))))
 
     (testing "an untagged write has no group"
-      (assert-ok (patch-meta admin-request span nil {"d" 4}))
+      (assert-ok (patch-meta admin-request span nil [{:op "set" :path ["d"] :value 4}]))
       (is (nil? (:group_id (last (ops-of-type "span/patch-metadata"))))))
 
     (testing "per-op ?audit-message= still applies to the individual op inside a group"
-      (assert-ok (patch-meta admin-request span (str (group-query gid) "&audit-message=Step%20five") {"e" 5}))
+      (assert-ok (patch-meta admin-request span (str (group-query gid) "&audit-message=Step%20five") [{:op "set" :path ["e"] :value 5}]))
       (let [op (last (ops-of-type "span/patch-metadata"))]
         (is (= gid (:group_id op)))
         (is (= "Step five" (:description op)))))))
@@ -100,7 +100,7 @@
 (deftest group-without-message-is-unlabeled
   (let [{:keys [span doc]} (setup-span admin-request "GrpNoMsg")
         gid (random-uuid)]
-    (assert-ok (patch-meta admin-request span (group-query gid) {"a" 1}))
+    (assert-ok (patch-meta admin-request span (group-query gid) [{:op "set" :path ["a"] :value 1}]))
     (is (nil? (:message (group-row gid))))
     (let [e (entry-for (doc-audit-entries admin-request doc) gid)]
       (is (some? e))
@@ -109,7 +109,7 @@
 
 (deftest malformed-group-id-is-rejected
   (let [{:keys [span]} (setup-span admin-request "GrpBad")]
-    (let [r (patch-meta admin-request span "group-id=not-a-uuid" {"a" 1})]
+    (let [r (patch-meta admin-request span "group-id=not-a-uuid" [{:op "set" :path ["a"] :value 1}])]
       (is (= 400 (:status r)))
       (is (re-find #"(?i)uuid" (-> r :body :error))))
     (is (empty? (ops-of-type "span/patch-metadata")) "the rejected write did nothing")))
@@ -119,9 +119,9 @@
         gid (random-uuid)
         r (submit-batch admin-request
                         [{:path (str "/api/v1/spans/" span "/metadata?" (group-query gid "Batch inside group"))
-                          :method "PATCH" :body {"a" 1}}
+                          :method "PATCH" :body [{:op "set" :path ["a"] :value 1}]}
                          {:path (str "/api/v1/spans/" span "/metadata?" (group-query gid "Batch inside group"))
-                          :method "PATCH" :body {"b" 2}}])]
+                          :method "PATCH" :body [{:op "set" :path ["b"] :value 2}]}])]
     (assert-ok r)
     (let [ops (ops-of-type "span/patch-metadata")]
       (is (= 2 (count ops)))
@@ -144,19 +144,19 @@
   (let [{:keys [span doc]} (setup-span admin-request "GrpFold")
         gid (random-uuid)]
     ;; group with 3 members: standalone op, then a 2-op batch, then another standalone
-    (assert-ok (patch-meta admin-request span (group-query gid "Merge morphemes") {"g1" 1}))
+    (assert-ok (patch-meta admin-request span (group-query gid "Merge morphemes") [{:op "set" :path ["g1"] :value 1}]))
     (assert-ok (submit-batch admin-request
                              [{:path (str "/api/v1/spans/" span "/metadata?" (group-query gid))
-                               :method "PATCH" :body {"g2" 2}}
+                               :method "PATCH" :body [{:op "set" :path ["g2"] :value 2}]}
                               {:path (str "/api/v1/spans/" span "/metadata?" (group-query gid))
-                               :method "PATCH" :body {"g3" 3}}]))
-    (assert-ok (patch-meta admin-request span (group-query gid) {"g4" 4}))
+                               :method "PATCH" :body [{:op "set" :path ["g3"] :value 3}]}]))
+    (assert-ok (patch-meta admin-request span (group-query gid) [{:op "set" :path ["g4"] :value 4}]))
     ;; an unlabeled batch of 2
     (assert-ok (submit-batch admin-request
-                             [{:path (str "/api/v1/spans/" span "/metadata") :method "PATCH" :body {"b1" 1}}
-                              {:path (str "/api/v1/spans/" span "/metadata") :method "PATCH" :body {"b2" 2}}]))
+                             [{:path (str "/api/v1/spans/" span "/metadata") :method "PATCH" :body [{:op "set" :path ["b1"] :value 1}]}
+                              {:path (str "/api/v1/spans/" span "/metadata") :method "PATCH" :body [{:op "set" :path ["b2"] :value 2}]}]))
     ;; a standalone op
-    (assert-ok (patch-meta admin-request span nil {"s1" 1}))
+    (assert-ok (patch-meta admin-request span nil [{:op "set" :path ["s1"] :value 1}]))
     (let [entries (doc-audit-entries admin-request doc)
           patch-entries (filter #(some (fn [o] (= :span/patch-metadata (:op/type o))) (:audit/ops %)) entries)
           [grp bat solo] patch-entries]
@@ -196,7 +196,7 @@
   (let [{:keys [proj doc span]} (setup-span admin-request "GrpScope")
         doc2 (create-test-document admin-request proj "Doc2")
         gid (random-uuid)]
-    (assert-ok (patch-meta admin-request span (group-query gid "Cross-doc") {"a" 1}))
+    (assert-ok (patch-meta admin-request span (group-query gid "Cross-doc") [{:op "set" :path ["a"] :value 1}]))
     (assert-ok (api-call admin-request {:method :patch
                                         :path (str "/api/v1/documents/" doc2 "?" (group-query gid "Cross-doc"))
                                         :body {:name "Doc2 renamed"}}))
@@ -214,10 +214,10 @@
   (let [{:keys [span doc]} (setup-span admin-request "GrpPage")
         gid (random-uuid)]
     ;; head of G, then two standalone ops, then a late member of G
-    (assert-ok (patch-meta admin-request span (group-query gid "Long-running") {"g1" 1}))
-    (assert-ok (patch-meta admin-request span nil {"s1" 1}))
-    (assert-ok (patch-meta admin-request span nil {"s2" 2}))
-    (assert-ok (patch-meta admin-request span (group-query gid) {"g2" 2}))
+    (assert-ok (patch-meta admin-request span (group-query gid "Long-running") [{:op "set" :path ["g1"] :value 1}]))
+    (assert-ok (patch-meta admin-request span nil [{:op "set" :path ["s1"] :value 1}]))
+    (assert-ok (patch-meta admin-request span nil [{:op "set" :path ["s2"] :value 2}]))
+    (assert-ok (patch-meta admin-request span (group-query gid) [{:op "set" :path ["g2"] :value 2}]))
     (let [walk (fn [limit]
                  (loop [cursor nil acc [] guard 0]
                    (let [q (cond-> {:limit limit} cursor (assoc :cursor cursor))
@@ -251,7 +251,7 @@
   (let [{:keys [proj span doc]} (setup-span admin-request "GrpRelabel")
         _ (assert-no-content (add-project-writer admin-request proj "user1@example.com"))
         gid (random-uuid)]
-    (assert-ok (patch-meta user1-request span (group-query gid "Merge morphemes") {"a" 1}))
+    (assert-ok (patch-meta user1-request span (group-query gid "Merge morphemes") [{:op "set" :path ["a"] :value 1}]))
 
     (testing "GET returns the group"
       (let [r (api-call user1-request {:method :get :path (str "/api/v1/operation-groups/" gid)})]
@@ -298,8 +298,8 @@
         gid (random-uuid)
         keep (setup-span admin-request "GrpKeep")
         keep-gid (random-uuid)]
-    (assert-ok (patch-meta admin-request span (group-query gid "Doomed") {"a" 1}))
-    (assert-ok (patch-meta admin-request (:span keep) (group-query keep-gid "Survivor") {"a" 1}))
+    (assert-ok (patch-meta admin-request span (group-query gid "Doomed") [{:op "set" :path ["a"] :value 1}]))
+    (assert-ok (patch-meta admin-request (:span keep) (group-query keep-gid "Survivor") [{:op "set" :path ["a"] :value 1}]))
     (assert-no-content (delete-test-project admin-request proj))
     (is (some? (group-row gid)) "delete alone does not purge")
     (let [{:keys [operation-groups]} (prj/purge-deleted-project-history! f/db proj)]

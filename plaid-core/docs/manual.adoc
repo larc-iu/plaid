@@ -929,6 +929,28 @@ As for metadata, the canonical use is recording whether a human or a machine pro
 }
 ----
 
+=== Editing metadata
+
+`set_metadata` / `setMetadata` replaces an entity's whole metadata, and `delete_metadata` / `deleteMetadata` clears it.
+To change part of it, `patch_metadata` / `patchMetadata` takes a list of **ops**, applied in order as one operation:
+
+`{"op": "set", "path": [...], "value": v}`:: Writes `v` at the path, creating any missing objects along it. `null` is an ordinary value here.
+`{"op": "delete", "path": [...]}`:: Removes the key at the path. Deleting a key that is not there does nothing.
+
+A path is a list of keys into the nested metadata, the first being a top-level key, so a path of one key sets or deletes a top-level key whole.
+A path that runs through a value that is not an object (a string, a number, a list) is refused with a 400, and then none of the ops apply.
+Because the server applies the ops, two people editing different keys of one object do not overwrite each other.
+For example, with coreference entities kept in a document's metadata under `corefud.entities`, adding one entity and removing another touches only those two keys:
+
+[,python]
+----
+client.documents.patch_metadata(doc_id, [
+    {"op": "set", "path": ["corefud", "entities", "c10"], "value": "bird"},
+    {"op": "delete", "path": ["corefud", "entities", "c8"]},
+])
+----
+
+Both clients also ship `metadataOps(fragment)` / `metadata_ops(fragment)`, which turns an object of top-level keys into ops (a `null` value becomes a delete), and `applyMetadataOps(metadata, ops)` / `apply_metadata_ops(metadata, ops)`, which applies ops to a local copy the way the server does, for an app that updates its view before the server answers.
 
 NOTE: Config and metadata values are schema-less, meaning that keys and values are unconstrained. If you'd like to see schema support for either of these, please feel free to https://github.com/larc-iu/plaid/issues[open an issue].
 
@@ -1262,17 +1284,17 @@ The server runs a batch as one transaction holding its single write lock for the
 A batch of many single updates is expensive: every request in it is processed on its own inside the one transaction, and each writes its own operation.
 When the changes are all of one kind, use the bulk endpoints instead, which apply a whole list in one operation and one transaction.
 `bulk_create` and `bulk_delete` exist for tokens, spans, relations, vocab links and vocab items.
-`bulk_update` exists for spans and relations (a value, a metadata patch, or both, per entry), for tokens (a metadata patch per entry) and for vocab items (a form, a metadata patch, or both, per entry):
+`bulk_update` exists for spans and relations (a value, metadata ops, or both, per entry), for tokens (metadata ops per entry) and for vocab items (a form, metadata ops, or both, per entry):
 
 [,python]
 ----
 client.spans.bulk_update([
-    {"id": span_one, "value": "NOUN", "metadata": {"prov": "inferred"}},
-    {"id": span_two, "metadata": {"provConfirmed": True}},
+    {"id": span_one, "value": "NOUN", "metadata": [{"op": "set", "path": ["prov"], "value": "inferred"}]},
+    {"id": span_two, "metadata": [{"op": "set", "path": ["provConfirmed"], "value": True}]},
 ])
 ----
 
-A `value` is set only when the key is present (`null` sets a null value); a `metadata` patch sets the keys it names and deletes a key whose value is `null`, leaving the rest alone.
+A `value` is set only when the key is present (`null` sets a null value), and an entry's `metadata` is a list of ops, as for `patch_metadata` (see <<Editing metadata>>).
 The entries may lie in several documents of one project; every document touched has its version bumped.
 An id that does not exist refuses the whole update, so an update never silently skips an entry.
 
@@ -1362,7 +1384,9 @@ One further shared convention lives on a **document**, in the same reserved name
 
 [,js]
 ----
-await client.documents.patchMetadata(docId, { plaid: { textDirection: "rtl" } });
+await client.documents.patchMetadata(docId, [
+  { op: "set", path: ["plaid", "textDirection"], value: "rtl" },
+]);
 ----
 
 The value is `"ltr"` or `"rtl"`, and the key's absence means "read the text", which is what almost every document says.
@@ -1436,7 +1460,7 @@ Rule 3 is what lets editors render proposals distinctly (Plaid's apps use violet
 For service authors, both clients ship helpers: `stampInferred(source)` / `stamp_inferred(source)` builds the fragment to merge into everything you create (every bulk create accepts per-item `metadata`) and takes the prediction extras as options (`stampInferred(source, {prob, detail})` / `stamp_inferred(source, prob=, detail=)`), `serviceSource(serviceId)` / `service_source(service_id)` builds the canonical producer id, and `isProtected(metadata)` / `is_protected(metadata)` implements the rule-2 check against material you are about to destroy.
 Born-verified material—an import carrying upstream human approval, or a guess written only upon explicit user confirmation—uses `confirmedInferred` / `confirmed_inferred` instead.
 On the reading side, `provState` / `prov_state` classifies an entity into the four states, `needsReview` / `needs_review` is what a review UI marks and sweeps, and `provOrigin` / `prov_origin` tells a verified entity's two origins apart.
-A service running on behalf of a contributor (the IGT assistant applying a plan a contributor approved, for example) stamps with `stampContributed(userId)` / `stamp_contributed(user_id)` and rewrites with `contributeOnEdit` / `contribute_on_edit`, which also drops an earlier confirmation; `mergeMetadata` / `merge_metadata` applies such a fragment to a local copy the way the server's PATCH does (a null value deletes the key).
+A service running on behalf of a contributor (the IGT assistant applying a plan a contributor approved, for example) stamps with `stampContributed(userId)` / `stamp_contributed(user_id)` and rewrites with `contributeOnEdit` / `contribute_on_edit`, which also drops an earlier confirmation; these helpers return fragments of top-level keys, which `metadataOps` / `metadata_ops` turns into the ops a PATCH takes (a null value becomes a delete), and `mergeMetadata` / `merge_metadata` applies a fragment to a local copy.
 
 [NOTE]
 ====

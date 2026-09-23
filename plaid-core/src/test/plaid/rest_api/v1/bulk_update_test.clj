@@ -51,8 +51,8 @@
 (deftest spans-value-and-metadata-in-one-request
   (let [{:keys [d1]} (setup)
         v0 (version (:doc d1))
-        res (bulk-update-spans admin-request [{:id (:s1 d1) :value "NOUN" :metadata {"prov" "inferred"}}
-                                              {:id (:s2 d1) :metadata {"provConfirmed" true}}])]
+        res (bulk-update-spans admin-request [{:id (:s1 d1) :value "NOUN" :metadata [{:op "set" :path ["prov"] :value "inferred"}]}
+                                              {:id (:s2 d1) :metadata [{:op "set" :path ["provConfirmed"] :value true}]}])]
     (assert-ok res)
     (is (= 2 (-> res :body :count)))
     (is (= "NOUN" (-> (get-span admin-request (:s1 d1)) :body :span/value)))
@@ -72,14 +72,35 @@
     (is (= (inc v1) (version (:doc d1))))
     (is (= (inc v2) (version (:doc d2))))))
 
-(deftest a-null-value-and-a-null-metadata-key
+(deftest a-null-value-and-metadata-ops
   (let [{:keys [d1]} (setup)]
-    (assert-ok (bulk-update-spans admin-request [{:id (:s1 d1) :metadata {"prov" "inferred" "note" "x"}}]))
-    (assert-ok (bulk-update-spans admin-request [{:id (:s1 d1) :value nil :metadata {"note" nil}}]))
+    (assert-ok (bulk-update-spans admin-request [{:id (:s1 d1) :metadata [{:op "set" :path ["prov"] :value "inferred"}
+                                                                          {:op "set" :path ["note"] :value "x"}
+                                                                          {:op "set" :path ["ud" "lemma"] :value "a"}
+                                                                          {:op "set" :path ["ud" "feats"] :value "b"}]}]))
+    (assert-ok (bulk-update-spans admin-request [{:id (:s1 d1) :value nil :metadata [{:op "delete" :path ["note"]}
+                                                                                     {:op "set" :path ["ud" "lemma"] :value "c"}
+                                                                                     {:op "set" :path ["gone"] :value nil}]}]))
     (let [span (-> (get-span admin-request (:s1 d1)) :body)]
       (is (nil? (:span/value span)) "value present as null sets null")
-      (is (= "inferred" (get (:metadata span) "prov")))
-      (is (not (contains? (:metadata span) "note")) "a null metadata value deletes the key"))))
+      (is (= "inferred" (get (:metadata span) "prov")) "a key no op names is untouched")
+      (is (not (contains? (:metadata span) "note")) "a delete op removes the key")
+      (is (= {"lemma" "c" "feats" "b"} (get (:metadata span) "ud")) "a deep set leaves its siblings")
+      (is (contains? (:metadata span) "gone") "a set of null stores null")
+      (is (nil? (get (:metadata span) "gone"))))))
+
+(deftest a-bad-op-refuses-the-whole-update
+  (let [{:keys [d1]} (setup)
+        v (version (:doc d1))]
+    (assert-ok (bulk-update-spans admin-request [{:id (:s1 d1) :metadata [{:op "set" :path ["prov"] :value "x"}]}]))
+    (testing "a path through a value that is not an object is a 400"
+      (assert-bad-request (bulk-update-spans admin-request [{:id (:s2 d1) :value "Z"}
+                                                            {:id (:s1 d1) :metadata [{:op "set" :path ["prov" "k"] :value 1}]}])))
+    (testing "an object in place of an op list is a 400"
+      (assert-bad-request (bulk-update-spans admin-request [{:id (:s1 d1) :metadata {"prov" "y"}}])))
+    (is (= "B" (-> (get-span admin-request (:s2 d1)) :body :span/value)) "nothing was written")
+    (is (= "x" (-> (get-span admin-request (:s1 d1)) :body :metadata (get "prov"))))
+    (is (= (inc v) (version (:doc d1))) "only the first request bumped the document")))
 
 (deftest an-unknown-id-refuses-the-whole-update
   (let [{:keys [d1]} (setup)
@@ -98,8 +119,8 @@
 
 (deftest relations-value-and-metadata
   (let [{:keys [d1 d2]} (setup)
-        res (bulk-update-relations admin-request [{:id (:r d1) :value "nsubj" :metadata {"prov" "inferred"}}
-                                                  {:id (:r d2) :metadata {"provConfirmed" true}}])]
+        res (bulk-update-relations admin-request [{:id (:r d1) :value "nsubj" :metadata [{:op "set" :path ["prov"] :value "inferred"}]}
+                                                  {:id (:r d2) :metadata [{:op "set" :path ["provConfirmed"] :value true}]}])]
     (assert-ok res)
     (is (= 2 (-> res :body :count)))
     (is (= "nsubj" (-> (get-relation admin-request (:r d1)) :body :relation/value)))
@@ -111,14 +132,14 @@
 (deftest tokens-metadata
   (let [{:keys [d1 d2]} (setup)
         v1 (version (:doc d1))
-        res (bulk-update-tokens admin-request [{:id (:t1 d1) :metadata {"orthog:ipa" "ab"}}
-                                               {:id (:t1 d2) :metadata {"form" "cd"}}])]
+        res (bulk-update-tokens admin-request [{:id (:t1 d1) :metadata [{:op "set" :path ["orthog:ipa"] :value "ab"}]}
+                                               {:id (:t1 d2) :metadata [{:op "set" :path ["form"] :value "cd"}]}])]
     (assert-ok res)
     (is (= 2 (-> res :body :count)))
     (is (= "ab" (-> (get-token admin-request (:t1 d1)) :body :metadata (get "orthog:ipa"))))
     (is (= "cd" (-> (get-token admin-request (:t1 d2)) :body :metadata (get "form"))))
     (is (= (inc v1) (version (:doc d1))))
-    (assert-not-found (bulk-update-tokens admin-request [{:id (random-uuid) :metadata {"a" "b"}}]))))
+    (assert-not-found (bulk-update-tokens admin-request [{:id (random-uuid) :metadata [{:op "set" :path ["a"] :value "b"}]}]))))
 
 (deftest every-bumped-document-version-comes-back
   (testing "one document"
@@ -197,8 +218,8 @@
       (assert-not-found (at "/api/v1/relations/bulk" [{:id (random-uuid) :value "X"}
                                                       {:id (:r d1) :value "Y"}])))
     (testing "tokens"
-      (assert-not-found (at "/api/v1/tokens/bulk" [{:id (random-uuid) :metadata {"a" "b"}}
-                                                   {:id (:t1 d1) :metadata {"a" "b"}}])))
+      (assert-not-found (at "/api/v1/tokens/bulk" [{:id (random-uuid) :metadata [{:op "set" :path ["a"] :value "b"}]}
+                                                   {:id (:t1 d1) :metadata [{:op "set" :path ["a"] :value "b"}]}])))
     (is (= "A" (-> (get-span admin-request (:s1 d1)) :body :span/value)) "nothing was written")
     (is (= v (version (:doc d1))) "and the document was not bumped")))
 
@@ -207,7 +228,7 @@
     (testing "the route drops a stray value and applies the metadata"
       (assert-ok (api-call admin-request {:method :patch
                                           :path "/api/v1/tokens/bulk"
-                                          :body [{:id (:t1 d1) :value "x" :metadata {"a" "b"}}]}))
+                                          :body [{:id (:t1 d1) :value "x" :metadata [{:op "set" :path ["a"] :value "b"}]}]}))
       (is (= "b" (-> (get-token admin-request (:t1 d1)) :body :metadata (get "a")))))
     (testing "a direct caller is refused: a token has no value column to write"
       (let [res (tok/bulk-update db [{:id (:t1 d1) :value "x"}] "admin@example.com")]

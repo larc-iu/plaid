@@ -4,6 +4,7 @@
 // round-tripped the sentence half onto the sentence token. What was missing was
 // any way to see or edit either, so the last assertion here is the one that
 // matters: what you type comes back out of the exporter.
+import { metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
@@ -90,7 +91,7 @@ test('the Details tab offers the fields the project declares, and saves one on E
 });
 
 test('clearing a field deletes the key rather than storing a blank', async ({ page }) => {
-  await S.client.documents.patchMetadata(S.documentId, { genre: 'narrative' });
+  await S.client.documents.patchMetadata(S.documentId, metadataOps({ genre: 'narrative' }));
   await open(page, 'details');
   const genre = page.locator('#metadata-genre');
   await expect(genre).toHaveValue('narrative', { timeout: 15000 });
@@ -110,7 +111,7 @@ test('clearing a field deletes the key rather than storing a blank', async ({ pa
 test('a stored field the project no longer declares is still shown, and can be cleared', async ({
   page,
 }) => {
-  await S.client.documents.patchMetadata(S.documentId, { leftover: 'from an import' });
+  await S.client.documents.patchMetadata(S.documentId, metadataOps({ leftover: 'from an import' }));
   await open(page, 'details');
 
   // Hiding it would leave a value that exports but cannot be reached.
@@ -168,7 +169,7 @@ test('a sentence carries sent_id and the declared fields, and they reach the exp
 });
 
 test('the dialog edits ONE sentence, and nothing about the grid moves', async ({ page }) => {
-  await S.client.tokens.patchMetadata(S.sentenceTokenId, { sent_id: 'ewt-9' });
+  await S.client.tokens.patchMetadata(S.sentenceTokenId, metadataOps({ sent_id: 'ewt-9' }));
   await open(page, 'annotate');
   await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
     timeout: 15000,
@@ -275,7 +276,10 @@ test("the top-left number is the sentence's place in the document", async ({ pag
   // Its POSITION, not its sent_id: the id is a field like any other and can be
   // edited to anything, and a stale one at the corner of every sentence is
   // worse than no label.
-  await S.client.tokens.patchMetadata(S.sentenceTokenId, { sent_id: 'anything-at-all' });
+  await S.client.tokens.patchMetadata(
+    S.sentenceTokenId,
+    metadataOps({ sent_id: 'anything-at-all' }),
+  );
   await open(page, 'annotate');
   await expect(page.locator('.token-form', { hasText: 'dog' }).first()).toBeVisible({
     timeout: 15000,

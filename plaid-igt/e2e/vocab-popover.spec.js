@@ -1,4 +1,4 @@
-import PlaidClient, { ROLES, cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, cpLength, metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // TEST_PLAN B2 (ranking + search), B3 (keyboard), B4 (link/unlink/relink),
@@ -77,11 +77,11 @@ test.beforeAll(async () => {
     m: words.map((x) => ml.tokens.find((t) => t.begin === x.begin).id),
   };
   // `hum`'s morpheme gets the form `ko` (B5-08); `the`'s morpheme an empty form (B5-09).
-  await client.tokens.patchMetadata(ids.m[W.hum], { form: 'ko' });
+  await client.tokens.patchMetadata(ids.m[W.hum], metadataOps({ form: 'ko' }));
   // A second morpheme on `hum` so an affix type has a joiner to render (B8-03).
   const hum = wl.tokens.find((t) => t.id === ids.w[W.hum]);
   ids.hum2 = (await client.tokens.create(MORPH.id, TEXT, hum.begin, hum.end, 2, { form: 'x' })).id;
-  await client.tokens.patchMetadata(ids.m[W.the], { form: '' });
+  await client.tokens.patchMetadata(ids.m[W.the], metadataOps({ form: '' }));
 });
 
 test.afterAll(async () => {

@@ -1,6 +1,7 @@
 import {
   isReviewed,
   mergeMetadata,
+  metadataOps,
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
@@ -440,7 +441,9 @@ export class IgtDocument extends DocumentModel {
           });
           // Cached morph types that drifted from their lexicon entry's.
           typePlans.forEach((p) => {
-            b.tokens.patchMetadata(p.morphemeId, { morphType: p.morphType });
+            b.tokens.patchMetadata(p.morphemeId, [
+              { op: 'set', path: ['morphType'], value: p.morphType },
+            ]);
           });
         });
         const removed = new Set(orphanMorphemeIds);
@@ -579,9 +582,9 @@ export class IgtDocument extends DocumentModel {
       const rightMetadata = newHalfMetadata(token.metadata, (m) => this.editStamp(m));
       if (leftPatch || (newRightTokenId && rightMetadata)) {
         await this._client.batched(async (b) => {
-          if (leftPatch) b.tokens.patchMetadata(tokenId, leftPatch);
+          if (leftPatch) b.tokens.patchMetadata(tokenId, metadataOps(leftPatch));
           if (newRightTokenId && rightMetadata)
-            b.tokens.patchMetadata(newRightTokenId, rightMetadata);
+            b.tokens.patchMetadata(newRightTokenId, metadataOps(rightMetadata));
         });
       }
 

@@ -5,6 +5,7 @@
 // gets annotated: it is consistency help for the parts done by hand, and for
 // the moment before you type the second `NNS` for a word you already tagged
 // `NN` somewhere else.
+import { metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
@@ -185,7 +186,10 @@ test('re-typing a machine lemma through the precedent list still confirms it', a
   // look machine-written. That word HAS precedent, so the list really opens
   // and leaving it really swaps the element.
   const spanId = S.lemmaSpans[7];
-  await client.spans.patchMetadata(spanId, { prov: 'inferred', provSource: 'service:test' });
+  await client.spans.patchMetadata(
+    spanId,
+    metadataOps({ prov: 'inferred', provSource: 'service:test' }),
+  );
 
   await openAnnotate(page);
   const cell = page.locator(`[id="${morphIds[7]}-lemma"]`);
@@ -211,7 +215,10 @@ test('leaving the precedent list without typing confirms nothing', async ({ page
   const spanId = S.lemmaSpans[7]; // "Dog", made to look machine-written
   const otherId = S.lemmaSpans[4]; // "dog", re-typed for real below
   for (const id of [spanId, otherId]) {
-    await client.spans.patchMetadata(id, { prov: 'inferred', provSource: 'service:test' });
+    await client.spans.patchMetadata(
+      id,
+      metadataOps({ prov: 'inferred', provSource: 'service:test' }),
+    );
   }
 
   await openAnnotate(page);

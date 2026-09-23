@@ -8,7 +8,7 @@
 // `split` are partition- and nesting-preserving and are the only boundary
 // edits used here; `clearSentences` is a merge of everything into the first.
 
-import { mergeMetadata } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 
@@ -35,7 +35,7 @@ export const sentenceMutations = {
       const patch = survivorPatch(prev.metadata, inherited, (m) => this.editStamp(m));
       await this._client.batched(async (b) => {
         b.tokens.merge(prev.id, sentenceId);
-        if (patch) b.tokens.patchMetadata(prev.id, patch);
+        if (patch) b.tokens.patchMetadata(prev.id, metadataOps(patch));
       });
       this._applyRawPatch((next, infoNext) => {
         const tokens = infoNext.sentenceTokenLayer?.tokens;
@@ -102,8 +102,9 @@ export const sentenceMutations = {
     const rightMetadata = newHalfMetadata(containing.metadata, (m) => this.editStamp(m));
     if (leftPatch || (newRightId && rightMetadata)) {
       await this._client.batched(async (b) => {
-        if (leftPatch) b.tokens.patchMetadata(containing.id, leftPatch);
-        if (newRightId && rightMetadata) b.tokens.patchMetadata(newRightId, rightMetadata);
+        if (leftPatch) b.tokens.patchMetadata(containing.id, metadataOps(leftPatch));
+        if (newRightId && rightMetadata)
+          b.tokens.patchMetadata(newRightId, metadataOps(rightMetadata));
       });
     }
 

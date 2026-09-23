@@ -5,7 +5,7 @@
 // its anchors (a sentence is named by its sent_id, or by its position), where
 // the tab and the badge are, and that the live claim is held only while
 // something is open.
-import PlaidClient from '@larc-iu/plaid-client';
+import PlaidClient, { metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
@@ -35,7 +35,7 @@ test.beforeAll(async () => {
   S.first = sentences.tokens[0].id;
   S.second = (await S.client.tokens.split(S.first, 13)).id;
   // The first is named by the corpus; the second is not.
-  await S.client.tokens.patchMetadata(S.first, { sent_id: 'ewt-1' });
+  await S.client.tokens.patchMetadata(S.first, metadataOps({ sent_id: 'ewt-1' }));
 
   await S.client.users
     .create(COLLEAGUE.id, COLLEAGUE.password, false, 'A Colleague')

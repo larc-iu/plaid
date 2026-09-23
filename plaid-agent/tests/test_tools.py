@@ -300,7 +300,8 @@ def test_morpheme_form_ops_yield_to_a_rewrite_of_the_same_analysis():
     assert notes == ['dropped: f1 (that analysis is rewritten in this plan)']
     c = FakeClient()
     counts = execute_plan(c, ops, source='s', label='l')
-    assert counts['morpheme forms'] == 1 and ('tokens', 'patch_metadata', ('m-9', {'form': 'y'}), {}) in c.log
+    form = [{'op': 'set', 'path': ['form'], 'value': 'y'}]
+    assert counts['morpheme forms'] == 1 and ('tokens', 'patch_metadata', ('m-9', form), {}) in c.log
 
 
 def test_entry_gloss_singles_out_a_homograph():

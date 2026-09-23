@@ -3,6 +3,7 @@
 // fake reload built from the recorded writes.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
@@ -49,6 +50,14 @@ const load = () => {
 const opsOf = (calls, name) => calls.filter((c) => c.name === name).flatMap((c) => c.args[0]);
 const patches = (calls, name) =>
   calls.filter((c) => c.name === name).map((c) => ({ id: c.args[0], patch: c.args[1] }));
+const has = (ops, op, path, value) =>
+  ops.some(
+    (o) =>
+      o.op === op &&
+      JSON.stringify(o.path) === JSON.stringify(path) &&
+      (op === 'delete' || o.value === value),
+  );
+const nodeId = (doc, v) => [...doc.graph.nodesById.values()].find((n) => n.var === v).id;
 
 test('penmanOf writes the sentence back as PENMAN', () => {
   const { doc } = load();
@@ -144,7 +153,7 @@ test('re-rooting onto a node the text creates clears the old mark first', async 
   const names = calls.map((c) => c.name);
   const [unmark] = patches(calls, 'spans.patchMetadata');
   assert.ok(unmark, 'the old root loses its mark');
-  assert.equal(unmark.patch.umr.root, undefined);
+  assert.ok(has(unmark.patch, 'delete', ['umr', 'root']));
   assert.ok(names.indexOf('spans.patchMetadata') < names.indexOf('spans.bulkCreate'));
   const [created] = opsOf(calls, 'spans.bulkCreate');
   assert.equal(created.metadata.umr.root, true);
@@ -156,17 +165,19 @@ test('applyPenman deletes a node the text no longer has and re-roots', async () 
   const plan = doc.planPenman(1, text);
   assert.deepEqual(plan.delete.length, 2);
   assert.equal(plan.root, 's1e');
+  const oldRoot = nodeId(doc, 's1l');
   await doc.applyPenman(1, text);
   assert.ok(calls.some((c) => c.name === 'tokens.bulkDelete'));
   const rootPatches = patches(calls, 'spans.patchMetadata');
-  assert.ok(rootPatches.some((p) => p.patch.umr.root === true));
+  assert.ok(rootPatches.some((p) => has(p.patch, 'set', ['umr', 'root'], true)));
   // The old root was deleted with its subtree, so no mark to clear.
-  assert.ok(!rootPatches.some((p) => p.patch.umr.root === undefined && p.patch.umr.var === 's1l'));
+  assert.ok(!rootPatches.some((p) => p.id === oldRoot && has(p.patch, 'delete', ['umr', 'root'])));
 });
 
-// Every metadata patch replaces the umr namespace whole. Built from the state
-// read before any write, the old root's attribute change put its root mark
-// back (two roots), and the new root's mark reverted its attribute change.
+// When every metadata patch replaced the umr namespace whole, one built from
+// the state read before any write put the old root's mark back (two roots),
+// and the new root's mark reverted its attribute change. Each patch now sets
+// only the keys it changes.
 test('moving the root and changing either root attribute keeps both changes', async () => {
   const { doc, calls } = load();
   const text = `(s1e / eat-01
@@ -174,11 +185,14 @@ test('moving the root and changing either root attribute keeps both changes', as
         :name (s1n / name :op1 "Lindsay"))
     :aspect activity
     :purpose-of (s1l / leave-02 :ARG0 s1p :aspect state))`;
+  const before = new Map([...doc.graph.nodesById.values()].map((n) => [n.id, n.metadata]));
   await doc.applyPenman(1, text);
-  // The last patch of each span is what it ends up as.
+  // Each span's metadata once every patch of the batch has landed, in order.
   const last = new Map();
-  patches(calls, 'spans.patchMetadata').forEach(({ id, patch }) => last.set(id, patch.umr));
-  const byVar = (v) => [...last.values()].find((m) => m.var === v);
+  patches(calls, 'spans.patchMetadata').forEach(({ id, patch }) =>
+    last.set(id, applyMetadataOps(last.get(id) ?? before.get(id), patch)),
+  );
+  const byVar = (v) => [...last.values()].map((m) => m.umr).find((m) => m.var === v);
   assert.equal(byVar('s1l').root, undefined);
   assert.deepEqual(
     byVar('s1l').attrs.map((a) => a.value),

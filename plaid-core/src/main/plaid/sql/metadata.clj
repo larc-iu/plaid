@@ -36,11 +36,10 @@
     (replace-metadata! tx entity-type entity-id m)
       DELETE existing rows then INSERT the new ones.
 
-    (patch-metadata! tx entity-type entity-id patch)
-      SHALLOW-MERGE `patch` into the existing metadata: keys present in
-      `patch` overwrite, keys absent are left untouched, and a key whose
-      value is nil/JSON-null is DELETED. (So a literal null cannot be
-      stored; an empty patch is a no-op.) Contrast `replace-metadata!`.
+    (patch-metadata! tx entity-type entity-id ops)
+      Apply a list of `set` / `delete` ops, each addressed by a path of
+      keys into the nested metadata. Only the top-level keys the ops
+      touch are rewritten. See its docstring for the rules.
 
     (delete-metadata! tx entity-type entity-id)
       DELETE all rows for (entity_type, entity_id).
@@ -259,45 +258,111 @@
     (let [post (get-metadata tx entity-type entity-id)]
       (emit-parent-audit! tx entity-type entity-id pre post))))
 
+(def max-metadata-depth
+  "Maximum nesting level allowed in metadata. 10 is plenty for any
+  structured metadata a real user would author, and deeper than that we
+  start worrying about pathological JSON aimed at exhausting stack or
+  serializer time. The REST guard checks request bodies against it, and
+  `patch-metadata!` checks what a list of ops builds, since a long path
+  nests deeper than its body."
+  10)
+
+(defn- nesting-depth
+  "Levels of maps and sequences below `v`: 0 for a scalar or an empty one."
+  [v]
+  (let [children (cond (map? v) (vals v)
+                       (sequential? v) v)]
+    (if (seq children)
+      (inc (reduce max (map nesting-depth children)))
+      0)))
+
+(defn- key-str [k]
+  (if (keyword? k) (name k) (str k)))
+
+(defn- op-error [msg op]
+  (ex-info msg {:code 400 :op op}))
+
+(defn- apply-op
+  "Apply one metadata op to the string-keyed metadata map `m`. See
+  `patch-metadata!` for the op format and its rules."
+  [m {:keys [op path] :as o}]
+  (let [op (key-str op)
+        path (mapv key-str path)
+        k (first path)]
+    (when (empty? path)
+      (throw (op-error "A metadata op needs a non-empty path" o)))
+    (when-not (valid-metadata-key? k)
+      (throw (op-error "Invalid metadata key" o)))
+    (when-not (#{"set" "delete"} op)
+      (throw (op-error (str "Unknown metadata op '" op "': expected set or delete") o)))
+    (when (and (= op "set") (not (contains? o :value)))
+      (throw (op-error "A set op needs a value" o)))
+    (letfn [(walk [node [k & more] depth]
+              (cond
+                (empty? more)
+                (if (= op "set")
+                  ;; Round-trip through JSON so the value is string-keyed like
+                  ;; the stored metadata a later op in the same list walks into.
+                  (assoc node k (decode-value (encode-value (:value o))))
+                  (dissoc node k))
+
+                :else
+                (let [child (clojure.core/get node k ::absent)]
+                  (cond
+                    (map? child)
+                    (assoc node k (walk child more (inc depth)))
+
+                    (= child ::absent)
+                    (if (= op "set")
+                      (assoc node k (walk {} more (inc depth)))
+                      node)
+
+                    :else
+                    (throw (op-error (str "Metadata path " (pr-str (subvec path 0 (inc depth)))
+                                          " holds a value that is not an object")
+                                     o))))))]
+      (walk m path 0))))
+
 (defn patch-metadata!
-  "Shallow-merge `patch` into the entity's existing metadata, then emit a
-  single synthetic parent-row audit row capturing the transition.
+  "Apply a list of path ops to the entity's metadata, then emit a single
+  synthetic parent-row audit row capturing the transition.
 
-  MERGE SEMANTICS — top-level keys only; values are opaque and are NEVER
-  deep-merged (a nested object replaces the old value wholesale):
+  `ops` is a sequence of maps, applied in order:
 
-    * key PRESENT in `patch`                -> set / overwrite that key
-    * key ABSENT from `patch`               -> left untouched
-    * key whose value is nil (JSON `null`)  -> that key is DELETED
+    {:op \"set\"    :path [k1 k2 ...] :value v}   write v at the path
+    {:op \"delete\" :path [k1 k2 ...]}            remove the key at the path
 
-  Because nil is the delete signal, a literal JSON null CANNOT be stored as
-  a value. An empty `patch` is a no-op: post == pre, so `emit-parent-audit!`
-  skips and no audit row is written.
+  A path is a non-empty vector of string keys, walked through nested
+  objects. The first key is a top-level metadata key and is validated like
+  any other. `set` creates the missing objects along the path, and a path
+  of length 1 replaces that top-level key whole. `delete` of a key that is
+  not there, or under an object that is not there, is a no-op. A path that
+  walks through a value that is not an object is a 400 for either op, never
+  coerced. `set` may store null, since deletion is its own op. An empty op
+  list is a no-op.
 
-  Contrast `replace-metadata!`, which discards every existing key. Reuses the
-  same raw delete/insert helpers, so the on-disk result and the audit image
-  are identical to a `replace-metadata!` with the already-merged map."
-  [tx entity-type entity-id patch]
-  (when (seq patch) (validate-metadata-keys! patch))
-  (let [pre    (get-metadata tx entity-type entity-id)
-        ;; `pre` is keyed by strings (see get-metadata); normalize patch keys to
-        ;; strings too so set/overwrite (assoc) and delete (dissoc) line up.
-        merged (reduce (fn [acc [k v]]
-                         (let [ks (if (keyword? k) (name k) (str k))]
-                           (if (nil? v)
-                             (dissoc acc ks)
-                             (assoc acc ks v))))
-                       pre
-                       patch)]
-    (raw-delete-metadata! tx entity-type entity-id)
-    (raw-insert-metadata! tx entity-type entity-id merged)
-    ;; Re-read the persisted (JSON-round-tripped, string-keyed) form for the
-    ;; audit post-image, exactly as replace-metadata! does. This keeps the audit
-    ;; image byte-identical to the replace path the ETL replayer was built
-    ;; against, and means a re-patch with the same value never emits a spurious
-    ;; :update (emit-parent-audit! skips on pre == post).
-    (emit-parent-audit! tx entity-type entity-id
-                        pre (get-metadata tx entity-type entity-id))))
+  Only the top-level rows the ops touch are rewritten. The whole list runs
+  in the caller's transaction, so a failing op leaves nothing applied."
+  [tx entity-type entity-id ops]
+  (when (seq ops)
+    (let [pre (get-metadata tx entity-type entity-id)
+          post (reduce apply-op pre ops)
+          touched (distinct (map #(key-str (first (:path %))) ops))]
+      (when (> (nesting-depth post) max-metadata-depth)
+        (throw (ex-info (str "Metadata exceeds max depth of " max-metadata-depth) {:code 400})))
+      (psc/execute! tx {:delete-from :entity_metadata
+                        :where [:and
+                                [:= :entity_type entity-type]
+                                [:= :entity_id entity-id]
+                                [:in :key (vec touched)]]})
+      (raw-insert-metadata! tx entity-type entity-id
+                            (select-keys post (filter #(contains? post %) touched)))
+      ;; Re-read the persisted (JSON-round-tripped, string-keyed) form for the
+      ;; audit post-image, as replace-metadata! does, so an op list that
+      ;; restates the current values never emits a spurious :update
+      ;; (emit-parent-audit! skips on pre == post).
+      (emit-parent-audit! tx entity-type entity-id
+                          pre (get-metadata tx entity-type entity-id)))))
 
 (defn sweep-metadata!
   "Raw DELETE of all metadata rows for a list of (entity-type, entity-id).
@@ -336,7 +401,8 @@
   synthetic parent-row audit image.
 
   Returns `{:set-metadata f :patch-metadata f :delete-metadata f}`, where
-  set/patch take `[db eid m user-id]` and delete takes `[db eid user-id]`.
+  set takes `[db eid m user-id]`, patch takes `[db eid ops user-id]` (see
+  `patch-metadata!`), and delete takes `[db eid user-id]`.
   All three return `eid` inside the operation's `{:success true}` envelope.
 
   Spec:
@@ -379,13 +445,13 @@
           eid)))
 
      :patch-metadata
-     (fn [db eid patch user-id]
+     (fn [db eid ops user-id]
        (submit-operation!
         [tx db (op-attrs db eid "patch-metadata"
-                         (str "Patch metadata on " noun " " eid " with " (count patch) " keys")
+                         (str "Patch metadata on " noun " " eid " with " (count ops) " ops")
                          user-id)]
         (let [row (parent! tx eid)]
-          (patch-metadata! tx entity-type eid patch)
+          (patch-metadata! tx entity-type eid ops)
           (when after-fn (after-fn tx row))
           eid)))
 

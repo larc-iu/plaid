@@ -39,8 +39,8 @@
   "Update the value of, and/or patch the metadata on, many entities of one
   kind in ONE operation. `items` is a vector of maps, each with `:id` and
   either or both of `:value` (set when the key is PRESENT, so nil means
-  JSON null) and `:metadata` (a patch with `plaid.sql.metadata/patch-metadata!`
-  semantics: a nil value deletes that key).
+  JSON null) and `:metadata` (a list of ops for
+  `plaid.sql.metadata/patch-metadata!`).
 
   The entities may lie in several documents of one project: every document
   touched has its version bumped and its lock checked, and the operation

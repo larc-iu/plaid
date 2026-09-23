@@ -145,26 +145,26 @@
                                                 {:vocab-layer-id v2 :form "run"}])
                       :body :ids)
           res (bulk-update-vocab-items admin-request
-                                       [{:id i1 :form "dog" :metadata {"pos" "NOUN"}}
-                                        {:id i2 :metadata {"pos" "V"}}])]
+                                       [{:id i1 :form "dog" :metadata [{:op "set" :path ["pos"] :value "NOUN"}]}
+                                        {:id i2 :metadata [{:op "set" :path ["pos"] :value "V"}]}])]
       (assert-ok res)
       (is (= 2 (-> res :body :count)))
       (let [a (-> (get-vocab-item admin-request i1) :body)
             b (-> (get-vocab-item admin-request i2) :body)]
         (is (= "dog" (:vocab-item/form a)) "form set when the key is present")
-        (is (= "NOUN" (-> a :metadata (get "pos"))) "a present key is overwritten")
-        (is (= "keep" (-> a :metadata (get "note"))) "an absent key is left untouched")
+        (is (= "NOUN" (-> a :metadata (get "pos"))) "a set key is overwritten")
+        (is (= "keep" (-> a :metadata (get "note"))) "a key no op names is left untouched")
         (is (= "run" (:vocab-item/form b)) "an entry with no :form keeps its form")
         (is (= "V" (-> b :metadata (get "pos"))))))))
 
-(deftest bulk-update-null-deletes-a-metadata-key
-  (testing "a null value deletes that key, the same patch semantics as PATCH /:id/metadata"
+(deftest bulk-update-delete-op-removes-a-metadata-key
+  (testing "a delete op removes that key, the same ops as PATCH /:id/metadata"
     (let [{:keys [v1]} (setup)
           id (-> (bulk-create-vocab-items admin-request
                                           [{:vocab-layer-id v1 :form "dogs"
                                             :metadata {"pos" "N" "note" "drop me"}}])
                  :body :ids first)]
-      (assert-ok (bulk-update-vocab-items admin-request [{:id id :metadata {"note" nil}}]))
+      (assert-ok (bulk-update-vocab-items admin-request [{:id id :metadata [{:op "delete" :path ["note"]}]}]))
       (let [meta (-> (get-vocab-item admin-request id) :body :metadata)]
         (is (= "N" (get meta "pos")))
         (is (not (contains? meta "note")))))))

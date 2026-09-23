@@ -129,17 +129,30 @@ export const resolveDirection = (metadata, sample) => {
   return set === AUTO ? detectDirection(sample) : set;
 };
 
+const TEXT_DIRECTION_PATH = [METADATA_NAMESPACE, 'textDirection'];
+
 /**
- * The metadata patch that sets (or clears) the override.
- *
- * A document PATCH is shallow and replaces a nested namespace object wholesale,
- * so this restates the whole `plaid` object with whatever else was in it.
+ * The metadata PATCH ops that set (or clear) the override: one op on the key
+ * itself, so whatever else another app keeps in the `plaid` namespace stays.
  * `AUTO` REMOVES the key rather than storing itself: a document set back to
  * automatic then reads the same as one that was never touched.
  */
-export const textDirectionPatch = (metadata, value) => {
-  const ns = { ...(metadata?.[METADATA_NAMESPACE] || {}) };
-  if (value === LTR || value === RTL) ns.textDirection = value;
+export const textDirectionOps = (value) =>
+  value === LTR || value === RTL
+    ? [{ op: 'set', path: TEXT_DIRECTION_PATH, value }]
+    : [{ op: 'delete', path: TEXT_DIRECTION_PATH }];
+
+/**
+ * `metadata` as the server leaves it after `textDirectionOps(value)`, for the
+ * optimistic copy. Returns a new object.
+ */
+export const withTextDirection = (metadata, value) => {
+  const out = { ...(metadata || {}) };
+  const set = value === LTR || value === RTL;
+  if (!set && !out[METADATA_NAMESPACE]) return out;
+  const ns = { ...out[METADATA_NAMESPACE] };
+  if (set) ns.textDirection = value;
   else delete ns.textDirection;
-  return { [METADATA_NAMESPACE]: ns };
+  out[METADATA_NAMESPACE] = ns;
+  return out;
 };

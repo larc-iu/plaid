@@ -32,11 +32,17 @@ function stubFetch(versions) {
 }
 
 test("a span bulk update is one PATCH carrying the entries as sent", async () => {
+  // The metadata ops pass through verbatim: keys inside a value are user data
+  // and are never re-cased.
+  const ops = [
+    { op: "set", path: ["prov"], value: "inferred" },
+    { op: "set", path: ["provDetail", "valueProbs"], value: { someLabel: 0.9 } },
+  ];
   const client = new PlaidClient("http://plaid.test", "tok");
   const { calls, restore } = stubFetch({ d1: 8 });
   try {
     const result = await client.spans.bulkUpdate([
-      { id: "s1", value: "NOUN", metadata: { prov: "inferred" } },
+      { id: "s1", value: "NOUN", metadata: ops },
       { id: "s2", value: null },
     ]);
     assert.deepEqual(result, { count: 2 });
@@ -47,7 +53,7 @@ test("a span bulk update is one PATCH carrying the entries as sent", async () =>
   assert.equal(calls[0].method, "PATCH");
   assert.ok(calls[0].url.endsWith("/api/v1/spans/bulk"), calls[0].url);
   assert.deepEqual(calls[0].body, [
-    { id: "s1", value: "NOUN", metadata: { prov: "inferred" } },
+    { id: "s1", value: "NOUN", metadata: ops },
     { id: "s2", value: null },
   ]);
 });
@@ -71,7 +77,9 @@ test("relations and tokens take the same round trip", async () => {
   const { calls, restore } = stubFetch({ d1: 9, d2: 4 });
   try {
     await client.relations.bulkUpdate([{ id: "r1", value: "nsubj" }]);
-    await client.tokens.bulkUpdate([{ id: "t1", metadata: { form: "cd" } }]);
+    await client.tokens.bulkUpdate([
+      { id: "t1", metadata: [{ op: "set", path: ["form"], value: "cd" }] },
+    ]);
   } finally {
     restore();
   }

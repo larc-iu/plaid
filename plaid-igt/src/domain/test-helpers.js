@@ -3,7 +3,7 @@
 // returns (camelCased layers; substrate bound by config.plaid.role, private
 // config under config.igt.*). Not imported by app code.
 
-import { ROLES } from '@larc-iu/plaid-client';
+import { ROLES, applyMetadataOps } from '@larc-iu/plaid-client';
 
 let idCounter = 0;
 export const resetIds = () => {
@@ -140,6 +140,18 @@ export function buildRawDoc(opts = {}) {
 // optimistic patch is what updates the document, so the fake need not maintain
 // real server state.
 
+// A metadata PATCH body, and the `metadata` of a bulk update entry, is a list
+// of ops. Applying them to nothing throws on anything else, so a write that
+// still sends a fragment fails the test that makes it.
+const checkOps = (ops) => {
+  if (!Array.isArray(ops)) throw new Error('metadata ops must be an array');
+  applyMetadataOps({}, ops);
+};
+const checkBulkUpdate = (body) => {
+  for (const e of body || []) if (e.metadata !== undefined) checkOps(e.metadata);
+  return { count: (body || []).length };
+};
+
 export function makeFakeClient(opts = {}) {
   const calls = [];
   const record = (kind, args) => calls.push({ kind, args });
@@ -167,9 +179,9 @@ export function makeFakeClient(opts = {}) {
           ids: (body || []).map(() => nextId('tok')),
         })),
         bulkDelete: op('tokens.bulkDelete', () => ({})),
-        bulkUpdate: op('tokens.bulkUpdate', (body) => ({ count: (body || []).length })),
+        bulkUpdate: op('tokens.bulkUpdate', checkBulkUpdate),
         setMetadata: op('tokens.setMetadata', () => ({})),
-        patchMetadata: op('tokens.patchMetadata', () => ({})),
+        patchMetadata: op('tokens.patchMetadata', (id, ops) => (checkOps(ops), {})),
         deleteMetadata: op('tokens.deleteMetadata', () => ({})),
       },
       spans: {
@@ -180,9 +192,9 @@ export function makeFakeClient(opts = {}) {
           ids: (body || []).map(() => nextId('span')),
         })),
         bulkDelete: op('spans.bulkDelete', () => ({})),
-        bulkUpdate: op('spans.bulkUpdate', (body) => ({ count: (body || []).length })),
+        bulkUpdate: op('spans.bulkUpdate', checkBulkUpdate),
         setMetadata: op('spans.setMetadata', () => ({})),
-        patchMetadata: op('spans.patchMetadata', () => ({})),
+        patchMetadata: op('spans.patchMetadata', (id, ops) => (checkOps(ops), {})),
       },
       vocabLinks: {
         create: op('vocabLinks.create', () => ({ id: nextId('link') })),
@@ -191,16 +203,16 @@ export function makeFakeClient(opts = {}) {
         })),
         bulkDelete: op('vocabLinks.bulkDelete', () => ({})),
         delete: op('vocabLinks.delete', () => ({})),
-        patchMetadata: op('vocabLinks.patchMetadata', () => ({})),
+        patchMetadata: op('vocabLinks.patchMetadata', (id, ops) => (checkOps(ops), {})),
       },
       vocabItems: {
         create: op('vocabItems.create', () => ({ id: nextId('vitem') })),
         update: op('vocabItems.update', () => ({})),
-        bulkUpdate: op('vocabItems.bulkUpdate', (body) => ({ count: (body || []).length })),
+        bulkUpdate: op('vocabItems.bulkUpdate', checkBulkUpdate),
         bulkDelete: op('vocabItems.bulkDelete', () => ({})),
         setMetadata: op('vocabItems.setMetadata', () => ({})),
         deleteMetadata: op('vocabItems.deleteMetadata', () => ({})),
-        patchMetadata: op('vocabItems.patchMetadata', () => ({})),
+        patchMetadata: op('vocabItems.patchMetadata', (id, ops) => (checkOps(ops), {})),
       },
       texts: {
         create: op('texts.create', () => ({ id: nextId('text') })),

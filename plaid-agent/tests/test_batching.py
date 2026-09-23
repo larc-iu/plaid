@@ -63,11 +63,12 @@ def test_set_morpheme_changes_form_or_type_in_place():
     assert 'Unknown morph type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2', 'type': 'sufix'})
     assert 'Give form and/or type' in call_tool(w, 'set_morpheme', {'document': 'd1', 'ref': 's2.w1.m2'})
     # Applied as ONE metadata patch on the morpheme (the two ops merge into
-    # one bulk entry); a rewrite of the chain supersedes both.
+    # one bulk entry, in plan order); a rewrite of the chain supersedes both.
     w.ops[1]['form'] = 'är'
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
-    assert ('tokens', 'patch_metadata', ('m-4b', {'form': 'är', 'morphType': None}), {}) in c.log
+    both = [{'op': 'delete', 'path': ['morphType']}, {'op': 'set', 'path': ['form'], 'value': 'är'}]
+    assert ('tokens', 'patch_metadata', ('m-4b', both), {}) in c.log
     # A rewrite of the chain deletes every morpheme after the first, so the two
     # form changes above are writes to something that will not be there. The
     # tools refuse the pair as it is staged; this is the backstop under that.

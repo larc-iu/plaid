@@ -2,6 +2,7 @@
 
 import pytest
 
+from core.fake_client import as_fragment
 from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.toolkit import TOOLS, WRITE_TOOLS, call_tool
@@ -331,7 +332,7 @@ def test_confirming_a_whole_document_is_one_scope_op_resolved_at_approval(ws):
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'confirmations': 1}
     calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
-    assert calls == [('spans', 'patch_metadata', ('sp-u3', {'provConfirmed': True}))]
+    assert calls == [('spans', 'patch_metadata', ('sp-u3', [{'op': 'set', 'path': ['provConfirmed'], 'value': True}]))]
 
 
 def test_a_scope_needs_the_project_to_read_with(ws):
@@ -478,7 +479,7 @@ def test_applying_a_field_value_stamps_it_and_counts_it(ws):
     assert counts == {'field values': 1}
     updates = ws.client.calls('spans', 'update')
     assert updates[0][2] == ('sp-l1', 'irse')
-    patch = ws.client.calls('spans', 'patch_metadata')[0][2][1]
+    patch = as_fragment(ws.client.calls('spans', 'patch_metadata')[0][2][1])
     assert patch['prov'] == 'inferred' and patch['provConfirmed'] is True
 
 
@@ -864,7 +865,7 @@ def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
     assert kinds == [('tokens', 'bulk_delete'), ('tokens', 'bulk_create'),
                      ('tokens', 'patch_metadata')]
     # The multi-word token records its own surface, the way the editor does.
-    assert first[2][2][1] == {'form': 'Corre'}
+    assert first[2][2][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
     # Then a Form and a Lemma span per word, which could not be in the first
     # batch: they name ids that batch made.
     assert [(e[0], e[1]) for e in second] == [('spans', 'bulk_create')] * 4
@@ -874,7 +875,7 @@ def test_collapsing_to_one_word_drops_the_tokens_form(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2-3', 'forms': ['al']})
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     patch = ws.client.calls('tokens', 'patch_metadata')[0][2][1]
-    assert patch == {'form': None}
+    assert patch == [{'op': 'delete', 'path': ['form']}]
     # One word spelled like its token needs no Form span, only a lemma.
     assert len(ws.client.batches[1]) == 1
 

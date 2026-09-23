@@ -15,6 +15,7 @@ first), ``provDetail.value`` on each gloss span. Callers are expected to
 have applied the write contract already (:func:`select_targets`).
 """
 
+from plaid_client.metadata_ops import metadata_ops
 from plaid_client.provenance import stamp_inferred
 
 BATCH_OP_BUDGET = 800  # the server caps one atomic batch at 1000 ops
@@ -82,8 +83,8 @@ def write_analyses(client, plans, gloss_layer_id, morph_layer_id, source, detail
                                           'boundaries': ''.join(a['joiners']),
                                           **({'surfaceMismatch': True} if a['surface_mismatch'] else {}),
                                           **({'degraded': True} if a['degraded'] else {})}
-                b.tokens.patch_metadata(m0['id'], {
-                    'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp})
+                b.tokens.patch_metadata(m0['id'], metadata_ops({
+                    'form': a['segments'][0], 'morphType': a['types'][0], **m0_stamp}))
                 idx += 1
                 for j in range(1, len(a['segments'])):
                     meta = {'form': a['segments'][j],

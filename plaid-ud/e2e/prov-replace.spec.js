@@ -7,7 +7,7 @@
 // plus two machine relations, then drives each replace gesture and reads the
 // server state back after each.
 import { test, expect, seedAuth, readToken, collectClientErrors } from './fixtures.js';
-import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY } from '@larc-iu/plaid-client';
+import { PlaidClient, ROLES, PLAID_NAMESPACE, ROLE_KEY, metadataOps } from '@larc-iu/plaid-client';
 
 const BASE = 'http://localhost:8085';
 const UD_NS = 'ud';
@@ -171,7 +171,7 @@ test('API: batched(update + patchMetadata) verifies on the server', async () => 
   const tmp = (await client.spans.create(byKey.xpos, [morphIds[0]], 'DT', MACHINE)).id;
   await client.batched(async (b) => {
     b.spans.update(tmp, 'DET');
-    b.spans.patchMetadata(tmp, { provConfirmed: true });
+    b.spans.patchMetadata(tmp, metadataOps({ provConfirmed: true }));
   });
   const back = await client.spans.get(tmp);
   dump('api-batched', { value: back.value, metadata: back.metadata });
@@ -321,7 +321,7 @@ test('replace deprel label (tree editor)', async ({ page }) => {
 // ---- UPOS gesture matrix: reset the span before each, then try one gesture ----
 const resetUpos = async () => {
   await S.client.spans.update(S.uposDog, 'NOUN');
-  await S.client.spans.patchMetadata(S.uposDog, { ...MACHINE, provConfirmed: null });
+  await S.client.spans.patchMetadata(S.uposDog, metadataOps({ ...MACHINE, provConfirmed: null }));
 };
 /** What every one of the gestures below has to have done. */
 const expectVerified = (got, before) => {
@@ -433,7 +433,10 @@ test('upos: Ctrl+A, type, Enter, click away', async ({ page }) => {
 });
 
 test('export skips reserved provenance keys on sentence tokens', async ({ page }) => {
-  await S.client.tokens.patchMetadata(S.sentTokId, { ...MACHINE, text: 'the dog runs' });
+  await S.client.tokens.patchMetadata(
+    S.sentTokId,
+    metadataOps({ ...MACHINE, text: 'the dog runs' }),
+  );
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/export`);
   const ta = page.locator('textarea').first();
@@ -446,7 +449,7 @@ test('export skips reserved provenance keys on sentence tokens', async ({ page }
 });
 
 test('Accept predictions (sentence) verifies the Form span too', async ({ page }) => {
-  await S.client.spans.patchMetadata(S.formDog, { ...MACHINE, provConfirmed: null });
+  await S.client.spans.patchMetadata(S.formDog, metadataOps({ ...MACHINE, provConfirmed: null }));
   const c = await openAnnotate(page);
   await expect(page.locator('.token-form--machine')).toHaveCount(1);
   await page.locator('.accept-predictions-btn').first().click();
@@ -495,7 +498,7 @@ test('re-typing the machine value (UPOS) verifies it; tabbing through does not',
 // writes nothing.
 test('re-typing a machine feature verifies it and adds no second chip', async ({ page }) => {
   await S.client.spans.update(S.featDog, 'Number=Sing');
-  await S.client.spans.patchMetadata(S.featDog, { ...MACHINE, provConfirmed: null });
+  await S.client.spans.patchMetadata(S.featDog, metadataOps({ ...MACHINE, provConfirmed: null }));
   const c = await openAnnotate(page);
   const input = page.locator(`[id="${S.morphIds[1]}-feats"]`);
   const pills = page.locator('.features-container', { has: input }).locator('.feature-tag');
@@ -543,7 +546,7 @@ test('re-typing a machine feature verifies it and adds no second chip', async ({
 // what had been typed.
 test('Escape over an open suggestion list writes no feature', async ({ page }) => {
   await S.client.spans.update(S.featDog, 'Number=Sing');
-  await S.client.spans.patchMetadata(S.featDog, { ...MACHINE, provConfirmed: null });
+  await S.client.spans.patchMetadata(S.featDog, metadataOps({ ...MACHINE, provConfirmed: null }));
   const c = await openAnnotate(page);
   const input = page.locator(`[id="${S.morphIds[1]}-feats"]`);
   const pills = page.locator('.features-container', { has: input }).locator('.feature-tag');
@@ -573,7 +576,10 @@ test('Escape over an open suggestion list writes no feature', async ({ page }) =
 });
 
 test('re-typing the machine deprel label verifies the relation', async ({ page }) => {
-  await S.client.relations.patchMetadata(S.relNsubj, { ...MACHINE, provConfirmed: null });
+  await S.client.relations.patchMetadata(
+    S.relNsubj,
+    metadataOps({ ...MACHINE, provConfirmed: null }),
+  );
   const c = await openAnnotate(page);
   const label = page.locator('.tree-deprel-text', { hasText: 'nsubj' }).first();
   await label.click({ force: true });
@@ -593,7 +599,10 @@ test('re-typing the machine deprel label verifies the relation', async ({ page }
 test('a word whose only machine material is its incoming relation shows the ✓', async ({
   page,
 }) => {
-  await S.client.relations.patchMetadata(S.relDet, { ...MACHINE, provConfirmed: null });
+  await S.client.relations.patchMetadata(
+    S.relDet,
+    metadataOps({ ...MACHINE, provConfirmed: null }),
+  );
   await openAnnotate(page);
   const theCol = page.locator('.token-column', {
     has: page.locator(`[id="${S.morphIds[0]}-lemma"]`),

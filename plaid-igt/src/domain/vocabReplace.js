@@ -30,17 +30,23 @@ export function planVocabReplace(items, { field, apply, tagset = null }) {
 
 /**
  * The writes for the chosen rows, as bulk-update entries: `{id, form}` for a
- * form change, `{id, metadata}` for a field change. A field change patches the
- * ONE key it touches, with a null where the replacement empties the value,
- * since the entry form never stores an empty one and a null is how a key is
- * deleted. Nothing else on the entry is named, so nothing else can be lost.
+ * form change, `{id, metadata}` for a field change. A field change is ONE
+ * metadata op on the key it touches: a set, or a delete where the replacement
+ * empties the value, since the entry form never stores an empty one. Nothing
+ * else on the entry is named, so nothing else can be lost.
  */
 export function replaceWrites(rows, { field }) {
   const out = [];
   for (const row of rows) {
     if (row.invalid) continue;
     if (field === 'form') out.push({ id: row.id, form: row.new.trim() });
-    else out.push({ id: row.id, metadata: { [field]: row.new.trim() === '' ? null : row.new } });
+    else {
+      const op =
+        row.new.trim() === ''
+          ? { op: 'delete', path: [field] }
+          : { op: 'set', path: [field], value: row.new };
+      out.push({ id: row.id, metadata: [op] });
+    }
   }
   return out;
 }

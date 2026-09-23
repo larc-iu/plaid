@@ -9,6 +9,7 @@
 //  - the sentence's own Accept and Discard buttons do the whole sentence;
 //  - the `?` legend names all of it, and shows the amber row only in a project
 //    that actually reviews somebody.
+import { metadataOps } from '@larc-iu/plaid-client';
 import { test, expect, seedAuth } from './fixtures.js';
 import { seedUdDoc } from './seedUdDoc.js';
 
@@ -71,10 +72,13 @@ test.beforeEach(async () => {
         await client.spans.create(S.layers.upos, [S.morphIds[0]], 'DET', { ...MACHINE })
       ).id;
     });
-  await client.spans.patchMetadata(S.dogUpos, {
-    ...CONTRIBUTED_BY('someone@x.com'),
-    provConfirmed: null,
-  });
+  await client.spans.patchMetadata(
+    S.dogUpos,
+    metadataOps({
+      ...CONTRIBUTED_BY('someone@x.com'),
+      provConfirmed: null,
+    }),
+  );
   await client.spans
     .delete(S.fastUpos)
     .catch(() => {})

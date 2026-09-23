@@ -15,7 +15,8 @@ import {
   RTL,
   readTextDirection,
   resolveDirection,
-  textDirectionPatch,
+  textDirectionOps,
+  withTextDirection,
 } from './textDirection.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
@@ -121,21 +122,19 @@ export class DocumentModel {
    * Set or clear the direction override. `AUTO` puts the document back to
    * following its own text.
    *
-   * A PATCH, and the whole reserved namespace restated: a document metadata
-   * PATCH replaces a nested namespace wholesale, and another app sharing this
-   * document keeps its own fields beside it.
+   * A PATCH of the one key under the reserved namespace, so another app
+   * sharing this document keeps its own fields beside it.
    */
   async setTextDirection(value) {
     const next = value === LTR || value === RTL ? value : AUTO;
     if (this.textDirectionSetting === next) return false;
-    const patch = textDirectionPatch(this._raw?.metadata, next);
     return this._withSaving(
       'Failed to save the text direction',
       async () => {
         this._applyRawPatch((raw) => {
-          raw.metadata = { ...(raw.metadata || {}), ...patch };
+          raw.metadata = withTextDirection(raw.metadata, next);
         });
-        await this._client.documents.patchMetadata(this.id, patch);
+        await this._client.documents.patchMetadata(this.id, textDirectionOps(next));
       },
       'Set text direction',
     );

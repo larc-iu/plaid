@@ -352,7 +352,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
     expect(res.syncedMorphTypes).toBe(1);
     const patches = client.calls.filter((c) => c.kind === 'tokens.patchMetadata');
     expect(patches).toHaveLength(1);
-    expect(patches[0].args).toEqual(['m-1', { morphType: 'stem' }]);
+    expect(patches[0].args).toEqual(['m-1', [{ op: 'set', path: ['morphType'], value: 'stem' }]]);
     // The entry the History drawer shows.
     const relabel = client.calls.filter((c) => c.kind === 'operationGroups.update');
     expect(relabel).toHaveLength(1);

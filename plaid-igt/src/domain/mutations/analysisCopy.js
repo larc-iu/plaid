@@ -17,7 +17,7 @@
 // outside any focused-cell interaction, so a full resync is the simple,
 // correct move (same as the service-backed auto-link path).
 
-import { stampInferred, mergeMetadata, PROV } from '@larc-iu/plaid-client';
+import { stampInferred, mergeMetadata, metadataOps, PROV } from '@larc-iu/plaid-client';
 import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
@@ -28,6 +28,18 @@ import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 // bounds is the entities in one server transaction, and so how long it holds
 // the single SQLite write lock against other writers.
 const ANALYSIS_BATCH_BUDGET = 800;
+
+// The metadata ops that return a surviving default morpheme to a bare slot:
+// no form, no type, no provenance.
+const RESET_MORPHEME_OPS = [
+  'form',
+  'morphType',
+  'prov',
+  'provSource',
+  'provDetail',
+  'provProb',
+  'provConfirmed',
+].map((key) => ({ op: 'delete', path: [key] }));
 
 // Entities one word's copy writes: the default-morpheme patch, a create per
 // extra morpheme, and a link + fields for every slot and the word. Words are
@@ -158,19 +170,7 @@ export const analysisCopyMutations = {
           // off every word before it.
           if (isVirtualMorphemeId(m.id)) return;
           collectAttached(m);
-          // patch semantics: null deletes the key
-          strip.patches.push({
-            id: m.id,
-            metadata: {
-              form: null,
-              morphType: null,
-              prov: null,
-              provSource: null,
-              provDetail: null,
-              provProb: null,
-              provConfirmed: null,
-            },
-          });
+          strip.patches.push({ id: m.id, metadata: RESET_MORPHEME_OPS });
           // The apply path numbers created morphemes from 2, so the survivor
           // must sit at 1.
           if ((m.precedence ?? 1) !== 1) strip.renumber.push(m.id);
@@ -365,7 +365,7 @@ export const analysisCopyMutations = {
             if (s0.morphType != null) patch.morphType = s0.morphType;
             const merged = { ...patch, ...stampForm(s0.form) };
             if (Object.keys(merged).length && (Object.keys(patch).length || slots.length > 1)) {
-              morphPatches.push({ id: m0Id, metadata: merged });
+              morphPatches.push({ id: m0Id, metadata: metadataOps(merged) });
             }
             collectLinkAndSpans(m0Id, s0, morphLayersByName);
           }
@@ -504,16 +504,7 @@ export const analysisCopyMutations = {
         spanIds.forEach((id) => b.spans.delete(id));
         morphIds.forEach((id) => b.tokens.delete(id));
         if (resetFirst) {
-          // patch semantics: null deletes the key
-          b.tokens.patchMetadata(resetFirst, {
-            form: null,
-            morphType: null,
-            prov: null,
-            provSource: null,
-            provDetail: null,
-            provProb: null,
-            provConfirmed: null,
-          });
+          b.tokens.patchMetadata(resetFirst, RESET_MORPHEME_OPS);
         }
         renumber.forEach(({ id, precedence }) =>
           b.tokens.update(id, undefined, undefined, precedence),
@@ -571,10 +562,10 @@ export const analysisCopyMutations = {
     if (!words.length) return false;
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf(words);
     if (!spanIds.length && !tokenIds.length && !linkIds.length) return false;
-    const confirm = this.confirmStamp(stampInferred('any'));
-    tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirm));
-    linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirm));
-    spanIds.forEach((id) => b.spans.patchMetadata(id, confirm));
+    const confirmOps = metadataOps(this.confirmStamp(stampInferred('any')));
+    tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirmOps));
+    linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirmOps));
+    spanIds.forEach((id) => b.spans.patchMetadata(id, confirmOps));
     return true;
   },
 
@@ -586,6 +577,7 @@ export const analysisCopyMutations = {
     }
     // One writer, one stamp: what it merges does not depend on the entity.
     const confirm = this.confirmStamp(stampInferred('any'));
+    const confirmOps = metadataOps(confirm);
     const { spanIds, tokenIds, linkIds } = this._reviewableIdsOf([token]);
 
     // Resolve adoptions against the word itself: the scope follows the target,
@@ -616,9 +608,9 @@ export const analysisCopyMutations = {
         .filter((w) => w.targetId);
 
       await this._client.batched(async (b) => {
-        tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirm));
-        linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirm));
-        spanIds.forEach((id) => b.spans.patchMetadata(id, confirm));
+        tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirmOps));
+        linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirmOps));
+        spanIds.forEach((id) => b.spans.patchMetadata(id, confirmOps));
         live.forEach((w) =>
           b.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
         );

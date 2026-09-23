@@ -666,7 +666,7 @@ class UmrAncastService(BaseService):
                     # moved since, the report would be a claim about a state
                     # that is gone.
                     check_unchanged(self.client, document_id, read_version)
-                    self._write(document_id, document, report)
+                    self._write(document_id, report)
 
             response_helper.progress(100, notice['title'])
             response_helper.complete({
@@ -678,16 +678,11 @@ class UmrAncastService(BaseService):
                 'notice': notice,
             })
 
-    def _write(self, document_id, document, report) -> None:
-        """The report, into the document's `umr` metadata namespace.
-
-        A document metadata PATCH is shallow: a nested namespace object is
-        replaced wholesale. So the namespace is read, the report put beside
-        whatever else is in it, and the whole namespace restated.
-        """
-        current = ((document.get('metadata') or {}).get(UMR_NAMESPACE)) or {}
+    def _write(self, document_id, report) -> None:
+        """The report, under the document's `umr` metadata namespace. One op
+        sets that one key, so whatever else the namespace holds stays."""
         self.client.documents.patch_metadata(
-            document_id, {UMR_NAMESPACE: {**current, 'adjudication': report}})
+            document_id, [{'op': 'set', 'path': [UMR_NAMESPACE, 'adjudication'], 'value': report}])
 
 
 def main():

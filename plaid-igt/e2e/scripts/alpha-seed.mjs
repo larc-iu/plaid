@@ -7,7 +7,7 @@
 // Recipe mirrors e2e/fixtureProject.js (the setup wizard's layer hierarchy + `igt`
 // config). All offsets are Unicode code points (the emoji token matters).
 import PlaidClient from '@larc-iu/plaid-client';
-import { ROLES, stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
+import { ROLES, stampInferred, confirmedInferred, metadataOps } from '@larc-iu/plaid-client';
 import { readToken } from '../fixtures.js';
 
 const CORE_URL = process.env.PLAID_CORE_URL || 'http://localhost:8085';
@@ -232,7 +232,10 @@ async function analyze(project, raw, content, spec, items, nth = 0) {
     );
     morphIds.push(r?.id || r);
   }
-  await client.tokens.patchMetadata(morphIds[0], { form: spec.morphs[0].form, ...stamp });
+  await client.tokens.patchMetadata(
+    morphIds[0],
+    metadataOps({ form: spec.morphs[0].form, ...stamp }),
+  );
   for (let i = 0; i < spec.morphs.length; i++) {
     const m = spec.morphs[i];
     if (m.gloss)

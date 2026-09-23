@@ -18,6 +18,7 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 import json
 from typing import Any, Dict, List, Optional
 
+from plaid_client import metadata_ops
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
 
@@ -26,7 +27,7 @@ from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV
 # their own. 'contributed' is a contributor's approval, which is their own
 # unreviewed work rather than a confirmation of anyone's.
 STAMP_MODES = ('verified', 'human', 'contributed')
-# patch semantics: a null value deletes the key
+# Fragments, sent with metadata_ops, which turns a None into a delete.
 CLEAR_PROV = {PROV_KEY: None, PROV_SOURCE_KEY: None, PROV_CONFIRMED_KEY: None, PROV_PROB_KEY: None,
               PROV_DETAIL_KEY: None}
 CONFIRM = {PROV_CONFIRMED_KEY: True}
@@ -70,7 +71,7 @@ class Batcher:
     transaction. ``add`` returns a GLOBAL result index valid after the next
     ``flush``; ``results`` accumulates across flushes.
 
-    ``update`` queues a value and/or a metadata patch on one entity. At the
+    ``update`` queues a value and/or metadata ops on one entity. At the
     next flush the queued updates go into the same atomic batch as ONE bulk
     sub-op per resource and chunk (``spans.bulk_update`` and its siblings),
     so a plan of thousands of updates is a handful of sub-ops instead of one
@@ -100,15 +101,17 @@ class Batcher:
             self.flush()
         return idx
 
-    def update(self, resource: str, entity_id: str, value: Any = _UNSET, metadata: Optional[Dict[str, Any]] = None) -> None:
-        """Queue a value and/or a metadata patch on ``entity_id`` of
-        ``resource`` ('spans', 'relations' or 'tokens'), merged with an
-        earlier update of the same entity in this flush."""
+    def update(self, resource: str, entity_id: str, value: Any = _UNSET,
+               metadata: Optional[List[Dict[str, Any]]] = None) -> None:
+        """Queue a value and/or metadata ops (see ``plaid_client.metadata_ops``)
+        on ``entity_id`` of ``resource`` ('spans', 'relations' or 'tokens').
+        An earlier update of the same entity in this flush is joined: its ops
+        run first, then these."""
         item = self._bulk.setdefault(resource, {}).setdefault(entity_id, {'id': entity_id})
         if value is not _UNSET:
             item['value'] = value
         if metadata:
-            item.setdefault('metadata', {}).update(metadata)
+            item.setdefault('metadata', []).extend(metadata)
         if sum(len(v) for v in self._bulk.values()) >= self.budget:
             self._drain()
 

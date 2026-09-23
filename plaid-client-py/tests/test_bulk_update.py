@@ -41,9 +41,15 @@ def make_client(versions):
 
 
 def test_a_span_bulk_update_is_one_patch_carrying_the_entries_as_sent():
+    # The metadata ops pass through verbatim: keys inside a value are user data
+    # and are never re-cased.
+    ops = [
+        {'op': 'set', 'path': ['prov'], 'value': 'inferred'},
+        {'op': 'set', 'path': ['provDetail', 'valueProbs'], 'value': {'some_label': 0.9}},
+    ]
     client = make_client({'d1': 8})
     result = client.spans.bulk_update([
-        {'id': 's1', 'value': 'NOUN', 'metadata': {'prov': 'inferred'}},
+        {'id': 's1', 'value': 'NOUN', 'metadata': ops},
         {'id': 's2', 'value': None},
     ])
 
@@ -52,7 +58,7 @@ def test_a_span_bulk_update_is_one_patch_carrying_the_entries_as_sent():
     assert call['method'] == 'PATCH'
     assert call['url'] == 'http://plaid.test/api/v1/spans/bulk'
     assert json.loads(call['data']) == [
-        {'id': 's1', 'value': 'NOUN', 'metadata': {'prov': 'inferred'}},
+        {'id': 's1', 'value': 'NOUN', 'metadata': ops},
         {'id': 's2', 'value': None},
     ]
 
@@ -66,7 +72,7 @@ def test_every_document_in_the_header_is_learned_not_just_the_first():
 def test_relations_and_tokens_take_the_same_round_trip():
     client = make_client({'d1': 9, 'd2': 4})
     client.relations.bulk_update([{'id': 'r1', 'value': 'nsubj'}])
-    client.tokens.bulk_update([{'id': 't1', 'metadata': {'form': 'cd'}}])
+    client.tokens.bulk_update([{'id': 't1', 'metadata': [{'op': 'set', 'path': ['form'], 'value': 'cd'}]}])
 
     paths = [c['url'] for c in client.session.calls]
     assert paths == ['http://plaid.test/api/v1/relations/bulk',

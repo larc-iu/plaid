@@ -20,6 +20,7 @@ import json
 import pathlib
 
 import pytest
+from plaid_client import apply_metadata_ops
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
 
@@ -371,8 +372,10 @@ def _service(documents=None, *, entries=None, fails=None, on_read=None):
 
 
 def _patch(client):
-    [(document_id, body)] = client.payloads('documents.patch_metadata')
-    return document_id, body
+    """The one metadata patch, as the document's metadata once it lands."""
+    [(document_id, ops)] = client.payloads('documents.patch_metadata')
+    before = client.documents._by_id[document_id].get('metadata')
+    return document_id, apply_metadata_ops(before, ops)
 
 
 # --- the happy path -----------------------------------------------------------
@@ -496,28 +499,26 @@ def test_a_sentence_ancast_cannot_read_is_reported_as_unscored():
 
 # --- the metadata write -------------------------------------------------------
 
-def test_the_umr_namespace_is_restated_so_nothing_else_in_it_is_lost():
-    """A document metadata PATCH replaces a nested namespace wholesale, so the
-    report has to be written beside what is already under `umr` rather than
-    over it."""
+def test_the_report_is_set_alone_so_nothing_else_in_the_namespace_is_lost():
+    """The report is one op at `umr.adjudication`, so what else is under
+    `umr` stays rather than being written over."""
     service = _service([
         _document(DOC, name='Ann', metadata={
             'umr': {'lang': 'eng', 'adjudication': {'version': 1, 'tool': 'ancast 0.0.0'}},
-            'note': 'kept by the shallow patch',
+            'note': 'a sibling of umr',
         }, **_barking()),
         _document(OTHER, name='Bo', **_barking('cat')),
     ])
     servicetest.run(service, REQUEST)
 
+    [(_, ops)] = service.client.payloads('documents.patch_metadata')
+    assert [o['path'] for o in ops] == [['umr', 'adjudication']]
     _, body = _patch(service.client)
-    # The whole namespace, restated: the other key survives and the old report
-    # is replaced.
-    assert set(body) == {'umr'}
+    # The other key of the namespace survives, the old report is replaced,
+    # and the sibling of `umr` is untouched.
     assert body['umr']['lang'] == 'eng'
     assert body['umr']['adjudication']['tool'] != 'ancast 0.0.0'
-    # `note` is a sibling of `umr` and the patch is shallow at the top level,
-    # so leaving it out of the body leaves it untouched.
-    assert 'note' not in body
+    assert body['note'] == 'a sibling of umr'
 
 
 def test_a_document_with_no_umr_metadata_yet_gets_just_the_report():

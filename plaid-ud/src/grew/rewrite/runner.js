@@ -9,6 +9,7 @@
 // sentence matches after every application, and a rule whose pattern the
 // query language cannot express visits every document instead.
 
+import { metadataOps } from '@larc-iu/plaid-client';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { compileGrew } from '../compile.js';
 import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
@@ -297,7 +298,7 @@ async function applyToDocument(client, doc, rows) {
           case 'updateSpan': {
             b.spans.update(w.id, w.value);
             const stamp = writer.editStamp(w.metadata);
-            if (stamp) b.spans.patchMetadata(w.id, stamp);
+            if (stamp) b.spans.patchMetadata(w.id, metadataOps(stamp));
             break;
           }
           case 'createSpan':
@@ -309,7 +310,7 @@ async function applyToDocument(client, doc, rows) {
           case 'updateRelation': {
             b.relations.update(w.id, w.value);
             const stamp = writer.editStamp(w.metadata);
-            if (stamp) b.relations.patchMetadata(w.id, stamp);
+            if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
             break;
           }
           case 'setSource':

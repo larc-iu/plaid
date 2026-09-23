@@ -93,7 +93,7 @@
              :patch {:summary (str "Update multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
                                    "<body>id</body>, the vocab item to update\n"
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"
-                                   "<body>metadata</body>, an optional metadata PATCH: keys present are set or overwritten, keys absent are left untouched, and a key whose value is null is deleted\n"
+                                   "<body>metadata</body>, an optional list of metadata ops, as for PATCH on one entry's metadata\n"
                                    "Entries may target different vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. "
                                    "Only an entry whose form actually changes restates the documents linking it; every document so restated has its version bumped, and their new versions are returned in X-Document-Versions.")
                      ;; Same two-step gate as the other bulk verbs: the coarse
@@ -105,7 +105,7 @@
                                          [:map
                                           [:id :uuid]
                                           [:form {:optional true} string?]
-                                          [:metadata {:optional true} [:map-of string? any?]]]]}
+                                          [:metadata {:optional true} metadata/metadata-ops-schema]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                 (let [layer-ids (vocab-item/get-layer-ids db (map :id items))
                                       unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
@@ -201,13 +201,13 @@
                           {:status 200 :body (vocab-item/get db item-id)}
                           {:status (or code 500) :body {:error (or error "Internal server error")}})))}
 
-     :patch {:summary "Patch (shallow-merge) metadata for a vocab item. Keys present in the request are set or overwritten; keys NOT present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata."
+     :patch {:summary (str "Edit metadata for a vocab item " metadata/patch-summary)
              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]
                           metadata/wrap-metadata-shape-guard]
-             :parameters {:body [:map-of string? any?]}
-             :handler (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id}]
+             :parameters {:body metadata/metadata-ops-schema}
+             :handler (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id}]
                         (let [item-id (:id path-params)
-                              {:keys [success code error]} (vocab-item/patch-metadata db item-id metadata user-id)]
+                              {:keys [success code error]} (vocab-item/patch-metadata db item-id ops user-id)]
                           (if success
                             {:status 200 :body (vocab-item/get db item-id)}
                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}

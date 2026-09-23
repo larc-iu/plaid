@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Tuple
 
 from plaid_client.workflows.umr import Graph, parse_penman
 
-from .project import GNode, Sentence, UmrDoc, UmrProject, penman_of, reachable_from_root
+from .project import Sentence, UmrDoc, UmrProject, penman_of, reachable_from_root
 
 
 def _children(node) -> Tuple[List[dict], List[dict]]:
@@ -35,12 +35,6 @@ def _children(node) -> Tuple[List[dict], List[dict]]:
 
 def _attr_key(attrs) -> str:
     return '\n'.join(f'{a.get("rel")} {a.get("value")}' for a in attrs)
-
-
-def _umr_meta(node: GNode) -> dict:
-    """A node's whole ``umr`` metadata object. A metadata patch replaces a
-    namespace wholesale, so anything not restated would be dropped."""
-    return dict(((node.metadata or {}).get('umr')) or {})
 
 
 class GraphDiff:
@@ -105,7 +99,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
             updates.append({
                 'kind': 'set_attrs', 'document_id': did, 'ref': f's{sentence.index}.{var}',
                 'span_id': old.id, 'var': var, 'attrs': attrs,
-                'umr_base': _umr_meta(old), 'umr_set': {'attrs': attrs},
+                'umr_set': {'attrs': attrs},
                 'label': (f'{var}: attributes {_attr_line(attrs)}' if attrs
                           else f'{var}: no attributes')})
 
@@ -182,7 +176,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                 root_ops.append({
                     'kind': 'unset_root', 'document_id': did,
                     'ref': f's{sentence.index}.{node.var}', 'span_id': node.id,
-                    'umr_base': _umr_meta(node), 'umr_unset': ('root',),
+                    'umr_unset': ('root',),
                     'label': f'{node.var} is no longer the root'})
         new_root = old_by_var.get(parsed.root)
         if new_root is None:
@@ -194,7 +188,7 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
             root_ops.append({
                 'kind': 'set_root', 'document_id': did,
                 'ref': f's{sentence.index}.{parsed.root}', 'span_id': new_root.id,
-                'umr_base': _umr_meta(new_root), 'umr_set': {'root': True},
+                'umr_set': {'root': True},
                 'label': f'{parsed.root} becomes the root of s{sentence.index}'})
 
     # Deletes first, so a variable a new node takes is free; then the marks

@@ -187,7 +187,10 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
     await client.vocabItems.bulkUpdate(
       placed.slice(i, i + CHUNK).map((p) => ({
         id: byEntry.get(p.key),
-        metadata: { parent: byEntry.get(p.parentKey), senseOrder: p.senseOrder },
+        metadata: [
+          { op: 'set', path: ['parent'], value: byEntry.get(p.parentKey) },
+          { op: 'set', path: ['senseOrder'], value: p.senseOrder },
+        ],
       })),
     );
   }

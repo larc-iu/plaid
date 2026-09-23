@@ -94,10 +94,11 @@
       (is (re-find #"(?i)depth|metadata" (-> res :body :error))))))
 
 (deftest patch-vocab-item-overdeep-metadata-returns-400
-  (testing "PATCH /vocab-items/:id/metadata rejects a 12-deep map with 400"
+  (testing "PATCH /vocab-items/:id/metadata rejects a set op whose value is a 12-deep map with 400"
     (let [vocab (-> (create-vocab-layer admin-request "VItemShapePatchVocab") :body :id)
           item (-> (create-vocab-item admin-request vocab "w") :body :id)
-          res (patch-vocab-item-metadata admin-request item (nested-map 12))]
+          res (patch-vocab-item-metadata admin-request item
+                                         [{:op "set" :path ["deep"] :value (nested-map 12)}])]
       (assert-status 400 res)
       (is (re-find #"(?i)depth|metadata" (-> res :body :error))))))
 
@@ -106,4 +107,4 @@
     (let [vocab (-> (create-vocab-layer admin-request "VItemShapeOkVocab") :body :id)
           item (-> (create-vocab-item admin-request vocab "w") :body :id)]
       (assert-ok (update-vocab-item-metadata admin-request item {"a" "1"}))
-      (assert-ok (patch-vocab-item-metadata admin-request item {"b" "2"})))))
+      (assert-ok (patch-vocab-item-metadata admin-request item [{:op "set" :path ["b"] :value "2"}])))))

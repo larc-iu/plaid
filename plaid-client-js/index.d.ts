@@ -129,7 +129,7 @@ interface VocabLinksBundle {
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
-  patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
   get(id: string, asOf?: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
 }
@@ -180,7 +180,7 @@ interface RelationsBundle {
   deleteMetadata(relationId: string, auditMessage?: string): Promise<any>;
   patchMetadata(
     relationId: string,
-    body: any,
+    body: MetadataOp[],
     auditMessage?: string,
   ): Promise<any>;
   setTarget(
@@ -259,13 +259,13 @@ interface SpansBundle {
   bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
   setMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(spanId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(spanId: string, body: any, auditMessage?: string): Promise<any>;
+  patchMetadata(spanId: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
 }
 
 interface TextsBundle {
   setMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(textId: string, auditMessage?: string): Promise<any>;
-  patchMetadata(textId: string, body: any, auditMessage?: string): Promise<any>;
+  patchMetadata(textId: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
   create(
     textLayerId: string,
     documentId: string,
@@ -892,7 +892,7 @@ interface DocumentsBundle {
   deleteMetadata(documentId: string, auditMessage?: string): Promise<any>;
   patchMetadata(
     documentId: string,
-    body: any,
+    body: MetadataOp[],
     auditMessage?: string,
   ): Promise<any>;
   audit(
@@ -1092,7 +1092,7 @@ interface TextLayersBundle {
 interface VocabItemsBundle {
   setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
-  patchMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
+  patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
   create(
     vocabLayerId: string,
     form: string,
@@ -1178,7 +1178,7 @@ interface TokensBundle {
   deleteMetadata(tokenId: string, auditMessage?: string): Promise<any>;
   patchMetadata(
     tokenId: string,
-    body: any,
+    body: MetadataOp[],
     auditMessage?: string,
   ): Promise<any>;
 }
@@ -1489,10 +1489,25 @@ export function contributeOnEdit(
   metadata: object | null | undefined,
   userId: string,
 ): { prov: "contributed"; provSource: string; provConfirmed: null };
-/** Merge a fragment the way the server's PATCH does (a null value deletes the key). Returns a new object. */
+/** Merge a fragment into a local copy, a null value deleting the key. Equivalent to applyMetadataOps(metadata, metadataOps(fragment)). Returns a new object. */
 export function mergeMetadata(
   metadata: object | null | undefined,
   fragment: object | null | undefined,
+): Record<string, any>;
+
+// --- Metadata ops -------------------------------------------------------------
+/** One metadata edit: the body of a metadata PATCH is a list of these. */
+export type MetadataOp =
+  | { op: "set"; path: string[]; value: any }
+  | { op: "delete"; path: string[] };
+/** The ops that set each top-level key of a fragment, a null value deleting it. */
+export function metadataOps(
+  fragment: object | null | undefined,
+): MetadataOp[];
+/** Apply ops to a local copy the way the server does. Returns a new object; throws where the server would refuse. */
+export function applyMetadataOps(
+  metadata: object | null | undefined,
+  ops: MetadataOp[],
 ): Record<string, any>;
 
 // --- Review: whose work is reviewed (a project-config norm) -------------------

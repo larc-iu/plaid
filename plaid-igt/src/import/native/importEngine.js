@@ -1114,7 +1114,7 @@ export function planVocabRelink(vocabData, itemIdMap, docMaps, docIdMap = null) 
       { ...meta, [ITEM_SOURCE_KEY]: it.id },
       { ...next, [ITEM_SOURCE_KEY]: it.id },
     );
-    if (Object.keys(patch).length) out.push({ id: newId, metadata: patch });
+    if (patch.length) out.push({ id: newId, metadata: patch });
   }
   return { patches: out, dropped };
 }

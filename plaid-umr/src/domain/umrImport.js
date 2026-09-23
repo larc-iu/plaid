@@ -112,7 +112,11 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       if (existing) {
         plan.sentences.forEach((s) => {
           const token = existing.graph.sentences[s.index - 1];
-          if (token) b.tokens.patchMetadata(token.tokenId, { [UMR_NAMESPACE]: s.meta });
+          if (token) {
+            b.tokens.patchMetadata(token.tokenId, [
+              { op: 'set', path: [UMR_NAMESPACE], value: s.meta },
+            ]);
+          }
         });
       }
     });

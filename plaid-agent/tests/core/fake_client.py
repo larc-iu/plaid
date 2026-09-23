@@ -15,8 +15,34 @@ import copy
 import fnmatch
 from contextlib import contextmanager
 
+from plaid_client import apply_metadata_ops
 from plaid_client.http import PlaidAPIError
 from plaid_agent.core.conversation import now_iso
+
+
+def checked_ops(ops):
+    """A metadata patch as the server takes it, a list of ops, refused here
+    as there when it is anything else."""
+    if not isinstance(ops, list):
+        raise PlaidAPIError('A metadata patch is a list of ops', status=400)
+    try:
+        apply_metadata_ops({}, ops)
+    except ValueError as e:
+        raise PlaidAPIError(str(e), status=400)
+    return ops
+
+
+def as_fragment(ops):
+    """A recorded metadata patch read back as the object it writes, a key an
+    op deletes reading as None, so a test can look a key up."""
+    out = {}
+    for op in checked_ops(ops):
+        node = out
+        *parents, last = op['path']
+        for k in parents:
+            node = node.setdefault(k, {})
+        node[last] = op['value'] if op['op'] == 'set' else None
+    return out
 
 
 class Recorder:
@@ -25,7 +51,8 @@ class Recorder:
     A ``bulk_update`` is recorded as what it stands for, one ``update`` and
     one ``patch_metadata`` entry per item as the executors once sent them,
     so a test reads the same writes whichever way they travelled; the raw
-    bulk call goes to ``bulk_calls`` for a test about the batching itself."""
+    bulk call goes to ``bulk_calls`` for a test about the batching itself.
+    A metadata patch, direct or in a bulk item, must be a list of ops."""
 
     def __init__(self, log, name, bulk_calls=None):
         self._log, self._name, self._bulk = log, name, bulk_calls
@@ -38,9 +65,13 @@ class Recorder:
                 for item in args[0]:
                     if 'value' in item:
                         self._log.append((self._name, 'update', (item['id'], item['value']), {}))
+                    if 'metadata' in item:
+                        checked_ops(item['metadata'])
                     if item.get('metadata'):
                         self._log.append((self._name, 'patch_metadata', (item['id'], item['metadata']), {}))
                 return {'count': len(args[0])}
+            if method == 'patch_metadata':
+                checked_ops(args[1])
             self._log.append((self._name, method, args, kwargs))
             return {'id': f'{self._name}-{method}-{len(self._log)}'}
         return call
@@ -172,6 +203,7 @@ class BaseFakeClient:
             return {'id': 'new-doc'}
 
         def patch_metadata(self, did, body, **kw):
+            checked_ops(body)
             self.c.log.append(('documents', 'patch_metadata', (did, body), {}))
             return {'id': did}
 

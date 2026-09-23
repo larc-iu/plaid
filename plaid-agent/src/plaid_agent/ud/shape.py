@@ -97,9 +97,11 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
     # an export knows what to print on the range line. A token back down to one
     # word drops it again.
     if len(forms) > 1:
-        b.add(lambda batch, i=op['token_id'], v=surface: batch.tokens.patch_metadata(i, {'form': v}))
+        b.add(lambda batch, i=op['token_id'], v=surface: batch.tokens.patch_metadata(
+            i, [{'op': 'set', 'path': ['form'], 'value': v}]))
     else:
-        b.add(lambda batch, i=op['token_id']: batch.tokens.patch_metadata(i, {'form': None}))
+        b.add(lambda batch, i=op['token_id']: batch.tokens.patch_metadata(
+            i, [{'op': 'delete', 'path': ['form']}]))
     op['_created_at'] = idx
 
 

@@ -153,17 +153,18 @@ class VocabLinksResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a vocab link.
+        """Edit metadata for a vocab link with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             id: The resource ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -325,17 +326,18 @@ class RelationsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a relation.
+        """Edit metadata for a relation with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             relation_id: The relation ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/relations/{relation_id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -430,10 +432,10 @@ class RelationsResource(_Resource):
         """Update many relations in a single operation: set values and/or patch metadata.
 
         Args:
-            body: A list of ``{"id": ..., "value": ..., "metadata": {...}}``
+            body: A list of ``{"id": ..., "value": ..., "metadata": [...]}``
                 objects. ``value`` is set only when the key is present (``None``
-                sends JSON null); ``metadata`` is a patch, a ``None`` value
-                deleting that key. The relations may lie in several documents of
+                sends JSON null); ``metadata`` is a list of metadata ops, as for
+                ``patch_metadata``. The relations may lie in several documents of
                 one project. Every document touched has its version bumped, and
                 every new version comes back in ``X-Document-Versions``. A
                 ``document-version`` precondition is accepted only when every
@@ -540,17 +542,18 @@ class SpansResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a span.
+        """Edit metadata for a span with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             span_id: The span ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/spans/{span_id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -633,10 +636,10 @@ class SpansResource(_Resource):
         """Update many spans in a single operation: set values and/or patch metadata.
 
         Args:
-            body: A list of ``{"id": ..., "value": ..., "metadata": {...}}``
+            body: A list of ``{"id": ..., "value": ..., "metadata": [...]}``
                 objects. ``value`` is set only when the key is present (``None``
-                sends JSON null); ``metadata`` is a patch, a ``None`` value
-                deleting that key. The spans may lie in several documents of
+                sends JSON null); ``metadata`` is a list of metadata ops, as for
+                ``patch_metadata``. The spans may lie in several documents of
                 one project. Every document touched has its version bumped, and
                 every new version comes back in ``X-Document-Versions``. A
                 ``document-version`` precondition is accepted only when every
@@ -719,17 +722,18 @@ class TextsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a text.
+        """Edit metadata for a text with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             text_id: The text ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -1828,17 +1832,18 @@ class DocumentsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a document.
+        """Edit metadata for a document with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             document_id: The document ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/documents/{document_id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -2478,8 +2483,8 @@ class VocabItemsResource(_Resource):
         patch metadata.
 
         Each entry is a dict with ``id`` and either or both of ``form`` (set
-        only when the key is present) and ``metadata`` (a patch, a ``None``
-        value deleting that key). The entries may lie in several vocab
+        only when the key is present) and ``metadata`` (a list of metadata
+        ops, as for ``patch_metadata``). The entries may lie in several vocab
         layers; the user must have write access to each. An unknown id
         refuses the whole update, and an id may appear only once. Only an
         entry whose form really changes restates the documents linking it,
@@ -2561,17 +2566,18 @@ class VocabItemsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a vocab item.
+        """Edit metadata for a vocab item with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             id: The resource ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/vocab-items/{id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -2671,17 +2677,18 @@ class TokensResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def patch_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
-        """Patch (shallow-merge) metadata for a token.
+        """Edit metadata for a token with a list of ops applied in order.
 
-        Keys present in the body are set or overwritten; keys not present are
-        left untouched; a key whose value is None (JSON null) is deleted.
-        Merging is top-level only (nested objects are replaced wholesale, not
-        deep-merged), so a literal null cannot be stored as a value. An empty
-        body changes no metadata.
+        ``{"op": "set", "path": [...], "value": v}`` writes v at the path,
+        creating missing objects along it; ``{"op": "delete", "path": [...]}``
+        removes the key at the path (a no-op when absent). A path is a
+        non-empty list of keys, the first a top-level key. A path through a
+        non-object is refused (400). See :func:`metadata_ops` and
+        :func:`apply_metadata_ops`.
 
         Args:
             token_id: The token ID
-            body: The metadata patch
+            body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
                              raw_body=body, skip_response_transform=True, audit_message=audit_message)
@@ -2779,8 +2786,8 @@ class TokensResource(_Resource):
         """Patch the metadata of many tokens in a single operation.
 
         Args:
-            body: A list of ``{"id": ..., "metadata": {...}}`` objects; each
-                ``metadata`` is a patch, a ``None`` value deleting that key. The
+            body: A list of ``{"id": ..., "metadata": [...]}`` objects; each
+                ``metadata`` is a list of metadata ops, as for ``patch_metadata``. The
                 tokens may lie in several documents of one project. Every document
                 touched has its version bumped, and every new version comes back
                 in ``X-Document-Versions``. A ``document-version`` precondition is

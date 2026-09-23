@@ -283,9 +283,8 @@
 (defn bulk-merge
   "Update many vocab items in ONE operation: set forms and/or patch metadata.
   `items` is a vector of maps, each with `:id` and either or both of
-  `:vocab-item/form` (set when the key is PRESENT) and `:metadata` (a patch
-  with `plaid.sql.metadata/patch-metadata!` semantics, a nil value deleting
-  that key). Entries may span several vocab layers; the caller has already
+  `:vocab-item/form` (set when the key is PRESENT) and `:metadata` (a list
+  of ops for `plaid.sql.metadata/patch-metadata!`). Entries may span several vocab layers; the caller has already
   checked write access on each.
 
   Unknown ids are refused (404) rather than dropped, and an id may appear

@@ -4,7 +4,7 @@
 // answered, since a node, an edge and an anchor all need server ids.
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
-import { isReviewed, mergeMetadata, writerPolicy } from '@larc-iu/plaid-client';
+import { applyMetadataOps, isReviewed, metadataOps, writerPolicy } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import { vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
@@ -34,9 +34,15 @@ const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 
 const umrOf = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
 
-// A metadata patch that restates the whole `umr` namespace: a document
-// metadata PATCH replaces a nested namespace wholesale.
-const umrPatch = (entity, changes) => ({ [UMR_NAMESPACE]: { ...umrOf(entity), ...changes } });
+// The metadata ops that write each key of `changes` into the `umr`
+// namespace, an undefined value deleting its key. The namespace's other keys
+// stay as they are.
+const umrOps = (changes) =>
+  Object.entries(changes).map(([k, v]) =>
+    v === undefined
+      ? { op: 'delete', path: [UMR_NAMESPACE, k] }
+      : { op: 'set', path: [UMR_NAMESPACE, k], value: v },
+  );
 
 // Findings the Validation tab reports and a sentence's own badge does not.
 // See problemsBySentence.
@@ -178,12 +184,10 @@ export class UmrDocument extends DocumentModel {
     if (!remove.length && !rebind.length && !resize.length) return { findings: [] };
     try {
       const tokenIds = remove.flatMap((id) => this.node(id).pieces.map((p) => p.id));
-      const spans = this._layers(this.layerInfo).spans;
       await this._client.batched(async (b) => {
         if (tokenIds.length) b.tokens.bulkDelete(tokenIds);
         rebind.forEach(({ nodeId, sentenceTokenId }) => {
-          const span = spans.find((x) => x.id === nodeId);
-          b.spans.patchMetadata(nodeId, umrPatch(span, { sentence: sentenceTokenId }));
+          b.spans.patchMetadata(nodeId, umrOps({ sentence: sentenceTokenId }));
         });
         resize.forEach(({ pieceId, begin, end }) => b.tokens.update(pieceId, begin, end));
       });
@@ -485,12 +489,12 @@ export class UmrDocument extends DocumentModel {
           const span = this._layers(infoNext).spans.find((s) => s.id === nodeId);
           if (!span) return;
           span.value = concept;
-          if (verify) span.metadata = mergeMetadata(span.metadata, verify);
+          if (verify) span.metadata = applyMetadataOps(span.metadata, metadataOps(verify));
         });
         if (verify) {
           await this._client.batched(async (b) => {
             b.spans.update(nodeId, concept);
-            b.spans.patchMetadata(nodeId, verify);
+            b.spans.patchMetadata(nodeId, metadataOps(verify));
           });
         } else {
           await this._client.spans.update(nodeId, concept);
@@ -559,17 +563,18 @@ export class UmrDocument extends DocumentModel {
   // the namespace, so one request both changes the node and settles it.
   async _patchNodeMeta(nodeId, changes, label) {
     const verify = this.writer.editStamp(this.node(nodeId)?.metadata);
+    const ops = [...umrOps(changes), ...metadataOps(verify)];
     return this._withSaving(
       'Failed to save the node',
       async () => {
-        let patch = null;
+        let found = false;
         this._applyRawPatch((next, infoNext) => {
           const span = this._layers(infoNext).spans.find((s) => s.id === nodeId);
           if (!span) return;
-          patch = { ...umrPatch(span, changes), ...verify };
-          span.metadata = mergeMetadata(span.metadata, patch);
+          found = true;
+          span.metadata = applyMetadataOps(span.metadata, ops);
         });
-        if (patch) await this._client.spans.patchMetadata(nodeId, patch);
+        if (found) await this._client.spans.patchMetadata(nodeId, ops);
       },
       label,
     );
@@ -594,18 +599,16 @@ export class UmrDocument extends DocumentModel {
     // The sentence an unaligned node records (see _reconcile), set when it
     // loses its words and dropped when it gains some.
     const span = this._layers(info).spans.find((s) => s.id === nodeId);
-    const { sentence: home, ...rest } = umrOf(span);
-    const meta = wordIds.length ? rest : { ...rest, sentence: sentence.tokenId };
-    // Written only when it changes: dropped when words come, set when they go.
-    const recordChanges = wordIds.length ? home !== undefined : home !== sentence.tokenId;
+    const home = umrOf(span).sentence;
+    const recorded = wordIds.length ? undefined : sentence.tokenId;
     // Anchoring a drafted node is a person's decision about it, so it
-    // carries the writer's edit stamp like any other edit.
-    const verify = this.writer.editStamp(node.metadata);
-    const metaPatch = {
-      ...(recordChanges ? { [UMR_NAMESPACE]: meta } : {}),
-      ...verify,
-    };
-    const patchMeta = Object.keys(metaPatch).length > 0;
+    // carries the writer's edit stamp like any other edit. The sentence is
+    // written only when it changes: dropped when words come, set when they go.
+    const metaOps = [
+      ...(home !== recorded ? umrOps({ sentence: recorded }) : []),
+      ...metadataOps(this.writer.editStamp(node.metadata)),
+    ];
+    const patchMeta = metaOps.length > 0;
     return this._withSaving(
       'Failed to change the anchor',
       async () => {
@@ -621,7 +624,7 @@ export class UmrDocument extends DocumentModel {
         ).ids;
         await this._client.batched(async (b) => {
           b.spans.setTokens(nodeId, tokenIds);
-          if (patchMeta) b.spans.patchMetadata(nodeId, metaPatch);
+          if (patchMeta) b.spans.patchMetadata(nodeId, metaOps);
           b.tokens.bulkDelete(oldIds);
         });
         this._applyRawPatch((next, infoNext) => {
@@ -634,7 +637,7 @@ export class UmrDocument extends DocumentModel {
           const span = L.spans.find((s) => s.id === nodeId);
           if (span) {
             span.tokens = tokenIds;
-            if (patchMeta) span.metadata = mergeMetadata(span.metadata, metaPatch);
+            if (patchMeta) span.metadata = applyMetadataOps(span.metadata, metaOps);
           }
         });
       },
@@ -698,12 +701,12 @@ export class UmrDocument extends DocumentModel {
           const rel = this._layers(infoNext).relations.find((r) => r.id === edgeId);
           if (!rel) return;
           rel.value = role;
-          if (verify) rel.metadata = mergeMetadata(rel.metadata, verify);
+          if (verify) rel.metadata = applyMetadataOps(rel.metadata, metadataOps(verify));
         });
         if (verify) {
           await this._client.batched(async (b) => {
             b.relations.update(edgeId, role);
-            b.relations.patchMetadata(edgeId, verify);
+            b.relations.patchMetadata(edgeId, metadataOps(verify));
           });
         } else {
           await this._client.relations.update(edgeId, role);
@@ -753,12 +756,12 @@ export class UmrDocument extends DocumentModel {
             if (!swapped.has(rel.id)) return;
             // BOTH edges: the pair's written order is now this person's, not
             // the draft's, since the swap moved each of them.
-            const patch = {
-              ...umrPatch(rel, { order: swapped.get(rel.id) }),
-              ...this.writer.editStamp(rel.metadata),
-            };
-            rel.metadata = mergeMetadata(rel.metadata, patch);
-            patches.push([rel.id, patch]);
+            const ops = [
+              ...umrOps({ order: swapped.get(rel.id) }),
+              ...metadataOps(this.writer.editStamp(rel.metadata)),
+            ];
+            rel.metadata = applyMetadataOps(rel.metadata, ops);
+            patches.push([rel.id, ops]);
           });
         });
         await this._client.batched(async (b) => {
@@ -886,19 +889,21 @@ export class UmrDocument extends DocumentModel {
           old.forEach((o) => {
             const span = spans.find((s) => s.id === o.id);
             if (!span) return;
-            const { root: _root, ...rest } = umrOf(span);
-            const patch = { [UMR_NAMESPACE]: rest, ...this.writer.editStamp(span.metadata) };
-            span.metadata = mergeMetadata(span.metadata, patch);
-            patches.push([o.id, patch]);
+            const ops = [
+              ...umrOps({ root: undefined }),
+              ...metadataOps(this.writer.editStamp(span.metadata)),
+            ];
+            span.metadata = applyMetadataOps(span.metadata, ops);
+            patches.push([o.id, ops]);
           });
           const span = spans.find((s) => s.id === nodeId);
           if (span) {
-            const patch = {
-              ...umrPatch(span, { root: true }),
-              ...this.writer.editStamp(span.metadata),
-            };
-            span.metadata = mergeMetadata(span.metadata, patch);
-            patches.push([nodeId, patch]);
+            const ops = [
+              ...umrOps({ root: true }),
+              ...metadataOps(this.writer.editStamp(span.metadata)),
+            ];
+            span.metadata = applyMetadataOps(span.metadata, ops);
+            patches.push([nodeId, ops]);
           }
         });
         await this._client.batched(async (b) => {
@@ -1040,12 +1045,12 @@ export class UmrDocument extends DocumentModel {
           const r = this._layers(infoNext).triples.find((x) => x.id === id);
           if (!r) return;
           r.value = rel;
-          if (verify) r.metadata = mergeMetadata(r.metadata, verify);
+          if (verify) r.metadata = applyMetadataOps(r.metadata, metadataOps(verify));
         });
         if (verify) {
           await this._client.batched(async (b) => {
             b.relations.update(id, rel);
-            b.relations.patchMetadata(id, verify);
+            b.relations.patchMetadata(id, metadataOps(verify));
           });
         } else {
           await this._client.relations.update(id, rel);
@@ -1329,19 +1334,13 @@ export class UmrDocument extends DocumentModel {
           this.writer.editStamp(L.spans.find((x) => x.id === spanId)?.metadata);
         const editRelation = (relId) =>
           this.writer.editStamp(L.relations.find((x) => x.id === relId)?.metadata);
-        // Each span's umr namespace as written so far. A patch replaces the
-        // namespace whole, so one built from the state read before any write
-        // put back what an earlier patch took off: the old root's attribute
-        // change restored its root mark, and the new root's mark reverted its
-        // attributes.
-        const written = new Map();
-        const umrPatchFor = (spanId, changes) => {
-          const span = L.spans.find((x) => x.id === spanId);
-          const next = { ...(written.get(spanId) ?? umrOf(span)), ...changes };
-          Object.keys(next).forEach((k) => next[k] === undefined && delete next[k]);
-          written.set(spanId, next);
-          return { [UMR_NAMESPACE]: next, ...editSpan(spanId) };
-        };
+        // Each patch writes only the keys of the `umr` namespace it changes,
+        // so two patches of one node in this batch (an old root's attributes
+        // and its root mark) cannot undo each other.
+        const umrPatchFor = (spanId, changes) => [
+          ...umrOps(changes),
+          ...metadataOps(editSpan(spanId)),
+        ];
         const gone = new Set(plan.delete);
         // A sentence the import kept as text keeps its alignment block too.
         // Mending the graph here is the first time anything can be anchored
@@ -1409,16 +1408,16 @@ export class UmrDocument extends DocumentModel {
           for (const c of plan.concept) {
             b.spans.update(c.nodeId, c.concept);
             const verify = editSpan(c.nodeId);
-            if (verify) b.spans.patchMetadata(c.nodeId, verify);
+            if (verify) b.spans.patchMetadata(c.nodeId, metadataOps(verify));
           }
           for (const a of plan.attrs) {
             b.spans.patchMetadata(a.nodeId, umrPatchFor(a.nodeId, { attrs: a.attrs }));
           }
           for (const o of plan.orders) {
-            b.relations.patchMetadata(o.edgeId, {
-              [UMR_NAMESPACE]: { order: o.order },
-              ...editRelation(o.edgeId),
-            });
+            b.relations.patchMetadata(o.edgeId, [
+              ...umrOps({ order: o.order }),
+              ...metadataOps(editRelation(o.edgeId)),
+            ]);
           }
           // The root the text names, when it is a node that was already
           // there: a new one carries the mark in its own metadata.

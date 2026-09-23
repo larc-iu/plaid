@@ -11,7 +11,7 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
-import { stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
+import { stampInferred, confirmedInferred, metadataOps } from '@larc-iu/plaid-client';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
@@ -467,7 +467,10 @@ async function placeSenses({ client, lexicon, senseToItem, existing, only = null
     await client.vocabItems.bulkUpdate(
       fresh.slice(i, i + CHUNK).map((p) => ({
         id: p.id,
-        metadata: { parent: p.parent, senseOrder: p.senseOrder },
+        metadata: [
+          { op: 'set', path: ['parent'], value: p.parent },
+          { op: 'set', path: ['senseOrder'], value: p.senseOrder },
+        ],
       })),
     );
   }
@@ -559,7 +562,7 @@ async function placeVariants({
   for (let i = 0; i < entries.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     await client.vocabItems.bulkUpdate(
-      entries.slice(i, i + CHUNK).map(([id, metadata]) => ({ id, metadata })),
+      entries.slice(i, i + CHUNK).map(([id, patch]) => ({ id, metadata: metadataOps(patch) })),
     );
   }
 }

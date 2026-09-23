@@ -90,11 +90,13 @@ describe('bulkReplaceAnalyses', () => {
     expect(strip[3].args[0]).toEqual(['m-3']);
     expect(strip[4].args[0]).toHaveLength(1);
     expect(strip[4].args[0][0].id).toBe('m-2'); // reset m-2
-    expect(strip[4].args[0][0].metadata).toMatchObject({
-      form: null,
-      morphType: null,
-      prov: null,
-    });
+    expect(strip[4].args[0][0].metadata).toEqual(
+      expect.arrayContaining([
+        { op: 'delete', path: ['form'] },
+        { op: 'delete', path: ['morphType'] },
+        { op: 'delete', path: ['prov'] },
+      ]),
+    );
     // g-3 (on the deleted morpheme) is NOT sent: a double delete fails the batch.
     expect(strip[2].args[0]).not.toContain('g-3');
 
@@ -219,11 +221,13 @@ describe('analysis prediction extras', () => {
     for (const s of spans)
       expect(s.metadata).toMatchObject({ prov: 'inferred', provSource: 'rule:test' });
     const m0 = client.calls.find((c) => c.kind === 'tokens.bulkUpdate').args[0][0];
-    expect(m0.metadata).toMatchObject({
-      form: 'ka',
-      prov: 'inferred',
-      provDetail: { form: 'ka' },
-    });
+    expect(m0.metadata).toEqual(
+      expect.arrayContaining([
+        { op: 'set', path: ['form'], value: 'ka' },
+        { op: 'set', path: ['prov'], value: 'inferred' },
+        { op: 'set', path: ['provDetail'], value: { form: 'ka' } },
+      ]),
+    );
     const m1 = client.calls.find((c) => c.kind === 'tokens.bulkCreate').args[0][0];
     expect(m1.metadata).toMatchObject({
       form: 't',

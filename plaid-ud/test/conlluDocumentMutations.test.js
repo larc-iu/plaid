@@ -140,7 +140,7 @@ test('editing a machine-made annotation verifies it (batched update + patchMetad
     client.calls.map((c) => c[0]),
     ['spans.update', 'spans.patchMetadata', 'submit'],
   );
-  assert.deepEqual(client.calls[1][2], { provConfirmed: true });
+  assert.deepEqual(client.calls[1][2], [{ op: 'set', path: ['provConfirmed'], value: true }]);
 
   // The optimistic patch carries value AND verified metadata together.
   const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
@@ -180,7 +180,7 @@ test('re-typing a feature already on the word confirms it and adds no second spa
     client.calls.map((c) => c[0]),
     ['spans.update', 'spans.patchMetadata', 'submit'],
   );
-  assert.deepEqual(client.calls[1][2], { provConfirmed: true });
+  assert.deepEqual(client.calls[1][2], [{ op: 'set', path: ['provConfirmed'], value: true }]);
   assert.equal(doc.layerInfo.featuresLayer.spans.length, before);
   const after = doc.layerInfo.featuresLayer.spans.find((s) => s.id === feat.id);
   assert.equal(after.value, 'Gender=Masc');
@@ -293,6 +293,12 @@ test('editing a machine-made relation verifies it too', async () => {
 // contributed stamp, an edit of a confirmed value drops the confirmation, and
 // their acceptance of a machine proposal is a contribution, not a verification.
 const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
+// What a contributor's edit sends: the stamp, and the verification dropped.
+const CONTRIBUTE_OPS = [
+  { op: 'set', path: ['prov'], value: 'contributed' },
+  { op: 'set', path: ['provSource'], value: 'user:ann@x.com' },
+  { op: 'delete', path: ['provConfirmed'] },
+];
 const reviewedProject = {
   id: 'p',
   writers: ['ann@x.com'],
@@ -320,7 +326,7 @@ test("a contributor's edit of a confirmed machine annotation marks it contribute
     client.calls.map((c) => c[0]),
     ['spans.update', 'spans.patchMetadata', 'submit'],
   );
-  assert.deepEqual(client.calls[1][2], { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(client.calls[1][2], CONTRIBUTE_OPS);
   const after = doc.layerInfo.uposLayer.spans.find((s) => s.id === span.id);
   assert.equal(after.value, 'PROPN');
   assert.deepEqual(after.metadata, CONTRIBUTED); // the local copy drops the null key too
@@ -332,7 +338,7 @@ test("a contributor's edit of a plain annotation marks it contributed; a verifie
   const doc = asAnn(raw, client);
   const span = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
   assert.equal(await doc.updateAnnotation(span.tokens[0], 'upos', 'PROPN'), true);
-  assert.deepEqual(client.calls[1][2], { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(client.calls[1][2], CONTRIBUTE_OPS);
 
   const verifier = new ConlluDocument({
     raw: rawDocFromConllu(INPUT, 'mut-doc'),
@@ -363,7 +369,7 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
     patches.map((c) => c[1]),
     [noun.id],
   );
-  assert.deepEqual(patches[0][2], { ...CONTRIBUTED, provConfirmed: null });
+  assert.deepEqual(patches[0][2], CONTRIBUTE_OPS);
   assert.deepEqual(
     doc.layerInfo.uposLayer.spans.find((s) => s.id === noun.id).metadata,
     CONTRIBUTED,

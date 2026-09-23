@@ -5,7 +5,7 @@
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding" via the saving wrapper.
 
-import { mergeMetadata } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 
 const findSpanLayer = (doc, scope, fieldName) => {
@@ -159,7 +159,7 @@ export const spanMutations = {
     const confirm = span ? this.confirmStamp(span.metadata) : null;
     if (!confirm) return true;
     return this._withSaving(`Failed to confirm ${fieldName}`, async () => {
-      await this._client.spans.patchMetadata(span.id, confirm);
+      await this._client.spans.patchMetadata(span.id, metadataOps(confirm));
       this._applyRawPatch((next, infoNext) => {
         const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);
         const idx = layerDoc?.spans?.findIndex((s) => s.id === span.id) ?? -1;

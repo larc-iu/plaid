@@ -37,6 +37,7 @@
 
 import { readFileSync } from 'node:fs';
 import { File } from 'node:buffer';
+import { metadataOps } from '@larc-iu/plaid-client';
 import { makeClient } from '../bugbash/harness.mjs';
 import { readFwbackup } from '../../src/import/flex/fwbackup.js';
 import { parseFwdata } from '../../src/import/flex/fwdataParser.js';
@@ -589,8 +590,11 @@ try {
     note: `see ${conceptA}`,
     [conceptA]: 'a key',
   });
-  await client.documents.patchMetadata(docsA[0].id, { related: [{ document: docsA[1].id }] });
-  await client.documents.patchMetadata(docsA[1].id, { seeAlso: docsA[0].id });
+  await client.documents.patchMetadata(
+    docsA[0].id,
+    metadataOps({ related: [{ document: docsA[1].id }] }),
+  );
+  await client.documents.patchMetadata(docsA[1].id, metadataOps({ seeAlso: docsA[0].id }));
 
   // Comments on each anchor type the archive can represent, so the round trip
   // exercises document / text / token / span / relation resolution rather than

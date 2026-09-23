@@ -138,7 +138,7 @@
                                    {:status (or (:code result) 500) :body {:error (:error result)}})))}
              :patch {:summary (str "Patch the metadata of many tokens in a single operation. Provide an array of objects whose "
                                    "keys are:\n<body>id</body>, the token's id\n"
-                                   "<body>metadata</body>, a metadata patch (a null value deletes that key)\n"
+                                   "<body>metadata</body>, a list of metadata ops, as for PATCH on one entity's metadata\n"
                                    "The tokens may lie in several documents of one project; every document touched has "
                                    "its version bumped and its new version is returned in X-Document-Versions. An unknown "
                                    "id refuses the whole update. <query>document-version</query> names one document, so it "
@@ -147,7 +147,7 @@
                                   [prm/wrap-document-version bulk-update-get-document-id]
                                   metadata/wrap-inline-metadata-shape-guard]
                      :parameters {:query [:map [:document-version {:optional true} :int]]
-                                  :body [:sequential [:map [:id :uuid] [:metadata [:map-of string? any?]]]]}
+                                  :body [:sequential [:map [:id :uuid] [:metadata metadata/metadata-ops-schema]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
                                 (let [{:keys [success code error extra]} (tok/bulk-update db items user-id)]
                                   (if success

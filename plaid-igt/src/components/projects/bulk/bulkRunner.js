@@ -99,7 +99,8 @@ export async function applyRespell(
     byDoc.get(r.docId).push(r);
   }
   const out = { docsChanged: 0, wordsChanged: 0, morphemesChanged: 0, entriesChanged: 0 };
-  const formPatches = (part) => part.map((m) => ({ id: m.id, metadata: { form: m.new } }));
+  const formPatches = (part) =>
+    part.map((m) => ({ id: m.id, metadata: [{ op: 'set', path: ['form'], value: m.new }] }));
 
   await client.withOperation(label, async () => {
     for (const docRows of byDoc.values()) {
@@ -150,7 +151,9 @@ export async function applyField(client, { rows }, { label }) {
       changed += part.length;
     }
     for (const part of chunk(morphRows)) {
-      await client.tokens.bulkUpdate(part.map((r) => ({ id: r.id, metadata: { form: r.new } })));
+      await client.tokens.bulkUpdate(
+        part.map((r) => ({ id: r.id, metadata: [{ op: 'set', path: ['form'], value: r.new }] })),
+      );
       changed += part.length;
     }
   });
@@ -238,7 +241,8 @@ export async function planMerge(client, project, vocabId, loserIds, onProgress) 
 // loser (a dictionary's senses and reference fields, see planMergeRefs),
 // then delete the losing entries (their old links cascade away server-side).
 // Under one operation. `refUpdates` is `[{id, metadata}]` where the metadata
-// is a PATCH, as `metadataUpdates` builds it from planMergeRefs' whole maps.
+// is a list of metadata ops, as `metadataUpdates` builds it from planMergeRefs'
+// whole maps.
 //
 // Link creates go per document: a bulk vocab-link create takes tokens from
 // one document, and a merge harvests links from every document that used the

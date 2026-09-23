@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import {
   buildProjectFile,
@@ -251,7 +252,7 @@ const createdItems = (client) =>
   callsOf(client, 'vocabItems.bulkCreate').flatMap(([, body]) => body);
 
 // The same for the relink's bulk updates: the {id, metadata} entries it sent,
-// where `metadata` is a PATCH against what the item was created with.
+// where `metadata` is the ops against what the item was created with.
 const itemPatches = (client) =>
   callsOf(client, 'vocabItems.bulkUpdate').flatMap(([, body]) => body);
 
@@ -861,17 +862,15 @@ describe('resolveNativeTargets', () => {
 });
 
 // Where an entry ends up: the map the create wrote (the archive's copy plus this
-// run's stamp), with the relink's PATCH applied — a null deleting its key. The
-// relink used to send that end state as a whole-map PUT, so asserting it here is
-// what says the patch lands in the same place.
-const applied = (meta, archiveId, patch) => {
-  const out = { ...meta, nativeImportId: archiveId };
-  for (const [k, v] of Object.entries(patch || {})) {
-    if (v === null) delete out[k];
-    else out[k] = v;
-  }
-  return out;
-};
+// run's stamp), with the relink's metadata ops applied. The relink used to send
+// that end state as a whole-map PUT, so asserting it here is what says the
+// patch lands in the same place.
+const applied = (meta, archiveId, ops) =>
+  applyMetadataOps({ ...meta, nativeImportId: archiveId }, ops);
+
+// A metadata op setting, or deleting, one top-level key.
+const set = (key, value) => ({ op: 'set', path: [key], value });
+const del = (key) => ({ op: 'delete', path: [key] });
 
 describe('planVocabRelink — a dictionary survives the round trip', () => {
   const vocabData = {
@@ -920,18 +919,18 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
     const byId = Object.fromEntries(patches.map((p) => [p.id, p.metadata]));
     const meta = Object.fromEntries(vocabData.items.map((it) => [it.id, it.metadata]));
     // The patch names what the relink CHANGED and nothing else.
-    expect(byId['new-sense']).toEqual({ parent: 'new-head' });
-    expect(byId['new-run']).toEqual({
-      variantOf: 'new-head',
-      seeAlso: ['new-sense'],
-      examples: [
+    expect(byId['new-sense']).toEqual([set('parent', 'new-head')]);
+    expect(byId['new-run']).toEqual([
+      set('variantOf', 'new-head'),
+      set('seeAlso', ['new-sense']),
+      set('examples', [
         { document: 'new-doc', token: 'new-tok' },
         { text: 'imported text', translation: 'stays' },
-      ],
-    });
-    // A parent that did not survive is NULLED, which is what deletes the key
-    // and makes the item a headword. Absent, it would have stayed dangling.
-    expect(byId['new-orphan']).toEqual({ parent: null });
+      ]),
+    ]);
+    // A parent that did not survive is DELETED, which makes the item a
+    // headword. Absent, it would have stayed dangling.
+    expect(byId['new-orphan']).toEqual([del('parent')]);
     expect(byId['new-head']).toBeUndefined(); // nothing to relink
     expect(dropped).toEqual(['run: seeAlso', 'run: example', 'x: parent']);
     // And where each one ends up, which is where the whole-map write left it.
@@ -973,7 +972,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
       ],
     };
     const { patches } = planVocabRelink(stale, itemIdMap, docMaps);
-    expect(patches).toEqual([{ id: 'new-sense', metadata: { parent: 'new-head' } }]);
+    expect(patches).toEqual([{ id: 'new-sense', metadata: [set('parent', 'new-head')] }]);
     // Which leaves the item stamped by this run, so a resume knows it again.
     expect(applied(stale.items[1].metadata, 'old-sense', patches[0].metadata).nativeImportId).toBe(
       'old-sense',
@@ -1009,8 +1008,10 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
     });
     const result = await runNativeImport({ client, projectId: 'newp', archive });
     expect(result.skipped).toBe(1);
-    const write = itemPatches(client).find((e) => e.metadata?.examples);
-    expect(write.metadata.examples).toEqual([{ document: 'srv-doc', token: 'srv-w1' }]);
+    const write = itemPatches(client).find((e) => e.metadata.some((o) => o.path[0] === 'examples'));
+    expect(write.metadata).toContainEqual(
+      set('examples', [{ document: 'srv-doc', token: 'srv-w1' }]),
+    );
     expect(result.warnings.filter((w) => /reference/.test(w))).toHaveLength(0);
   });
 
@@ -1023,7 +1024,7 @@ describe('planVocabRelink — a dictionary survives the round trip', () => {
     const result = await runNativeImport({ client, projectId: 'newp', archive });
     const writes = itemPatches(client);
     expect(writes).toHaveLength(1);
-    const meta = writes[0].metadata;
+    const meta = applyMetadataOps({}, writes[0].metadata);
     expect(meta.parent).toMatch(/^item-/);
     // senseOrder is NOT in the patch, and must not be: the item was created
     // from the archive already carrying it, so it is not what changed. Only
@@ -1473,7 +1474,7 @@ describe('runNativeImport, references in metadata', () => {
     )[1];
     expect(sentence.metadata).toEqual({ speaker: 'A', gloss: 'sp4' });
     expect(argsOf(client, 'tokens.bulkUpdate')).toEqual([
-      [[{ id: sentenceId(client), metadata: { gloss: spanId(client, 'The dogs run.') } }]],
+      [[{ id: sentenceId(client), metadata: [set('gloss', spanId(client, 'The dogs run.'))] }]],
     ]);
     const names = client.calls.map(([n]) => n);
     expect(names.indexOf('tokens.bulkUpdate')).toBeLessThan(
@@ -1491,7 +1492,7 @@ describe('runNativeImport, references in metadata', () => {
     // w1 is made in the same request and m1 after it, so both are patched,
     // and the patch holds the one key that changed.
     expect(argsOf(client, 'tokens.bulkUpdate')).toEqual([
-      [[{ id: wordIds(client)[1], metadata: { refs: [{ at: w1 }, m1, 3] } }]],
+      [[{ id: wordIds(client)[1], metadata: [set('refs', [{ at: w1 }, m1, 3])] }]],
     ]);
   });
 
@@ -1525,7 +1526,9 @@ describe('runNativeImport, references in metadata', () => {
     expect(patches).toHaveLength(1);
     expect(patches[0][0]).toHaveLength(1);
     expect(patches[0][0][0].id).toBe(words.result.ids[0]);
-    expect(linkIds).toContain(patches[0][0][0].metadata.sense);
+    const [op] = patches[0][0][0].metadata;
+    expect(op.path).toEqual(['sense']);
+    expect(linkIds).toContain(op.value);
   });
 
   it("resolves another app's references through the same maps", async () => {
@@ -1605,7 +1608,7 @@ describe('runNativeImport, references in metadata', () => {
     // Its own id is known by the time it is marked done.
     const done = argsOf(client, 'documents.setMetadata').find(([id]) => id === one)[1];
     expect(done).toMatchObject({ self: one, next: 'doc2', importSource: 'doc1' });
-    expect(argsOf(client, 'documents.patchMetadata')).toEqual([[one, { next: two }]]);
+    expect(argsOf(client, 'documents.patchMetadata')).toEqual([[one, [set('next', two)]]]);
   });
 
   it('settles a document an earlier run finished, which still names a later one', async () => {
@@ -1625,7 +1628,7 @@ describe('runNativeImport, references in metadata', () => {
     const [, , , created] = callsOf(client, 'documents.create')[0];
     expect(created.previous).toBe('old1');
     // The stamp is the archive's id for the document itself, on purpose.
-    expect(argsOf(client, 'documents.patchMetadata')).toEqual([['old1', { next: two }]]);
+    expect(argsOf(client, 'documents.patchMetadata')).toEqual([['old1', [set('next', two)]]]);
   });
 
   it('patches what is in a document naming a later document, from what the server holds', async () => {
@@ -1656,7 +1659,7 @@ describe('runNativeImport, references in metadata', () => {
     await runNativeImport({ client, projectId: 'newp', archive });
     const [, two] = callsOf(client, 'documents.create').map((c) => c.result.id);
     expect(argsOf(client, 'spans.bulkUpdate')).toEqual([
-      [[{ id: 'srv-span', metadata: { see: two } }]],
+      [[{ id: 'srv-span', metadata: [set('see', two)] }]],
     ]);
     expect(callsOf(client, 'tokens.bulkUpdate')).toEqual([]);
     expect(callsOf(client, 'texts.patchMetadata')).toEqual([]);
@@ -1708,7 +1711,10 @@ describe('planVocabRelink, references in metadata', () => {
     // `note` merely CONTAINS an archive id, so it is not a reference and is
     // absent from the patch too.
     expect(patches).toEqual([
-      { id: 'new-b', metadata: { cognate: 'new-a', source: { document: 'new-doc' } } },
+      {
+        id: 'new-b',
+        metadata: [set('cognate', 'new-a'), set('source', { document: 'new-doc' })],
+      },
     ]);
     expect(applied(vocabData.items[1].metadata, 'old-b', patches[0].metadata)).toEqual({
       cognate: 'new-a',

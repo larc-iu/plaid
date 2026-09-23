@@ -24,6 +24,8 @@ from typing import Any, Dict, List
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
+from plaid_client import metadata_ops
+
 from ..core.plan import (CONFIRM, PlanError, Resolution, Stamps, TrackingBatcher,
                          apply_add_comment, apply_restore_document, applying, created_id,
                          docs_of_op, expand_ops)
@@ -110,11 +112,11 @@ def _apply_set_span(ctx: Context, op) -> int:
         # including arcs a person drew and vouched for. A cleared lemma keeps
         # its null-valued span, exactly as the editor leaves it (ConlluDocument's
         # `updateAnnotation`) and as an unlemmatized import writes it.
-        ctx.b.update('spans', span_id, value=None, metadata=ctx.restamp())
+        ctx.b.update('spans', span_id, value=None, metadata=metadata_ops(ctx.restamp()))
     elif span_id and value == '':
         ctx.b.add(lambda batch, sid=span_id: batch.spans.delete(sid))
     elif span_id:
-        ctx.b.update('spans', span_id, value=value, metadata=ctx.restamp())
+        ctx.b.update('spans', span_id, value=value, metadata=metadata_ops(ctx.restamp()))
     elif value != '':
         ctx.creating[(op['layer_id'], op['token_id'])] = ctx.b.add(
             lambda batch, o=op, v=value: batch.spans.create(o['layer_id'], [o['token_id']], v, ctx.stamp()))
@@ -124,15 +126,15 @@ def _apply_set_span(ctx: Context, op) -> int:
 
 
 def _apply_set_deprel(ctx: Context, op) -> int:
-    ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=ctx.restamp())
+    ctx.b.update('relations', op['relation_id'], value=op['deprel'], metadata=metadata_ops(ctx.restamp()))
     return 1
 
 
 def _apply_confirm(ctx: Context, op) -> int:
     if op.get('span_id'):
-        ctx.b.update('spans', op['span_id'], metadata=CONFIRM)
+        ctx.b.update('spans', op['span_id'], metadata=metadata_ops(CONFIRM))
     else:
-        ctx.b.update('relations', op['relation_id'], metadata=CONFIRM)
+        ctx.b.update('relations', op['relation_id'], metadata=metadata_ops(CONFIRM))
     return 1
 
 

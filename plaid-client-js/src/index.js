@@ -273,9 +273,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a vocab link. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a vocab link with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} id - The resource ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (id, body, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-links/${id}/metadata`, {
@@ -440,9 +440,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a relation. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a relation with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} relationId - The relation ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (relationId, body, auditMessage) =>
         this._request("PATCH", `/api/v1/relations/${relationId}/metadata`, {
@@ -536,7 +536,7 @@ class PlaidClient {
         }),
       /**
        * Update many relations in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many relations were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -696,7 +696,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/spans/bulk", { auditMessage, body }),
       /**
        * Update many spans in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a patch, a null value deleting that key. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many spans were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -725,9 +725,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a span. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a span with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} spanId - The span ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (spanId, body, auditMessage) =>
         this._request("PATCH", `/api/v1/spans/${spanId}/metadata`, {
@@ -791,9 +791,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a text. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a text with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} textId - The text ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (textId, body, auditMessage) =>
         this._request("PATCH", `/api/v1/texts/${textId}/metadata`, {
@@ -1787,9 +1787,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a document. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a document with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} documentId - The document ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (documentId, body, auditMessage) =>
         this._request("PATCH", `/api/v1/documents/${documentId}/metadata`, {
@@ -2316,9 +2316,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a vocab item. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a vocab item with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} id - The resource ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (id, body, auditMessage) =>
         this._request("PATCH", `/api/v1/vocab-items/${id}/metadata`, {
@@ -2350,7 +2350,7 @@ class PlaidClient {
       /**
        * Update many vocab items in a single operation: set forms and/or patch
        * metadata.
-       * @param {Array<{id: string, form?: string, metadata?: any}>} body - `form` is set only when the key is present; `metadata` is a patch, a null value deleting that key. The entries may lie in several vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
+       * @param {Array<{id: string, form?: string, metadata?: Array<object>}>} body - `form` is set only when the key is present; `metadata` is a list of metadata ops, as for patchMetadata. The entries may lie in several vocab layers; the user must have write access to each. An unknown id refuses the whole update, and an id may appear only once. Only an entry whose form really changes restates the documents linking it, and a strict-mode client picks up their new versions from the response.
        * @returns {Promise<{count: number}>} How many vocab items were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2570,7 +2570,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/tokens/bulk", { auditMessage, body }),
       /**
        * Update many tokens in a single operation: patch metadata.
-       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a patch, a null value deleting that key. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a list of metadata ops, as for patchMetadata. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many tokens were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2636,9 +2636,9 @@ class PlaidClient {
           skipResponseTransform: true,
         }),
       /**
-       * Patch (shallow-merge) metadata for a token. Keys present in the body are set or overwritten; keys not present are left untouched; a key whose value is null is deleted. Merging is top-level only (nested objects are replaced wholesale, not deep-merged), so a literal null cannot be stored as a value. An empty body changes no metadata.
+       * Edit metadata for a token with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
        * @param {string} tokenId - The token ID
-       * @param {any} body - The metadata patch
+       * @param {Array<{op: string, path: string[], value?: any}>} body - The metadata ops
        */
       patchMetadata: (tokenId, body, auditMessage) =>
         this._request("PATCH", `/api/v1/tokens/${tokenId}/metadata`, {
@@ -3579,4 +3579,7 @@ export {
   withReviewedUser,
   writerPolicy,
 } from "./provenance.js";
+// Metadata ops: the body of a metadata PATCH and of a bulk update entry's
+// `metadata`. See ./metadataOps.js.
+export { metadataOps, applyMetadataOps } from "./metadataOps.js";
 export { MAX_BATCH_OPS };

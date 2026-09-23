@@ -95,7 +95,7 @@
     (testing "metadata put"
       (is (bumps? v #(update-vocab-item-metadata admin-request item {:pos "N"}))))
     (testing "metadata patch"
-      (is (bumps? v #(patch-vocab-item-metadata admin-request item {:gloss "hund"}))))
+      (is (bumps? v #(patch-vocab-item-metadata admin-request item [{:op "set" :path ["gloss"] :value "hund"}]))))
     (testing "metadata delete"
       (is (bumps? v #(delete-vocab-item-metadata admin-request item))))
     (testing "delete"

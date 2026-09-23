@@ -228,8 +228,8 @@ export const verifyOnEdit = (metadata) => (needsReview(metadata) ? PROV_CONFIRME
 /**
  * The metadata fragment a CONTRIBUTOR's edit of this entity should merge in
  * (write-contract rule 3): the contributed stamp, plus provConfirmed: null
- * so an earlier confirmation is dropped (a patch deletes null-valued keys;
- * see mergeMetadata for a full replace). Prediction extras a machine
+ * so an earlier confirmation is dropped (send it with metadataOps, which
+ * turns a null into a delete, or apply it locally with mergeMetadata). Prediction extras a machine
  * recorded stay, as history.
  * @param {Object|null|undefined} metadata - unused today; the fragment is
  *   the same whatever the entity was, and the parameter keeps the shape of
@@ -243,9 +243,10 @@ export const contributeOnEdit = (metadata, userId) => ({
 });
 
 /**
- * Merge a metadata fragment the way the server's PATCH does — a null value
- * deletes the key — for callers that keep a local copy or send a full
- * replacement (setMetadata). Returns a new object.
+ * Merge a metadata fragment into a local copy, a null value deleting the
+ * key: the same result as sending metadataOps(fragment). For callers that
+ * keep a local copy or send a full replacement (setMetadata). Returns a new
+ * object.
  */
 export const mergeMetadata = (metadata, fragment) => {
   const out = { ...(metadata || {}) };

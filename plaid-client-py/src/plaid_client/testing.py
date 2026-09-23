@@ -40,6 +40,8 @@ import itertools
 import pathlib
 import sys
 
+from plaid_client.http import PlaidAPIError
+from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.services import CancelScope, requester_message
 
 
@@ -189,9 +191,22 @@ class _Batch:
         self.results = []
 
 
+def _checked_ops(ops):
+    """A metadata patch as the server takes it, a list of ops (see
+    ``plaid_client.metadata_ops``), refused here as there when it is not."""
+    if not isinstance(ops, list):
+        raise PlaidAPIError('HTTP 400 A metadata patch is a list of ops', status=400)
+    try:
+        apply_metadata_ops({}, ops)
+    except ValueError as e:
+        raise PlaidAPIError(f'HTTP 400 {e}', status=400)
+    return ops
+
+
 class Resource:
     """One resource of the fake client: records every call in order and hands
-    back plausible ids, which is what a batch's ``results`` carry."""
+    back plausible ids, which is what a batch's ``results`` carry. A metadata
+    patch, direct or in a bulk update entry, must be a list of ops."""
 
     def __init__(self, client, name):
         self._client = client
@@ -214,6 +229,9 @@ class Resource:
 
     def bulk_update(self, items):
         items = list(items)
+        for item in items:
+            if 'metadata' in item:
+                _checked_ops(item['metadata'])
         self._call('bulk_update', items, {'body': {'count': len(items)}})
         return {'count': len(items)}
 
@@ -223,8 +241,9 @@ class Resource:
     def bulk_delete(self, ids):
         self._call('bulk_delete', list(ids), {'body': {}})
 
-    def patch_metadata(self, entity_id, metadata):
-        self._call('patch_metadata', (entity_id, metadata), {'body': {}})
+    def patch_metadata(self, entity_id, ops):
+        _checked_ops(ops)
+        self._call('patch_metadata', (entity_id, ops), {'body': {}})
 
     def set_metadata(self, entity_id, metadata):
         self._call('set_metadata', (entity_id, metadata), {'body': {}})

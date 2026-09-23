@@ -2,15 +2,15 @@
   "Shared metadata REST API routes for different entity types"
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
+            [plaid.sql.metadata :as psm]
             [clojure.data.json :as json]
             [reitit.coercion.malli]))
 
 (def max-metadata-depth
-  "Maximum nesting level allowed in a metadata payload. 10 is plenty
-  for any structured metadata a real user would author; deeper than
-  that and we start worrying about pathological JSON aimed at exhausting
-  stack/serializer time."
-  10)
+  "Maximum nesting level allowed in a metadata payload. Lives beside the
+  metadata writes, which also hold the result of a PATCH to it."
+  psm/max-metadata-depth)
+
 (def max-metadata-key-count
   "Soft cap on the total number of keys (across all nesting levels) in
   a single metadata payload. Stops an unbounded `{k1:..,k2:..,...}`
@@ -130,6 +130,28 @@
         {:status 400 :body {:error err}}
         (handler request)))))
 
+(def metadata-op-schema
+  "One metadata edit. See `plaid.sql.metadata/patch-metadata!`."
+  [:map
+   [:op [:enum "set" "delete"]]
+   [:path [:vector {:min 1} string?]]
+   [:value {:optional true} any?]])
+
+(def metadata-ops-schema
+  "The body of a metadata PATCH, and the `metadata` of a bulk update entry."
+  [:sequential metadata-op-schema])
+
+(def patch-summary
+  "The shared tail of every metadata PATCH summary."
+  (str "with a list of ops applied in order, in one operation. Each op has keys:\n"
+       "<body>op</body>, \"set\" or \"delete\"\n"
+       "<body>path</body>, a non-empty array of keys into the nested metadata, the first a top-level key\n"
+       "<body>value</body>, for set, the value to write (null is an ordinary value)\n"
+       "set writes the value at the path, creating any missing objects along it, so a path of one key "
+       "replaces that top-level key whole. delete removes the key at the path and is a no-op when it is "
+       "absent. A path that runs through a value that is not an object is refused (400). An empty list "
+       "changes nothing."))
+
 (defn metadata-routes
   "Generate metadata routes for a given entity type.
 
@@ -141,7 +163,7 @@
      entity-get-fn - Function to get the entity after metadata operations
      entity-set-metadata-fn - Function to set (replace all) metadata on the entity
      entity-delete-metadata-fn - Function to delete metadata from the entity
-     entity-patch-metadata-fn - Function to shallow-merge a metadata patch into the entity
+     entity-patch-metadata-fn - Function to apply a list of metadata ops to the entity
 
    Returns:
      Vector of route definitions for metadata operations"
@@ -163,21 +185,16 @@
                                 {:status 200 :body (entity-get-fn db entity-id)}
                                 db doc-id)
                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-    :patch  {:summary    (str "Patch (shallow-merge) metadata for a " entity-type ". Keys present "
-                              "in the request are set or overwritten; keys NOT present are left "
-                              "untouched; a key whose value is null is deleted. Merging is "
-                              "top-level only (nested objects are replaced wholesale, not "
-                              "deep-merged), so a literal null cannot be stored as a value. An "
-                              "empty body changes no metadata.")
+    :patch  {:summary    (str "Edit metadata for a " entity-type " " patch-summary)
              :middleware [[pra/wrap-writer-required get-project-id-fn]
                           [prm/wrap-document-version get-document-id-fn]
                           wrap-metadata-shape-guard]
              :parameters {:query [:map [:document-version {:optional true} :int]]
-                          :body [:map-of string? any?]}
-             :handler    (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id :as request}]
+                          :body metadata-ops-schema}
+             :handler    (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id :as request}]
                            (let [entity-id (get path-params entity-id-key)
                                  doc-id (get-document-id-fn request)
-                                 {:keys [success code error]} (entity-patch-metadata-fn db entity-id metadata user-id)]
+                                 {:keys [success code error]} (entity-patch-metadata-fn db entity-id ops user-id)]
                              (if success
                                (prm/assoc-document-version-in-header
                                 {:status 200 :body (entity-get-fn db entity-id)}

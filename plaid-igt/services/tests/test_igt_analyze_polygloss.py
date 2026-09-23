@@ -10,6 +10,7 @@ Run: pytest plaid-igt/services/tests
 
 import pathlib
 
+from plaid_client import apply_metadata_ops
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
 
@@ -138,8 +139,8 @@ def test_an_analysis_lands_stamped_machine_made_and_never_confirmed():
     assert 'Translation in English: the house is coming' in prompt
 
     # Each word's first morpheme is patched in place and further slots created.
-    patched = dict(payload for kind, payload in service.client.calls
-                   if kind == 'tokens.patch_metadata')
+    patched = {payload[0]: apply_metadata_ops({}, payload[1])
+               for kind, payload in service.client.calls if kind == 'tokens.patch_metadata'}
     assert set(patched) == {'m1', 'm2'}
     assert patched['m1']['form'] == 'ev' and patched['m2']['form'] == 'gel'
     for meta in patched.values():

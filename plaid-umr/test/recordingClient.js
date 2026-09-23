@@ -6,6 +6,16 @@
 // `calls` is every operation, batched or not. `requests` is the ROUND TRIPS:
 // one entry per direct call and one per batch, whatever the batch holds,
 // which is what a test about how much a mutation costs has to count.
+//
+// A metadata patch must be a list of ops, as the server takes it, and is
+// refused here as there when it is not.
+import { applyMetadataOps } from '@larc-iu/plaid-client';
+
+const checkOps = (ops) => {
+  if (!Array.isArray(ops)) throw new Error('A metadata patch is a list of ops');
+  applyMetadataOps({}, ops);
+};
+
 export function recordingClient() {
   let n = 0;
   const id = () => `new${++n}`;
@@ -23,6 +33,10 @@ export function recordingClient() {
         return { ids: ops.map(() => id()) };
       },
       bulkDelete: async (ids) => record('tokens.bulkDelete', ids),
+      patchMetadata: async (tokenId, ops) => {
+        checkOps(ops);
+        record('tokens.patchMetadata', tokenId, ops);
+      },
     },
     spans: {
       create: async (layer, tokens, value, metadata) => {
@@ -34,7 +48,10 @@ export function recordingClient() {
         return { ids: ops.map(() => id()) };
       },
       update: async (spanId, value) => record('spans.update', spanId, value),
-      patchMetadata: async (spanId, patch) => record('spans.patchMetadata', spanId, patch),
+      patchMetadata: async (spanId, ops) => {
+        checkOps(ops);
+        record('spans.patchMetadata', spanId, ops);
+      },
       setTokens: async (spanId, tokens) => record('spans.setTokens', spanId, tokens),
     },
     relations: {
@@ -47,7 +64,10 @@ export function recordingClient() {
         return { ids: ops.map(() => id()) };
       },
       update: async (relId, value) => record('relations.update', relId, value),
-      patchMetadata: async (relId, patch) => record('relations.patchMetadata', relId, patch),
+      patchMetadata: async (relId, ops) => {
+        checkOps(ops);
+        record('relations.patchMetadata', relId, ops);
+      },
       delete: async (relId) => record('relations.delete', relId),
     },
     documents: {

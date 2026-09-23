@@ -65,14 +65,14 @@ describe('replaceWrites', () => {
   it('patches only the field it touches, so nothing else can be lost', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'dog', new: 'hound', invalid: null }];
     expect(replaceWrites(rows, { field: 'gloss' })).toEqual([
-      { id: 'a', metadata: { gloss: 'hound' } },
+      { id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'hound' }] },
     ]);
   });
 
-  it('nulls the key when the replacement empties the value, which deletes it', () => {
+  it('deletes the key when the replacement empties the value', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'dog', new: '', invalid: null }];
     expect(replaceWrites(rows, { field: 'gloss' })).toEqual([
-      { id: 'a', metadata: { gloss: null } },
+      { id: 'a', metadata: [{ op: 'delete', path: ['gloss'] }] },
     ]);
   });
 
@@ -116,8 +116,8 @@ describe('planVocabReplace, filling a blank', () => {
 
   it('writes the field it fills and names nothing else', () => {
     expect(replaceWrites(plan('published'), { field: 'status' })).toEqual([
-      { id: 'a', metadata: { status: 'published' } },
-      { id: 'c', metadata: { status: 'published' } },
+      { id: 'a', metadata: [{ op: 'set', path: ['status'], value: 'published' }] },
+      { id: 'c', metadata: [{ op: 'set', path: ['status'], value: 'published' }] },
     ]);
   });
 

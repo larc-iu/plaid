@@ -26,6 +26,7 @@ import { File } from 'node:buffer';
 import PlaidClient, {
   PLAID_NAMESPACE,
   REVIEW_KEY,
+  metadataOps,
   stampInferred,
   withReviewedUser,
 } from '@larc-iu/plaid-client';
@@ -524,14 +525,20 @@ async function buildStory(ctx) {
   await client.spans.create(segmentNotes.id, [overlap], 'laughter');
 
   // Tokenizer provenance, an unconfigured orthography, extra word metadata.
-  await client.tokens.patchMetadata(wordId('El', 0), {
-    prov: 'inferred',
-    provSource: 'tokenize-service',
-  });
-  await client.tokens.patchMetadata(wordId('gato'), {
-    'orthog:Old spelling': 'gatto',
-    note: 'checked with Ada',
-  });
+  await client.tokens.patchMetadata(
+    wordId('El', 0),
+    metadataOps({
+      prov: 'inferred',
+      provSource: 'tokenize-service',
+    }),
+  );
+  await client.tokens.patchMetadata(
+    wordId('gato'),
+    metadataOps({
+      'orthog:Old spelling': 'gatto',
+      note: 'checked with Ada',
+    }),
+  );
 
   // Two segments inside the third sentence: one a transcription service made,
   // with a speaker, and one with no speaker.
@@ -555,10 +562,13 @@ async function buildStory(ctx) {
   ]);
 
   // A sentence carrying metadata of its own, and a morpheme an analyzer stamped.
-  await client.tokens.patchMetadata(sentenceAt(doc, 2).id, { source: 'recording 12, 03:10' });
+  await client.tokens.patchMetadata(
+    sentenceAt(doc, 2).id,
+    metadataOps({ source: 'recording 12, 03:10' }),
+  );
   await client.tokens.patchMetadata(
     word(doc, 'corren').morphemes[1].id,
-    stampInferred('polygloss'),
+    metadataOps(stampInferred('polygloss')),
   );
 
   // A morpheme whose extent matches no word.
@@ -701,12 +711,15 @@ async function buildStory(ctx) {
   await client.spans.delete(doomed);
 
   // Promoted examples on the headword: one from this corpus, one as FLEx stores them.
-  await client.vocabItems.patchMetadata(e.perro, {
-    examples: [
-      { document: docId, token: sentenceAt(doc, 0).id },
-      { text: 'El perro duerme.', translation: 'The dog sleeps.' },
-    ],
-  });
+  await client.vocabItems.patchMetadata(
+    e.perro,
+    metadataOps({
+      examples: [
+        { document: docId, token: sentenceAt(doc, 0).id },
+        { text: 'El perro duerme.', translation: 'The dog sleeps.' },
+      ],
+    }),
+  );
   return docId;
 }
 
@@ -752,9 +765,12 @@ async function buildOtherDocuments(ctx) {
       { tokenLayerId: notesLayers.byRole('word').id, text: notesText, begin: 0, end: 4 },
     ])
     .then(idOf);
-  await client.vocabItems.patchMetadata(ctx.entries.unused, {
-    examples: [{ document: untok.id, token: doomedWord }],
-  });
+  await client.vocabItems.patchMetadata(
+    ctx.entries.unused,
+    metadataOps({
+      examples: [{ document: untok.id, token: doomedWord }],
+    }),
+  );
   await client.tokens.delete(doomedWord);
 }
 

@@ -5,7 +5,7 @@
 // reads a fresh IgtDocument from the server. Project + lexicon are deleted at
 // the end.
 //   cd plaid-igt && node --import ./e2e/live/aliases.mjs e2e/live/auto-analysis.mjs
-import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, stampInferred, cpLength, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { runBuiltinAnalysis } from '../../src/domain/autoPass.js';
 import { executeProjectSetup } from '../../src/components/projects/setup/executeSetup.js';
@@ -225,7 +225,7 @@ try {
   const S = await mkdoc('S', 'casa perro perro luna sol');
   let s = await load(S.id);
   const casa = W(s, 'casa');
-  await client.tokens.patchMetadata(casa.morphemes[0].id, { form: 'cas' });
+  await client.tokens.patchMetadata(casa.morphemes[0].id, metadataOps({ form: 'cas' }));
   const casaA = await addMorph(S, casa, 2, { form: 'a', morphType: 'suffix' });
   await client.spans.create(glossLayer.id, [casa.morphemes[0].id], 'house');
   await client.spans.create(glossLayer.id, [casaA.id], 'F');
@@ -234,16 +234,19 @@ try {
   // perro: two different hand analyses (tie).
   const perro0 = W(s, 'perro', 0);
   const perro1 = W(s, 'perro', 1);
-  await client.tokens.patchMetadata(perro0.morphemes[0].id, { form: 'per' });
+  await client.tokens.patchMetadata(perro0.morphemes[0].id, metadataOps({ form: 'per' }));
   await addMorph(S, perro0, 2, { form: 'ro' });
-  await client.tokens.patchMetadata(perro1.morphemes[0].id, { form: 'perr' });
+  await client.tokens.patchMetadata(perro1.morphemes[0].id, metadataOps({ form: 'perr' }));
   await addMorph(S, perro1, 2, { form: 'o' });
   // luna: only a machine-unverified analysis exists.
   const luna = W(s, 'luna');
-  await client.tokens.patchMetadata(luna.morphemes[0].id, {
-    form: 'lun',
-    ...stampInferred('rule:analysis-precedent'),
-  });
+  await client.tokens.patchMetadata(
+    luna.morphemes[0].id,
+    metadataOps({
+      form: 'lun',
+      ...stampInferred('rule:analysis-precedent'),
+    }),
+  );
   await addMorph(S, luna, 2, { form: 'a', ...stampInferred('rule:analysis-precedent') });
 
   const T3 = await mkdoc('T3', 'casa casa perro luna sol');

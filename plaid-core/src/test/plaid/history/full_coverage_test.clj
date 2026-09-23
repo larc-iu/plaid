@@ -352,12 +352,12 @@
                                                   :path (str "/api/v1/documents/" doc)
                                                   :body {:name "FC-Doc-2"}})) ; document/update
             _ (assert-ok (update-document-metadata admin-request doc {"author" "alice"})) ; doc/set-metadata
-            _ (assert-ok (patch-document-metadata admin-request doc {"editor" "bob"})) ; document/patch-metadata
+            _ (assert-ok (patch-document-metadata admin-request doc [{:op "set" :path ["editor"] :value "bob"}])) ; document/patch-metadata
 
             ;; ---- text (survivor + throwaway for delete/update-body/delete-metadata) ----
             text-id (-> (create-text admin-request tlA doc "alpha beta gamma delta epsilon zeta") :body :id) ; text/create
             _ (assert-ok (update-text-metadata admin-request text-id {"lang" "xx"}))  ; text/set-metadata
-            _ (assert-ok (patch-text-metadata admin-request text-id {"reviewed" "yes"})) ; text/patch-metadata
+            _ (assert-ok (patch-text-metadata admin-request text-id [{:op "set" :path ["reviewed"] :value "yes"}])) ; text/patch-metadata
             text-throw (-> (create-text admin-request tlB doc "throwaway body") :body :id)
             _ (assert-ok (update-text admin-request text-throw "throwaway body edited")) ; text/update-body
             _ (assert-ok (update-text-metadata admin-request text-throw {"k" "v"}))
@@ -377,7 +377,7 @@
             split-new (-> (split-token admin-request t1 2) :body :id)        ; token/split
             _ (assert-ok (merge-tokens admin-request t1 split-new))          ; token/merge
             _ (assert-ok (update-token-metadata admin-request t2 {"pos" "NOUN"})) ; token/set-metadata
-            _ (assert-ok (patch-token-metadata admin-request t2 {"lemma" "greet"})) ; token/patch-metadata
+            _ (assert-ok (patch-token-metadata admin-request t2 [{:op "set" :path ["lemma"] :value "greet"}])) ; token/patch-metadata
             _ (assert-ok (update-token-metadata admin-request t3 {"pos" "X"}))
             _ (assert-ok (delete-token-metadata admin-request t3))   ; token/delete-metadata
             ;; bulk-create + bulk-delete throwaway tokens (in throwaway layer to avoid overlap fuss)
@@ -396,7 +396,7 @@
             _ (assert-ok (update-span-tokens admin-request s1 [t2 t4]))      ; span/update-tokens (add)
             _ (assert-ok (update-span-tokens admin-request s1 [t2]))         ; span/update-tokens (shrink; remove-token is vestigial)
             _ (assert-ok (update-span-metadata admin-request s1 {"conf" "hi"})) ; span/set-metadata
-            _ (assert-ok (patch-span-metadata admin-request s1 {"src" "auto"})) ; span/patch-metadata
+            _ (assert-ok (patch-span-metadata admin-request s1 [{:op "set" :path ["src"] :value "auto"}])) ; span/patch-metadata
             _ (assert-ok (update-span-metadata admin-request s2 {"conf" "lo"}))
             _ (assert-ok (delete-span-metadata admin-request s2))    ; span/delete-metadata
             bulk-spans (-> (bulk-create-spans admin-request
@@ -412,7 +412,7 @@
             _ (assert-ok (update-relation-target admin-request r1 s1))       ; relation/update-endpoint
             _ (assert-ok (update-relation-target admin-request r1 s2))       ; (re-point back)
             _ (assert-ok (update-relation-metadata admin-request r1 {"w" "1"})) ; relation/set-metadata
-            _ (assert-ok (patch-relation-metadata admin-request r1 {"note" "x"})) ; relation/patch-metadata
+            _ (assert-ok (patch-relation-metadata admin-request r1 [{:op "set" :path ["note"] :value "x"}])) ; relation/patch-metadata
             r2 (-> (create-relation admin-request rlA s2 s1 "tmp") :body :id)
             _ (assert-ok (update-relation-metadata admin-request r2 {"w" "2"}))
             _ (assert-ok (delete-relation-metadata admin-request r2)) ; relation/delete-metadata
@@ -431,14 +431,14 @@
             viS (-> (create-vocab-item admin-request vS "hello") :body :id)  ; vocab-item/create
             _ (assert-ok (update-vocab-item admin-request viS "hallo"))      ; vocab-item/merge (PATCH form)
             _ (assert-ok (update-vocab-item-metadata admin-request viS {"gloss" "hi"})) ; vocab-item/set-metadata
-            _ (assert-ok (patch-vocab-item-metadata admin-request viS {"ipa" "həˈloʊ"})) ; vocab-item/patch-metadata
+            _ (assert-ok (patch-vocab-item-metadata admin-request viS [{:op "set" :path ["ipa"] :value "həˈloʊ"}])) ; vocab-item/patch-metadata
             vi-throw (-> (create-vocab-item admin-request vS "tmpform") :body :id)
             _ (assert-ok (update-vocab-item-metadata admin-request vi-throw {"x" "y"}))
             _ (assert-ok (delete-vocab-item-metadata admin-request vi-throw)) ; vocab-item/delete-metadata
             _ (assert-status 204 (delete-vocab-item admin-request vi-throw)) ; vocab-item/delete
             vlS (-> (create-vocab-link admin-request viS [t2]) :body :id)    ; vocab-link/create
             _ (assert-ok (update-vocab-link-metadata admin-request vlS {"src" "manual"})) ; vocab-link/set-metadata
-            _ (assert-ok (patch-vocab-link-metadata admin-request vlS {"score" "9"})) ; vocab-link/patch-metadata
+            _ (assert-ok (patch-vocab-link-metadata admin-request vlS [{:op "set" :path ["score"] :value "9"}])) ; vocab-link/patch-metadata
             vl-throw (-> (create-vocab-link admin-request viS [t3]) :body :id)
             _ (assert-ok (update-vocab-link-metadata admin-request vl-throw {"a" "b"}))
             _ (assert-ok (delete-vocab-link-metadata admin-request vl-throw)) ; vocab-link/delete-metadata

@@ -51,39 +51,44 @@
 (deftest custom-message-overrides-auto-description
   (let [span (setup-span)]
     (testing "without ?audit-message= the auto-generated description stands"
-      (let [r (patch-span-metadata admin-request span {"a" 1})]
+      (let [r (patch-span-metadata admin-request span [{:op "set" :path ["a"] :value 1}])]
         (is (< (:status r) 300))
         (is (re-find #"(?i)metadata" (latest-description "span/patch-metadata")))))
 
     (testing "with ?audit-message= the custom message replaces it"
-      (let [r (patch-span-meta-with-query span "audit-message=Mark%20reviewed" {"b" 2})]
+      (let [r (patch-span-meta-with-query span "audit-message=Mark%20reviewed" [{:op "set" :path ["b"] :value 2}])]
         (is (< (:status r) 300))
         (is (= "Mark reviewed" (latest-description "span/patch-metadata")))))))
 
 (deftest templating-path-query-body-and-casing
   (let [span (setup-span)]
     (testing "path param via camelCase placeholder resolves to the kebab wire key"
-      (patch-span-meta-with-query span (str "audit-message=" "Approve%20span%20%7BspanId%7D") {"x" 1})
+      (patch-span-meta-with-query span (str "audit-message=" "Approve%20span%20%7BspanId%7D") [{:op "set" :path ["x"] :value 1}])
       (is (= (str "Approve span " span) (latest-description "span/patch-metadata"))))
 
-    (testing "body key + snake_case + a query key all template"
-      ;; document-version is an int query param the endpoint accepts; include it
-      ;; so {documentVersion} has something to resolve to. status comes from the
-      ;; JSON body (string key "status").
-      (patch-span-meta-with-query
-       span
-       (str "audit-message=" "set%20%7Bstatus%7D%20on%20%7Bspan_id%7D")
-       {"status" "approved"})
-      (is (= (str "set approved on " span) (latest-description "span/patch-metadata"))))
+    (testing "a body key and a snake_case path key both template"
+      ;; A metadata PATCH body is an op list, which contributes no keys, so the
+      ;; body key comes from the span's own PATCH, whose body is an object.
+      (f/assert-ok (api-call admin-request
+                             {:method :patch
+                              :path (str "/api/v1/spans/" span "?audit-message="
+                                         "set%20%7Bvalue%7D%20on%20%7Bspan_id%7D")
+                              :body {:value "approved"}}))
+      (is (= (str "set approved on " span) (latest-description "span/update-attributes"))))
+
+    (testing "an op-list body contributes no keys, so a body placeholder stays literal"
+      (patch-span-meta-with-query span (str "audit-message=" "set%20%7Bop%7D")
+                                  [{:op "set" :path ["status"] :value "approved"}])
+      (is (= "set {op}" (latest-description "span/patch-metadata"))))
 
     (testing "unresolved placeholder is left literal"
-      (patch-span-meta-with-query span (str "audit-message=" "x%20%7Bnope%7D%20y") {"x" 1})
+      (patch-span-meta-with-query span (str "audit-message=" "x%20%7Bnope%7D%20y") [{:op "set" :path ["x"] :value 1}])
       (is (= "x {nope} y" (latest-description "span/patch-metadata"))))))
 
 (deftest undeclared-param-does-not-reject-the-write
   (let [span (setup-span)]
     (testing "a write on a route that does not declare audit-message still succeeds"
-      (let [r (patch-span-meta-with-query span "audit-message=anything" {"x" 1})]
+      (let [r (patch-span-meta-with-query span "audit-message=anything" [{:op "set" :path ["x"] :value 1}])]
         (is (< (:status r) 300))))))
 
 (defn- make-batch-request [operations]
@@ -97,9 +102,9 @@
   (let [span (setup-span)
         resp (make-batch-request
               [{:path (str "/api/v1/spans/" span "/metadata?audit-message=First%20%7BspanId%7D")
-                :method "patch" :body {"a" 1}}
+                :method "patch" :body [{:op "set" :path ["a"] :value 1}]}
                {:path (str "/api/v1/spans/" span "/metadata?audit-message=Second%20op")
-                :method "patch" :body {"b" 2}}])]
+                :method "patch" :body [{:op "set" :path ["b"] :value 2}]}])]
     (testing "batch succeeds"
       (is (< (:status resp) 300)))
     (testing "each sub-op got its OWN templated description (per-op binding)"

@@ -199,14 +199,19 @@ test('shiftEdge swaps the written order with a sibling and stops at the ends', a
   const after = [...byVar(doc, 's1l').out].sort((a, b) => a.order - b.order);
   assert.equal(after[0].id, second.id);
   assert.equal(after[1].id, first.id);
-  // Two patches in one batch, each the relation's umr namespace whole.
+  // Two patches in one batch, each setting the one key of the relation's umr
+  // namespace that changed.
   assert.deepEqual(
     calls.map((c) => c.name),
     ['operation', 'relations.patchMetadata', 'relations.patchMetadata'],
   );
-  assert.deepEqual(calls[1].args[1], {
-    umr: { order: after.find((e) => e.id === calls[1].args[0]).order },
-  });
+  assert.deepEqual(calls[1].args[1], [
+    {
+      op: 'set',
+      path: ['umr', 'order'],
+      value: after.find((e) => e.id === calls[1].args[0]).order,
+    },
+  ]);
   // The export writes the children in the new order.
   const text = doc.toUmr();
   const at = text.indexOf('(s1l / landslide-01');
@@ -259,9 +264,14 @@ test('setAttrs restates the whole umr namespace and keeps the child order', asyn
     { rel: ':aspect', value: 'process' },
     { rel: ':polarity', value: '-' },
   ]);
-  const patch = calls.find((c) => c.name === 'spans.patchMetadata').args[1];
-  assert.equal(patch.umr.var, 's1l');
-  assert.deepEqual(patch.umr.attrs, [
+  // Only the attributes are written: the rest of the namespace stays.
+  const ops = calls.find((c) => c.name === 'spans.patchMetadata').args[1];
+  const umrOps = ops.filter((o) => o.path[0] === 'umr');
+  assert.deepEqual(
+    umrOps.map((o) => o.path),
+    [['umr', 'attrs']],
+  );
+  assert.deepEqual(umrOps[0].value, [
     { rel: ':aspect', value: 'process', order: before ? before.order : tail },
     { rel: ':polarity', value: '-', order: before ? tail : tail + 1 },
   ]);

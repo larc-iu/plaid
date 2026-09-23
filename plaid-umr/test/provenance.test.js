@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PROV, provState, PROV_STATES } from '@larc-iu/plaid-client';
+import { PROV, provState, PROV_STATES, applyMetadataOps } from '@larc-iu/plaid-client';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
 import { planImport } from '../src/domain/umrImport.js';
 import { UmrDocument } from '../src/domain/UmrDocument.js';
@@ -65,12 +65,22 @@ const load = ({ machine = false, user = null, project = null } = {}) => {
 };
 
 const byVar = (doc, v) => [...doc.graph.nodesById.values()].find((n) => n.var === v);
+// A patch's ops as the object they write, a key a top-level op deletes
+// reading as null.
+const patchObject = (ops) =>
+  ops.reduce(
+    (m, o) =>
+      o.op === 'delete' && o.path.length === 1
+        ? { ...m, [o.path[0]]: null }
+        : applyMetadataOps(m, [o]),
+    {},
+  );
 // Every metadata object a call carried, whether a create's or a patch's.
 const written = (calls) =>
   calls.flatMap((c) => {
     if (c.name === 'spans.create') return [c.args[3] || {}];
     if (c.name === 'relations.create') return [c.args[4] || {}];
-    if (c.name.endsWith('patchMetadata')) return [c.args[1] || {}];
+    if (c.name.endsWith('patchMetadata')) return [patchObject(c.args[1])];
     return [];
   });
 const confirms = (calls) => written(calls).filter((m) => m[PROV.confirmedKey] === true);

@@ -24,7 +24,6 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
     .spanLayers[0].spans.filter((s) => s.metadata?.umr?.var?.startsWith('s1'));
   const [firstVar, secondVar] = firstNodes.map((s) => s.metadata.umr.var);
   const [firstConcept, secondConcept] = firstNodes.map((s) => s.value);
-  const current = (await client.documents.get(copy.id, false)).metadata?.umr || {};
   const report = {
     version: 2,
     tool: 'ancast 0.1.1',
@@ -64,7 +63,9 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
       },
     ],
   };
-  await client.documents.patchMetadata(copy.id, { umr: { ...current, adjudication: report } });
+  await client.documents.patchMetadata(copy.id, [
+    { op: 'set', path: ['umr', 'adjudication'], value: report },
+  ]);
 
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}/documents/${copy.id}/compare`);

@@ -12,7 +12,7 @@
 // invalid input. `throw` inside `_withSaving` is reserved for unexpected
 // failure paths the server is reporting.
 
-import { cpSlice, mergeMetadata } from '@larc-iu/plaid-client';
+import { cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '../virtualMorpheme.js';
@@ -351,7 +351,7 @@ export const morphemeMutations = {
       const results = await this._client.batched(async (b) => {
         // patch, not set: form edits must not clobber other metadata keys
         // (morphType from the FLEx import, in particular)
-        b.tokens.patchMetadata(targetId, stamped(this, target, firstPatch));
+        b.tokens.patchMetadata(targetId, metadataOps(stamped(this, target, firstPatch)));
         shifted.forEach((m) => {
           b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
         });
@@ -438,7 +438,10 @@ export const morphemeMutations = {
       const subsequents = siblings.slice(idx + 1);
 
       await this._client.batched(async (b) => {
-        b.tokens.patchMetadata(previous.id, stamped(this, previous, { form: mergedForm }));
+        b.tokens.patchMetadata(
+          previous.id,
+          metadataOps(stamped(this, previous, { form: mergedForm })),
+        );
         b.tokens.delete(morphemeId);
         subsequents.forEach((m) => {
           b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
@@ -537,7 +540,7 @@ export const morphemeMutations = {
       }
       const target = resolved.token;
       const patch = stamped(this, target, { form });
-      await this._client.tokens.patchMetadata(target.id, patch);
+      await this._client.tokens.patchMetadata(target.id, metadataOps(patch));
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);
@@ -570,12 +573,12 @@ export const morphemeMutations = {
         return;
       }
       const target = resolved.token;
-      // patch semantics: a null value deletes the key
+      // A cleared type is a delete op
       const confirm = this.editStamp(target.metadata) || {};
-      await this._client.tokens.patchMetadata(target.id, {
-        morphType: morphType ?? null,
-        ...confirm,
-      });
+      await this._client.tokens.patchMetadata(
+        target.id,
+        metadataOps({ morphType: morphType ?? null, ...confirm }),
+      );
 
       this._applyRawPatch((next, infoNext) => {
         const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);

@@ -6,7 +6,7 @@
 // `_vocabularies`). A token id here may be a word OR morpheme token; the
 // link/create operation is identical either way.
 
-import { stampInferred, isMachine, mergeMetadata } from '@larc-iu/plaid-client';
+import { stampInferred, isMachine, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
 import { lexiconView } from '../vocabDictionary.js';
@@ -161,9 +161,10 @@ export const vocabMutations = {
       }
       for (let i = 0; i < cachePatches.length; i += REPLACE_CHUNK) {
         await this._client.tokens.bulkUpdate(
-          cachePatches
-            .slice(i, i + REPLACE_CHUNK)
-            .map((c) => ({ id: c.tokenId, metadata: { morphType: c.type } })),
+          cachePatches.slice(i, i + REPLACE_CHUNK).map((c) => ({
+            id: c.tokenId,
+            metadata: [{ op: 'set', path: ['morphType'], value: c.type }],
+          })),
         );
       }
       await this._reload();
@@ -182,7 +183,7 @@ export const vocabMutations = {
     if (!confirm) return false;
 
     return this._withSaving('Failed to confirm link', async () => {
-      await this._client.vocabLinks.patchMetadata(link.id, confirm);
+      await this._client.vocabLinks.patchMetadata(link.id, metadataOps(confirm));
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
         if (l) l.metadata = mergeMetadata(l.metadata, confirm);
@@ -228,7 +229,9 @@ export const vocabMutations = {
           if (priorLink) b.vocabLinks.delete(priorLink.id);
           b.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
           if (cachedType) {
-            b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+            b.tokens.patchMetadata(targetTokenId, [
+              { op: 'set', path: ['morphType'], value: cachedType },
+            ]);
           }
         });
         newLinkId = results[createAt]?.body?.id;
@@ -317,7 +320,12 @@ export const vocabMutations = {
         })),
       );
       if (cacheIds.length) {
-        b.tokens.bulkUpdate(cacheIds.map((id) => ({ id, metadata: { morphType: cachedType } })));
+        b.tokens.bulkUpdate(
+          cacheIds.map((id) => ({
+            id,
+            metadata: [{ op: 'set', path: ['morphType'], value: cachedType }],
+          })),
+        );
       }
     });
     const newIds = results[0]?.body?.ids ?? [];
@@ -387,10 +395,16 @@ export const vocabMutations = {
 
     return this._withSaving('Failed to set entry type', async () => {
       await this._client.batched(async (b) => {
-        b.vocabItems.patchMetadata(itemId, { morphType: morphType ?? null });
+        b.vocabItems.patchMetadata(itemId, [
+          morphType == null
+            ? { op: 'delete', path: ['morphType'] }
+            : { op: 'set', path: ['morphType'], value: morphType },
+        ]);
         // A cleared entry type stops overriding; the cache keeps its last value.
         if (morphType != null) {
-          linkedMorphemes.forEach((id) => b.tokens.patchMetadata(id, { morphType }));
+          linkedMorphemes.forEach((id) =>
+            b.tokens.patchMetadata(id, [{ op: 'set', path: ['morphType'], value: morphType }]),
+          );
         }
       });
       const setType = (meta) => {
@@ -617,7 +631,7 @@ export const vocabMutations = {
     const confirm = link ? this.confirmStamp(link.metadata) : null;
     if (!confirm) return false;
     return this._withSaving('Failed to confirm multi-word expression', async () => {
-      await this._client.vocabLinks.patchMetadata(linkId, confirm);
+      await this._client.vocabLinks.patchMetadata(linkId, metadataOps(confirm));
       this._applyRawPatch((next, info, vocabs) => {
         const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);
         if (l) l.metadata = mergeMetadata(l.metadata, confirm);
@@ -702,7 +716,9 @@ export const vocabMutations = {
             if (priorLink) b.vocabLinks.delete(priorLink.id);
             b.vocabLinks.create(newItemId, [targetTokenId], stamp);
             if (cachedType) {
-              b.tokens.patchMetadata(targetTokenId, { morphType: cachedType });
+              b.tokens.patchMetadata(targetTokenId, [
+                { op: 'set', path: ['morphType'], value: cachedType },
+              ]);
             }
           });
           newLinkId = results[createAt]?.body?.id;

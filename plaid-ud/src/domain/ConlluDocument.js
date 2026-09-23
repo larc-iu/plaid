@@ -4,6 +4,7 @@ import {
   isMachine,
   isReviewed,
   mergeMetadata,
+  metadataOps,
   PLAID_NAMESPACE,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
@@ -151,7 +152,7 @@ export class ConlluDocument extends DocumentModel {
         this._applyRawPatch((raw) => {
           raw.metadata = mergeMetadata(raw.metadata, { [key]: next });
         });
-        await this._client.documents.patchMetadata(this.id, { [key]: next });
+        await this._client.documents.patchMetadata(this.id, metadataOps({ [key]: next }));
       },
       `Set document ${key}`,
     );
@@ -175,7 +176,7 @@ export class ConlluDocument extends DocumentModel {
             if (t.id === sentenceTokenId) t.metadata = mergeMetadata(t.metadata, { [key]: next });
           }
         });
-        await this._client.tokens.patchMetadata(sentenceTokenId, { [key]: next });
+        await this._client.tokens.patchMetadata(sentenceTokenId, metadataOps({ [key]: next }));
       },
       `Set sentence ${key}`,
     );
@@ -856,7 +857,7 @@ export class ConlluDocument extends DocumentModel {
           if (verifyFeat) {
             await this._client.batched(async (b) => {
               b.spans.update(existingFeat.id, pair);
-              b.spans.patchMetadata(existingFeat.id, verifyFeat);
+              b.spans.patchMetadata(existingFeat.id, metadataOps(verifyFeat));
             });
           } else {
             await this._client.spans.update(existingFeat.id, pair);
@@ -946,7 +947,7 @@ export class ConlluDocument extends DocumentModel {
         if (verify) {
           await this._client.batched(async (b) => {
             b.spans.update(existingSpan.id, value);
-            b.spans.patchMetadata(existingSpan.id, verify);
+            b.spans.patchMetadata(existingSpan.id, metadataOps(verify));
           });
         } else {
           await this._client.spans.update(existingSpan.id, value);
@@ -1339,7 +1340,7 @@ export class ConlluDocument extends DocumentModel {
       if (verify) {
         await this._client.batched(async (b) => {
           b.relations.update(relationId, deprel);
-          b.relations.patchMetadata(relationId, verify);
+          b.relations.patchMetadata(relationId, metadataOps(verify));
         });
       } else {
         await this._client.relations.update(relationId, deprel);
@@ -1472,8 +1473,8 @@ export class ConlluDocument extends DocumentModel {
         });
 
         await this._client.batched(async (b) => {
-          for (const [id, patch] of spanPatchById) b.spans.patchMetadata(id, patch);
-          for (const [id, patch] of relPatchById) b.relations.patchMetadata(id, patch);
+          for (const [id, patch] of spanPatchById) b.spans.patchMetadata(id, metadataOps(patch));
+          for (const [id, patch] of relPatchById) b.relations.patchMetadata(id, metadataOps(patch));
         });
       },
       'Confirm predicted annotations',

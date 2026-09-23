@@ -1,6 +1,7 @@
 """The toolkit's reads and its document-graph writes, over the fixture."""
 
 import pytest
+from plaid_client import apply_metadata_ops
 
 from umr_fixtures import SENTENCE_1_PENMAN, umr_client, umr_ws
 
@@ -251,17 +252,19 @@ def test_set_attributes_with_an_empty_line_removes_them_all(ws):
 
 
 def test_set_attributes_keeps_the_rest_of_the_node_when_it_is_applied(client, ws):
-    """The op carries the delta over the namespace as it was read, so applying
-    it leaves the variable, the root mark and the sentence record where they
-    were. Carrying the composed object was how the node came out with none of
-    them."""
+    """The op sets the attributes alone, so applying it leaves the variable,
+    the root mark and the sentence record where they were. Restating the
+    namespace from a stale read was how the node came out with none of them."""
     run(ws, 'set_attributes', document='Story', sentence=1, var='s1b', line=':polarity -')
     placed = ws.ops[0]['attrs']
     execute_plan(client, ws.plan_payload()['ops'], source='t', label='L', project=ws.project,
                  stamp_mode='verified', contributor=None)
     patch = next(e for e in client.log if e[0] == 'spans' and e[1] == 'patch_metadata')
     assert patch[2][0] == 'mc-b'
-    assert patch[2][1]['umr'] == {'var': 's1b', 'root': True, 'attrs': placed}
+    assert [o for o in patch[2][1] if o['path'][0] == 'umr'] == [
+        {'op': 'set', 'path': ['umr', 'attrs'], 'value': placed}]
+    before = ws.doc('Story').nodes_by_id['mc-b'].metadata
+    assert apply_metadata_ops(before, patch[2][1])['umr'] == {'var': 's1b', 'root': True, 'attrs': placed}
 
 
 def test_set_attributes_on_a_node_that_is_not_there_names_the_ones_that_are(ws):

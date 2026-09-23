@@ -1,5 +1,5 @@
 import PlaidClient from '@larc-iu/plaid-client';
-import { ROLES, stampInferred, confirmedInferred } from '@larc-iu/plaid-client';
+import { ROLES, stampInferred, confirmedInferred, metadataOps } from '@larc-iu/plaid-client';
 import fs from 'node:fs';
 const tok = fs.readFileSync('.token', 'utf8').trim();
 const c = new PlaidClient('http://localhost:8085', tok);
@@ -52,10 +52,13 @@ out.hola = (
 // ngoko: machine POS on the word, machine segmentation ngo-ko, machine gloss on ko, machine link on ngo
 const ng = W('ngoko');
 out.ngPos = (await c.spans.create(pos.id, [ng.id], 'V', stampInferred('service:test'))).id;
-await c.tokens.patchMetadata(ng.morphs[0].id, {
-  form: 'ngo',
-  ...stampInferred('rule:analysis-precedent'),
-});
+await c.tokens.patchMetadata(
+  ng.morphs[0].id,
+  metadataOps({
+    form: 'ngo',
+    ...stampInferred('rule:analysis-precedent'),
+  }),
+);
 const ko = await c.tokens.create(ml.id, tl.text.id, ng.begin, ng.end, 2, {
   form: 'ko',
   ...stampInferred('rule:analysis-precedent'),
@@ -72,7 +75,7 @@ out.ngoLink = (
   )
 ).id;
 // machine word token: stamp the word `dog's`
-await c.tokens.patchMetadata(W("dog's").id, stampInferred('service:punkt'));
+await c.tokens.patchMetadata(W("dog's").id, metadataOps(stampInferred('service:punkt')));
 out.dogs = W("dog's").id;
 out.ngoko = ng.id;
 out.ngo = ng.morphs[0].id;

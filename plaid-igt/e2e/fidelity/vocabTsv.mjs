@@ -19,6 +19,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { unzipSync } from 'fflate';
+import { metadataOps } from '@larc-iu/plaid-client';
 import { attribute, diffSnapshots } from '../../src/test/fidelity/compare.js';
 import { expectRoundTrip } from '../../src/test/fidelity/expect/index.js';
 import list from '../../src/test/fidelity/formats/vocabTsv.js';
@@ -109,7 +110,7 @@ async function bulkAdd(client, vocabId, text) {
   for (let i = 0; i < plan.updates.length; i += CHUNK) {
     const chunk = plan.updates.slice(i, i + CHUNK);
     await client.batched(async (b) => {
-      for (const u of chunk) b.vocabItems.patchMetadata(u.id, u.patch);
+      for (const u of chunk) b.vocabItems.patchMetadata(u.id, metadataOps(u.patch));
     });
   }
   return { guess, plan, rows: rows.length };

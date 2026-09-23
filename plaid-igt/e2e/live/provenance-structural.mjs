@@ -7,7 +7,7 @@
 // deleted at the end. The UI-only parts of those rows (dialog counts, focus,
 // styling) live in the Playwright specs.
 //   cd plaid-igt && node --import ./e2e/live/aliases.mjs e2e/live/provenance-structural.mjs
-import PlaidClient, { ROLES, stampInferred, cpLength } from '@larc-iu/plaid-client';
+import PlaidClient, { ROLES, stampInferred, cpLength, metadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../src/domain/IgtDocument.js';
 import { readToken } from '../fixtures.js';
 import { discoverExportLayers } from '../../src/export/exportLayers.js';
@@ -186,10 +186,13 @@ try {
     'N',
     stampInferred('service:test', { prob: 0.9 }),
   );
-  await client.tokens.patchMetadata(delta.morphemes[0].id, {
-    form: 'del',
-    ...stampInferred('rule:analysis-precedent'),
-  });
+  await client.tokens.patchMetadata(
+    delta.morphemes[0].id,
+    metadataOps({
+      form: 'del',
+      ...stampInferred('rule:analysis-precedent'),
+    }),
+  );
   const ta = await client.tokens.create(L.MORPHEME, TEXT, delta.begin, delta.end, 2, {
     form: 'ta',
   });
@@ -233,10 +236,13 @@ try {
   section('A3 machine segmentation');
   ({ d, W } = await fresh());
   const eps = W('epsilon');
-  await client.tokens.patchMetadata(eps.morphemes[0].id, {
-    form: 'epsi',
-    ...stampInferred('rule:analysis-precedent'),
-  });
+  await client.tokens.patchMetadata(
+    eps.morphemes[0].id,
+    metadataOps({
+      form: 'epsi',
+      ...stampInferred('rule:analysis-precedent'),
+    }),
+  );
   const lon = await client.tokens.create(L.MORPHEME, TEXT, eps.begin, eps.end, 2, {
     form: 'lon',
     morphType: 'suffix',
@@ -265,12 +271,15 @@ try {
     JSON.stringify(e.morphemes[1].metadata),
   );
   // A3-03 split a (re-stamped) machine morpheme: left verified, right human, precedences contiguous
-  await client.tokens.patchMetadata(e.morphemes[0].id, {
-    form: 'epsii',
-    prov: 'inferred',
-    provSource: 'rule:analysis-precedent',
-    provConfirmed: null,
-  });
+  await client.tokens.patchMetadata(
+    e.morphemes[0].id,
+    metadataOps({
+      form: 'epsii',
+      prov: 'inferred',
+      provSource: 'rule:analysis-precedent',
+      provConfirmed: null,
+    }),
+  );
   d = await load();
   await d.splitMorpheme(e.morphemes[0].id, 'ep', 'sii');
   ({ d, W } = await fresh());
@@ -315,12 +324,15 @@ try {
   );
   check(gloss(e.morphemes[0]) === null, 'A3-04 merged-away gloss gone');
   // A3-06 paste a-b-c into a machine morpheme: first verified, rest human
-  await client.tokens.patchMetadata(e.morphemes[0].id, {
-    form: 'epsii',
-    prov: 'inferred',
-    provSource: 'rule:analysis-precedent',
-    provConfirmed: null,
-  });
+  await client.tokens.patchMetadata(
+    e.morphemes[0].id,
+    metadataOps({
+      form: 'epsii',
+      prov: 'inferred',
+      provSource: 'rule:analysis-precedent',
+      provConfirmed: null,
+    }),
+  );
   d = await load();
   await d.splitMorphemeMulti(e.morphemes[0].id, ['a', 'b', 'c']);
   ({ d, W } = await fresh());
@@ -448,7 +460,7 @@ try {
   );
   // B10-04 morpheme merge where the merged-away morpheme is linked
   merged = W('gamma');
-  await client.tokens.patchMetadata(merged.morphemes[0].id, { form: 'gam' });
+  await client.tokens.patchMetadata(merged.morphemes[0].id, metadataOps({ form: 'gam' }));
   const maM = await client.tokens.create(L.MORPHEME, TEXT, merged.begin, merged.end, 2, {
     form: 'ma',
   });

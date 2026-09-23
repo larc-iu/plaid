@@ -78,17 +78,16 @@ function holdsString(value, test) {
 }
 
 /**
- * The top-level keys whose values `after` changed from `before`, as a metadata
- * patch, or null when there are none. The server merges a patch one top-level
- * key at a time, so each changed key goes whole.
+ * The top-level keys whose values `after` changed from `before`, as metadata
+ * ops, or null when there are none. Each changed key is set whole.
  */
 function metadataPatch(before, after) {
   if (before === after || !isPlainObject(after)) return null;
-  const patch = {};
+  const ops = [];
   for (const [k, v] of Object.entries(after)) {
-    if (v !== before?.[k]) patch[k] = v;
+    if (v !== before?.[k]) ops.push({ op: 'set', path: [k], value: v });
   }
-  return Object.keys(patch).length ? patch : null;
+  return ops.length ? ops : null;
 }
 
 /**

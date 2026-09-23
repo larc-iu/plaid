@@ -27,6 +27,12 @@ export function transformKeyFromCamel(key) {
 // usual case conversion.
 const OPAQUE_KEYS = new Set(['metadata', 'config', 'bindings']);
 
+// A request's `metadata` may also be a list of metadata ops (a bulk update
+// entry), whose values are user data too, so it passes through verbatim.
+const isOpaque = (key, value) =>
+  typeof value === 'object' && value !== null &&
+  (Array.isArray(value) ? key === 'metadata' : OPAQUE_KEYS.has(key));
+
 /**
  * Recursively transform request object keys from camelCase to kebab-case.
  * Preserves `metadata` and `config` contents without transformation.
@@ -39,7 +45,7 @@ export function transformRequest(obj) {
   const transformed = {};
   for (const [key, value] of Object.entries(obj)) {
     const newKey = transformKeyFromCamel(key);
-    if (OPAQUE_KEYS.has(key) && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (isOpaque(key, value)) {
       transformed[newKey] = value;
     } else {
       transformed[newKey] = transformRequest(value);

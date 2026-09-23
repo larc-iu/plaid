@@ -60,20 +60,25 @@ describe('setting it', () => {
     return { doc, patchMetadata };
   };
 
-  it('writes the whole reserved namespace, not just the key', async () => {
-    // A document metadata PATCH replaces a nested namespace wholesale, so
-    // anything else another app keeps in there has to be restated.
+  it('writes the one key, not the reserved namespace', async () => {
+    // Anything else another app keeps in the namespace stays out of the write.
     const { doc, patchMetadata } = docWith({ plaid: { role: 'baseline' }, Speaker: 'Amina' });
     await doc.setTextDirection('rtl');
-    expect(patchMetadata).toHaveBeenCalledWith('d1', {
+    expect(patchMetadata).toHaveBeenCalledWith('d1', [
+      { op: 'set', path: ['plaid', 'textDirection'], value: 'rtl' },
+    ]);
+    expect(doc._raw.metadata).toEqual({
       plaid: { role: 'baseline', textDirection: 'rtl' },
+      Speaker: 'Amina',
     });
   });
 
   it('clears the key when put back to automatic', async () => {
     const { doc, patchMetadata } = docWith({ plaid: { textDirection: 'rtl' } });
     await doc.setTextDirection('auto');
-    expect(patchMetadata).toHaveBeenCalledWith('d1', { plaid: {} });
+    expect(patchMetadata).toHaveBeenCalledWith('d1', [
+      { op: 'delete', path: ['plaid', 'textDirection'] },
+    ]);
     expect(doc.textDirection).toBe('ltr');
   });
 

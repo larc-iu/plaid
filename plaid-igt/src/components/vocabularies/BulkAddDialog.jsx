@@ -8,6 +8,7 @@
 // write goes out.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { metadataOps } from '@larc-iu/plaid-client';
 import { Upload, FileText, X, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Textarea } from '@ui/components/ui/textarea';
@@ -459,7 +460,9 @@ export const BulkAddDialog = ({
           }
           for (let i = 0; i < updates.length; i += CHUNK) {
             const chunk = updates.slice(i, i + CHUNK);
-            await client.vocabItems.bulkUpdate(chunk.map((u) => ({ id: u.id, metadata: u.patch })));
+            await client.vocabItems.bulkUpdate(
+              chunk.map((u) => ({ id: u.id, metadata: metadataOps(u.patch) })),
+            );
             updated += chunk.length;
             setProgress({ done: created + updated, total, phase: 'updating' });
           }

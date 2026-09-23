@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps, batchOf } from './helpers/stubClient.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
@@ -144,7 +145,7 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
   assert.deepEqual(client.calls[1].args[1], 'PRON');
   // The machine-made tag is confirmed by the person's rewrite.
   assert.equal(client.calls[2].args[0], client.calls[1].args[0]);
-  assert.equal(client.calls[2].args[1].provConfirmed, true);
+  assert.deepEqual(client.calls[2].args[1], [{ op: 'set', path: ['provConfirmed'], value: true }]);
 });
 
 test('apply: phases in order — token deletes, lemma creates, then relations on the new span', async () => {
@@ -222,7 +223,10 @@ test('apply as a reviewed contributor: creates and edits are marked contributed'
   assert.deepEqual(ops.filter((o) => o === 'spans.update').length, 2);
   assert.deepEqual(ops.filter((o) => o === 'spans.patchMetadata').length, 2);
   assert.deepEqual(ops.filter((o) => o === 'spans.create').length, 2);
-  const stamp = client.calls.find((c) => c.op === 'spans.patchMetadata').args[1];
+  const stamp = applyMetadataOps(
+    {},
+    client.calls.find((c) => c.op === 'spans.patchMetadata').args[1],
+  );
   assert.equal(stamp.prov, 'contributed');
   assert.equal(stamp.provSource, 'user:u1');
   const create = client.calls.find((c) => c.op === 'spans.create').args[3];
