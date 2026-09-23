@@ -579,7 +579,13 @@ export const VocabularyItems = ({
     (f) => tagsetFor(f.name),
     isNew ? {} : editableMetadata(selectedItem?.metadata),
   );
-  const rolesetRefused = rolesetProblem(readRoleset(draft.fields));
+  // The roleset likewise: one an older entry or an import left behind does not
+  // lock the entry, least of all where the band that could mend it is hidden.
+  const draftRoleset = readRoleset(draft.fields);
+  const rolesetRefused =
+    draftRoleset !== (isNew ? '' : readRoleset(editableMetadata(selectedItem?.metadata)))
+      ? rolesetProblem(draftRoleset)
+      : null;
   const saveAllowed = tagsetsAllow && !rolesetRefused;
 
   const cancelEdit = () => {

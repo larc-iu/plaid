@@ -172,6 +172,25 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('saves an entry whose older roleset the rule would refuse, when the roleset is untouched', async () => {
+    // "look after-01" was accepted before rolesets were checked. The band
+    // that could mend it is not even on screen here (no UMR project links
+    // this vocabulary), so it must not lock the rest of the entry.
+    const { client, calls } = stub([
+      { id: 'a', form: 'uno', metadata: { gloss: 'one', umr: { roleset: 'look after-01' } } },
+    ]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() => setValue(glossInput(), 'ONE'));
+    await view.step(async () => {
+      button('Save').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls).toEqual([
+      ['bulkUpdate', [{ id: 'a', metadata: [{ op: 'set', path: ['gloss'], value: 'ONE' }] }]],
+    ]);
+    await view.unmount();
+  });
+
   it('asks before the tab closes while a save is on its way, after the screen is left too', async () => {
     const { client, holds } = stub([{ id: 'a', form: 'uno' }]);
     const held = deferred();
