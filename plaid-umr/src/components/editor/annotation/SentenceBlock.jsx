@@ -220,15 +220,23 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A node wider than its word overhangs the first or last column, and a
   // re-entrant edge can bow out past both. The stage is padded by the
   // overhang, which moves the words and the graph together and so changes no
-  // measurement.
+  // measurement. On the right that has to be padding too and not a wider
+  // graph: an RTL word row fills the stage and sits against its right edge,
+  // so a wider stage moved the first word, its node, and so the width, for
+  // ever (#63).
   const width = Math.ceil(layout.right + 16);
   const pad = Math.ceil(-layout.left);
+  let wordsRight = 0;
+  columns.forEach((c) => {
+    wordsRight = Math.max(wordsRight, c.right);
+  });
+  const padRight = measured ? Math.max(0, width - Math.ceil(wordsRight)) : 0;
   // An RTL canvas opens at its right edge, so it starts a whole overflow
   // width along the stage before anything is scrolled, and the width changes
   // as the graph is laid out.
   useLayoutEffect(() => {
     if (scrollerRef.current) setScrollLeft(stageLeftOffset(scrollerRef.current, direction));
-  }, [direction, width, pad]);
+  }, [direction, width, pad, padRight]);
 
   // A focused node that the last edit removed is no longer focused.
   useEffect(() => {
@@ -1186,6 +1194,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           className="umr-stage"
           style={{
             paddingLeft: `${MARGIN + pad}px`,
+            paddingRight: `${padRight}px`,
             '--umr-margin': `${MARGIN}px`,
             '--umr-pad': `${pad}px`,
           }}
@@ -1273,7 +1282,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           <div
             className="umr-graph"
             ref={canvasRef}
-            style={{ height: `${stageHeight}px`, minWidth: `${width}px` }}
+            style={{ height: `${stageHeight}px` }}
             // Empty space in child mode: a child with no word, where the
             // click was. Only when the press began on empty space too: a drag
             // from a grip or a label ends in a click on this, the common

@@ -1,5 +1,5 @@
 import { test, expect, seedAuth, collectClientErrors, cleanDiagnostics } from './fixtures.js';
-import { getFixture } from './fixtureProject.js';
+import { getFixture, getHebrewFixture } from './fixtureProject.js';
 
 // The read-only canvas over the imported English corpus: every sentence
 // block draws its nodes over its words, with edge labels once measured.
@@ -79,6 +79,41 @@ test.describe('paging', () => {
     await page.getByRole('button', { name: 'First page' }).first().click();
     await expect(page.locator('.umr-block[data-sentence-index="1"]')).toBeVisible();
     expect(await page.locator('.umr-block').count()).toBe(25);
+
+    const clean = cleanDiagnostics(diag);
+    expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+    expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+  });
+});
+
+// larc-iu/plaid#63. In a right-to-left sentence the word row fills the stage
+// and sits against its right edge, so a node wider than the first word made
+// the stage wider, which moved the word right, which moved the node, which
+// made the stage wider again, for ever. The stage must settle.
+test.describe('right to left', () => {
+  test('a node wider than the first word does not widen the canvas', async ({ page }) => {
+    const { projectId, documentId } = await getHebrewFixture();
+    await seedAuth(page);
+    const diag = collectClientErrors(page);
+    await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
+
+    const block = page.locator('.umr-block').first();
+    await expect(block.locator('.umr-canvas')).toHaveAttribute('dir', 'rtl');
+    await expect(block.locator('.umr-edge-label').first()).toBeVisible();
+    const stageWidth = () => block.locator('.umr-stage').evaluate((el) => el.scrollWidth);
+    const before = await stageWidth();
+    await page.waitForTimeout(500);
+    expect(await stageWidth()).toBe(before);
+
+    // Each node still stands over its word.
+    for (const [nodeVar, wordIndex] of [
+      ['s1x', 1],
+      ['s1t', 0],
+    ]) {
+      const node = await block.locator(`[data-node-var="${nodeVar}"]`).boundingBox();
+      const word = await block.locator('.umr-word').nth(wordIndex).boundingBox();
+      expect(Math.abs(node.x + node.width / 2 - (word.x + word.width / 2))).toBeLessThan(2);
+    }
 
     const clean = cleanDiagnostics(diag);
     expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);

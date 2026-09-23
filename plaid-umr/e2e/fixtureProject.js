@@ -219,6 +219,60 @@ export async function getGlossedFixture() {
   return cachedGlossed;
 }
 
+// A third fixture, right to left: Genesis 1:1 with the graph mr-martian was
+// drawing when the canvas began to widen without end (larc-iu/plaid#63). A
+// node wider than the sentence's FIRST word, which in Hebrew is the one at the
+// right edge, is the case.
+const HEBREW_NAME = 'E2E UMR Hebrew';
+const HEBREW_DOC = 'genesis-1-1';
+const HEBREW_FILE = `################################################################################
+# :: snt1
+Index: 1 2 3 4 5 6 7
+Words: \u05d1\u05bc\u05b0\u05e8\u05b5\u05d0\u05e9\u05c1\u05b4\u05d9\u05ea \u05d1\u05bc\u05b8\u05e8\u05b8\u05d0 \u05d0\u05b1\u05dc\u05b9\u05d4\u05b4\u05d9\u05dd \u05d0\u05b5\u05ea \u05d4\u05b7\u05e9\u05bc\u05c1\u05b8\u05de\u05b7\u05d9\u05b4\u05dd \u05d5\u05b0\u05d0\u05b5\u05ea \u05d4\u05b8\u05d0\u05b8\u05bd\u05e8\u05b6\u05e5\u05c3
+
+# sentence level graph:
+(s1x / \u05d1\u05bc\u05b8\u05e8\u05b8\u05d0
+    :temporal (s1t / temporal))
+
+# alignment:
+s1x: 2-2
+s1t: 1-1
+
+# document level annotation:
+
+
+`;
+
+async function ensureHebrewFixture() {
+  const { token } = readToken();
+  const client = new PlaidClient(BASE_URL, token);
+  let project = await findProjectByName(client, HEBREW_NAME);
+  if (!project) {
+    const created = await createUmrProject(client, HEBREW_NAME);
+    project = await client.projects.get(created.id);
+  }
+  const projectId = project.id;
+  const docs = await client.projects.listDocuments(projectId);
+  let doc = docs.find((d) => d.name === HEBREW_DOC) || null;
+  if (!doc) {
+    const result = await importUmrDocument(
+      client,
+      projectId,
+      HEBREW_DOC,
+      HEBREW_FILE,
+      getUmrLayerInfo(project),
+    );
+    doc = result.document;
+  }
+  return { projectId, documentId: doc.id };
+}
+
+let cachedHebrew = null;
+export async function getHebrewFixture() {
+  if (!cachedHebrew) cachedHebrew = ensureHebrewFixture();
+  return cachedHebrew;
+}
+
 let cached = null;
 export async function getFixture() {
   if (!cached) cached = ensureFixture();
