@@ -12,7 +12,7 @@ import { useAssistantSubject } from '../assistant/subject.js';
  * renders its own body.
  *
  * `tabs` is the app's, as data: `{ value, label, to }`, plus `show` for one
- * that is not always offered, `alsoWhenActive` for one whose route works even
+ * that is not always offered (drawn only when it is `true`), `alsoWhenActive` for one whose route works even
  * then, and `match` where the tab stands for several paths. The strip decides
  * which is active and draws them; which tabs a project has is the app's.
  *
@@ -43,7 +43,12 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
   const active =
     tabs.find((t) => (t.match ? t.match.test(p) : p.endsWith(`/${t.value}`)))?.value ??
     defaultValue;
-  const shown = tabs.filter((t) => t.show !== false || (t.alsoWhenActive && active === t.value));
+  // A tab that carries `show` is offered only once it is TRUE: null is "not
+  // known yet" (whether an assistant is online, say), and drawing the tab and
+  // then withdrawing it is a flicker, or a tab that opens onto nothing.
+  const shown = tabs.filter(
+    (t) => !('show' in t) || t.show === true || (t.alsoWhenActive && active === t.value),
+  );
   const to = Object.fromEntries(tabs.map((t) => [t.value, t.to]));
 
   return (

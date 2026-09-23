@@ -214,6 +214,23 @@ describe('the shared chrome', () => {
     expect(texts(view.container, '[role="tab"]')).toEqual(['Documents', 'Guidelines']);
   });
 
+  it('ProjectTabStrip leaves out a tab whose showing is not known yet', async () => {
+    // `null` from useAssistantAvailable means the answer has not come back.
+    // Drawing the tab meanwhile offers an assistant that may not exist.
+    await mount(
+      <ProjectTabStrip
+        projectId="p1"
+        project={PROJECT}
+        tabs={[
+          { value: 'documents', label: 'Documents', to: '/projects/p1/documents' },
+          { value: 'assistant', label: 'Assistant', to: '/projects/p1/assistant', show: null },
+          { value: 'activity', label: 'Activity', to: '/projects/p1/activity', show: true },
+        ]}
+      />,
+    );
+    expect(texts(view.container, '[role="tab"]')).toEqual(['Documents', 'Activity']);
+  });
+
   it('ProjectListPage lists the projects and offers a new one in the app’s words', async () => {
     await mount(
       <ProjectListPage wordLayerId={() => null} newProject="New IGT project" form={() => null} />,
