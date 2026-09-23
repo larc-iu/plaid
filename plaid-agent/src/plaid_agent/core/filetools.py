@@ -25,9 +25,7 @@ from .tools import ToolError, limit_arg, truncate
 
 NAMES = ('read_file',)
 
-# The opening of the note, and the way a turn recognises one it has already
-# written (the place stamp goes on top of it, so this is looked for anywhere in
-# the message rather than at its start).
+# The opening of the note.
 NOTE_MARK = 'The user attached'
 
 
@@ -104,9 +102,13 @@ def stamp(transcript: List[Dict[str, Any]], attached: List[Any]) -> List[Dict[st
         return transcript
     last = transcript[-1]
     content = last.get('content') or ''
-    if NOTE_MARK in content:  # already stamped: a retry of the same message
+    written = note(attached)
+    # Already stamped (a retry of the same message) only when THIS note is
+    # there whole. The opening words alone are a sentence the user may quote,
+    # and then the model would never be told the files exist.
+    if f'{written}\n\n' in content:
         return transcript
-    return transcript[:-1] + [{**last, 'content': f'{note(attached)}\n\n{content}'}]
+    return transcript[:-1] + [{**last, 'content': f'{written}\n\n{content}'}]
 
 
 # --- the tool -------------------------------------------------------------------

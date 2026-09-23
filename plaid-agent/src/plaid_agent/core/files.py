@@ -216,12 +216,27 @@ class Attachment:
         return '\n'.join(line[:200] for line in lines)
 
 
-class Attachments:
-    """Every file attached to one conversation, newest last.
+def numbered(name: str, n: int) -> str:
+    """``words.csv`` as the ``n``th of its name, the way a file manager says
+    it: ``words (2).csv``. The suffix stays last, because it is what says how
+    the file is read."""
+    dot = name.rfind('.')
+    if dot <= 0:
+        return f'{name} ({n})'
+    return f'{name[:dot]} ({n}){name[dot:]}'
 
-    Two files may share a name: someone who corrects a table and drags it in
-    again has attached the same name twice, and meant the second. So a lookup
-    by name answers with the LATEST, and both stay reachable by id.
+
+class Attachments:
+    """Every file attached to one conversation, oldest first.
+
+    Two files may share a name: two tables exported under one name, or a
+    corrected table dragged in again. Every one of them has to be reachable by
+    the name the model is told, because the model never sees an id. So each is
+    given a name of its own when the conversation is read, the way a file
+    manager names a second copy: ``words.csv``, then ``words (2).csv``. The
+    names go by the order the files arrived in and nothing later changes an
+    earlier one, so the note written into an old message still names the file
+    it was written about.
     """
 
     def __init__(self, items: List[Attachment]):
@@ -248,7 +263,15 @@ class Attachments:
             value = store.read(key)
             return value if isinstance(value, str) else None
 
-        return cls([Attachment(ref, read_part) for ref in seen.values()])
+        items = [Attachment(ref, read_part) for ref in seen.values()]
+        taken = set()
+        for a in items:
+            name, n = a.name, 2
+            while name.casefold() in taken:
+                name, n = numbered(a.name, n), n + 1
+            a.name = name
+            taken.add(name.casefold())
+        return cls(items)
 
     def named(self, refs: List[Dict[str, Any]]) -> List[Attachment]:
         """The attachments among these that one message's refs name, in the
@@ -262,7 +285,7 @@ class Attachments:
         return out
 
     def get(self, name: str) -> Attachment:
-        """One attachment by name (the latest of that name) or by id. Raises
+        """One attachment by the name the note gives it, or by id. Raises
         ValueError naming what there is, which is what the model needs to
         correct itself in one step."""
         wanted = (name or '').strip()
@@ -270,6 +293,7 @@ class Attachments:
         for a in self.items:
             if a.id == wanted or a.name.casefold() == wanted.casefold():
                 found = a
+                break
         if found is None:
             raise ValueError(f'No file called "{name}" is attached to this conversation. '
                              + (f'Attached: {self.listed()}.' if self.items

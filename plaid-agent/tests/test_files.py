@@ -106,13 +106,32 @@ def test_nothing_is_read_until_something_asks():
     assert len(files) == 2 and store.reads == 0
 
 
-def test_the_same_name_twice_means_the_one_attached_last():
-    """Someone who corrects a table and drags it in again meant the second."""
-    k1, k2 = file_key('app', 'p1', 'c1', 'f1'), file_key('app', 'p1', 'c1', 'f2')
-    store = Store({f'{k1}:part:0': 'a\n1\n', f'{k2}:part:0': 'a\n2\n'})
-    files = Attachments.of(store, 'c1', _display(ref('f1', 'x.csv', 'a'), ref('f2', 'x.csv', 'a')))
-    assert files.get('x.csv').id == 'f2'
-    assert files.get('f1').text() == 'a\n1\n', 'the earlier one is still reachable by id'
+def test_two_files_of_one_name_each_get_a_name_of_their_own():
+    """The model never sees an id, so a name is the only way it can ask for a
+    file. Two files called the same are named the way a file manager names a
+    copy, in the note and in every tool alike."""
+    k1, k2, k3 = (file_key('app', 'p1', 'c1', f) for f in ('f1', 'f2', 'f3'))
+    store = Store({f'{k1}:part:0': 'a\n1\n', f'{k2}:part:0': 'a\n2\n', f'{k3}:part:0': 'a\n3\n'})
+    display = _display(ref('f1', 'x.csv', 'a'), ref('f2', 'X.csv', 'a'), ref('f3', 'x', 'a'))
+    files = Attachments.of(store, 'c1', display)
+    assert [a.name for a in files] == ['x.csv', 'X (2).csv', 'x']
+    assert files.get('x.csv').text() == 'a\n1\n'
+    assert files.get('X (2).csv').text() == 'a\n2\n'
+    note = filetools.note(files.named(display[0]['files']))
+    assert '"x.csv"' in note and '"X (2).csv"' in note
+    ws = Ws(files)
+    assert '2' in filetools.t_read_file(ws, 'x (2).csv').split('Lines')[1]
+    assert filetools.api(ws)['file_rows']('X (2).csv') == [{'a': '2'}]
+    assert [f['name'] for f in filetools.api(ws)['files']()] == ['x.csv', 'X (2).csv', 'x']
+
+
+def test_a_later_file_does_not_rename_an_earlier_one():
+    """A note is written into its message once, so the name it gave a file has
+    to be the name that file still answers to on every later turn."""
+    first = _display(ref('f1', 'w.csv', 'a'))
+    later = first + _display(ref('f2', 'w.csv', 'a'))
+    assert [a.name for a in Attachments.of(Store({}), 'c1', first)] == ['w.csv']
+    assert [a.name for a in Attachments.of(Store({}), 'c1', later)] == ['w.csv', 'w (2).csv']
 
 
 def test_an_unknown_name_is_refused_with_what_there_is():
@@ -202,6 +221,15 @@ def test_a_message_is_not_stamped_twice():
                            list(attached(('wordlist.csv', WORDLIST))))
     twice = filetools.stamp(once, list(attached(('wordlist.csv', WORDLIST))))
     assert once == twice
+
+
+def test_a_message_quoting_the_note_is_still_stamped():
+    """The opening words of the note are a sentence a user may type. Taking
+    them for the note would leave the model never told the files exist."""
+    transcript = [{'role': 'user', 'content': 'Why does the log say "The user attached a file"?'}]
+    out = filetools.stamp(transcript, list(attached(('wordlist.csv', WORDLIST))))
+    assert out[-1]['content'] != transcript[-1]['content']
+    assert out[-1]['content'].startswith('[The user attached a file')
 
 
 def test_a_message_with_nothing_attached_is_left_alone():
