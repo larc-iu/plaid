@@ -127,7 +127,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     setUnapplied(null);
     requestAnimationFrame(() => {
       const id = (focusedId && nodesById.has(focusedId) && focusedId) || sentence.roots[0]?.id;
-      if (id) nodeRefs.current.get(id)?.focus();
+      if (id) nodeRefs.current.get(followIds(id))?.focus();
     });
   };
   // Text mode is an editor, so a read-only view has none: the History drawer's
@@ -416,7 +416,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     (id) => {
       if (!id) return;
       setFocusedId(id);
-      nodeRefs.current.get(id)?.focus();
+      nodeRefs.current.get(followIds(id))?.focus();
     },
     [nodeRefs],
   );
@@ -477,13 +477,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // another node, in this sentence or another, must not pull focus back
   // from it. An editor that simply went (Enter, Escape, a click on empty
   // canvas) leaves focus on nothing.
+  //
+  // Every lookup of a node's element goes through `followIds`: the node made
+  // a moment ago may have its server id by the time the lookup runs, and its
+  // element is kept under that one.
   const closeEditor = () => {
     setEditor(null);
     if (!focusedId) return;
     setTimeout(() => {
       const now = document.activeElement;
       if (now && now !== document.body) return;
-      nodeRefs.current.get(focusedId)?.focus();
+      nodeRefs.current.get(followIds(focusedId))?.focus();
     }, 0);
   };
 
@@ -865,7 +869,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (!node) return;
     // A word takes no focus, so a click on one left it on the page, where
     // Escape and the arrows never reach the block: back to the node.
-    nodeRefs.current.get(node.id)?.focus({ preventScroll: true });
+    nodeRefs.current.get(followIds(node.id))?.focus({ preventScroll: true });
     // Read from the document, which already shows any earlier click still
     // being saved.
     const current = doc.node(node.id);
