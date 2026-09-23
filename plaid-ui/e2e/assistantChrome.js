@@ -292,7 +292,11 @@ export const assistantChromeTests = ({
       await composer.fill(mention.typed);
       const list = panelOf(page).getByText('Sentences', { exact: true });
       await expect(list).toBeVisible();
-      await expect(panelOf(page).getByText(mention.shows)).toBeVisible();
+      // The first row, which Enter takes. Several sentences can match, and the
+      // composer holds the typed text too.
+      await expect(
+        panelOf(page).getByRole('button').filter({ hasText: mention.shows }).first(),
+      ).toBeVisible();
 
       // Enter takes the highlighted row. It must NOT send: this composer sends
       // on Enter, and arbitrating that is the whole risk in the gesture.
