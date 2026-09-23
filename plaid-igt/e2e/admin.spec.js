@@ -102,7 +102,12 @@ test('a chosen order survives leaving the page and coming back', async ({ page }
   await openTab(page, 'projects');
   await expect(page.locator('tbody tr').first()).toBeVisible();
 
-  expect(await names()).toEqual(ascending);
+  // The dev core is shared: another suite may have made or deleted a project
+  // meanwhile. What must hold is the order of the names in both readings.
+  const after = await names();
+  const inBoth = (a, b) => a.filter((n) => b.includes(n));
+  expect(inBoth(after, ascending)).toEqual(inBoth(ascending, after));
+  expect(inBoth(after, ascending).length).toBeGreaterThan(1);
 });
 
 test('a blank sorts as the smallest value, not pinned to the bottom', async ({ page }) => {
