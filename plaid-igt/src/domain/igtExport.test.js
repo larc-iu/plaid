@@ -236,6 +236,11 @@ describe('LaTeX gloss small caps', () => {
     expect(glossLine(glossed('I', 'A'))).toBe('\\textsc{i} \\textsc{a}');
   });
 
+  it('sets a Turkish capital dotted I as a plain i, with no combining dot', () => {
+    // String.toLowerCase gives i plus U+0307 for it outside a Turkish locale.
+    expect(glossLine(glossed('\u0130STANBUL.LOC'))).toBe('\\textsc{istanbul}.\\textsc{loc}');
+  });
+
   it('leaves a part with no letters bare and still escapes between parts', () => {
     expect(glossLine(glossed('3', 'NOM_x', '100%'))).toBe('3 \\textsc{nom}\\_x 100\\%');
   });

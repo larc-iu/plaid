@@ -173,6 +173,10 @@ const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).jo
 // none of them a LaTeX special.
 const GLOSS_PART_RE = /[\p{L}\p{M}\p{N}]+/gu;
 const HAS_LETTER_RE = /\p{L}/u;
+// Lowercase for \textsc. Turkish capital dotted I (U+0130) lowercases to i
+// plus a combining dot above everywhere but a Turkish locale, and the dot
+// would then print over a small-caps i. It is set as a plain i.
+const smallCapsText = (part) => part.replace(/\u0130/g, 'i').toLowerCase();
 const texGloss = (s) => {
   let out = '';
   let at = 0;
@@ -180,7 +184,7 @@ const texGloss = (s) => {
     const part = m[0];
     out += texEscape(s.slice(at, m.index));
     out +=
-      HAS_LETTER_RE.test(part) && !isLexicalPart(part) ? `\\textsc{${part.toLowerCase()}}` : part;
+      HAS_LETTER_RE.test(part) && !isLexicalPart(part) ? `\\textsc{${smallCapsText(part)}}` : part;
     at = m.index + part.length;
   }
   return out + texEscape(s.slice(at));
