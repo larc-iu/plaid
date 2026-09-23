@@ -327,18 +327,16 @@
                             :body :config (get "ud") (get "colors")))))))
 
 (deftest patch-caps-apply-to-the-result-not-the-op-list
-  (let [proj (create-test-project admin-request "PatchCapsProj")
-        doc (create-test-document admin-request proj "Doc")]
-    (testing "200 small set ops build 200 keys, well under the key cap"
-      (assert-ok (patch-document-metadata admin-request doc
-                                          (mapv #(set-op [(str "m" %)] %) (range 200))))
-      (is (= 200 (count (doc-meta doc)))))
-    (testing "a value nested to the depth limit is accepted through a one-key path"
+  ;; Every entity, since vocab items have a PATCH route of their own.
+  (doseq [{:keys [noun id read patch]} (every-entity)]
+    (testing (str noun ": 200 small set ops build 200 keys, well under the key cap")
+      (assert-ok (patch admin-request id (mapv #(set-op [(str "m" %)] %) (range 200))))
+      (is (= 200 (count (filter #(re-matches #"m\d+" %) (keys (read)))))))
+    (testing (str noun ": a value nested to the depth limit is accepted through a one-key path")
       (let [deep (reduce (fn [m _] {"k" m}) 1 (range 9))]
-        (assert-ok (patch-document-metadata admin-request doc [(set-op ["deep"] deep)]))))
-    (testing "ops that build more keys than the cap are refused and write nothing"
-      (let [res (patch-document-metadata admin-request doc
-                                         (mapv #(set-op [(str "n" %)] %) (range 400)))]
+        (assert-ok (patch admin-request id [(set-op ["deep"] deep)]))))
+    (testing (str noun ": ops that build more keys than the cap are refused and write nothing")
+      (let [res (patch admin-request id (mapv #(set-op [(str "n" %)] %) (range 400)))]
         (assert-status 400 res)
         (is (re-find #"key count" (-> res :body :error)))
-        (is (not (contains? (doc-meta doc) "n0")))))))
+        (is (not (contains? (read) "n0")))))))

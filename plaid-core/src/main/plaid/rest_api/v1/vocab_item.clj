@@ -201,9 +201,10 @@
                           {:status 200 :body (vocab-item/get db item-id)}
                           {:status (or code 500) :body {:error (or error "Internal server error")}})))}
 
+     ;; No shape guard, as on the shared PATCH: the caps apply to the metadata
+     ;; the ops build, which `patch-metadata!` checks, not to the op list.
      :patch {:summary (str "Edit metadata for a vocab item " metadata/patch-summary)
-             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]
-                          metadata/wrap-metadata-shape-guard]
+             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
              :parameters {:body metadata/metadata-ops-schema}
              :handler (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id}]
                         (let [item-id (:id path-params)
