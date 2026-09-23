@@ -433,11 +433,12 @@ export const cells = {
   // user to click back. Put the typed value back into the same cell and
   // refocus it so Enter retries (E2: focus is never lost).
   //
-  // Only when focus has nowhere else to be: still in this cell, or dropped to
-  // the body. A user who has moved on to another cell keeps it, since taking
-  // focus from that cell commits it, and two cells whose saves keep failing
-  // (or whose sends were skipped behind a failure) would take focus from each
-  // other and resend forever.
+  // Only when that loses nothing: focus still in this cell, dropped to the
+  // body, or resting in another cell that holds nothing typed (where Enter or
+  // Tab put it). A cell with typed text keeps focus, since taking focus from it
+  // commits it, and two cells whose saves keep failing (or whose sends were
+  // skipped behind a failure) would take focus from each other and resend
+  // forever.
   _runKeepingFocus(el, typed, fn) {
     const key = el.dataset.cellKey;
     // The stored value as of this commit: what Escape must revert to and what
@@ -449,7 +450,9 @@ export const cells = {
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       if (!cell) return;
       const active = document.activeElement;
-      if (active && active !== document.body && active !== cell) return;
+      const untouchedCell =
+        active?.dataset?.cellKey && active.value === (active.dataset.orig ?? '');
+      if (active && active !== document.body && active !== cell && !untouchedCell) return;
       // Focus first (the focus handler stamps dataset.orig from whatever the
       // reload put in the cell), then restore what was typed over it.
       cell.focus();
