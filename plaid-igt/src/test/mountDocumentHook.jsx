@@ -51,6 +51,7 @@ export const fakeDocument = (over = {}) => {
     deleteAlignment: vi.fn(async () => true),
     updateAlignmentBounds: vi.fn(async () => true),
     _reload: vi.fn(async () => {}),
+    _reloadInSend: vi.fn(async () => {}),
     subscribe: () => () => {},
     getSnapshot: () => 0,
     ...rest,

@@ -602,7 +602,7 @@ export const alignmentMutations = {
       const ids = new Map([[segment.id, results?.[at]?.body?.id]]);
       if (seeded) ids.set(seeded.id, results?.[at + 1]?.body?.ids?.[0]);
       if ([...ids.values()].some((id) => !id)) {
-        await this._reload(); // the batch answered without the ids the patch needs
+        await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {
         this._settle(ids);
       }

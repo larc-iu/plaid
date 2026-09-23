@@ -235,7 +235,7 @@ export const analysisCopyMutations = {
           partSize += word.size;
         }
       }
-      await this._reload();
+      await this._reloadInSend();
 
       // ---- phase 2: apply, exactly as a copy would (the words are now
       // unanalyzed single-morpheme words). No provenance stamp: human work.
@@ -250,7 +250,7 @@ export const analysisCopyMutations = {
         await this._client.batched(async (b) => {
           this._queueConfirm(b, already);
         });
-        await this._reload();
+        await this._reloadInSend();
       }
     }))
       ? targets.length

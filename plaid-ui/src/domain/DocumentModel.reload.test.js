@@ -82,7 +82,9 @@ describe('a refetch and the edits around it', () => {
     expect(doc.raw.values).toEqual(server.values);
   });
 
-  it('does not send an edit queued behind a send that refetches', async () => {
+  it('sends an edit queued behind a send that refetches, and shows it once the queue drains', async () => {
+    // A media upload refetches from inside its send. A gloss typed meanwhile
+    // was refused by nobody: it is sent, and the screen catches up with it.
     const { doc, server } = load();
     const held = deferred();
     doc._applyRawPatch((raw) => {
@@ -91,15 +93,46 @@ describe('a refetch and the edits around it', () => {
     const a = doc._queueWrite('Failed to rebuild', async () => {
       await held.promise;
       server.values.a = 'AAA';
-      await doc._reload();
+      await doc._reloadInSend();
     });
     const b = doc.set('b', 'BBB');
     held.resolve();
 
     expect(await a).toBe(true);
-    expect(await b).toBe(false);
+    expect(await b).toBe(true);
     await drain(doc);
+    expect(server.values).toEqual({ a: 'AAA', b: 'BBB' });
     expect(doc.raw.values).toEqual(server.values);
+  });
+
+  it('treats a reload from outside that arrives mid-send as outside, and skips nothing', async () => {
+    const { doc, server } = load();
+    const held = deferred();
+    server.writes.push(held);
+    const a = doc.set('a', 'AAA');
+    const b = doc.set('b', 'BBB');
+    const reloaded = doc.reload();
+    held.resolve();
+    await reloaded;
+    expect(await a).toBe(true);
+    expect(await b).toBe(true);
+    expect(server.values).toEqual({ a: 'AAA', b: 'BBB' });
+    expect(doc.raw.values).toEqual(server.values);
+  });
+
+  it('keeps isSaving while an edit is queued behind a rename, and lets the rename run', async () => {
+    const { doc, server } = load();
+    const held = deferred();
+    server.writes.push(held);
+    const a = doc.set('a', 'AAA');
+    const renamed = await doc._withSaving('Failed to rename', async () => {});
+    expect(renamed).toBe(true);
+    expect(doc.isSaving).toBe(true);
+    held.resolve();
+    expect(await a).toBe(true);
+    await drain(doc);
+    expect(doc.isSaving).toBe(false);
+    expect(server.values).toEqual({ a: 'AAA' });
   });
 
   it('waits for queued edits before a reload from outside, and keeps them on screen', async () => {

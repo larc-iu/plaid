@@ -74,7 +74,7 @@ export const documentMutations = {
         }
       }
 
-      await this._reload();
+      await this._reloadInSend();
 
       // A replacement that shares nothing with the old body deletes the old
       // sentence tokens outright (an empty partition is server-valid), which
@@ -88,7 +88,7 @@ export const documentMutations = {
           await this._client.tokens.bulkCreate(
             sentenceSeed(sentenceTokenLayer.id, freshTextId, newBody),
           );
-          await this._reload();
+          await this._reloadInSend();
         }
       }
     });
@@ -153,7 +153,7 @@ export const documentMutations = {
     if (!file) return false;
     return this._queueWrite('Failed to upload media', async () => {
       await this._client.documents.uploadMedia(this.id, file, undefined, { onProgress });
-      await this._reload();
+      await this._reloadInSend();
     });
   },
 

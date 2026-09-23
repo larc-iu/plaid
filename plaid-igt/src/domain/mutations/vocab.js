@@ -172,7 +172,7 @@ export const vocabMutations = {
           })),
         );
       }
-      await this._reload();
+      await this._reloadInSend();
     });
     return ok ? creates.length + replaces.length : false;
   },
@@ -741,7 +741,7 @@ export const vocabMutations = {
     const metadata = stampInferred(provSource);
     const ok = await this._queueWrite('Failed to auto-link multi-word expressions', async () => {
       await this._client.vocabLinks.bulkCreate(creates.map((c) => ({ ...c, metadata })));
-      await this._reload();
+      await this._reloadInSend();
     });
     return ok ? creates.length : false;
   },
