@@ -179,6 +179,26 @@ describe('an unsaved draft', () => {
     expect(hasUnsavedDraft()).toBe('The graph you have typed');
   });
 
+  it('does not ask the Back question when its own traversal lands after the wait gave up', async () => {
+    // A main thread held up past the wait: the traversal lands late, and its
+    // popstate is not a Back press.
+    const go = window.history.go.bind(window.history);
+    const spy = vi.spyOn(window.history, 'go').mockImplementation((n) => {
+      setTimeout(() => go(n), 1100);
+    });
+    await mount('The graph you have typed');
+    await view.rerender(<Harness what={null} />);
+    await view.rerender(<Harness what="The graph you have typed" />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+    });
+    spy.mockRestore();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(window.history.state?.key).toBe(pageKey);
+    expect(idx()).toBe(1);
+    expect(hasUnsavedDraft()).toBe('The graph you have typed');
+  }, 5000);
+
   it('asks before an in-app link takes the page, and stays put on no', async () => {
     await mount('The graph you have typed');
     expect(hasUnsavedDraft()).toBe('The graph you have typed');

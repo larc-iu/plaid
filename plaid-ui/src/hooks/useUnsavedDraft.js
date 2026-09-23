@@ -86,18 +86,26 @@ const sameUrl = (a, b) => {
 
 // `history.go(n)`, resolved once the traversal has landed. A browser that
 // never sends the event would otherwise hang whatever is waiting on it.
+//
+// A traversal can also land AFTER the wait gives up, on a main thread held up
+// by a heavy render. Its popstate is still this module's own and not a Back
+// press, so for a while after the wait gave up the next popstate is taken as
+// that late landing (`latePop`).
+let latePop = 0;
 const traverse = (n) =>
   new Promise((resolve) => {
     let settled = false;
-    const done = () => {
+    const done = (landed) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      window.removeEventListener('popstate', done);
+      window.removeEventListener('popstate', onPop);
+      if (!landed) latePop = Date.now() + 5000;
       resolve();
     };
-    const timer = setTimeout(done, 1000);
-    window.addEventListener('popstate', done);
+    const onPop = () => done(true);
+    const timer = setTimeout(() => done(false), 1000);
+    window.addEventListener('popstate', onPop);
     window.history.go(n);
   });
 
@@ -175,6 +183,14 @@ const install = (ask) => {
   // Back landed on the page again, the extra entry spent. Ask, then either go
   // the rest of the way or put the entry back.
   const onPopState = () => {
+    if (latePop) {
+      const late = Date.now() < latePop;
+      latePop = 0;
+      if (late) {
+        settle();
+        return;
+      }
+    }
     if (!hasUnsavedDraft()) return;
     Promise.resolve(state.ask()).then(async (ok) => {
       if (!ok) {
