@@ -5,6 +5,7 @@ import { afterDeleting, arcColor, commitsLabel, stepThrough, trimLabel } from '.
 import { useEditorSession } from './editorSession.js';
 import { ARC_BASE, arcHeight, bandArc, sortByLabelX } from '../../../utils/arcLayout.js';
 import { positionMatchesSpanId } from './treePositions.js';
+import { settledId, stableKey } from '../../../domain/pendingIds.js';
 import './DependencyTree.css';
 
 // The enhanced graph's extra edges, hung BELOW the words: the tree is drawn
@@ -33,6 +34,10 @@ export const EnhancedArcs = forwardRef(
     const [focusedId, setFocusedId] = useState(null);
     const [hoveredId, setHoveredId] = useState(null);
     const labelRefs = useRef(new Map());
+    // An edge's pending id gives way to the server's, as in DependencyTree.
+    if (settledId(editingId) !== editingId) setEditingId(settledId(editingId));
+    if (settledId(focusedId) !== focusedId) setFocusedId(settledId(focusedId));
+    if (settledId(hoveredId) !== hoveredId) setHoveredId(settledId(hoveredId));
 
     const positionOf = (spanId) => tokenPositions.find((p) => positionMatchesSpanId(p, spanId));
     const isRoot = (relation) => relation.source === relation.target;
@@ -170,7 +175,7 @@ export const EnhancedArcs = forwardRef(
         />
       );
 
-      return { key: relation.id, body, label };
+      return { key: stableKey(relation.id), body, label };
     };
 
     // Bodies first and labels after, as above: SVG paints in document order,

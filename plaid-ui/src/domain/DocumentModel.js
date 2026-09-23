@@ -57,6 +57,13 @@ export class DocumentModel {
     this._derivedCache = new Map();
     this._isSaving = false;
     this._error = '';
+    // The write queue behind `_queueWrite`: the tail every new send chains
+    // onto, how many sends are waiting or in flight, and the generation a
+    // failure bumps to skip the sends queued behind it.
+    this._writeTail = Promise.resolve();
+    this._queuedWrites = 0;
+    this._writeGeneration = 0;
+    this._reloadWhenDrained = false;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -239,16 +246,7 @@ export class DocumentModel {
   // Nested mutations flatten into the outer operation.
   async _withSaving(label, fn, operation = operationLabel(label)) {
     if (this._isSaving) return false;
-    // A document read at `asOf` is a past state: nothing writes through it. A
-    // screen that let an edit reach one would otherwise write a plan made
-    // against the past into the current document.
-    if (this._asOf) {
-      const err = new Error('An earlier state of the document cannot be edited.');
-      this._error = `${label}: ${err.message}`;
-      if (this.onError) this.onError(this._error, err, label);
-      this._emit();
-      return false;
-    }
+    if (!this._canWrite(label)) return false;
     this._isSaving = true;
     this._error = '';
     this._emit();
@@ -256,21 +254,93 @@ export class DocumentModel {
       await this._client.withOperation(operation, fn);
       return true;
     } catch (err) {
-      console.error(`${label}:`, err);
-      this._error = `${label}: ${err.message || 'Unknown error'}`;
-      // The raw error rides along so the screen can word it (statuses, network
-      // failures) while keeping the "Failed to ..." label as the title.
-      if (this.onError) this.onError(this._error, err, label);
-      try {
-        await this._reload();
-      } catch (reloadErr) {
-        console.error('Reload after failure also failed:', reloadErr);
-      }
+      await this._writeFailed(label, err);
       return false;
     } finally {
       this._isSaving = false;
       this._emit();
     }
+  }
+
+  // Whether a write may go through this document at all. A document read at
+  // `asOf` is a past state: nothing writes through it. A screen that let an
+  // edit reach one would otherwise write a plan made against the past into
+  // the current document. Says why on the error channel when it refuses.
+  _canWrite(label) {
+    if (!this._asOf) return true;
+    const err = new Error('An earlier state of the document cannot be edited.');
+    this._error = `${label}: ${err.message}`;
+    if (this.onError) this.onError(this._error, err, label);
+    this._emit();
+    return false;
+  }
+
+  // Report a failed write and refetch the document, which takes back whatever
+  // the write had already shown.
+  async _writeFailed(label, err) {
+    console.error(`${label}:`, err);
+    this._error = `${label}: ${err.message || 'Unknown error'}`;
+    // The raw error rides along so the screen can word it (statuses, network
+    // failures) while keeping the "Failed to ..." label as the title.
+    if (this.onError) this.onError(this._error, err, label);
+    try {
+      await this._reload();
+    } catch (reloadErr) {
+      console.error('Reload after failure also failed:', reloadErr);
+    }
+  }
+
+  // An optimistic write in two halves. The caller has already shown the edit
+  // (`_canWrite`, then `_applyRawPatch`); `send` makes the server calls. Sends
+  // run one at a time, in the order the edits were made, so an edit made while
+  // another is in flight is on screen at once and its send waits its turn,
+  // where `_withSaving` would drop it. A failed send reloads the document,
+  // which takes the edits queued behind it off the screen as well, so their
+  // sends are skipped. Resolves true when `send` landed, false otherwise.
+  // `isSaving` holds while anything is queued.
+  //
+  // `reload: true` is for the one write whose effect the server works out and
+  // the screen cannot replay: the document is refetched once the queue has
+  // drained, not straight after the send, because a refetch then would drop
+  // the edits still queued behind it from the screen.
+  _queueWrite(label, send, operation = operationLabel(label), { reload = false } = {}) {
+    const generation = this._writeGeneration;
+    this._queuedWrites += 1;
+    if (!this._isSaving) {
+      this._isSaving = true;
+      this._error = '';
+      this._emit();
+    }
+    const run = async () => {
+      try {
+        if (generation !== this._writeGeneration) return false;
+        await this._client.withOperation(operation, send);
+        if (reload) this._reloadWhenDrained = true;
+        return true;
+      } catch (err) {
+        this._writeGeneration += 1;
+        this._reloadWhenDrained = false;
+        await this._writeFailed(label, err);
+        return false;
+      } finally {
+        if (this._queuedWrites === 1 && this._reloadWhenDrained) {
+          this._reloadWhenDrained = false;
+          try {
+            await this._reload();
+          } catch (err) {
+            console.error('Reload after a write failed:', err);
+          }
+        }
+        this._queuedWrites -= 1;
+        if (this._queuedWrites === 0) {
+          this._isSaving = false;
+          this._emit();
+        }
+      }
+    };
+    const result = this._writeTail.then(run);
+    this._writeTail = result.catch(() => {});
+    return result;
   }
 
   // What a patch producer is handed beside the clone of `_raw` (a fresh layer

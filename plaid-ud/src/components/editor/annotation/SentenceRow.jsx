@@ -10,6 +10,7 @@ import {
   svgWidth,
 } from '../../../utils/arcLayout.js';
 import { sentenceArcs, extraEdges } from '../../../domain/enhancedGraph.js';
+import { stableKey } from '../../../domain/pendingIds.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';
@@ -341,7 +342,7 @@ export const SentenceRow = React.memo(
             {/* Token columns */}
             {tokenData.map((data, index) => (
               <TokenColumn
-                key={data.token.id}
+                key={stableKey(data.token.id)}
                 data={data}
                 index={index}
                 columnWidth={columnWidths[index]}

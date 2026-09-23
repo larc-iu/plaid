@@ -27,6 +27,7 @@ import {
   wordInColumn,
 } from '../../../utils/arcLayout.js';
 import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
+import { settledId, stableKey } from '../../../domain/pendingIds.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
@@ -116,6 +117,25 @@ export const DependencyTree = forwardRef(
       setRelabeling(null);
       setEditingRelation(null);
     };
+    // A relation or word drawn a moment ago is shown under a pending id until
+    // the server answers with its own (domain/pendingIds.js). What this tree
+    // holds by id follows the swap here, during render, so an open label
+    // editor stays open and a selected label stays selected.
+    if (editingRelation && settledId(editingRelation.id) !== editingRelation.id) {
+      const id = settledId(editingRelation.id);
+      setEditingRelation(relations.find((r) => r.id === id) || null);
+    }
+    if (settledId(focusedRelation) !== focusedRelation) {
+      setFocusedRelation(settledId(focusedRelation));
+    }
+    if (settledId(hoveredRelation) !== hoveredRelation) {
+      setHoveredRelation(settledId(hoveredRelation));
+    }
+    if (settledId(relabeling) !== relabeling) setRelabeling(settledId(relabeling));
+    if (settledId(dragSourceId) !== dragSourceId) setDragSourceId(settledId(dragSourceId));
+    if (selectedSource && settledId(selectedSource.spanId) !== selectedSource.spanId) {
+      setSelectedSource({ ...selectedSource, spanId: settledId(selectedSource.spanId) });
+    }
     const [positionsInitialized, setPositionsInitialized] = useState(false);
     const svgRef = useRef(null);
     // True from the mousedown that starts a drag until something ends it, so a
@@ -776,7 +796,7 @@ export const DependencyTree = forwardRef(
         />
       );
 
-      return { key: relation.id, body, label };
+      return { key: stableKey(relation.id), body, label };
     };
 
     // The arc in the hand. Its SHAPE is arcLayout's (dragPreview), which draws
@@ -912,7 +932,7 @@ export const DependencyTree = forwardRef(
 
             return (
               <rect
-                key={position.token.id}
+                key={stableKey(position.token.id)}
                 x={box.x}
                 y={box.y}
                 width={box.width}
