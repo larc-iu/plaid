@@ -313,3 +313,29 @@
                                     (mock/json-body {:name "user1 vocab"})))]
       (is (= 201 (:status created)))
       (is (= 200 (:status (rest-handler (user1-request :get "/api/v1/users"))))))))
+
+(deftest a-short-password-is-refused
+  (testing "creating an account with a password under six characters is a 400 that says why"
+    (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
+                                 (mock/json-body {:email "short@b.com" :password "abc12" :is-admin false})))]
+      (is (= 400 (:status resp)))
+      (is (clojure.string/includes? (:error (parse-response-body resp)) "at least 6 characters"))
+      (is (= 404 (:status (rest-handler (admin-request :get "/api/v1/users/short@b.com")))))))
+
+  (testing "six characters is enough"
+    (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
+                                 (mock/json-body {:email "six@b.com" :password "abc123" :is-admin false})))]
+      (is (= 201 (:status resp)))))
+
+  (testing "changing a password to a short one is refused, for an admin and for yourself"
+    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/six@b.com")
+                                 (mock/json-body {:password "abc"})))]
+      (is (= 400 (:status resp))))
+    (let [resp (rest-handler (-> (user1-request :patch "/api/v1/users/user1@example.com")
+                                 (mock/json-body {:password ""})))]
+      (is (= 400 (:status resp)))))
+
+  (testing "a PATCH that leaves the password alone is not checked"
+    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/six@b.com")
+                                 (mock/json-body {:display-name "Six"})))]
+      (is (= 200 (:status resp))))))

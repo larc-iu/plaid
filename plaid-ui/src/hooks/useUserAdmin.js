@@ -12,6 +12,11 @@ import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
 // refused, memberships are stripped, and the row stays with a timestamp —
 // and `users.activate` reverses it. The copy here says so.
 
+// The shortest password this screen sets. Core refuses a shorter one too, with
+// the same number, and the profile screen asks the same.
+const MIN_PASSWORD_LENGTH = 6;
+const PASSWORD_TOO_SHORT = `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`;
+
 const EMPTY_USER = {
   email: '',
   displayName: '',
@@ -51,6 +56,10 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
     }
     if (!isEmail(newUser.email)) {
       notifyError(EMAIL_INVALID_MESSAGE, 'Check the email address');
+      return;
+    }
+    if (newUser.password.length < MIN_PASSWORD_LENGTH) {
+      notifyError(PASSWORD_TOO_SHORT, 'Check the password');
       return;
     }
     // Typed twice because whoever types it is not the person who will use it:
@@ -99,6 +108,10 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
   };
 
   const updateUser = async () => {
+    if (editForm.password && editForm.password.length < MIN_PASSWORD_LENGTH) {
+      notifyError(PASSWORD_TOO_SHORT, 'Check the password');
+      return;
+    }
     if (editForm.password !== editForm.confirmPassword) {
       notifyError('The two passwords do not match', 'Check the password');
       return;

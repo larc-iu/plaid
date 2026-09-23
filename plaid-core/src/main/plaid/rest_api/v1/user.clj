@@ -28,6 +28,21 @@
                      "private, max-age=31536000, immutable"
                      "private, max-age=60")})
 
+(def min-password-length
+  "The shortest password an admin may set for someone, or anyone for
+  themselves. Checked here and not only in the browser, since a script can post
+  to these routes as well."
+  6)
+
+(defn- password-refusal
+  "The 400 for a password that is too short, or nil. A missing password is not
+  this function's business: POST's schema requires one, and PATCH leaves it
+  unchanged."
+  [password]
+  (when (and (some? password) (< (count password) min-password-length))
+    {:status 400
+     :body {:error (str "Password must be at least " min-password-length " characters long")}}))
+
 (def user-routes
   ["/users"
    {:openapi {:security [{:auth []}]}
@@ -58,12 +73,13 @@
                                 [:is-admin boolean?]
                                 [:display-name {:optional true} string?]]}
             :handler (fn [{{{:keys [email password is-admin display-name]} :body} :parameters db :db user-id :user/id}]
-                       (let [result (user/create db email is-admin password user-id display-name)]
-                         (if (:success result)
-                           {:status 201
-                            :body {:id (:extra result)}}
-                           {:status (or (:code result) 500)
-                            :body {:error (:error result)}})))}}]
+                       (or (password-refusal password)
+                           (let [result (user/create db email is-admin password user-id display-name)]
+                             (if (:success result)
+                               {:status 201
+                                :body {:id (:extra result)}}
+                               {:status (or (:code result) 500)
+                                :body {:error (:error result)}}))))}}]
 
    ["/:id"
     {:parameters {:path [:map [:id string?]]}}
@@ -93,6 +109,9 @@
                                is-self? (= id current-user-id)
                                is-admin? (user/admin? current-user)]
                            (cond
+                             (and (or is-admin? is-self?) (password-refusal password))
+                             (password-refusal password)
+
                              is-admin?
                              (let [{:keys [success code error]} (user/merge db
                                                                             id
