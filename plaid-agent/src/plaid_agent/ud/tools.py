@@ -475,10 +475,13 @@ def t_set_head(ws: Workspace, document: str = None, ref: str = None, head=None,
     # The suppressors this write leaves stranded: the one over the relation it
     # replaces, and one already lying over the pair it creates, which would
     # otherwise leave the new relation faded and the word with no enhanced
-    # head. The editor's `createRelation` clears both.
-    stale = [word.suppressor_id,
-             doc.suppressor_over(head_lemma.id if head_lemma else None,
-                                 lemma.id if lemma else None)]
+    # head. The editor's `createRelation` clears both. A RELABEL (same head)
+    # strands nothing: the pair stays, and so does whatever the enhanced graph
+    # says about it, as in the editor's `updateRelation`.
+    relabel = bool(word.relation_id) and word.head == head
+    stale = [] if relabel else [
+        word.suppressor_id,
+        doc.suppressor_over(head_lemma.id if head_lemma else None, lemma.id if lemma else None)]
     ws.add_op({'kind': 'set_head', 'word_id': word.id, 'head_id': head_word.id,
                'lemma_layer_id': ws.project.layer('lemma'),
                'relation_layer_id': ws.project.relation_layer_id,

@@ -97,6 +97,21 @@ def test_a_head_write_takes_the_suppressors_it_would_strand_with_it():
     assert len(ws.client.batches) == 1, 'in the same batch as the relation itself'
 
 
+def test_a_relabel_keeps_the_enhanced_graph_as_it_was():
+    """set_head with the head the word already has is the assistant's relabel.
+    The pair stays, so a suppressor over it is not stranded: the enhanced graph
+    relabelled that relation (suppressor plus extra), and a relabel of the tree
+    must not bring the tree's label back into the graph. The editor's relabel
+    keeps it too."""
+    ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l3'),
+                       {'id': 'e-2', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'obl:a'}])
+    run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='nmod')
+    assert ws.ops[0]['suppressor_ids'] == []
+    execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
+    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    assert 'e-1' not in deleted
+
+
 def test_removing_a_head_takes_the_suppressor_over_it():
     ws = _enhanced_ws([suppressor('e-1', 'sp-l1', 'sp-l4')])
     run(ws, 'del_relation', document='Viaje', refs=['s1.w5'])
