@@ -9,6 +9,7 @@ import {
 } from '@larc-iu/plaid-client';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
+import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
@@ -34,6 +35,7 @@ import { vocabMutations } from './mutations/vocab.js';
 import { documentMutations } from './mutations/document.js';
 import { alignmentMutations } from './mutations/alignment.js';
 import { analysisCopyMutations } from './mutations/analysisCopy.js';
+import { pendingMutations } from './mutations/pending.js';
 
 const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
 
@@ -513,10 +515,16 @@ export class IgtDocument extends DocumentModel {
   // These two methods serve as the canonical template for the mutation
   // mixins. Conventions to follow:
   //
-  // - Validate inputs (id lookups, layer presence) OUTSIDE `_queueWrite`.
-  //   Guard failures use `setError + return false` so an invalid id doesn't
-  //   trigger a needless `_reload` via the catch path.
-  // - Wrap the server call + optimistic patch in `_queueWrite(label, fn)`.
+  // - Every edit shows before the server answers, creates included. Validate
+  //   inputs (id lookups, layer presence) first: guard failures use
+  //   `setError + return false`. Then `_canWrite(label)`, the patch
+  //   (`_applyRawPatch`), and `_queueWrite(label, send)` with the server
+  //   calls, which runs after any write still in flight.
+  // - A row the edit creates goes in under a pending id and `_settle` swaps
+  //   the server's in (see mutations/pending.js). The send names every id
+  //   through `settledId`: an edit made while an earlier one was queued can
+  //   hold that one's pending ids. Ids handed in are settled on the way in
+  //   (see the end of this file).
   // - Inside `_applyRawPatch((next, info, vocabs) => ...)`, re-resolve
   //   layers/tokens via `info` — captured outer references point into the
   //   OLD raw doc and mutating through them is a real bug.
@@ -530,8 +538,8 @@ export class IgtDocument extends DocumentModel {
   //              with returned id, multi-step optimistic patch.
 
   // Set or update a per-orthography metadata key (`orthog:<name>`) on a word
-  // token. No optimistic patch is needed beyond writing the metadata entry —
-  // orthographies derive from the token's metadata at render time.
+  // token. Orthographies derive from the token's metadata at render time, so
+  // the patch is the metadata entry alone.
   async updateOrthography(tokenId, orthographyName, value) {
     const info = this.layerInfo;
     const token = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === tokenId);
@@ -539,14 +547,16 @@ export class IgtDocument extends DocumentModel {
       this.setError(`Token ${tokenId} not found`);
       return false;
     }
+    const label = `Failed to update ${orthographyName}`;
+    if (!this._canWrite(label)) return false;
     const nextMetadata = { ...(token.metadata || {}), [`orthog:${orthographyName}`]: value };
-    return this._queueWrite(`Failed to update ${orthographyName}`, async () => {
-      await this._client.tokens.setMetadata(tokenId, nextMetadata);
-      this._applyRawPatch((next, infoNext) => {
-        const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
-        if (t) t.metadata = nextMetadata;
-      });
+    this._applyRawPatch((next, infoNext) => {
+      const t = (infoNext.primaryTokenLayer?.tokens || []).find((x) => x.id === tokenId);
+      if (t) t.metadata = nextMetadata;
     });
+    return this._queueWrite(label, () =>
+      this._client.tokens.setMetadata(settledId(tokenId), nextMetadata),
+    );
   }
 
   // Split a word token at `splitOffset` (relative to token.begin). Wipes any
@@ -703,6 +713,7 @@ function mergeRawVocabLinks(raw, vocabularies) {
 // helpers (_queueWrite, _applyRawPatch, _reload, layerInfo, etc.).
 Object.assign(
   IgtDocument.prototype,
+  pendingMutations,
   spanMutations,
   tokenMutations,
   sentenceMutations,
@@ -712,3 +723,25 @@ Object.assign(
   alignmentMutations,
   analysisCopyMutations,
 );
+
+// The editor keeps ids on its cells and in its state, and a row it created a
+// moment ago is known by a pending id until the server answers (see
+// mutations/pending.js). Every public mutation takes its arguments settled,
+// so an id held from before the answer names the same row after it.
+const MUTATIONS = [
+  spanMutations,
+  tokenMutations,
+  sentenceMutations,
+  morphemeMutations,
+  vocabMutations,
+  documentMutations,
+  alignmentMutations,
+  analysisCopyMutations,
+].flatMap((mixin) => Object.keys(mixin));
+for (const name of [...MUTATIONS, 'updateOrthography', 'splitToken']) {
+  if (name.startsWith('_')) continue;
+  const fn = IgtDocument.prototype[name];
+  IgtDocument.prototype[name] = function (...args) {
+    return fn.apply(this, args.map(followIds));
+  };
+}

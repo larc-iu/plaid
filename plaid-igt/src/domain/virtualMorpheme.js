@@ -5,7 +5,7 @@
 //
 // `derive` therefore synthesizes one for each such word, and the editor renders
 // it like any other. It becomes a real token the first time anyone writes to
-// it, through `_materializeMorpheme`. Until then it carries this id, which
+// it (see mutations/pending.js, `_planMorphemes`). Until then it carries this id, which
 // names the word it belongs to so materialization needs no lookup table, and
 // which is deliberately not uuid-shaped so a leak to the server is obvious
 // rather than silent.

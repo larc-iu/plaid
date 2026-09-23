@@ -84,8 +84,11 @@ test('rapid multi-hyphen: every hyphen typed during a split becomes a split, nev
   const cell = page.locator(`.igt-morph-field[data-word="${ids.w[0]}"]`).first();
   await cell.click();
   await page.keyboard.press('Control+a');
-  // Typed as fast as Playwright can: the 2nd and 3rd hyphens land mid-flight.
+  // Typed as fast as Playwright can: the 2nd and 3rd hyphens land while the
+  // splits before them are still being saved. Each split shows at once, so
+  // the last piece is typed into its own cell and saved when Enter leaves it.
   await page.keyboard.type('ab-cd-ef-gh', { delay: 0 });
+  await page.keyboard.press('Enter');
   await expect
     .poll(() => morphForms(ids.w[0]), { timeout: 10_000 })
     .toEqual(['ab', 'cd', 'ef', 'gh']);

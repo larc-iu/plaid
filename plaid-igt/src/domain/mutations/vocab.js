@@ -8,7 +8,7 @@
 
 import { stampInferred, isMachine, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
-import { isVirtualMorphemeId } from '../virtualMorpheme.js';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { lexiconView } from '../vocabDictionary.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
@@ -28,14 +28,19 @@ const REPLACE_CHUNK = 400;
  * the link is the same move `setVocabItemMorphType` already makes when an
  * entry's type changes.
  *
+ * `planned` are morphemes an edit is making (pending, see pending.js), which
+ * count as morphemes with no type yet.
+ *
  * Returns a `typeFor(tokenId, vocabId, itemId)` that answers the type to write,
  * or null when there is nothing to write: the token is a WORD rather than a
  * morpheme (a word has no morph type), the entry chain resolves to no type, or
  * the cache already agrees. One lexicon view per vocabulary, built on demand,
  * since a bulk link can name hundreds of tokens across a handful of entries.
  */
-const morphTypeCache = (doc) => {
-  const morphemes = new Map((doc.layerInfo.morphemeTokenLayer?.tokens || []).map((m) => [m.id, m]));
+const morphTypeCache = (doc, planned = []) => {
+  const morphemes = new Map(
+    [...(doc.layerInfo.morphemeTokenLayer?.tokens || []), ...planned].map((m) => [m.id, m]),
+  );
   const views = new Map();
   const viewFor = (vocabId) => {
     if (!views.has(vocabId)) {
@@ -181,14 +186,15 @@ export const vocabMutations = {
     if (!link || !vocabId) return false;
     const confirm = this.confirmStamp(link.metadata);
     if (!confirm) return false;
-
-    return this._queueWrite('Failed to confirm link', async () => {
-      await this._client.vocabLinks.patchMetadata(link.id, metadataOps(confirm));
-      this._applyRawPatch((next, info, vocabs) => {
-        const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
-        if (l) l.metadata = mergeMetadata(l.metadata, confirm);
-      });
+    const label = 'Failed to confirm link';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next, info, vocabs) => {
+      const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
+      if (l) l.metadata = mergeMetadata(l.metadata, confirm);
     });
+    return this._queueWrite(label, () =>
+      this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+    );
   },
 
   // Link a vocab item to a token (word or morpheme). If a prior single-token
@@ -205,69 +211,82 @@ export const vocabMutations = {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
     }
+    const label = 'Failed to link vocab item';
+    if (!this._canWrite(label)) return false;
+    // Linking an unanalyzed word's morpheme makes the morpheme too: a link
+    // needs a token to point at. A word id passes through.
+    const {
+      ids: [targetTokenId],
+      creates,
+    } = this._planMorphemes([tokenId]);
+    if (!targetTokenId) {
+      this.setError(`Token ${tokenId} not found`);
+      return false;
+    }
     const targetVocabId = targetVocab.id;
-    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
+    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(
+      this._vocabularies,
+      targetTokenId,
+    );
     const stamp = metadata || this.createStamp;
+    const cachedType = morphTypeCache(this, creates)(targetTokenId, targetVocabId, vocabItemId);
+    // A morpheme made here is made with the type; one already there takes it
+    // in the link's batch.
+    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
+    const patchType = cachedType && !creates.length;
+    const linkId = pendingId();
+    // The shape a document read gives a link's entry: id, layer, and form.
+    const itemSnapshot = { id: vocabItem.id, layer: targetVocabId, form: vocabItem.form };
 
-    return this._queueWrite('Failed to link vocab item', async () => {
-      // Linking an unanalyzed word's morpheme writes the morpheme first: a link
-      // needs a token to point at. Before the batch below, never inside it: a
-      // create's id is only readable outside one. A word id passes through.
-      const targetTokenId = isVirtualMorphemeId(tokenId)
-        ? await this.materializeMorphemeId(tokenId)
-        : tokenId;
-      if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
-      // Resolved AFTER materializing, since a morpheme written a moment ago is
-      // the one being linked.
-      const cachedType = morphTypeCache(this)(targetTokenId, targetVocabId, vocabItemId);
-      let newLinkId;
-      if (priorLink || cachedType) {
+    this._applyRawPatch((next, info, vocabs) => {
+      this._showMorphemes(info, creates);
+      if (priorLink && priorVocabId && vocabs[priorVocabId]) {
+        vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+          (l) => l.id !== priorLink.id,
+        );
+      }
+      const tv = vocabs[targetVocabId];
+      if (tv) {
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        tv.vocabLinks.push({
+          id: linkId,
+          tokens: [targetTokenId],
+          vocabItem: itemSnapshot,
+          ...(stamp ? { metadata: stamp } : {}),
+        });
+      }
+      if (patchType) {
+        const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
+        if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+      }
+    });
+
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      const serverId = (id) => ids.get(id) || settledId(id);
+      await this._sendMorphemes(creates, ids);
+      const token = serverId(targetTokenId);
+      if (priorLink || patchType) {
         // Indexed, not `results.at(-1)`: the cache patch rides at the end, so
-        // the create is no longer the last op.
+        // the create is not the last op.
         const createAt = priorLink ? 1 : 0;
         const results = await this._client.batched(async (b) => {
-          if (priorLink) b.vocabLinks.delete(priorLink.id);
-          b.vocabLinks.create(vocabItemId, [targetTokenId], stamp || undefined);
-          if (cachedType) {
-            b.tokens.patchMetadata(targetTokenId, [
-              { op: 'set', path: ['morphType'], value: cachedType },
-            ]);
+          if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+          b.vocabLinks.create(vocabItemId, [token], stamp || undefined);
+          if (patchType) {
+            b.tokens.patchMetadata(token, [{ op: 'set', path: ['morphType'], value: cachedType }]);
           }
         });
-        newLinkId = results[createAt]?.body?.id;
+        ids.set(linkId, results[createAt]?.body?.id);
       } else {
         const result = await this._client.vocabLinks.create(
           vocabItemId,
-          [targetTokenId],
+          [token],
           stamp || undefined,
         );
-        newLinkId = result?.id || result;
+        ids.set(linkId, result?.id || result);
       }
-
-      // The shape a document read gives a link's entry: id, layer, and form.
-      const itemSnapshot = { id: vocabItem.id, layer: targetVocabId, form: vocabItem.form };
-
-      this._applyRawPatch((next, info, vocabs) => {
-        if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-            (l) => l.id !== priorLink.id,
-          );
-        }
-        const tv = vocabs[targetVocabId];
-        if (tv) {
-          if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-          tv.vocabLinks.push({
-            id: newLinkId,
-            tokens: [targetTokenId],
-            vocabItem: itemSnapshot,
-            ...(stamp ? { metadata: stamp } : {}),
-          });
-        }
-        if (cachedType) {
-          const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
-          if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-        }
-      });
+      this._settle(ids);
     });
   },
 
@@ -285,88 +304,118 @@ export const vocabMutations = {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
     }
-    const ids = [...new Set(tokenIds)].filter((id) => !findPriorLink(this._vocabularies, id).link);
-    if (!ids.length) return false;
-    return this._queueWrite('Failed to link entries', () =>
-      this._linkManyImpl(ids, targetVocab, vocabItem),
-    );
+    const label = 'Failed to link entries';
+    if (!this._canWrite(label)) return false;
+    const plan = this._planLinkMany(tokenIds, targetVocab, vocabItem);
+    if (!plan.links.length) return false;
+    this._applyRawPatch((next, info, vocabs) => this._showLinkMany(info, vocabs, plan));
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      await this._sendMorphemes(plan.creates, ids);
+      await this._sendLinkMany(plan, ids);
+      this._settle(ids);
+    });
   },
 
-  // The write half of linkVocabMany, run INSIDE a caller's _queueWrite so a
-  // create-and-link-all is one operation too. `ids` have no link of their own.
-  async _linkManyImpl(ids, targetVocab, vocabItem) {
-    const vocabItemId = vocabItem.id;
-    const stamp = this.createStamp || undefined;
-    // The matches can include unanalyzed words, whose morphemes read as the
-    // word: one bulk create brings those into being, outside the batch below
-    // so their ids come back. A word reading roa is a roa to link.
-    const targetIds = (await this.materializeMorphemeIds(ids)).filter(Boolean);
-    if (!targetIds.length) return;
+  // Linking several tokens to one entry, in three parts so a
+  // create-and-link-all can run it inside its own edit: the plan (only tokens
+  // with no link of their own are taken, and unanalyzed words' morphemes are
+  // planned under pending ids), the patch, and the send. `excluding` names
+  // tokens the caller links itself.
+  _planLinkMany(tokenIds, targetVocab, vocabItem, { excluding = [] } = {}) {
+    const { ids, creates } = this._planMorphemes([...new Set(tokenIds)]);
+    const skip = new Set(excluding);
+    const targets = [...new Set(ids.filter(Boolean))].filter(
+      (id) => !skip.has(id) && !findPriorLink(this._vocabularies, id).link,
+    );
+    const used = new Set(targets);
+    const planned = creates.filter((c) => used.has(c.id));
     // One entry, so one resolved type, but each token answers for its own
     // cache: a word in the set takes none, and a morpheme that already agrees
-    // is left alone.
-    const typeFor = morphTypeCache(this);
-    const cacheIds = targetIds.filter((id) => typeFor(id, targetVocab.id, vocabItemId));
-    const cachedType = cacheIds.length ? typeFor(cacheIds[0], targetVocab.id, vocabItemId) : null;
-    // One bulk create for the links and one bulk update for the caches: two ops
-    // however many tokens were selected. The create goes FIRST so its ids are
-    // always results[0], and they come back in the order they were sent.
+    // is left alone. A morpheme made here is made with it.
+    const typeFor = morphTypeCache(this, planned);
+    const typed = targets.filter((id) => typeFor(id, targetVocab.id, vocabItem.id));
+    const cachedType = typed.length ? typeFor(typed[0], targetVocab.id, vocabItem.id) : null;
+    const made = new Set(planned.map((c) => c.id));
+    if (cachedType) {
+      planned.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
+    }
+    return {
+      creates: planned,
+      links: targets.map((token) => ({ id: pendingId(), token })),
+      cacheIds: cachedType ? typed.filter((id) => !made.has(id)) : [],
+      cachedType,
+      vocabId: targetVocab.id,
+      item: vocabItem,
+      stamp: this.createStamp || undefined,
+    };
+  },
+
+  _showLinkMany(info, vocabs, plan) {
+    this._showMorphemes(info, plan.creates);
+    const itemSnapshot = { id: plan.item.id, layer: plan.vocabId, form: plan.item.form };
+    const tv = vocabs[plan.vocabId];
+    if (tv) {
+      if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+      plan.links.forEach((l) =>
+        tv.vocabLinks.push({
+          id: l.id,
+          tokens: [l.token],
+          vocabItem: itemSnapshot,
+          ...(plan.stamp ? { metadata: plan.stamp } : {}),
+        }),
+      );
+    }
+    if (plan.cacheIds.length) {
+      const cached = new Set(plan.cacheIds);
+      (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+        if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: plan.cachedType };
+      });
+    }
+  },
+
+  // One bulk create for the links and one bulk update for the caches: two ops
+  // however many tokens were selected. The create goes FIRST so its ids are
+  // always results[0], and they come back in the order they were sent.
+  async _sendLinkMany(plan, ids) {
+    if (!plan.links.length) return;
+    const serverId = (id) => ids.get(id) || settledId(id);
+    const itemId = serverId(plan.item.id);
     const results = await this._client.batched(async (b) => {
       b.vocabLinks.bulkCreate(
-        targetIds.map((id) => ({
-          vocabItem: vocabItemId,
-          tokens: [id],
-          ...(stamp ? { metadata: stamp } : {}),
+        plan.links.map((l) => ({
+          vocabItem: itemId,
+          tokens: [serverId(l.token)],
+          ...(plan.stamp ? { metadata: plan.stamp } : {}),
         })),
       );
-      if (cacheIds.length) {
+      if (plan.cacheIds.length) {
         b.tokens.bulkUpdate(
-          cacheIds.map((id) => ({
-            id,
-            metadata: [{ op: 'set', path: ['morphType'], value: cachedType }],
+          plan.cacheIds.map((id) => ({
+            id: serverId(id),
+            metadata: [{ op: 'set', path: ['morphType'], value: plan.cachedType }],
           })),
         );
       }
     });
     const newIds = results[0]?.body?.ids ?? [];
-    const itemSnapshot = { id: vocabItem.id, layer: targetVocab.id, form: vocabItem.form };
-    this._applyRawPatch((next, info, vocabs) => {
-      const tv = vocabs[targetVocab.id];
-      if (tv) {
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        targetIds.forEach((tokenId, i) => {
-          tv.vocabLinks.push({
-            id: newIds[i],
-            tokens: [tokenId],
-            vocabItem: itemSnapshot,
-            ...(stamp ? { metadata: stamp } : {}),
-          });
-        });
-      }
-      if (cachedType) {
-        const cached = new Set(cacheIds);
-        (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-          if (cached.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-        });
-      }
-    });
+    plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
   },
 
   // Remove the single-token vocab link for `tokenId`, if any.
   async unlinkVocab(tokenId) {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!priorLink || !priorVocabId) return false;
-
-    return this._queueWrite('Failed to unlink vocab item', async () => {
-      await this._client.vocabLinks.delete(priorLink.id);
-      this._applyRawPatch((next, info, vocabs) => {
-        if (vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-            (l) => l.id !== priorLink.id,
-          );
-        }
-      });
+    const label = 'Failed to unlink vocab item';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next, info, vocabs) => {
+      if (vocabs[priorVocabId]) {
+        vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+          (l) => l.id !== priorLink.id,
+        );
+      }
     });
+    return this._queueWrite(label, () => this._client.vocabLinks.delete(settledId(priorLink.id)));
   },
 
   // Create a brand-new vocab item in `vocabId` and link it to `tokenId`,
@@ -387,15 +436,35 @@ export const vocabMutations = {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
     }
+    const label = 'Failed to set entry type';
+    if (!this._canWrite(label)) return false;
     const morphemeIds = new Set((this.layerInfo.morphemeTokenLayer?.tokens || []).map((m) => m.id));
     const linkedMorphemes = (vocab.vocabLinks || [])
       .filter((l) => l.vocabItem?.id === itemId && Array.isArray(l.tokens) && l.tokens.length === 1)
       .map((l) => l.tokens[0])
       .filter((id) => morphemeIds.has(id));
-
-    return this._queueWrite('Failed to set entry type', async () => {
-      await this._client.batched(async (b) => {
-        b.vocabItems.patchMetadata(itemId, [
+    const setType = (meta) => {
+      const next = { ...(meta || {}) };
+      if (morphType == null) delete next.morphType;
+      else next.morphType = morphType;
+      return next;
+    };
+    this._applyRawPatch((next, info, vocabs) => {
+      const v = vocabs[vocabId];
+      if (!v) return;
+      (v.items || []).forEach((it) => {
+        if (it.id === itemId) it.metadata = setType(it.metadata);
+      });
+      if (morphType != null) {
+        const linked = new Set(linkedMorphemes);
+        (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
+          if (linked.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType };
+        });
+      }
+    });
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        b.vocabItems.patchMetadata(settledId(itemId), [
           morphType == null
             ? { op: 'delete', path: ['morphType'] }
             : { op: 'set', path: ['morphType'], value: morphType },
@@ -403,30 +472,13 @@ export const vocabMutations = {
         // A cleared entry type stops overriding; the cache keeps its last value.
         if (morphType != null) {
           linkedMorphemes.forEach((id) =>
-            b.tokens.patchMetadata(id, [{ op: 'set', path: ['morphType'], value: morphType }]),
+            b.tokens.patchMetadata(settledId(id), [
+              { op: 'set', path: ['morphType'], value: morphType },
+            ]),
           );
         }
-      });
-      const setType = (meta) => {
-        const next = { ...(meta || {}) };
-        if (morphType == null) delete next.morphType;
-        else next.morphType = morphType;
-        return next;
-      };
-      this._applyRawPatch((next, info, vocabs) => {
-        const v = vocabs[vocabId];
-        if (!v) return;
-        (v.items || []).forEach((it) => {
-          if (it.id === itemId) it.metadata = setType(it.metadata);
-        });
-        if (morphType != null) {
-          const linked = new Set(linkedMorphemes);
-          (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
-            if (linked.has(m.id)) m.metadata = { ...(m.metadata || {}), morphType };
-          });
-        }
-      });
-    });
+      }),
+    );
   },
 
   // ---- multi-word expressions (MWEs) -------------------------------------------
@@ -459,23 +511,30 @@ export const vocabMutations = {
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
+    const label = 'Failed to link multi-word expression';
+    if (!this._canWrite(label)) return false;
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
     const stamp = metadata || this.createStamp;
-    return this._queueWrite('Failed to link multi-word expression', async () => {
-      const result = await this._client.vocabLinks.create(vocabItemId, tokens, stamp || undefined);
-      const newLinkId = result?.id || result;
-      this._applyRawPatch((next, info, vocabs) => {
-        const tv = vocabs[vocabId];
-        if (!tv) return;
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({
-          id: newLinkId,
-          tokens,
-          vocabItem: itemSnapshot,
-          ...(stamp ? { metadata: stamp } : {}),
-        });
+    const linkId = pendingId();
+    this._applyRawPatch((next, info, vocabs) => {
+      const tv = vocabs[vocabId];
+      if (!tv) return;
+      if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+      tv.vocabLinks.push({
+        id: linkId,
+        tokens,
+        vocabItem: itemSnapshot,
+        ...(stamp ? { metadata: stamp } : {}),
       });
+    });
+    return this._queueWrite(label, async () => {
+      const result = await this._client.vocabLinks.create(
+        settledId(vocabItemId),
+        tokens.map(settledId),
+        stamp || undefined,
+      );
+      this._settle(new Map([[linkId, result?.id || result]]));
     });
   },
 
@@ -491,42 +550,48 @@ export const vocabMutations = {
     }
     const tokens = this._mweMembers(tokenIds);
     if (!tokens) return false;
+    const label = 'Failed to create and link multi-word expression';
+    if (!this._canWrite(label)) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    return this._queueWrite('Failed to create and link multi-word expression', async () => {
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    const linkId = pendingId();
+    this._applyRawPatch((next, info, vocabs) => {
+      if (replaceLinkId) {
+        Object.values(vocabs).forEach((v) => {
+          if (Array.isArray(v.vocabLinks))
+            v.vocabLinks = v.vocabLinks.filter((l) => l.id !== replaceLinkId);
+        });
+      }
+      const tv = vocabs[vocabId];
+      if (!tv) return;
+      if (!Array.isArray(tv.items)) tv.items = [];
+      tv.items.push({ ...newItem });
+      if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+      tv.vocabLinks.push({
+        id: linkId,
+        tokens,
+        vocabItem: { ...newItem },
+        ...(stamp ? { metadata: stamp } : {}),
+      });
+    });
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
-      const newItemId = createResult?.id || createResult;
-      let newLinkId;
+      const itemId = createResult?.id || createResult;
+      ids.set(newItem.id, itemId);
+      const members = tokens.map(settledId);
       if (replaceLinkId) {
         const results = await this._client.batched(async (b) => {
-          b.vocabLinks.delete(replaceLinkId);
-          b.vocabLinks.create(newItemId, tokens, stamp);
+          b.vocabLinks.delete(settledId(replaceLinkId));
+          b.vocabLinks.create(itemId, members, stamp);
         });
-        newLinkId = results[results.length - 1]?.body?.id;
+        ids.set(linkId, results[results.length - 1]?.body?.id);
       } else {
-        const linkResult = await this._client.vocabLinks.create(newItemId, tokens, stamp);
-        newLinkId = linkResult?.id || linkResult;
+        const linkResult = await this._client.vocabLinks.create(itemId, members, stamp);
+        ids.set(linkId, linkResult?.id || linkResult);
       }
-      const newItem = { id: newItemId, form, metadata: metadata || {} };
-      this._applyRawPatch((next, info, vocabs) => {
-        if (replaceLinkId) {
-          Object.values(vocabs).forEach((v) => {
-            if (Array.isArray(v.vocabLinks))
-              v.vocabLinks = v.vocabLinks.filter((l) => l.id !== replaceLinkId);
-          });
-        }
-        const tv = vocabs[vocabId];
-        if (!tv) return;
-        if (!Array.isArray(tv.items)) tv.items = [];
-        tv.items.push(newItem);
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({
-          id: newLinkId,
-          tokens,
-          vocabItem: { ...newItem },
-          ...(stamp ? { metadata: stamp } : {}),
-        });
-      });
+      this._settle(ids);
     });
   },
 
@@ -542,32 +607,35 @@ export const vocabMutations = {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
     }
+    const label = 'Failed to change multi-word expression';
+    if (!this._canWrite(label)) return false;
     const tokens = [...prior.tokens];
     const vocabId = vocab.id;
     const itemSnapshot = { id: item.id, form: item.form, metadata: item.metadata || {} };
     const stamp = this.createStamp || undefined;
-    return this._queueWrite('Failed to change multi-word expression', async () => {
+    const newLinkId = pendingId();
+    this._applyRawPatch((next, info, vocabs) => {
+      if (vocabs[priorVocabId]) {
+        vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+          (l) => l.id !== prior.id,
+        );
+      }
+      const tv = vocabs[vocabId];
+      if (!tv) return;
+      if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+      tv.vocabLinks.push({
+        id: newLinkId,
+        tokens,
+        vocabItem: itemSnapshot,
+        ...(stamp ? { metadata: stamp } : {}),
+      });
+    });
+    return this._queueWrite(label, async () => {
       const results = await this._client.batched(async (b) => {
-        b.vocabLinks.delete(linkId);
-        b.vocabLinks.create(vocabItemId, tokens, stamp);
+        b.vocabLinks.delete(settledId(prior.id));
+        b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp);
       });
-      const newLinkId = results[results.length - 1]?.body?.id;
-      this._applyRawPatch((next, info, vocabs) => {
-        if (vocabs[priorVocabId]) {
-          vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-            (l) => l.id !== linkId,
-          );
-        }
-        const tv = vocabs[vocabId];
-        if (!tv) return;
-        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-        tv.vocabLinks.push({
-          id: newLinkId,
-          tokens,
-          vocabItem: itemSnapshot,
-          ...(stamp ? { metadata: stamp } : {}),
-        });
-      });
+      this._settle(new Map([[newLinkId, results[results.length - 1]?.body?.id]]));
     });
   },
 
@@ -580,48 +648,51 @@ export const vocabMutations = {
     const { link: prior, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!prior) return false;
     const ids = [...new Set(tokenIds || [])];
-    if (ids.length < 2) return this.unlinkMwe(linkId);
+    if (ids.length < 2) return this.unlinkMwe(prior.id);
     const tokens = this._mweMembers(ids);
     if (!tokens) return false;
+    const label = 'Failed to change multi-word expression';
+    if (!this._canWrite(label)) return false;
     const itemId = prior.vocabItem?.id;
     const merged = this.isContributor
       ? mergeMetadata(prior.metadata, this.editStamp(prior.metadata))
       : { ...(prior.metadata || {}) };
     const metadata = Object.keys(merged).length ? merged : null;
     const vocabItem = prior.vocabItem;
-    return this._queueWrite('Failed to change multi-word expression', async () => {
+    const newLinkId = pendingId();
+    this._applyRawPatch((next, info, vocabs) => {
+      const tv = vocabs[vocabId];
+      if (!tv) return;
+      tv.vocabLinks = (tv.vocabLinks || []).filter((l) => l.id !== prior.id);
+      tv.vocabLinks.push({
+        id: newLinkId,
+        tokens,
+        vocabItem,
+        ...(metadata ? { metadata } : {}),
+      });
+    });
+    return this._queueWrite(label, async () => {
       const results = await this._client.batched(async (b) => {
-        b.vocabLinks.delete(linkId);
-        b.vocabLinks.create(itemId, tokens, metadata || undefined);
+        b.vocabLinks.delete(settledId(prior.id));
+        b.vocabLinks.create(settledId(itemId), tokens.map(settledId), metadata || undefined);
       });
-      const newLinkId = results[results.length - 1]?.body?.id;
-      this._applyRawPatch((next, info, vocabs) => {
-        const tv = vocabs[vocabId];
-        if (!tv) return;
-        tv.vocabLinks = (tv.vocabLinks || []).filter((l) => l.id !== linkId);
-        tv.vocabLinks.push({
-          id: newLinkId,
-          tokens,
-          vocabItem,
-          ...(metadata ? { metadata } : {}),
-        });
-      });
+      this._settle(new Map([[newLinkId, results[results.length - 1]?.body?.id]]));
     });
   },
 
   async unlinkMwe(linkId) {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     if (!link) return false;
-    return this._queueWrite('Failed to unlink multi-word expression', async () => {
-      await this._client.vocabLinks.delete(linkId);
-      this._applyRawPatch((next, info, vocabs) => {
-        if (vocabs[vocabId]) {
-          vocabs[vocabId].vocabLinks = (vocabs[vocabId].vocabLinks || []).filter(
-            (l) => l.id !== linkId,
-          );
-        }
-      });
+    const label = 'Failed to unlink multi-word expression';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next, info, vocabs) => {
+      if (vocabs[vocabId]) {
+        vocabs[vocabId].vocabLinks = (vocabs[vocabId].vocabLinks || []).filter(
+          (l) => l.id !== link.id,
+        );
+      }
     });
+    return this._queueWrite(label, () => this._client.vocabLinks.delete(settledId(link.id)));
   },
 
   // Confirm-on-touch for a proposed MWE link (same contract as
@@ -630,13 +701,15 @@ export const vocabMutations = {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     const confirm = link ? this.confirmStamp(link.metadata) : null;
     if (!confirm) return false;
-    return this._queueWrite('Failed to confirm multi-word expression', async () => {
-      await this._client.vocabLinks.patchMetadata(linkId, metadataOps(confirm));
-      this._applyRawPatch((next, info, vocabs) => {
-        const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === linkId);
-        if (l) l.metadata = mergeMetadata(l.metadata, confirm);
-      });
+    const label = 'Failed to confirm multi-word expression';
+    if (!this._canWrite(label)) return false;
+    this._applyRawPatch((next, info, vocabs) => {
+      const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
+      if (l) l.metadata = mergeMetadata(l.metadata, confirm);
     });
+    return this._queueWrite(label, () =>
+      this._client.vocabLinks.patchMetadata(settledId(link.id), metadataOps(confirm)),
+    );
   },
 
   // Apply multi-word expression proposals from the built-in rule (or any
@@ -678,95 +751,105 @@ export const vocabMutations = {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
     }
-    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
+    const label = 'Failed to create and link vocab item';
+    if (!this._canWrite(label)) return false;
+    // Same as linkVocab: an unanalyzed word's morpheme is made too, before
+    // anything points at it.
+    const {
+      ids: [targetTokenId],
+      creates,
+    } = this._planMorphemes([tokenId]);
+    if (!targetTokenId) {
+      this.setError(`Token ${tokenId} not found`);
+      return false;
+    }
+    const { link: priorLink, vocabId: priorVocabId } = findPriorLink(
+      this._vocabularies,
+      targetTokenId,
+    );
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
+    // A brand-new entry has no headword to inherit from, so its type is
+    // whatever `metadata` carried. Today's caller carries none and this is a
+    // no-op, but the cache rule holds on every link path, not just the ones
+    // that exercise it now.
+    const newType =
+      typeof metadata?.morphType === 'string' && metadata.morphType !== ''
+        ? metadata.morphType
+        : null;
+    const isMorpheme =
+      creates.length > 0 ||
+      (this.layerInfo.morphemeTokenLayer?.tokens || []).some((m) => m.id === targetTokenId);
+    const cachedType = isMorpheme ? newType : null;
+    if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
+    const patchType = cachedType && !creates.length;
+    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    const linkId = pendingId();
+    // "Create and link every ‹roa› in this text": the others that read the
+    // same and have no link, in the same operation as the create.
+    const others = this._planLinkMany(
+      alsoLink.filter((id) => id !== tokenId),
+      { id: vocabId },
+      newItem,
+      { excluding: [targetTokenId] },
+    );
 
-    return this._queueWrite('Failed to create and link vocab item', async () => {
-      // Same as linkVocab: an unanalyzed word's morpheme becomes a token before
-      // anything points at it, and before the batch below.
-      const targetTokenId = isVirtualMorphemeId(tokenId)
-        ? await this.materializeMorphemeId(tokenId)
-        : tokenId;
-      if (!targetTokenId) throw new Error(`Token ${tokenId} not found`);
+    this._applyRawPatch((next, info, vocabs) => {
+      this._showMorphemes(info, creates);
+      if (priorLink && priorVocabId && vocabs[priorVocabId]) {
+        vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
+          (l) => l.id !== priorLink.id,
+        );
+      }
+      const tv = vocabs[vocabId];
+      if (tv) {
+        if (!Array.isArray(tv.items)) tv.items = [];
+        tv.items.push({ ...newItem });
+        if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
+        tv.vocabLinks.push({
+          id: linkId,
+          tokens: [targetTokenId],
+          vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
+          ...(stamp ? { metadata: stamp } : {}),
+        });
+      }
+      if (patchType) {
+        const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
+        if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
+      }
+      this._showLinkMany(info, vocabs, others);
+    });
+
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      const serverId = (id) => ids.get(id) || settledId(id);
+      await this._sendMorphemes([...creates, ...others.creates], ids);
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
       const newItemId = createResult?.id || createResult;
+      ids.set(newItem.id, newItemId);
       // An entry is made before anything can point at it, so a failure in the
       // writes below used to leave it behind: the person tried again and the
       // lexicon grew a homonym. Nothing else can have reached it yet, so it is
       // taken back out on the way past.
       try {
-        // A brand-new entry has no headword to inherit from, so its type is
-        // whatever `metadata` carried. Today's caller carries none and this is a
-        // no-op, but the cache rule holds on every link path, not just the ones
-        // that exercise it now.
-        const newType =
-          typeof metadata?.morphType === 'string' && metadata.morphType !== ''
-            ? metadata.morphType
-            : null;
-        const isMorpheme = (this.layerInfo.morphemeTokenLayer?.tokens || []).some(
-          (m) => m.id === targetTokenId,
-        );
-        const cachedType = isMorpheme ? newType : null;
-
-        let newLinkId;
-        if (priorLink || cachedType) {
+        const token = serverId(targetTokenId);
+        if (priorLink || patchType) {
           const createAt = priorLink ? 1 : 0;
           const results = await this._client.batched(async (b) => {
-            if (priorLink) b.vocabLinks.delete(priorLink.id);
-            b.vocabLinks.create(newItemId, [targetTokenId], stamp);
-            if (cachedType) {
-              b.tokens.patchMetadata(targetTokenId, [
+            if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
+            b.vocabLinks.create(newItemId, [token], stamp);
+            if (patchType) {
+              b.tokens.patchMetadata(token, [
                 { op: 'set', path: ['morphType'], value: cachedType },
               ]);
             }
           });
-          newLinkId = results[createAt]?.body?.id;
+          ids.set(linkId, results[createAt]?.body?.id);
         } else {
-          const linkResult = await this._client.vocabLinks.create(
-            newItemId,
-            [targetTokenId],
-            stamp,
-          );
-          newLinkId = linkResult?.id || linkResult;
+          const linkResult = await this._client.vocabLinks.create(newItemId, [token], stamp);
+          ids.set(linkId, linkResult?.id || linkResult);
         }
-
-        const newItem = {
-          id: newItemId,
-          form,
-          metadata: metadata || {},
-        };
-
-        this._applyRawPatch((next, info, vocabs) => {
-          if (priorLink && priorVocabId && vocabs[priorVocabId]) {
-            vocabs[priorVocabId].vocabLinks = (vocabs[priorVocabId].vocabLinks || []).filter(
-              (l) => l.id !== priorLink.id,
-            );
-          }
-          const tv = vocabs[vocabId];
-          if (tv) {
-            if (!Array.isArray(tv.items)) tv.items = [];
-            tv.items.push(newItem);
-            if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
-            tv.vocabLinks.push({
-              id: newLinkId,
-              tokens: [targetTokenId],
-              vocabItem: { id: newItem.id, form: newItem.form, metadata: newItem.metadata },
-              ...(stamp ? { metadata: stamp } : {}),
-            });
-          }
-          if (cachedType) {
-            const m = (info.morphemeTokenLayer?.tokens || []).find((x) => x.id === targetTokenId);
-            if (m) m.metadata = { ...(m.metadata || {}), morphType: cachedType };
-          }
-        });
-
-        // "Create and link every ‹roa› in this text": the others that read the
-        // same and have no link, in the same operation as the create.
-        const others = [...new Set(alsoLink)].filter(
-          (id) => id !== tokenId && !findPriorLink(this._vocabularies, id).link,
-        );
-        if (others.length) await this._linkManyImpl(others, this._vocabularies[vocabId], newItem);
+        await this._sendLinkMany(others, ids);
       } catch (err) {
         try {
           await this._client.vocabItems.delete(newItemId);
@@ -775,6 +858,7 @@ export const vocabMutations = {
         }
         throw err;
       }
+      this._settle(ids);
     });
   },
 };

@@ -188,9 +188,9 @@ describe('materializeMorphemeIds', () => {
 
     const out = await doc.materializeMorphemeIds(['virtual:w-1', 'virtual:w-1']);
 
-    const bulk = callsOf(client, 'tokens.bulkCreate');
-    expect(bulk).toHaveLength(1);
-    expect(bulk[0].args[0]).toHaveLength(1);
+    // One morpheme, in one request (a lone create goes by the single endpoint).
+    expect(callsOf(client, 'tokens.bulkCreate')).toHaveLength(0);
+    expect(callsOf(client, 'tokens.create')).toHaveLength(1);
     expect(out[0]).toBe(out[1]);
     expect(doc.layerInfo.morphemeTokenLayer.tokens).toHaveLength(1);
   });

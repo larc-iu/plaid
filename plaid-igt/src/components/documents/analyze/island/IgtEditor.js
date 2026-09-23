@@ -109,12 +109,6 @@ export class IgtEditor {
     this.canAutoAnalyze = canAutoAnalyze;
     this._lastDataVersion = -1;
     this._pendingFocus = null;
-    // All doc mutations are funneled through this promise chain so they run
-    // strictly sequentially, and a structural handler that has already
-    // touched the DOM learns whether its own write landed before the next
-    // one starts (review H1). The document queues its sends as well, so none
-    // is dropped either way.
-    this._opChain = Promise.resolve();
     // Vocab-link popover UI state (not document data — toggling forces a render).
     this._popover = null; // { tokenId, kind } | null
     this._popoverPos = null; // { left, top } fixed-position coords (escapes the grid's overflow clip)
@@ -453,13 +447,27 @@ export class IgtEditor {
     render(this._statusPill(), host);
   }
 
-  // Enqueue a doc mutation thunk so it runs after any in-flight one. Returns a
-  // promise of the thunk's result (true/false from the doc method) so callers
-  // can restore optimistic DOM on failure. Chain never breaks on error.
+  // Run a doc mutation now. Every mutation shows its edit before it returns
+  // (the document patches first and queues the server call behind any in
+  // flight), so the grid has re-rendered by the time this does. The promise
+  // is the mutation's result once the server has answered: false when it was
+  // refused, before anything showed or by the server (which reloads).
   _run(fn) {
-    const next = this._opChain.then(() => fn());
-    this._opChain = next.catch(() => {});
-    return next;
+    try {
+      return Promise.resolve(fn());
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+
+  // Run a structural edit and say whether it showed. A refusal before any
+  // change is the one case a handler puts its cell back for: a refusal from
+  // the server reloads the document, which puts back everything.
+  async _showStructural(fn) {
+    const before = this.doc.dataVersion;
+    const saving = this._run(fn);
+    if (this.doc.dataVersion !== before) return true;
+    return (await saving) !== false;
   }
 
   _render(force = false) {
@@ -512,13 +520,14 @@ export class IgtEditor {
     };
     // If the user already moved focus into another field while the structural op
     // was in flight, don't yank it back to the computed target (review: focus theft).
-    // A DISABLED field is not that: the paste-split disables its source cell
-    // for the flight, and some browsers leave it as activeElement until
-    // something else takes focus.
+    // The cell the edit was made from (`pf.from`) is not that: it still has
+    // focus when the edit shows, and a DISABLED field is not either (some
+    // browsers leave one as activeElement until something else takes focus).
     const active = document.activeElement;
     if (
       active &&
       active !== this.container &&
+      active !== pf.from &&
       this.container.contains(active) &&
       (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') &&
       !active.disabled

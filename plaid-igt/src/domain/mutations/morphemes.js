@@ -15,7 +15,12 @@
 import { cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
-import { isVirtualMorphemeId, virtualMorphemeWordId } from '../virtualMorpheme.js';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import {
+  isVirtualMorphemeId,
+  virtualMorphemeId,
+  virtualMorphemeWordId,
+} from '../virtualMorpheme.js';
 
 // A person's edit of a morpheme carries the writer's edit stamp (provenance
 // write-contract rule 3): a verifier's edit confirms a machine-made or
@@ -38,19 +43,21 @@ const morphemesInWord = (morphemeTokens, word) =>
 // Resolve a morpheme id to what it names, for the "couldn't resolve this id"
 // guard every morpheme mutation opens with. A real id names a token. A virtual
 // one (`derive`'s morpheme for an unanalyzed word) has no token yet, so it
-// names the WORD, which `_materializeMorpheme` turns into a token once the
-// mutation is committed to writing. Null when neither resolves, or when the
-// project has no morpheme layer to write into.
+// names the WORD, whose morpheme the mutation makes along with its edit; one
+// an earlier edit has made already names that token. Null when neither
+// resolves, or when the project has no morpheme layer to write into.
 const resolveMorpheme = (doc, morphemeId) => {
   const info = doc.layerInfo;
   if (!info.morphemeTokenLayer?.id || !info.primaryTextLayer?.text?.id) return null;
-  if (isVirtualMorphemeId(morphemeId)) {
-    const wordId = virtualMorphemeWordId(morphemeId);
-    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordId);
-    return word ? { virtual: true, word } : null;
+  const id = doc._currentMorphemeId(morphemeId);
+  if (id) {
+    const token = (info.morphemeTokenLayer.tokens || []).find((m) => m.id === id);
+    return token ? { virtual: false, token } : null;
   }
-  const token = (info.morphemeTokenLayer.tokens || []).find((m) => m.id === morphemeId);
-  return token ? { virtual: false, token } : null;
+  if (!isVirtualMorphemeId(morphemeId)) return null;
+  const wordId = settledId(virtualMorphemeWordId(morphemeId));
+  const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordId);
+  return word ? { virtual: true, word } : null;
 };
 
 const sortByPrecedence = (ms) => [...ms].sort((a, b) => (a.precedence ?? 0) - (b.precedence ?? 0));
@@ -62,152 +69,31 @@ const formOf = (morpheme, body) => {
 };
 
 export const morphemeMutations = {
-  // Write one morpheme token onto `word` and patch it into local state, WITHOUT
-  // a `_queueWrite` wrapper: the callers below are already inside one, and
-  // `_materializeMorpheme` runs inside theirs. Returns the new token's id.
-  async _writeMorpheme(word, metadata) {
-    const info = this.layerInfo;
-    const morphemeLayer = info.morphemeTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
-    const precedence = morphemesInWord(morphemeLayer.tokens, word).length + 1;
-
-    const result = await this._client.tokens.create(
-      morphemeLayer.id,
-      textId,
-      word.begin,
-      word.end,
-      precedence,
-      metadata,
-    );
-    const newId = result?.id || result;
-
-    this._applyRawPatch((next, infoNext) => {
-      const layer = infoNext.morphemeTokenLayer;
-      if (!layer) return;
-      if (!Array.isArray(layer.tokens)) layer.tokens = [];
-      layer.tokens.push({
-        id: newId,
-        text: textId,
-        begin: word.begin,
-        end: word.end,
-        precedence,
-        metadata: metadata || {},
-      });
-    });
-    return newId;
-  },
-
-  // Turn the morpheme `derive` synthesized for an unanalyzed word (see
-  // virtualMorpheme.js) into a real token, and answer with its id. Anything
-  // `resolveMorpheme` already found a token for passes straight through, so a
-  // mutation can open with this line and stop caring which kind it was given.
-  //
-  // `metadata` is the state the caller was about to write anyway, so the
-  // materializing write and the caller's write are ONE request rather than a
-  // create followed by a patch.
-  async _materializeMorpheme(resolved, metadata) {
-    if (!resolved.virtual) return resolved.token.id;
-    // A virtual morpheme is a word nobody has touched, so whatever brings it
-    // into being is its creation, stamp and all.
-    return this._writeMorpheme(resolved.word, created(this, metadata));
-  },
-
-  // Resolve-and-materialize in one call, for the writers OUTSIDE this mixin
-  // that take a morpheme id: an annotation span, a vocabulary link. A real id
-  // (including a word's, since those writers take either) passes straight
-  // through, so a call site can hand over whatever it has. Null when the id
-  // resolves to nothing, which the caller reports as it reports any bad id.
-  async materializeMorphemeId(morphemeId) {
-    if (!isVirtualMorphemeId(morphemeId)) return morphemeId;
-    const resolved = resolveMorpheme(this, morphemeId);
-    return resolved ? this._materializeMorpheme(resolved, {}) : null;
-  },
-
-  // The same for a list of ids, in ONE bulk create rather than a request each:
-  // "link every ‹roa› in this text" can name a morpheme for every unanalyzed
-  // word reading roa. Answers ids positionally, null where one resolved to
-  // nothing. Must run BEFORE any batch the caller opens, since a create's id is
-  // only readable outside one.
+  // Turn virtual morpheme ids into real tokens on the server, in one bulk
+  // create, and answer the ids positionally (null where one resolved to
+  // nothing). For the bulk analysis copy, which runs entirely inside its send
+  // and reloads at the end; every interactive edit plans its morpheme with
+  // `_planMorphemes` instead, so it shows before the server answers.
   async materializeMorphemeIds(morphemeIds) {
-    // DISTINCT ids: one word's morpheme can be named several times in one call
-    // (a confirm adopting a guess into two fields of the same cell column), and
-    // each must resolve to the same single token, not to one token apiece.
-    const virtual = [...new Set(morphemeIds.filter(isVirtualMorphemeId))];
-    if (!virtual.length) return morphemeIds;
-
-    const info = this.layerInfo;
-    const layerId = info.morphemeTokenLayer?.id;
-    const textId = info.primaryTextLayer?.text?.id;
-    if (!layerId || !textId) return morphemeIds.map((id) => (isVirtualMorphemeId(id) ? null : id));
-
-    const words = new Map((info.primaryTokenLayer?.tokens || []).map((t) => [t.id, t]));
-    // Only a word with no morpheme at all gets one here, which is what makes a
-    // morpheme virtual, so precedence is always 1 and there are no siblings to
-    // renumber.
-    const plans = [];
-    for (const id of virtual) {
-      const word = words.get(virtualMorphemeWordId(id));
-      if (word) plans.push({ id, word });
-    }
-    if (!plans.length) return morphemeIds.map((id) => (isVirtualMorphemeId(id) ? null : id));
-
-    const metadata = created(this, undefined);
-    const result = await this._client.tokens.bulkCreate(
-      plans.map(({ word }) => ({
-        tokenLayerId: layerId,
-        text: textId,
-        begin: word.begin,
-        end: word.end,
-        precedence: 1,
-        ...(metadata ? { metadata } : {}),
-      })),
-    );
-    const newIds = result?.body?.ids ?? result?.ids ?? [];
-
-    const resolvedById = new Map();
+    const { ids, creates } = this._planMorphemes(morphemeIds);
+    if (!creates.length) return ids;
+    const made = new Map();
+    await this._sendMorphemes(creates, made);
     this._applyRawPatch((next, infoNext) => {
-      const layer = infoNext.morphemeTokenLayer;
-      if (!layer) return;
-      if (!Array.isArray(layer.tokens)) layer.tokens = [];
-      plans.forEach(({ id, word }, i) => {
-        const newId = newIds[i];
-        if (!newId) return;
-        resolvedById.set(id, newId);
-        layer.tokens.push({
-          id: newId,
-          text: textId,
-          begin: word.begin,
-          end: word.end,
-          precedence: 1,
-          metadata: metadata || {},
-        });
-      });
+      this._showMorphemes(
+        infoNext,
+        creates.filter((c) => made.get(c.id)).map((c) => ({ ...c, id: made.get(c.id) })),
+      );
     });
-
-    return morphemeIds.map((id) => (isVirtualMorphemeId(id) ? (resolvedById.get(id) ?? null) : id));
+    return ids.map((id) => (made.has(id) ? made.get(id) : id));
   },
 
   // Append a new morpheme to a word; precedence = (existing count) + 1.
   async createMorpheme(wordTokenId, form) {
-    const info = this.layerInfo;
-    const morphemeLayer = info.morphemeTokenLayer;
-    const textId = info.primaryTextLayer?.text?.id;
-    if (!morphemeLayer?.id || !textId) {
-      this.setError('Morpheme layer not configured');
-      return false;
-    }
-    const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
-    if (!word) {
-      this.setError(`Word ${wordTokenId} not found`);
-      return false;
-    }
-
-    return this._queueWrite('Failed to create morpheme', async () => {
-      await this._writeMorpheme(word, created(this, form ? { form } : undefined));
-    });
+    return this.createMorphemes(wordTokenId, [form]);
   },
 
-  // Batched append of N morphemes to a word. Used by the MWT-split flow
+  // Append N morphemes to a word, in one batch. Used by the MWT-split flow
   // where a single form is split into several at once. Precedences are
   // assigned starting from (existing count) + 1 in order.
   async createMorphemes(wordTokenId, forms) {
@@ -224,42 +110,33 @@ export const morphemeMutations = {
       this.setError(`Word ${wordTokenId} not found`);
       return false;
     }
-
-    return this._queueWrite('Failed to create morphemes', async () => {
-      const existing = morphemesInWord(morphemeLayer.tokens, word);
-      const basePrecedence = existing.length + 1;
-
+    const label = forms.length === 1 ? 'Failed to create morpheme' : 'Failed to create morphemes';
+    if (!this._canWrite(label)) return false;
+    const base = morphemesInWord(morphemeLayer.tokens, word).length + 1;
+    const rows = forms.map((form, i) => ({
+      id: pendingId(),
+      begin: word.begin,
+      end: word.end,
+      precedence: base + i,
+      metadata: created(this, form ? { form } : undefined) || {},
+    }));
+    this._applyRawPatch((next, infoNext) => this._showMorphemes(infoNext, rows));
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
       const results = await this._client.batched(async (b) => {
-        forms.forEach((form, i) => {
+        rows.forEach((r) =>
           b.tokens.create(
             morphemeLayer.id,
             textId,
-            word.begin,
-            word.end,
-            basePrecedence + i,
-            created(this, form ? { form } : undefined),
-          );
-        });
+            r.begin,
+            r.end,
+            r.precedence,
+            Object.keys(r.metadata).length ? r.metadata : undefined,
+          ),
+        );
       });
-      const newIds = forms.map((_, i) => results[i]?.body?.id);
-
-      this._applyRawPatch((next, infoNext) => {
-        const layer = infoNext.morphemeTokenLayer;
-        if (!layer) return;
-        if (!Array.isArray(layer.tokens)) layer.tokens = [];
-        forms.forEach((form, i) => {
-          const id = newIds[i];
-          if (!id) return;
-          layer.tokens.push({
-            id,
-            text: textId,
-            begin: word.begin,
-            end: word.end,
-            precedence: basePrecedence + i,
-            metadata: created(this, form ? { form } : undefined) || {},
-          });
-        });
-      });
+      rows.forEach((r, i) => ids.set(r.id, results[i]?.body?.id));
+      this._settle(ids);
     });
   },
 
@@ -272,16 +149,16 @@ export const morphemeMutations = {
   },
 
   // N-way generalization (paste-splitting): replace one morpheme with
-  // `segments` — the existing morpheme keeps segments[0] as its form (and its
+  // `segments`: the existing morpheme keeps segments[0] as its form (and its
   // annotations/links), segments[1..] are inserted after it; subsequent
-  // morphemes shift by segments.length - 1.
+  // morphemes shift by segments.length - 1. The new cells show at once.
   //
-  // Batch order: setMetadata, then shift subsequents in descending precedence
-  // to free the target slots, then create at the freed slots. The creates
-  // MUST run AFTER the shifts — if a new (begin, end, precedence) triple
-  // collides with an existing morpheme's it's a server-side 409.
+  // Batch order: the target's metadata, then shift subsequents in descending
+  // precedence to free the target slots, then create at the freed slots. The
+  // creates MUST run AFTER the shifts: if a new (begin, end, precedence)
+  // triple collides with an existing morpheme's it's a server-side 409.
   // `joiners` (optional, one per boundary, '-' | '=') types the clitic side of
-  // each '=' boundary via cliticTypesForChain — positional rule, never
+  // each '=' boundary via cliticTypesForChain: positional rule, never
   // overwriting a type the target morpheme already has.
   async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
@@ -300,84 +177,66 @@ export const morphemeMutations = {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
     }
+    const label = 'Failed to split morpheme';
+    if (!this._canWrite(label)) return false;
 
-    return this._queueWrite('Failed to split morpheme', async () => {
-      // Splitting a word nobody has analyzed writes the morpheme being split
-      // before splitting it. Rare in practice (typing the first character of a
-      // form materializes it, and a boundary comes after that), so this pays
-      // for the paste-a-segmentation-into-a-fresh-word path rather than the
-      // keystroke one.
-      // Awaited ONLY when there is something to write: an `await` on the
-      // common path costs a microtask, and the editor's focus restore runs off
-      // this turn, and a split that yielded before rendering left the caret on the
-      // morpheme it had just split away from.
-      const targetId = resolved.virtual
-        ? await this._materializeMorpheme(resolved, {})
-        : resolved.token.id;
-      const target = (this.layerInfo.morphemeTokenLayer?.tokens || []).find(
-        (m) => m.id === targetId,
-      );
-      if (!target) throw new Error(`Morpheme ${morphemeId} not found`);
-      const firstForm = segments[0];
-      const restForms = segments.slice(1);
-      // Read the token list back off `layerInfo` rather than the `morphemeLayer`
-      // captured above: materializing pushed a token into local state, and the
-      // captured layer predates it.
-      const morphemeTokens = this.layerInfo.morphemeTokenLayer?.tokens || [];
-      const siblings = sortByPrecedence(morphemesInWord(morphemeTokens, target));
-      const currentPrecedence =
-        target.precedence ?? siblings.findIndex((m) => m.id === targetId) + 1;
-      const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
-      const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
-      const types = cliticTypesForChain({
-        joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
-        startIdx: currentPrecedence - 1,
-        count: siblings.length + restForms.length,
-        types: [target.metadata?.morphType ?? null, ...restForms.map(() => null)],
-      });
-      const firstPatch = { form: firstForm };
-      if (types[0] != null && target.metadata?.morphType == null) firstPatch.morphType = types[0];
-      // Every piece gets an explicit form, an empty one included. A morpheme
-      // with no `form` key renders the word's text (that is how a word's single
-      // default morpheme shows the word), so a right-edge split ("ngo-" with
-      // nothing after the caret yet) used to show the whole word in the new
-      // cell, with the caret at its start.
-      const restMeta = (form, i) =>
-        created(this, {
-          form: form ?? '',
-          ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
-        });
-
-      const results = await this._client.batched(async (b) => {
-        // patch, not set: form edits must not clobber other metadata keys
-        // (morphType from the FLEx import, in particular)
-        b.tokens.patchMetadata(targetId, metadataOps(stamped(this, target, firstPatch)));
-        shifted.forEach((m) => {
-          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) + restForms.length);
-        });
-        restForms.forEach((form, i) => {
-          b.tokens.create(
-            morphemeLayer.id,
-            textId,
-            target.begin,
-            target.end,
-            currentPrecedence + 1 + i,
-            restMeta(form, i),
-          );
-        });
-      });
-      // setMetadata is 0; shifts are 1..S (S = shifted.length); creates follow.
-      const newIds = restForms.map((_, i) => results[shifted.length + 1 + i]?.body?.id);
-
-      this._applyRawPatch((next, infoNext) => {
-        const layer = infoNext.morphemeTokenLayer;
-        if (!layer) return;
-        const tokens = layer.tokens || [];
-        const t = tokens.find((m) => m.id === targetId);
-        if (t) {
-          t.metadata = mergeMetadata(t.metadata, stamped(this, target, firstPatch));
+    // Splitting a word nobody has analyzed makes the morpheme being split,
+    // carrying its first piece, in the same send.
+    const target = resolved.virtual
+      ? {
+          id: pendingId(),
+          begin: resolved.word.begin,
+          end: resolved.word.end,
+          precedence: 1,
+          metadata: {},
         }
-        tokens.forEach((m) => {
+      : resolved.token;
+    const firstForm = segments[0];
+    const restForms = segments.slice(1);
+    const siblings = resolved.virtual
+      ? [target]
+      : sortByPrecedence(morphemesInWord(morphemeLayer.tokens, target));
+    const currentPrecedence =
+      target.precedence ?? siblings.findIndex((m) => m.id === target.id) + 1;
+    const subsequents = siblings.filter((m) => (m.precedence ?? 0) > currentPrecedence);
+    const shifted = [...subsequents].sort((a, b) => (b.precedence ?? 0) - (a.precedence ?? 0));
+    const types = cliticTypesForChain({
+      joiners: segments.slice(1).map((_, i) => joiners[i] ?? '-'),
+      startIdx: currentPrecedence - 1,
+      count: siblings.length + restForms.length,
+      types: [target.metadata?.morphType ?? null, ...restForms.map(() => null)],
+    });
+    const firstPatch = { form: firstForm };
+    if (types[0] != null && target.metadata?.morphType == null) firstPatch.morphType = types[0];
+    const firstMeta = resolved.virtual
+      ? created(this, firstPatch)
+      : stamped(this, target, firstPatch);
+    // Every piece gets an explicit form, an empty one included. A morpheme
+    // with no `form` key renders the word's text (that is how a word's single
+    // default morpheme shows the word), so a right-edge split ("ngo-" with
+    // nothing after the caret yet) used to show the whole word in the new
+    // cell, with the caret at its start.
+    const rest = restForms.map((form, i) => ({
+      id: pendingId(),
+      begin: target.begin,
+      end: target.end,
+      precedence: currentPrecedence + 1 + i,
+      metadata: created(this, {
+        form: form ?? '',
+        ...(types[i + 1] != null ? { morphType: types[i + 1] } : {}),
+      }),
+    }));
+
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.morphemeTokenLayer;
+      if (!layer) return;
+      if (!Array.isArray(layer.tokens)) layer.tokens = [];
+      if (resolved.virtual) {
+        layer.tokens.push({ ...target, text: textId, metadata: firstMeta });
+      } else {
+        const t = layer.tokens.find((m) => m.id === target.id);
+        if (t) t.metadata = mergeMetadata(t.metadata, firstMeta);
+        layer.tokens.forEach((m) => {
           if (
             m.begin === target.begin &&
             m.end === target.end &&
@@ -386,20 +245,37 @@ export const morphemeMutations = {
             m.precedence = (m.precedence ?? 0) + restForms.length;
           }
         });
-        if (!Array.isArray(layer.tokens)) layer.tokens = [];
-        restForms.forEach((form, i) => {
-          const id = newIds[i];
-          if (!id) return;
-          layer.tokens.push({
-            id,
-            text: textId,
-            begin: target.begin,
-            end: target.end,
-            precedence: currentPrecedence + 1 + i,
-            metadata: restMeta(form, i),
-          });
+      }
+      rest.forEach((r) => layer.tokens.push({ ...r, text: textId }));
+    });
+
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      if (resolved.virtual) {
+        await this._sendMorphemes([{ ...target, metadata: firstMeta }], ids);
+      }
+      const results = await this._client.batched(async (b) => {
+        // patch, not set: form edits must not clobber other metadata keys
+        // (morphType from the FLEx import, in particular)
+        if (!resolved.virtual) {
+          b.tokens.patchMetadata(settledId(target.id), metadataOps(firstMeta));
+        }
+        shifted.forEach((m) => {
+          b.tokens.update(
+            settledId(m.id),
+            undefined,
+            undefined,
+            (m.precedence ?? 0) + restForms.length,
+          );
+        });
+        rest.forEach((r) => {
+          b.tokens.create(morphemeLayer.id, textId, r.begin, r.end, r.precedence, r.metadata);
         });
       });
+      // The target's patch (a real one only), the shifts, then the creates.
+      const offset = (resolved.virtual ? 0 : 1) + shifted.length;
+      rest.forEach((r, i) => ids.set(r.id, results[offset + i]?.body?.id));
+      this._settle(ids);
     });
   },
 
@@ -421,54 +297,50 @@ export const morphemeMutations = {
     const idx = siblings.findIndex((m) => m.id === morphemeId);
     if (idx <= 0) return false;
     const previous = siblings[idx - 1];
+    const label = 'Failed to merge morphemes';
+    if (!this._canWrite(label)) return false;
 
-    return this._queueWrite('Failed to merge morphemes', async () => {
-      const body = this.body;
-      const previousForm = formOf(previous, body);
-      const currentForm = formOf(target, body);
-      // A zero morph contributes no surface material, so merging across one
-      // drops it rather than gluing the character on: Backspace at the start of
-      // a cell after `dog` + `∅` gives `dog`, not `dog∅`. Merging two zeros
-      // leaves one.
-      const mergedForm = isZeroMorph(previousForm)
-        ? currentForm
-        : isZeroMorph(currentForm)
-          ? previousForm
-          : previousForm + currentForm;
-      const subsequents = siblings.slice(idx + 1);
+    const body = this.body;
+    const previousForm = formOf(previous, body);
+    const currentForm = formOf(target, body);
+    // A zero morph contributes no surface material, so merging across one
+    // drops it rather than gluing the character on: Backspace at the start of
+    // a cell after `dog` + `∅` gives `dog`, not `dog∅`. Merging two zeros
+    // leaves one.
+    const mergedForm = isZeroMorph(previousForm)
+      ? currentForm
+      : isZeroMorph(currentForm)
+        ? previousForm
+        : previousForm + currentForm;
+    const subsequents = siblings.slice(idx + 1);
+    const patch = stamped(this, previous, { form: mergedForm });
 
-      await this._client.batched(async (b) => {
-        b.tokens.patchMetadata(
-          previous.id,
-          metadataOps(stamped(this, previous, { form: mergedForm })),
-        );
-        b.tokens.delete(morphemeId);
-        subsequents.forEach((m) => {
-          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
-        });
-      });
-
-      this._applyRawPatch((next, infoNext) => {
-        const layer = infoNext.morphemeTokenLayer;
-        if (!layer || !Array.isArray(layer.tokens)) return;
-        const prev = layer.tokens.find((m) => m.id === previous.id);
-        if (prev)
-          prev.metadata = mergeMetadata(
-            prev.metadata,
-            stamped(this, previous, { form: mergedForm }),
-          );
-        layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
-        layer.tokens.forEach((m) => {
-          if (
-            m.begin === target.begin &&
-            m.end === target.end &&
-            (m.precedence ?? 0) > (target.precedence ?? 0)
-          ) {
-            m.precedence = (m.precedence ?? 0) - 1;
-          }
-        });
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.morphemeTokenLayer;
+      if (!layer || !Array.isArray(layer.tokens)) return;
+      const prev = layer.tokens.find((m) => m.id === previous.id);
+      if (prev) prev.metadata = mergeMetadata(prev.metadata, patch);
+      layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+      layer.tokens.forEach((m) => {
+        if (
+          m.begin === target.begin &&
+          m.end === target.end &&
+          (m.precedence ?? 0) > (target.precedence ?? 0)
+        ) {
+          m.precedence = (m.precedence ?? 0) - 1;
+        }
       });
     });
+
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        b.tokens.patchMetadata(settledId(previous.id), metadataOps(patch));
+        b.tokens.delete(settledId(morphemeId));
+        subsequents.forEach((m) => {
+          b.tokens.update(settledId(m.id), undefined, undefined, (m.precedence ?? 0) - 1);
+        });
+      }),
+    );
   },
 
   // Delete a single morpheme. Refuses to delete the last morpheme of a word
@@ -494,35 +366,42 @@ export const morphemeMutations = {
       this.setError('Cannot delete the last morpheme of a word');
       return false;
     }
+    const label = 'Failed to delete morpheme';
+    if (!this._canWrite(label)) return false;
+    const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
 
-    return this._queueWrite('Failed to delete morpheme', async () => {
-      const subsequents = siblings.filter((m) => (m.precedence ?? 0) > (target.precedence ?? 0));
-
-      await this._client.batched(async (b) => {
-        b.tokens.delete(morphemeId);
-        subsequents.forEach((m) => {
-          b.tokens.update(m.id, undefined, undefined, (m.precedence ?? 0) - 1);
-        });
+    this._applyRawPatch((next, infoNext) => {
+      const layer = infoNext.morphemeTokenLayer;
+      if (!layer || !Array.isArray(layer.tokens)) return;
+      layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
+      layer.tokens.forEach((m) => {
+        if (
+          m.begin === target.begin &&
+          m.end === target.end &&
+          (m.precedence ?? 0) > (target.precedence ?? 0)
+        ) {
+          m.precedence = (m.precedence ?? 0) - 1;
+        }
       });
-
-      this._applyRawPatch((next, infoNext) => {
-        const layer = infoNext.morphemeTokenLayer;
-        if (!layer || !Array.isArray(layer.tokens)) return;
-        layer.tokens = layer.tokens.filter((m) => m.id !== morphemeId);
-        layer.tokens.forEach((m) => {
-          if (
-            m.begin === target.begin &&
-            m.end === target.end &&
-            (m.precedence ?? 0) > (target.precedence ?? 0)
-          ) {
-            m.precedence = (m.precedence ?? 0) - 1;
-          }
-        });
+      // The server's cascade takes what hangs off the token.
+      Object.values(infoNext.spanLayers?.morpheme || []).forEach((sl) => {
+        if (Array.isArray(sl.spans)) {
+          sl.spans = sl.spans.filter((s) => !(s.tokens || []).includes(morphemeId));
+        }
       });
     });
+
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        b.tokens.delete(settledId(morphemeId));
+        subsequents.forEach((m) => {
+          b.tokens.update(settledId(m.id), undefined, undefined, (m.precedence ?? 0) - 1);
+        });
+      }),
+    );
   },
 
-  // Update a morpheme's form (single metadata patch — other keys survive).
+  // Update a morpheme's form (single metadata patch; other keys survive).
   // Typing into an unanalyzed word's cell arrives here, and the morpheme it
   // names is created carrying the typed form: one write, not a create and a
   // patch.
@@ -532,24 +411,13 @@ export const morphemeMutations = {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
     }
-
-    return this._queueWrite('Failed to update morpheme form', async () => {
-      if (resolved.virtual) {
-        await this._materializeMorpheme(resolved, { form });
-        return;
-      }
-      const target = resolved.token;
-      const patch = stamped(this, target, { form });
-      await this._client.tokens.patchMetadata(target.id, metadataOps(patch));
-
-      this._applyRawPatch((next, infoNext) => {
-        const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);
-        if (m) m.metadata = mergeMetadata(m.metadata, patch);
-      });
-    });
+    return this._writeMorphemeMeta(resolved, 'Failed to update morpheme form', (target) => ({
+      patch: stamped(this, target, { form }),
+      created: { form },
+    }));
   },
 
-  // Set or clear (null) a morpheme's type — metadata.morphType, constrained
+  // Set or clear (null) a morpheme's type: metadata.morphType, constrained
   // to FLEx's exact inventory (FLEX_MORPH_TYPES). Pure metadata: geometry,
   // precedence, and the stored form are untouched, so no token invariant can
   // be violated; display-side affix joints react automatically.
@@ -563,31 +431,42 @@ export const morphemeMutations = {
       this.setError(`Morpheme ${morphemeId} not found`);
       return false;
     }
+    // Clearing the type of a morpheme that has none asks for nothing, so it
+    // stays virtual rather than being written into existence empty.
+    if (resolved.virtual && morphType == null) return true;
+    return this._writeMorphemeMeta(resolved, 'Failed to set morpheme type', (target) => ({
+      // A cleared type is a delete op.
+      patch: { morphType: morphType ?? null, ...(this.editStamp(target?.metadata) || {}) },
+      created: { morphType },
+    }));
+  },
 
-    return this._queueWrite('Failed to set morpheme type', async () => {
-      if (resolved.virtual) {
-        // Clearing the type of a morpheme that has none asks for nothing, so
-        // it stays virtual rather than being written into existence empty.
-        if (morphType == null) return;
-        await this._materializeMorpheme(resolved, { morphType });
-        return;
-      }
-      const target = resolved.token;
-      // A cleared type is a delete op
-      const confirm = this.editStamp(target.metadata) || {};
-      await this._client.tokens.patchMetadata(
-        target.id,
-        metadataOps({ morphType: morphType ?? null, ...confirm }),
+  // One metadata change to one morpheme, shown at once: a patch of a real
+  // token, or the creation of an unanalyzed word's morpheme carrying it.
+  // `change(target)` answers `{ patch, created }`, the patch for a real token
+  // (a null value deletes its key) and the metadata a new one is made with.
+  _writeMorphemeMeta(resolved, label, change) {
+    if (!this._canWrite(label)) return false;
+    if (resolved.virtual) {
+      const { creates } = this._planMorphemes(
+        [virtualMorphemeId(resolved.word.id)],
+        () => change(null).created,
       );
-
-      this._applyRawPatch((next, infoNext) => {
-        const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);
-        if (!m) return;
-        const meta = mergeMetadata(m.metadata, confirm);
-        if (morphType == null) delete meta.morphType;
-        else meta.morphType = morphType;
-        m.metadata = meta;
+      this._applyRawPatch((next, infoNext) => this._showMorphemes(infoNext, creates));
+      return this._queueWrite(label, async () => {
+        const ids = new Map();
+        await this._sendMorphemes(creates, ids);
+        this._settle(ids);
       });
+    }
+    const target = resolved.token;
+    const { patch } = change(target);
+    this._applyRawPatch((next, infoNext) => {
+      const m = (infoNext.morphemeTokenLayer?.tokens || []).find((x) => x.id === target.id);
+      if (m) m.metadata = mergeMetadata(m.metadata, patch);
     });
+    return this._queueWrite(label, () =>
+      this._client.tokens.patchMetadata(settledId(target.id), metadataOps(patch)),
+    );
   },
 };

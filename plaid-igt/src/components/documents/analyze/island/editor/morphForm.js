@@ -100,9 +100,19 @@ export const morphForm = {
       // (Auto-analyze does) makes lit write disabled once, and a hand-written
       // false after that is the last word — leaving one editable cell in a
       // read-only grid, whose commits the guards then drop in silence.
+      // A structural edit shows before its call returns, and the render that
+      // shows it clears the commit suppression below, so the cell's baseline is
+      // set to what it shows first: the blur that follows then writes nothing
+      // (and a cell lit reuses for a neighbour takes the neighbour's text).
+      const stamped = el.dataset.orig;
+      const settleBaseline = () => {
+        el.dataset.orig = el.value;
+      };
       const restore = (origValue) => {
         el.disabled = this.readOnly;
         if (origValue != null) el.value = origValue;
+        if (stamped == null) delete el.dataset.orig;
+        else el.dataset.orig = stamped;
         delete el.dataset.suppressCommit;
         this._pendingFocus = null;
         el.focus();
@@ -147,12 +157,9 @@ export const morphForm = {
         const orig = el.value;
         el.value = left;
         el.dataset.suppressCommit = '1';
-        // Do NOT disable the input: a disabled input stops firing key events and
-        // drops keystrokes typed before the new cell renders. Keep it live and
-        // buffer those keys (top-of-handler guard) to replay into the new cell.
-        // We DON'T use _pendingFocus here: the source input stays focused during
-        // flight, which _restorePendingFocus treats as "user moved focus" and
-        // bails on — so _applyMorphSplitReplay locates + focuses the new cell.
+        // The split shows as the call returns, so the new cell is there to
+        // move into. Keys typed before it (a split refused by a check that
+        // yields first) are buffered by the top-of-handler guard and replayed.
         this._morphSplit = {
           buffer: '',
           escapedAt: -1,
@@ -161,20 +168,16 @@ export const morphForm = {
           wordId: word.id,
           precedence: (morph.precedence ?? 1) + 1,
         };
-        const ok = await this._run(() => this.doc.splitMorpheme(morph.id, left, right, joiner));
+        settleBaseline();
+        const shown = await this._showStructural(() =>
+          this.doc.splitMorpheme(morph.id, left, right, joiner),
+        );
         const split = this._morphSplit;
         this._morphSplit = null;
-        if (!ok) {
+        if (!shown) {
           restore(orig);
           return;
         }
-        // The left-hand form is stored now, so it is what this cell was
-        // "focused with": the render that just ran cleared the commit
-        // suppression (it clears every stale flag), and without this the blur
-        // that follows wrote the left-hand form a second time.
-        el.dataset.orig = el.value;
-        // Render has run synchronously by now, so the new cell exists; focus it
-        // and flush the buffered keystrokes into it.
         this._applyMorphSplitReplay(split);
         return;
       }
@@ -189,15 +192,16 @@ export const morphForm = {
         if (el.value.trim() === '' && idx > 0) {
           e.preventDefault();
           el.dataset.suppressCommit = '1';
-          el.disabled = true;
           this._pendingFocus = {
+            from: el,
             wordId: word.id,
             precedence: (morph.precedence ?? 1) - 1,
             cursor: 'end',
           };
-          const ok = await this._run(() => this.doc.deleteMorpheme(morph.id));
-          el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
-          if (!ok) restore(null);
+          settleBaseline();
+          if (!(await this._showStructural(() => this.doc.deleteMorpheme(morph.id)))) {
+            restore(null);
+          }
           return;
         }
         // Merge into the previous morpheme when cursor is at the very start.
@@ -206,15 +210,16 @@ export const morphForm = {
           const prev = siblings[idx - 1];
           const prevLen = morphFormOf(prev).length;
           el.dataset.suppressCommit = '1';
-          el.disabled = true;
           this._pendingFocus = {
+            from: el,
             wordId: word.id,
             precedence: prev.precedence ?? idx,
             cursor: prevLen,
           };
-          const ok = await this._run(() => this.doc.mergeMorphemes(morph.id));
-          el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
-          if (!ok) restore(null);
+          settleBaseline();
+          if (!(await this._showStructural(() => this.doc.mergeMorphemes(morph.id)))) {
+            restore(null);
+          }
           return;
         }
       }
@@ -288,6 +293,8 @@ export const morphForm = {
       // suppression flag; `orig` is realigned below once the split is stored).
       el.value = segments[0];
       el.dataset.suppressCommit = '1';
+      const stampedBefore = el.dataset.orig;
+      el.dataset.orig = el.value;
       this._morphSplit = {
         buffer: '',
         escapedAt: -1,
@@ -298,16 +305,19 @@ export const morphForm = {
         wordId: split.wordId,
         precedence: split.precedence + segments.length - 1,
       };
-      const ok = await this._run(() => this.doc.splitMorphemeMulti(morphId, segments, { joiners }));
+      const shown = await this._showStructural(() =>
+        this.doc.splitMorphemeMulti(morphId, segments, { joiners }),
+      );
       const chained = this._morphSplit;
       this._morphSplit = null;
-      if (!ok) {
+      if (!shown) {
         el.value = text;
+        if (stampedBefore == null) delete el.dataset.orig;
+        else el.dataset.orig = stampedBefore;
         delete el.dataset.suppressCommit;
         el.focus();
         return;
       }
-      el.dataset.orig = el.value;
       await this._applyMorphSplitReplay(chained);
       return;
     }
@@ -342,28 +352,29 @@ export const morphForm = {
         return;
       }
       const orig = el.value;
+      const stamped = el.dataset.orig;
       el.value = segments[0];
       el.dataset.suppressCommit = '1';
-      el.disabled = true;
+      // The render that shows the split clears the suppression, so the
+      // baseline is what the cell shows: a blur of it then writes nothing.
+      el.dataset.orig = el.value;
       this._pendingFocus = {
+        from: el,
         wordId: word.id,
         precedence: (morph.precedence ?? 1) + segments.length - 1,
         cursor: 'end',
       };
-      const ok = await this._run(() =>
+      const shown = await this._showStructural(() =>
         this.doc.splitMorphemeMulti(morph.id, segments, { joiners }),
       );
-      el.disabled = this.readOnly; // what lit last wrote, not false (see restore)
-      if (!ok) {
+      if (!shown) {
         el.value = orig;
+        if (stamped == null) delete el.dataset.orig;
+        else el.dataset.orig = stamped;
         delete el.dataset.suppressCommit;
         this._pendingFocus = null;
         el.focus();
-        return;
       }
-      // The first segment is stored; realign the baseline so a late blur of
-      // this cell (the render cleared its suppression flag) writes nothing.
-      el.dataset.orig = el.value;
     };
   },
 

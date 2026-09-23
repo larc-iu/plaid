@@ -17,7 +17,14 @@
 // outside any focused-cell interaction, so a full resync is the simple,
 // correct move (same as the service-backed auto-link path).
 
-import { stampInferred, mergeMetadata, metadataOps, PROV } from '@larc-iu/plaid-client';
+import {
+  applyMetadataOps,
+  stampInferred,
+  mergeMetadata,
+  metadataOps,
+  PROV,
+} from '@larc-iu/plaid-client';
+import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
@@ -497,21 +504,54 @@ export const analysisCopyMutations = {
       );
 
     if (!linkIds.length && !spanIds.length && !morphIds.length && !resetFirst) return true;
+    const label = 'Failed to discard word analysis';
+    if (!this._canWrite(label)) return false;
 
-    return this._queueWrite('Failed to discard word analysis', async () => {
-      await this._client.batched(async (b) => {
-        linkIds.forEach((id) => b.vocabLinks.delete(id));
-        spanIds.forEach((id) => b.spans.delete(id));
-        morphIds.forEach((id) => b.tokens.delete(id));
-        if (resetFirst) {
-          b.tokens.patchMetadata(resetFirst, RESET_MORPHEME_OPS);
-        }
-        renumber.forEach(({ id, precedence }) =>
-          b.tokens.update(id, undefined, undefined, precedence),
+    // The whole discard shows at once, the server's cascade included: a
+    // deleted morpheme takes its spans and links with it.
+    const goneTokens = new Set(morphIds);
+    const goneSpans = new Set(spanIds);
+    const goneLinks = new Set(linkIds);
+    const precedenceOf = new Map(renumber.map((r) => [r.id, r.precedence]));
+    this._applyRawPatch((next, info, vocabs) => {
+      const layer = info.morphemeTokenLayer;
+      if (layer && Array.isArray(layer.tokens)) {
+        layer.tokens = layer.tokens.filter((m) => !goneTokens.has(m.id));
+        layer.tokens.forEach((m) => {
+          if (m.id === resetFirst)
+            m.metadata = applyMetadataOps(m.metadata || {}, RESET_MORPHEME_OPS);
+          if (precedenceOf.has(m.id)) m.precedence = precedenceOf.get(m.id);
+        });
+      }
+      for (const scope of ['word', 'morpheme']) {
+        (info.spanLayers?.[scope] || []).forEach((sl) => {
+          if (!Array.isArray(sl.spans)) return;
+          sl.spans = sl.spans.filter(
+            (s) => !goneSpans.has(s.id) && !(s.tokens || []).some((t) => goneTokens.has(t)),
+          );
+        });
+      }
+      Object.values(vocabs || {}).forEach((vocab) => {
+        if (!Array.isArray(vocab.vocabLinks)) return;
+        vocab.vocabLinks = vocab.vocabLinks.filter(
+          (l) => !goneLinks.has(l.id) && !(l.tokens || []).some((t) => goneTokens.has(t)),
         );
       });
-      await this._reload();
     });
+
+    return this._queueWrite(label, () =>
+      this._client.batched(async (b) => {
+        linkIds.forEach((id) => b.vocabLinks.delete(settledId(id)));
+        spanIds.forEach((id) => b.spans.delete(settledId(id)));
+        morphIds.forEach((id) => b.tokens.delete(settledId(id)));
+        if (resetFirst) {
+          b.tokens.patchMetadata(settledId(resetFirst), RESET_MORPHEME_OPS);
+        }
+        renumber.forEach(({ id, precedence }) =>
+          b.tokens.update(settledId(id), undefined, undefined, precedence),
+        );
+      }),
+    );
   },
 
   // Accept everything proposed on one word at once — the deliberate "this whole
@@ -591,62 +631,73 @@ export const analysisCopyMutations = {
       const scope = target === token ? 'word' : 'morpheme';
       const layer = (this.layerInfo.spanLayers?.[scope] || []).find((sl) => sl.name === field);
       if (!layer) continue;
-      writes.push({ layerId: layer.id, targetId, value, metadata });
+      writes.push({ layerId: layer.id, scope, targetId, value, metadata });
     }
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
+    const label = 'Failed to confirm word analysis';
+    if (!this._canWrite(label)) return false;
 
-    return this._queueWrite('Failed to confirm word analysis', async () => {
-      // An adoption can target the morpheme derive synthesized for a word
-      // nobody has segmented, which is the ordinary case for a guessed gloss.
-      // Write those morphemes before the batch that points spans at them: a
-      // create inside a batch does not hand its id back. A word-scope target
-      // passes through untouched.
-      const adoptIds = await this.materializeMorphemeIds(writes.map((w) => w.targetId));
-      const live = writes
-        .map((w, i) => ({ ...w, targetId: adoptIds[i] }))
-        .filter((w) => w.targetId);
+    // An adoption can target the morpheme derive synthesized for a word
+    // nobody has segmented, which is the ordinary case for a guessed gloss:
+    // that morpheme is made too. Each adopted guess is a new span, and all of
+    // it shows at once.
+    const { ids: targets, creates } = this._planMorphemes(writes.map((w) => w.targetId));
+    const live = writes
+      .map((w, i) => ({ ...w, targetId: targets[i], id: pendingId() }))
+      .filter((w) => w.targetId);
 
-      await this._client.batched(async (b) => {
-        tokenIds.forEach((id) => b.tokens.patchMetadata(id, confirmOps));
-        linkIds.forEach((id) => b.vocabLinks.patchMetadata(id, confirmOps));
-        spanIds.forEach((id) => b.spans.patchMetadata(id, confirmOps));
-        live.forEach((w) =>
-          b.spans.create(w.layerId, [w.targetId], w.value, w.metadata || undefined),
-        );
-      });
-
-      // Adopted guesses are new spans whose ids only the server knows, so the
-      // optimistic patch below (which can only touch rows already in hand)
-      // can't represent them: resync instead. Pure confirmation, the common
-      // case in a sweep, keeps the patch and stays reload-free.
-      if (writes.length) {
-        await this._reload();
-        return;
+    const spanSet = new Set(spanIds);
+    const tokenSet = new Set(tokenIds);
+    const linkSet = new Set(linkIds);
+    this._applyRawPatch((next, infoNext, vocabs) => {
+      this._showMorphemes(infoNext, creates);
+      for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
+        (layer?.tokens || []).forEach((t) => {
+          if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
+        });
       }
-
-      const spanSet = new Set(spanIds);
-      const tokenSet = new Set(tokenIds);
-      const linkSet = new Set(linkIds);
-      this._applyRawPatch((next, infoNext, vocabs) => {
-        for (const layer of [infoNext.primaryTokenLayer, infoNext.morphemeTokenLayer]) {
-          (layer?.tokens || []).forEach((t) => {
-            if (tokenSet.has(t.id)) t.metadata = mergeMetadata(t.metadata, confirm);
+      for (const scope of ['word', 'morpheme']) {
+        (infoNext.spanLayers?.[scope] || []).forEach((sl) => {
+          (sl.spans || []).forEach((s) => {
+            if (spanSet.has(s.id)) s.metadata = mergeMetadata(s.metadata, confirm);
           });
-        }
-        for (const scope of ['word', 'morpheme']) {
-          (infoNext.spanLayers?.[scope] || []).forEach((sl) => {
-            (sl.spans || []).forEach((s) => {
-              if (spanSet.has(s.id)) s.metadata = mergeMetadata(s.metadata, confirm);
+          live
+            .filter((w) => w.layerId === sl.id)
+            .forEach((w) => {
+              if (!Array.isArray(sl.spans)) sl.spans = [];
+              sl.spans.push({
+                id: w.id,
+                tokens: [w.targetId],
+                value: w.value,
+                ...(w.metadata ? { metadata: w.metadata } : {}),
+              });
             });
-          });
-        }
-        Object.values(vocabs || {}).forEach((vocab) => {
-          (vocab.vocabLinks || []).forEach((l) => {
-            if (linkSet.has(l.id)) l.metadata = mergeMetadata(l.metadata, confirm);
-          });
+        });
+      }
+      Object.values(vocabs || {}).forEach((vocab) => {
+        (vocab.vocabLinks || []).forEach((l) => {
+          if (linkSet.has(l.id)) l.metadata = mergeMetadata(l.metadata, confirm);
         });
       });
+    });
+
+    return this._queueWrite(label, async () => {
+      const ids = new Map();
+      const serverId = (id) => ids.get(id) || settledId(id);
+      await this._sendMorphemes(creates, ids);
+      const results = await this._client.batched(async (b) => {
+        tokenIds.forEach((id) => b.tokens.patchMetadata(settledId(id), confirmOps));
+        linkIds.forEach((id) => b.vocabLinks.patchMetadata(settledId(id), confirmOps));
+        spanIds.forEach((id) => b.spans.patchMetadata(settledId(id), confirmOps));
+        live.forEach((w) =>
+          b.spans.create(w.layerId, [serverId(w.targetId)], w.value, w.metadata || undefined),
+        );
+      });
+      // The creates are the batch's last ops, in the order they were queued.
+      const offset = results.length - live.length;
+      live.forEach((w, i) => ids.set(w.id, results[offset + i]?.body?.id));
+      this._settle(ids);
     });
   },
 };

@@ -392,7 +392,7 @@ describe('Ctrl+Enter on a word nobody has segmented', () => {
     for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
 
     // The virtual morpheme became a token, and the guess became a span on it.
-    const made = client.calls.find((c2) => c2.kind === 'tokens.bulkCreate');
+    const made = client.calls.find((c2) => c2.kind === 'tokens.create');
     expect(made).toBeTruthy();
     const span = client.calls.find((c2) => c2.kind === 'spans.create');
     expect(span.args[0]).toBe('msl-0');
