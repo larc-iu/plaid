@@ -37,6 +37,7 @@ import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { useSentenceFocus } from './hooks/useSentenceFocus.js';
 import { useDocumentTabs } from './hooks/useDocumentTabs.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
+import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useDelayedFlag } from '@/hooks/useDelayedFlag';
@@ -253,19 +254,11 @@ const DocumentEditor = () => {
   // The integrity notice is sticky so it is not missed, but it is about THIS
   // document: it goes when the reader leaves for another document or page.
   useEffect(() => () => dismissIntegrityFindings(), [documentId]);
-  // Every edit shows before it is saved, on every tab, so leaving while one is
-  // still on its way asks first (the browser's own question). The Analyze grid
-  // asks as well, for a cell typed in and not yet left.
-  useEffect(() => {
-    if (!liveDoc) return undefined;
-    const onBeforeUnload = (e) => {
-      if (!liveDoc.isSaving) return;
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [liveDoc]);
+  // Every edit shows before it is saved, so a reload or a closed tab asks
+  // first while one is still on its way, here and after the reader has left for
+  // another screen (the queue outlives this one). The Analyze grid asks as
+  // well, for a cell typed in and not yet left.
+  useSavingGuard(liveDoc);
   // The gate is up from the first render, but a document with nothing to heal
   // plans entirely locally and lowers it again in a microtask, so the spinner
   // is on screen for one paint on every open. Hold the tabs back on the raw

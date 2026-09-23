@@ -10,6 +10,7 @@ import { useWriteLock } from '@ui/hooks/useWriteLock.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useResumedRun } from '@ui/hooks/useResumedRun.js';
+import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { RunBanner } from '@ui/components/services/RunBanner.jsx';
 import { useEditorServices } from './hooks/useEditorServices.js';
 import { isReviewed } from '@larc-iu/plaid-client';
@@ -189,20 +190,10 @@ export const DocumentEditorShell = () => {
   // takes it with us.
   useEffect(() => () => dismissIntegrityFindings(), [documentId]);
 
-  // A save in flight lives only in this tab, so a reload or a tab close drops
-  // it silently. Warn while `_withSaving` holds the gate (the browser shows its
-  // own prompt). The handler reads the getter at fire time, so it never sees a
-  // stale flag.
-  useEffect(() => {
-    if (!doc) return;
-    const onBeforeUnload = (e) => {
-      if (!doc.isSaving) return;
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [doc]);
+  // A save in flight lives only in this browser tab, so a reload or a tab
+  // close asks first while one is still on its way, here and after the reader
+  // has left for another screen (the write queue outlives this one).
+  useSavingGuard(doc);
 
   const wide = isWideRoute(pathname);
   // "Ask" under a sentence is only worth drawing where there is an assistant to
