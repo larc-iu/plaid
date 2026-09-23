@@ -22,7 +22,12 @@ import {
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
-import { pendingId, recordSettled, settledId, settleIds } from './pendingIds.js';
+import {
+  pendingId,
+  recordSettled,
+  settledId,
+  settleIds,
+} from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
   interSententialRelationIds,
   relationsCrossing,

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ConlluDocument } from '../src/domain/ConlluDocument.js';
-import { isPendingId } from '../src/domain/pendingIds.js';
+import { isPendingId } from '../../plaid-ui/src/domain/pendingIds.js';
 import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps } from './helpers/stubClient.js';
 

@@ -10,7 +10,7 @@ import {
   svgWidth,
 } from '../../../utils/arcLayout.js';
 import { sentenceArcs, extraEdges } from '../../../domain/enhancedGraph.js';
-import { stableKey } from '../../../domain/pendingIds.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
 import { useTokenPositions } from '../hooks/useTokenPositions.js';
 import { RowLabelHeader } from './RowLabelHeader.jsx';
 import { SentenceActions } from './SentenceActions.jsx';

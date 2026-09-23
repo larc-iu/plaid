@@ -28,7 +28,7 @@ import { readMetadataFields } from '../../utils/udMetadata.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
 import { buildAnchorIndex, anchorCaption } from '../../domain/commentAnchors.js';
 import { precedentKey } from '../../domain/precedent.js';
-import { stableKey } from '../../domain/pendingIds.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 // Document-wide annotation-row expansion. FEATS defaults to collapsed because its

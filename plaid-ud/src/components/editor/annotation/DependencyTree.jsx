@@ -27,7 +27,7 @@ import {
   wordInColumn,
 } from '../../../utils/arcLayout.js';
 import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
-import { settledId, stableKey } from '../../../domain/pendingIds.js';
+import { settledId, stableKey } from '@ui/domain/pendingIds.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
@@ -118,7 +118,7 @@ export const DependencyTree = forwardRef(
       setEditingRelation(null);
     };
     // A relation or word drawn a moment ago is shown under a pending id until
-    // the server answers with its own (domain/pendingIds.js). What this tree
+    // the server answers with its own (plaid-ui's domain/pendingIds.js). What this tree
     // holds by id follows the swap here, during render, so an open label
     // editor stays open and a selected label stays selected.
     if (editingRelation && settledId(editingRelation.id) !== editingRelation.id) {

@@ -5,7 +5,7 @@ import { afterDeleting, arcColor, commitsLabel, stepThrough, trimLabel } from '.
 import { useEditorSession } from './editorSession.js';
 import { ARC_BASE, arcHeight, bandArc, sortByLabelX } from '../../../utils/arcLayout.js';
 import { positionMatchesSpanId } from './treePositions.js';
-import { settledId, stableKey } from '../../../domain/pendingIds.js';
+import { settledId, stableKey } from '@ui/domain/pendingIds.js';
 import './DependencyTree.css';
 
 // The enhanced graph's extra edges, hung BELOW the words: the tree is drawn
