@@ -7,6 +7,7 @@ import { SafeMarkdown } from '../shared/markdown.jsx';
 import { ListCount, ListPager, SearchInput } from '../shared/list-search.jsx';
 import { Suspended } from '../shared/Suspended.jsx';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
+import { useUnsavedDraft, useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
@@ -37,7 +38,15 @@ const GuidelineEditor = lazyNamed(() => import('./GuidelineEditor.jsx'), 'Guidel
 const inReadingOrder = (entries) =>
   [...entries].sort((a, b) => Number(b.pinned) - Number(a.pinned) || compareText(a.title, b.title));
 
-const blankDraft = () => ({ id: null, title: '', body: '', pinned: false });
+// A draft carries what it was opened with (`base`), so what counts as typed is
+// a difference from that and not merely an open editor.
+const blankDraft = () => ({
+  id: null,
+  title: '',
+  body: '',
+  pinned: false,
+  base: { title: '', body: '' },
+});
 
 /** One row in the list. */
 const GuidelineRow = ({ entry, selected, onSelect }) => (
@@ -165,7 +174,8 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   const startEdit = () => {
     if (!opened) return;
     setOverwrite(false);
-    setDraft({ ...opened, body: opened.body ?? '' });
+    const body = opened.body ?? '';
+    setDraft({ ...opened, body, base: { title: opened.title, body } });
   };
 
   const save = async () => {
@@ -253,6 +263,11 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
   };
 
   const editing = draft !== null;
+  // Every way out of this screen asks before it drops the text: the app's tabs
+  // and links through the shared guard, and another guideline or New here.
+  const typed = editing && (draft.title !== draft.base.title || draft.body !== draft.base.body);
+  useUnsavedDraft(typed ? 'The guideline you have typed' : null);
+  const guardLeaving = useUnsavedGuard();
   // Titles are not unique and the server does not police them, so this is a
   // note and not a blocker: it is said while the title is being typed, which is
   // before there is any work to lose, and Save goes through either way.
@@ -274,7 +289,13 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           <div className="flex items-center justify-between gap-2">
             <ListCount shown={matched.length} total={entries.length} noun="guideline" />
             {canWrite && (
-              <Button type="button" size="sm" onClick={startNew}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={async () => {
+                  if (await guardLeaving()) startNew();
+                }}
+              >
                 <Plus className="h-4 w-4" />
                 New
               </Button>
@@ -310,7 +331,8 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                 key={entry.id}
                 entry={entry}
                 selected={entry.id === selectedId && !editing}
-                onSelect={(id) => {
+                onSelect={async (id) => {
+                  if (!(await guardLeaving())) return;
                   setDraft(null);
                   setSelectedId(id);
                 }}

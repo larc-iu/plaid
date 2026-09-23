@@ -46,6 +46,7 @@ import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { useAssistantSubject } from '@ui/components/assistant/subject.js';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 
@@ -180,6 +181,8 @@ export const ProjectDetail = () => {
     ready: !!project,
   });
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
+  // A tab is a way out of typed text on the tab it leaves (a guideline).
+  const guardLeavingTab = useUnsavedGuard();
   // The shell's panel is about this PROJECT while the reader is on any of its
   // screens. No subject of its own: what a reader is looking at here is the
   // project at large, and naming a screen the assistant has no tool for (the
@@ -304,6 +307,7 @@ export const ProjectDetail = () => {
 
       <Tabs
         value={activeTab}
+        guard={guardLeavingTab}
         onValueChange={(v) => {
           if (v === 'settings') {
             // Enter Settings via its default section; the path drives the panel.

@@ -5,6 +5,7 @@ import { canEditProject } from '../../domain/permissions.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
 import { useAssistantSubject } from '../assistant/subject.js';
+import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
 /**
  * The breadcrumb and tab row every project-level screen wears, mirroring the
@@ -27,6 +28,9 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  // A screen under these tabs may hold typed text (a guideline being written),
+  // and a tab is a way out of it like any link.
+  const guard = useUnsavedGuard();
 
   // The panel is about the PROJECT here. No subject of its own: what a reader
   // is looking at on these screens is the project at large, and naming a screen
@@ -65,7 +69,7 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
           it in a new browser tab; a plain click is Radix's, and this navigates
           on its behalf. The shared trigger already swallows Radix's double
           fire. */}
-      <Tabs value={active} onValueChange={(v) => navigate(to[v])}>
+      <Tabs value={active} onValueChange={(v) => navigate(to[v])} guard={guard}>
         <TabsList>
           {shown.map((t) => (
             <TabsTrigger key={t.value} value={t.value} to={t.to}>

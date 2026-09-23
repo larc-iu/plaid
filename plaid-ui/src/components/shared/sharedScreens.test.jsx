@@ -10,7 +10,7 @@
 // activity feed, the comments browser and the assistant each have one, and
 // they stand in here so that what is under test is the chrome around them.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { renderComponent, all, texts } from '../../test/renderComponent.jsx';
 
 const { auth, editor } = vi.hoisted(() => ({ auth: {}, editor: {} }));
@@ -229,6 +229,37 @@ describe('the shared chrome', () => {
       />,
     );
     expect(texts(view.container, '[role="tab"]')).toEqual(['Documents', 'Activity']);
+  });
+
+  it('ProjectTabStrip asks before a tab leaves something typed on the screen', async () => {
+    const Loc = () => <p data-testid="at">{useLocation().pathname}</p>;
+    await mount(
+      <>
+        <ProjectTabStrip
+          projectId="p1"
+          project={PROJECT}
+          tabs={[
+            { value: 'documents', label: 'Documents', to: '/projects/p1/documents' },
+            { value: 'guidelines', label: 'Guidelines', to: '/projects/p1/guidelines' },
+          ]}
+        />
+        <Typing />
+        <Loc />
+      </>,
+      '/projects/p1/guidelines',
+    );
+    const documents = all(view.container, '[role="tab"]').find(
+      (t) => t.textContent === 'Documents',
+    );
+    await view.step(() => documents.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'The name you have typed is not saved. Leaving loses it.',
+      }),
+    );
+    expect(view.container.querySelector('[data-testid="at"]').textContent).toBe(
+      '/projects/p1/guidelines',
+    );
   });
 
   it('ProjectListPage lists the projects and offers a new one in the app’s words', async () => {

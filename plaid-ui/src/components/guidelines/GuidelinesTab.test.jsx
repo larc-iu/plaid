@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts, byText } from '../../test/renderComponent.jsx';
 import { GuidelinesTab } from './GuidelinesTab.jsx';
+import { hasUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
 
 // What the screen is for, in four properties:
 //
@@ -260,6 +261,29 @@ describe('a writer', () => {
     // A patch that named the title as well would be the one that can 409 on a
     // title someone else took in the meantime.
     expect(client.guidelines.update).toHaveBeenCalledWith('g2', { pinned: true });
+    await unmount();
+  });
+});
+
+// A guideline is a document somebody typed, so leaving it unsaved asks first,
+// the same question every other editor asks: through the app's tabs and links
+// (the shared guard), and through the list beside it here.
+describe('a guideline being written', () => {
+  it('counts as unsaved once something is typed, and not before', async () => {
+    const { container, step, unmount } = await mount({ canWrite: true });
+    await step(() => byText(container, 'button', 'New').click());
+    expect(hasUnsavedDraft()).toBe(null);
+
+    await step(() => typeInto(container.querySelector('#guideline-title'), 'Loanwords'));
+    expect(hasUnsavedDraft()).toBe('The guideline you have typed');
+
+    // Another guideline in the list is a way out too. With no confirmation
+    // given, the draft stays on screen.
+    await step(() => byText(container, 'button', 'Alpha').click());
+    expect(container.querySelector('#guideline-title').value).toBe('Loanwords');
+
+    await step(() => byText(container, 'button', 'Cancel').click());
+    expect(hasUnsavedDraft()).toBe(null);
     await unmount();
   });
 });

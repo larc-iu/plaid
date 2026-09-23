@@ -16,6 +16,7 @@ import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { TokenizeDialog } from './services/TokenizeDialog.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
@@ -200,6 +201,12 @@ export const TextEditor = () => {
   });
 
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
+  // Typed and not yet on the server: every way out of the tab asks first. The
+  // measure is the saved body, not the tokenized one, so text typed into a
+  // document that has no tokens yet counts too.
+  useUnsavedDraft(
+    canEditProject(project, user) && textContent !== serverText ? 'The text you have typed' : null,
+  );
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
   // Once the document has tokens, the text those tokens were cut from is what
