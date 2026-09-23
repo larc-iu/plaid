@@ -481,6 +481,11 @@ def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
     ('(v1 / bark-01 :ARG0 s1Y)\n\n# alignment:\nv1: 3-3\n', ':ARG0 takes a node'),
     ('(v1 / bark-01 :actor "dog")\n\n# alignment:\nv1: 3-3\n', ':actor takes a node'),
     ('(v1 / dog :ARG0-of barking)\n\n# alignment:\nv1: 2-2\n', ':ARG0-of takes a node'),
+    # A modifier is a relation too: the app refuses a value under any role it
+    # does not type as an attribute.
+    ('(v1 / bark-01 :manner s1Y)\n\n# alignment:\nv1: 3-3\n', ':manner takes a node'),
+    ('(v1 / bark-01 :temporal s1Y)\n\n# alignment:\nv1: 3-3\n', ':temporal takes a node'),
+    ('(v1 / dog :possessor s1Y)\n\n# alignment:\nv1: 2-2\n', ':possessor takes a node'),
 ])
 def test_a_malformed_answer_is_counted_and_named_rather_than_written(reply, fragment):
     service = _service(model=_Model([reply]))
@@ -665,14 +670,15 @@ def test_a_roleset_that_takes_a_value_as_its_argument_is_drafted():
     assert (result['drafted'], result['failed']) == (1, 0)
 
 
-def test_the_participant_roles_are_the_apps():
-    """The roles a draft may not give a value are the app's participant roles,
-    read out of its inventory so the two cannot drift."""
+def test_the_node_roles_are_the_apps():
+    """The roles a draft may not give a value are every role the app does not
+    type as an attribute, read out of its inventory so the two cannot drift."""
     import re
     inventory = (SERVICES.parent / 'src' / 'domain' / 'format' / 'inventory.js').read_text()
     body = inventory[inventory.index('export const KNOWN_RELATIONS'):]
     named = set()
-    for names in re.findall(r"add\(\s*\[([^\]]*)\],\s*'participant'", body):
-        named |= set(re.findall(r"'(:[^']+)'", names))
-    assert named == umr.PARTICIPANT_ROLES
+    for names, kind in re.findall(r"add\(\s*\[([^\]]*)\],\s*'([a-z]+)'", body):
+        if kind != 'attribute':
+            named |= set(re.findall(r"'(:[^']+)'", names))
+    assert named == umr.NODE_ROLES
     assert "add(ARG_ROLES, 'participant'" in body

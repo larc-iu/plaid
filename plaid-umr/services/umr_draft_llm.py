@@ -236,13 +236,31 @@ def plan_sentence(graph, alignment, sentence, taken):
     return pieces, nodes, edges
 
 
-#: The participant roles, which always point at a node: ``plaid-umr``'s
-#: ``KNOWN_RELATIONS`` entries of type ``participant`` (``inventory.js``), with
-#: the ``:ARGn`` range written as a pattern. A test pins the two together.
-PARTICIPANT_ROLES = frozenset({
-    ':actor', ':affectee', ':beneficiary', ':causer', ':co-actor', ':companion',
-    ':experiencer', ':force', ':goal', ':instrument', ':material', ':recipient', ':source',
-    ':start', ':theme', ':undergoer', ':stimulus', ':place'})
+#: The roles that always point at a node: every ``KNOWN_RELATIONS`` entry of
+#: ``plaid-umr``'s ``inventory.js`` whose type is not ``attribute`` (the
+#: participants and the modifiers), with the ``:ARGn`` range written as a
+#: pattern. The app's validator refuses a value under any of them
+#: (``validate.js``), and a test pins the two together.
+NODE_ROLES = frozenset({
+    ':FR', ':according-to', ':actor', ':affectee', ':age', ':anchor', ':apprehensive',
+    ':axis', ':beneficiary', ':calendar', ':cause', ':causer', ':clausal-marker',
+    ':co-actor', ':color', ':companion', ':compared-to', ':comparison', ':conceiver',
+    ':concession', ':concessive-condition', ':concessive-conditional', ':condition',
+    ':configuration', ':conj-as-if', ':consist', ':content', ':contrast',
+    ':destination', ':direction', ':domain', ':duration', ':effect', ':example',
+    ':experiencer', ':extent', ':force', ':framework', ':goal', ':group', ':instrument',
+    ':interjection', ':level', ':li', ':manner', ':material', ':medium',
+    ':modal-predicate', ':name', ':ord', ':ordinal-entity', ':orientation',
+    ':other-role', ':parenthesis', ':part', ':part-of-phraseme', ':path',
+    ':perspective', ':place', ':possessor', ':predicative-noun', ':prep-against',
+    ':prep-as', ':prep-by', ':prep-for', ':prep-from', ':prep-in', ':prep-on',
+    ':prep-on-behalf', ':prep-to', ':prep-under', ':prep-with', ':prep-without',
+    ':pure-addition', ':purpose', ':quote', ':range', ':range-start',
+    ':range-trajectory', ':ratio', ':reason', ':recipient', ':regard', ':result',
+    ':rise-axis', ':run-axis', ':scale', ':scope', ':season', ':sentence1',
+    ':sentence2', ':sentence3', ':size', ':snt1', ':snt2', ':source', ':start',
+    ':stimulus', ':subevent', ':subset', ':substitute', ':subtraction', ':temporal',
+    ':theme', ':timezone', ':topic', ':undergoer', ':unit', ':vocative', ':weekday'})
 ARG_ROLE = re.compile(r'^:ARG\d+$')
 
 #: The rolesets whose argument really is a value, as the app's validator has
@@ -255,14 +273,14 @@ VALUE_ARGUMENTS = frozenset({('have-polarity-91', ':ARG2'), ('rate-entity-91', '
 def edge_only(rel: str, concept: str) -> bool:
     """Whether a role only ever points at a node, so a value under it is a
     mistake: an inverse role, an ``:ARGn`` outside the few rolesets that take
-    a value there, or a participant role. The reader keeps such a value as an
+    a value there, or any other role the app does not type as an attribute. The reader keeps such a value as an
     attribute (``:ARG0 s1Y`` is not a variable), which is right for the file
     and wrong for a draft."""
     if rel.endswith('-of'):
         return True
     if ARG_ROLE.match(rel):
         return (concept, rel) not in VALUE_ARGUMENTS
-    return rel in PARTICIPANT_ROLES
+    return rel in NODE_ROLES
 
 
 def validate_graph(graph) -> Optional[str]:
