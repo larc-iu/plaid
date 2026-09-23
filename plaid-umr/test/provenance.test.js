@@ -225,7 +225,7 @@ test('text mode leaves a child it only renumbers as the machine left it', async 
     .replace(/\n +:ARG1 \(s1p3 \/ person\n +:quant 200\)/, '');
   const name = doc.node(byVar(doc, 's1c').id).out.find((e) => e.role === ':name');
   const plan = doc.planPenman(1, text);
-  assert.deepEqual(plan.orders, [{ edgeId: name.id, order: 0 }]);
+  assert.deepEqual(plan.orders, [{ edgeId: name.id, order: 0, moved: false }]);
   assert.ok(await doc.applyPenman(1, text));
   // The edge and the node whose places moved are untouched.
   assert.equal(provState(doc.edge(name.id).metadata), PROV_STATES.MACHINE);
@@ -236,6 +236,39 @@ test('text mode leaves a child it only renumbers as the machine left it', async 
     (c) => c.name === 'relations.patchMetadata' && c.args[0] === name.id,
   );
   assert.equal(patchObject(orderPatch.args[1])[PROV.confirmedKey], undefined);
+});
+
+// Swapping two children in the text is a move, the person's as the same move
+// on the canvas is: both edges it moved are confirmed, and nothing else.
+test('text mode confirms the edges a person put in another order', async () => {
+  const { doc } = load({ machine: true });
+  const landslide = byVar(doc, 's1l');
+  const place = landslide.out.find((e) => e.role === ':place');
+  const arg3 = landslide.out.find((e) => e.role === ':ARG3');
+  const op1 = byVar(doc, 's1a').out.find((e) => e.role === ':op1');
+  const text = `(s1p / override-91
+    :ARG1 (s1l / landslide-01
+        :place (s1c / country
+            :wiki "Philippines"
+            :name (s1n / name
+                :op1 "Philippines"))
+        :ARG3 (s1a / and
+            :op1 (s1d / die-01
+                :ARG1 (s1p3 / person
+                    :quant 200)
+                :aspect state)
+            :op2 (s1f / fear-01
+                :ARG1 (s1m / miss-01
+                    :ARG1 (s1p2 / person
+                        :quant 1500)
+                    :aspect state)
+                :aspect state)
+            :aspect process)))`;
+  assert.ok(await doc.applyPenman(1, text));
+  assert.equal(provState(doc.edge(place.id).metadata), PROV_STATES.VERIFIED);
+  assert.equal(provState(doc.edge(arg3.id).metadata), PROV_STATES.VERIFIED);
+  assert.equal(provState(doc.edge(op1.id).metadata), PROV_STATES.MACHINE);
+  assert.equal(provState(doc.node(landslide.id).metadata), PROV_STATES.MACHINE);
 });
 
 test('a service write nobody has touched stays machine-made', async () => {

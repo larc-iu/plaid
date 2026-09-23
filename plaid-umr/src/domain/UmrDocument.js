@@ -1373,12 +1373,6 @@ export class UmrDocument extends DocumentModel {
       const attrKey = (a) => `${a.rel} ${a.value} @${a.order ?? 0}`;
       const oldAttrs = old.attrs.map(attrKey).join('\n');
       const nextAttrs = attrs.map(attrKey).join('\n');
-      // Only the places moved (an edge before them went, or came): a
-      // renumber, which is no one's edit of the node.
-      const bare = (list) => list.map((a) => `${a.rel} ${a.value}`).join('\n');
-      if (oldAttrs !== nextAttrs) {
-        plan.attrs.push({ nodeId: old.id, attrs, renumber: bare(old.attrs) === bare(attrs) });
-      }
       // Edges by (role, target variable): an edge with a new target or role
       // is a new edge, and the old one goes.
       const oldEdges = old.out
@@ -1389,10 +1383,43 @@ export class UmrDocument extends DocumentModel {
           order: e.order,
         }));
       const nextKeys = new Map(edges.map((e) => [`${e.role} ${e.target}`, e]));
+      // A place that changed only because a child before it went, or came,
+      // is a renumber, which is no one's edit. One that changed because the
+      // children kept on both sides now stand in another order is a move,
+      // and the person's, as a move on the canvas is.
+      const bare = (list) => list.map((a) => `${a.rel} ${a.value}`).join('\n');
+      const attrWord = (a) => `attr ${a.rel} ${a.value}`;
+      const oldSeq = [
+        ...oldEdges.map((e) => ({ word: `edge ${e.key}`, order: e.order })),
+        ...old.attrs.map((a) => ({ word: attrWord(a), order: a.order ?? 0 })),
+      ].sort((a, b) => a.order - b.order);
+      const nextSeq = [
+        ...edges.map((e) => ({ word: `edge ${e.role} ${e.target}`, order: e.order })),
+        ...attrs.map((a) => ({ word: attrWord(a), order: a.order })),
+      ].sort((a, b) => a.order - b.order);
+      const inBoth = (seq, other) => {
+        const words = new Set(other.map((c) => c.word));
+        return seq.filter((c) => words.has(c.word)).map((c) => c.word);
+      };
+      const keptOld = inBoth(oldSeq, nextSeq);
+      const keptNext = inBoth(nextSeq, oldSeq);
+      const movedChild = (word) => keptOld.indexOf(word) !== keptNext.indexOf(word);
+      const attrMoved = old.attrs.some((a) => movedChild(attrWord(a)));
+      if (oldAttrs !== nextAttrs) {
+        plan.attrs.push({
+          nodeId: old.id,
+          attrs,
+          renumber: bare(old.attrs) === bare(attrs) && !attrMoved,
+        });
+      }
       oldEdges.forEach((e) => {
         if (!nextKeys.has(e.key)) plan.edgesDelete.push(e.id);
         else if (nextKeys.get(e.key).order !== e.order) {
-          plan.orders.push({ edgeId: e.id, order: nextKeys.get(e.key).order });
+          plan.orders.push({
+            edgeId: e.id,
+            order: nextKeys.get(e.key).order,
+            moved: movedChild(`edge ${e.key}`),
+          });
         }
       });
       const oldKeys = new Set(oldEdges.map((e) => e.key));
@@ -1564,7 +1591,13 @@ export class UmrDocument extends DocumentModel {
         a.renumber ? umrOps({ attrs: a.attrs }) : umrPatchFor(a.nodeId, { attrs: a.attrs }),
       ]);
     }
-    for (const o of plan.orders) relationOps.push([o.edgeId, umrOps({ order: o.order })]);
+    // An edge's place likewise: a renumber carries no stamp, a move does.
+    for (const o of plan.orders) {
+      const stamp = o.moved
+        ? metadataOps(this.writer.editStamp(this.edge(o.edgeId)?.metadata))
+        : [];
+      relationOps.push([o.edgeId, [...umrOps({ order: o.order }), ...stamp]]);
+    }
     // The root the text names, when it is a node that was already there: a
     // new one carries the mark in its own metadata.
     if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
