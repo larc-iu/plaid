@@ -10,8 +10,13 @@ import { IGT_NAMESPACE } from '../../../domain/igtConfig.js';
 // an unlinked vocabulary were each made a second time, the first left behind
 // as an orphan.
 
-const stub = (project) => {
-  const calls = { created: [], config: [], linked: [] };
+// Every answer here has the shape core gives it, and no more: a create
+// answers with the new id alone, a project read names a token layer's id,
+// name, config and span layers, and only a read of the token layer itself
+// says its overlap mode and parent. A stub that said more let a resume match
+// on fields the real project read never carries.
+const stub = (project, tokenLayerShapes = {}) => {
+  const calls = { created: [], config: [], linked: [], shifted: [] };
   let n = 0;
   const id = (kind) => `${kind}-${++n}`;
   const make =
@@ -21,7 +26,7 @@ const stub = (project) => {
       // `under` is what it was created on: the project for a text layer, the
       // text layer for a token layer, the token layer for a span layer.
       calls.created.push({ kind, name, under: kind === 'project' ? null : args[0] });
-      return { id: id(kind), name };
+      return { id: id(kind) };
     };
   const setConfig = (kind) => async (layerId, ns, key, value) => {
     calls.config.push({ kind, id: layerId, ns, key, value });
@@ -35,12 +40,20 @@ const stub = (project) => {
       linkVocab: async (projectId, vocabId) => calls.linked.push(vocabId),
     },
     textLayers: { create: make('text'), setConfig: setConfig('text') },
-    tokenLayers: { create: make('token'), setConfig: setConfig('token') },
-    spanLayers: { create: make('span'), setConfig: setConfig('span') },
+    tokenLayers: {
+      create: make('token'),
+      setConfig: setConfig('token'),
+      get: async (layerId) => tokenLayerShapes[layerId],
+    },
+    spanLayers: {
+      create: make('span'),
+      setConfig: setConfig('span'),
+      shift: async (layerId, direction) => calls.shifted.push({ id: layerId, direction }),
+    },
     vocabLayers: {
       create: async (name) => {
         calls.created.push({ kind: 'vocab', name });
-        return { id: id('vocab'), name };
+        return { id: id('vocab') };
       },
       setConfig: setConfig('vocab'),
       list: async () => calls.vocabList ?? [],
@@ -50,10 +63,12 @@ const stub = (project) => {
 };
 
 // The import record an interrupted run leaves on the project. It names the
-// vocabulary that run made, which is the only thing that says the vocabulary
-// belongs to this project rather than to somebody else's of the same name.
-const importRecord = (vocabId) => ({
-  [IGT_NAMESPACE]: { import: { kind: 'FLEx', source: null, vocabId, choices: null } },
+// vocabularies that run made, which is the only thing that says one belongs
+// to this project rather than to somebody else's of the same name.
+const importRecord = (vocabsMade) => ({
+  [IGT_NAMESPACE]: {
+    import: { kind: 'FLEx', source: null, vocabId: null, choices: null, vocabsMade },
+  },
 });
 
 const SETUP_DATA = {
@@ -103,7 +118,7 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
   it('links a vocabulary an earlier run made rather than making a second one', async () => {
     const project = {
       id: 'p1',
-      config: importRecord('v-half'),
+      config: importRecord({ 'Lezgi Lexicon': 'v-half' }),
       textLayers: [
         {
           id: 'tl',
@@ -135,7 +150,7 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
   it('leaves the fields an earlier run already wrote on that vocabulary alone', async () => {
     const project = {
       id: 'p1',
-      config: importRecord('v-half'),
+      config: importRecord({ 'Lezgi Lexicon': 'v-half' }),
       textLayers: [
         {
           id: 'tl',
@@ -248,9 +263,11 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
       resumeProjectId: null,
       setupData: SETUP_DATA,
       onProgress: () => {},
-      onVocabCreated: (id) => said.push({ said: id, linkedSoFar: [...calls.linked] }),
+      onVocabCreated: (id, made) => said.push({ said: id, made, linkedSoFar: [...calls.linked] }),
     });
-    expect(said).toEqual([{ said: calls.linked[0], linkedSoFar: [] }]);
+    expect(said).toEqual([
+      { said: calls.linked[0], made: { 'Lezgi Lexicon': calls.linked[0] }, linkedSoFar: [] },
+    ]);
   });
 
   it('makes both from scratch when there is nothing to finish', async () => {
@@ -260,5 +277,182 @@ describe('executeProjectSetup finishes what an interrupted run started', () => {
     expect(madeOf(calls, 'text')).toHaveLength(1);
     expect(madeOf(calls, 'vocab')).toHaveLength(1);
     expect(calls.linked).toHaveLength(1);
+  });
+});
+
+// A project an interrupted run left with its text layer tagged. `tokenLayers`
+// is what the project read carries for them.
+const withText = (tokenLayers, config = {}) => ({
+  id: 'p1',
+  config,
+  textLayers: [
+    {
+      id: 'tl',
+      name: 'Main Text',
+      config: { [PLAID_NAMESPACE]: { [ROLE_KEY]: ROLES.BASELINE } },
+      tokenLayers,
+    },
+  ],
+  vocabs: [],
+});
+const tagged = (role) => ({ [PLAID_NAMESPACE]: { [ROLE_KEY]: role } });
+
+describe('a resumed setup, token layers', () => {
+  it('tags a token layer made but not tagged, asking the layer for its shape', async () => {
+    const project = withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
+      { id: 'tk-half', name: 'Main Tokens', config: {}, spanLayers: [] },
+    ]);
+    const { client, calls } = stub(project, {
+      'tk-half': {
+        id: 'tk-half',
+        name: 'Main Tokens',
+        overlapMode: 'non-overlapping',
+        parentTokenLayer: 'tk-sent',
+        config: {},
+      },
+    });
+    const result = await run(client, 'p1');
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'token').map((c) => c.name)).toEqual(['Main Morphemes', 'Time Alignment']);
+    expect(calls.config).toContainEqual({
+      kind: 'token',
+      id: 'tk-half',
+      ns: PLAID_NAMESPACE,
+      key: ROLE_KEY,
+      value: ROLES.WORD,
+    });
+  });
+
+  it('leaves an untagged layer of that name but another shape alone', async () => {
+    const project = withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
+      { id: 'tk-other', name: 'Main Tokens', config: {}, spanLayers: [] },
+    ]);
+    const { client, calls } = stub(project, {
+      'tk-other': {
+        id: 'tk-other',
+        name: 'Main Tokens',
+        overlapMode: 'any',
+        parentTokenLayer: null,
+        config: {},
+      },
+    });
+    await run(client, 'p1');
+    expect(madeOf(calls, 'token').map((c) => c.name)).toContain('Main Tokens');
+    expect(calls.config.some((c) => c.id === 'tk-other')).toBe(false);
+  });
+});
+
+describe('a resumed setup, vocabularies', () => {
+  const TWO = {
+    ...SETUP_DATA,
+    vocabulary: {
+      vocabularies: [
+        { id: 'new-a', name: 'Lezgi Lexicon', enabled: true, isCustom: true },
+        { id: 'new-b', name: 'Lezgi Glosses', enabled: true, isCustom: true },
+      ],
+    },
+  };
+
+  it('finishes every vocabulary the record names, not only the last', async () => {
+    const project = withText([], importRecord({ 'Lezgi Lexicon': 'v-a', 'Lezgi Glosses': 'v-b' }));
+    const { client, calls } = stub(project);
+    calls.vocabList = [
+      { id: 'v-a', name: 'Lezgi Lexicon', config: {} },
+      { id: 'v-b', name: 'Lezgi Glosses', config: {} },
+    ];
+    const result = await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: 'p1',
+      setupData: TWO,
+      onProgress: () => {},
+    });
+    expect(result.failures).toEqual([]);
+    expect(madeOf(calls, 'vocab')).toEqual([]);
+    expect(calls.linked).toEqual(['v-a', 'v-b']);
+  });
+
+  it('names every vocabulary made so far each time it makes one', async () => {
+    // The first run made the lexicon and died; this one makes the second and
+    // must still name the first, or a later resume makes it again.
+    const project = withText([], importRecord({ 'Lezgi Lexicon': 'v-a' }));
+    const { client, calls } = stub(project);
+    calls.vocabList = [{ id: 'v-a', name: 'Lezgi Lexicon', config: {} }];
+    const said = [];
+    await executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: 'p1',
+      setupData: TWO,
+      onProgress: () => {},
+      onVocabCreated: (id, made) => said.push(made),
+    });
+    expect(said).toEqual([{ 'Lezgi Lexicon': 'v-a', 'Lezgi Glosses': calls.linked[1] }]);
+  });
+});
+
+describe('a resumed setup, field order', () => {
+  const FIELDS = {
+    ...SETUP_DATA,
+    vocabulary: { vocabularies: [] },
+    fields: {
+      fields: [
+        { name: 'Gloss', scope: 'Word' },
+        { name: 'POS', scope: 'Word' },
+        { name: 'Note', scope: 'Word' },
+      ],
+    },
+  };
+  const project = (spanLayers) =>
+    withText([
+      { id: 'tk-sent', name: 'Sentences', config: tagged(ROLES.SENTENCE), spanLayers: [] },
+      { id: 'tk-word', name: 'Main Tokens', config: tagged(ROLES.WORD), spanLayers },
+      { id: 'tk-morph', name: 'Main Morphemes', config: tagged(ROLES.MORPHEME), spanLayers: [] },
+      {
+        id: 'tk-align',
+        name: 'Time Alignment',
+        config: tagged(ROLES.TIME_ALIGNMENT),
+        spanLayers: [],
+      },
+    ]);
+  const setUp = (client) =>
+    executeProjectSetup({
+      client,
+      isNewProject: true,
+      resumeProjectId: 'p1',
+      setupData: FIELDS,
+      onProgress: () => {},
+    });
+
+  it('moves a field made late up to where an uninterrupted import puts it', async () => {
+    const { client, calls } = stub(
+      project([
+        { id: 'sl-pos', name: 'POS' },
+        { id: 'sl-note', name: 'Note' },
+      ]),
+    );
+    const result = await setUp(client);
+    expect(result.failures).toEqual([]);
+    const gloss = madeOf(calls, 'span');
+    expect(gloss.map((c) => c.name)).toEqual(['Gloss']);
+    const glossId = calls.config.find((c) => c.kind === 'span' && c.value === 'Word').id;
+    expect(calls.shifted).toEqual([
+      { id: glossId, direction: 'up' },
+      { id: glossId, direction: 'up' },
+    ]);
+  });
+
+  it('moves nothing when the fields are already in order', async () => {
+    const { client, calls } = stub(
+      project([
+        { id: 'sl-gloss', name: 'Gloss' },
+        { id: 'sl-pos', name: 'POS' },
+        { id: 'sl-note', name: 'Note' },
+      ]),
+    );
+    await setUp(client);
+    expect(calls.shifted).toEqual([]);
   });
 });

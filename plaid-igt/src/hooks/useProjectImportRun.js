@@ -72,13 +72,14 @@ export function useProjectImportRun({ client, kind, resumeId }) {
             projectIdRef.current = id;
             await markImportStarted(client, id, kind, source, null, choices);
           },
-          // The lexicon setup makes, named on the record as soon as it
-          // exists: a run that dies between creating it and linking it
+          // Each vocabulary setup makes, named on the record as soon as it
+          // exists: a run that dies between creating one and linking it
           // leaves nothing else that says which vocabulary was this
           // project's, and the resume needs that to finish it rather than
-          // make a second one.
-          onVocabCreated: (vocab) =>
-            markImportStarted(client, projectIdRef.current, kind, source, vocab, choices),
+          // make a second one. `made` is all of them so far, since one
+          // import can make several.
+          onVocabCreated: (vocab, made) =>
+            markImportStarted(client, projectIdRef.current, kind, source, vocab, choices, made),
         });
         if (setup.failures.length > 0) throw new Error(setup.failures.join('. '));
         projectIdRef.current = setup.projectId;

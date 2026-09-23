@@ -183,15 +183,24 @@ async function executeProjectSetupImpl({
 
     // The same second look as the text layer's, with the shape a token layer
     // also carries: two of one name under one parent are different layers
-    // unless their overlap mode and parent match too.
-    const untagged = (name, overlapMode, parentId) =>
-      unfinishedLayer(
-        existingTokenLayers,
-        name,
-        (l) =>
-          (l.overlapMode ?? null) === (overlapMode ?? null) &&
-          (l.parentTokenLayer ?? l.parentTokenLayerId ?? null) === (parentId ?? null),
-      );
+    // unless their overlap mode and parent match too. The project read names
+    // a token layer's id, name, config and span layers and nothing else, so
+    // the shape is read from the layer itself, and only for a layer the name
+    // has already picked out.
+    const sameMode = (a, b) => (a ?? 'any') === (b ?? 'any');
+    const untagged = async (name, overlapMode, parentId) => {
+      for (const l of existingTokenLayers) {
+        if (!unfinishedLayer([l], name)) continue;
+        const full = await client.tokenLayers.get(l.id);
+        if (
+          sameMode(full?.overlapMode, overlapMode) &&
+          (full?.parentTokenLayer ?? null) === (parentId ?? null)
+        ) {
+          return l;
+        }
+      }
+      return null;
+    };
 
     const ensureTokenLayer = async (
       found,
@@ -203,7 +212,7 @@ async function executeProjectSetupImpl({
       pct,
       msg,
     ) => {
-      let layer = found || untagged(name, overlapMode, parentId);
+      let layer = found || (await untagged(name, overlapMode, parentId));
       if (!layer) {
         updateProgress(pct, msg);
         layer = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
@@ -299,6 +308,13 @@ async function executeProjectSetupImpl({
         existingSpanLayersByParent.set(tkl.id, tkl.spanLayers || []);
       }
     }
+    // The span layers under each parent as they stand, in order: the ones the
+    // project read named, then each one this run makes, which core puts last.
+    const siblings = new Map(
+      [...existingSpanLayersByParent].map(([parent, layers]) => [parent, layers.map((l) => l.id)]),
+    );
+    // Which field each layer is, by its place in the fields list.
+    const fieldIndexOf = new Map();
 
     if (setupData.fields?.fields?.length > 0) {
       for (const field of setupData.fields.fields) {
@@ -315,6 +331,10 @@ async function executeProjectSetupImpl({
             (sl) => sl.name === field.name,
           );
           const spanLayer = existing ?? (await client.spanLayers.create(parentLayerId, field.name));
+          if (!existing) {
+            siblings.set(parentLayerId, [...(siblings.get(parentLayerId) || []), spanLayer.id]);
+          }
+          fieldIndexOf.set(spanLayer.id, fieldIndexOf.size);
 
           await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
           // What language its values are in, when the caller knows. An importer
@@ -334,6 +354,37 @@ async function executeProjectSetupImpl({
     }
 
     resources.spanLayers = createdSpanLayers;
+
+    // Imports keep field order. A field whose layer an interrupted run did
+    // not get to make is made now, after the ones that run did make, so it is
+    // moved up past every field that comes after it. Asked of the order as it
+    // stands, so a run that stopped part way through moving it finishes the
+    // move. Only for a new project: setting up over an existing one leaves
+    // the order its layers already have.
+    if (isNewProject) {
+      for (const [parentId, ids] of siblings) {
+        const order = [...ids];
+        for (let i = 1; i < order.length; i++) {
+          const mine = fieldIndexOf.get(order[i]);
+          if (mine === undefined) continue;
+          let at = i;
+          while (at > 0 && (fieldIndexOf.get(order[at - 1]) ?? -1) > mine) {
+            try {
+              await client.spanLayers.shift(order[at], 'up');
+            } catch (shiftError) {
+              console.warn('Failed to order the annotation fields:', shiftError);
+              failures.push(
+                `The annotation fields could not be put in order: ${shiftError.message}`,
+              );
+              break;
+            }
+            [order[at - 1], order[at]] = [order[at], order[at - 1]];
+            at -= 1;
+          }
+        }
+        siblings.set(parentId, order);
+      }
+    }
   }
 
   // Step 7: Configure ignored tokens on the word token layer
@@ -365,12 +416,16 @@ async function executeProjectSetupImpl({
     // nothing about which project owns them: a name is shared by every run
     // of the same import, so matching on one linked a colleague's lexicon
     // into this project and wrote this import's entries into it. A run
-    // records the vocabulary it makes the moment it exists (onVocabCreated),
-    // so only the one this project's own record names is adopted.
-    const recordedVocabId = readImportState(existingProject?.config)?.vocabId ?? null;
+    // records every vocabulary it makes, by name, the moment it exists
+    // (onVocabCreated), so only one this project's own record names is
+    // adopted. One recorded id was not enough: an import that makes several
+    // vocabularies overwrote it with each, and a resume adopted the last and
+    // made the others again.
+    const madeVocabs = { ...(readImportState(existingProject?.config)?.vocabsMade ?? {}) };
     let unlinked = null;
     const madeEarlier = async (name) => {
-      if (!existingProject || !recordedVocabId) return null;
+      const recordedId = madeVocabs[name];
+      if (!existingProject || !recordedId) return null;
       if (!unlinked) {
         const linkedIds = new Set(linkedVocabs.map((v) => v.id));
         let all = [];
@@ -381,7 +436,7 @@ async function executeProjectSetupImpl({
         }
         unlinked = all.filter((v) => !linkedIds.has(v.id));
       }
-      return unlinked.find((v) => v.id === recordedVocabId && v.name === name) ?? null;
+      return unlinked.find((v) => v.id === recordedId && v.name === name) ?? null;
     };
 
     for (const vocab of enabledVocabs) {
@@ -399,7 +454,8 @@ async function executeProjectSetupImpl({
             // Said before it is linked, so a run that dies in between leaves
             // a record naming it and the next one finishes it rather than
             // making a second.
-            await onVocabCreated?.(newVocab.id);
+            madeVocabs[vocab.name] = newVocab.id;
+            await onVocabCreated?.(newVocab.id, { ...madeVocabs });
           }
           // A new vocabulary starts with the core fields plus Status and its
           // list, the same setup every creation path does (statusFieldSeed).

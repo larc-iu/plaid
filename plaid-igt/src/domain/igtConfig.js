@@ -285,10 +285,11 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
 /**
  * An import writes this on the project it is filling and removes it when it
  * finishes, so a project whose import was cancelled, lost or closed is not
- * mistaken for a complete one: `{kind, source, vocabId, startedAt}`, `kind`
- * being the format ('FLEx', 'FLEx .flextext', 'CLDF', 'ELAN', 'Plaid IGT
- * archive'), `source` the file it was reading and `vocabId` the lexicon it
- * writes into once known.
+ * mistaken for a complete one: `{kind, source, vocabId, vocabsMade, choices,
+ * startedAt}`, `kind` being the format ('FLEx', 'FLEx .flextext', 'CLDF',
+ * 'ELAN', 'Plaid IGT archive'), `source` the file it was reading, `vocabId`
+ * the lexicon it writes into once known and `vocabsMade` the vocabularies
+ * project setup has made so far.
  * Every importer resumes, so the way to clear it is to run the same import
  * again.
  */
@@ -301,6 +302,10 @@ export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
  * `vocabId` is the lexicon the run writes into, once it is known. A resume
  * reads it from here rather than looking the vocabulary up by a name it
  * recomputes, which a renamed project or a hand-named lexicon does not match.
+ *
+ * `vocabsMade` is every vocabulary project setup has made so far, as
+ * `{name: id}`, written while setup runs: it is what a resumed setup reads to
+ * finish those rather than make them again.
  */
 export const markImportStarted = async (
   client,
@@ -309,6 +314,7 @@ export const markImportStarted = async (
   source,
   vocabId = null,
   choices = null,
+  vocabsMade = null,
 ) => {
   try {
     await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
@@ -319,6 +325,7 @@ export const markImportStarted = async (
       // answers rather than the defaults it would pick for itself. Opaque
       // here: each wizard writes and reads its own shape.
       choices: choices ?? null,
+      vocabsMade: vocabsMade ?? null,
       startedAt: new Date().toISOString(),
     });
   } catch (err) {
