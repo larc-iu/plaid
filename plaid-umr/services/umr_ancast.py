@@ -57,7 +57,7 @@ DEFAULT_SERVICE_ID = 'umr-ancast'
 #: The report's shape, so a reader can refuse one it does not understand. 2:
 #: a match is an object carrying both concepts and whether it was a leftover.
 #: 3: the sentences are on the sentence tokens, each row carrying the run's `at`.
-REPORT_VERSION = 3
+REPORT_VERSION = 4
 
 #: Sentence rows per bulk metadata write.
 SENTENCE_WRITE_CHUNK = 500
@@ -494,14 +494,21 @@ def split_report(report, sentence_ids):
 
     `sentence_ids` are the document's sentence tokens in order, and a row goes
     to the token at its index. Each row carries the run's `at`, which is how a
-    reader tells this run's rows from an earlier one's."""
+    reader tells this run's rows from an earlier one's.
+
+    A match is stored as a list, `[this, other, thisConcept, otherConcept,
+    leftover]`, never as an object: the server caps the keys in a token's
+    metadata, and a sentence with a hundred matched nodes would pass that cap
+    at five keys a match."""
     summary = {k: v for k, v in report.items() if k != 'sentences'}
     summary['sentenceCount'] = len(report['sentences'])
     rows = {}
     for row in report['sentences']:
         i = row['index'] - 1
         if 0 <= i < len(sentence_ids):
-            rows[sentence_ids[i]] = {**row, 'at': report['at']}
+            matches = [[m['this'], m['other'], m['thisConcept'], m['otherConcept'], m['leftover']]
+                       for m in row['matches']]
+            rows[sentence_ids[i]] = {**row, 'matches': matches, 'at': report['at']}
     return summary, rows
 
 
@@ -718,11 +725,17 @@ class UmrAncastService(BaseService):
     def _write(self, document_id, report, sentence_ids) -> None:
         """The summary on the document and each row on its sentence, all at
         `umr.adjudication`. Each op sets that one key, so whatever else the
-        namespace holds stays."""
+        namespace holds stays.
+
+        One batch, so a refused row takes the summary back with it, and the
+        summary last, since a reader shows the rows whose `at` the summary
+        names: a summary written ahead of rows that were then refused would
+        claim a report that is not there, and hide the earlier one's rows."""
         document_ops, token_updates = report_ops(report, sentence_ids)
-        self.client.documents.patch_metadata(document_id, document_ops)
-        for start in range(0, len(token_updates), SENTENCE_WRITE_CHUNK):
-            self.client.tokens.bulk_update(token_updates[start:start + SENTENCE_WRITE_CHUNK])
+        with self.client.batched() as batch:
+            for start in range(0, len(token_updates), SENTENCE_WRITE_CHUNK):
+                batch.tokens.bulk_update(token_updates[start:start + SENTENCE_WRITE_CHUNK])
+            batch.documents.patch_metadata(document_id, document_ops)
 
 
 def main():

@@ -361,6 +361,14 @@ class _Client(servicetest.FakeClient):
             entries if entries is not None
             else [{'id': d['id'], 'name': d.get('name')} for d in documents])
 
+    @contextlib.contextmanager
+    def batched(self):
+        # The batch queues a document's metadata patch like any other write,
+        # so a write refused in the batch leaves nothing behind.
+        with super().batched() as batch:
+            batch.documents = _Documents(batch, self.documents._by_id.values())
+            yield batch
+
 
 def _service(documents=None, *, entries=None, fails=None, on_read=None):
     service = umr.UmrAncastService()
@@ -400,11 +408,22 @@ def _rows(client):
     return out
 
 
+def _stored_match(m):
+    return [m['this'], m['other'], m['thisConcept'], m['otherConcept'], m['leftover']]
+
+
+def _read_match(stored):
+    this, other, this_concept, other_concept, leftover = stored
+    return {'this': this, 'other': other, 'thisConcept': this_concept,
+            'otherConcept': other_concept, 'leftover': leftover}
+
+
 def _report(client):
     """The summary and the rows put back together, the way the tab reads them."""
     _, body = _patch(client)
     summary = body['umr']['adjudication']
-    rows = [r for r in _rows(client).values() if r and r['at'] == summary['at']]
+    rows = [{**r, 'matches': [_read_match(m) for m in r['matches']]}
+            for r in _rows(client).values() if r and r['at'] == summary['at']]
     return {**summary, 'sentences': rows}
 
 
@@ -429,7 +448,7 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert 'sentences' not in body['umr']['adjudication']
     assert body['umr']['adjudication']['sentenceCount'] == 1
     report = _report(service.client)
-    assert report['version'] == 3
+    assert report['version'] == 4
     assert report['tool'].startswith('ancast ')
     assert report['against'] == {'id': OTHER, 'name': 'Bo'}
     assert report['scope'] == 'doc'
@@ -601,8 +620,19 @@ def test_a_long_document_is_stored_as_writes_that_each_stay_small():
     for update, row in zip(token_updates, report['sentences']):
         [op] = update['metadata']
         assert op['op'] == 'set' and op['path'] == ['umr', 'adjudication']
-        assert op['value'] == {**row, 'at': report['at']}
+        assert op['value'] == {**row, 'matches': [_stored_match(m) for m in row['matches']],
+                               'at': report['at']}
         assert _key_count(op['value']) < 100
+
+
+def test_a_long_sentence_stays_under_the_key_cap_on_its_token():
+    """A match is stored as a list, so a sentence's row does not grow in keys
+    with its nodes: two hundred matched nodes sit on a token that already
+    carries its own metadata."""
+    report = _big_report(1, 200)
+    _, [update] = umr.report_ops(report, ['snt-0'])
+    [op] = update['metadata']
+    assert _key_count(op['value']) < 20
 
 
 def test_a_rerun_takes_an_earlier_row_off_a_sentence_it_has_none_for():
@@ -748,9 +778,26 @@ def test_the_lock_is_taken_around_the_write_and_released_after_it():
     # holding the document through it would block the annotator for no reason,
     # which check_unchanged covers instead.
     assert kinds.index('read') < kinds.index('lock')
-    write = kinds.index('documents.patch_metadata')
+    # The rows first and the summary last, which names them.
     rows = kinds.index('tokens.bulk_update')
-    assert kinds.index('lock') < write < rows < kinds.index('unlock')
+    summary = kinds.index('documents.patch_metadata')
+    assert kinds.index('lock') < rows < summary < kinds.index('unlock')
+
+
+def test_a_refused_row_leaves_no_summary_behind():
+    """The rows and the summary are one batch: when the server refuses a row,
+    the document keeps the report it had, and no summary claims one whose rows
+    are not there."""
+    service = _service(fails={'tokens.bulk_update': PlaidAPIError(
+        'HTTP 400 Metadata exceeds max key count of 500 at '
+        'http://plaid.internal:8085/api/v1/tokens/bulk',
+        status=400, url='http://plaid.internal:8085/api/v1/tokens/bulk', method='PATCH')})
+    helper = servicetest.run(service, REQUEST)
+
+    assert helper.errors == ['AnCast adjudication: HTTP 400 Metadata exceeds max key count of 500']
+    assert service.client.payloads('documents.patch_metadata') == []
+    assert service.client.payloads('tokens.bulk_update') == []
+    assert service.client.kinds[-1] == 'unlock'
 
 
 def test_the_lock_is_released_when_the_write_fails():

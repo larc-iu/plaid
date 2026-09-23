@@ -11,7 +11,7 @@ import {
 import { compareNotice } from '../src/domain/compareNotice.js';
 
 const report = {
-  version: 3,
+  version: 4,
   tool: 'ancast 0.1.1',
   against: { id: 'd2', name: 'Copy' },
   at: '2026-09-19T20:00:00Z',
@@ -49,7 +49,8 @@ const report = {
 };
 
 // The report as the service stores it: the summary on the document and each
-// row on its sentence token.
+// row on its sentence token, a match as a list.
+const storedMatch = (m) => [m.this, m.other, m.thisConcept, m.otherConcept, m.leftover];
 const stored = (r) => {
   const { sentences, ...summary } = r;
   return {
@@ -57,7 +58,12 @@ const stored = (r) => {
     tokens: sentences.map((row, i) => ({
       id: `snt-${i + 1}`,
       begin: i * 10,
-      metadata: { umr: { lang: 'eng', adjudication: { ...row, at: r.at } } },
+      metadata: {
+        umr: {
+          lang: 'eng',
+          adjudication: { ...row, matches: row.matches.map(storedMatch), at: r.at },
+        },
+      },
     })),
   };
 };
@@ -65,7 +71,7 @@ const stored = (r) => {
 test('the report is read from the document and its sentences, or not at all', () => {
   const { raw, tokens } = stored(report);
   const read = readAdjudication(raw, tokens);
-  assert.equal(read.version, 3);
+  assert.equal(read.version, 4);
   assert.deepEqual(read.scores, report.scores);
   assert.deepEqual(read.against, report.against);
   assert.deepEqual(read.sentences, [{ ...report.sentences[0], at: report.at }]);
@@ -75,6 +81,13 @@ test('the report is read from the document and its sentences, or not at all', ()
   // A report of another shape is not read as this one, the old whole report
   // included.
   const whole = { metadata: { umr: { adjudication: { ...report, version: 2 } } } };
+  assert.equal(
+    readAdjudication(
+      { metadata: { umr: { adjudication: { ...raw.metadata.umr.adjudication, version: 3 } } } },
+      tokens,
+    ),
+    null,
+  );
   assert.equal(readAdjudication(whole, tokens), null);
   assert.equal(readAdjudication({ metadata: {} }), null);
   assert.equal(readAdjudication(null), null);

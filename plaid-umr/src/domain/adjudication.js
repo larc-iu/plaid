@@ -8,9 +8,13 @@
 //   document: { version, tool, against: {id, name}, at, scope, sentenceCount,
 //               scores: { sentence, modal, temporal, coref, comprehensive } }
 //   sentence: { index, at, concept, labeled, unlabeled, weighted, smatch,
-//               matches: [{ this, other, thisConcept, otherConcept,
-//                           leftover }],
+//               matches: [[this, other, thisConcept, otherConcept, leftover]],
 //               unmatched: [var], unmatchedOther: [var], skipped }
+//
+// A match is stored as a list because the server caps the keys in a token's
+// metadata, and a long sentence's matches as objects would pass the cap. The
+// reading below gives each one back as `{ this, other, thisConcept,
+// otherConcept, leftover }`.
 //
 // A row belongs to the report whose `at` it carries. A sentence with a row
 // from an earlier run, or none, is not in the report.
@@ -23,9 +27,17 @@
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 
 /** The shape this reads. The service writes the same number. */
-const REPORT_VERSION = 3;
+const REPORT_VERSION = 4;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+const readMatch = ([self, other, thisConcept, otherConcept, leftover]) => ({
+  this: self,
+  other,
+  thisConcept,
+  otherConcept,
+  leftover,
+});
 
 /**
  * The report, summary and rows together, or null. `raw` is the document as
@@ -40,7 +52,9 @@ export const readAdjudication = (raw, sentenceTokens = []) => {
     .sort((a, b) => a.begin - b.begin)
     .forEach((token, i) => {
       const row = token?.metadata?.[UMR_NAMESPACE]?.adjudication;
-      if (isObject(row) && row.at === summary.at) sentences.push({ ...row, index: i + 1 });
+      if (isObject(row) && row.at === summary.at) {
+        sentences.push({ ...row, index: i + 1, matches: (row.matches || []).map(readMatch) });
+      }
     });
   return { ...summary, sentences };
 };

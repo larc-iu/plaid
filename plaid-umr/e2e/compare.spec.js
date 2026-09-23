@@ -26,7 +26,7 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
   const [firstVar, secondVar] = firstNodes.map((s) => s.metadata.umr.var);
   const [firstConcept, secondConcept] = firstNodes.map((s) => s.value);
   const report = {
-    version: 3,
+    version: 4,
     tool: 'ancast 0.1.1',
     against: { id: documentId, name: original.name },
     at: '2026-09-19T20:00:00Z',
@@ -75,7 +75,22 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
     (a, b) => a.begin - b.begin,
   );
   await client.tokens.patchMetadata(firstSentence.id, [
-    { op: 'set', path: ['umr', 'adjudication'], value: { ...sentences[0], at: report.at } },
+    {
+      op: 'set',
+      path: ['umr', 'adjudication'],
+      value: {
+        ...sentences[0],
+        // A match is stored as a list (see adjudication.js).
+        matches: sentences[0].matches.map((m) => [
+          m.this,
+          m.other,
+          m.thisConcept,
+          m.otherConcept,
+          m.leftover,
+        ]),
+        at: report.at,
+      },
+    },
   ]);
 
   await seedAuth(page);
