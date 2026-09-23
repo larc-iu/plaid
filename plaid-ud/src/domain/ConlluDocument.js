@@ -21,6 +21,7 @@ import {
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
+import { pendingId, settleIds } from './pendingIds.js';
 import {
   interSententialRelationIds,
   relationsCrossing,
@@ -862,17 +863,11 @@ export class ConlluDocument extends DocumentModel {
           }
           return;
         }
-        // Create is post-server (a span create needs the server id; the temp-id
-        // reconcile's double grid-rebuild isn't worth it — see createRelation).
-        // A new span carries the writer's create stamp (null for a verifier).
+        // Optimistic create: the span shows under a pending id until the
+        // server's comes back. A new span carries the writer's create stamp
+        // (null for a verifier).
         const stamp = this.writer.createStamp;
-        const spanResult = await this._client.spans.create(
-          targetLayer.id,
-          [tokenId],
-          pair,
-          stamp || undefined,
-        );
-        const newSpanId = spanResult?.id || spanResult;
+        const newSpanId = pendingId();
         this._applyRawPatch((next, infoNext) => {
           const featuresLayerDoc =
             infoNext.featuresLayer && infoNext.featuresLayer.id === targetLayer.id
@@ -888,6 +883,13 @@ export class ConlluDocument extends DocumentModel {
             });
           }
         });
+        const spanResult = await this._client.spans.create(
+          targetLayer.id,
+          [tokenId],
+          pair,
+          stamp || undefined,
+        );
+        this._settlePendingIds(new Map([[newSpanId, spanResult?.id || spanResult]]));
         return;
       }
 
@@ -950,17 +952,9 @@ export class ConlluDocument extends DocumentModel {
           await this._client.spans.update(existingSpan.id, value);
         }
       } else {
-        // Create is post-server (EditableCell already shows the typed value
-        // optimistically via its local state, so there's no visible delay).
-        // A new span carries the writer's create stamp (null for a verifier).
+        // Optimistic create, as above.
         const stamp = this.writer.createStamp;
-        const spanResult = await this._client.spans.create(
-          targetLayer.id,
-          [tokenId],
-          value,
-          stamp || undefined,
-        );
-        const newSpanId = spanResult?.id || spanResult;
+        const newSpanId = pendingId();
         this._applyRawPatch((next, infoNext) => {
           const targetLayerDoc = infoNext.tokenLayer?.spanLayers?.find(
             (layer) => layer.id === targetLayer.id,
@@ -975,6 +969,13 @@ export class ConlluDocument extends DocumentModel {
             });
           }
         });
+        const spanResult = await this._client.spans.create(
+          targetLayer.id,
+          [tokenId],
+          value,
+          stamp || undefined,
+        );
+        this._settlePendingIds(new Map([[newSpanId, spanResult?.id || spanResult]]));
       }
     });
   }
@@ -992,55 +993,68 @@ export class ConlluDocument extends DocumentModel {
     });
   }
 
-  // The lemma span a relation endpoint names, made if the word has none yet.
-  // `candidateId` may be a span id OR a morpheme token id (the latter is the
-  // common case when called from the annotation grid).
-  async _ensureLemmaSpan(info, candidateId) {
-    if (!candidateId || candidateId === 'ROOT') return null;
-
-    const lemmaLayer = info.lemmaLayer;
-    const lemmaSpans = lemmaLayer.spans || [];
-
-    const existingById = lemmaSpans.find((span) => span.id === candidateId);
-    if (existingById) return existingById.id;
-
-    // Span `tokens` is a flat array of token ids.
-    const tokenId = candidateId;
-    const existingByToken = lemmaSpans.find(
-      (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
-    );
-    if (existingByToken) return existingByToken.id;
-
+  // The lemma spans a write's relation endpoints name, each given as a span id
+  // OR a morpheme token id (the latter is the common case when called from the
+  // annotation grid). A word with no lemma span yet is given one under a
+  // pending id: `ids` holds what each endpoint resolved to, `pending` the spans
+  // to add locally with `_addPendingSpans` and to create with
+  // `_createPendingSpans`. The same word named twice (a root) is one span.
+  _planLemmaSpans(info, candidateIds) {
+    const lemmaSpans = info.lemmaLayer?.spans || [];
     const textBody = info.textLayer?.text?.body || '';
-    const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
-    const lemmaValue = token ? cpSlice(textBody, token.begin, token.end) : '';
-
     // Made on the writer's behalf to hang the relation on: their stamp.
     const stamp = this.writer.createStamp;
-    const apiResponse = await this._client.spans.create(
-      lemmaLayer.id,
-      [tokenId],
-      lemmaValue,
-      stamp || undefined,
-    );
-    const createdSpanId = apiResponse.id || apiResponse;
-
-    this._applyRawPatch((next, infoNext) => {
-      const lemmaLayerDoc = infoNext.lemmaLayer;
-      if (lemmaLayerDoc) {
-        if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
-        if (lemmaLayerDoc.spans.findIndex((s) => s.id === createdSpanId) === -1) {
-          lemmaLayerDoc.spans.push({
-            id: createdSpanId,
-            tokens: [tokenId],
-            value: lemmaValue,
-            ...(stamp ? { metadata: stamp } : {}),
-          });
-        }
-      }
+    const pending = [];
+    const ids = candidateIds.map((candidateId) => {
+      if (!candidateId || candidateId === 'ROOT') return null;
+      const existingById = lemmaSpans.find((span) => span.id === candidateId);
+      if (existingById) return existingById.id;
+      // Span `tokens` is a flat array of token ids.
+      const tokenId = candidateId;
+      const existingByToken = lemmaSpans.find(
+        (span) => Array.isArray(span.tokens) && span.tokens.includes(tokenId),
+      );
+      if (existingByToken) return existingByToken.id;
+      const planned = pending.find((span) => span.tokens[0] === tokenId);
+      if (planned) return planned.id;
+      const token = info.tokenLayer?.tokens?.find((t) => t.id === tokenId);
+      const span = {
+        id: pendingId(),
+        tokens: [tokenId],
+        value: token ? cpSlice(textBody, token.begin, token.end) : '',
+        ...(stamp ? { metadata: stamp } : {}),
+      };
+      pending.push(span);
+      return span.id;
     });
+    return { ids, pending };
+  }
 
-    return createdSpanId;
+  _addPendingSpans(infoNext, pending) {
+    const lemmaLayerDoc = infoNext.lemmaLayer;
+    if (!lemmaLayerDoc || pending.length === 0) return;
+    if (!Array.isArray(lemmaLayerDoc.spans)) lemmaLayerDoc.spans = [];
+    lemmaLayerDoc.spans.push(...pending.map((span) => ({ ...span })));
+  }
+
+  // Create the planned spans on the server, recording each one's id in `ids`
+  // (pending id to server id).
+  async _createPendingSpans(info, pending, ids) {
+    for (const span of pending) {
+      const created = await this._client.spans.create(
+        info.lemmaLayer.id,
+        span.tokens,
+        span.value,
+        span.metadata || undefined,
+      );
+      ids.set(span.id, created?.id || created);
+    }
+  }
+
+  // Put the server's ids in place of the pending ones a write showed.
+  _settlePendingIds(ids) {
+    if (ids.size === 0) return;
+    this._applyRawPatch((next) => settleIds(next, ids));
   }
 
   // Suppressors lying over these pairs, each given as a basic relation or as a
@@ -1073,14 +1087,13 @@ export class ConlluDocument extends DocumentModel {
     }
 
     return this._withSaving('Failed to create relation', async () => {
-      // Post-server (NOT optimistic): a relation create needs the server id, so
-      // it requires a temp-id placeholder + a second patch to swap it. That
-      // double grid-rebuild makes the dependency tree re-measure positions and
-      // re-mount arcs twice, which visibly janks the drag-to-draw interaction —
-      // worse than just waiting one round trip. Creates show a brief absence,
-      // never a wrong value, so post-server is the right trade here.
-      const resolvedSourceId = await this._ensureLemmaSpan(info, sourceSpanId);
-      const resolvedTargetId = await this._ensureLemmaSpan(info, targetSpanId);
+      // Optimistic, as every write is: the relation (and a lemma span for a
+      // word that had none) shows under a pending id before the round trip,
+      // and the server's ids are swapped in when it answers.
+      const {
+        ids: [resolvedSourceId, resolvedTargetId],
+        pending,
+      } = this._planLemmaSpans(info, [sourceSpanId, targetSpanId]);
 
       if (!resolvedSourceId || !resolvedTargetId) {
         console.warn('Unable to create relation because lemma spans could not be resolved:', {
@@ -1118,25 +1131,15 @@ export class ConlluDocument extends DocumentModel {
       // A re-pointed head is a person's relation: it carries the writer's
       // create stamp (null for a verifier, so a verifier's stays plain).
       const relStamp = this.writer.createStamp;
-      const batchResults = await this._client.batched(async (b) => {
-        incomingRelations.forEach((rel) => b.relations.delete(rel.id));
-        staleSuppressors.forEach((id) => b.relations.delete(id));
-        b.relations.create(
-          info.relationLayer.id,
-          resolvedSourceId,
-          resolvedTargetId,
-          finalDeprel,
-          relStamp || undefined,
-        );
-      });
-      const newRelationId = batchResults[batchResults.length - 1]?.body?.id;
+      const relationId = pendingId();
       this._applyRawPatch((next, infoNext) => {
+        this._addPendingSpans(infoNext, pending);
         const relLayer = infoNext.relationLayer;
         if (!relLayer) return;
         if (!Array.isArray(relLayer.relations)) relLayer.relations = [];
         relLayer.relations = relLayer.relations.filter((rel) => rel.target !== resolvedTargetId);
         relLayer.relations.push({
-          id: newRelationId,
+          id: relationId,
           source: resolvedSourceId,
           target: resolvedTargetId,
           value: finalDeprel,
@@ -1147,6 +1150,23 @@ export class ConlluDocument extends DocumentModel {
           enhanced.relations = enhanced.relations.filter((r) => !staleSuppressors.includes(r.id));
         }
       });
+
+      const ids = new Map();
+      await this._createPendingSpans(info, pending, ids);
+      const serverId = (id) => ids.get(id) || id;
+      const batchResults = await this._client.batched(async (b) => {
+        incomingRelations.forEach((rel) => b.relations.delete(rel.id));
+        staleSuppressors.forEach((id) => b.relations.delete(id));
+        b.relations.create(
+          info.relationLayer.id,
+          serverId(resolvedSourceId),
+          serverId(resolvedTargetId),
+          finalDeprel,
+          relStamp || undefined,
+        );
+      });
+      ids.set(relationId, batchResults[batchResults.length - 1]?.body?.id);
+      this._settlePendingIds(ids);
     });
   }
 
@@ -1175,9 +1195,11 @@ export class ConlluDocument extends DocumentModel {
 
     let createdId = null;
     const ok = await this._withSaving('Failed to create enhanced relation', async () => {
-      // Post-server, for createRelation's reason.
-      const source = await this._ensureLemmaSpan(info, sourceSpanId);
-      const target = await this._ensureLemmaSpan(info, targetSpanId);
+      // Optimistic, for createRelation's reason.
+      const {
+        ids: [source, target],
+        pending,
+      } = this._planLemmaSpans(info, [sourceSpanId, targetSpanId]);
       if (!source || !target) return;
 
       const rows = info.enhancedRelationLayer.relations || [];
@@ -1190,23 +1212,10 @@ export class ConlluDocument extends DocumentModel {
 
       const suppress = Boolean(basicOverPair) && !rows.some(sameEdge);
       const stamp = this.writer.createStamp;
-      const results = await this._client.batched(async (b) => {
-        if (suppress) {
-          b.relations.create(info.enhancedRelationLayer.id, source, target, null, {
-            [SUPPRESS_KEY]: true,
-          });
-        }
-        b.relations.create(
-          info.enhancedRelationLayer.id,
-          source,
-          target,
-          value,
-          stamp || undefined,
-        );
-      });
-      createdId = results[results.length - 1]?.body?.id || null;
-      const suppressorId = suppress ? results[0]?.body?.id : null;
+      const suppressorId = suppress ? pendingId() : null;
+      const edgeId = pendingId();
       this._applyRawPatch((next, infoNext) => {
+        this._addPendingSpans(infoNext, pending);
         const layer = infoNext.enhancedRelationLayer;
         if (!layer) return;
         if (!Array.isArray(layer.relations)) layer.relations = [];
@@ -1220,13 +1229,39 @@ export class ConlluDocument extends DocumentModel {
           });
         }
         layer.relations.push({
-          id: createdId,
+          id: edgeId,
           source,
           target,
           value,
           ...(stamp ? { metadata: stamp } : {}),
         });
       });
+
+      const ids = new Map();
+      await this._createPendingSpans(info, pending, ids);
+      const serverId = (id) => ids.get(id) || id;
+      const results = await this._client.batched(async (b) => {
+        if (suppress) {
+          b.relations.create(
+            info.enhancedRelationLayer.id,
+            serverId(source),
+            serverId(target),
+            null,
+            { [SUPPRESS_KEY]: true },
+          );
+        }
+        b.relations.create(
+          info.enhancedRelationLayer.id,
+          serverId(source),
+          serverId(target),
+          value,
+          stamp || undefined,
+        );
+      });
+      createdId = results[results.length - 1]?.body?.id || null;
+      if (suppressorId) ids.set(suppressorId, results[0]?.body?.id);
+      ids.set(edgeId, createdId);
+      this._settlePendingIds(ids);
     });
     return ok ? createdId : false;
   }
@@ -1255,14 +1290,8 @@ export class ConlluDocument extends DocumentModel {
         await this._client.relations.delete(existing.id);
         return;
       }
-      const created = await this._client.relations.create(
-        info.enhancedRelationLayer.id,
-        basic.source,
-        basic.target,
-        null,
-        { [SUPPRESS_KEY]: true },
-      );
-      const id = created?.id || created;
+      // Optimistic too: the suppressor shows under a pending id.
+      const id = pendingId();
       this._applyRawPatch((next, infoNext) => {
         const layer = infoNext.enhancedRelationLayer;
         if (!layer) return;
@@ -1275,6 +1304,14 @@ export class ConlluDocument extends DocumentModel {
           metadata: { [SUPPRESS_KEY]: true },
         });
       });
+      const created = await this._client.relations.create(
+        info.enhancedRelationLayer.id,
+        basic.source,
+        basic.target,
+        null,
+        { [SUPPRESS_KEY]: true },
+      );
+      this._settlePendingIds(new Map([[id, created?.id || created]]));
     });
   }
 
