@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { DocumentProvider } from '../contexts/DocumentContext.jsx';
 import { TranscriptList } from './TranscriptList.jsx';
+import { pendingId, recordSettled } from '@ui/domain/pendingIds.js';
 
 // The transcript rows against a fake document: what a row shows, what a
 // keystroke writes, and where focus goes next. The real mutations are covered
@@ -384,6 +385,53 @@ describe('TranscriptList', () => {
       timeEnd: 4.37,
       speaker: '',
     });
+    await r.unmount();
+  });
+
+  it('two new segments refused together both come back to the row, in order', async () => {
+    // The second is never sent once the first fails, so its text has nowhere
+    // else to be.
+    const doc = makeDoc({ body: 'the cat', tokens: TOKENS });
+    const answers = [];
+    doc.createAlignment = vi.fn(() => new Promise((resolve) => answers.push(resolve)));
+    const r = await renderComponent(element(doc, makeOps({ currentTime: 4.2 })));
+    const fresh = newTextarea(r.container);
+    for (const text of ['one', 'two']) {
+      await r.step(() => setValue(fresh, text));
+      await r.step(async () => {
+        press(fresh, 'Enter');
+        await settle();
+      });
+    }
+    expect(fresh.value).toBe('');
+    await r.step(async () => {
+      answers[0](false);
+      answers[1](false);
+      await settle();
+    });
+    expect(fresh.value).toBe('one two');
+    await r.unmount();
+  });
+
+  it("keeps a new segment's row, and what is being typed into it, when the server's id arrives", async () => {
+    const pending = pendingId();
+    const tokens = [
+      TOKENS[1],
+      { id: pending, begin: 4, end: 7, metadata: { timeBegin: 1.5, timeEnd: 3 } },
+    ];
+    const doc = makeDoc({ body: 'the cat', tokens });
+    const ops = makeOps();
+    const r = await renderComponent(element(doc, ops));
+    const row = rowTextareas(r.container)[1];
+    await r.step(() => row.focus());
+    await r.step(() => setValue(row, 'cats'));
+
+    recordSettled([[pending, 'seg-server']]);
+    doc.alignmentTokens = [TOKENS[1], { ...tokens[1], id: 'seg-server' }];
+    await r.rerender(element(doc, { ...ops }));
+    expect(rowTextareas(r.container)[1]).toBe(row);
+    expect(row.value).toBe('cats');
+    expect(document.activeElement).toBe(row);
     await r.unmount();
   });
 

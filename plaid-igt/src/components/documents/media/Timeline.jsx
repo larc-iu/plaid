@@ -13,6 +13,7 @@ import { useTimelineOperations, clampZoom, MIN_ZOOM, MAX_ZOOM } from './useTimel
 import { TimeAlignmentPopover } from './TimeAlignmentPopover.jsx';
 import { formatTime } from './formatTime.js';
 import { assignLanes } from '../../../domain/alignmentTimes.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
 
 // One colour per speaker, the same on every segment and in every document of
 // the project: the speaker's place in the (sorted) speaker list, stepped round
@@ -377,7 +378,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
               {proposalBlocks}
 
               {/* Alignment tokens */}
-              {getVisibleTokens().map((token, index) => {
+              {getVisibleTokens().map((token) => {
                 const tokenStart = token.metadata?.timeBegin || 0;
                 const tokenEnd = token.metadata?.timeEnd || token.metadata?.timeBegin || 1;
                 const tokenWidth = (tokenEnd - tokenStart) * pixelsPerSecond;
@@ -393,7 +394,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
 
                 return (
                   <div
-                    key={token.id || index}
+                    key={stableKey(token.id)}
                     style={{
                       position: 'absolute',
                       left: `${displayStart * pixelsPerSecond}px`,

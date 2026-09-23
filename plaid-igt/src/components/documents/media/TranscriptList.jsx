@@ -19,6 +19,7 @@ import { TimecodeField } from './TimecodeField.jsx';
 import { RUNNING_TIME_MS, useThrottledValue } from './useThrottledValue.js';
 import { getStickySpeaker, setStickySpeaker } from './stickySpeaker.js';
 import { keys } from '@/lib/keymap.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
 
 // The transcript: every time-aligned segment as a row you can type into, in
 // time order, with the recording following your focus. This is the pass a
@@ -578,9 +579,17 @@ const NewSegmentRow = memo(function NewSegmentRow({
 
   useLayoutEffect(() => autoGrow(ref.current), [draft]);
 
+  // What the row holds only because a refused segment put it back, so a
+  // second refusal can tell it from text the user typed.
+  const restored = useRef('');
+  const draftNow = useRef(draft);
+  draftNow.current = draft;
+
   // The new segment shows as soon as it is made, so the row empties at once
   // for the next one; a segment refused (a check, or the server) puts the
-  // text back unless something else has been typed since.
+  // text back unless something else has been typed since. Two segments made
+  // before the first was refused both come back, in order: the second is not
+  // sent once the first fails.
   const submit = async () => {
     if (!canCreate) return;
     const text = draft.trim();
@@ -596,7 +605,12 @@ const NewSegmentRow = memo(function NewSegmentRow({
       timeEnd: Math.max(currentTime, Number.isFinite(exact) ? exact : currentTime),
       speaker: speaker.trim(),
     });
-    if (!ok) setDraft((typed) => typed || text);
+    if (ok) return;
+    const typed = draftNow.current;
+    if (typed && typed !== restored.current) return;
+    restored.current = typed ? `${typed} ${text}` : text;
+    draftNow.current = restored.current;
+    setDraft(restored.current);
   };
 
   const onKeyDown = (e) => {
@@ -720,7 +734,9 @@ export function TranscriptList({
     let index = 0;
     const items = segments.map((token) => ({
       kind: 'segment',
-      key: token.id,
+      // The id the row was first shown under, so it is not remounted, and
+      // what is being typed into it lost, when the server's id arrives.
+      key: stableKey(token.id),
       time: timeBeginOf(token),
       token,
       index: index++,
