@@ -446,8 +446,24 @@ export const VocabularyItems = ({
     const open = selectedIdRef.current;
     if (open && known.has(open)) goItem(known.get(open), { replace: true });
   };
+  const pendingWritesRef = useRef(0);
+  useEffect(() => {
+    // Leaving while a write is still on its way asks first.
+    const onBeforeUnload = (e) => {
+      if (!pendingWritesRef.current) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
   const sendInTurn = (label, write, failure) => {
-    const next = writesRef.current.then(() => client.withOperation(label, write));
+    pendingWritesRef.current += 1;
+    const next = writesRef.current
+      .then(() => client.withOperation(label, write))
+      .finally(() => {
+        pendingWritesRef.current -= 1;
+      });
     writesRef.current = next.catch((err) => {
       console.error(`${label}:`, err);
       notifyError(failure, 'Error');

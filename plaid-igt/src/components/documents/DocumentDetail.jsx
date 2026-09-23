@@ -253,6 +253,19 @@ const DocumentEditor = () => {
   // The integrity notice is sticky so it is not missed, but it is about THIS
   // document: it goes when the reader leaves for another document or page.
   useEffect(() => () => dismissIntegrityFindings(), [documentId]);
+  // Every edit shows before it is saved, on every tab, so leaving while one is
+  // still on its way asks first (the browser's own question). The Analyze grid
+  // asks as well, for a cell typed in and not yet left.
+  useEffect(() => {
+    if (!liveDoc) return undefined;
+    const onBeforeUnload = (e) => {
+      if (!liveDoc.isSaving) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [liveDoc]);
   // The gate is up from the first render, but a document with nothing to heal
   // plans entirely locally and lowers it again in a microtask, so the spinner
   // is on screen for one paint on every open. Hold the tabs back on the raw
