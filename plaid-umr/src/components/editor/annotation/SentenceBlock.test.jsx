@@ -237,6 +237,7 @@ describe('SentenceBlock text mode', () => {
     let settle;
     const doc = {
       graph: {},
+      canConfirmSentence: () => false,
       penmanOf: () => '(s1l / leave-02)',
       planPenman: () => ({ changes: 1 }),
       applyPenman: () =>
@@ -267,6 +268,42 @@ describe('SentenceBlock text mode', () => {
     } else {
       expect(box).toBeNull();
     }
+    await r.unmount();
+  });
+});
+
+describe('SentenceBlock review', () => {
+  const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
+
+  it('offers Confirm graph while the sentence has something to confirm', async () => {
+    const { sentence, nodesById } = fixture();
+    const confirmed = [];
+    const doc = (open) => ({
+      graph: {},
+      canConfirmSentence: () => open,
+      confirmSentence: async (i) => confirmed.push(i),
+    });
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc(true)}
+        sentence={sentence}
+        nodesById={nodesById}
+        dataVersion={1}
+        readOnly={false}
+      />,
+    );
+    await r.step(() => button(r.container, 'Confirm graph').click());
+    expect(confirmed).toEqual([1]);
+    await r.rerender(
+      <SentenceBlock
+        doc={doc(false)}
+        sentence={sentence}
+        nodesById={nodesById}
+        dataVersion={2}
+        readOnly={false}
+      />,
+    );
+    expect(button(r.container, 'Confirm graph')).toBeUndefined();
     await r.unmount();
   });
 });

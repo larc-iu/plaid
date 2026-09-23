@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CANVAS_ACTIONS, KEY_ACTIONS } from './keymap.js';
+import { CANVAS_ACTIONS, KEY_ACTIONS, keys } from './keymap.js';
 import { ITEMS } from '../components/editor/annotation/nodeMenuItems.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -90,5 +90,19 @@ describe('the canvas action tables agree', () => {
       .filter(([, , keyId]) => !keyId)
       .map(([id]) => id);
     expect(implicit.filter((id) => !known.has(id))).toEqual([]);
+  });
+});
+
+describe('the confirm key', () => {
+  const press = (init) => new KeyboardEvent('keydown', { key: 'Enter', ...init });
+
+  it('is Ctrl+Enter or Cmd+Enter on a node, and plain Enter still opens the concept', () => {
+    expect(keys.which(CANVAS_ACTIONS, press({ ctrlKey: true }))).toBe('node.confirm');
+    expect(keys.which(CANVAS_ACTIONS, press({ metaKey: true }))).toBe('node.confirm');
+    expect(keys.which(CANVAS_ACTIONS, press({}))).toBeNull();
+  });
+
+  it('may hold its chord: not reserved, and no other canvas action has it', () => {
+    expect(keys.check('node.confirm', 'Mod+Enter')).toBeNull();
   });
 });

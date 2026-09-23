@@ -127,6 +127,8 @@ A node shows its variable, its concept, and its attributes as a line of text (`a
 A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
 A node a service drafted is tinted violet, and one made by a member whose work the project reviews is tinted amber; the tint goes when you edit the node, which records it as yours.
+To accept a node as it stands, choose **Confirm** on its menu or press Ctrl+Enter (Cmd+Enter). That confirms the node and its relation to its parent. **Confirm graph** beside a sentence confirms every node and relation of it.
+A confirmed node is kept when a draft overwrites the sentence.
 The root's concept is underlined.
 
 == Edges
@@ -339,6 +341,7 @@ The defaults. Every shortcut can be rebound under your profile, Keyboard.
 | o | Modal relation
 | n | New node with no parent
 | Ctrl+Shift+R | Make the node the root
+| Ctrl+Enter | Confirm the node and its relation to its parent
 | Shift+Backspace | Delete the edge to the parent, with what only it reached
 | Ctrl+Shift+Backspace | Delete the node and everything under it
 | Escape | Leave a mode or cancel a picker

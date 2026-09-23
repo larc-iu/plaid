@@ -257,3 +257,47 @@ test('reconcile leaves provenance alone', async () => {
   await doc._reconcile();
   assert.equal(confirms(calls).length, 0);
 });
+
+// The review gesture: a person looked at a drafted node and vouches for it.
+test('confirming a node confirms it and its relation to its parent, and nothing else', async () => {
+  const { doc, calls } = load({ machine: true });
+  const country = byVar(doc, 's1c');
+  const into = country.in[0];
+  const name = byVar(doc, 's1n');
+  assert.equal(doc.canConfirm(country.id), true);
+  assert.equal(await doc.confirmNode(country.id), true);
+  assert.equal(provState(doc.node(country.id).metadata), PROV_STATES.VERIFIED);
+  assert.equal(provState(doc.edge(into.id).metadata), PROV_STATES.VERIFIED);
+  // Its child and the edge down to it are the child's, not this node's.
+  assert.equal(provState(doc.node(name.id).metadata), PROV_STATES.MACHINE);
+  const down = doc.node(country.id).out[0];
+  assert.equal(provState(doc.edge(down.id).metadata), PROV_STATES.MACHINE);
+  // The draft's origin is kept, as for any edit.
+  assert.equal(doc.node(country.id).metadata[PROV.sourceKey], 'service:umr-draft-llm');
+  const patched = calls.filter((c) => c.name.endsWith('patchMetadata')).map((c) => c.args[0]);
+  assert.deepEqual(new Set(patched), new Set([country.id, into.id]));
+  // Nothing is left to confirm, so a second confirm writes nothing.
+  assert.equal(doc.canConfirm(country.id), false);
+  const before = calls.length;
+  assert.equal(await doc.confirmNode(country.id), false);
+  assert.equal(calls.length, before);
+});
+
+test("confirming a sentence's graph confirms every node and edge in it", async () => {
+  const { doc } = load({ machine: true });
+  assert.equal(doc.canConfirmSentence(1), true);
+  assert.equal(await doc.confirmSentence(1), true);
+  const s1 = doc.sentence(1);
+  s1.nodes.forEach((n) => assert.equal(provState(n.metadata), PROV_STATES.VERIFIED, n.var));
+  s1.edges.forEach((e) => assert.equal(provState(e.metadata), PROV_STATES.VERIFIED, e.role));
+  assert.equal(doc.canConfirmSentence(1), false);
+  // The next sentence is still the machine's.
+  assert.equal(provState(doc.sentence(2).nodes[0].metadata), PROV_STATES.MACHINE);
+});
+
+test("a contributor's confirm is a contribution, never a verification", async () => {
+  const { doc } = load({ machine: true, user: { id: CONTRIBUTOR }, project: REVIEWED_PROJECT });
+  const country = byVar(doc, 's1c');
+  assert.equal(await doc.confirmNode(country.id), true);
+  assert.equal(provState(doc.node(country.id).metadata), PROV_STATES.CONTRIBUTED);
+});

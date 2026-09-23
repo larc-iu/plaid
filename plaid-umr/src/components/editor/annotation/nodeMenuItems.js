@@ -16,6 +16,7 @@
 // keymap and `runAction` against each other: the three used to be able to
 // drift into a bound key that did nothing or a menu row that did nothing.
 export const ITEMS = [
+  [['node.confirm', 'Confirm']],
   [
     ['node.concept', 'Edit concept', 'fixed:canvas:Enter'],
     ['node.relation', 'Relation to parent'],

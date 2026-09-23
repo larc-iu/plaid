@@ -755,6 +755,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       case 'node.root':
         await doc.setRoot(id);
         break;
+      case 'node.confirm':
+        await doc.confirmNode(id);
+        break;
       case 'node.delete':
         await deleteInto(false, id);
         break;
@@ -809,6 +812,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       'node.earlier': at <= 0,
       'node.later': at < 0 || at >= siblings.length - 1,
       'node.root': !!node.root,
+      'node.confirm': !doc.canConfirm(menu.id),
       'node.delete': !edge,
     };
   })();
@@ -1135,6 +1139,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             again over the top of one that is already there. */}
         {sentence.rawGraph && sentence.nodes.length === 0 && (
           <span className="umr-block-note">Graph kept as text, could not be read</span>
+        )}
+        {!readOnly && !textMode && doc?.canConfirmSentence(sentence.index) && (
+          <button
+            type="button"
+            className="umr-text-toggle"
+            onClick={() => doc.confirmSentence(sentence.index)}
+          >
+            Confirm graph
+          </button>
         )}
         {!readOnly && (
           <button

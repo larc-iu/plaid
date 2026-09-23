@@ -991,6 +991,88 @@ export class UmrDocument extends DocumentModel {
     );
   }
 
+  // ----- review -----
+
+  // What confirming `nodes` stamps, as `[kind, id, fragment]`: each node and
+  // every in-sentence edge into it, since a node's relation to its parent is
+  // read with the node. Only what this writer may confirm (the writer
+  // policy's `confirmStamp`): a verifier's machine and contributed material,
+  // a contributor's machine material.
+  _confirmations(nodes) {
+    const out = [];
+    const seen = new Set();
+    nodes.forEach((node) => {
+      const stamp = this.writer.confirmStamp(node.metadata);
+      if (stamp) out.push(['span', node.id, stamp]);
+      node.in.forEach((edge) => {
+        if (seen.has(edge.id) || this.node(edge.source)?.sentence !== node.sentence) return;
+        seen.add(edge.id);
+        const edgeStamp = this.writer.confirmStamp(edge.metadata);
+        if (edgeStamp) out.push(['relation', edge.id, edgeStamp]);
+      });
+    });
+    return out;
+  }
+
+  /** Whether confirming this node would confirm anything. */
+  canConfirm(nodeId) {
+    const node = this.node(nodeId);
+    return !!node && !node.constant && this._confirmations([node]).length > 0;
+  }
+
+  /** Whether confirming this sentence's graph would confirm anything. */
+  canConfirmSentence(sentenceIndex) {
+    const sentence = this.sentence(sentenceIndex);
+    return !!sentence && this._confirmations(sentence.nodes).length > 0;
+  }
+
+  _confirm(nodes, label, operation) {
+    const stamps = this._confirmations(nodes);
+    if (!stamps.length) return Promise.resolve(false);
+    if (!this._canWrite(label)) return Promise.resolve(false);
+    this._applyRawPatch((next, infoNext) => {
+      const L = this._layers(infoNext);
+      stamps.forEach(([kind, id, stamp]) => {
+        const item = (kind === 'span' ? L.spans : L.relations).find((x) => x.id === id);
+        if (item) item.metadata = applyMetadataOps(item.metadata, metadataOps(stamp));
+      });
+    });
+    return this._queueWrite(
+      label,
+      () =>
+        this._client.batched(async (b) => {
+          stamps.forEach(([kind, id, stamp]) => {
+            const api = kind === 'span' ? b.spans : b.relations;
+            api.patchMetadata(settledId(id), metadataOps(stamp));
+          });
+        }),
+      operation,
+    );
+  }
+
+  /**
+   * A person looked at a drafted node and vouches for it as it stands: the
+   * node and its relations to its parents are confirmed, which settles the
+   * tint and keeps them from a Draft that overwrites. Resolves false when
+   * there was nothing to confirm.
+   */
+  confirmNode(nodeId) {
+    const node = this.node(nodeId);
+    if (!node || node.constant) return Promise.resolve(false);
+    return this._confirm([node], 'Failed to confirm the node', `Confirm ${node.var}`);
+  }
+
+  /** Every node and edge of a sentence's graph, as `confirmNode` does one. */
+  confirmSentence(sentenceIndex) {
+    const sentence = this.sentence(sentenceIndex);
+    if (!sentence) return Promise.resolve(false);
+    return this._confirm(
+      sentence.nodes,
+      'Failed to confirm the graph',
+      `Confirm the graph of sentence ${sentenceIndex}`,
+    );
+  }
+
   // ----- the document graph -----
 
   // A constant's node (`author`, `root`, `document-creation-time`, ...), or

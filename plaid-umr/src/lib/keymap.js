@@ -97,6 +97,13 @@ export const KEY_ACTIONS = [
     keys: ['Mod+Shift+R'],
   },
   {
+    id: 'node.confirm',
+    scope: 'canvas',
+    group: 'node',
+    label: 'Confirm the node and its relation to its parent',
+    keys: ['Mod+Enter'],
+  },
+  {
     id: 'node.delete',
     scope: 'canvas',
     group: 'node',
