@@ -64,7 +64,14 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
 
   const handleRename = async () => {
     if (!dirty) return;
-    if (await doc.rename(name)) notifySuccess('Document renamed');
+    const typed = name;
+    if (await doc.rename(typed)) {
+      notifySuccess('Document renamed');
+      return;
+    }
+    // Refused: the reload put the saved name back, and the field followed it.
+    // What was typed goes back in the field, still unsaved, for another try.
+    setName(typed);
   };
 
   const openCopy = () => {

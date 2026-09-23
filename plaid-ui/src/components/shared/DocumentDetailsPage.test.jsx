@@ -14,7 +14,17 @@ vi.mock('./ConfirmProvider.jsx', () => ({ useConfirm: () => confirm }));
 
 const { auth, editor } = vi.hoisted(() => ({ auth: {}, editor: {} }));
 vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
-vi.mock('../../hooks/useDocumentEditor.js', () => ({ useDocumentEditor: () => editor }));
+// Subscribed to the document, as the real hook is, so the screen follows what
+// the document does.
+vi.mock('../../hooks/useDocumentEditor.js', async () => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    useDocumentEditor: () => {
+      useSyncExternalStore(editor.doc.subscribe, editor.doc.getSnapshot);
+      return editor;
+    },
+  };
+});
 vi.mock('../../lib/notify.js', () => ({ notifySuccess: vi.fn(), notifyError: vi.fn() }));
 
 const { DocumentDetailsPage } = await import('./DocumentDetailsPage.jsx');
@@ -134,7 +144,34 @@ const typeAName = async (view) => {
   expect(hasUnsavedDraft()).toBe('The name you have typed');
 };
 
+// A rename the server refuses: shown at once, then taken back by the reload
+// that follows the refusal, as the write queue does it.
+class RefusingDoc extends Doc {
+  async rename(name) {
+    this._applyRawPatch((raw) => {
+      raw.name = name;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    this._swapRaw({ ...this.raw, name: 'One' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return false;
+  }
+}
+
 describe('the document details screen', () => {
+  it('keeps the typed name in the field when the rename is refused', async () => {
+    editor.doc = new RefusingDoc({ id: 'd1', name: 'One', metadata: {} });
+    const view = await mount();
+    await typeAName(view);
+    await view.step(async () => {
+      click(button(view.container, 'Save'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(editor.doc.name).toBe('One');
+    expect(view.container.querySelector('#document-name').value).toBe('Two');
+    expect(hasUnsavedDraft()).toBe('The name you have typed');
+  });
+
   it('shows the document’s name, its id and what it can do', async () => {
     const view = await mount();
     expect(view.container.querySelector('#document-name').value).toBe('One');
