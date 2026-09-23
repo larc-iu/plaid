@@ -175,11 +175,20 @@
                                 :tryItOutEnabled true
                                 :persistAuthorization true}})}]]]))))
 
+(defn- json-key->keyword
+  "Decode a JSON object key to a keyword with no namespace, whatever it
+  holds. A plain `keyword` reads \"N/A\" as namespace N and name A, and the
+  JSON writers that store metadata, config and bindings write only the name,
+  so a slash in a user key was lost on every write."
+  [^String k]
+  (keyword nil k))
+
 (defn rest-handler [db secret-key]
   (let [;; Create custom muuntaja instance that preserves fractional seconds
         muuntaja-instance (m/create
                            (-> m/default-options
-                               (assoc-in [:formats "application/json" :opts :date-format] "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")))
+                               (assoc-in [:formats "application/json" :opts :date-format] "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+                               (assoc-in [:formats "application/json" :opts :decode-key-fn] json-key->keyword)))
         handler (ring/ring-handler
                  (ring/router
                   [(routes)]

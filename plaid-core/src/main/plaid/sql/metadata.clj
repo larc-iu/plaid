@@ -262,19 +262,75 @@
   "Maximum nesting level allowed in metadata. 10 is plenty for any
   structured metadata a real user would author, and deeper than that we
   start worrying about pathological JSON aimed at exhausting stack or
-  serializer time. The REST guard checks request bodies against it, and
-  `patch-metadata!` checks what a list of ops builds, since a long path
-  nests deeper than its body."
+  serializer time. See `validate-metadata-shape!`."
   10)
 
-(defn- nesting-depth
-  "Levels of maps and sequences below `v`: 0 for a scalar or an empty one."
+(def max-metadata-key-count
+  "Soft cap on the total number of keys (across all nesting levels) in
+  one metadata map. Stops an unbounded `{k1:..,k2:..,...}` blob from
+  monopolizing the audit/serialization pipeline."
+  500)
+
+(def max-metadata-string-length
+  "Soft cap on individual string-value length, in characters."
+  (* 10 1024))
+
+(def max-metadata-total-bytes
+  "Cumulative cap on the JSON-serialized size of one metadata map (#118).
+  1 MB is generous for any realistic structured metadata blob."
+  (* 1024 1024))
+
+(defn- safe-json-byte-count
+  "Approximate the wire-bytes a value will take when JSON-encoded. If
+  encoding fails, fall back to its printed length, since over-counting is
+  better than skipping the cap."
   [v]
-  (let [children (cond (map? v) (vals v)
-                       (sequential? v) v)]
-    (if (seq children)
-      (inc (reduce max (map nesting-depth children)))
-      0)))
+  (try
+    (count (clojure.data.json/write-str v))
+    (catch Exception _
+      (count (pr-str v)))))
+
+(defn validate-metadata-shape!
+  "Walk `m` (a metadata map or nested value) and return either nil if
+  it satisfies the shape caps, or a humane error string. Key count and
+  total bytes are cumulative across the whole map.
+
+  The REST layer checks request bodies that ARE metadata (PUT, inline
+  create metadata) with it, and `patch-metadata!` checks the metadata a
+  list of ops builds, since an op list is neither the size nor the depth
+  of its result."
+  [m]
+  (let [key-count (atom 0)
+        err (atom nil)
+        check (fn check [v depth]
+                (cond
+                  @err nil
+                  (> depth max-metadata-depth)
+                  (reset! err (str "Metadata exceeds max depth of " max-metadata-depth))
+
+                  (map? v)
+                  (do (swap! key-count + (count v))
+                      (when (> @key-count max-metadata-key-count)
+                        (reset! err (str "Metadata exceeds max key count of "
+                                         max-metadata-key-count)))
+                      (when-not @err
+                        (doseq [[_ vv] v :while (nil? @err)]
+                          (check vv (inc depth)))))
+
+                  (sequential? v)
+                  (doseq [vv v :while (nil? @err)]
+                    (check vv (inc depth)))
+
+                  (and (string? v) (> (count v) max-metadata-string-length))
+                  (reset! err (str "Metadata string value exceeds max length of "
+                                   max-metadata-string-length " characters"))
+
+                  :else nil))]
+    (check m 0)
+    (when (and (nil? @err) (> (safe-json-byte-count m) max-metadata-total-bytes))
+      (reset! err (str "Metadata exceeds max total size of "
+                       max-metadata-total-bytes " bytes")))
+    @err))
 
 (defn- key-str [k]
   (if (keyword? k) (name k) (str k)))
@@ -348,8 +404,8 @@
     (let [pre (get-metadata tx entity-type entity-id)
           post (reduce apply-op pre ops)
           touched (distinct (map #(key-str (first (:path %))) ops))]
-      (when (> (nesting-depth post) max-metadata-depth)
-        (throw (ex-info (str "Metadata exceeds max depth of " max-metadata-depth) {:code 400})))
+      (when-let [err (validate-metadata-shape! post)]
+        (throw (ex-info err {:code 400})))
       (psc/execute! tx {:delete-from :entity_metadata
                         :where [:and
                                 [:= :entity_type entity-type]

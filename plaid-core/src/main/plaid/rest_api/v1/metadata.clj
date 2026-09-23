@@ -3,92 +3,28 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.sql.metadata :as psm]
-            [clojure.data.json :as json]
             [reitit.coercion.malli]))
 
 (def max-metadata-depth
-  "Maximum nesting level allowed in a metadata payload. Lives beside the
-  metadata writes, which also hold the result of a PATCH to it."
+  "Maximum nesting level allowed in a metadata payload."
   psm/max-metadata-depth)
 
 (def max-metadata-key-count
-  "Soft cap on the total number of keys (across all nesting levels) in
-  a single metadata payload. Stops an unbounded `{k1:..,k2:..,...}`
-  blob from monopolizing the audit/serialization pipeline."
-  500)
+  "Soft cap on the total number of keys in one metadata map."
+  psm/max-metadata-key-count)
+
 (def max-metadata-string-length
   "Soft cap on individual string-value length, in characters."
-  (* 10 1024))
+  psm/max-metadata-string-length)
+
 (def max-metadata-total-bytes
-  "Cumulative cap on the JSON-serialized size of a single metadata
-  payload (#118). Stops an attacker from stitching together many
-  small-but-numerous values that individually pass the per-key/per-
-  string limits yet collectively monopolize audit/serialization. 1 MB
-  is generous for any realistic structured metadata blob."
-  (* 1024 1024))
+  "Cumulative cap on the JSON-serialized size of one metadata map."
+  psm/max-metadata-total-bytes)
 
-(defn- safe-json-byte-count
-  "Approximate the wire-bytes a value will take when JSON-encoded.
-  Used by the cumulative-bytes cap. If encoding fails (e.g. a value
-  with no JSON representation reaches us here), fall back to its
-  printed length so a hostile payload can't dodge the cap by including
-  a serialization-bomb value — better to over-count than to silently
-  short-circuit the check."
-  [v]
-  (try
-    (count (json/write-str v))
-    (catch Exception _
-      (count (pr-str v)))))
-
-(defn validate-metadata-shape!
-  "Walk `m` (a metadata map or nested value) and return either nil if
-  it satisfies our shape caps, or a humane error string. Cumulative
-  key-count and total-byte counters are tracked via atoms so an
-  attacker can't split a single oversize blob into many smaller
-  maps/values to dodge the limit.
-
-  Public so route handlers that accept inline `:metadata` (POST /spans,
-  POST /tokens, etc.) can call it before submitting the operation,
-  not just the dedicated /metadata routes wrapped by
-  `wrap-metadata-shape-guard`. See task #110."
-  [m]
-  (let [key-count (atom 0)
-        total-bytes (atom 0)
-        err (atom nil)
-        check (fn check [v depth]
-                (cond
-                  @err nil
-                  (> depth max-metadata-depth)
-                  (reset! err (str "Metadata exceeds max depth of " max-metadata-depth))
-
-                  (map? v)
-                  (do (swap! key-count + (count v))
-                      (when (> @key-count max-metadata-key-count)
-                        (reset! err (str "Metadata exceeds max key count of "
-                                         max-metadata-key-count)))
-                      (when-not @err
-                        (doseq [[_ vv] v :while (nil? @err)]
-                          (check vv (inc depth)))))
-
-                  (sequential? v)
-                  (doseq [vv v :while (nil? @err)]
-                    (check vv (inc depth)))
-
-                  (and (string? v) (> (count v) max-metadata-string-length))
-                  (reset! err (str "Metadata string value exceeds max length of "
-                                   max-metadata-string-length " characters"))
-
-                  :else nil))]
-    (check m 0)
-    ;; Cumulative-bytes pass: cheaper to encode once at the root than to
-    ;; thread a byte counter through every walk above (and equivalent for
-    ;; the JSON shapes we accept — maps/vectors/strings/scalars).
-    (when-not @err
-      (reset! total-bytes (safe-json-byte-count m))
-      (when (> @total-bytes max-metadata-total-bytes)
-        (reset! err (str "Metadata exceeds max total size of "
-                         max-metadata-total-bytes " bytes"))))
-    @err))
+(def validate-metadata-shape!
+  "Public so route handlers that accept inline `:metadata` can call it.
+  See `plaid.sql.metadata/validate-metadata-shape!`."
+  psm/validate-metadata-shape!)
 
 (defn validate-inline-metadata!
   "Check a request body that may carry an inline `:metadata` key (POST
@@ -98,8 +34,11 @@
   map with a `:metadata` key or a sequence of such maps."
   [body]
   (let [check-one (fn [m]
+                    ;; A bulk update entry's metadata is a list of ops, whose
+                    ;; result `patch-metadata!` checks against the same caps.
                     (when-let [md (and (map? m) (:metadata m))]
-                      (validate-metadata-shape! md)))
+                      (when-not (sequential? md)
+                        (validate-metadata-shape! md))))
         errs (cond
                (sequential? body) (keep check-one body)
                (map? body) (when-let [e (check-one body)] [e])
@@ -185,10 +124,11 @@
                                 {:status 200 :body (entity-get-fn db entity-id)}
                                 db doc-id)
                                {:status (or code 500) :body {:error (or error "Internal server error")}})))}
+    ;; No shape guard here: the caps apply to the metadata the ops build,
+    ;; which `patch-metadata!` checks, not to the op list itself.
     :patch  {:summary    (str "Edit metadata for a " entity-type " " patch-summary)
              :middleware [[pra/wrap-writer-required get-project-id-fn]
-                          [prm/wrap-document-version get-document-id-fn]
-                          wrap-metadata-shape-guard]
+                          [prm/wrap-document-version get-document-id-fn]]
              :parameters {:query [:map [:document-version {:optional true} :int]]
                           :body metadata-ops-schema}
              :handler    (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id :as request}]

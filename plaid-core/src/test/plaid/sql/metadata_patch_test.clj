@@ -13,6 +13,7 @@
     * empty list                -> no-op (no metadata audit row)"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.walk]
+            [clojure.data.json]
             [plaid.sql.common :as psc]
             [plaid.fixtures :refer [db with-db with-mount-states with-rest-handler
                                     admin-request api-call assert-ok assert-status
@@ -27,7 +28,7 @@
                                         update-text-metadata patch-text-metadata
                                         create-token get-token
                                         update-token-metadata patch-token-metadata
-                                        create-span get-span
+                                        create-span get-span bulk-update-spans
                                         update-span-metadata patch-span-metadata
                                         create-relation get-relation
                                         update-relation-metadata patch-relation-metadata
@@ -286,3 +287,58 @@
       (is (some? (-> conflict :body :error)))
       (is (= {"a" "1" "b" "2"} (doc-meta doc))
           "the conflicting patch did not apply"))))
+
+(def ^:private slash-keys
+  "Keys a keywordizing JSON decoder reads as namespace and name, which the
+  JSON writer then stored as the name alone."
+  {"N/A" 1 "a/b/c" 2 "a/" 3 "plain" 4})
+
+(deftest slash-in-a-nested-key-survives-every-write-path
+  (let [proj (create-test-project admin-request "SlashKeysProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        tokl (-> (create-token-layer admin-request tl "Tokens") :body :id)
+        sl (-> (create-span-layer admin-request tokl "Spans") :body :id)
+        text (-> (create-text admin-request tl doc "ab cd") :body :id)
+        t1 (-> (create-token admin-request tokl text 0 2) :body :id)
+        span (-> (create-span admin-request sl [t1] "A" {"top" slash-keys}) :body :id)
+        span-meta #(-> (get-span admin-request span) :body :metadata)]
+    (testing "create with inline metadata"
+      (is (= {"top" slash-keys} (span-meta))))
+    (testing "PUT"
+      (assert-ok (update-span-metadata admin-request span {"top" slash-keys "x/y" slash-keys}))
+      (is (= {"top" slash-keys "x/y" slash-keys} (span-meta))))
+    (testing "PATCH set, with a slash in the path too"
+      (assert-ok (patch-span-metadata admin-request span [(set-op ["p/q" "r/s"] slash-keys)]))
+      (is (= slash-keys (get-in (span-meta) ["p/q" "r/s"]))))
+    (testing "bulk update ops"
+      (assert-ok (bulk-update-spans admin-request [{:id span :metadata [(set-op ["bulk"] slash-keys)]}]))
+      (is (= slash-keys (get (span-meta) "bulk"))))
+    (testing "the audit post-image and an as-of read keep the keys"
+      (let [op-id (latest-op-id "span/bulk-update")
+            post (-> (first (metadata-audit-rows op-id "spans")) :post_image
+                     (clojure.data.json/read-str))]
+        (is (= slash-keys (get-in post ["metadata" "bulk"])))))
+    (testing "layer config"
+      (assert-status 204 (api-call admin-request {:method :put
+                                                  :path (str "/api/v1/span-layers/" sl "/config/ud/colors")
+                                                  :body slash-keys}))
+      (is (= slash-keys (-> (api-call admin-request {:method :get :path (str "/api/v1/span-layers/" sl)})
+                            :body :config (get "ud") (get "colors")))))))
+
+(deftest patch-caps-apply-to-the-result-not-the-op-list
+  (let [proj (create-test-project admin-request "PatchCapsProj")
+        doc (create-test-document admin-request proj "Doc")]
+    (testing "200 small set ops build 200 keys, well under the key cap"
+      (assert-ok (patch-document-metadata admin-request doc
+                                          (mapv #(set-op [(str "m" %)] %) (range 200))))
+      (is (= 200 (count (doc-meta doc)))))
+    (testing "a value nested to the depth limit is accepted through a one-key path"
+      (let [deep (reduce (fn [m _] {"k" m}) 1 (range 9))]
+        (assert-ok (patch-document-metadata admin-request doc [(set-op ["deep"] deep)]))))
+    (testing "ops that build more keys than the cap are refused and write nothing"
+      (let [res (patch-document-metadata admin-request doc
+                                         (mapv #(set-op [(str "n" %)] %) (range 400)))]
+        (assert-status 400 res)
+        (is (re-find #"key count" (-> res :body :error)))
+        (is (not (contains? (doc-meta doc) "n0")))))))
