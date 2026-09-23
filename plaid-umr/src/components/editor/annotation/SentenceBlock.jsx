@@ -115,10 +115,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [showProblems, setShowProblems] = useState(false);
   // Text mode: the graph as PENMAN in place of the canvas until applied.
   const [textMode, setTextMode] = useState(false);
+  const textModeRef = useRef(false);
+  textModeRef.current = textMode;
+  // Text typed and applied, back in text mode because the apply did not
+  // land: refused, or skipped behind an earlier edit that was.
+  const [unapplied, setUnapplied] = useState(null);
   // Out of text mode, focus goes to the graph: the node focused before, else
   // the root. The textarea it was in is gone.
   const leaveTextMode = () => {
     setTextMode(false);
+    setUnapplied(null);
     requestAnimationFrame(() => {
       const id = (focusedId && nodesById.has(focusedId) && focusedId) || sentence.roots[0]?.id;
       if (id) nodeRefs.current.get(id)?.focus();
@@ -1126,7 +1132,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             type="button"
             className={`umr-text-toggle${textMode ? ' umr-text-toggle--on' : ''}`}
             aria-pressed={textMode}
-            onClick={() => setTextMode((v) => !v)}
+            onClick={() => {
+              setUnapplied(null);
+              setTextMode((v) => !v);
+            }}
           >
             Text
           </button>
@@ -1158,11 +1167,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       {textMode && !readOnly && (
         <PenmanEditor
           initial={doc.penmanOf(sentence.index)}
+          typed={unapplied}
           plan={(text) => doc.planPenman(sentence.index, text)}
           onApply={(text) => {
             // The editor applies only a text whose plan has no problem, and
-            // the plan is on the canvas as soon as this returns.
-            doc.applyPenman(sentence.index, text);
+            // the plan is on the canvas as soon as this returns. When the
+            // write does not land, the reload takes the plan off the canvas
+            // again, and text mode comes back with the text as typed.
+            doc.applyPenman(sentence.index, text).then((ok) => {
+              if (ok !== false || textModeRef.current) return;
+              setUnapplied(text);
+              setTextMode(true);
+            });
             leaveTextMode();
           }}
           onCancel={async (dirty) => {

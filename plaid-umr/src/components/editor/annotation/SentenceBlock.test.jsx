@@ -217,3 +217,56 @@ describe('SentenceBlock in a right-to-left document', () => {
     expect(await docEdgeX('rtl')).toBe(780);
   });
 });
+
+describe('SentenceBlock text mode', () => {
+  const type = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
+
+  // Apply shows the plan at once and closes text mode. A write that does not
+  // land (refused, or skipped behind an earlier refused edit) takes the plan
+  // off the canvas again, so the typed text is all that is left of it.
+  it.each([
+    ['refused', false, 'reopens with the typed text'],
+    ['landed', 1, 'stays closed'],
+  ])('an apply that is %s %s', async (_what, outcome) => {
+    const { sentence, nodesById } = fixture();
+    let settle;
+    const doc = {
+      graph: {},
+      penmanOf: () => '(s1l / leave-02)',
+      planPenman: () => ({ changes: 1 }),
+      applyPenman: () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        sentence={sentence}
+        nodesById={nodesById}
+        dataVersion={1}
+        readOnly={false}
+      />,
+    );
+    await r.step(() => button(r.container, 'Text').click());
+    const typed = '(s1l / leave-02\n    :ARG0 (s1z / zebra))';
+    await r.step(() => type(r.container.querySelector('textarea'), typed));
+    await r.step(() => button(r.container, 'Apply').click());
+    expect(r.container.querySelector('textarea')).toBeNull();
+    await r.step(() => settle(outcome));
+    const box = r.container.querySelector('textarea');
+    if (outcome === false) {
+      expect(box.value).toBe(typed);
+      // Still typed and not applied, so Apply is offered again.
+      expect(button(r.container, 'Apply').disabled).toBe(false);
+    } else {
+      expect(box).toBeNull();
+    }
+    await r.unmount();
+  });
+});

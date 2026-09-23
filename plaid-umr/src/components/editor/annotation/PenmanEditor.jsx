@@ -11,9 +11,11 @@ import { parsePenman } from '../../../domain/format/penman.js';
 // `plan(text)` is the document's plan for the text: its `errors` are the
 // checks the canvas makes (a variable taken, a new edge closing a cycle),
 // shown like a parse error, and its `losses` what Apply would delete that the
-// text cannot show, a node's anchor and document-level relations.
-export function PenmanEditor({ initial, onApply, onCancel, plan, applying = false }) {
-  const [text, setText] = useState(initial);
+// text cannot show, a node's anchor and document-level relations. `typed` is
+// a text to open with in place of the stored graph, one typed before and not
+// applied.
+export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, applying = false }) {
+  const [text, setText] = useState(typed ?? initial);
   // What the text is compared against. When the stored graph changes under an
   // untouched editor (another writer, a failed apply's reload), the text
   // follows it; once typed in, the text stays and only the base moves.
