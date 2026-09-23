@@ -272,7 +272,7 @@ export const vocabMutations = {
         const createAt = priorLink ? 1 : 0;
         const results = await this._client.batched(async (b) => {
           if (priorLink) b.vocabLinks.delete(settledId(priorLink.id));
-          b.vocabLinks.create(vocabItemId, [token], stamp || undefined);
+          b.vocabLinks.create(settledId(vocabItemId), [token], stamp || undefined);
           if (patchType) {
             b.tokens.patchMetadata(token, [{ op: 'set', path: ['morphType'], value: cachedType }]);
           }
@@ -280,7 +280,7 @@ export const vocabMutations = {
         ids.set(linkId, results[createAt]?.body?.id);
       } else {
         const result = await this._client.vocabLinks.create(
-          vocabItemId,
+          settledId(vocabItemId),
           [token],
           stamp || undefined,
         );

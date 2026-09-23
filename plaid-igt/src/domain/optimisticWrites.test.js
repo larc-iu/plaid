@@ -116,6 +116,25 @@ describe('an Analyze edit shows before the server answers', () => {
     expect(doc.vocabularies.v1.items.every((i) => !isPendingId(i.id))).toBe(true);
   });
 
+  it('a link to an entry still being made is sent under its server id', async () => {
+    const { doc, client, release } = makeDoc();
+    const created = doc.createAndLinkVocabItem('w-1', 'v1', 'THE');
+    await settle();
+    const pending = doc.vocabularies.v1.items.find((i) => i.form === 'THE').id;
+    expect(isPendingId(pending)).toBe(true);
+    const linked = doc.linkVocab('w-2', pending);
+    await settle();
+    expect(word(doc, 1).vocabItem?.form).toBe('THE');
+
+    release();
+    expect(await created).toBe(true);
+    expect(await linked).toBe(true);
+    const item = doc.vocabularies.v1.items.find((i) => i.form === 'THE').id;
+    const link = client.calls.filter((c) => c.kind === 'vocabLinks.create').at(-1);
+    expect(link.args[0]).toBe(item);
+    expect(isPendingId(item)).toBe(false);
+  });
+
   it('a whole-word confirm that adopts a guess, without a reload', async () => {
     const { doc, client, release } = makeDoc({ raw: buildRawDoc({ morphemes: [] }) });
     const target = word(doc, 0).morphemes[0].id;

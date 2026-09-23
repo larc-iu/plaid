@@ -752,6 +752,36 @@ describe('a failed save', () => {
   });
 });
 
+describe('saves that keep failing', () => {
+  it('leave focus in the cell the user moved on to, and send each value once', async () => {
+    // Every save refused. Taking focus back to a failed cell commits the cell
+    // the user is in, whose save fails in turn and takes focus back, forever.
+    const { doc, client } = mount();
+    let creates = 0;
+    client.spans.create = () => {
+      creates += 1;
+      throw new Error('refused');
+    };
+    const a = cell('ma:m-1:Gloss');
+    const b = cell('ma:m-2:Gloss');
+    // Somewhere else to be: any cell outside the morpheme rows.
+    const c = [...host.querySelectorAll('[data-cell-key]')].find(
+      (el) => !el.dataset.cellKey.startsWith('ma:'),
+    );
+    focus(a);
+    type(a, 'AAA');
+    focus(b);
+    type(b, 'BBB');
+    focus(c);
+    type(c, 'CCC');
+    await settle(30);
+    expect(document.activeElement).toBe(c);
+    expect(c.value).toBe('CCC');
+    expect(creates).toBe(1);
+    expect(doc.isSaving).toBe(false);
+  });
+});
+
 describe('a cell that is focused but untouched', () => {
   it('shows a value that changed underneath it, and takes it as the new baseline', async () => {
     // What a whole-word accept does to the very cell it was pressed in: the

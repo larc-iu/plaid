@@ -4,6 +4,7 @@ import {
   applyDeleteToTokens,
   compensatePartition,
   applyTextEditsLocally,
+  removeTokensLocally,
 } from './textEdits.js';
 
 // These cases are the server's own (plaid.algos.text/apply-text-edit and
@@ -172,5 +173,48 @@ describe('applyTextEditsLocally', () => {
     applyTextEditsLocally(raw, 't', [{ type: 'insert', index: 1, value: '😀' }]);
     expect(raw.textLayers[0].text.body).toBe('a😀 b');
     expect(raw.textLayers[0].tokenLayers[0].tokens).toEqual([tok('w1', 0, 1), tok('w2', 3, 4)]);
+  });
+});
+
+describe('removeTokensLocally', () => {
+  it('takes a deleted word out of a multi-word expression and keeps the link on the rest', () => {
+    // The server trims a span or link that loses one of its tokens, and drops
+    // it only when none is left.
+    const raw = {
+      textLayers: [
+        {
+          text: { id: 't', body: 'uno dos tres' },
+          tokenLayers: [
+            {
+              id: 'word',
+              overlapMode: 'non-overlapping',
+              tokens: [tok('w1', 0, 3), tok('w2', 4, 7), tok('w3', 8, 12)],
+              spanLayers: [
+                {
+                  id: 'pos',
+                  spans: [
+                    { id: 'p2', tokens: ['w2'], value: 'N' },
+                    { id: 'p23', tokens: ['w2', 'w3'], value: 'NP' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const vocabs = {
+      v: {
+        vocabLinks: [
+          { id: 'l2', tokens: ['w2'] },
+          { id: 'mwe', tokens: ['w2', 'w3'] },
+        ],
+      },
+    };
+    removeTokensLocally(raw, 't', ['w2'], vocabs);
+    const word = raw.textLayers[0].tokenLayers[0];
+    expect(word.tokens.map((t) => t.id)).toEqual(['w1', 'w3']);
+    expect(word.spanLayers[0].spans).toEqual([{ id: 'p23', tokens: ['w3'], value: 'NP' }]);
+    expect(vocabs.v.vocabLinks).toEqual([{ id: 'mwe', tokens: ['w3'] }]);
   });
 });

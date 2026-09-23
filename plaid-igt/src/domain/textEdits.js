@@ -120,22 +120,27 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
 }
 
 /**
- * Drop every span and vocab link pinned to a token in `deletedIds`, as the
- * server does when a token goes.
+ * Take the tokens in `deletedIds` out of every span and vocab link, as the
+ * server does when a token goes: a span or link over other tokens as well
+ * keeps those (a multi-word expression that loses a word keeps the rest), and
+ * one left with none is dropped.
  */
 function sweepDeadTokens(tokenLayers, deletedIds, vocabs = null) {
   if (deletedIds.length === 0) return;
   const dead = new Set(deletedIds);
-  const touchesDead = (ids) => Array.isArray(ids) && ids.some((id) => dead.has(id));
+  const trim = (items) =>
+    items.flatMap((item) => {
+      if (!Array.isArray(item.tokens) || !item.tokens.some((id) => dead.has(id))) return [item];
+      const tokens = item.tokens.filter((id) => !dead.has(id));
+      return tokens.length ? [{ ...item, tokens }] : [];
+    });
   for (const layer of tokenLayers) {
     for (const sl of layer.spanLayers || []) {
-      if (Array.isArray(sl.spans)) sl.spans = sl.spans.filter((s) => !touchesDead(s.tokens));
+      if (Array.isArray(sl.spans)) sl.spans = trim(sl.spans);
     }
   }
   for (const vocab of Object.values(vocabs || {})) {
-    if (Array.isArray(vocab?.vocabLinks)) {
-      vocab.vocabLinks = vocab.vocabLinks.filter((l) => !touchesDead(l.tokens));
-    }
+    if (Array.isArray(vocab?.vocabLinks)) vocab.vocabLinks = trim(vocab.vocabLinks);
   }
 }
 
