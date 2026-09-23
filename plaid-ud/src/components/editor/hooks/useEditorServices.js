@@ -136,9 +136,16 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     discoverServices: useCallback(() => discoverServices(projectId), [discoverServices, projectId]),
     parse,
     // The banner watches whichever run is out: the service's, or the builtin's.
+    // A run in flight keeps the runner it started with, whatever the service
+    // list says now: a tokenizer coming online (or going away) mid-run must not
+    // swap the banner onto a run nobody started. Idle, the spot decides.
     tokenize: {
       ...tokenize,
-      run: tokenize.spot.service ? tokenize.run : builtinRun,
+      run: builtinRun.running
+        ? builtinRun
+        : tokenize.run.running || tokenize.spot.service
+          ? tokenize.run
+          : builtinRun,
       start: runTokenize,
     },
   };

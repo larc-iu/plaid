@@ -54,10 +54,11 @@ export const useServiceRun = ({
   useMirroredProgress(run, {
     percent: progressPercent,
     message: progressMessage,
-    // A spot with a builtin can run without a service, here in the browser,
-    // and that run has progress of its own: mirroring the request's would
-    // report a run nobody made.
-    active: run.running && !!spot.service,
+    // Only this hook's own run mirrors the request. A builtin that runs in the
+    // browser keeps progress of its own and never starts this one. Not tied to
+    // `spot.service`: the service list can change mid-run, and the run under
+    // way is still the service's.
+    active: run.running,
   });
 
   // The banner is the only surface once the dialog is shut and the user has

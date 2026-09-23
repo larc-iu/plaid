@@ -548,3 +548,40 @@ describe('the tokenize service', () => {
     await view.unmount();
   });
 });
+
+describe('a tokenize run while the service list changes', () => {
+  it('keeps the runner it started with, and its progress', async () => {
+    // The built-in is running when a tokenizer service comes online. The run
+    // under way is still the built-in's, so the banner must keep watching it
+    // rather than switch to a service run nobody started.
+    localStorage.setItem(TOKENIZE_KEY, 'service:tok:punkt');
+    const settle = deferred();
+    const doc = makeDoc({
+      tokenize: vi.fn(async () => {
+        seq.push('doc:tokenize');
+        await settle.promise;
+        return true;
+      }),
+    });
+    const client = fakeClient({ services: [] });
+    const view = await mount({ client, doc });
+
+    let running;
+    await view.step(() => {
+      running = view.api().tokenize.start('some text');
+    });
+    expect(view.api().tokenize.run.running).toBe(true);
+
+    client.messages.discoverServices.mockResolvedValue([TOKENIZE_SERVICE]);
+    await view.step(() => view.api().discoverServices());
+    expect(view.api().tokenize.spot.service?.serviceId).toBe('tok:punkt');
+    expect(view.api().tokenize.run.running).toBe(true);
+
+    await view.step(async () => {
+      settle.resolve();
+      await running;
+    });
+    expect(view.api().tokenize.run.running).toBe(false);
+    await view.unmount();
+  });
+});
