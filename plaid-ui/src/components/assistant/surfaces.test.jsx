@@ -384,4 +384,40 @@ describe('AssistantChat attachments', () => {
     expect(m.container.querySelector('[aria-label="Remove photo.png"]')).toBeNull();
     await m.unmount();
   });
+
+  it('keeps what is waiting in the composer when a failed turn is retried', async () => {
+    // Retry sends the OLD message again. The one being written, and the files
+    // attached to it, are the reader's next message and stay where they are.
+    const client = fakeClient();
+    client.records.set('igt:assistant:p1:conv:c1', {
+      messages: [],
+      display: [
+        { kind: 'user', text: 'gloss it' },
+        { kind: 'error', text: 'The assistant could not answer: boom' },
+      ],
+    });
+    const m = await mount(<AssistantChat {...base(client)} conversationId="c1" />);
+    await flush(m);
+    await drop(m, [FILE]);
+    await flush(m);
+    await m.step(() => {
+      const box = m.container.querySelector('textarea');
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(
+        box,
+        'and the next one',
+      );
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const retry = byText(m.container, 'button', 'Retry');
+    expect(retry).not.toBeNull();
+    await m.step(() => retry.click());
+    await flush(m, 8);
+    expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    const record = client.records.get('igt:assistant:p1:conv:c1');
+    expect(record.display.at(-1)).toMatchObject({ kind: 'user', text: 'gloss it' });
+    expect(record.display.at(-1).files).toBeUndefined();
+    expect(m.container.querySelector('textarea').value).toBe('and the next one');
+    expect(m.container.querySelector('[aria-label="Remove wordlist.csv"]')).not.toBeNull();
+    await m.unmount();
+  });
 });

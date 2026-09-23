@@ -421,18 +421,21 @@ export const AssistantChat = ({
 
   // `files` is given on a RETRY, where the message is sent again with the
   // references its first attempt carried: those parts are already stored, so
-  // nothing is written for them a second time.
+  // nothing is written for them a second time. A retry sends the OLD message,
+  // so the composer (text, files, chip) is the reader's next one and is left
+  // as it is.
   const send = async (textOverride, files = null) => {
+    const retry = files !== null;
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend) return;
     setStopped(null);
     // The chip is the reference the question is about, said the way the
     // assistant addresses one. A question that already names it is left alone.
-    const text = focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
+    const text = !retry && focus && !typed.includes(focus.ref) ? `${focus.ref}: ${typed}` : typed;
     // Sending is what turns a draft into a saved conversation, so the flag
     // does not travel with it.
     const base = activeRef.current ?? newConversation();
-    const pending = files ? [] : attachments;
+    const pending = retry ? [] : attachments;
     if (pending.length) {
       // The files before anything else: a file that cannot be stored stops the
       // send, and the composer is left exactly as it was, with the file still
@@ -451,9 +454,11 @@ export const AssistantChat = ({
       // sending this message into a different thread would point it at them.
       if (activeRef.current?.id !== base.id) return;
     }
-    setInput('');
-    setAttachments([]);
-    onClearFocus?.();
+    if (!retry) {
+      setInput('');
+      setAttachments([]);
+      onClearFocus?.();
+    }
     // The display item carries the place as data, for the chip on the message.
     // The model's copy is stamped by the service, which owns every word the
     // model reads, and only when the place has changed since the last turn.
