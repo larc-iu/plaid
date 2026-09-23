@@ -215,6 +215,29 @@ test('text mode stamps what it makes and confirms what it changes', async () => 
   created.forEach((op) => assert.deepEqual(Object.keys(op.metadata), ['umr']));
 });
 
+// Taking a child out moves the places of the children after it. That is a
+// renumber, not anyone's edit of them, so they keep the machine's stamp.
+test('text mode leaves a child it only renumbers as the machine left it', async () => {
+  const { doc, calls } = load({ machine: true });
+  const text = doc
+    .penmanOf(1)
+    .replace(/\n +:wiki "Philippines"/, '')
+    .replace(/\n +:ARG1 \(s1p3 \/ person\n +:quant 200\)/, '');
+  const name = doc.node(byVar(doc, 's1c').id).out.find((e) => e.role === ':name');
+  const plan = doc.planPenman(1, text);
+  assert.deepEqual(plan.orders, [{ edgeId: name.id, order: 0 }]);
+  assert.ok(await doc.applyPenman(1, text));
+  // The edge and the node whose places moved are untouched.
+  assert.equal(provState(doc.edge(name.id).metadata), PROV_STATES.MACHINE);
+  assert.equal(provState(doc.node(byVar(doc, 's1d').id).metadata), PROV_STATES.MACHINE);
+  // The node that lost an attribute was edited, and is confirmed.
+  assert.equal(provState(doc.node(byVar(doc, 's1c').id).metadata), PROV_STATES.VERIFIED);
+  const orderPatch = calls.find(
+    (c) => c.name === 'relations.patchMetadata' && c.args[0] === name.id,
+  );
+  assert.equal(patchObject(orderPatch.args[1])[PROV.confirmedKey], undefined);
+});
+
 test('a service write nobody has touched stays machine-made', async () => {
   const { doc } = load({ machine: true });
   const edited = byVar(doc, 's1c');

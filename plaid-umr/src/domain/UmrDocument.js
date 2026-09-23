@@ -1272,7 +1272,12 @@ export class UmrDocument extends DocumentModel {
       const attrKey = (a) => `${a.rel} ${a.value} @${a.order ?? 0}`;
       const oldAttrs = old.attrs.map(attrKey).join('\n');
       const nextAttrs = attrs.map(attrKey).join('\n');
-      if (oldAttrs !== nextAttrs) plan.attrs.push({ nodeId: old.id, attrs });
+      // Only the places moved (an edge before them went, or came): a
+      // renumber, which is no one's edit of the node.
+      const bare = (list) => list.map((a) => `${a.rel} ${a.value}`).join('\n');
+      if (oldAttrs !== nextAttrs) {
+        plan.attrs.push({ nodeId: old.id, attrs, renumber: bare(old.attrs) === bare(attrs) });
+      }
       // Edges by (role, target variable): an edge with a new target or role
       // is a new edge, and the old one goes.
       const oldEdges = old.out
@@ -1417,8 +1422,6 @@ export class UmrDocument extends DocumentModel {
     const stamp = this.writer.createStamp;
     const editSpan = (spanId) =>
       this.writer.editStamp(L.spans.find((x) => x.id === spanId)?.metadata);
-    const editRelation = (relId) =>
-      this.writer.editStamp(L.relations.find((x) => x.id === relId)?.metadata);
     // Each patch writes only the keys of the `umr` namespace it changes, so
     // two patches of one node (an old root's attributes and its root mark)
     // cannot undo each other.
@@ -1452,15 +1455,15 @@ export class UmrDocument extends DocumentModel {
         .forEach((o) => spanOps.push([o.id, umrPatchFor(o.id, { root: undefined })]));
     }
     for (const c of plan.concept) spanValues.push([c.nodeId, c.concept, editSpan(c.nodeId)]);
+    // A renumber moves a child's place and nothing else, so it carries no
+    // stamp: an untouched machine edge or attribute stays unverified.
     for (const a of plan.attrs) {
-      spanOps.push([a.nodeId, umrPatchFor(a.nodeId, { attrs: a.attrs })]);
-    }
-    for (const o of plan.orders) {
-      relationOps.push([
-        o.edgeId,
-        [...umrOps({ order: o.order }), ...metadataOps(editRelation(o.edgeId))],
+      spanOps.push([
+        a.nodeId,
+        a.renumber ? umrOps({ attrs: a.attrs }) : umrPatchFor(a.nodeId, { attrs: a.attrs }),
       ]);
     }
+    for (const o of plan.orders) relationOps.push([o.edgeId, umrOps({ order: o.order })]);
     // The root the text names, when it is a node that was already there: a
     // new one carries the mark in its own metadata.
     if (plan.root && !plan.create.some((c) => c.var === plan.root)) {
