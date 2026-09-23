@@ -47,7 +47,7 @@ export const CompareEditor = () => {
   const client = getClient();
   useDocumentTitle('Compare', doc?.name, project?.name);
 
-  const report = readAdjudication(doc.raw);
+  const report = readAdjudication(doc.raw, doc.layerInfo.sentenceTokenLayer?.tokens);
   const canRun = canEditProject(project, user);
 
   // The project's other documents, for the picker. The one the last report

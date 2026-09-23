@@ -378,6 +378,36 @@ def _patch(client):
     return document_id, apply_metadata_ops(before, ops)
 
 
+def _token_metadata(document, token_id):
+    for text_layer in document.get('text_layers', []):
+        for token_layer in text_layer.get('token_layers', []):
+            for token in token_layer.get('tokens', []):
+                if token['id'] == token_id:
+                    return token.get('metadata')
+    return None
+
+
+def _rows(client):
+    """Each sentence token's `umr.adjudication` once the bulk writes land, by
+    token id, in the order they were sent. A token whose row was taken off
+    maps to None."""
+    document = client.documents._by_id[DOC]
+    out = {}
+    for items in client.payloads('tokens.bulk_update'):
+        for item in items:
+            after = apply_metadata_ops(_token_metadata(document, item['id']), item['metadata'])
+            out[item['id']] = (after.get('umr') or {}).get('adjudication')
+    return out
+
+
+def _report(client):
+    """The summary and the rows put back together, the way the tab reads them."""
+    _, body = _patch(client)
+    summary = body['umr']['adjudication']
+    rows = [r for r in _rows(client).values() if r and r['at'] == summary['at']]
+    return {**summary, 'sentences': rows}
+
+
 # --- the happy path -----------------------------------------------------------
 
 def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores():
@@ -395,8 +425,11 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
 
     document_id, body = _patch(service.client)
     assert document_id == DOC
-    report = body['umr']['adjudication']
-    assert report['version'] == 2
+    # The document carries the summary alone. The sentences are on their tokens.
+    assert 'sentences' not in body['umr']['adjudication']
+    assert body['umr']['adjudication']['sentenceCount'] == 1
+    report = _report(service.client)
+    assert report['version'] == 3
     assert report['tool'].startswith('ancast ')
     assert report['against'] == {'id': OTHER, 'name': 'Bo'}
     assert report['scope'] == 'doc'
@@ -408,7 +441,8 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     [sentence] = report['sentences']
     assert sentence['index'] == 1
     assert sentence['skipped'] is None
-    assert set(sentence) == {'index', 'concept', 'labeled', 'unlabeled', 'weighted',
+    assert sentence['at'] == report['at']
+    assert set(sentence) == {'index', 'at', 'concept', 'labeled', 'unlabeled', 'weighted',
                              'smatch', 'matches', 'unmatched', 'unmatchedOther', 'skipped'}
     # bark-01 is in both, and `dog` and `cat` are each its :ARG0, so the
     # metric pairs them on structure rather than leaving two nodes unmatched.
@@ -489,8 +523,7 @@ def test_a_sentence_ancast_cannot_read_is_reported_as_unscored():
     [result] = helper.results
     assert (result['sentences'], result['sentences_scored'],
             result['sentences_skipped']) == (2, 1, 1)
-    _, body = _patch(service.client)
-    first, second = body['umr']['adjudication']['sentences']
+    first, second = _report(service.client)['sentences']
     assert first['skipped'] is None
     assert second['index'] == 2 and second['skipped']
     assert second['concept'] is None and second['matches'] == []
@@ -527,6 +560,75 @@ def test_a_document_with_no_umr_metadata_yet_gets_just_the_report():
 
     _, body = _patch(service.client)
     assert list(body['umr']) == ['adjudication']
+
+
+def _key_count(v):
+    """Keys across every level, as the server's metadata cap counts them."""
+    if isinstance(v, dict):
+        return len(v) + sum(_key_count(x) for x in v.values())
+    if isinstance(v, list):
+        return sum(_key_count(x) for x in v)
+    return 0
+
+
+def _big_report(sentences, nodes):
+    def row(i):
+        return {'index': i, 'concept': 0.5, 'labeled': 0.5, 'unlabeled': 0.5, 'weighted': 0.5,
+                'smatch': 0.5,
+                'matches': [{'this': f's{i}x{j}', 'other': f's{i}x{j}', 'thisConcept': 'c',
+                             'otherConcept': 'c', 'leftover': False} for j in range(nodes)],
+                'unmatched': [], 'unmatchedOther': [], 'skipped': None}
+    scores = {'sentence': 0.5, 'modal': None, 'temporal': None, 'coref': None,
+              'comprehensive': 0.5}
+    return umr.build_report(scores, [row(i + 1) for i in range(sentences)],
+                            {'id': 'x', 'name': 'other'}, 'doc')
+
+
+def test_a_long_document_is_stored_as_writes_that_each_stay_small():
+    """Ten sentences of ten nodes is over the server's 500-key cap as one
+    value. Split, the document holds the summary and each sentence its row,
+    and no one stored value grows with the document."""
+    report = _big_report(40, 10)
+    assert _key_count(report) > 500
+    ids = [f'snt-{i}' for i in range(40)]
+    document_ops, token_updates = umr.report_ops(report, ids)
+    [summary_op] = document_ops
+    assert summary_op['path'] == ['umr', 'adjudication']
+    assert 'sentences' not in summary_op['value']
+    assert summary_op['value']['sentenceCount'] == 40
+    assert _key_count(summary_op['value']) < 50
+    assert [u['id'] for u in token_updates] == ids
+    for update, row in zip(token_updates, report['sentences']):
+        [op] = update['metadata']
+        assert op['op'] == 'set' and op['path'] == ['umr', 'adjudication']
+        assert op['value'] == {**row, 'at': report['at']}
+        assert _key_count(op['value']) < 100
+
+
+def test_a_rerun_takes_an_earlier_row_off_a_sentence_it_has_none_for():
+    """Every sentence the run scored gets its row again, and a sentence token
+    the report has no row for loses the one an earlier run left."""
+    report = _big_report(2, 1)
+    _, token_updates = umr.report_ops(report, ['a', 'b', 'c'])
+    assert [u['metadata'][0]['op'] for u in token_updates] == ['set', 'set', 'delete']
+    assert token_updates[2] == {'id': 'c', 'metadata': [
+        {'op': 'delete', 'path': ['umr', 'adjudication']}]}
+
+
+def test_a_run_replaces_the_rows_an_earlier_run_left_on_the_sentences():
+    earlier = {'umr': {'lang': 'eng', 'adjudication': {'index': 1, 'at': '2020-01-01T00:00:00Z'}}}
+    this = _document(DOC, name='Ann', **_barking())
+    [sentences] = [layer for layer in this['text_layers'][0]['token_layers']
+                   if layer['id'] == 'sentL']
+    for token in sentences['tokens']:
+        token['metadata'] = earlier
+    service = _service([this, _document(OTHER, name='Bo', **_barking('cat'))])
+    servicetest.run(service, REQUEST)
+
+    [row] = [r for r in _rows(service.client).values()]
+    report = _report(service.client)
+    assert row['at'] == report['at'] != '2020-01-01T00:00:00Z'
+    assert len(report['sentences']) == 1
 
 
 # --- the refusals -------------------------------------------------------------
@@ -647,7 +749,8 @@ def test_the_lock_is_taken_around_the_write_and_released_after_it():
     # which check_unchanged covers instead.
     assert kinds.index('read') < kinds.index('lock')
     write = kinds.index('documents.patch_metadata')
-    assert kinds.index('lock') < write < kinds.index('unlock')
+    rows = kinds.index('tokens.bulk_update')
+    assert kinds.index('lock') < write < rows < kinds.index('unlock')
 
 
 def test_the_lock_is_released_when_the_write_fails():

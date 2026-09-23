@@ -1,14 +1,19 @@
 // The comparison report a Compare run leaves on a document, and the reading
 // the Compare tab does of it. The report is written by the AnCast service
-// (services/umr_ancast.py) under `metadata.umr.adjudication`, and this is
-// the one place its shape is read.
+// (services/umr_ancast.py), and this is the one place its shape is read. The
+// summary is the document's `metadata.umr.adjudication`, and each sentence's
+// row is its sentence token's, at the same path, so no one write grows with
+// the document:
 //
-//   { version, tool, against: {id, name}, at, scope,
-//     scores: { sentence, modal, temporal, coref, comprehensive },
-//     sentences: [{ index, concept, labeled, unlabeled, weighted, smatch,
-//                   matches: [{ this, other, thisConcept, otherConcept,
-//                               leftover }],
-//                   unmatched: [var], unmatchedOther: [var], skipped }] }
+//   document: { version, tool, against: {id, name}, at, scope, sentenceCount,
+//               scores: { sentence, modal, temporal, coref, comprehensive } }
+//   sentence: { index, at, concept, labeled, unlabeled, weighted, smatch,
+//               matches: [{ this, other, thisConcept, otherConcept,
+//                           leftover }],
+//               unmatched: [var], unmatchedOther: [var], skipped }
+//
+// A row belongs to the report whose `at` it carries. A sentence with a row
+// from an earlier run, or none, is not in the report.
 //
 // A match is a pair of variables AnCast put together, with both concepts as
 // written: a pair whose concepts differ is a disagreement, and before the
@@ -18,17 +23,26 @@
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
 
 /** The shape this reads. The service writes the same number. */
-const REPORT_VERSION = 2;
+const REPORT_VERSION = 3;
 
-/** The report on a document as `documents.get` returns it, or null. */
-export const readAdjudication = (raw) => {
-  const report = raw?.metadata?.[UMR_NAMESPACE]?.adjudication;
-  return report &&
-    typeof report === 'object' &&
-    report.version === REPORT_VERSION &&
-    Array.isArray(report.sentences)
-    ? report
-    : null;
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * The report, summary and rows together, or null. `raw` is the document as
+ * `documents.get` returns it, and `sentenceTokens` its sentence tokens: a
+ * row's `index` is its sentence's place among them, in text order.
+ */
+export const readAdjudication = (raw, sentenceTokens = []) => {
+  const summary = raw?.metadata?.[UMR_NAMESPACE]?.adjudication;
+  if (!isObject(summary) || summary.version !== REPORT_VERSION) return null;
+  const sentences = [];
+  [...(sentenceTokens || [])]
+    .sort((a, b) => a.begin - b.begin)
+    .forEach((token, i) => {
+      const row = token?.metadata?.[UMR_NAMESPACE]?.adjudication;
+      if (isObject(row) && row.at === summary.at) sentences.push({ ...row, index: i + 1 });
+    });
+  return { ...summary, sentences };
 };
 
 /** Whether a pair's two concepts differ. */

@@ -1,6 +1,7 @@
 import PlaidClient from '@larc-iu/plaid-client';
 import { test, expect, seedAuth, readToken } from './fixtures.js';
 import { getFixture } from './fixtureProject.js';
+import { getUmrLayerInfo } from '../src/utils/umrLayerUtils.js';
 
 const API = 'http://localhost:8085';
 const COPY_NAME = 'E2E UMR Copy';
@@ -25,7 +26,7 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
   const [firstVar, secondVar] = firstNodes.map((s) => s.metadata.umr.var);
   const [firstConcept, secondConcept] = firstNodes.map((s) => s.value);
   const report = {
-    version: 2,
+    version: 3,
     tool: 'ancast 0.1.1',
     against: { id: documentId, name: original.name },
     at: '2026-09-19T20:00:00Z',
@@ -63,8 +64,18 @@ test('the Compare tab shows a planted report side by side', async ({ page }) => 
       },
     ],
   };
+  // Stored as the service stores it: the summary on the document, the row on
+  // the first sentence's token, carrying the run's `at`.
+  const { sentences, ...summary } = report;
   await client.documents.patchMetadata(copy.id, [
-    { op: 'set', path: ['umr', 'adjudication'], value: report },
+    { op: 'set', path: ['umr', 'adjudication'], value: { ...summary, sentenceCount: 1 } },
+  ]);
+  const copied = await client.documents.get(copy.id, true);
+  const [firstSentence] = [...getUmrLayerInfo(copied).sentenceTokenLayer.tokens].sort(
+    (a, b) => a.begin - b.begin,
+  );
+  await client.tokens.patchMetadata(firstSentence.id, [
+    { op: 'set', path: ['umr', 'adjudication'], value: { ...sentences[0], at: report.at } },
   ]);
 
   await seedAuth(page);

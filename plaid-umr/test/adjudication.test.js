@@ -11,7 +11,7 @@ import {
 import { compareNotice } from '../src/domain/compareNotice.js';
 
 const report = {
-  version: 2,
+  version: 3,
   tool: 'ancast 0.1.1',
   against: { id: 'd2', name: 'Copy' },
   at: '2026-09-19T20:00:00Z',
@@ -48,16 +48,48 @@ const report = {
   ],
 };
 
-test('the report is read from the umr namespace, or not at all', () => {
-  assert.equal(readAdjudication({ metadata: { umr: { adjudication: report } } }), report);
-  assert.equal(readAdjudication({ metadata: { umr: { adjudication: { version: 2 } } } }), null);
-  // A report of another shape is not read as this one.
-  assert.equal(
-    readAdjudication({ metadata: { umr: { adjudication: { ...report, version: 1 } } } }),
-    null,
-  );
+// The report as the service stores it: the summary on the document and each
+// row on its sentence token.
+const stored = (r) => {
+  const { sentences, ...summary } = r;
+  return {
+    raw: { metadata: { umr: { adjudication: { ...summary, sentenceCount: sentences.length } } } },
+    tokens: sentences.map((row, i) => ({
+      id: `snt-${i + 1}`,
+      begin: i * 10,
+      metadata: { umr: { lang: 'eng', adjudication: { ...row, at: r.at } } },
+    })),
+  };
+};
+
+test('the report is read from the document and its sentences, or not at all', () => {
+  const { raw, tokens } = stored(report);
+  const read = readAdjudication(raw, tokens);
+  assert.equal(read.version, 3);
+  assert.deepEqual(read.scores, report.scores);
+  assert.deepEqual(read.against, report.against);
+  assert.deepEqual(read.sentences, [{ ...report.sentences[0], at: report.at }]);
+  assert.equal(sentenceReport(read, 1).concept, 0.9);
+  // The tokens in any order: a row's index is its sentence's place in the text.
+  assert.equal(readAdjudication(raw, [...tokens].reverse()).sentences[0].index, 1);
+  // A report of another shape is not read as this one, the old whole report
+  // included.
+  const whole = { metadata: { umr: { adjudication: { ...report, version: 2 } } } };
+  assert.equal(readAdjudication(whole, tokens), null);
   assert.equal(readAdjudication({ metadata: {} }), null);
   assert.equal(readAdjudication(null), null);
+});
+
+test("a sentence row from an earlier run is not part of this run's report", () => {
+  const { raw, tokens } = stored(report);
+  const earlier = tokens.map((t) => ({
+    ...t,
+    metadata: {
+      umr: { adjudication: { ...t.metadata.umr.adjudication, at: '2026-01-01T00:00:00Z' } },
+    },
+  }));
+  assert.deepEqual(readAdjudication(raw, earlier).sentences, []);
+  assert.deepEqual(readAdjudication(raw, [{ id: 'x', begin: 0 }]).sentences, []);
 });
 
 test('scores print as whole percents and a missing one is not a row', () => {

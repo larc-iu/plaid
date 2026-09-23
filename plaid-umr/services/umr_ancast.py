@@ -7,8 +7,10 @@ community reports inter-annotator agreement in. The usual way the pair comes
 about is Plaid's document copy: one text, two annotators, two documents over
 the same words.
 
-The report is written on the scored document as METADATA, under
-`metadata.umr.adjudication`, and never as annotation. Nothing about a score is
+The report is written as METADATA, and never as annotation: its summary on
+the scored document under `metadata.umr.adjudication`, and each sentence's row
+on that sentence's token under the same path. One key per sentence keeps every
+write small however long the document is. Nothing about a score is
 an annotation: an agreement figure is a fact about two documents, it is not
 something a later reader should find sitting on a node. The Compare tab reads
 the report back.
@@ -54,7 +56,11 @@ DEFAULT_SERVICE_ID = 'umr-ancast'
 
 #: The report's shape, so a reader can refuse one it does not understand. 2:
 #: a match is an object carrying both concepts and whether it was a leftover.
-REPORT_VERSION = 2
+#: 3: the sentences are on the sentence tokens, each row carrying the run's `at`.
+REPORT_VERSION = 3
+
+#: Sentence rows per bulk metadata write.
+SENTENCE_WRITE_CHUNK = 500
 
 SUMMARY = """\
 **Adjudicate with AnCast** scores this document's UMR annotation against
@@ -470,7 +476,7 @@ def ancast_version() -> str:
 
 
 def build_report(scores, sentences, against, scope: str, at: Optional[str] = None):
-    """The whole report, as it is stored under `metadata.umr.adjudication`."""
+    """The whole report, before `split_report` divides it for storage."""
     return {
         'version': REPORT_VERSION,
         'tool': ancast_version(),
@@ -480,6 +486,37 @@ def build_report(scores, sentences, against, scope: str, at: Optional[str] = Non
         'scores': scores,
         'sentences': sentences,
     }
+
+
+def split_report(report, sentence_ids):
+    """The report as it is stored: the summary for the document's
+    `umr.adjudication`, and `{token id: row}` for each sentence token's.
+
+    `sentence_ids` are the document's sentence tokens in order, and a row goes
+    to the token at its index. Each row carries the run's `at`, which is how a
+    reader tells this run's rows from an earlier one's."""
+    summary = {k: v for k, v in report.items() if k != 'sentences'}
+    summary['sentenceCount'] = len(report['sentences'])
+    rows = {}
+    for row in report['sentences']:
+        i = row['index'] - 1
+        if 0 <= i < len(sentence_ids):
+            rows[sentence_ids[i]] = {**row, 'at': report['at']}
+    return summary, rows
+
+
+def report_ops(report, sentence_ids):
+    """The document's one op, and the bulk token update that puts each row on
+    its sentence and takes an earlier run's row off any sentence this run has
+    none for."""
+    summary, rows = split_report(report, sentence_ids)
+    path = [UMR_NAMESPACE, 'adjudication']
+    document_ops = [{'op': 'set', 'path': path, 'value': summary}]
+    token_updates = [
+        {'id': sid, 'metadata': ([{'op': 'set', 'path': path, 'value': rows[sid]}]
+                                 if sid in rows else [{'op': 'delete', 'path': path}])}
+        for sid in sentence_ids]
+    return document_ops, token_updates
 
 
 def build_notice(report, scored: int, skipped: int):
@@ -666,7 +703,7 @@ class UmrAncastService(BaseService):
                     # moved since, the report would be a claim about a state
                     # that is gone.
                     check_unchanged(self.client, document_id, read_version)
-                    self._write(document_id, report)
+                    self._write(document_id, report, [s.id for s in this_graph.sentences])
 
             response_helper.progress(100, notice['title'])
             response_helper.complete({
@@ -678,11 +715,14 @@ class UmrAncastService(BaseService):
                 'notice': notice,
             })
 
-    def _write(self, document_id, report) -> None:
-        """The report, under the document's `umr` metadata namespace. One op
-        sets that one key, so whatever else the namespace holds stays."""
-        self.client.documents.patch_metadata(
-            document_id, [{'op': 'set', 'path': [UMR_NAMESPACE, 'adjudication'], 'value': report}])
+    def _write(self, document_id, report, sentence_ids) -> None:
+        """The summary on the document and each row on its sentence, all at
+        `umr.adjudication`. Each op sets that one key, so whatever else the
+        namespace holds stays."""
+        document_ops, token_updates = report_ops(report, sentence_ids)
+        self.client.documents.patch_metadata(document_id, document_ops)
+        for start in range(0, len(token_updates), SENTENCE_WRITE_CHUNK):
+            self.client.tokens.bulk_update(token_updates[start:start + SENTENCE_WRITE_CHUNK])
 
 
 def main():
