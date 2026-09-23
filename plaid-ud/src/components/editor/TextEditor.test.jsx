@@ -65,6 +65,18 @@ describe('the Text Editor', () => {
     await view.unmount();
   });
 
+  it('registers nothing while the saved text is copied in on load', async () => {
+    // For one render the box is still empty beside the loaded body. A draft
+    // registered there puts a history entry in and takes it out again under
+    // the router, which walked a freshly opened tab off the page.
+    setup('The saved text.');
+    const push = vi.spyOn(window.history, 'pushState');
+    const view = await mount();
+    expect(push).not.toHaveBeenCalled();
+    push.mockRestore();
+    await view.unmount();
+  });
+
   it('counts text typed into a document that has none saved yet', async () => {
     setup('');
     const view = await mount();

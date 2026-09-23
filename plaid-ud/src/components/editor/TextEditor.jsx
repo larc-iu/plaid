@@ -84,9 +84,13 @@ export const TextEditor = () => {
   // us: the initial load, or a service that rewrote the body. Keyed on the body
   // itself rather than on the doc instance, so the many emits from ordinary
   // token edits don't stomp on what the user is typing.
+  // `seeded` is the body last copied in, so the render before that copy lands
+  // does not read as typed text.
+  const [seeded, setSeeded] = useState('');
   useEffect(() => {
     if (!serverText) return;
     setTextContent(serverText);
+    setSeeded(serverText);
   }, [documentId, serverText]);
 
   useEffect(() => {
@@ -203,9 +207,12 @@ export const TextEditor = () => {
   const isTextDirty = originalTokenizedText && textContent !== originalTokenizedText;
   // Typed and not yet on the server: every way out of the tab asks first. The
   // measure is the saved body, not the tokenized one, so text typed into a
-  // document that has no tokens yet counts too.
+  // document that has no tokens yet counts too. It is the body as last copied
+  // into the box rather than `serverText` itself: for the one render between a
+  // load and that copy the two differ, and a draft that comes and goes in one
+  // tick adds and takes out a history entry under the router.
   useUnsavedDraft(
-    canEditProject(project, user) && textContent !== serverText ? 'The text you have typed' : null,
+    canEditProject(project, user) && textContent !== seeded ? 'The text you have typed' : null,
   );
   const hasTokens = sentenceTokens.length > 0 || wordTokens.length > 0 || morphemeTokens.length > 0;
 
