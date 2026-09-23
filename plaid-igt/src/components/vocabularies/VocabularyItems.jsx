@@ -42,8 +42,16 @@ import {
   statusFieldKey,
   itemLabel,
 } from '@/domain/vocabDictionary';
-import { metadataUpdates } from '@/domain/metadataPatch';
-import { followIds, pendingId, recordSettled, settledId } from '@ui/domain/pendingIds.js';
+import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
+import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
+import { writeTracker } from './writeTracker.js';
+import {
+  followIds,
+  pendingId,
+  recordSettled,
+  settledId,
+  stableKey,
+} from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
 import {
   HomographDialog,
@@ -395,21 +403,19 @@ export const VocabularyItems = ({
   };
 
   // ---- writes ----
-  // Write one entry's metadata, the way the editor does: the whole map, or
-  // none.
-  const writeMetadata = async (id, metadata) => {
-    const meta = followIds(metadata);
-    if (Object.keys(meta).length) await client.vocabItems.setMetadata(settledId(id), meta);
-    else await client.vocabItems.deleteMetadata(settledId(id));
-  };
-  // Repoint a pile of entries at once. The plans are whole maps and the write
-  // is each one's patch against what that entry carries now, so nothing else
-  // on it is disturbed. One request is one transaction holding the
-  // vocabulary's write lock, hence the chunks. `metaById` is what the entries
-  // hold at the time of the call, which is not always the list in state: the
-  // load-time repair runs against what it has just fetched.
+  // Write entries' metadata. The plans are whole maps and the write is each
+  // one's patch against what that entry carried when the plan was made, so a
+  // key nobody here changed (one another tab or a service wrote meanwhile) is
+  // left alone. One request is one transaction holding the vocabulary's write
+  // lock, hence the chunks. `metaById` is what the entries hold at the time of
+  // the call, which is not always the list in state: the load-time repair runs
+  // against what it has just fetched. Ids the server has answered for since
+  // go out as the server's.
   const bulkRepoint = async (patches, metaById) => {
-    const updates = metadataUpdates(patches, metaById);
+    const updates = metadataUpdates(patches, metaById).map(({ id, metadata }) => ({
+      id: settledId(id),
+      metadata: followIds(metadata),
+    }));
     for (let i = 0; i < updates.length; i += CHUNK) {
       await client.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
     }
@@ -446,31 +452,38 @@ export const VocabularyItems = ({
     const open = selectedIdRef.current;
     if (open && known.has(open)) goItem(known.get(open), { replace: true });
   };
-  const pendingWritesRef = useRef(0);
-  useEffect(() => {
-    // Leaving while a write is still on its way asks first.
-    const onBeforeUnload = (e) => {
-      if (!pendingWritesRef.current) return;
-      e.preventDefault();
-      e.returnValue = '';
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, []);
+  // Closing the tab asks first while a write is still on its way, and keeps
+  // asking after this screen is left, since the writes go on without it.
+  const [writes] = useState(writeTracker);
+  useSavingGuard(writes);
+  // The refetch after a refusal takes the writes queued behind it off the
+  // list, and the ones made while it was on its way were made on the list it
+  // replaced, so neither is sent: the generation moves on before the refetch
+  // and again after it. Resolves to whether the write landed.
+  const writeGenerationRef = useRef(0);
   const sendInTurn = (label, write, failure) => {
-    pendingWritesRef.current += 1;
-    const next = writesRef.current
-      .then(() => client.withOperation(label, write))
-      .finally(() => {
-        pendingWritesRef.current -= 1;
-      });
-    writesRef.current = next.catch((err) => {
-      console.error(`${label}:`, err);
-      notifyError(failure, 'Error');
-      dispatch({ type: 'draft/unseed' });
-      return fetchItems({ quiet: true });
-    });
-    return next;
+    const generation = writeGenerationRef.current;
+    writes.begin();
+    const send = async () => {
+      try {
+        if (generation !== writeGenerationRef.current) return false;
+        await client.withOperation(label, write);
+        return true;
+      } catch (err) {
+        writeGenerationRef.current += 1;
+        console.error(`${label}:`, err);
+        notifyError(failure, 'Error');
+        dispatch({ type: 'draft/unseed' });
+        await fetchItems({ quiet: true });
+        writeGenerationRef.current += 1;
+        return false;
+      } finally {
+        writes.end();
+      }
+    };
+    const result = writesRef.current.then(send);
+    writesRef.current = result.catch(() => {});
+    return result;
   };
 
   // The draft as of the latest render, for the async writes below that finish
@@ -534,7 +547,10 @@ export const VocabularyItems = ({
   // leaves the user's typing alone; the writes that do want a re-seed (a
   // save, an import, a repair) unseed it first.
   useEffect(() => {
-    const seedKey = seedKeyFor(selectedId, newParent);
+    // Keyed on the id the entry was first shown under, so a new entry's draft
+    // is not filled again, over what is being typed, when its server id
+    // replaces the pending one in the URL.
+    const seedKey = seedKeyFor(stableKey(selectedId), newParent);
     if (draft.seedKey === seedKey) return;
     if (!selectedId || selectedId === NEW_ID) {
       // A sense is spelled like its headword (a FLEx import gives every
@@ -729,17 +745,18 @@ export const VocabularyItems = ({
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     dispatch({ type: 'draft/form', form });
     notifySuccess('Entry updated', 'Success');
+    // Only the keys the save changes are sent, so one written elsewhere
+    // since this entry was loaded stays.
+    const ops = metadataPatchTo(item.metadata, metadata);
     sendInTurn(
       `Edit entry "${form}"`,
       async () => {
-        const id = settledId(item.id);
-        if (form !== item.form) await client.vocabItems.update(id, form);
-        const meta = followIds(metadata);
-        if (Object.keys(meta).length > 0) {
-          await client.vocabItems.setMetadata(id, meta);
-        } else if (item.metadata && Object.keys(item.metadata).length > 0) {
-          await client.vocabItems.deleteMetadata(id);
-        }
+        const update = {
+          id: settledId(item.id),
+          ...(form !== item.form ? { form } : {}),
+          ...(ops.length ? { metadata: followIds(ops) } : {}),
+        };
+        if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
       },
       'Failed to save the entry',
     );
@@ -783,14 +800,9 @@ export const VocabularyItems = ({
   // draft is re-seeded from the result unless the user has unsaved edits,
   // which stay theirs.
   const commitPatches = (patches, label, failure) => {
+    const before = metadataNow(items);
     foldPatches(patches);
-    return sendInTurn(
-      label,
-      async () => {
-        for (const p of patches) await writeMetadata(p.id, p.metadata);
-      },
-      failure,
-    );
+    return sendInTurn(label, () => bulkRepoint(patches, before), failure);
   };
   const commitMetadata = (id, metadata, label, failure) =>
     commitPatches([{ id, metadata }], label, failure);
@@ -860,13 +872,8 @@ export const VocabularyItems = ({
           it.form,
           Object.keys(meta).length ? meta : undefined,
         );
-        const ids = new Map([[headId, created?.id]]);
-        await writeMetadata(settledId(id), {
-          ...followIds(sense),
-          parent: created.id,
-          senseOrder: 1,
-        });
-        settleEntries(ids);
+        settleEntries(new Map([[headId, created?.id]]));
+        await bulkRepoint([{ id, metadata: senseMeta }], new Map([[id, it.metadata]]));
       },
       'Failed to add the headword',
     );
