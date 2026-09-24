@@ -18,6 +18,7 @@ import { defaultGuessSource, VOCAB_ENTRY_SOURCE } from '@/domain/glossGuess';
 import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
+import { precedentFetchedAt } from '@/domain/precedentCache';
 import {
   cellTier,
   PRECEDENT_REFRESH_MIN_MS,
@@ -199,10 +200,10 @@ export class IgtEditor {
     window.addEventListener('resize', this._onDockWidth);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
-    // Project-wide precedent (_ensurePrecedent) is fetched once and then held
-    // for the life of this instance, so a decision someone else makes
-    // elsewhere in the project while this document stays open otherwise never
-    // shows up in gloss guesses or the lexicon popover's ranking. Refetching
+    // Project-wide precedent (_ensurePrecedent) is read once per project and
+    // then held, so a decision someone else makes elsewhere in the project
+    // otherwise waits for the cache to age out before it shows up in gloss
+    // guesses or the lexicon popover's ranking. Refetching
     // on every keystroke would be wasteful; refetching when the tab regains
     // focus catches it at the moment a person actually resumes work, which is
     // when staleness would otherwise be noticed.
@@ -211,7 +212,7 @@ export class IgtEditor {
       // The lexicon goes the same way as the precedent tally: entries added
       // elsewhere while this page stayed open are read again here.
       this._refreshVocabularies();
-      if (Date.now() - (this._precedentFetchedAt || 0) < PRECEDENT_REFRESH_MIN_MS) return;
+      if (Date.now() - precedentFetchedAt(this.doc) < PRECEDENT_REFRESH_MIN_MS) return;
       this._ensurePrecedent(true);
     };
     document.addEventListener('visibilitychange', this._onVisibility);
@@ -368,6 +369,7 @@ export class IgtEditor {
     // to the next document destroys this one mid-flight), and each of them
     // paints when it lands.
     this._destroyed = true;
+    this._leavePrecedent();
     this._altsRoot?.remove();
     this._altsRoot = null;
     if (this._unsub) this._unsub();

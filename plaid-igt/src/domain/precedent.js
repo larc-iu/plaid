@@ -26,9 +26,11 @@
 // copied from them is stamped machine-made and reviewed like any copy.
 //
 // Sources: grouped queries over the whole project (linkPrecedentQueries,
-// valuePrecedentQueries) with the open document left out, plus the open
-// document folded live from its derived sentences, so a decision made a
-// moment ago already counts and nothing is counted twice.
+// valuePrecedentQueries), with the open document's own rows subtracted (the
+// same queries scoped to it) and the open document folded live from its
+// derived sentences instead, so a decision made a moment ago already counts
+// and nothing is counted twice. precedentCache.js holds the project rows for
+// every document opened in the project.
 //
 // KNOWN ASYMMETRY: the query engine exposes no vocab-link metadata, so link
 // rows from the project query carry no provenance and count as trusted;
@@ -102,15 +104,15 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 // morpheme tokens (their value is just the parent word's slice), tokenValue
 // otherwise; morphType is the entry's, so rows from multi-word expressions
 // (one per member word, since a link over several tokens joins once per
-// token) can be left out of a single word's precedent.
-export function linkPrecedentQueries(vocabIds, { excludeDocId = null } = {}) {
+// token) can be left out of a single word's precedent. With `docId`, the
+// same counts for that one document alone.
+export function linkPrecedentQueries(vocabIds, { docId = null } = {}) {
   return vocabIds.map((vid) => ({
     where: [
       ['vocab', '?v', { layer: vid }],
       ['vocab-link', '?t', '?v'],
-      ['token', '?t', { layer: '?tl' }],
+      ['token', '?t', { layer: '?tl', ...(docId ? { doc: docId } : {}) }],
       ['token-layer', '?tl', {}],
-      ...(excludeDocId ? [['!=', '?t.doc', excludeDocId]] : []),
     ],
     return: {
       group: [
@@ -128,8 +130,10 @@ export function linkPrecedentQueries(vocabIds, { excludeDocId = null } = {}) {
 // One grouped query per word- and morpheme-scope annotation layer: how often
 // each (form, value) pairing was written, split by provenance state. Row
 // shape: [form, value, prov, provConfirmed, count] (prov keys null when
-// absent). Returns [{ kind, field, query }].
-export function valuePrecedentQueries(layerInfo, { excludeDocId = null } = {}) {
+// absent). Returns [{ kind, field, query }]. With `docId`, the same counts
+// for that one document alone.
+export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
+  const inDoc = docId ? { doc: docId } : {};
   const out = [];
   const add = (kind, tokenLayerId, layers, formPath) => {
     if (!tokenLayerId) return;
@@ -139,10 +143,9 @@ export function valuePrecedentQueries(layerInfo, { excludeDocId = null } = {}) {
         field: l.name,
         query: {
           where: [
-            ['span', '?s', { layer: l.id }],
-            ['token', '?t', { layer: tokenLayerId }],
+            ['span', '?s', { layer: l.id, ...inDoc }],
+            ['token', '?t', { layer: tokenLayerId, ...inDoc }],
             ['covers', '?s', '?t'],
-            ...(excludeDocId ? [['!=', '?t.doc', excludeDocId]] : []),
           ],
           return: {
             group: [formPath, '?s.value', '?s.metadata.prov', '?s.metadata.provConfirmed'],
@@ -160,6 +163,24 @@ export function valuePrecedentQueries(layerInfo, { excludeDocId = null } = {}) {
     '?t.metadata.form',
   );
   return out;
+}
+
+/**
+ * Add every count in `src` to `dst`, times `sign` (1 or -1). Subtracting
+ * takes a document's rows back out of the project's, so a count may go to
+ * zero or, when the two were read at different moments, below it:
+ * precedentCounts reads anything under one as none.
+ */
+export function mergeTally(dst, src, sign = 1) {
+  for (const [k, byValue] of src || []) {
+    let into = dst.get(k);
+    if (!into) dst.set(k, (into = new Map()));
+    for (const [v, c] of byValue) {
+      const d = into.get(v) || { n: 0, machine: 0 };
+      into.set(v, { n: d.n + sign * c.n, machine: d.machine + sign * c.machine });
+    }
+  }
+  return dst;
 }
 
 // ---- folding rows and documents into a tally ----
@@ -292,7 +313,10 @@ export function precedentCounts(tally, kind, form, slot, { excludeMachine = fals
   if (!byValue) return null;
   const out = new Map();
   for (const [v, c] of byValue) {
-    const n = excludeMachine ? c.n - c.machine : c.n;
+    // Clamped, for a tally with a document subtracted (mergeTally): neither
+    // count below zero, and never more machine-made decisions than decisions.
+    const all = Math.max(0, c.n);
+    const n = excludeMachine ? all - Math.min(all, Math.max(0, c.machine)) : all;
     if (n > 0) out.set(v, n);
   }
   return out.size ? out : null;

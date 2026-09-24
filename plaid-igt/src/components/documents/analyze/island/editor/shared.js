@@ -9,9 +9,6 @@ import { keys } from '@/lib/keymap.js';
 // carries the rest of the story.
 export const numHtml = (sub, cls) => (sub ? html`<sub class="${cls}__num">${sub}</sub>` : nothing);
 
-// Stable empty precedent results, so the tally memo does not rebuild on every
-// render while the project queries are still in flight.
-export const NO_PRECEDENT = Object.freeze({ links: [], values: [] });
 export const EMPTY_SET = new Set();
 // Minimum time between tab-focus-triggered precedent refetches (see
 // _onVisibility in the constructor and the force path in _ensurePrecedent).

@@ -4,6 +4,7 @@ import {
   SLOT_LINK,
   createTally,
   addPrecedent,
+  mergeTally,
   linkPrecedentQueries,
   valuePrecedentQueries,
   foldLinkRows,
@@ -95,7 +96,7 @@ describe('link precedent from project rows', () => {
 });
 
 describe('queries', () => {
-  it('link queries: one grouped query per vocab, optionally leaving one document out', () => {
+  it('link queries: one grouped query per vocab, optionally scoped to one document', () => {
     const qs = linkPrecedentQueries(['v1', 'v2']);
     expect(qs).toHaveLength(2);
     expect(qs[0].return.group).toEqual([
@@ -105,9 +106,9 @@ describe('queries', () => {
       '?tl.config.plaid.role',
       '?v.metadata.morphType',
     ]);
-    expect(qs[0].where.some((c) => c[0] === '!=')).toBe(false);
-    const [q] = linkPrecedentQueries(['v1'], { excludeDocId: 'doc-1' });
-    expect(q.where).toContainEqual(['!=', '?t.doc', 'doc-1']);
+    expect(qs[0].where).toContainEqual(['token', '?t', { layer: '?tl' }]);
+    const [q] = linkPrecedentQueries(['v1'], { docId: 'doc-1' });
+    expect(q.where).toContainEqual(['token', '?t', { layer: '?tl', doc: 'doc-1' }]);
   });
 
   it('value queries: one per word- and morpheme-scope field, grouped by form, value and provenance', () => {
@@ -120,16 +121,20 @@ describe('queries', () => {
         sentence: [{ id: 'trL', name: 'Translation' }],
       },
     };
-    const qs = valuePrecedentQueries(layerInfo, { excludeDocId: 'doc-1' });
+    const qs = valuePrecedentQueries(layerInfo, { docId: 'doc-1' });
     expect(qs.map((q) => [q.kind, q.field])).toEqual([
       ['word', 'POS'],
       ['morpheme', 'Gloss'],
     ]);
     expect(qs[0].query.where).toEqual([
-      ['span', '?s', { layer: 'posL' }],
-      ['token', '?t', { layer: 'wordL' }],
+      ['span', '?s', { layer: 'posL', doc: 'doc-1' }],
+      ['token', '?t', { layer: 'wordL', doc: 'doc-1' }],
       ['covers', '?s', '?t'],
-      ['!=', '?t.doc', 'doc-1'],
+    ]);
+    expect(valuePrecedentQueries(layerInfo)[0].query.where[0]).toEqual([
+      'span',
+      '?s',
+      { layer: 'posL' },
     ]);
     expect(qs[0].query.return.group[0]).toBe('?t.value');
     expect(qs[1].query.return.group).toEqual([
@@ -284,5 +289,37 @@ describe('multi-word expression links in project rows', () => {
     ]);
     expect(winner(t, 'el', 'word')).toBe('i-el');
     expect(links(t, 'pelo', 'word')).toBeNull();
+  });
+});
+
+describe('mergeTally', () => {
+  it('subtracts a document back out, and reads what drops below one as none', () => {
+    const project = createTally();
+    addPrecedent(project, 'word', 'kai', 'Gloss', 'go', 3);
+    addPrecedent(project, 'word', 'kai', 'Gloss', 'eat', 1, { machine: true });
+    const doc = createTally();
+    addPrecedent(doc, 'word', 'kai', 'Gloss', 'go', 1);
+    addPrecedent(doc, 'word', 'kai', 'Gloss', 'eat', 2, { machine: true });
+    const t = mergeTally(mergeTally(createTally(), project), doc, -1);
+    expect(precedentCounts(t, 'word', 'kai', 'Gloss')).toEqual(new Map([['go', 2]]));
+    // The copy is its own: subtracting did not touch the project tally.
+    expect(precedentCounts(project, 'word', 'kai', 'Gloss')).toEqual(
+      new Map([
+        ['go', 3],
+        ['eat', 1],
+      ]),
+    );
+  });
+
+  it('never counts more machine-made decisions than decisions', () => {
+    const t = createTally();
+    addPrecedent(t, 'word', 'kai', 'Gloss', 'go', 2);
+    const minus = createTally();
+    addPrecedent(minus, 'word', 'kai', 'Gloss', 'go', 1, { machine: true });
+    mergeTally(t, minus, -1);
+    // n 1, machine -1: one decision, none of it machine-made.
+    expect(precedentCounts(t, 'word', 'kai', 'Gloss', { excludeMachine: true })).toEqual(
+      new Map([['go', 1]]),
+    );
   });
 });

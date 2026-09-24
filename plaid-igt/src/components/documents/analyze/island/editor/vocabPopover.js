@@ -8,16 +8,15 @@ import { rankVocabItems, TIERS } from '@/domain/vocabRank';
 import { isMweType } from '@/domain/mwe';
 import {
   SLOT_LINK,
-  linkPrecedentQueries,
-  valuePrecedentQueries,
   createTally,
-  foldProject,
   foldDocument,
+  mergeTally,
   precedentCounts,
   precedentForm,
 } from '@/domain/precedent';
+import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedentCache';
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
-import { NO_PRECEDENT, numHtml } from './shared.js';
+import { numHtml } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 
 // The vocab popover: the ranked entries for a form, the precedent tally that
@@ -60,67 +59,56 @@ export const vocabPopover = {
   },
 
   // Precedent (domain/precedent.js) behind the popover's ranking and the
-  // gloss guesses: the project-wide link and annotation-value tallies,
-  // fetched once per document with THIS document left out, plus this
-  // document's own links and values folded live from the derived sentences,
-  // so a decision made a moment ago already counts and nothing is counted
-  // twice. Until the queries answer, everything ranks on the document alone;
-  // the island re-renders when they land. A failed fetch keeps it that way
-  // (popover and guesses still work).
+  // gloss guesses: the project-wide link and annotation-value tallies with
+  // this document taken out (domain/precedentCache.js, which reads them once
+  // per project), plus this document's own links and values folded live from
+  // the derived sentences, so a decision made a moment ago already counts and
+  // nothing is counted twice. Until the queries answer, everything ranks on
+  // the document alone; the island re-renders when they land. A failed read
+  // keeps it that way (popover and guesses still work).
   //
-  // `force` bypasses the same-key cache: someone else's decision elsewhere in
-  // the project between fetches would otherwise never be seen for the life of
-  // this instance (see the visibilitychange listener in the constructor).
+  // `force` reads the project again: someone else's decision elsewhere in the
+  // project would otherwise wait for the cache to age out (see the
+  // visibilitychange listener in the constructor).
   _ensurePrecedent(force = false) {
     const doc = this.doc;
-    const vocabIds = Object.keys(doc?.vocabularies || {}).sort();
-    const valueQueries = doc?.layerInfo
-      ? valuePrecedentQueries(doc.layerInfo, { excludeDocId: doc.id })
-      : [];
-    const key = `${doc?.id}|${vocabIds.join(',')}|${valueQueries
-      .map((q) => q.query.where[0][2].layer)
-      .join(',')}`;
-    if (!force && this._precedent?.key === key) return;
-    const state = { key, results: null };
-    this._precedent = state;
-    this._precedentFetchedAt = Date.now();
-    if (!doc?.client || (!vocabIds.length && !valueQueries.length)) return;
-    const client = doc.client;
-    Promise.all([
-      Promise.all(
-        linkPrecedentQueries(vocabIds, { excludeDocId: doc.id }).map((q) => client.query(q)),
-      ),
-      Promise.all(
-        valueQueries.map(({ kind, field, query }) =>
-          client.query(query).then((results) => ({ kind, field, results })),
-        ),
-      ),
-    ])
-      .then(([links, values]) => {
-        state.results = { links, values };
-      })
-      .catch((err) => {
-        console.warn('Project precedent unavailable; using this document only:', err);
-        state.results = NO_PRECEDENT;
-      })
-      .finally(() => {
-        if (this._precedent === state) this._render(true);
-      });
+    if (this._precedentOpenedAt == null || force) this._precedentOpenedAt = doc?.dataVersion;
+    const pending = openPrecedent(doc, { force });
+    // Asked on every render, and answered with the same promise until it
+    // settles: one repaint per read, not one per render.
+    if (!pending || pending === this._precedentPending) return;
+    this._precedentPending = pending;
+    pending.finally(() => {
+      if (this._precedentPending === pending) this._precedentPending = null;
+      if (!this._destroyed) this._render(true);
+    });
+  },
+
+  // Called from destroy(): what this document now holds stands in for its
+  // project rows in the next document opened, if it changed while open.
+  _leavePrecedent() {
+    if (this.readOnly || this._precedentOpenedAt == null) return;
+    const info = this.doc?.layerInfo;
+    leavePrecedent(this.doc, this._precedentOpenedAt, {
+      wordFields: (info?.spanLayers?.word || []).map((l) => l.name),
+      morphFields: (info?.spanLayers?.morpheme || []).map((l) => l.name),
+      ignoredCfg: this._ignoredCfg,
+    });
   },
 
   _precedentTally() {
-    const results = this._precedent?.results || NO_PRECEDENT;
+    const base = precedentBase(this.doc, this._ignoredCfg);
     const dv = this.doc?.dataVersion;
     const memo = this._precedentMemo;
-    if (!memo || memo.results !== results || memo.dv !== dv) {
+    if (!memo || memo.base !== base || memo.dv !== dv) {
       const info = this.doc?.layerInfo;
-      const tally = foldProject(createTally(), results, this._ignoredCfg);
+      const tally = base ? mergeTally(createTally(), base) : createTally();
       foldDocument(tally, this.doc?.sentences, {
         wordFields: (info?.spanLayers?.word || []).map((l) => l.name),
         morphFields: (info?.spanLayers?.morpheme || []).map((l) => l.name),
         ignoredCfg: this._ignoredCfg,
       });
-      this._precedentMemo = { results, dv, tally };
+      this._precedentMemo = { base, dv, tally };
     }
     return this._precedentMemo.tally;
   },
