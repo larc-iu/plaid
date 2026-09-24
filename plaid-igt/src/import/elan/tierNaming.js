@@ -44,11 +44,65 @@ const ITEM_WORDS = {
 // code cannot be known to one and not the other.
 const ITEM_TYPES = new Set(['gls', 'lit', 'note', ...Object.keys(ITEM_WORDS)]);
 
+// ELAN's own "Import FLEx" names a tier after the interlinear LEVEL and the
+// item, behind a speaker prefix: `A_phrase-gls-en`, `A_word-pos-en`,
+// `A_morph-type` (no writing system). The level says where the tier sits, so
+// the field is named here by level and item, as the FLEx importer names the
+// same item from a .flextext. Items it does not read (cf, hn, variantTypes,
+// segnum) get a readable name all the same.
+const LEVEL_ITEM_NAMES = {
+  phrase: {
+    txt: 'Text',
+    gls: 'Translation',
+    lit: 'Literal Translation',
+    note: 'Note',
+    segnum: 'Segment Number',
+  },
+  word: { gls: 'Gloss', pos: 'POS', txt: 'Text', punct: 'Punctuation' },
+  morph: {
+    gls: 'Gloss',
+    msa: 'POS',
+    cf: 'Citation Form',
+    hn: 'Homograph Number',
+    variantTypes: 'Variant Types',
+    txt: 'Text',
+    type: 'Type',
+  },
+};
+const ELAN_FLEX_NAME = /^(?:[^_\s]+_)?(phrase|word|morph)-([A-Za-z]+)(?:-(.+))?$/;
+
+/**
+ * A tier named by ELAN's FLEx import: `A_morph-gls-en` → {level: 'morph',
+ * itemType: 'gls', ws: 'en'}, `A_morph-type` → {level: 'morph', itemType:
+ * 'type', ws: null}. Null for any other name.
+ */
+export function parseElanFlexTierName(name) {
+  const m = ELAN_FLEX_NAME.exec(String(name ?? ''));
+  if (!m) return null;
+  const [, level, itemType, ws = null] = m;
+  if (!LEVEL_ITEM_NAMES[level][itemType]) return null;
+  if (ws != null && !isLangTag(ws)) return null;
+  return { level, itemType, ws };
+}
+
 /**
  * `Translation-gls-nl` → {base: 'Translation', itemType: 'gls', ws: 'nl'}, or
- * null when the name is not shaped that way.
+ * null when the name is not shaped that way. A name from ELAN's FLEx import
+ * (`A_phrase-gls-en`) reads as the field it holds, {base: 'Translation',
+ * itemType: 'gls', ws: 'en', named: true}: its base is a level, not a name.
  */
 export function parseFlexTierName(name) {
+  const elan = parseElanFlexTierName(name);
+  if (elan) {
+    if (!elan.ws) return null;
+    // A word's text in another writing system is an orthography, which the
+    // FLEx importer names by the writing system.
+    const base =
+      elan.level === 'word' && elan.itemType === 'txt'
+        ? elan.ws
+        : LEVEL_ITEM_NAMES[elan.level][elan.itemType];
+    return { base, itemType: elan.itemType, ws: elan.ws, named: true };
+  }
   const parts = String(name ?? '').split('-');
   if (parts.length < 3) return null;
   const ws = parts.pop();
@@ -58,6 +112,14 @@ export function parseFlexTierName(name) {
   if (!isLangTag(ws)) return null;
   return { base, itemType, ws };
 }
+
+// Items whose values are in a vernacular writing system: a form, not an
+// analysis. In a tier from ELAN's FLEx import their language is not one of
+// the analysis languages that decide whether field names carry a tag, as in
+// the FLEx importer, which tags Gloss and Translation by the analysis
+// languages alone.
+const FORM_ITEMS = new Set(['txt', 'cf', 'hn', 'punct']);
+const isFormTier = (p) => p.named && FORM_ITEMS.has(p.itemType);
 
 const fold = (name) =>
   String(name ?? '')
@@ -82,7 +144,14 @@ export function fieldWorksFieldNames(entries, alsoIn = []) {
   const parsed = (entries || [])
     .map((e) => [e.key, parseFlexTierName(e.name)])
     .filter(([, p]) => p);
-  const languages = new Set([...parsed.map(([, p]) => p.ws), ...alsoIn.filter(Boolean)]);
+  const languages = new Set([
+    ...parsed.filter(([, p]) => !isFormTier(p)).map(([, p]) => p.ws),
+    ...alsoIn.filter(Boolean),
+  ]);
+  // Those form tiers are tagged among themselves: two citation forms in two
+  // vernaculars are two fields, whatever the glosses are in.
+  const formLanguages = new Set(parsed.filter(([, p]) => isFormTier(p)).map(([, p]) => p.ws));
+  const tagged = (p) => (isFormTier(p) ? formLanguages : languages).size > 1;
   // Two tiers of one base can differ only in FLEx's item code: a text's free
   // translation is `-gls-` and its literal one `-lit-`, which is how FLEx
   // itself writes them. Named by the base alone they were one field, and the
@@ -94,8 +163,8 @@ export function fieldWorksFieldNames(entries, alsoIn = []) {
     codes.get(k).add(p.itemType);
   });
   const nameOf = (p) => {
-    const base = codes.get(fold(p.base)).size > 1 ? byItemType(p) : p.base;
-    return languages.size > 1 ? withLangSuffix(base, p.ws) : base;
+    const base = !p.named && codes.get(fold(p.base)).size > 1 ? byItemType(p) : p.base;
+    return tagged(p) ? withLangSuffix(base, p.ws) : base;
   };
   return Object.fromEntries(parsed.map(([key, p]) => [key, nameOf(p)]));
 }

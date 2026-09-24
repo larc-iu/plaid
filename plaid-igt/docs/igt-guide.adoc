@@ -854,7 +854,7 @@ The review screen of an ELAN import has three parts, in the order you work.
 **Files** lists each `.eaf` with the document it becomes and its recording under it.
 Each document takes the name its file gives it, even when two files give the same one.
 When a file names a recording, the recording's file name is kept in a **Media file** metadata field on the document. Clear **Keep each recording's file name in a Media file field** to leave it out.
-**Tiers** is where each tier is given its role: sentences, words, morphemes, time alignment, an orthography, or a field.
+**Tiers** is where each tier is given its role: sentences, words, morphemes, morpheme types, time alignment, an orthography, or a field.
 **Preview** draws a sentence of the first document as the interlinear lines the import would write, and redraws it as you change a role, so a gloss tier mapped onto words or a morpheme tier left off shows before anything is written. The arrows step through its sentences.
 Anything that needs a decision appears in an amber box, and the line beside **Import** counts what the run would add.
 
@@ -870,13 +870,17 @@ The rest of the project is untouched, and nothing is locked while the import run
 
 Either way, the import asks what each tier becomes:
 
-* **Sentences**: the transcription. Each annotation becomes one sentence, and their text, joined in time order, becomes the document's text. Every import needs one such tier, since an `.eaf` holds no running text of its own.
+* **Sentences**: the transcription. Each annotation becomes one sentence, and their text, joined in time order, becomes the document's text. Every import needs one such tier, since an `.eaf` holds no running text of its own. A tier whose annotations are all empty cannot be the sentences. When the top tier is one, as the paragraph tier of a file made by ELAN's **Import FLEx** is, the tier of phrases inside it is offered instead.
 * **Words** and **Morphemes**: tiers below it, dividing each sentence and then each word. Without them the document arrives untokenized, ready for the Tokenize tab.
+* **Morpheme type**: a tier below the morphemes naming each one's type in FLEx's terms (`stem`, `suffix`, `enclitic`), which becomes the morpheme's type.
 * **Time alignment**: the segments on the Media tab. A tier of its own is only needed to cut finer than one segment per sentence, since the sentence tier's own times are used when you leave this out.
 * **Orthography**: an alternate spelling of each word, beside the baseline.
-* **Sentence field**, **Word field**, **Morpheme field**: one value per sentence, word or morpheme, in an annotation field. Importing into an existing project writes into that project's own fields.
+* **Sentence field**, **Word field**, **Morpheme field**: one value per sentence, word or morpheme, in an annotation field. Importing into an existing project writes into that project's own fields. A field tier may sit below another field tier, such as one added under the segment number, and its values still belong to the sentence, word or morpheme above them both.
 
 Tier names of the form `Translation-gls-nl`, which is how a corpus prepared for FieldWorks names them, are read: `gls` is the kind of annotation and `nl` the language, so such a tier is offered the matching field without your having to say so. A tier that needs a new field names it the way a FLEx import would, `Translation (nl)`, or plain `Translation` when every such tier is in one language.
+A file made by ELAN's **Import FLEx** names its tiers by level and item instead (`A_phrase-gls-en`, `A_word-pos-en`, `A_morph-type`), and those are read too: the fields are named as a FLEx import names them (Translation, Gloss, POS), a word's text in another writing system becomes an orthography, and the morph type tier gives each morpheme its type.
+Each sentence's text is written from its words, as FLEx writes a phrase, so a word the phrase line leaves out, such as `[0]` for a zero argument, keeps its place and its annotations, and the text shows the words' own spelling.
+The segment number tier is left out. So are the times of such a file when it names no recording and every time falls on a whole second, since that import makes them up.
 
 An import that stops before it finishes, whether you cancel it, it fails, or the tab is closed, leaves a project that is only part filled.
 Opening such a project takes you back to the import instead: choose the same file or files and it carries on, keeping the documents and entries already there and finishing the ones it never reached.

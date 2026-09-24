@@ -23,6 +23,7 @@
 // exporter gives every Symbolic_Association tier the same type).
 
 import { stereotypeOf, isAlignableStereotype } from './readEaf.js';
+import { parseElanFlexTierName } from './tierNaming.js';
 
 /** Roles a schema node can be mapped onto in an IGT project. */
 export const ROLES = Object.freeze({
@@ -31,6 +32,7 @@ export const ROLES = Object.freeze({
   ALIGNMENT: 'alignment',
   WORD: 'word',
   MORPHEME: 'morpheme',
+  MORPH_TYPE: 'morphType',
   SENTENCE_FIELD: 'sentenceField',
   WORD_FIELD: 'wordField',
   MORPH_FIELD: 'morphField',
@@ -60,7 +62,8 @@ const nodeKey = (parentKey, baseName, typeRef) =>
  *
  * @returns {Array<{key, baseName, typeRef, stereotype, parentKey, depth,
  *                  alignable, participants: string[], tierIds: string[],
- *                  annotationCount: number}>}
+ *                  annotationCount: number, filledCount: number}>}
+ *   filledCount is the annotations that hold any text.
  */
 export function tierSchema(eaf, canonical = null) {
   const byId = new Map(eaf.tiers.map((t) => [t.id, t]));
@@ -100,6 +103,7 @@ export function tierSchema(eaf, canonical = null) {
         participants: [],
         tierIds: [],
         annotationCount: 0,
+        filledCount: 0,
       };
       nodes.set(key, node);
     }
@@ -108,6 +112,7 @@ export function tierSchema(eaf, canonical = null) {
     }
     node.tierIds.push(tier.id);
     node.annotationCount += tier.annotations.length;
+    node.filledCount += tier.annotations.filter((a) => String(a.value ?? '').trim()).length;
   }
 
   // Depth, for indenting the mapping UI.
@@ -245,6 +250,7 @@ export function compareSchemas(files, canonical = null) {
           if (!kept.participants.includes(p)) kept.participants.push(p);
         }
         kept.annotationCount += node.annotationCount;
+        kept.filledCount += node.filledCount;
       }
     }
   }
@@ -349,12 +355,21 @@ const rankRoots = (roots) =>
 export function suggestRoles(nodes) {
   const roles = {};
   for (const n of nodes) roles[n.key] = ROLES.OFF;
-  const byKey = new Map(nodes.map((n) => [n.key, n]));
   const childrenOf = (key) => nodes.filter((n) => n.parentKey === key);
   const isSubdivision = (n) =>
     n.stereotype === 'Symbolic_Subdivision' || n.stereotype === 'Time_Subdivision';
 
-  const roots = rankRoots(nodes.filter((n) => !n.parentKey && n.alignable));
+  // A top-level tier with no text holds no sentences. ELAN's own FLEx import
+  // writes one (a paragraph tier of blank, time-aligned annotations) with the
+  // phrases Included_In it, and taking it gave a document of nothing. Such a
+  // tier stands aside for its time-aligned children that do hold text.
+  const tops = nodes.filter((n) => !n.parentKey && n.alignable);
+  const candidates = tops.flatMap((n) =>
+    n.filledCount > 0
+      ? [n]
+      : childrenOf(n.key).filter((c) => c.alignable && c.stereotype && c.filledCount > 0),
+  );
+  const roots = rankRoots(candidates);
   if (!roots.length) return roles;
 
   // EXACTLY ONE utterance tier is ever suggested. Mapping several is supported
@@ -379,7 +394,15 @@ export function suggestRoles(nodes) {
       const morphCandidates = childrenOf(word.key).filter(isSubdivision);
       const morph =
         morphCandidates.find((n) => hintFor(n) === ROLES.MORPHEME) ?? morphCandidates[0] ?? null;
-      if (morph) roles[morph.key] = ROLES.MORPHEME;
+      if (morph) {
+        roles[morph.key] = ROLES.MORPHEME;
+        // ELAN's FLEx import gives the morph type a tier of its own.
+        for (const child of childrenOf(morph.key)) {
+          if (parseElanFlexTierName(child.baseName)?.itemType === 'type') {
+            roles[child.key] = ROLES.MORPH_TYPE;
+          }
+        }
+      }
     }
     // Any alignable child the word did not claim carries finer time. That is
     // Included_In as well as Time_Subdivision: both hold real times, and
@@ -390,27 +413,47 @@ export function suggestRoles(nodes) {
     }
   }
 
-  // Everything still unassigned becomes a field at the scope of its parent,
-  // except an orthography, which a name hint has to claim explicitly.
-  const scopeOfParent = (node) => {
-    const parent = node.parentKey ? byKey.get(node.parentKey) : null;
-    if (!parent) return null;
-    const parentRole = roles[parent.key];
-    if (parentRole === ROLES.UTTERANCE) return ROLES.SENTENCE_FIELD;
-    if (parentRole === ROLES.WORD) return ROLES.WORD_FIELD;
-    if (parentRole === ROLES.MORPHEME) return ROLES.MORPH_FIELD;
+  // Everything still unassigned becomes a field at the scope of the sentence,
+  // word or morpheme it hangs from (anchorOf), except an orthography, which a
+  // name has to claim explicitly.
+  const scopeOfAnchor = (node) => {
+    const anchorRole = roles[anchorOf(nodes, node)?.key];
+    if (anchorRole === ROLES.UTTERANCE) return ROLES.SENTENCE_FIELD;
+    if (anchorRole === ROLES.WORD) return ROLES.WORD_FIELD;
+    if (anchorRole === ROLES.MORPHEME) return ROLES.MORPH_FIELD;
     return null;
   };
   for (const node of nodes) {
     if (roles[node.key] !== ROLES.OFF) continue;
-    const hint = hintFor(node);
-    if (hint === ROLES.ORTHOGRAPHY && scopeOfParent(node) === ROLES.WORD_FIELD) {
+    const flex = parseElanFlexTierName(node.baseName);
+    // A segment number is the sentence's position, which the document keeps.
+    if (flex?.level === 'phrase' && flex.itemType === 'segnum') continue;
+    const scope = scopeOfAnchor(node);
+    const spelling = flex?.level === 'word' && flex.itemType === 'txt';
+    if ((spelling || hintFor(node) === ROLES.ORTHOGRAPHY) && scope === ROLES.WORD_FIELD) {
       roles[node.key] = ROLES.ORTHOGRAPHY;
       continue;
     }
-    roles[node.key] = scopeOfParent(node) ?? ROLES.OFF;
+    roles[node.key] = scope ?? ROLES.OFF;
   }
   return roles;
+}
+
+/**
+ * The sentence, word or morpheme tier a tier hangs from: its parent, or, up a
+ * chain of Symbolic_Association tiers, the first ancestor that is not one. A
+ * field may sit below another field: the analysis tiers added to a FLEx text
+ * in ELAN hang from its segment-number tier, not from the phrase, and they
+ * still say something about the phrase. Null for a root.
+ */
+function anchorOf(nodes, node) {
+  const byKey = new Map(nodes.map((n) => [n.key, n]));
+  let cur = node.parentKey ? byKey.get(node.parentKey) : null;
+  let guard = 0;
+  while (cur && cur.stereotype === 'Symbolic_Association' && guard++ < 50) {
+    cur = cur.parentKey ? byKey.get(cur.parentKey) : null;
+  }
+  return cur ?? null;
 }
 
 export function validateRoles(nodes, roles) {
@@ -435,6 +478,35 @@ export function validateRoles(nodes, roles) {
   for (const node of of(ROLES.MORPHEME)) {
     if (roleOfParent(node) !== ROLES.WORD) {
       problems.push(`"${nodeLabel(node)}" is morphemes, so its parent tier must be words.`);
+    }
+  }
+  for (const node of of(ROLES.MORPH_TYPE)) {
+    if (roleOfParent(node) !== ROLES.MORPHEME) {
+      problems.push(
+        `"${nodeLabel(node)}" is morpheme types, so its parent tier must be morphemes.`,
+      );
+    }
+  }
+  for (const node of of(ROLES.UTTERANCE)) {
+    if (node.annotationCount > 0 && node.filledCount === 0) {
+      problems.push(
+        `"${nodeLabel(node)}" holds no text. Choose the tier that holds the sentences.`,
+      );
+    }
+  }
+  // A field is read off the sentence, word or morpheme it hangs from, so one
+  // under anything else would import nothing and say nothing.
+  const needs = [
+    [ROLES.SENTENCE_FIELD, ROLES.UTTERANCE, 'a sentence field', 'sentences'],
+    [ROLES.WORD_FIELD, ROLES.WORD, 'a word field', 'words'],
+    [ROLES.ORTHOGRAPHY, ROLES.WORD, 'an orthography', 'words'],
+    [ROLES.MORPH_FIELD, ROLES.MORPHEME, 'a morpheme field', 'morphemes'],
+  ];
+  for (const [role, anchorRole, what, under] of needs) {
+    for (const node of of(role)) {
+      if (roles[anchorOf(nodes, node)?.key] !== anchorRole) {
+        problems.push(`"${nodeLabel(node)}" is ${what}, so it must sit under the ${under}.`);
+      }
     }
   }
   return problems;

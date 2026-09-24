@@ -1268,3 +1268,228 @@ describe('round trip through the .eaf exporter', () => {
     ]);
   });
 });
+
+// ---- a FLEx text brought in with ELAN's own "Import FLEx" -----------------
+// The shape of a real file a user could not import: a blank, time-aligned
+// paragraph tier at the top with the phrases Included_In it, tiers named
+// `<speaker>_<level>-<item>-<writing system>`, a morph type tier, analysis
+// tiers added in ELAN under the segment number, and made-up whole-second
+// times with no recording.
+
+const flexViaElan = ({ media = null } = {}) =>
+  eafXml({
+    media,
+    types: {
+      paragraph: null,
+      phrase: 'Included_In',
+      'phrase-item': 'Symbolic_Association',
+      word: 'Symbolic_Subdivision',
+      'word-item': 'Symbolic_Association',
+      morph: 'Symbolic_Subdivision',
+      'morph-item': 'Symbolic_Association',
+      Mood: 'Symbolic_Association',
+      txt: null,
+    },
+    tiers: [
+      { id: 'interlinear-text-title-en', type: 'txt', anns: [['t1', 'A walk', 0, 40000]] },
+      { id: 'A_paragraph', type: 'paragraph', anns: [['p1', '', 0, 40000]] },
+      {
+        id: 'A_phrase-txt-qaa-x-dim',
+        type: 'phrase',
+        parent: 'A_paragraph',
+        anns: [
+          ['s1', 'Joy walked', 0, 20000],
+          ['s2', 'sat', 20000, 40000],
+        ],
+      },
+      {
+        id: 'A_phrase-gls-en',
+        type: 'phrase-item',
+        parent: 'A_phrase-txt-qaa-x-dim',
+        anns: [
+          ['g1', 'Joy walked.', 's1'],
+          ['g2', 'Joy sat.', 's2'],
+        ],
+      },
+      {
+        id: 'A_phrase-segnum-en',
+        type: 'phrase-item',
+        parent: 'A_phrase-txt-qaa-x-dim',
+        anns: [
+          ['n1', '1', 's1'],
+          ['n2', '2', 's2'],
+        ],
+      },
+      {
+        id: 'Mood',
+        type: 'Mood',
+        parent: 'A_phrase-segnum-en',
+        anns: [
+          ['md1', 'declarative', 'n1'],
+          ['md2', 'realis', 'n2'],
+        ],
+      },
+      {
+        id: 'A_word-txt-qaa-x-dim',
+        type: 'word',
+        parent: 'A_phrase-txt-qaa-x-dim',
+        anns: [
+          ['w1', 'Joy', 's1'],
+          ['w2', 'walked', 's1', 'w1'],
+          ['w3', '[0]', 's2'],
+          ['w4', 'sat', 's2', 'w3'],
+          ['w5', '', 's2', 'w4'],
+        ],
+      },
+      {
+        id: 'A_word-gls-en',
+        type: 'word-item',
+        parent: 'A_word-txt-qaa-x-dim',
+        anns: [
+          ['wg2', 'walk.PST', 'w2'],
+          ['wg3', '3SG', 'w3'],
+          ['wg4', 'sit.PST', 'w4'],
+        ],
+      },
+      {
+        id: 'A_word-pos-en',
+        type: 'word-item',
+        parent: 'A_word-txt-qaa-x-dim',
+        anns: [['wp2', 'v', 'w2']],
+      },
+      {
+        id: 'A_word-txt-dis-Latn-AF',
+        type: 'word-item',
+        parent: 'A_word-txt-qaa-x-dim',
+        anns: [
+          ['wo2', 'uokt', 'w2'],
+          ['wo5', '.', 'w5'],
+        ],
+      },
+      {
+        id: 'A_morph-txt-qaa-x-dim',
+        type: 'morph',
+        parent: 'A_word-txt-qaa-x-dim',
+        anns: [
+          ['m1', 'walk', 'w2'],
+          ['m2', '-ed', 'w2', 'm1'],
+        ],
+      },
+      {
+        id: 'A_morph-gls-en',
+        type: 'morph-item',
+        parent: 'A_morph-txt-qaa-x-dim',
+        anns: [
+          ['mg1', 'walk', 'm1'],
+          ['mg2', 'PST', 'm2'],
+        ],
+      },
+      {
+        id: 'A_morph-cf-qaa-x-dim',
+        type: 'morph-item',
+        parent: 'A_morph-txt-qaa-x-dim',
+        anns: [['mc1', 'walk', 'm1']],
+      },
+      {
+        id: 'A_morph-type',
+        type: 'morph-item',
+        parent: 'A_morph-txt-qaa-x-dim',
+        anns: [
+          ['mt1', 'stem', 'm1'],
+          ['mt2', 'suffix', 'm2'],
+        ],
+      },
+    ],
+  });
+
+describe('a FLEx text brought in with ELAN', () => {
+  const setup = (opts) => {
+    const parsed = [readEaf(flexViaElan(opts), 'walk.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    const role = (name) => roles[nodes.find((n) => n.baseName === name).key];
+    return { parsed, nodes, roles, role };
+  };
+
+  it('takes the phrases as the sentences, not the blank paragraph tier above them', () => {
+    const { nodes, roles, role } = setup();
+    expect(role('A_paragraph')).toBe(ROLES.OFF);
+    expect(role('A_phrase-txt-qaa-x-dim')).toBe(ROLES.UTTERANCE);
+    expect(role('A_word-txt-qaa-x-dim')).toBe(ROLES.WORD);
+    expect(role('A_morph-txt-qaa-x-dim')).toBe(ROLES.MORPHEME);
+    expect(role('A_morph-type')).toBe(ROLES.MORPH_TYPE);
+    expect(role('A_word-txt-dis-Latn-AF')).toBe(ROLES.ORTHOGRAPHY);
+    expect(role('A_phrase-segnum-en')).toBe(ROLES.OFF);
+    expect(role('Mood')).toBe(ROLES.SENTENCE_FIELD);
+    expect(validateRoles(nodes, roles)).toEqual([]);
+  });
+
+  it('refuses a sentence tier that holds no text', () => {
+    const { nodes, roles } = setup();
+    const byName = (name) => nodes.find((n) => n.baseName === name).key;
+    const wrong = {
+      ...roles,
+      [byName('A_paragraph')]: ROLES.UTTERANCE,
+      [byName('A_phrase-txt-qaa-x-dim')]: ROLES.OFF,
+    };
+    expect(validateRoles(nodes, wrong)).toContain(
+      '"A_paragraph" holds no text. Choose the tier that holds the sentences.',
+    );
+  });
+
+  it('writes each sentence from its words, zero words and punctuation included', () => {
+    const { parsed, nodes, roles } = setup();
+    const doc = buildElanDocuments(parsed, nodes, roles).documents[0];
+    // The phrase line says only "sat". The words say who: the zero argument
+    // is a word with a gloss of its own, and the full stop is FLEx's.
+    expect(doc.body).toBe('Joy walked\n[0] sat.');
+    const at = (w) => doc.body.slice(w.begin, w.end);
+    expect(doc.words.map(at)).toEqual(['Joy', 'walked', '[0]', 'sat']);
+    expect(doc.words[2].fields).toEqual({ Gloss: '3SG' });
+    expect(doc.warnings.some((w) => /aligned by position|no text left/.test(w))).toBe(false);
+  });
+
+  it('reads a field below the segment number, and names the fields as the FLEx importer does', () => {
+    const { parsed, nodes, roles } = setup();
+    const build = buildElanDocuments(parsed, nodes, roles);
+    const doc = build.documents[0];
+    expect(doc.sentences.map((s) => s.fields)).toEqual([
+      { Translation: 'Joy walked.', Mood: 'declarative' },
+      { Translation: 'Joy sat.', Mood: 'realis' },
+    ]);
+    expect(doc.words[1].fields).toEqual({
+      Gloss: 'walk.PST',
+      POS: 'v',
+      'orthog:dis-Latn-AF': 'uokt',
+    });
+    expect(doc.words[1].morphemes).toEqual([
+      { form: 'walk', morphType: 'stem', fields: { Gloss: 'walk', 'Citation Form': 'walk' } },
+      { form: 'ed', morphType: 'suffix', fields: { Gloss: 'PST' } },
+    ]);
+    expect(build.schema.fields).toEqual([
+      { name: 'Translation', scope: 'Sentence', lang: 'en' },
+      { name: 'Mood', scope: 'Sentence', lang: null },
+      { name: 'Gloss', scope: 'Word', lang: 'en' },
+      { name: 'POS', scope: 'Word', lang: 'en' },
+      { name: 'Citation Form', scope: 'Morpheme', lang: 'qaa-x-dim' },
+      { name: 'Gloss', scope: 'Morpheme', lang: 'en' },
+    ]);
+    expect(build.schema.orthographies).toEqual(['dis-Latn-AF']);
+  });
+
+  it('leaves out whole-second times when the file names no recording', () => {
+    const { parsed, nodes, roles } = setup();
+    const doc = buildElanDocuments(parsed, nodes, roles).documents[0];
+    expect(doc.alignments).toEqual([]);
+    expect(doc.warnings.some((w) => /placeholders/.test(w))).toBe(true);
+  });
+
+  it('keeps the same times when the file names its recording', () => {
+    const { parsed, nodes, roles } = setup({ media: 'walk.wav' });
+    const doc = buildElanDocuments(parsed, nodes, roles).documents[0];
+    expect(doc.alignments.map((a) => [a.timeBegin, a.timeEnd])).toEqual([
+      [0, 20],
+      [20, 40],
+    ]);
+  });
+});

@@ -30,9 +30,14 @@ import { makeCpIndexer, matchesAt, alignWords } from '../align.js';
 // lives with the CLDF importer that first needed it; it belongs in align.js
 // beside its siblings and should move there when that file next settles.
 import { ROLES, nodeLabel } from './schema.js';
-import { fieldWorksFieldNames, parseFlexTierName } from './tierNaming.js';
+import { readAffixMarkers } from '../../domain/affixMarkers.js';
+import { joinPhrase } from '../flex/flextextParser.js';
+import { fieldWorksFieldNames, parseElanFlexTierName, parseFlexTierName } from './tierNaming.js';
 import { chainOrder } from './readEaf.js';
 import { MEDIA_FILE_FIELD } from '../../domain/igtConfig.js';
+
+// A value that is only punctuation (or symbols), as FLEx's punctuation is.
+const PUNCTUATION = /^[\p{P}\p{S}]+$/u;
 
 /** EAF milliseconds → Plaid seconds. */
 const toSeconds = (ms) => Math.round(ms) / 1000;
@@ -150,8 +155,17 @@ export function matchMediaFiles(eafs, mediaFiles) {
   };
 }
 
-/** Default target name for a field/orthography node. */
-export const defaultFieldName = (node) => nodeLabel(node);
+/**
+ * Default target name for a field/orthography node: the tier's name, except a
+ * word's text in another writing system from ELAN's FLEx import
+ * (`A_word-txt-dis-Latn-AF`), which is named by that writing system as the
+ * FLEx importer names an orthography.
+ */
+export const defaultFieldName = (node) => {
+  const flex = parseElanFlexTierName(nodeLabel(node));
+  if (flex?.level === 'word' && flex.itemType === 'txt' && flex.ws) return flex.ws;
+  return nodeLabel(node);
+};
 
 /** Resolve the mapping to role → the schema nodes holding it. */
 function resolveMapping(nodes, roles) {
@@ -206,6 +220,30 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
   const wordFieldNodes = byRole.get(ROLES.WORD_FIELD) || [];
   const morphFieldNodes = byRole.get(ROLES.MORPH_FIELD) || [];
   const orthographyNodes = byRole.get(ROLES.ORTHOGRAPHY) || [];
+  const morphTypeNodes = byRole.get(ROLES.MORPH_TYPE) || [];
+  const fromFlexViaElan = utteranceNodes.every(
+    (node) => parseElanFlexTierName(nodeLabel(node))?.level === 'phrase',
+  );
+  const textFromWords = fromFlexViaElan && wordNodes.length > 0;
+  // A field below another field (validateRoles, anchorOf) is reached from its
+  // sentence, word or morpheme through the tiers between: the path of nodes
+  // from just below the anchor down to the field itself.
+  const nodeByKey = new Map(nodes.map((n) => [n.key, n]));
+  const pathCache = new Map();
+  const pathTo = (anchorTier, node) => {
+    const cacheKey = `${anchorTier.id}\u0000${node.key}`;
+    if (pathCache.has(cacheKey)) return pathCache.get(cacheKey);
+    const path = [node];
+    let cur = node.parentKey ? nodeByKey.get(node.parentKey) : null;
+    while (cur && !cur.tierIds.includes(anchorTier.id) && path.length < 50) {
+      path.unshift(cur);
+      cur = cur.parentKey ? nodeByKey.get(cur.parentKey) : null;
+    }
+    // Not below this tier at all: look for it directly, which finds nothing.
+    const found = cur ? path : [node];
+    pathCache.set(cacheKey, found);
+    return found;
+  };
   // A field nobody named is called what the review screen would have offered:
   // the FLEx importer's name for a FieldWorks-shaped tier, else the tier's.
   const fieldWorksNames = fieldWorksFieldNames(
@@ -249,29 +287,6 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
 
   for (const eaf of files) {
     const docWarnings = [];
-
-    // --- collect the utterances, ordered by time, then by document order ----
-    const utterances = [];
-    let blankUtterances = 0;
-    for (const tier of tiersOfNodes(eaf, utteranceNodes)) {
-      for (const ann of tier.annotations) {
-        // A blank annotation is a placeholder ELAN users leave behind. It has
-        // no transcription to anchor a sentence to, and keeping one would put a
-        // zero-width token in the sentence partition (which the server refuses)
-        // or a sentence holding nothing but the newline joining its neighbours.
-        if (!String(ann.value ?? '').trim()) {
-          blankUtterances += 1;
-          continue;
-        }
-        utterances.push({ ann, tier, speaker: tier.participant || null });
-      }
-    }
-    if (blankUtterances) {
-      docWarnings.push(
-        `Skipped ${blankUtterances} empty annotation${blankUtterances === 1 ? '' : 's'} on the utterance tier.`,
-      );
-    }
-    utterances.sort((a, b) => (a.ann.beginMs ?? Infinity) - (b.ann.beginMs ?? Infinity));
 
     // Both indexes are built ONCE per file. tierOfAnnotation used to be rebuilt
     // inside the per-utterance loop, which re-scanned every annotation in the
@@ -330,7 +345,14 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
     // is a subdivision being used as a field, so the first value wins and the
     // rest are reported rather than silently concatenated.
     const fieldValueOn = (parentAnn, parentTier, node) => {
-      const found = childrenOn(parentAnn, parentTier, [node]);
+      let ann = parentAnn;
+      let tier = parentTier;
+      for (const step of pathTo(parentTier, node).slice(0, -1)) {
+        ann = childrenOn(ann, tier, [step])[0];
+        if (!ann) return '';
+        tier = tierOfAnnotation.get(ann.id) ?? tier;
+      }
+      const found = childrenOn(ann, tier, [node]);
       if (found.length > 1) {
         docWarnings.push(
           `${nodeLabel(node)} has ${found.length} annotations under one parent; kept the first.`,
@@ -339,13 +361,95 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       return found[0]?.value?.trim() ?? '';
     };
 
+    // One phrase's text and its words, from the word tier. A word with no
+    // text of its own is FLEx's punctuation, whose characters ELAN's import
+    // writes on the word's text tier in another writing system: it goes into
+    // the text as punctuation and is not a word. Word spans are where the
+    // join put each word, found in order, so nothing is matched.
+    const rebuildFromWords = (uttAnn, uttTier) => {
+      const pieces = [];
+      const words = [];
+      let unplaced = 0;
+      for (const w of childrenOn(uttAnn, uttTier, wordNodes)) {
+        const form = String(w.value ?? '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (form) {
+          pieces.push({ kind: 'word', text: form });
+          words.push({ ann: w, form });
+          continue;
+        }
+        const punct = (childrenByParent.get(w.id) || [])
+          .filter(({ tier }) => {
+            const item = parseElanFlexTierName(tier.baseName || tier.id);
+            return item?.level === 'word' && (item.itemType === 'txt' || item.itemType === 'punct');
+          })
+          .map(({ ann }) => String(ann.value ?? '').trim())
+          .find((v) => PUNCTUATION.test(v));
+        if (punct) pieces.push({ kind: 'punct', text: punct });
+        else unplaced += 1;
+      }
+      const text = joinPhrase(pieces).trimEnd();
+      const at = [];
+      let cursor = 0;
+      for (const piece of pieces) {
+        const found = text.indexOf(piece.text, cursor);
+        if (piece.kind === 'word') at.push(found);
+        cursor = found + piece.text.length;
+      }
+      return {
+        text,
+        words: words.map(({ ann, form }, i) => ({ ann, at: at[i], length: form.length })),
+        unplaced,
+      };
+    };
+
+    // --- collect the utterances, ordered by time, then by document order ----
+    // A text from ELAN's FLEx import is written from its words (textFromWords),
+    // as FLEx writes a phrase and as the .flextext importer rebuilds one. Its
+    // phrase line is another spelling of the same text: it leaves out the
+    // words an analysis adds ("[0]" for a zero argument, which carries that
+    // argument's annotations) and joins what the words split ("jama" for
+    // "ja-ma"), so no word could be placed in it faithfully.
+    const utterances = [];
+    let blankUtterances = 0;
+    let unplacedWords = 0;
+    for (const tier of tiersOfNodes(eaf, utteranceNodes)) {
+      for (const ann of tier.annotations) {
+        const rebuilt = textFromWords ? rebuildFromWords(ann, tier) : null;
+        if (rebuilt) unplacedWords += rebuilt.unplaced;
+        // A blank annotation is a placeholder ELAN users leave behind. It has
+        // no transcription to anchor a sentence to, and keeping one would put a
+        // zero-width token in the sentence partition (which the server refuses)
+        // or a sentence holding nothing but the newline joining its neighbours.
+        if (!(rebuilt ? rebuilt.text : String(ann.value ?? '').trim())) {
+          blankUtterances += 1;
+          continue;
+        }
+        utterances.push({ ann, tier, speaker: tier.participant || null, rebuilt });
+      }
+    }
+    if (blankUtterances) {
+      docWarnings.push(
+        `Skipped ${blankUtterances} empty annotation${blankUtterances === 1 ? '' : 's'} on the utterance tier.`,
+      );
+    }
+    if (unplacedWords) {
+      docWarnings.push(
+        `Skipped ${unplacedWords} empty word${unplacedWords === 1 ? '' : 's'} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
+      );
+    }
+    utterances.sort((a, b) => (a.ann.beginMs ?? Infinity) - (b.ann.beginMs ?? Infinity));
+
     // --- synthesize the baseline -------------------------------------------
     const pieces = [];
     let bodyU16 = '';
     for (const u of utterances) {
-      const text = String(u.ann.value ?? '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const text = u.rebuilt
+        ? u.rebuilt.text
+        : String(u.ann.value ?? '')
+            .replace(/\s+/g, ' ')
+            .trim();
       const beginU16 = bodyU16.length;
       bodyU16 += text;
       pieces.push({ ...u, text, beginU16, endU16: bodyU16.length });
@@ -440,7 +544,13 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       // and a translation, nothing else).
       let wordSpans;
       let wordAnns = [];
-      if (wordNodes.length) {
+      if (piece.rebuilt) {
+        wordAnns = piece.rebuilt.words.map((w) => w.ann);
+        wordSpans = piece.rebuilt.words.map((w) => ({
+          beginU16: piece.beginU16 + w.at,
+          endU16: piece.beginU16 + w.at + w.length,
+        }));
+      } else if (wordNodes.length) {
         wordAnns = childrenOn(piece.ann, piece.tier, wordNodes);
         const forms = wordAnns.map((a) => String(a.value ?? '').trim());
         const aligned = alignWords(body, piece.beginU16, piece.endU16, forms);
@@ -503,9 +613,17 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         }
         const morphAnns = ann ? childrenOn(ann, annTier, morphNodes) : [];
         const read = morphAnns.map((mAnn) => {
-          const { form, morphType } = readMorphForm(mAnn.value);
-          const mFields = {};
           const mTier = tierOfAnnotation.get(mAnn.id) ?? annTier;
+          // A morph type tier names the type (FLEx's own words, "suffix"),
+          // and the markers that type writes come off the form. Without one,
+          // or with a type FLEx does not have, the markers say what they can.
+          const named = morphTypeNodes.map((node) => fieldValueOn(mAnn, mTier, node)).find(Boolean);
+          // Only on a morph with a form: a blank template morph is not made an
+          // analysis by the type written beside it.
+          const raw = String(mAnn.value ?? '').trim();
+          const typed = named && raw ? readAffixMarkers(named, raw) : null;
+          const { form, morphType } = typed?.morphType ? typed : readMorphForm(mAnn.value);
+          const mFields = {};
           for (const node of morphFieldNodes) {
             const v = fieldValueOn(mAnn, mTier, node);
             if (v) mFields[nameOf(node)] = v;
@@ -531,6 +649,30 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         stats.morphemes += morphemes.length;
       });
     });
+
+    // ELAN's FLEx import has no recording to align to and gives each phrase
+    // a stretch of whole seconds instead. Times like that are placeholders,
+    // and a document aligned to them would play the wrong stretch of any
+    // recording attached later, so they are left out. The test is narrow on
+    // purpose, all of: sentences from a tier that import named, no recording
+    // named or chosen, and every time on a whole second. Any other file keeps
+    // its times, including one whose recording was never linked.
+    if (
+      alignments.length &&
+      fromFlexViaElan &&
+      !eaf.media.length &&
+      !mediaByFile?.get(eaf.fileName)
+    ) {
+      const times = eaf.tiers.flatMap((t) =>
+        t.annotations.flatMap((a) => [a.beginMs, a.endMs]).filter((ms) => ms != null),
+      );
+      if (times.length && times.every((ms) => ms % 1000 === 0)) {
+        docWarnings.push(
+          'The file names no recording and its times all fall on whole seconds, so they are placeholders and no time alignment is imported.',
+        );
+        alignments.length = 0;
+      }
+    }
 
     stats.sentences += sentences.length;
     stats.words += words.length;

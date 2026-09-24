@@ -33,6 +33,7 @@ const ROLE_GROUPS = [
       [ROLES.UTTERANCE, 'Sentences'],
       [ROLES.WORD, 'Words'],
       [ROLES.MORPHEME, 'Morphemes'],
+      [ROLES.MORPH_TYPE, 'Morpheme type'],
       [ROLES.ALIGNMENT, 'Time alignment'],
       [ROLES.ORTHOGRAPHY, 'Orthography'],
     ],
