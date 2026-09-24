@@ -16,7 +16,8 @@
             [plaid.server.config :refer [config]])
   (:import (java.security SecureRandom)
            (java.time Instant)
-           (java.util UUID)))
+           (java.util UUID)
+           (javax.sql DataSource)))
 
 ;; ============================================================
 ;; UUIDs (stored as TEXT for portability)
@@ -363,7 +364,8 @@
 ;; `with-slow-query-warn`. When the wall-clock for a call exceeds
 ;; `*slow-query-threshold-ms*` (default 500ms) we log a `:warn`
 ;; carrying the rendered SQL (first 200 chars), the first 10
-;; param values, and the elapsed ms. Below the threshold the
+;; param values, and the elapsed ms, and, for a call handed the pool,
+;; how much of it went to waiting for a connection. Below the threshold the
 ;; wrapper is a single `(System/nanoTime)` pair — no log, no map
 ;; allocation — so the fast path stays cheap.
 ;;
@@ -386,34 +388,57 @@
     (str (subs s 0 200) " ...[truncated]")
     s))
 
+(defn slow-query-message
+  "The slow-query line. `wait-ms` is how long the call waited for a pool
+  connection before its statement ran, or nil when it was handed one.
+  Kept apart from the total because the two point at different causes:
+  a statement that is slow, or a pool whose every connection is busy
+  (with writers waiting out `busy_timeout`, say), where a primary-key
+  lookup that runs in no time at all reads as seconds."
+  [elapsed-ms wait-ms sql-vec]
+  (format "Slow query: %.1fms%s — %s — params: %s"
+          (double elapsed-ms)
+          (if wait-ms (format ", %.1fms of it waiting for a connection" (double wait-ms)) "")
+          (truncate-sql (str (first sql-vec)))
+          (pr-str (vec (take 10 (rest sql-vec))))))
+
 (defn emit-slow-query-warn!
   "Emit the slow-query `:warn` log line. Pulled out as a top-level
   function (rather than an inline `log/warn` call) so tests can
   `with-redefs` capture the call — `log/warn` itself is a macro and
   cannot be redefed."
-  [elapsed-ms sql-vec]
-  (let [sql-str (truncate-sql (str (first sql-vec)))
-        params (vec (take 10 (rest sql-vec)))]
-    (log/warn (format "Slow query: %.1fms — %s — params: %s"
-                      elapsed-ms sql-str (pr-str params)))))
+  [elapsed-ms wait-ms sql-vec]
+  (log/warn (slow-query-message elapsed-ms wait-ms sql-vec)))
 
 (defn- with-slow-query-warn
   "Time `body-fn` and emit a `:warn` if the elapsed wall-clock exceeds
   `*slow-query-threshold-ms*`. `sql-vec` is the [sql & params] form
   that was about to execute. Returns whatever `body-fn` returned.
+  `body-fn` is called with what to run the statement on: `db` itself
+  when it is a connection, or, when it is the pool, a connection taken
+  from it here, so the wait for one is timed on its own.
   Uses try/finally so the timing log still fires when `body-fn`
   throws — without it, the slow-query signal would silently disappear
   exactly on the queries most likely to need diagnostics (constraint
   violations, lock timeouts, long-running statements aborted by busy
   timeout, etc.)."
-  [sql-vec body-fn]
-  (let [start (System/nanoTime)]
+  [db sql-vec body-fn]
+  (let [start (System/nanoTime)
+        pool? (instance? DataSource db)
+        acquired (volatile! nil)]
     (try
-      (body-fn)
+      (if pool?
+        (with-open [conn (jdbc/get-connection db)]
+          (vreset! acquired (System/nanoTime))
+          (body-fn conn))
+        (body-fn db))
       (finally
-        (let [elapsed-ms (/ (- (System/nanoTime) start) 1000000.0)]
+        (let [end (System/nanoTime)
+              elapsed-ms (/ (- end start) 1000000.0)]
           (when (> elapsed-ms (double *slow-query-threshold-ms*))
-            (emit-slow-query-warn! elapsed-ms sql-vec)))))))
+            (emit-slow-query-warn! elapsed-ms
+                                   (when pool? (/ (- (or @acquired end) start) 1000000.0))
+                                   sql-vec)))))))
 
 (defn q
   "Run a read query. `db` may be a DataSource or a Connection (inside a tx).
@@ -427,9 +452,10 @@
    (let [sql-vec (if (map? query) (format-sql query) query)
          jdbc-query-opts (dissoc opts :uuid-cols :string-cols)]
      (with-slow-query-warn
+       db
        sql-vec
-       (fn [] (mapv #(coerce-id-cols query opts %)
-                    (jdbc/execute! db sql-vec (merge jdbc-opts jdbc-query-opts))))))))
+       (fn [conn] (mapv #(coerce-id-cols query opts %)
+                        (jdbc/execute! conn sql-vec (merge jdbc-opts jdbc-query-opts))))))))
 
 (defn q1
   "Run a read query and return the first row (coerced), or nil."
@@ -442,9 +468,10 @@
   [db query]
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn
+      db
       sql-vec
-      (fn []
-        (let [result (jdbc/execute-one! db sql-vec)]
+      (fn [conn]
+        (let [result (jdbc/execute-one! conn sql-vec)]
           ;; SQLite returns {:next.jdbc/update-count n}; we just hand it back.
           (or (:next.jdbc/update-count result) 0))))))
 
@@ -456,8 +483,9 @@
   [db query]
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn
+      db
       sql-vec
-      (fn [] (coerce-id-cols query nil (jdbc/execute-one! db sql-vec jdbc-opts))))))
+      (fn [conn] (coerce-id-cols query nil (jdbc/execute-one! conn sql-vec jdbc-opts))))))
 
 (defn execute-returning!
   "Run an INSERT/UPDATE/DELETE that uses `RETURNING *` and return a vector of
@@ -466,9 +494,10 @@
   [db query]
   (let [sql-vec (if (map? query) (format-sql query) query)]
     (with-slow-query-warn
+      db
       sql-vec
-      (fn [] (mapv #(coerce-id-cols query nil %)
-                   (jdbc/execute! db sql-vec jdbc-opts))))))
+      (fn [conn] (mapv #(coerce-id-cols query nil %)
+                       (jdbc/execute! conn sql-vec jdbc-opts))))))
 
 ;; ============================================================
 ;; Read primitives

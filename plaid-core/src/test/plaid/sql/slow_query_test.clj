@@ -4,9 +4,12 @@
   when wall-clock exceeds `*slow-query-threshold-ms*`, and must NOT
   log anything when the call is below threshold."
   (:require [clojure.test :refer :all]
+            [next.jdbc :as jdbc]
             [plaid.fixtures :refer [db with-db with-mount-states with-clean-db]]
             [plaid.sql.common :as psc]
-            [taoensso.timbre :as log]))
+            [plaid.sql.datasource :as psd]
+            [taoensso.timbre :as log])
+  (:import (java.io File)))
 
 (use-fixtures :once with-db with-mount-states)
 (use-fixtures :each with-clean-db)
@@ -15,19 +18,14 @@
   "Run `f` with `psc/emit-slow-query-warn!` redefed to push call args
   onto an atom — we can't redef `log/warn` directly because it's a
   macro. Returns the captured-args vector; each element is the
-  rendered message string (built from the args we'd otherwise log)."
+  rendered message string (built from the args we'd otherwise log),
+  then the wait for a connection it was given."
   [f]
   (let [captured (atom [])]
     (with-redefs [psc/emit-slow-query-warn!
-                  (fn [elapsed-ms sql-vec]
-                    (let [sql-str (str (first sql-vec))
-                          sql-trunc (if (> (count sql-str) 200)
-                                      (str (subs sql-str 0 200) " ...[truncated]")
-                                      sql-str)
-                          params (vec (take 10 (rest sql-vec)))]
-                      (swap! captured conj
-                             [(format "Slow query: %.1fms — %s — params: %s"
-                                      (double elapsed-ms) sql-trunc (pr-str params))])))]
+                  (fn [elapsed-ms wait-ms sql-vec]
+                    (swap! captured conj
+                           [(psc/slow-query-message elapsed-ms wait-ms sql-vec) wait-ms]))]
       (f))
     @captured))
 
@@ -151,3 +149,47 @@
                  (fn []
                    (psc/execute-returning! db ["UPDATE users SET password_changes = password_changes WHERE id = 'no-such-user@xyz' RETURNING *"]))))]
     (is (= 1 (count warns)) "execute-returning! must trip the slow-query warn")))
+
+;; ---------------------------------------------------------------------------
+;; The wait for a connection, apart from the statement
+;; ---------------------------------------------------------------------------
+;; On the alpha server 649 of 651 slow `SELECT * FROM users WHERE id = ?`
+;; lines (a primary-key lookup that runs in no time) were calls queued for a
+;; pool whose every connection was held by writers waiting out busy_timeout.
+;; The line has to say which.
+
+(deftest slow-query-names-the-wait-for-a-connection
+  (let [warns (binding [psc/*slow-query-threshold-ms* -1]
+                (run-with-captured-warn #(psc/q db ["SELECT 1"])))]
+    (is (number? (second (first warns))) "a call handed the pool reports its wait")
+    (is (re-find #"of it waiting for a connection" (ffirst warns))))
+  (let [warns (binding [psc/*slow-query-threshold-ms* -1]
+                (run-with-captured-warn
+                 #(with-open [conn (jdbc/get-connection db)]
+                    (psc/q conn ["SELECT 1"]))))]
+    (is (nil? (second (first warns))) "a call handed a connection waited for none")
+    (is (not (re-find #"waiting" (ffirst warns))))))
+
+(deftest slow-query-a-full-pool-reads-as-waiting
+  (let [dir (doto (File. (System/getProperty "java.io.tmpdir")
+                         (str "plaid-slowq-" (System/currentTimeMillis) "-" (rand-int 1000000)))
+              (.mkdirs))
+        path (.getAbsolutePath (File. dir "plaid.db"))
+        ds (psd/build-datasource path {:max-pool-size 1})]
+    (try
+      (let [held (promise)
+            holder (future
+                     (with-open [_ (jdbc/get-connection ds)]
+                       (deliver held true)
+                       (Thread/sleep 700)))
+            _ (deref held 10000 nil)
+            warns (binding [psc/*slow-query-threshold-ms* 300]
+                    (run-with-captured-warn #(psc/q ds ["SELECT 1"])))]
+        @holder
+        (is (= 1 (count warns)) "queued behind the only connection, the call is slow")
+        (is (> (second (first warns)) 400)
+            "and nearly all of it is the wait for a connection"))
+      (finally
+        (.close ds)
+        (doseq [f (.listFiles dir)] (.delete f))
+        (.delete dir)))))
