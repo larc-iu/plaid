@@ -21,7 +21,7 @@
 // checkpoints so a phase that has begun writing always finishes. Without this a
 // built-in step was the one part of Auto-analyze that could not be interrupted,
 // and it is the slowest: precedent means fetching up to MAX_SOURCE_DOCS other
-// documents one at a time.
+// documents.
 
 import { IgtDocument } from './IgtDocument.js';
 import { readIgnoredTokens } from './igtConfig.js';
@@ -41,9 +41,17 @@ import {
   computeAutoLinkProposals,
   computeMweProposals,
 } from './autoLink.js';
-import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
+import {
+  linkPrecedentQueries,
+  createTally,
+  foldDocumentLinks,
+  foldLinkRows,
+  mergeTally,
+} from './precedent.js';
+import { openPrecedent, precedentBase } from './precedentCache.js';
 
 const MAX_SOURCE_DOCS = 25;
+const SOURCE_FETCHES_IN_FLIGHT = 4;
 
 // The stop, thrown at a checkpoint and caught once, in runBuiltinAnalysis. This
 // is the services' contract in miniature: every long loop already reports
@@ -70,8 +78,8 @@ const checkpoint = (shouldStop) => {
 // figure. No caller shows a count for a run that was stopped.
 //
 // Reporting matters here rather than being a nicety: gathering precedent means
-// fetching other documents one at a time, which on a big project is the longest
-// silence in the whole Auto-analyze run.
+// fetching other documents, which on a big project is the longest silence in
+// the whole Auto-analyze run.
 export async function runBuiltinAnalysis(
   doc,
   {
@@ -157,25 +165,50 @@ async function remoteTalliesFor(
       `Auto-analysis: only the ${MAX_SOURCE_DOCS} documents with the most matching words were consulted for precedent.`,
     );
   }
-  const tallies = [];
-  for (const [i, docId] of docIds.entries()) {
-    // Named one by one: this loop is seconds per document on a large corpus,
-    // which also makes it the one place a stop most needs to be noticed.
-    checkpoint(shouldStop);
-    onProgress({
-      percent: (i / docIds.length) * 100,
-      message: `Reading document ${i + 1} of ${docIds.length}…`,
-    });
-    try {
-      const raw = await doc.client.documents.get(docId, true);
-      const source = new IgtDocument({ raw, vocabularies: {}, client: doc.client });
-      const srcIgnored = readIgnoredTokens(source.layerInfo.primaryTokenLayer?.config);
-      tallies.push(tallyAnalyses(new Map(), source.sentences, srcIgnored));
-    } catch (err) {
-      console.warn(`Auto-analysis: could not read document ${docId} for precedent:`, err);
+  // A few at a time: each fetch is cheap for the server and mostly the wait
+  // for the answer, which one at a time added up to the longest silence in
+  // the run. Each worker stops at a checkpoint before its next document.
+  const tallies = new Array(docIds.length).fill(null);
+  let next = 0;
+  let done = 0;
+  const worker = async () => {
+    while (next < docIds.length) {
+      checkpoint(shouldStop);
+      const i = next++;
+      const docId = docIds[i];
+      try {
+        const raw = await doc.client.documents.get(docId, true);
+        const source = new IgtDocument({ raw, vocabularies: {}, client: doc.client });
+        const srcIgnored = readIgnoredTokens(source.layerInfo.primaryTokenLayer?.config);
+        tallies[i] = tallyAnalyses(new Map(), source.sentences, srcIgnored);
+      } catch (err) {
+        console.warn(`Auto-analysis: could not read document ${docId} for precedent:`, err);
+      }
+      done++;
+      onProgress({
+        percent: (done / docIds.length) * 100,
+        message: `Read ${done} of ${docIds.length} documents…`,
+      });
     }
-  }
-  return tallies;
+  };
+  onProgress({ percent: 0, message: `Reading ${docIds.length} documents…` });
+  await Promise.all(
+    Array.from({ length: Math.min(SOURCE_FETCHES_IN_FLIGHT, docIds.length) }, worker),
+  );
+  return tallies.filter(Boolean);
+}
+
+// What each form has been linked to across the project, this document
+// included as it stands now. The editor's shared project read
+// (precedentCache.js) with this document's rows swapped for its live state,
+// which after the copy phase already holds what that phase wrote. Asks the
+// project directly when the shared read is unavailable.
+async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
+  await openPrecedent(doc);
+  const base = precedentBase(doc, ignoredCfg);
+  if (base) return foldDocumentLinks(mergeTally(createTally(), base), doc.sentences, ignoredCfg);
+  const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
+  return foldLinkRows(createTally(), results, ignoredCfg);
 }
 
 // Number of links written, or false on mutation failure. Throws Stopped as the
@@ -185,10 +218,8 @@ async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false
   const vocabIds = Object.keys(doc.vocabularies || {});
   if (!vocabIds.length) return 0;
   onProgress({ percent: null, message: 'Reading the lexicon…' });
-  const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
   const ignoredCfg = readIgnoredTokens(doc.layerInfo.primaryTokenLayer?.config);
-  // The query covers the open document too, so nothing is folded from it.
-  const precedent = foldLinkRows(createTally(), results, ignoredCfg);
+  const precedent = await linkPrecedentFor(doc, vocabIds, ignoredCfg);
   const proposals = computeAutoLinkProposals({
     sentences: doc.sentences,
     vocabularies: doc.vocabularies,

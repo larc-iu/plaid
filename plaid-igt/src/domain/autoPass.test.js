@@ -6,7 +6,7 @@ import { runBuiltinAnalysis } from './autoPass.js';
 // them: the checkpoints here are the whole mechanism.
 //
 // The precedent gather is what this is really about: up to 25 other documents
-// read one at a time, the longest silence in the app.
+// read a few at a time, the longest silence in the app.
 
 // A word with no analysis at all, which is what the copy phase looks for.
 const unanalyzed = (content) => ({
@@ -86,8 +86,10 @@ describe('runBuiltinAnalysis: stopping', () => {
     });
     expect(res.stopped).toBe(true);
     expect(res.ok).toBe(true);
-    // Two read, six abandoned, not all eight.
-    expect(doc.gets).toEqual(['src-0', 'src-1']);
+    // The reads already under way finish; none starts after the stop, so
+    // at most the four in flight of the eight.
+    expect(doc.gets.slice(0, 2)).toEqual(['src-0', 'src-1']);
+    expect(doc.gets.length).toBeLessThanOrEqual(4);
     expect(doc.bulkApplyAnalyses).not.toHaveBeenCalled();
   });
 
@@ -118,5 +120,57 @@ describe('runBuiltinAnalysis: stopping', () => {
     });
     expect(res.stopped).toBe(true);
     expect(doc.bulkApplyAnalyses).not.toHaveBeenCalled();
+  });
+});
+
+describe('runBuiltinAnalysis: reading the source documents', () => {
+  it('reads a few at a time, never more than four', async () => {
+    let inFlight = 0;
+    let most = 0;
+    const doc = makeDoc(10);
+    doc.client.documents.get = vi.fn(async (id) => {
+      doc.gets.push(id);
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      throw new Error('unreadable');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await runBuiltinAnalysis(doc, { copy: true, link: false, copyContents: copyAll });
+    warn.mockRestore();
+    expect(res.stopped).toBe(false);
+    expect(doc.gets).toHaveLength(10);
+    expect(most).toBe(4);
+  });
+});
+
+describe('runBuiltinAnalysis: link precedent', () => {
+  it('reads it from the project read the editor already made', async () => {
+    const { openPrecedent } = await import('./precedentCache.js');
+    const doc = {
+      id: 'doc-under-test',
+      projectId: 'p1',
+      sentences: [{ tokens: [] }],
+      layerInfo: {
+        primaryTokenLayer: { id: 'word-layer', config: {} },
+        morphemeTokenLayer: null,
+        spanLayers: { word: [], morpheme: [], sentence: [] },
+      },
+      vocabularies: { v1: { id: 'v1', items: [] } },
+      dataVersion: 0,
+      client: {
+        baseUrl: 'http://core',
+        token: 'autopass-link',
+        query: vi.fn(async () => ({ results: [] })),
+      },
+    };
+    await openPrecedent(doc);
+    const projectWide = () =>
+      doc.client.query.mock.calls.filter(([q]) => !q.where.some((c) => c[2]?.doc)).length;
+    const before = projectWide();
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
+    expect(res.ok).toBe(true);
+    expect(projectWide()).toBe(before);
   });
 });
