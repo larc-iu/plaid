@@ -94,25 +94,36 @@
    which it is certain to find the lock free."
   50)
 
-(defn- analyze-targets
-  "Every user table in the database, in name order — one ANALYZE
-   statement each. `sqlite_%` tables are SQLite's own (including
-   `sqlite_stat1`, which ANALYZE writes)."
+(defn- analyze-statements
+  "The `ANALYZE` statements SQLite's own staleness test asks for, one per
+   table, without running them: `PRAGMA optimize` with 0x10000 (look at
+   every table, not only those this connection has queried), 0x02 (the
+   ANALYZE step) and 0x01 (debug: return the statements instead of running
+   them). Since SQLite 3.46 that test picks a table that was never analysed
+   or whose size has changed about 25-fold since it was. Planner statistics
+   only have to be the right order of magnitude, and the prod database's
+   big tables grow by less than that between deploys, so after the first
+   pass a restart analyses almost nothing. Analysing every table took 225
+   seconds on the prod database, and one table's statement still held the
+   write lock past `busy_timeout`, so saves failed after each deploy.
+
+   The statements come back quoted (`ANALYZE \"main\".\"t\"`) and are run
+   as given."
   [^java.sql.Connection conn]
   (with-open [stmt (.createStatement conn)
-              rs (.executeQuery stmt (str "SELECT name FROM sqlite_master WHERE type = 'table' "
-                                          "AND name NOT LIKE 'sqlite_%' ORDER BY name"))]
-    (loop [names []]
+              rs (.executeQuery stmt "PRAGMA optimize=0x10003;")]
+    (loop [out []]
       (if (.next rs)
-        (recur (conj names (.getString rs 1)))
-        names))))
+        (recur (conj out (.getString rs 1)))
+        out))))
 
-(defn- analyze-statement
-  "`ANALYZE <table>` for one table. Identifier-quoted: the names come
-   from `sqlite_master`, but a quoted identifier is what makes that
-   irrelevant."
-  [table]
-  (str "ANALYZE \"" (str/replace table "\"" "\"\"") "\";"))
+(defn- statistics-table?
+  "Does `sqlite_stat1` exist yet? The first ANALYZE creates it."
+  [^java.sql.Connection conn]
+  (with-open [stmt (.createStatement conn)
+              rs (.executeQuery stmt (str "SELECT 1 FROM sqlite_master "
+                                          "WHERE type = 'table' AND name = 'sqlite_stat1'"))]
+    (.next rs)))
 
 (def ^:private orphan-statistics-statement
   "Delete the statistics for every name the schema no longer holds.
@@ -130,7 +141,8 @@
        "(SELECT name FROM sqlite_master WHERE type IN ('table', 'index'));"))
 
 (defn- analyze-tables!
-  "ANALYZE the database ONE TABLE PER STATEMENT, pausing between them.
+  "ANALYZE the tables whose statistics are stale (`analyze-statements`),
+   ONE TABLE PER STATEMENT, pausing between them.
    SQLite runs each ANALYZE in its own write transaction — a whole-database
    `ANALYZE;` is ONE statement, so it holds the write lock from its first
    write to `sqlite_stat1` until it ends. On the prod database that is
@@ -151,25 +163,26 @@
       (.setAutoCommit conn true))
     (with-open [stmt (.createStatement conn)]
       (.execute stmt "PRAGMA analysis_limit=400;"))
-    (let [tables (analyze-targets conn)]
-      (doseq [[i table] (map-indexed vector tables)]
+    (let [statements (analyze-statements conn)]
+      (doseq [[i sql] (map-indexed vector statements)]
         (when (pos? i)
           (Thread/sleep analyze-pause-ms))
         (with-open [stmt (.createStatement conn)]
-          (.execute stmt (analyze-statement table))))
-      ;; Last, and only once a table has been analysed, since that is what
-      ;; creates `sqlite_stat1`. One DELETE over a table of a few dozen
-      ;; rows, in the same autocommit as the statements above, so the write
-      ;; lock it takes is about as short as one gets.
-      (when (seq tables)
+          (.execute stmt sql)))
+      ;; Last, and only once some table has been analysed, since that is
+      ;; what creates `sqlite_stat1`. One DELETE over a table of a few
+      ;; dozen rows, in the same autocommit as the statements above, so the
+      ;; write lock it takes is about as short as one gets.
+      (when (statistics-table? conn)
         (with-open [stmt (.createStatement conn)]
           (.execute stmt orphan-statistics-statement)))
-      (count tables))))
+      statements)))
 
 (defn- refresh-planner-stats!
-  "Run a sampled ANALYZE so SQLite plans against the database as it is
-   now, then drop the pool's open connections so every later one loads
-   the fresh statistics (a connection reads them when it opens). Stale
+  "Run a sampled ANALYZE over the tables whose statistics went stale
+   (`analyze-statements`) so SQLite plans against the database as it is
+   now, then, if any were, drop the pool's open connections so every later
+   one loads the fresh statistics (a connection reads them when it opens). Stale
    statistics mislead: a table analysed when it held a few rows keeps
    being planned as tiny, and the planner scans it rather than probe its
    primary key, which cost seconds per document read on a million-row
@@ -195,9 +208,10 @@
                  (fn []
                    (try
                      (let [t0 (System/nanoTime)
-                           n (analyze-tables! datasource)]
-                       (.softEvictConnections (.getHikariPoolMXBean datasource))
-                       (log/info (format "Planner statistics refreshed in the background across %d tables in %dms"
+                           n (count (analyze-tables! datasource))]
+                       (when (pos? n)
+                         (.softEvictConnections (.getHikariPoolMXBean datasource)))
+                       (log/info (format "Planner statistics refreshed in the background across %d stale tables in %dms"
                                          n (quot (- (System/nanoTime) t0) 1000000))))
                      (catch Exception e
                        (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))

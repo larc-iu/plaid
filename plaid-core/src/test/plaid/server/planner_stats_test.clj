@@ -75,6 +75,15 @@
               stmt (.createStatement conn)]
     (.execute stmt sql)))
 
+(defn- as-after-a-restart!
+  "Close the pool's open connections, so the next one reads `sqlite_stat1`
+  from the file, as every connection does after a restart (the only time
+  the refresh runs). A connection holds the statistics it opened with, and
+  PRAGMA optimize judges staleness against those: statistics deleted or
+  written by another connection are invisible to it until then."
+  [ds]
+  (.softEvictConnections (.getHikariPoolMXBean ds)))
+
 (defn- tables-with-statistics
   "How many of the fixture's tables `sqlite_stat1` holds statistics for
   right now, as a reader outside the analysis sees it."
@@ -119,6 +128,7 @@
   ;; own inserts does not take the lock for reasons of its own.
   (statement! ds "DELETE FROM sqlite_stat1;")
   (statement! ds "PRAGMA wal_checkpoint(TRUNCATE);")
+  (as-after-a-restart! ds)
   (let [done (promise)
         t0 (System/nanoTime)
         deadline (+ t0 (* deadline-ms 1000000))
@@ -248,6 +258,7 @@
       (is (pos? (statistics-under ds "probe_2")))
       (statement! ds "DROP TABLE probe_1;")
       (statement! ds "ALTER TABLE probe_2 RENAME TO probe_2_rebuilt;")
+      (as-after-a-restart! ds)
       (refresh-and-join! ds)
       (is (zero? (statistics-under ds "probe_1"))
           "a dropped table's statistics must not outlive it")
@@ -258,7 +269,35 @@
       (is (pos? (statistics-under ds "probe_2_rebuilt"))
           "and the table under its new name is analysed like any other"))))
 
-(deftest analyze-statement-is-per-table-and-quoted
-  (is (= "ANALYZE \"tokens\";" (#'server-sql/analyze-statement "tokens")))
-  (is (= "ANALYZE \"odd\"\"name\";" (#'server-sql/analyze-statement "odd\"name"))
-      "a table name is an identifier, not a string to splice"))
+(defn- analysed-by
+  "The fixture tables a refresh ran ANALYZE on, by name."
+  [statements]
+  (into #{} (keep #(second (re-find #"\"(probe_\d+)\"" %))) statements))
+
+;; Every table on every restart took 225 s on the prod database, and one
+;; table's statement still held the write lock past busy_timeout. SQLite's
+;; own staleness test (PRAGMA optimize) picks what needs it instead.
+(deftest a-refresh-analyses-only-what-went-stale
+  (with-fixture
+    (fn [ds _]
+      (statement! ds "DELETE FROM sqlite_stat1;")
+      (as-after-a-restart! ds)
+      (is (= table-count (count (analysed-by (#'server-sql/analyze-tables! ds))))
+          "a table with no statistics is analysed")
+      (as-after-a-restart! ds)
+      (is (empty? (analysed-by (#'server-sql/analyze-tables! ds)))
+          "nothing changed since, so nothing is analysed again")
+      ;; About thirty times the rows: past the size change that makes
+      ;; SQLite's statistics for it wrong by an order of magnitude.
+      (with-open [conn (jdbc/get-connection ds)]
+        (.setAutoCommit conn false)
+        (with-open [ps (.prepareStatement conn "INSERT INTO probe_3 (a, b) VALUES (?, ?)")]
+          (dotimes [r (* 30 rows-per-table)]
+            (.setString ps 1 (str "grown-" r))
+            (.setInt ps 2 (mod r 89))
+            (.addBatch ps))
+          (.executeBatch ps))
+        (.commit conn))
+      (as-after-a-restart! ds)
+      (is (= #{"probe_3"} (analysed-by (#'server-sql/analyze-tables! ds)))
+          "a table that grew by an order of magnitude is analysed, and only it"))))
