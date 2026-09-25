@@ -60,4 +60,22 @@ describe('EntryArticle', () => {
     expect(columns[1].textContent).toBe('1.1');
     await unmount();
   });
+
+  it('prints no Comment or Source, whatever the entry holds', async () => {
+    const flex = normalizeVocabFields({
+      gloss: { inline: true },
+      Comment: { inline: false },
+      Source: { inline: false },
+    });
+    const n = node('e1', 'kaang', '', 'knife');
+    n.item.metadata = { ...n.item.metadata, Comment: '160428 rec @32:05', Source: 'SsK' };
+    const { container, unmount } = await renderComponent(
+      <EntryArticle node={n} fields={flex} lang="lmk" />,
+    );
+    expect(container.textContent).toContain('knife');
+    expect(container.textContent).not.toContain('rec @');
+    expect(container.textContent).not.toContain('SsK');
+    expect(container.textContent).not.toContain('Comment');
+    await unmount();
+  });
 });

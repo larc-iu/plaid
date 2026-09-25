@@ -68,18 +68,11 @@ const References = ({ refs }) => (
 );
 
 const Meanings = ({ item, fields, resolveRef, sentences, exampleLayers, lang }) => {
-  const { pos, glosses, definitions, others } = entryText(item, fields);
+  const { pos, glosses, definitions } = entryText(item, fields);
   const refs = resolveRef ? entryRefs(item, fields, resolveRef) : [];
   const examples = entryExamples(item, sentences, exampleLayers);
   // A container headword carries no text of its own, only senses.
-  if (
-    !pos &&
-    !glosses.length &&
-    !definitions.length &&
-    !others.length &&
-    !refs.length &&
-    !examples.length
-  )
+  if (!pos && !glosses.length && !definitions.length && !refs.length && !examples.length)
     return null;
   return (
     <div className="min-w-0">
@@ -91,16 +84,6 @@ const Meanings = ({ item, fields, resolveRef, sentences, exampleLayers, lang }) 
         <TextLine key={d.name} entry={d} className="font-serif text-sm text-muted-foreground" />
       ))}
       {examples.length > 0 && <Examples examples={examples} lang={lang} />}
-      {others.length > 0 && (
-        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
-          {others.map((o) => (
-            <div key={o.name} className="contents">
-              <dt className="text-muted-foreground">{o.label}</dt>
-              <dd className="font-serif">{o.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
       {refs.length > 0 && <References refs={refs} />}
     </div>
   );

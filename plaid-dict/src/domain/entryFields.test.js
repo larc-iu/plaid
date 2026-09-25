@@ -53,12 +53,39 @@ describe('entryText', () => {
     expect(text.glosses.map((g) => g.lang)).toEqual(['pt', 'en']);
   });
 
-  it('leaves out status, morphType, and the reference fields', () => {
-    const names = [...text.glosses, ...text.definitions, ...text.others].map((e) => e.name);
-    expect(names).not.toContain('status');
-    expect(names).not.toContain('morphType');
-    expect(names).not.toContain('seeAlso');
-    expect(text.others.map((o) => o.name)).toEqual(['Plural']);
+  it('leaves out status, morphType, the reference fields and every custom field', () => {
+    const names = [...text.glosses, ...text.definitions].map((e) => e.name);
+    expect(names).toEqual(['gloss', 'gloss (en)', 'definition']);
+    expect(Object.keys(text).sort()).toEqual(['definitions', 'glosses', 'pos']);
+  });
+
+  it("never prints a FLEx lexicon's working notes", () => {
+    // Lamkang's Comment and Source hold recording timestamps and the names of
+    // the people consulted. A field is not public because it exists.
+    const flex = normalizeVocabFields({
+      gloss: { inline: true, lang: 'en' },
+      definition: { inline: false, lang: 'en' },
+      Comment: { inline: false },
+      Source: { inline: false },
+      'Source (lmk-Qaaa-x-LMKL)': { inline: false, lang: 'lmk-Qaaa-x-LMKL' },
+      GeneralNote: { inline: false },
+      lexemeForm: { inline: false },
+    });
+    const noted = entryText(
+      item({
+        gloss: 'knife',
+        definition: 'a blade',
+        Comment: 'LLEC p. 8; 160428 rec @32:05',
+        Source: 'SsK',
+        'Source (lmk-Qaaa-x-LMKL)': 'SsK',
+        GeneralNote: 'ask about the tone',
+        lexemeForm: 'kaang',
+      }),
+      flex,
+    );
+    const shown = [...noted.glosses, ...noted.definitions].map((e) => e.value);
+    expect(shown).toEqual(['knife', 'a blade']);
+    expect(JSON.stringify(noted)).not.toMatch(/rec @|SsK|tone|kaang/);
   });
 
   it('drops a field the entry left empty', () => {
@@ -110,14 +137,14 @@ describe('firstGloss', () => {
 });
 
 describe('searchableText', () => {
-  it('covers the form, the part of speech and every text field, lowercased', () => {
+  it('covers the form and every gloss, lowercased, and no field the page hides', () => {
     const text = searchableText(
       item({ pos: 'N', gloss: 'quarta-feira', 'gloss (en)': 'Wednesday', Plural: 'pitatu' }),
       fields,
     );
     expect(text).toContain('citatu');
     expect(text).toContain('wednesday');
-    expect(text).toContain('pitatu');
+    expect(text).not.toContain('pitatu');
     expect(text).toBe(text.toLowerCase());
   });
 });

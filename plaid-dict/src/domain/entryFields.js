@@ -7,11 +7,14 @@
 //   pos          shown beside the number, the way a dictionary sets it
 //   glosses      the meaning line, one per language
 //   definitions  under it, one per language
-//   others       everything else the compiler put on the entry, labelled
 //
-// Left out: `status` (editorial, and the reason the entry is here at all),
-// `morphType` (it decorates the form instead, "-ka" for a suffix), and the
-// reference fields, which are links rather than text.
+// Nothing else is text on the page. A vocabulary is a working lexicon, and its
+// other fields are the compiler's: a FLEx import brings Comment, Source and
+// GeneralNote, which hold recording timestamps, consultant names and queries
+// to a colleague. A published dictionary must not print those because a field
+// exists, so it prints only the fields whose meaning is known to be public.
+// `morphType` is not printed either: it decorates the form ("-ka" for a
+// suffix). Reference fields are links, drawn by entryRefs.
 
 import {
   fieldBaseName,
@@ -71,7 +74,7 @@ export const displayForm = (item) =>
  *
  * @param {object} item   the vocab item
  * @param {object[]} fields  normalized fields (normalizeVocabFields)
- * @returns {{pos: string|null, glosses: object[], definitions: object[], others: object[]}}
+ * @returns {{pos: string|null, glosses: object[], definitions: object[]}}
  */
 export const entryText = (item, fields) => {
   // A headword-scope field belongs to the headword, so a sense never repeats
@@ -94,21 +97,13 @@ export const entryText = (item, fields) => {
       item,
       text.filter((f) => fieldBaseName(f.name) === 'definition'),
     ),
-    others: filled(
-      item,
-      text.filter((f) => !['gloss', 'definition'].includes(fieldBaseName(f.name))),
-    ),
   };
 };
 
 /** Every word a search should look at on one entry: its form and its text. */
 export const searchableText = (item, fields) => {
-  const { pos, glosses, definitions, others } = entryText(item, fields);
-  return [
-    item?.form ?? '',
-    pos ?? '',
-    ...[...glosses, ...definitions, ...others].map((e) => e.value),
-  ]
+  const { pos, glosses, definitions } = entryText(item, fields);
+  return [item?.form ?? '', pos ?? '', ...[...glosses, ...definitions].map((e) => e.value)]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
