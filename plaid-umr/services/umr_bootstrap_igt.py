@@ -19,6 +19,13 @@ type (a stem or root), else the first whose gloss has a lexical part. An
 affix's entry or gloss never names the word (`m-` 3.POSS + `hii` blood is
 `hii`, not `m`). A link on the word itself comes first.
 
+A compound (a word of two stems or more) with no link of its own is named by
+the entry whose headword is the word as written, when the lexicon has one:
+Lamkang `har buu` 'chicken coop' is `har-buu`, where its first stem alone
+would make it `har` 'fowl'. Without such an entry it takes the FIRST stem, a
+default and not a claim about the head, which is on the left in some
+languages and on the right in others. The annotator renames it.
+
 A person and number describe the node only when the gloss is the node's own:
 a gloss that carries a person or marks possession (`POSS`) on another morpheme
 than the lexical one or beside a lexical part (`m-` 3.POSS + `hii` blood,
@@ -88,6 +95,7 @@ person edits or confirms it.
 #: person and number are a possessor's. Leipzig Glossing Rules abbreviations,
 #: upper case, and Lamkang's `POS` beside `POSS`. Only values the validator
 #: accepts, so nothing written here is an error the annotator has to clean up.
+#: An `:aspect` attribute elects the root as `('root',)` does.
 ABBREVIATIONS: Dict[str, Optional[tuple]] = {
     'SG': (':refer-number', 'singular'),
     'PL': (':refer-number', 'plural'),
@@ -121,9 +129,44 @@ ABBREVIATIONS: Dict[str, Optional[tuple]] = {
 
 #: A person and number written as one abbreviation: `3SG`, `1PL`, `2DU`.
 _PERSON_NUMBER = re.compile(r'^([1-4])(SG|PL|DU|TRI|PAUC|NSG)$')
-#: What a gloss is cut on: `bark.PRS`, `dog-PL`, `3SG=go`, `see:PST`.
-_GLOSS_CUT = re.compile(r'[.\-=:~<>\s]+')
+#: What a gloss is cut into morphemes on: `dog-PL`, `3SG=go`, `go out`.
+_MORPHEME_CUT = re.compile(r'[\-=~<>\s]+')
+#: What one morpheme's gloss is cut into parts on, the Leipzig separators for
+#: one form that means several things: `bark.PRS`, `sbj:3.pfv`, `hit;PST`,
+#: `sing\PST`.
+_PART_CUT = re.compile(r'[.:;\\]+')
 _LETTER = re.compile(r'[^\W\d_]', re.UNICODE)
+
+#: Leipzig abbreviations that stand for no attribute here but are grammatical
+#: all the same, so that written in lower case inside a compound gloss
+#: (`sbj:3.pfv`, `obj:3`) they are not taken for the word. Single letters
+#: (A, S, P, M, F, N) are left out: in lower case they are too often a word.
+GRAMMATICAL = frozenset('''
+    ABL ABS ACC ADJ ADV AGR ALL ANTIP APPL ART AUX BEN CAUS CLF COM COMP COND
+    COP CVB DAT DECL DEF DEM DET DIST DISTR DUR ERG EXCL FOC GEN INCL IND INDF
+    INF INS INTR LOC NMLZ NOM OBJ OBL PASS PRED PROH PROX PTCP PURP QUOT RECP
+    REFL REL RES SBJ SBJV TOP TR VOC
+'''.split())
+
+
+def _keys(part: str, table, lenient: bool) -> Optional[List[str]]:
+    """The abbreviations one part of a gloss stands for, [] for a grammatical
+    part that stands for nothing, None for a word. The case rule: a part in
+    upper case, with no letter (`3`) or a person and number in either case
+    (`3SG`, `3sg`, never a word), is grammatical; a part with a lower case
+    letter is a word. `lenient` is the one exception, a compound gloss that
+    also has a part grammatical by that rule (`sbj:3.pfv`, `go.3SG.pfv`):
+    there a known abbreviation in lower case is grammatical too."""
+    m = _PERSON_NUMBER.match(part.upper())
+    if m:
+        return [m.group(1), m.group(2)]
+    if part.upper() in table and (part.upper() == part or not _LETTER.search(part)):
+        return [part]
+    if part.upper() == part and _LETTER.search(part):
+        return []
+    if lenient and len(part) > 1 and (part.upper() in table or part.upper() in GRAMMATICAL):
+        return [part]
+    return None
 
 
 def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
@@ -147,20 +190,24 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
 
 def read_gloss(gloss: str, table) -> Dict[str, Any]:
     """One gloss value read into what it says: the lexical part (the first
-    piece that is not an abbreviation), the attributes its abbreviations
-    stand for, whether one of them marks tense or aspect, and whether one
-    marks possession."""
+    part that is not grammatical), the attributes its abbreviations stand
+    for, whether one of them marks tense or aspect, and whether one marks
+    possession. Each morpheme's gloss is read on its own, so a lower-case
+    abbreviation counts only beside a grammatical part of the SAME morpheme
+    (`sbj:3.pfv`), never because another morpheme is grammatical."""
     lexical = None
     attrs: List[tuple] = []
     eventive = False
     possessive = False
-    for piece in _GLOSS_CUT.split(str(gloss or '').strip()):
-        if not piece:
-            continue
-        m = _PERSON_NUMBER.match(piece)
-        keys = [m.group(1), m.group(2)] if m else [piece]
-        known = [k for k in keys if k.upper() in table and (k.upper() == k or not _LETTER.search(k))]
-        if m or (known and len(known) == len(keys)):
+    for morpheme in _MORPHEME_CUT.split(str(gloss or '').strip()):
+        parts = [p for p in _PART_CUT.split(morpheme) if p]
+        lenient = len(parts) > 1 and any(_keys(p, table, False) is not None for p in parts)
+        for part in parts:
+            keys = _keys(part, table, lenient)
+            if keys is None:
+                if lexical is None and _LETTER.search(part):
+                    lexical = part
+                continue
             for k in keys:
                 what = table.get(k.upper())
                 if what == ('root',):
@@ -169,13 +216,8 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
                     possessive = True
                 elif what:
                     attrs.append(what)
-            continue
-        # An upper-case piece is grammatical whether or not the table knows
-        # it; a piece with a lower-case letter is a word.
-        if piece.upper() == piece and _LETTER.search(piece):
-            continue
-        if lexical is None and _LETTER.search(piece):
-            lexical = piece
+                    if what[0] == ':aspect':
+                        eventive = True
     return {'lexical': lexical, 'attrs': attrs, 'eventive': eventive, 'possessive': possessive}
 
 
@@ -230,6 +272,28 @@ def lexical_morpheme(morphemes, reads_by_morpheme, links, headwords):
                  if any(e in headwords for e in links.get(m.id, []))), None)
 
 
+def listed_forms(headwords: Dict[str, str]) -> Dict[str, str]:
+    """Every headword by the concept it makes, so that a word written `har
+    buu` or `har-buu` finds the entry `har buu`."""
+    out: Dict[str, str] = {}
+    for form in headwords.values():
+        key = concept_from(form)
+        if key:
+            out.setdefault(key, form)
+    return out
+
+
+def compound_headword(word, morphemes, listed: Dict[str, str]) -> Optional[str]:
+    """The headword that names a compound as a whole: the entry whose form is
+    the word as written, when the word has two stems or more. None for a word
+    of one stem, whose stem already names it, and for a compound the lexicon
+    does not list. `listed` is `listed_forms` of the headwords."""
+    stems = [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
+    if len(stems) < 2:
+        return None
+    return listed.get(concept_from(word.text))
+
+
 def concept_from(text: str) -> str:
     """A concept from a headword or a lexical gloss: lower case, spaces as
     hyphens, nothing a PENMAN reader would choke on."""
@@ -272,9 +336,12 @@ def links_by_token(layers) -> Dict[str, List[str]]:
     return out
 
 
-def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken):
+def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken, listed=None):
     """One sentence's skeleton as writes: ``(pieces, nodes, edges)``, the shape
-    `write_graphs` takes. Edges are always []."""
+    `write_graphs` takes. Edges are always []. `listed` is `listed_forms` of
+    the headwords, made once per run by a caller planning many sentences."""
+    if listed is None:
+        listed = listed_forms(headwords)
     pieces = []
     nodes = []
     root_at = None
@@ -297,10 +364,15 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
                         by_morpheme.setdefault(m.id, []).append(read_gloss(value, table))
         home = lexical_morpheme(morphemes, by_morpheme, links, headwords) if morphemes else None
         home_reads = by_morpheme.get(home.id, []) if home else []
-        entry = next((e for t in [word.id] + ([home.id] if home else [])
-                      for e in links.get(t, []) if e in headwords), None)
+        # The word's own link, then a compound's headword, then the lexical
+        # morpheme's link, then the lexical part of a gloss.
+        entry = next((e for e in links.get(word.id, []) if e in headwords), None)
+        named = headwords[entry] if entry else compound_headword(word, morphemes, listed)
+        if not named and home:
+            entry = next((e for e in links.get(home.id, []) if e in headwords), None)
+            named = headwords[entry] if entry else None
         lexical = next((r['lexical'] for r in home_reads + word_reads if r['lexical']), None)
-        concept = concept_from(headwords[entry]) if entry else concept_from(lexical or '')
+        concept = concept_from(named) if named else concept_from(lexical or '')
         if not concept:
             continue
         # Word glosses, then each morpheme's in order: the lexical morpheme's
@@ -400,6 +472,7 @@ class UmrBootstrapService(BaseService):
             except Exception as exc:
                 print(f'Could not read the vocabularies: {exc}')
         links = links_by_token(layers)
+        listed = listed_forms(headwords)
 
         in_scope = sentences
         if scope == 'sentence':
@@ -429,7 +502,8 @@ class UmrBootstrapService(BaseService):
         failures = []
         for sentence in targets:
             pieces, nodes, edges = plan_sentence(sentence, layers.gloss_layers, document.gloss,
-                                                 links, headwords, self.abbreviations, taken)
+                                                 links, headwords, self.abbreviations, taken,
+                                                 listed)
             if not nodes:
                 failures.append({'sentence': sentence.index,
                                  'reason': 'no word has a vocabulary link or a gloss'})

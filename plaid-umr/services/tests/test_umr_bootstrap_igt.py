@@ -227,13 +227,14 @@ SEG_VOCAB = {'id': 'v1', 'name': 'Lexicon', 'items': [
     for form in ('m', 'hii', 'p', 'bul', 'da', 'eek')]}
 
 
-def _segmented(*, typed=True, links=True, word_glosses=()):
-    document = draft_tests._document(body=SEG_BODY, sentences=((0, 18),), words=SEG_WORDS,
+def _segmented(*, typed=True, links=True, word_glosses=(), body=SEG_BODY, words=SEG_WORDS,
+               morphemes=SEG_MORPHEMES):
+    document = draft_tests._document(body=body, sentences=((0, len(body)),), words=words,
                                      gloss_spans=list(word_glosses))
     tokens, glosses, vocab_links = [], [], []
-    for n, (mid, w, form, morph_type, gloss, entry) in enumerate(SEG_MORPHEMES):
-        begin, end = SEG_WORDS[w]
-        precedence = sum(1 for m in SEG_MORPHEMES[:n] if m[1] == w) + 1
+    for n, (mid, w, form, morph_type, gloss, entry) in enumerate(morphemes):
+        begin, end = words[w]
+        precedence = sum(1 for m in morphemes[:n] if m[1] == w) + 1
         meta = {'form': form, **({'morphType': morph_type} if typed else {})}
         tokens.append({'id': mid, 'begin': begin, 'end': end, 'precedence': precedence,
                        'metadata': meta})
@@ -250,13 +251,21 @@ def _segmented(*, typed=True, links=True, word_glosses=()):
     return document
 
 
-def _segmented_run(document):
+def _segmented_nodes(document, vocab=SEG_VOCAB):
     service = _service(documents=[document])
-    service.client.vocab_layers.get = lambda vocab_id, **kwargs: SEG_VOCAB
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: vocab
     helper = servicetest.run(service, REQUEST)
     assert helper.errors == []
+    return _ops(service.client, 'spans.bulk_create')
+
+
+def _segmented_run(document, vocab=SEG_VOCAB):
     return [(n['value'], n['metadata']['umr']['attrs'])
-            for n in _ops(service.client, 'spans.bulk_create')]
+            for n in _segmented_nodes(document, vocab)]
+
+
+def _participant(attrs):
+    return [a for a in attrs if a['rel'] in (':refer-person', ':refer-number')]
 
 
 def test_a_segmented_word_is_named_by_its_stem_never_an_affix_or_a_zero_morph():
@@ -274,7 +283,7 @@ def test_a_person_on_an_affix_or_a_possessive_is_not_put_on_the_node():
     # 3.POS is the possessor's person and sbj:3 the subject's: neither is the
     # node's own, and the skeleton draws no node for them.
     for _, attrs in _segmented_run(_segmented()):
-        assert attrs == []
+        assert _participant(attrs) == []
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('3.POSS', table)['possessive'] is True
     # A pronoun's own person and number stay, and so does a noun's plural.
@@ -320,10 +329,114 @@ def test_a_possessive_prefix_on_a_stem_still_leaves_the_noun_without_a_person():
     on the prefix is the possessor's, with or without the word's own gloss."""
     for word_glosses in ((), ({'id': 'gw', 'tokens': ['w1'], 'value': '3.POS-blood'},)):
         for concept, attrs in _segmented_run(_segmented(word_glosses=word_glosses)):
-            assert attrs == [], (concept, attrs)
+            assert _participant(attrs) == [], (concept, attrs)
 
 
 def test_a_headword_of_several_words_is_a_hyphenated_concept():
     assert boot.concept_from("a va'") == "a-va'"
     # Nothing PENMAN would end a concept on survives.
     assert boot.concept_from('10:30 C# "x"') == '1030-c-x'
+
+
+# --- compound glosses: sbj:3.pfv -------------------------------------------------------
+
+def test_a_lower_case_abbreviation_beside_a_grammatical_part_is_grammatical():
+    """Lamkang writes sbj:3.pfv: the 3 is grammatical by the case rule, so pfv
+    and sbj beside it are too, and pfv is aspect."""
+    table = boot.ABBREVIATIONS
+    assert boot.read_gloss('sbj:3.pfv', table) == {
+        'lexical': None, 'attrs': [(':refer-person', '3rd'), (':aspect', 'perfective')],
+        'eventive': True, 'possessive': False}
+    assert boot.read_gloss('obj:3', table)['lexical'] is None
+    assert boot.read_gloss('go.3sg.ipfv', table) == {
+        'lexical': 'go', 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular'),
+                                   (':aspect', 'imperfective')],
+        'eventive': True, 'possessive': False}
+    assert boot.read_gloss('go.3SG.prf', table)['eventive'] is True
+    assert boot.read_gloss('sbj:3sg.pfv', table)['attrs'] == [
+        (':refer-person', '3rd'), (':refer-number', 'singular'), (':aspect', 'perfective')]
+    assert boot.read_gloss('lay-sbj:3.pfv', table)['lexical'] == 'lay'
+    # Leipzig's other separators for one form of several meanings.
+    assert boot.read_gloss('hit;PST', table) == {
+        'lexical': 'hit', 'attrs': [], 'eventive': True, 'possessive': False}
+    assert boot.read_gloss('sing\\PST', table)['lexical'] == 'sing'
+    # An aspect abbreviation elects the root as a tense one does.
+    assert boot.read_gloss('go.HAB', table)['eventive'] is True
+
+
+def test_the_case_rule_still_holds_without_a_grammatical_part_beside():
+    """A lower-case part is a word unless the same morpheme's gloss has a part
+    grammatical by the case rule: not in a gloss of words only, and not
+    because ANOTHER morpheme is grammatical."""
+    table = boot.ABBREVIATIONS
+    assert boot.read_gloss('lay.pfv', table) == {
+        'lexical': 'lay', 'attrs': [], 'eventive': False, 'possessive': False}
+    assert boot.read_gloss('come.out', table)['lexical'] == 'come'
+    assert boot.read_gloss('pass', table)['lexical'] == 'pass'
+    assert boot.read_gloss('3SG-pfv', table)['lexical'] == 'pfv'
+    assert boot.read_gloss('3SG-pfv', table)['eventive'] is False
+    # A single letter stays a word even beside a grammatical part.
+    assert boot.read_gloss('a.3SG', table)['lexical'] == 'a'
+
+
+def test_the_verb_with_sbj_3_pfv_is_the_root():
+    """∅-eek-da (obj:3-lay-sbj:3.pfv) after a noun: the verb is the root, not
+    the first node, and its node carries the aspect but not the subject's
+    person."""
+    body = 'hii eekda\n'
+    words = [(0, 3), (4, 9)]
+    morphemes = [
+        ('m1', 0, 'hii', 'stem', 'blood', 'e-hii'),
+        ('m2', 1, '\u2205', 'prefix', 'obj:3', None),
+        ('m3', 1, 'eek', 'stem', 'lay', 'e-eek'),
+        ('m4', 1, 'da', 'suffix', 'sbj:3.pfv', 'e-da'),
+    ]
+    nodes = _segmented_nodes(_segmented(body=body, words=words, morphemes=morphemes))
+    assert [n['value'] for n in nodes] == ['hii', 'eek']
+    assert [bool(n['metadata']['umr'].get('root')) for n in nodes] == [False, True]
+    assert [(a['rel'], a['value']) for a in nodes[1]['metadata']['umr']['attrs']] == [
+        (':aspect', 'perfective')]
+
+
+# --- compounds -------------------------------------------------------------------------
+
+#: Lamkang har buu 'chicken coop': har 'fowl' + buu 'nest', two stems, each
+#: linked to its own entry, and no link on the word.
+COMPOUND_BODY = 'har buu\n'
+COMPOUND_WORDS = [(0, 7)]
+COMPOUND_MORPHEMES = [
+    ('m1', 0, 'har', 'stem', 'fowl', 'e-har'),
+    ('m2', 0, 'buu', 'stem', 'nest', 'e-buu'),
+]
+
+
+def _compound_vocab(*forms):
+    return {'id': 'v1', 'name': 'Lexicon', 'items': [
+        {'id': f'e-{form}', 'form': form, 'metadata': {}} for form in forms]}
+
+
+def test_a_compound_the_lexicon_lists_is_named_by_its_headword():
+    document = _segmented(body=COMPOUND_BODY, words=COMPOUND_WORDS, morphemes=COMPOUND_MORPHEMES)
+    vocab = _compound_vocab('har', 'buu', 'har buu')
+    assert [c for c, _ in _segmented_run(document, vocab)] == ['har-buu']
+
+
+def test_a_compound_the_lexicon_does_not_list_takes_its_first_stem():
+    document = _segmented(body=COMPOUND_BODY, words=COMPOUND_WORDS, morphemes=COMPOUND_MORPHEMES)
+    assert [c for c, _ in _segmented_run(document, _compound_vocab('har', 'buu'))] == ['har']
+
+
+def test_a_link_on_the_compound_itself_comes_first():
+    document = _segmented(body=COMPOUND_BODY, words=COMPOUND_WORDS, morphemes=COMPOUND_MORPHEMES)
+    word_layer = document['text_layers'][0]['token_layers'][1]
+    word_layer['vocabs'] = [{'id': 'v1', 'vocab_links': [
+        {'id': 'lw', 'vocab_item': {'id': 'e-coop'}, 'tokens': ['w1']}]}]
+    vocab = _compound_vocab('har', 'buu', 'har buu', 'coop')
+    assert [c for c, _ in _segmented_run(document, vocab)] == ['coop']
+
+
+def test_a_word_of_one_stem_is_not_named_by_a_headword_it_happens_to_spell():
+    # m-hii is one stem with a prefix: an entry spelled mhii does not name it.
+    vocab = {**SEG_VOCAB, 'items': SEG_VOCAB['items'] + [
+        {'id': 'e-mhii', 'form': 'mhii', 'metadata': {}}]}
+    assert [c for c, _ in _segmented_run(_segmented(), vocab)][0] == 'hii'
