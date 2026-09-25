@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderComponent } from '@ui/test/renderComponent.jsx';
-import { useSentenceDeepLink } from './useSentenceDeepLink.js';
+import { useSentenceDeepLink, resolveSentenceParam } from './useSentenceDeepLink.js';
 
 // The deep link has to survive being asked for a sentence that is not on the
 // page in front of the reader, which is the whole reason it runs twice: the row
@@ -56,7 +56,47 @@ const base = {
   setPage: () => {},
 };
 
+describe('what a ?sent= value names', () => {
+  const ids = new Map([
+    ['01a0-aaaa', 0],
+    ['01a0-bbbb', 1],
+    ['01a0-cccc', 2],
+  ]);
+  it('an id the document has, as itself', () => {
+    expect(resolveSentenceParam('01a0-bbbb', ids)).toBe('01a0-bbbb');
+  });
+  it('a number, counted from 1 as the rows are, with or without an s', () => {
+    expect(resolveSentenceParam('1', ids)).toBe('01a0-aaaa');
+    expect(resolveSentenceParam('3', ids)).toBe('01a0-cccc');
+    expect(resolveSentenceParam('s2', ids)).toBe('01a0-bbbb');
+    expect(resolveSentenceParam(' 2 ', ids)).toBe('01a0-bbbb');
+  });
+  it('nothing for a number past the end, zero, or anything else', () => {
+    for (const v of ['4', '0', 's', '', null, '2.5', '-1', 'x2', '01a0-dddd']) {
+      expect(resolveSentenceParam(v, ids)).toBe(null);
+    }
+  });
+});
+
 describe('the ?sent= deep link', () => {
+  it('takes a sentence number as well as an id', async () => {
+    const setPage = vi.fn();
+    const ids = new Map(Array.from({ length: 60 }, (_, i) => [`id-${i}`, i]));
+    const view = await renderComponent(
+      <Probe {...base} indexById={ids} sentParam="31" setPage={setPage} />,
+    );
+    // Sentence 31 is the 31st row, index 30: page 1.
+    expect(setPage).toHaveBeenCalledWith(1);
+    const row = putRow('id-30');
+    await view.rerender(
+      <Probe {...base} indexById={ids} sentParam="31" setPage={setPage} page={1} />,
+    );
+    await runFrame(view);
+    expect(row.scrollIntoView).toHaveBeenCalled();
+    expect(flashOf(view)).toBe('id-30');
+    await view.unmount();
+  });
+
   it('turns to the page the sentence is on, and only then scrolls to it', async () => {
     const setPage = vi.fn();
     const view = await renderComponent(<Probe {...base} sentParam="s30" setPage={setPage} />);

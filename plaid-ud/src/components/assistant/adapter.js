@@ -19,9 +19,8 @@ const CITE_RE =
 // sentence rides in the URL so the link is shareable and a middle-click opens
 // it in a new tab.
 //
-// `?sent=` takes the sentence's TOKEN ID, not its number: the editor matches it
-// against the sentences it loaded. Passing the number lands on the document and
-// silently never scrolls.
+// `?sent=` takes the sentence's TOKEN ID. The editor reads a number too, but a
+// number moves when a sentence is split or merged, and an id does not.
 export const sentenceHref = (origin, projectId, c) =>
   `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
   (c.sentenceId ? `?sent=${encodeURIComponent(c.sentenceId)}` : '');

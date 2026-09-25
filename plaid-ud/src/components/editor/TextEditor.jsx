@@ -17,6 +17,7 @@ import { ParseDialog } from './services/ParseDialog.jsx';
 import { TokenizeDialog } from './services/TokenizeDialog.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { sentenceNumberOf } from './hooks/useSentenceDeepLink.js';
 
 export const TextEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
@@ -58,11 +59,16 @@ export const TextEditor = () => {
     const deadline = Date.now() + 3000;
     const attempt = () => {
       frame = null;
-      const el = document.querySelector(`[data-sentence-block="${CSS.escape(String(sentParam))}"]`);
+      // An id, else a sentence number counted from 1.
+      const blocks = [...document.querySelectorAll('[data-sentence-block]')];
+      const number = sentenceNumberOf(sentParam);
+      const el =
+        blocks.find((b) => b.getAttribute('data-sentence-block') === String(sentParam)) ||
+        (number != null ? blocks[number - 1] : null);
       if (el) {
         scrolledForRef.current = sentParam;
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setFlashSentId(String(sentParam));
+        setFlashSentId(el.getAttribute('data-sentence-block'));
         flashTimer = setTimeout(() => setFlashSentId(null), 2000);
         return;
       }

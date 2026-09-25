@@ -76,8 +76,9 @@ export const AnnotationEditor = () => {
   // Ask hands the shell a reference and the shell opens the assistant panel on
   // it, so where there is no room for a panel Ask does nothing at all.
   const roomToDock = useWideEnoughToDock();
-  // Deep link from the search page: ?sent=<sentenceTokenId> scrolls to and
-  // briefly highlights that sentence once the grid is rendered.
+  // Deep link from the search page: ?sent=<sentenceTokenId> (or a sentence
+  // number) scrolls to and briefly highlights that sentence once the grid is
+  // rendered.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
   const { getClient, logout, user } = useAuth();
