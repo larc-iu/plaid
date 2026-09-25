@@ -93,7 +93,7 @@ const Meanings = ({ item, fields, resolveRef, sentences, exampleLayers, lang }) 
 // indented under it. A sense with nothing to show is not drawn at all, rather
 // than as a number with nothing beside it.
 const Sense = ({ node, fields, resolveRef, sentences, exampleLayers, lang }) =>
-  hasContent(node, fields, resolveRef) && (
+  hasContent(node, fields, resolveRef, sentences) && (
     <li>
       <div className="flex gap-3">
         <span className="w-10 shrink-0 pt-0.5 text-right text-sm tabular-nums text-muted-foreground">

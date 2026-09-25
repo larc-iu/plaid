@@ -189,6 +189,15 @@ describe('hasContent', () => {
     expect(hasContent(n({ seeAlso: ['t'] }), fields, () => null)).toBe(false);
   });
 
+  it('counts a promoted example only while unread or once its sentence is found', () => {
+    const promoted = n({ examples: [{ document: 'd', token: 't' }] });
+    expect(hasContent(promoted, fields)).toBe(true);
+    expect(hasContent(promoted, fields, null, new Map())).toBe(false);
+    const found = new Map([['d/t', { text: 'ndi', lines: [] }]]);
+    expect(hasContent(promoted, fields, null, found)).toBe(true);
+    expect(hasContent(n({}, [promoted], false), fields, null, new Map())).toBe(false);
+  });
+
   it('looks through a hidden headword to its senses', () => {
     expect(hasContent(n({ gloss: 'DRAFT' }, [], false), fields)).toBe(false);
     expect(hasContent(n({}, [n({ gloss: 'put' })], false), fields)).toBe(true);

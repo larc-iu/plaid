@@ -89,4 +89,16 @@ describe('EntryArticle', () => {
     expect(container.querySelectorAll('li')).toHaveLength(1);
     await unmount();
   });
+
+  it('draws no number for a sense whose only example could not be read', async () => {
+    const lost = node('e3', 'daar', '1.2', '');
+    lost.item.metadata = { status: 'published', examples: [{ document: 'd', token: 't' }] };
+    const tree = node('e1', 'daar', '1', 'put', [node('e2', 'daar', '1.1', 'place'), lost]);
+    const { container, unmount } = await renderComponent(
+      <EntryArticle node={tree} fields={fields} lang="yo" sentences={new Map()} />,
+    );
+    expect(container.textContent).toContain('1.1');
+    expect(container.textContent).not.toContain('1.2');
+    await unmount();
+  });
 });

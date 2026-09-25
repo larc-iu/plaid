@@ -164,15 +164,22 @@ export const resultGlosses = (page, fields, query = '') => {
  * of speech, a gloss, a definition, an example or a reference the dictionary
  * shows, on itself or on a sense under it. `resolveRef` is the one the page
  * draws references with; without it every stored reference counts.
+ * `sentences` is the page's resolved examples (useExamples): once read, a
+ * promoted example whose sentence could not be found is not content, since
+ * entryExamples leaves it out. Null while the read is out, and then every
+ * promoted example counts.
  */
-export const hasContent = (node, fields, resolveRef = null) => {
+export const hasContent = (node, fields, resolveRef = null, sentences = null) => {
   if (node.shown !== false) {
     const { pos, glosses, definitions } = entryText(node.item, fields);
     if (pos || glosses.length || definitions.length) return true;
-    if (allExamples(node.item).some((example) => example.text || example.document)) return true;
+    const examples = sentences
+      ? entryExamples(node.item, sentences).length > 0
+      : allExamples(node.item).some((example) => example.text || example.document);
+    if (examples) return true;
     if (entryRefs(node.item, fields, resolveRef ?? ((id) => id)).length) return true;
   }
-  return (node.senses || []).some((sense) => hasContent(sense, fields, resolveRef));
+  return (node.senses || []).some((sense) => hasContent(sense, fields, resolveRef, sentences));
 };
 
 /**
