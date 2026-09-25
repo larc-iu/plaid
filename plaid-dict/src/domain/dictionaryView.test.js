@@ -8,6 +8,7 @@ import {
   searchPages,
 } from './dictionaryView.js';
 import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
+import { alphabetCollator, parseAlphabet } from './collation.js';
 
 // An item as the server returns one. `parent` and `senseOrder` are plaid-igt's
 // reserved keys; `homograph` orders entries spelled alike.
@@ -121,6 +122,44 @@ describe('buildIndex', () => {
 
   it('is empty for a dictionary with no pages', () => {
     expect(buildIndex([])).toEqual([]);
+  });
+});
+
+describe('affixes', () => {
+  const affix = (id, form, morphType, gloss) => ({
+    id,
+    form,
+    metadata: { status: 'published', morphType, gloss },
+  });
+  // Arapaho: the suffix `-'` was listed as a bare `'`.
+  const items = [
+    affix('s', "'", 'suffix', '2PL.IMPER'),
+    affix('k', 'ka', 'stem', 'go'),
+    affix('ks', 'ka', 'suffix', 'NMLZ'),
+    affix('p', 'ni', 'prefix', 'NEG'),
+    affix('c', 'ceese', 'stem', 'one'),
+  ];
+  const collator = alphabetCollator(parseAlphabet("' c k n"));
+  const pages = buildFormPages(items, collator);
+
+  it('puts each affix on a page of its own, under the form with its markers', () => {
+    expect(pages.map((p) => p.form)).toEqual(["-'", 'ceese', 'ka', '-ka', 'ni-']);
+    expect(pages.map((p) => p.bare)).toEqual(["'", 'ceese', 'ka', 'ka', 'ni']);
+  });
+
+  it('files an affix by its letters, never under its marker', () => {
+    expect(buildIndex(pages, collator).map((b) => [b.letter, b.forms])).toEqual([
+      ["'", ["-'"]],
+      ['C', ['ceese']],
+      ['K', ['ka', '-ka']],
+      ['N', ['ni-']],
+    ]);
+  });
+
+  it('finds an affix by its letters, and by the marker typed with them', () => {
+    const index = buildSearchIndex(items, normalizeVocabFields({ gloss: { inline: true } }));
+    expect(searchPages(pages, 'ka', index).map((p) => p.form)).toEqual(['ka', '-ka']);
+    expect(searchPages(pages, '-ka', index).map((p) => p.form)).toEqual(['-ka']);
   });
 });
 

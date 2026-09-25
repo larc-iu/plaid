@@ -74,7 +74,7 @@ export const DictionaryProvider = () => {
         id,
         form: displayForm(target),
         number: dictionary.numbers.get(id) ?? '',
-        to: formPath(slug, dictionary.tree.byId.get(dictionary.tree.rootOf.get(id)).form),
+        to: formPath(slug, displayForm(dictionary.tree.byId.get(dictionary.tree.rootOf.get(id)))),
         lang: objectLang,
       };
     };

@@ -84,8 +84,32 @@ describe('alphabetCollator', () => {
     expect(sorted(['bala', 'bal', 'balika'])).toEqual(['bal', 'bala', 'balika']);
   });
 
-  it('gathers what it cannot place after every letter, in code-point order', () => {
-    expect(sorted(['zuwa', "'ala", 'abwe', '∅kat'])).toEqual(['abwe', 'zuwa', "'ala", '∅kat']);
+  it('gathers a letter it cannot place after every listed one, in code-point order', () => {
+    expect(sorted(['zuwa', 'ʔala', 'abwe', 'ŋkat'])).toEqual(['abwe', 'zuwa', 'ŋkat', 'ʔala']);
+  });
+
+  it('orders by the letters, passing over punctuation the alphabet does not list', () => {
+    // Lamkang: `{lampa}`, `(p)li` and `†a²²ther` headed sections of their own.
+    expect(sorted(['zuwa', "'ala", '{lampa}', 'abwe', '∅kat', '(p)li'])).toEqual([
+      'abwe',
+      "'ala",
+      '∅kat',
+      '{lampa}',
+      '(p)li',
+      'zuwa',
+    ]);
+    expect(letterOf('{lampa}')).toBe('L');
+  });
+
+  it('keeps a listed apostrophe as the letter it is said to be', () => {
+    const arapaho = alphabetCollator(parseAlphabet("' 3 c e h n"));
+    expect(['ceese', "'", '3iwoo'].sort(arapaho.compare)).toEqual(["'", '3iwoo', 'ceese']);
+    expect(arapaho.letterOf("'")).toBe("'");
+  });
+
+  it('orders a form of punctuation alone by what it has, after every letter', () => {
+    expect(sorted(['∅', 'zuwa'])).toEqual(['zuwa', '∅']);
+    expect(letterOf('∅')).toBe('∅');
   });
 
   it('files a tonal homonym set together, whatever its tones', () => {
@@ -108,7 +132,7 @@ describe('alphabetCollator', () => {
     expect(letterOf('chapa')).toBe('Ch');
     expect(letterOf('capa')).toBe('C');
     expect(letterOf('nhanha')).toBe('Nh');
-    expect(letterOf("'ala")).toBe("'");
+    expect(letterOf("'ala")).toBe('A');
   });
 
   it('settles same-letter forms by the text, so case does not tie', () => {
@@ -207,7 +231,11 @@ describe('letterLikeCharacters', () => {
 
 describe('outsideAlphabet', () => {
   it('names the headwords whose first letter the alphabet misses', () => {
-    expect(outsideAlphabet(['kat', "'ala", '∅kat'], sena)).toEqual(["'ala", '∅kat']);
+    expect(outsideAlphabet(['kat', 'ŋala', 'qkat'], sena)).toEqual(['ŋala', 'qkat']);
+  });
+
+  it('reads past the punctuation a headword opens with', () => {
+    expect(outsideAlphabet(["'ala", '∅kat', '{ŋa}'], sena)).toEqual(['{ŋa}']);
   });
 
   it('finds none when no alphabet is stated', () => {

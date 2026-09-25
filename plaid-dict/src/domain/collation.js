@@ -116,6 +116,23 @@ export const splitGraphemes = (form, units) => {
   return out;
 };
 
+// Punctuation and symbols: a bracket, a dagger, an affix marker, the zero
+// morph. Not whitespace, which keeps its place between the words of a phrase.
+const PUNCTUATION_RE = /^[\p{P}\p{S}]/u;
+
+/**
+ * The units a form is ordered by: splitGraphemes without the punctuation, so
+ * `{lampa}` files under l and `'ii` under i. A unit the alphabet lists always
+ * counts, which is how a dictionary says its apostrophe is a letter. A form
+ * made of nothing else (`∅`) is ordered by what it has.
+ */
+export const letterUnits = (form, units) => {
+  const all = splitGraphemes(form, units);
+  const listed = new Set(units || []);
+  const letters = all.filter((unit) => listed.has(unit) || !PUNCTUATION_RE.test(unit));
+  return letters.length ? letters : all;
+};
+
 /** The heading a unit is filed under: "ch" reads Ch, never CH. */
 const headingOf = (unit) => {
   const [first, ...rest] = [...String(unit ?? '')];
@@ -138,7 +155,7 @@ export const alphabetCollator = (units) => {
   const keyOf = (form) => {
     let key = keys.get(form);
     if (!key) {
-      key = splitGraphemes(form, alphabet).map((grapheme) =>
+      key = letterUnits(form, alphabet).map((grapheme) =>
         rank.has(grapheme) ? rank.get(grapheme) : UNLISTED + (grapheme.codePointAt(0) ?? 0),
       );
       keys.set(form, key);
@@ -157,7 +174,7 @@ export const alphabetCollator = (units) => {
     return String(a).localeCompare(String(b));
   };
 
-  const letterOf = (form) => headingOf(splitGraphemes(form, alphabet)[0] ?? '');
+  const letterOf = (form) => headingOf(letterUnits(form, alphabet)[0] ?? '');
 
   return { compare, letterOf, alphabet };
 };
@@ -242,5 +259,5 @@ export const letterLikeCharacters = (projects, vocabularyId) => {
 export const outsideAlphabet = (forms, units) => {
   if (!units?.length) return [];
   const listed = new Set(units);
-  return (forms || []).filter((form) => !listed.has(splitGraphemes(form, units)[0]));
+  return (forms || []).filter((form) => !listed.has(letterUnits(form, units)[0]));
 };

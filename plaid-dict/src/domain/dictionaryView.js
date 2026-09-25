@@ -11,7 +11,7 @@
 
 import { homographOf, lexiconView, STATUS_FIELD } from '@igt/domain/vocabDictionary.js';
 import { foldDiacritics } from './collation.js';
-import { searchableText } from './entryFields.js';
+import { displayForm, searchableText } from './entryFields.js';
 import { isPublished, statusKeyOf } from './publication.js';
 
 /**
@@ -69,7 +69,11 @@ const nodeOf = (item, { tree, numbers, visible }) => ({
  * published headword spelled that way is on its page, in homograph order, as
  * OED and Wiktionary do.
  *
- * @returns {{form: string, headwords: Node[]}[]}
+ * The form is the one the reader sees, affix markers and all, so the suffix
+ * `-ka` and the stem `ka` are two pages, as they are in Wiktionary. The order
+ * is by the stored form, which carries no markers: `-ka` sorts among the k's.
+ *
+ * @returns {{form: string, bare: string, folded: string, headwords: Node[]}[]}
  */
 export const buildFormPages = (items, collator = new Intl.Collator(), dict = null) => {
   const reading = dict ?? readDictionary(items);
@@ -77,9 +81,9 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
 
   const byForm = new Map();
   for (const r of reading.headwords) {
-    const form = r.form ?? '';
-    if (!byForm.has(form)) byForm.set(form, []);
-    byForm.get(form).push(r);
+    const form = displayForm(r);
+    if (!byForm.has(form)) byForm.set(form, { bare: r.form ?? '', roots: [] });
+    byForm.get(form).roots.push(r);
   }
 
   // Homograph order, the number plaid-igt stores on the entry; unnumbered
@@ -93,15 +97,24 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
     return position.get(a.id) - position.get(b.id);
   };
 
-  return [...byForm.entries()]
-    .sort(([a], [b]) => collator.compare(a, b))
-    .map(([form, roots]) => ({
-      form,
-      // Folded here, not in the search: a five thousand headword dictionary
-      // would otherwise fold five thousand forms on every keystroke.
-      folded: foldDiacritics(form),
-      headwords: roots.sort(byNumber).map((r) => nodeOf(r, reading)),
-    }));
+  return (
+    [...byForm.entries()]
+      // Spelled alike, the bare form comes before its affixes.
+      .sort(
+        ([a, pa], [b, pb]) =>
+          collator.compare(pa.bare, pb.bare) ||
+          Number(a !== pa.bare) - Number(b !== pb.bare) ||
+          collator.compare(a, b),
+      )
+      .map(([form, { bare, roots }]) => ({
+        form,
+        bare,
+        // Folded here, not in the search: a five thousand headword dictionary
+        // would otherwise fold five thousand forms on every keystroke.
+        folded: foldDiacritics(bare),
+        headwords: roots.sort(byNumber).map((r) => nodeOf(r, reading)),
+      }))
+  );
 };
 
 /**
@@ -133,8 +146,9 @@ export const buildIndex = (pages, collator = new Intl.Collator()) => {
   // own letters, n-graphs included; otherwise a first character does.
   const letterOf = collator.letterOf ?? indexLetter;
   const byLetter = new Map();
-  for (const { form } of pages || []) {
-    const letter = letterOf(form);
+  for (const { form, bare } of pages || []) {
+    // Filed by the stored form: an affix marker is not a letter.
+    const letter = letterOf(bare ?? form);
     if (!byLetter.has(letter)) byLetter.set(letter, []);
     byLetter.get(letter).push(form);
   }
@@ -193,10 +207,18 @@ export const searchPages = (pages, query, index) => {
       entry.text.includes(q) || (loose && entry.folded.includes(bare)) || node.senses.some(hit)
     );
   };
-  const formOf = (p) => (p.form || '').toLowerCase();
-  const foldedOf = (p) => p.folded ?? foldDiacritics(p.form);
+  // Ranked by the stored form, so `ka` puts the suffix `-ka` among the forms
+  // that start with it. The one on screen still matches a query that types
+  // the marker.
+  const formOf = (p) => (p.bare ?? p.form ?? '').toLowerCase();
+  const shownOf = (p) => (p.form || '').toLowerCase();
+  const foldedOf = (p) => p.folded ?? foldDiacritics(formOf(p));
   const matched = (pages || []).filter(
-    (p) => formOf(p).includes(q) || (loose && foldedOf(p).includes(bare)) || p.headwords.some(hit),
+    (p) =>
+      formOf(p).includes(q) ||
+      shownOf(p).includes(q) ||
+      (loose && foldedOf(p).includes(bare)) ||
+      p.headwords.some(hit),
   );
 
   const exact = matched.filter((p) => formOf(p).startsWith(q));
