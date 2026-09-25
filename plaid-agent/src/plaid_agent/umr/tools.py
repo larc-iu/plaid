@@ -15,7 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import sentence_number
-from plaid_client.workflows.umr import parse_attribute_line
+from plaid_client.workflows.umr import (parse_attribute_line, unknown_doc_relation_problem,
+                                        unknown_relation_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -84,7 +85,48 @@ class Workspace(BaseWorkspace):
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
+        self.refuse_unknown_relation(op)
         self.refuse_second_graph(op, replacing=replacing)
+
+    def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
+        """A relation UMR does not have, as the app refuses it on every editor
+        path (``unknownRelationProblem`` in plaid-umr's ``validate.js``).
+
+        Asked here, where every staged op passes, rather than in the tools, so
+        a new tool that writes a relation cannot route around it. What the op
+        writes is judged, never what is already stored: a relation some node of
+        the sentence (of the document, for a scope) already carries is kept, as
+        text mode keeps one an imported file brought in.
+        """
+        kind = op.get('kind')
+        if kind == 'create_triple':
+            why = unknown_doc_relation_problem(op.get('group'), op.get('rel'))
+            if why:
+                raise ToolError(why)
+            return
+        if kind == 'create_edge':
+            written = [op.get('role')]
+        elif kind in ('create_node', 'set_attrs'):
+            written = [a.get('rel') for a in op.get('attrs') or []]
+        elif kind == 'attrs_scope':
+            written = [op.get('rel')]
+        else:
+            return
+        doc = self._docs.get(op.get('document_id'))
+        nodes = []
+        if doc is not None:
+            if kind == 'attrs_scope':
+                nodes = [n for s in doc.sentences for n in s.nodes]
+            elif op.get('sentence'):
+                nodes = doc.sentences[op['sentence'] - 1].nodes
+        stored = {a.get('rel') for n in nodes for a in n.attrs} | {e.role for n in nodes
+                                                                 for e in n.out}
+        for rel in written:
+            why = None if rel in stored else unknown_relation_problem(rel)
+            if why:
+                var = op.get('var') or op.get('source_var')
+                where = f'{var}: ' if var else ''
+                raise ToolError(where + why)
 
     def refuse_second_graph(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         """A graph replacement beside another change to that sentence's graph.
@@ -329,13 +371,20 @@ def t_add_triple(ws: Workspace, document: str = None, a: str = None, rel: str = 
     if not rel.startswith(':'):
         raise ToolError('Give rel: a document-level relation, which starts with a colon '
                         '(:same-entity, :before, :full-affirmative).')
+    group = (group or '').strip()
+    if group and group not in GROUPS:
+        raise ToolError(f'group must be one of {", ".join(GROUPS)}.')
+    # Refused before either end is looked at, and with the group as the
+    # model gave it: a relation in no group is not a "modal" one just because
+    # group_of files the unknown there.
+    why = unknown_doc_relation_problem(group or None, rel)
+    if why:
+        raise ToolError(why)
+    group = group or group_of(rel)
     source = _end(ws, doc, a, 'source')
     target = _end(ws, doc, b, 'target')
     if source['var'] == target['var']:
         raise ToolError('A triple joins two different nodes.')
-    group = (group or '').strip() or group_of(rel)
-    if group not in GROUPS:
-        raise ToolError(f'group must be one of {", ".join(GROUPS)}.')
     existing = source['node']
     if existing is not None and target['node'] is not None:
         for t in existing.doc_out:

@@ -165,7 +165,7 @@ The commonest values, with counts, across the project or inside one document: co
 
 ### apply_penman
 
-PLAN: replace one sentence's graph with the PENMAN text you give. The difference against the stored graph is worked out for you: nodes are matched BY VARIABLE and relations BY ROLE AND TARGET, so a node written back with the same variable is kept, a renamed variable is a new node and the old one goes, and a changed role is a new relation and the old one goes. The text is the ROOT's graph, so a node the root does not reach is left alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. Start from what read_document printed and edit it.
+PLAN: replace one sentence's graph with the PENMAN text you give. The difference against the stored graph is worked out for you: nodes are matched BY VARIABLE and relations BY ROLE AND TARGET, so a node written back with the same variable is kept, a renamed variable is a new node and the old one goes, and a changed role is a new relation and the old one goes. The text is the ROOT's graph, so a node the root does not reach is left alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. Start from what read_document printed and edit it. Roles are a closed set: one UMR does not have (:poss for :possessor) is refused unless the sentence already holds it.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `sentence` (integer or string, required): The sentence, 1-based: 3 or "s3".
@@ -194,11 +194,11 @@ PLAN: set one attribute on every node in a document whose concept matches, or re
 
 ### add_triple
 
-PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it.
+PLAN: add one document-level relation between two nodes, or between a node and one of the format's constants. The group (temporal, modal, coref) follows from the relation unless you say otherwise. A constant no triple has used yet is created with it. The triple reads (a rel b): b stands in relation rel to a, which is its reference, so (document-creation-time :before e) says e happened before the document was made and (author :full-affirmative e) says the author is sure e happened. A relation outside its group's closed set is refused.
 
 - `document` (string, required): Document id or exact name (see project_overview).
 - `a` (string, required): A node variable, e.g. "s3e", or one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference.
-- `rel` (string, required): The relation, starting with a colon: :same-entity, :before, :full-affirmative.
+- `rel` (string, required): The relation, starting with a colon. temporal: :contained, :contains, :before, :after, :overlap, :depends-on. modal: :modal, :full-affirmative, :partial-affirmative, :strong-partial-affirmative, :weak-partial-affirmative, :neutral-affirmative, :strong-neutral-affirmative, :weak-neutral-affirmative, :full-negative, :partial-negative, :strong-partial-negative, :weak-partial-negative, :neutral-negative, :strong-neutral-negative, :weak-neutral-negative, :unspecified. coref: :same-entity, :same-event, :subset-of, :contains, :subset.
 - `b` (string, required): A node variable, e.g. "s3e", or one of the constants root, author, null-conceiver, have-condition-91, document-creation-time, past-reference, present-reference, future-reference.
 - `group` (one of `temporal`, `modal`, `coref`): Only where the relation belongs to two groups (:contains).
 - `sentence` (integer or string): Whose block writes a triple between two constants. Ignored otherwise.

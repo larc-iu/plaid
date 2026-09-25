@@ -18,6 +18,8 @@ the bundled UMR services:
 - :mod:`graph` — a document response as sentences, words, morphemes, nodes,
   edges and document-level triples (``read_document``), plus the roots, the
   alignment, the attribute placing rule and the stored graph as PENMAN.
+- :mod:`inventory` — the closed relation sets and why a relation is not in
+  them (``unknown_relation_problem``, ``unknown_doc_relation_problem``).
 - :mod:`penman` — the notation: the reader, the writer, the variable rule.
 - :mod:`write` — writing drafted graphs in three batched passes, the progress
   budget and what a drafting run reports.
@@ -25,15 +27,18 @@ the bundled UMR services:
 The JS side of the same rules lives in ``plaid-umr/src`` (``umrLayerUtils.js``,
 ``sentenceGraph.js``, ``format/penman.js``); that split is unavoidable, and
 ``plaid-agent/tests/test_penman_mirror.py`` holds the two readings of the
-notation to each other over the corner cases the grammar turns on.
+notation to each other over the corner cases the grammar turns on, and
+``test_umr_inventory_mirror.py`` the two copies of the relation sets.
 """
 
-from . import graph, layers, penman, write
+from . import graph, inventory, layers, penman, write
 from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, MISSING,
                     Morpheme, Node, Piece, Sentence, Triple, UmrDocument, Word,
                     alignment_of, begins_in, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
                     with_attribute)
+from .inventory import (DOC_RELATIONS, KNOWN_RELATIONS, is_known_relation,
+                        unknown_doc_relation_problem, unknown_relation_problem)
 from .layers import (CONCEPTS, DOCUMENT_GRAPH, GlossLayer, NODES, RELATIONS, REQUIRED,
                      UMR_NAMESPACE, UmrLayers, find_flagged, gloss_layers_of, gloss_values,
                      owns_umr, project_language, resolve_layers, umr_config, umr_metadata)
@@ -43,7 +48,10 @@ from .penman import (Child, Graph, ParseError, graph_text, is_variable, next_var
 from .write import DraftProgress, anchor_pieces, build_draft_notice, write_graphs
 
 __all__ = [
-    'graph', 'layers', 'penman', 'write',
+    'graph', 'inventory', 'layers', 'penman', 'write',
+    # inventory
+    'KNOWN_RELATIONS', 'DOC_RELATIONS', 'is_known_relation', 'unknown_relation_problem',
+    'unknown_doc_relation_problem',
     # layers
     'UMR_NAMESPACE', 'NODES', 'CONCEPTS', 'RELATIONS', 'DOCUMENT_GRAPH', 'REQUIRED',
     'GlossLayer', 'UmrLayers', 'resolve_layers', 'gloss_layers_of', 'gloss_values',

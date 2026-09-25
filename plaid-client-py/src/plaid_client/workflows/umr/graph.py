@@ -29,23 +29,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from plaid_client.provenance import is_protected
 
 from . import penman
+from .inventory import DOC_CONSTANTS, DOC_RELATIONS, GROUPS  # noqa: F401  (re-exported)
 from .layers import UmrLayers, umr_metadata
 
-#: The nodes of a document-level relation that are not sentence variables.
-DOC_CONSTANTS = ('root', 'author', 'null-conceiver', 'have-condition-91',
-                 'document-creation-time', 'past-reference', 'present-reference',
-                 'future-reference')
-
-#: The groups a document-level relation falls in.
-GROUPS = ('temporal', 'modal', 'coref')
-
-#: The coreference relations, whichever way they point.
-COREF_RELATIONS = frozenset({':same-entity', ':same-event', ':subset-of', ':subset'})
+#: The coreference relations, whichever way they point. ``:contains`` is in the
+#: coref set too, but read as temporal unless a write says otherwise.
+COREF_RELATIONS = frozenset(DOC_RELATIONS['coref']) - {':contains'}
 
 #: The temporal relations. ``:contains`` is in two groups, which is why a write
 #: records the group rather than leaving it to ``group_of``.
-TEMPORAL_RELATIONS = frozenset({':before', ':after', ':contained', ':overlap',
-                                ':depends-on', ':contains'})
+TEMPORAL_RELATIONS = frozenset(DOC_RELATIONS['temporal'])
 
 #: The roles a graph may cycle through: an edge with one of these into a node
 #: does not make it a child, so the root of

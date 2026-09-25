@@ -110,7 +110,7 @@ def test_a_dropped_edge_deletes_the_relation_and_the_node_it_orphaned(ws):
 
 
 def test_a_re_root_moves_the_mark_off_the_old_root(ws):
-    text = ('(s1y / yard\n    :location (s1b / bark-01\n        :ARG0 (s1d / dog\n'
+    text = ('(s1y / yard\n    :place (s1b / bark-01\n        :ARG0 (s1d / dog\n'
             '            :refer-number singular)\n        :aspect performance))')
     diff = diff_for(ws, text)
     assert kinds(diff) == ['create_edge', 'create_node', 'unset_root']
@@ -205,7 +205,7 @@ def test_a_node_delete_declares_its_cascade_and_the_row_counts_the_triples(ws):
 
 
 def test_a_re_root_takes_the_mark_off_before_the_new_root_wears_one(client, ws):
-    text = ('(s1y / yard\n    :location (s1b / bark-01\n        :ARG0 (s1d / dog\n'
+    text = ('(s1y / yard\n    :place (s1b / bark-01\n        :ARG0 (s1d / dog\n'
             '            :refer-number singular)\n        :aspect performance))')
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
     log = applied(client, ws)

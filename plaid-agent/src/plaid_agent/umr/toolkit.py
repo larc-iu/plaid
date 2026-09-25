@@ -24,6 +24,7 @@ from ..core.webtools import t_read_url, t_web_search
 from .corpus import (COUNTABLE, SEARCHABLE, WORKLIST_KINDS, t_find_nodes, t_frequency_list,
                      t_search, t_worklist)
 from ..core.history import comments as t_comments, recent_changes as t_recent_changes
+from plaid_client.workflows.umr import DOC_RELATIONS
 from .project import DOC_CONSTANTS, GROUPS
 from .query import t_query, t_query_help
 from .sandbox import t_code_help, t_run_code
@@ -132,7 +133,8 @@ TOOLS = [
         'variable is a new node and the old one goes, and a changed role is a new relation and the '
         'old one goes. The text is the ROOT\'s graph, so a node the root does not reach is left '
         'alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. '
-        'Start from what read_document printed and edit it.',
+        'Start from what read_document printed and edit it. Roles are a closed set: one UMR does '
+        'not have (:poss for :possessor) is refused unless the sentence already holds it.',
         {'document': _DOC, 'sentence': _SENTENCE,
          'text': {'type': 'string',
                   'description': 'The whole sentence graph in PENMAN, from its root node.'}},
@@ -165,11 +167,17 @@ TOOLS = [
     _fn('add_triple',
         'PLAN: add one document-level relation between two nodes, or between a node and one of the '
         'format\'s constants. The group (' + ', '.join(GROUPS) + ') follows from the relation '
-        'unless you say otherwise. A constant no triple has used yet is created with it.',
+        'unless you say otherwise. A constant no triple has used yet is created with it. The '
+        'triple reads (a rel b): b stands in relation rel to a, which is its reference, so '
+        '(document-creation-time :before e) says e happened before the document was made and '
+        '(author :full-affirmative e) says the author is sure e happened. A relation outside '
+        'its group\'s closed set is refused.',
         {'document': _DOC, 'a': _END,
          'rel': {'type': 'string',
-                 'description': 'The relation, starting with a colon: :same-entity, :before, '
-                                ':full-affirmative.'},
+                 'description': 'The relation, starting with a colon. temporal: '
+                                + ', '.join(DOC_RELATIONS['temporal']) + '. modal: '
+                                + ', '.join(DOC_RELATIONS['modal']) + '. coref: '
+                                + ', '.join(DOC_RELATIONS['coref']) + '.'},
          'b': _END,
          'group': {'type': 'string', 'enum': list(GROUPS),
                    'description': 'Only where the relation belongs to two groups (:contains).'},
