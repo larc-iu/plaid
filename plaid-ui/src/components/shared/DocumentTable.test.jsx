@@ -53,11 +53,11 @@ describe('DocumentTable', () => {
     await unmount();
   });
 
-  it('counts a seed-layer token with no word of its extent as a word', async () => {
-    // d1 has 3 words and 2 tokens still waiting for one; d2 has never been
-    // opened, so all 16 of its tokens are waiting.
+  it('counts a document with no words yet by its tokens', async () => {
+    // d1 has words, which are what it counts; d2 has never been opened, so
+    // it has none yet and each of its 16 tokens will get one.
     const query = vi.fn(async ({ where }) =>
-      where.length === 1
+      where[0][2].layer === 'wl'
         ? { results: [['d1', 3]] }
         : {
             results: [
@@ -67,11 +67,7 @@ describe('DocumentTable', () => {
           },
     );
     const { container, unmount } = await mount({ seedLayerId: 'tl', client: client({ query }) });
-    expect(wordCells(container)).toEqual(['5', '16']);
-    const [anti] = query.mock.calls.map(([q]) => q).filter((q) => q.where.length === 2);
-    expect(anti.where[0][2].layer).toBe('tl');
-    expect(anti.where[1][0]).toBe('not');
-    expect(anti.where[1][1][2].layer).toBe('wl');
+    expect(wordCells(container)).toEqual(['3', '16']);
     await unmount();
   });
 

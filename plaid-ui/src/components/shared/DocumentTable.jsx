@@ -19,10 +19,13 @@ const Spinner = () => (
  * tokens are UD's syntactic words. Undefined means the project has no such
  * layer, and the column reads as a dash rather than as zero.
  *
- * `seedLayerId` is plaid-ud's token layer. A token there with no word of the
- * same extent counts as one word, because opening the document gives it one
- * (reconcile's back-fill). Without it, a project just set up for UD would read
- * zero words in every document until each was opened.
+ * `seedLayerId` is plaid-ud's token layer. A document with no words yet counts
+ * its tokens instead, because opening it gives each token a word (reconcile's
+ * back-fill). Without it, a project just set up for UD would read zero words
+ * in every document until each was opened. A document that already has words
+ * and gained tokens elsewhere since is not caught: asking for the tokens with
+ * no word of their extent is an anti-join that took two seconds on a 250,000
+ * token treebank, against 50ms for the plain counts.
  *
  * `href(documentId, {wordCount, hasWordLayer, wordsLoading})` is the app's too.
  * It takes the counts because plaid-ud sends a document with nothing in it to
@@ -49,7 +52,7 @@ export const DocumentTable = ({
   const [mineLoading, setMineLoading] = useState(true);
 
   // Per-document word counts: an aggregate query over the layer's tokens,
-  // grouped by document, plus the seed layer's unmatched tokens when given. Sub-word units are on another layer and would inflate
+  // grouped by document, and the seed layer's for a document with no words. Sub-word units are on another layer and would inflate
   // the count, which is why the caller names the layer rather than this
   // counting everything.
   useEffect(() => {
@@ -65,46 +68,18 @@ export const DocumentTable = ({
         return;
       }
       try {
-        const perDoc = { group: ['?d'], aggregates: [['count']] };
-        const [res, unseeded] = await Promise.all([
+        const countPerDoc = (layer) =>
           client.query({
-            where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
-            return: perDoc,
-          }),
-          seedLayerId
-            ? client.query({
-                where: [
-                  [
-                    'token',
-                    '?s',
-                    {
-                      layer: seedLayerId,
-                      doc: { var: '?d' },
-                      begin: { var: '?b' },
-                      end: { var: '?e' },
-                    },
-                  ],
-                  [
-                    'not',
-                    [
-                      'token',
-                      '?w',
-                      {
-                        layer: wordLayerId,
-                        doc: { var: '?d' },
-                        begin: { var: '?b' },
-                        end: { var: '?e' },
-                      },
-                    ],
-                  ],
-                ],
-                return: perDoc,
-              })
-            : null,
+            where: [['token', '?t', { layer, doc: { var: '?d' } }]],
+            return: { group: ['?d'], aggregates: [['count']] },
+          });
+        const [res, seeds] = await Promise.all([
+          countPerDoc(wordLayerId),
+          seedLayerId ? countPerDoc(seedLayerId) : null,
         ]);
         const byDoc = {};
-        for (const [docId, n] of [...(res?.results || []), ...(unseeded?.results || [])])
-          byDoc[docId] = (byDoc[docId] || 0) + n;
+        for (const [docId, n] of seeds?.results || []) byDoc[docId] = n;
+        for (const [docId, n] of res?.results || []) if (n > 0) byDoc[docId] = n;
         if (!cancelled) {
           setHasWordLayer(true);
           setWordCounts(byDoc);
