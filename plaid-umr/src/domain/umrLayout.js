@@ -258,7 +258,14 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
         label: { x: t.x, y: t.y - opt.labelLift },
       };
     }
-    const curve = routeBetween(s, t, nodes, opt, [edge.source, edge.target]);
+    const curve = routeBetween(
+      s,
+      t,
+      nodes,
+      opt,
+      [edge.source, edge.target],
+      opt.pillWidth(edge.role),
+    );
     return {
       id: edge.id,
       source: edge.source,
@@ -378,14 +385,15 @@ function treePath(s, t, lane, opt) {
 // other side, then wider bows.
 //
 // `exclude` are the ids whose boxes the curve may touch (its own ends).
+// `labelWidth` is the width of the label the curve will carry, if any.
 // Returns the four points of one cubic.
-export function routeBetween(s, t, nodes, opt = DEFAULT_OPTIONS, exclude = []) {
+export function routeBetween(s, t, nodes, opt = DEFAULT_OPTIONS, exclude = [], labelWidth = 0) {
   const o = { ...DEFAULT_OPTIONS, ...opt };
   const others = [...nodes.entries()]
     .filter(([id]) => !exclude.includes(id))
     .map(([, p]) => p)
     .filter((p) => p !== s && p !== t);
-  const candidates = s.row === t.row ? dips(s, t, others) : bulges(s, t, o);
+  const candidates = s.row === t.row ? dips(s, t, others, labelWidth, o) : bulges(s, t, o);
   let best = null;
   candidates.forEach((curve, order) => {
     const hits = crossings(curve, others);
@@ -394,7 +402,12 @@ export function routeBetween(s, t, nodes, opt = DEFAULT_OPTIONS, exclude = []) {
   return best.curve;
 }
 
-function dips(s, t, others) {
+// A dip between two NEIGHBOURS was shorter than its own label: the label,
+// set on the middle of the curve, covered all of it but the arrowhead. So a
+// dip that carries a label leaves from the far quarters of the two boxes
+// when the near ones are too close for it, and goes deep enough that the
+// label clears the boxes, and the curve shows on either side of it.
+function dips(s, t, others, labelWidth = 0, o = DEFAULT_OPTIONS) {
   const dir = t.x < s.x ? -1 : 1;
   const lo = Math.min(s.x, t.x);
   const hi = Math.max(s.x, t.x);
@@ -403,21 +416,29 @@ function dips(s, t, others) {
   others.forEach((p) => {
     if (p.row === s.row && p.x > lo && p.x < hi) floor = Math.max(floor, p.y + p.height);
   });
-  const x1 = s.x + (dir * s.width) / 4;
+  let x1 = s.x + (dir * s.width) / 4;
+  let x2 = t.x - (dir * t.width) / 4;
+  const room = labelWidth ? labelWidth + 2 * LEG : 0;
+  if (Math.abs(x2 - x1) < room) {
+    x1 = s.x - (dir * s.width) / 4;
+    x2 = t.x + (dir * t.width) / 4;
+  }
   const y1 = s.y + s.height;
-  const x2 = t.x - (dir * t.width) / 4;
   const y2 = t.y + t.height;
+  const extra = labelWidth ? o.pillHeight : 0;
   // A cubic with both handles at one depth reaches three quarters of it.
-  return [16, 28, 42].map((depth) => {
-    const low = floor + depth;
-    const handle = (y) => y + ((low - y) * 4) / 3;
-    return [
-      [x1, y1],
-      [x1, handle(y1)],
-      [x2, handle(y2)],
-      [x2, y2],
-    ];
-  });
+  return [16, 28, 42]
+    .map((d) => d + extra)
+    .map((depth) => {
+      const low = floor + depth;
+      const handle = (y) => y + ((low - y) * 4) / 3;
+      return [
+        [x1, y1],
+        [x1, handle(y1)],
+        [x2, handle(y2)],
+        [x2, y2],
+      ];
+    });
 }
 
 function bulges(s, t, o) {
@@ -527,5 +548,8 @@ function placeLabels(edges, nodes, o) {
     taken.push(best.box);
   });
 }
+
+// How much of a labelled dip shows on each side of its label, at least.
+const LEG = 18;
 
 const r = (n) => Math.round(n * 10) / 10;

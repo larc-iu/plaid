@@ -271,3 +271,42 @@ test('the stage offset is the distance scrolled from the canvas\u2019s left edge
   // Nothing overflows: there is nowhere to scroll.
   assert.equal(stageLeftOffset({ scrollLeft: 0, scrollWidth: 400, clientWidth: 400 }, 'rtl'), 0);
 });
+
+// A re-entrant edge between two neighbours in one row was a dip shorter than
+// its own label, which covered all of it but the arrowhead ("prdii" to
+// "har-nuu" in the Lamkang demo). In every corpus, a third of each such
+// curve at least shows past its label.
+test('a re-entrant edge in one row shows past its label', () => {
+  const short = [];
+  let dips = 0;
+  for (const file of fs.readdirSync(FIXTURES).filter((f) => f.endsWith('.umr'))) {
+    const text = fs.readFileSync(path.join(FIXTURES, file), 'utf8');
+    const plan = planImport(parseUmrFile(text).sentences, []);
+    const graph = new UmrDocument({ raw: rawFromPlan(plan) }).graph;
+    graph.sentences.forEach((s) => {
+      if (!s.nodes.length) return;
+      let x = 40;
+      const columns = new Map();
+      s.words.forEach((w) => {
+        const width = 14 + 8 * w.text.length;
+        columns.set(w.id, { x: x + width / 2 });
+        x += width + 14;
+      });
+      const layout = layoutSentence(s, graph.nodesById, { columns, sizes: new Map() });
+      layout.edges.forEach((e) => {
+        if (e.tree || layout.nodes.get(e.source).row !== layout.nodes.get(e.target).row) return;
+        dips++;
+        const half = DEFAULT_OPTIONS.pillWidth(e.role) / 2;
+        const halfH = DEFAULT_OPTIONS.pillHeight / 2;
+        let shown = 0;
+        for (let i = 1; i < 24; i++) {
+          const [px, py] = pointOn(e.curve, i / 24);
+          if (Math.abs(px - e.label.x) > half || Math.abs(py - e.label.y) > halfH) shown++;
+        }
+        if (shown < 8) short.push(`${file} s${s.index} ${e.role} ${shown}/23`);
+      });
+    });
+  }
+  assert.ok(dips > 20, `${dips} same-row re-entrant edges`);
+  assert.deepEqual(short, []);
+});
