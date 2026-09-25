@@ -27,6 +27,18 @@ test.describe('canvas', () => {
       `/#/projects/${projectId}/documents/${documentId}/annotate?sent=2&var=${secondVar}`,
     );
     await expect(page.locator(`[data-node-var="${secondVar}"]`)).toBeFocused();
+    // And lets go: Escape unfocuses it, and so does a click on empty canvas.
+    const linked = page.locator(`[data-node-var="${secondVar}"]`);
+    await expect(linked).toHaveClass(/umr-node--focused/);
+    await page.keyboard.press('Escape');
+    await expect(linked).not.toHaveClass(/umr-node--focused/);
+    await expect(page.locator('.umr-node--focused')).toHaveCount(0);
+    await linked.click();
+    await expect(linked).toHaveClass(/umr-node--focused/);
+    const graph = page.locator('.umr-block').nth(1).locator('.umr-graph');
+    const box = await graph.boundingBox();
+    await page.mouse.click(box.x + box.width - 4, box.y + 4);
+    await expect(page.locator('.umr-node--focused')).toHaveCount(0);
 
     // A writer sees the drafting service's button beside History.
     await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();

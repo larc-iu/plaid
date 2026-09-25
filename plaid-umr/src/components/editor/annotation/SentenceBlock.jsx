@@ -215,6 +215,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   follow(drag, setDrag);
   // Whether the last press on the graph began on empty space.
   const pressedEmptyRef = useRef(false);
+  // Whether that press came with an editor or the menu open.
+  const pressedWithEditorRef = useRef(false);
   const { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes } = useCanvasMeasure(
     `${dataVersion}:${sentence.index}`,
   );
@@ -694,9 +696,23 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     else sectionRef.current?.focus();
   };
 
+  // No node focused: its lines and its lit words go. Focus stays in the
+  // block, on the section itself, so the page does not jump and the next
+  // click or key starts from here.
+  const unfocus = () => {
+    setFocusedId(null);
+    sectionRef.current?.focus({ preventScroll: true });
+  };
+
   // ----- keys -----
 
   const handleKeyDown = async (e) => {
+    // Read-only too: a node focused to look at it (a deep link) lets go.
+    if (e.key === 'Escape' && readOnly && focusedId && !editor && !menu) {
+      e.preventDefault();
+      unfocus();
+      return;
+    }
     if (readOnly || editor || menu || e.isComposing) return;
     // A text box inside the block owns its keys. The bare letters below are
     // `outsideText` in the table, and this is where that is kept.
@@ -707,6 +723,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       if (mode) {
         e.preventDefault();
         setMode(null);
+      } else if (focusedId) {
+        e.preventDefault();
+        unfocus();
       }
       return;
     }
@@ -1363,14 +1382,21 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             // click was. Only when the press began on empty space too: a drag
             // from a grip or a label ends in a click on this, the common
             // ancestor of where it began and ended.
+            // Otherwise a click there unfocuses the node, unless it is the
+            // click that closed an editor, which hands focus back.
             onPointerDown={(e) => {
               pressedEmptyRef.current = !e.target.closest?.(
                 '[data-node-id], .umr-edge-label, .umr-inline-editor',
               );
+              pressedWithEditorRef.current = !!editor || !!menu;
             }}
             onClick={(e) => {
-              if (mode?.kind !== 'child' || !pressedEmptyRef.current) return;
-              if (e.target.closest?.('[data-node-id]')) return;
+              if (!pressedEmptyRef.current || e.target.closest?.('[data-node-id]')) return;
+              if (!mode) {
+                if (!pressedWithEditorRef.current && focusedId) unfocus();
+                return;
+              }
+              if (mode.kind !== 'child') return;
               const parentId = mode.nodeId;
               setMode(null);
               const p = graphPoint(e.clientX, e.clientY);
