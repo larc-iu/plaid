@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { isPublished, publicationCounts, publishAll, statusOf } from './publication.js';
 
 const entry = (id, status) => ({ id, metadata: status ? { status } : {} });
@@ -43,7 +44,11 @@ describe('publishAll', () => {
         chunks.push(patched.length - before);
       },
       vocabItems: {
-        patchMetadata: (id, patch) => patched.push([id, patch]),
+        // The server takes a list of path ops and refuses anything else.
+        patchMetadata: (id, ops) => {
+          if (!Array.isArray(ops)) throw new Error('Request validation failed. invalid type');
+          patched.push([id, applyMetadataOps({}, ops)]);
+        },
       },
       configs: [],
       // What the SERVER holds right now, which is what publishAll must read.
@@ -69,6 +74,19 @@ describe('publishAll', () => {
     expect(n).toBe(1);
     expect(client.configs).toEqual([]);
     expect(client.patched).toEqual([['a', { Status: 'published' }]]);
+  });
+
+  it('sends each entry one set op on the status key, never a merge object', async () => {
+    // Core took `{status: 'published'}` as a shallow merge once; it now takes
+    // path ops only and refused the whole batch with a 400.
+    const client = fakeClient();
+    const sent = [];
+    client.vocabItems.patchMetadata = (id, ops) => sent.push([id, ops]);
+    await publishAll(client, [entry('a'), entry('b', 'draft')], { vocabularyId: 'v' });
+    expect(sent).toEqual([
+      ['a', [{ op: 'set', path: ['status'], value: 'published' }]],
+      ['b', [{ op: 'set', path: ['status'], value: 'published' }]],
+    ]);
   });
 
   it('declares the Status field first on a vocabulary that has none', async () => {

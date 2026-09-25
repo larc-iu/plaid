@@ -13,6 +13,7 @@
 
 import { STATUS_FIELD, statusFieldKey, statusFieldSeed } from '@igt/domain/vocabDictionary.js';
 import { IGT_NAMESPACE, readVocabFields } from '@igt/domain/igtConfig.js';
+import { metadataOps } from '@larc-iu/plaid-client';
 
 export const PUBLISHED = 'published';
 
@@ -69,8 +70,11 @@ export const publishAll = async (client, items, { vocabularyId, name, onProgress
     }
     for (let i = 0; i < pending.length; i += BATCH_CHUNK) {
       const part = pending.slice(i, i + BATCH_CHUNK);
+      // A metadata PATCH is a list of path ops. One top-level set leaves every
+      // other key on the entry alone.
+      const ops = metadataOps({ [key]: PUBLISHED });
       await client.batched(async (b) => {
-        for (const it of part) b.vocabItems.patchMetadata(it.id, { [key]: PUBLISHED });
+        for (const it of part) b.vocabItems.patchMetadata(it.id, ops);
       });
       done += part.length;
       onProgress?.({ done, total: pending.length });
