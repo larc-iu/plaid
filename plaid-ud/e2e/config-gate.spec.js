@@ -71,6 +71,62 @@ test('the button sets the project up and the document list appears', async ({ pa
   }
 });
 
+// A project born in IGT has tokens but no syntactic words: UD makes one per
+// token when a document is first opened. The list must count them before that.
+test('a document tokenized elsewhere shows its word count as soon as the project is set up', async ({
+  page,
+}) => {
+  const { token } = readToken();
+  const client = new PlaidClient(BASE_URL, token);
+  const name = `E2E UD Adopt Tokens ${Date.now()}`;
+  const project = await client.projects.create(name);
+  try {
+    const textLayer = await client.textLayers.create(project.id, 'Text');
+    await client.textLayers.setConfig(textLayer.id, 'plaid', 'role', 'baseline');
+    const sentences = await client.tokenLayers.create(textLayer.id, 'Sentences', 'partitioning');
+    await client.tokenLayers.setConfig(sentences.id, 'plaid', 'role', 'sentence');
+    const words = await client.tokenLayers.create(
+      textLayer.id,
+      'Words',
+      'non-overlapping',
+      sentences.id,
+    );
+    await client.tokenLayers.setConfig(words.id, 'plaid', 'role', 'word');
+    const body = 'the dog runs';
+    const doc = await client.documents.create(project.id, 'Tokenized');
+    const text = await client.texts.create(textLayer.id, doc.id, body);
+    await client.batched(async (b) => {
+      b.tokens.bulkCreate([
+        { tokenLayerId: sentences.id, text: text.id, begin: 0, end: body.length },
+      ]);
+      b.tokens.bulkCreate(
+        [
+          [0, 3],
+          [4, 7],
+          [8, 12],
+        ].map(([begin, end]) => ({ tokenLayerId: words.id, text: text.id, begin, end })),
+      );
+    });
+
+    await page.goto(`/#/projects/${project.id}/documents`);
+    await page.getByRole('button', { name: 'Set up for UD' }).click();
+    const row = page.getByRole('row').filter({ hasText: 'Tokenized' });
+    await expect(row.getByRole('cell').nth(1)).toHaveText('3');
+    // Counted, not written: nothing has opened the document yet.
+    const configured = await client.projects.get(project.id);
+    const sw = configured.textLayers[0].tokenLayers.find(
+      (t) => t.config?.plaid?.role === 'syntactic-word',
+    );
+    const res = await client.query({
+      where: [['token', '?t', { layer: sw.id }]],
+      return: { aggregates: [['count']] },
+    });
+    expect(res.results).toEqual([[0]]);
+  } finally {
+    await client.projects.delete(project.id);
+  }
+});
+
 test('a document opened directly says so and offers the way, without redirecting', async ({
   page,
 }) => {

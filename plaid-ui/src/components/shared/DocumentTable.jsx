@@ -19,11 +19,24 @@ const Spinner = () => (
  * tokens are UD's syntactic words. Undefined means the project has no such
  * layer, and the column reads as a dash rather than as zero.
  *
+ * `seedLayerId` is plaid-ud's token layer. A token there with no word of the
+ * same extent counts as one word, because opening the document gives it one
+ * (reconcile's back-fill). Without it, a project just set up for UD would read
+ * zero words in every document until each was opened.
+ *
  * `href(documentId, {wordCount, hasWordLayer, wordsLoading})` is the app's too.
  * It takes the counts because plaid-ud sends a document with nothing in it to
  * the text editor instead of the annotation grid.
  */
-export const DocumentTable = ({ documents, client, projectId, wordLayerId, href, defaultSort }) => {
+export const DocumentTable = ({
+  documents,
+  client,
+  projectId,
+  wordLayerId,
+  seedLayerId,
+  href,
+  defaultSort,
+}) => {
   // documentId -> word count. A document with a word layer but no tokens is
   // absent (rendered 0); `hasWordLayer` false means there is no layer to count.
   const [wordCounts, setWordCounts] = useState({});
@@ -35,8 +48,8 @@ export const DocumentTable = ({ documents, client, projectId, wordLayerId, href,
   const [myLastEdits, setMyLastEdits] = useState({});
   const [mineLoading, setMineLoading] = useState(true);
 
-  // Per-document word counts: one aggregate query over the layer's tokens,
-  // grouped by document. Sub-word units are on another layer and would inflate
+  // Per-document word counts: an aggregate query over the layer's tokens,
+  // grouped by document, plus the seed layer's unmatched tokens when given. Sub-word units are on another layer and would inflate
   // the count, which is why the caller names the layer rather than this
   // counting everything.
   useEffect(() => {
@@ -52,12 +65,46 @@ export const DocumentTable = ({ documents, client, projectId, wordLayerId, href,
         return;
       }
       try {
-        const res = await client.query({
-          where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
-          return: { group: ['?d'], aggregates: [['count']] },
-        });
+        const perDoc = { group: ['?d'], aggregates: [['count']] };
+        const [res, unseeded] = await Promise.all([
+          client.query({
+            where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
+            return: perDoc,
+          }),
+          seedLayerId
+            ? client.query({
+                where: [
+                  [
+                    'token',
+                    '?s',
+                    {
+                      layer: seedLayerId,
+                      doc: { var: '?d' },
+                      begin: { var: '?b' },
+                      end: { var: '?e' },
+                    },
+                  ],
+                  [
+                    'not',
+                    [
+                      'token',
+                      '?w',
+                      {
+                        layer: wordLayerId,
+                        doc: { var: '?d' },
+                        begin: { var: '?b' },
+                        end: { var: '?e' },
+                      },
+                    ],
+                  ],
+                ],
+                return: perDoc,
+              })
+            : null,
+        ]);
         const byDoc = {};
-        for (const [docId, n] of res?.results || []) byDoc[docId] = n;
+        for (const [docId, n] of [...(res?.results || []), ...(unseeded?.results || [])])
+          byDoc[docId] = (byDoc[docId] || 0) + n;
         if (!cancelled) {
           setHasWordLayer(true);
           setWordCounts(byDoc);
@@ -79,7 +126,7 @@ export const DocumentTable = ({ documents, client, projectId, wordLayerId, href,
     return () => {
       cancelled = true;
     };
-  }, [wordLayerId, client]);
+  }, [wordLayerId, seedLayerId, client]);
 
   // When this reader last touched each document, from the audit log in one
   // request. A failure here costs a column, not the list, so it warns and

@@ -186,6 +186,7 @@ export const DocumentList = () => {
           client={getClient()}
           projectId={projectId}
           wordLayerId={getUdLayerInfo(project).morphemeTokenLayer?.id}
+          seedLayerId={getUdLayerInfo(project).wordTokenLayer?.id}
           href={rowHref}
           defaultSort={{ key: 'name', dir: 'asc' }}
         />

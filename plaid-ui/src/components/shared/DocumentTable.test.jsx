@@ -53,6 +53,28 @@ describe('DocumentTable', () => {
     await unmount();
   });
 
+  it('counts a seed-layer token with no word of its extent as a word', async () => {
+    // d1 has 3 words and 2 tokens still waiting for one; d2 has never been
+    // opened, so all 16 of its tokens are waiting.
+    const query = vi.fn(async ({ where }) =>
+      where.length === 1
+        ? { results: [['d1', 3]] }
+        : {
+            results: [
+              ['d1', 2],
+              ['d2', 16],
+            ],
+          },
+    );
+    const { container, unmount } = await mount({ seedLayerId: 'tl', client: client({ query }) });
+    expect(wordCells(container)).toEqual(['5', '16']);
+    const [anti] = query.mock.calls.map(([q]) => q).filter((q) => q.where.length === 2);
+    expect(anti.where[0][2].layer).toBe('tl');
+    expect(anti.where[1][0]).toBe('not');
+    expect(anti.where[1][1][2].layer).toBe('wl');
+    await unmount();
+  });
+
   it('reads as a dash, not as zero, when there is no layer to count', async () => {
     const query = vi.fn();
     const { container, unmount } = await mount({
