@@ -100,10 +100,15 @@ export const entryText = (item, fields) => {
   };
 };
 
-/** Every word a search should look at on one entry: its form and its text. */
+/**
+ * Every word a search should look at on one entry: its form, its glosses and
+ * its definitions, in every language. Not the part of speech, which one
+ * letter of a query would match on half the dictionary, and never a field the
+ * page does not print.
+ */
 export const searchableText = (item, fields) => {
-  const { pos, glosses, definitions } = entryText(item, fields);
-  return [item?.form ?? '', pos ?? '', ...[...glosses, ...definitions].map((e) => e.value)]
+  const { glosses, definitions } = entryText(item, fields);
+  return [item?.form ?? '', ...[...glosses, ...definitions].map((e) => e.value)]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();

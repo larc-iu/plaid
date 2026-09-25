@@ -166,6 +166,41 @@ describe('buildSearchIndex / searchPages', () => {
   it('finds nothing for a query nothing carries', () => {
     expect(searchPages(pages, 'zzzz', index)).toEqual([]);
   });
+
+  it('matches a definition, and never a note, a source or a part of speech', () => {
+    // Lamkang: `kaang` found daar, hol, lee and reen, whose Comments quote a
+    // sentence with kaang in it.
+    const flex = normalizeVocabFields({
+      gloss: { inline: true },
+      definition: { inline: false },
+      pos: { inline: true },
+      Comment: { inline: false },
+      Source: { inline: false },
+    });
+    const lexicon = [
+      { id: 'k', form: 'kaang', metadata: { status: 'published', gloss: 'knife', pos: 'n' } },
+      {
+        id: 'd',
+        form: 'daar',
+        metadata: {
+          status: 'published',
+          gloss: 'brisket',
+          definition: 'meat from the breast',
+          pos: 'vt',
+          Comment: '/kaang kool/ 160428 rec @32:05',
+          Source: 'nsolo',
+        },
+      },
+    ];
+    const ix = buildSearchIndex(lexicon, flex);
+    const ps = buildFormPages(lexicon);
+    const forms = (q) => searchPages(ps, q, ix).map((p) => p.form);
+    expect(forms('kaang')).toEqual(['kaang']);
+    expect(forms('breast')).toEqual(['daar']);
+    expect(forms('nsolo')).toEqual([]);
+    expect(forms('rec')).toEqual([]);
+    expect(forms('vt')).toEqual([]);
+  });
 });
 
 // The reported failure, in the language it was found in. A lexicographer typed

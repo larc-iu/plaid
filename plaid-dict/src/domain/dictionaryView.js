@@ -145,9 +145,8 @@ export const buildIndex = (pages, collator = new Intl.Collator()) => {
 
 /**
  * Every published entry's searchable text, built once per dictionary: the form,
- * the part of speech, the glosses, the definitions and whatever else the
- * compiler wrote. Keyed by item id, so a keystroke is a lookup rather than a
- * re-read of the whole vocabulary.
+ * the glosses and the definitions (see searchableText). Keyed by item id, so a
+ * keystroke is a lookup rather than a re-read of the whole vocabulary.
  */
 export const buildSearchIndex = (items, fields) => {
   const index = new Map();
