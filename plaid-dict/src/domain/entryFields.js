@@ -141,6 +141,41 @@ export const firstGloss = (node, fields, query = '') => {
 };
 
 /**
+ * The glosses a result list sets beside one page, one per headword that has
+ * one. A headword with no gloss anywhere in its tree is left out rather than
+ * drawn as a bare number. The number is kept only where the page has more
+ * than one headword, since a lone entry needs none to tell it apart.
+ *
+ * @returns {{id: string, number: string, gloss: string}[]}
+ */
+export const resultGlosses = (page, fields, query = '') => {
+  const several = (page?.headwords || []).length > 1;
+  return (page?.headwords || [])
+    .map((node) => ({
+      id: node.item.id,
+      number: several ? node.number || '' : '',
+      gloss: firstGloss(node, fields, query),
+    }))
+    .filter((row) => row.gloss);
+};
+
+/**
+ * Whether a node has anything for the page to draw under its number: a part
+ * of speech, a gloss, a definition, an example or a reference the dictionary
+ * shows, on itself or on a sense under it. `resolveRef` is the one the page
+ * draws references with; without it every stored reference counts.
+ */
+export const hasContent = (node, fields, resolveRef = null) => {
+  if (node.shown !== false) {
+    const { pos, glosses, definitions } = entryText(node.item, fields);
+    if (pos || glosses.length || definitions.length) return true;
+    if (allExamples(node.item).some((example) => example.text || example.document)) return true;
+    if (entryRefs(node.item, fields, resolveRef ?? ((id) => id)).length) return true;
+  }
+  return (node.senses || []).some((sense) => hasContent(sense, fields, resolveRef));
+};
+
+/**
  * The entries this one points at, field by field. `resolve` turns a target id
  * into whatever the page needs to draw a link, and returns null for a target
  * the dictionary does not show: a reference to an unpublished entry is not a

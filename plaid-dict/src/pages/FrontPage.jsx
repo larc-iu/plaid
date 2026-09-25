@@ -4,7 +4,7 @@ import { Search } from 'lucide-react';
 import { useDictionary } from '@/contexts/DictionaryContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { searchPages } from '@/domain/dictionaryView';
-import { firstGloss } from '@/domain/entryFields';
+import { resultGlosses } from '@/domain/entryFields';
 import { dictTitle } from '@/domain/dictConfig';
 import { Input } from '@ui/components/ui/input';
 import { formPath } from '@/domain/paths';
@@ -122,13 +122,11 @@ export const FrontPage = () => {
                   entries share one page, and showing one gloss said a search
                   for a homograph had found a single entry. */}
               <span className="min-w-0 flex-1 truncate font-serif text-sm text-muted-foreground">
-                {page.headwords.map((node, i) => (
-                  <span key={node.item.id}>
+                {resultGlosses(page, fields, query).map((row, i) => (
+                  <span key={row.id}>
                     {i > 0 && ' · '}
-                    {page.headwords.length > 1 && node.number && (
-                      <span className="mr-1 tabular-nums">{node.number}</span>
-                    )}
-                    {firstGloss(node, fields, query)}
+                    {row.number && <span className="mr-1 tabular-nums">{row.number}</span>}
+                    {row.gloss}
                   </span>
                 ))}
               </span>

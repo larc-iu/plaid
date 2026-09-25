@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { FormLabel } from '@igt/components/vocabularies/FormLabel.jsx';
-import { displayForm, entryExamples, entryRefs, entryText } from '@/domain/entryFields';
+import { displayForm, entryExamples, entryRefs, entryText, hasContent } from '@/domain/entryFields';
 
 // A gloss or definition in a language the dictionary names elsewhere gets no
 // tag; where a field carries one, it is set small before the text, the way a
@@ -90,43 +90,45 @@ const Meanings = ({ item, fields, resolveRef, sentences, exampleLayers, lang }) 
 };
 
 // A sense: its number in the margin, its meanings beside it, its own senses
-// indented under it.
-const Sense = ({ node, fields, resolveRef, sentences, exampleLayers, lang }) => (
-  <li>
-    <div className="flex gap-3">
-      <span className="w-10 shrink-0 pt-0.5 text-right text-sm tabular-nums text-muted-foreground">
-        {node.number}
-      </span>
-      {node.shown ? (
-        <Meanings
-          item={node.item}
-          fields={fields}
-          resolveRef={resolveRef}
-          sentences={sentences}
-          exampleLayers={exampleLayers}
-          lang={lang}
-        />
-      ) : (
-        <span className="pt-0.5 font-serif">{displayForm(node.item)}</span>
-      )}
-    </div>
-    {node.senses.length > 0 && (
-      <ol className="ml-10 mt-1 flex flex-col gap-1.5">
-        {node.senses.map((s) => (
-          <Sense
-            key={s.item.id}
-            node={s}
+// indented under it. A sense with nothing to show is not drawn at all, rather
+// than as a number with nothing beside it.
+const Sense = ({ node, fields, resolveRef, sentences, exampleLayers, lang }) =>
+  hasContent(node, fields, resolveRef) && (
+    <li>
+      <div className="flex gap-3">
+        <span className="w-10 shrink-0 pt-0.5 text-right text-sm tabular-nums text-muted-foreground">
+          {node.number}
+        </span>
+        {node.shown ? (
+          <Meanings
+            item={node.item}
             fields={fields}
             resolveRef={resolveRef}
             sentences={sentences}
             exampleLayers={exampleLayers}
             lang={lang}
           />
-        ))}
-      </ol>
-    )}
-  </li>
-);
+        ) : (
+          <span className="pt-0.5 font-serif">{displayForm(node.item)}</span>
+        )}
+      </div>
+      {node.senses.length > 0 && (
+        <ol className="ml-10 mt-1 flex flex-col gap-1.5">
+          {node.senses.map((s) => (
+            <Sense
+              key={s.item.id}
+              node={s}
+              fields={fields}
+              resolveRef={resolveRef}
+              sentences={sentences}
+              exampleLayers={exampleLayers}
+              lang={lang}
+            />
+          ))}
+        </ol>
+      )}
+    </li>
+  );
 
 /**
  * One headword and everything under it. `to` makes the headword a link, which

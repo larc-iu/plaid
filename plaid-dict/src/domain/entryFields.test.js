@@ -6,6 +6,8 @@ import {
   entryRefs,
   entryText,
   firstGloss,
+  hasContent,
+  resultGlosses,
   searchableText,
 } from './entryFields.js';
 import { normalizeVocabFields } from '@igt/domain/vocabFields.js';
@@ -133,6 +135,63 @@ describe('firstGloss', () => {
   it('falls back to a first gloss when nothing matched', () => {
     expect(firstGloss(node({ gloss: 'agua' }), fields, 'zzz')).toBe('agua');
     expect(firstGloss(node({}), fields)).toBeNull();
+  });
+});
+
+describe('resultGlosses', () => {
+  const hw = (id, number, metadata, senses = []) => ({
+    item: { id, form: 'daar', metadata },
+    number,
+    shown: true,
+    senses,
+  });
+
+  it('leaves out a headword with no gloss instead of drawing its bare number', () => {
+    // Lamkang: "daar 1 put · 2 · 3 brisket".
+    const page = {
+      form: 'daar',
+      headwords: [
+        hw('d1', '1', {}, [hw('d1s', '1.1', { gloss: 'put' })]),
+        hw('d2', '2', { Comment: '160811 rec @10:25' }),
+        hw('d3', '3', { gloss: 'brisket' }),
+      ],
+    };
+    expect(resultGlosses(page, fields)).toEqual([
+      { id: 'd1', number: '1', gloss: 'put' },
+      { id: 'd3', number: '3', gloss: 'brisket' },
+    ]);
+  });
+
+  it('numbers nothing on a page with one headword', () => {
+    const page = { form: 'daar', headwords: [hw('d1', '1', { gloss: 'put' })] };
+    expect(resultGlosses(page, fields)).toEqual([{ id: 'd1', number: '', gloss: 'put' }]);
+  });
+});
+
+describe('hasContent', () => {
+  const n = (metadata, senses = [], shown = true) => ({
+    item: { id: 'x', form: 'daar', metadata },
+    number: '1',
+    shown,
+    senses,
+  });
+
+  it('is false for a sense that carries only fields the page hides', () => {
+    expect(hasContent(n({ Comment: 'rec @4:10', status: 'published' }), fields)).toBe(false);
+    expect(hasContent(n({ gloss: '   ' }), fields)).toBe(false);
+  });
+
+  it('is true for a part of speech, a gloss, an example or a shown reference', () => {
+    expect(hasContent(n({ pos: 'N' }), fields)).toBe(true);
+    expect(hasContent(n({ definition: 'o dia' }), fields)).toBe(true);
+    expect(hasContent(n({ examples: [{ text: 'ndi', translation: 'I' }] }), fields)).toBe(true);
+    expect(hasContent(n({ seeAlso: ['t'] }), fields)).toBe(true);
+    expect(hasContent(n({ seeAlso: ['t'] }), fields, () => null)).toBe(false);
+  });
+
+  it('looks through a hidden headword to its senses', () => {
+    expect(hasContent(n({ gloss: 'DRAFT' }, [], false), fields)).toBe(false);
+    expect(hasContent(n({}, [n({ gloss: 'put' })], false), fields)).toBe(true);
   });
 });
 

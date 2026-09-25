@@ -78,4 +78,15 @@ describe('EntryArticle', () => {
     expect(container.textContent).not.toContain('Comment');
     await unmount();
   });
+
+  it('draws no number for a sense with nothing to show', async () => {
+    const empty = node('e3', 'daar', '1.2', '');
+    empty.item.metadata = { status: 'published', Comment: 'rec @4:10' };
+    const tree = node('e1', 'daar', '1', 'put', [node('e2', 'daar', '1.1', 'place'), empty]);
+    const { container, unmount } = await render(tree);
+    expect(container.textContent).toContain('1.1');
+    expect(container.textContent).not.toContain('1.2');
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    await unmount();
+  });
 });
