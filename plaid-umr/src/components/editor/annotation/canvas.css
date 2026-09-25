@@ -365,8 +365,11 @@
 }
 /* The form itself, on a chip, so a word reads as the pieces it is made of
    rather than as text with dashes in it. plaid-igt's grid shades the form
-   and leaves the lines under it plain, and this follows it. */
+   and leaves the lines under it plain, and this follows it. The chip is as
+   wide as the form, not the column: a longer gloss or category under it
+   would stretch it into an empty box. It starts where the lines under it do. */
 .umr-morph-form {
+  align-self: flex-start;
   background: hsl(var(--muted) / 0.7);
   border-radius: 3px;
   padding: 0 4px;
