@@ -34,6 +34,17 @@ describe('readDictionary', () => {
     expect(headwords.map((h) => h.id)).toEqual(['kat']);
   });
 
+  it("reads the status under the vocabulary's own key, for the page as well", () => {
+    const items = [
+      { id: 'kat', form: 'kat', metadata: { Status: 'published', gloss: 'cat' } },
+      { id: 'kat1', form: 'kat', metadata: { Status: 'published', parent: 'kat' } },
+    ];
+    const reading = readDictionary(items, 'Status');
+    const [page] = buildFormPages(items, new Intl.Collator(), reading);
+    expect(page.headwords[0].shown).toBe(true);
+    expect(page.headwords[0].senses[0].shown).toBe(true);
+  });
+
   it('drops a headword with nothing published under it', () => {
     const items = [item('kat', 'kat'), item('kat1', 'kat', { parent: 'kat', status: 'draft' })];
     expect(readDictionary(items).headwords).toEqual([]);

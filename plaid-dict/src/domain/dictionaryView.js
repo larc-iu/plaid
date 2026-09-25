@@ -32,6 +32,7 @@ import { isPublished, statusKeyOf } from './publication.js';
  *   numbers: Map<string, string>,  every item's dotted number
  *   visible: Set<string>,          items on a published entry's spine
  *   headwords: object[],           roots with something published under them
+ *   statusKey: string,             the key the status is read under
  * }}
  */
 export const readDictionary = (items, statusKey = STATUS_FIELD) => {
@@ -52,16 +53,18 @@ export const readDictionary = (items, statusKey = STATUS_FIELD) => {
   }
 
   const headwords = tree.roots.filter((r) => visible.has(r.id));
-  return { tree, numbers, visible, headwords };
+  return { tree, numbers, visible, headwords, statusKey };
 };
 
-const nodeOf = (item, { tree, numbers, visible }) => ({
+const nodeOf = (item, reading) => ({
   item,
-  number: numbers.get(item.id) ?? '',
-  shown: isPublished(item),
-  senses: (tree.childrenOf.get(item.id) || [])
-    .filter((c) => visible.has(c.id))
-    .map((c) => nodeOf(c, { tree, numbers, visible })),
+  number: reading.numbers.get(item.id) ?? '',
+  // Under the vocabulary's own key: read under `status`, a vocabulary that
+  // spells it "Status" showed every headword as a bare heading.
+  shown: isPublished(item, reading.statusKey),
+  senses: (reading.tree.childrenOf.get(item.id) || [])
+    .filter((c) => reading.visible.has(c.id))
+    .map((c) => nodeOf(c, reading)),
 });
 
 /**
