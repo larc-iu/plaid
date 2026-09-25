@@ -20,11 +20,13 @@ affix's entry or gloss never names the word (`m-` 3.POSS + `hii` blood is
 `hii`, not `m`). A link on the word itself comes first.
 
 A person and number describe the node only when the gloss is the node's own:
-a gloss that marks possession (`POSS`), or that carries a person on another
-morpheme than the lexical one or beside a lexical part (`sbj:3`, `go.3SG`), is
-agreement with or the possessor of another participant, and that participant
-would need a node and an edge. Its person and number are dropped rather than
-put on the wrong node.
+a gloss that carries a person or marks possession (`POSS`) on another morpheme
+than the lexical one or beside a lexical part (`m-` 3.POSS + `hii` blood,
+`sbj:3`, `go.3SG`) is agreement with or the possessor of another participant,
+and that participant would need a node and an edge. Its person and number are
+dropped rather than put on the wrong node. A free possessive pronoun is the
+exception that proves it: a word glossed `3SG.POSS` and nothing else IS the
+possessor, so its node keeps them.
 
 It draws NO edges. A role is a claim about who did what, and glosses do not
 say; the annotator connects the nodes on the canvas, where a node with its
@@ -184,11 +186,14 @@ _PARTICIPANT = (':refer-person', ':refer-number')
 
 def own_attrs(read: Dict[str, Any], lexical_home: bool) -> List[tuple]:
     """The attributes of one read gloss that belong on the node. `lexical_home`
-    is whether the gloss is the word's own or its lexical morpheme's. A
-    possessive gloss, or a person on another morpheme or beside a lexical part,
-    is another participant's person and number, so both are left out."""
+    is whether the gloss is the word's own or its lexical morpheme's. A person
+    or a possessive on another morpheme or beside a lexical part is another
+    participant's (a possessor, an agreeing subject), so its person and number
+    are left out. Where the gloss is the node's own and has no lexical part
+    (a free pronoun, `3SG.POSS`), the node is that participant and keeps them."""
     has_person = any(rel == ':refer-person' for rel, _ in read['attrs'])
-    foreign = read['possessive'] or (has_person and (not lexical_home or read['lexical']))
+    foreign = ((read['possessive'] or has_person)
+               and (not lexical_home or bool(read['lexical'])))
     return [(rel, value) for rel, value in read['attrs']
             if not (foreign and rel in _PARTICIPANT)]
 

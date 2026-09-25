@@ -282,9 +282,45 @@ def test_a_person_on_an_affix_or_a_possessive_is_not_put_on_the_node():
         (':refer-person', '3rd'), (':refer-number', 'singular')]
     assert boot.own_attrs(boot.read_gloss('PL', table), False) == [
         (':refer-number', 'plural')]
-    assert boot.own_attrs(boot.read_gloss('3SG.POSS', table), True) == []
+    # A possessive beside a lexical part, or on an affix, is the possessor's.
+    assert boot.own_attrs(boot.read_gloss('3SG.POSS-hand', table), True) == []
+    assert boot.own_attrs(boot.read_gloss('3SG.POSS', table), False) == []
+    assert boot.own_attrs(boot.read_gloss('PL.POSS-hand', table), True) == []
     assert boot.own_attrs(boot.read_gloss('go.3SG', table), True) == []
     assert boot.own_attrs(boot.read_gloss('go.3SG.NEG', table), True) == [(':polarity', '-')]
+
+
+def test_a_free_possessive_pronoun_keeps_its_own_person_and_number():
+    """A word glossed 3SG.POSS and nothing else is the possessor itself, not a
+    noun it marks, so its node is where the person and number belong."""
+    table = boot.ABBREVIATIONS
+    assert boot.own_attrs(boot.read_gloss('3SG.POSS', table), True) == [
+        (':refer-person', '3rd'), (':refer-number', 'singular')]
+    assert boot.own_attrs(boot.read_gloss('1PL.POS', table), True) == [
+        (':refer-person', '1st'), (':refer-number', 'plural')]
+
+    # End to end: "The" glossed 3SG.POSS and linked to the entry "ani".
+    document = _document(gloss_spans=[{'id': 'g1', 'tokens': ['w1'], 'value': '3SG.POSS'},
+                                      *GLOSSES[1:]])
+    word_layer = document['text_layers'][0]['token_layers'][1]
+    word_layer['vocabs'][0]['vocab_links'].append(
+        {'id': 'l2', 'vocab_item': {'id': 'i3', 'form': 'ani'}, 'tokens': ['w1']})
+    service = _service(documents=[document])
+    vocab = {**VOCAB, 'items': VOCAB['items'] + [{'id': 'i3', 'form': 'ani', 'metadata': {}}]}
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: vocab
+    assert servicetest.run(service, REQUEST).errors == []
+    nodes = {n['value']: n['metadata']['umr']['attrs']
+             for n in _ops(service.client, 'spans.bulk_create')}
+    assert [(a['rel'], a['value']) for a in nodes['ani']] == [
+        (':refer-person', '3rd'), (':refer-number', 'singular')]
+
+
+def test_a_possessive_prefix_on_a_stem_still_leaves_the_noun_without_a_person():
+    """The other side of the same rule: in m-hii the stem is hii, and 3.POS
+    on the prefix is the possessor's, with or without the word's own gloss."""
+    for word_glosses in ((), ({'id': 'gw', 'tokens': ['w1'], 'value': '3.POS-blood'},)):
+        for concept, attrs in _segmented_run(_segmented(word_glosses=word_glosses)):
+            assert attrs == [], (concept, attrs)
 
 
 def test_a_headword_of_several_words_is_a_hyphenated_concept():
