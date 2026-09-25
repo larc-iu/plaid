@@ -1,39 +1,56 @@
 import { test, expect, seedAuth } from './fixtures.js';
-import { PlaidClient } from '@larc-iu/plaid-client';
-import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
+import { seedUdDoc } from './seedUdDoc.js';
 
 // End-to-end smoke for the Grew search page: drives the real React UI against
-// the live core. Finds a UD-configured project with data, runs a labeled-edge
+// the live core. Seeds its own two-sentence treebank, runs a labeled-edge
 // query, checks results render, and verifies the result→editor deep link.
+//
+// It used to search the server for the first project with dependency
+// relations, so it passed or failed on whatever other runs had left there,
+// and failed outright once that project was deleted.
 
 const BASE = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
+const BODY = 'the dog runs the cat sleeps';
+const WORDS = [
+  [0, 3],
+  [4, 7],
+  [8, 12],
+  [13, 16],
+  [17, 20],
+  [21, 27],
+];
+const S = {};
 let PID;
 
 test.beforeAll(async () => {
-  const client = await PlaidClient.login('http://localhost:8085', 'a@b.com', 'password');
-  // `projects.list()` already auto-paginates, and there is no `listAll` on the
-  // resource: the fallback that called it would have died with a TypeError
-  // that hid whatever the real failure was.
-  const projects = await client.projects.list();
-  for (const p of projects) {
-    const full = await client.projects.get(p.id);
-    const li = getUdLayerInfo(full);
-    if (!li.isConfigured || !li.relationLayer) continue;
-    // Ask for what this spec actually queries: a project with WORDS but no
-    // dependency relations passes a token count and then matches nothing, so
-    // the run reports "0 matching sentences" and there is no highlight to
-    // find. Any spec that seeds a tokenized project can put one of those
-    // ahead of the real treebank, which is how this started failing.
-    const r = await client.query({
-      find: ['?r'],
-      where: [['relation', '?r', { layer: li.relationLayer.id }]],
-      return: 'count',
-      scope: { projectIds: [p.id] },
-    });
-    if ((r.count ?? 0) > 0) {
-      PID = p.id;
-      break;
-    }
+  Object.assign(
+    S,
+    await seedUdDoc(`Search ${Date.now()}`, BODY, WORDS, [
+      [0, 13],
+      [13, 27],
+    ]),
+  );
+  PID = S.projectId;
+  const { client, layers, morphIds } = S;
+  const lemmaIds = [];
+  for (const [i, lemma] of ['the', 'dog', 'run', 'the', 'cat', 'sleep'].entries()) {
+    lemmaIds.push((await client.spans.create(layers.lemma, [morphIds[i]], lemma)).id);
+  }
+  for (const [head, dep, deprel] of [
+    [2, 1, 'nsubj'],
+    [1, 0, 'det'],
+    [5, 4, 'nsubj'],
+    [4, 3, 'det'],
+  ]) {
+    await client.relations.create(layers.relation, lemmaIds[head], lemmaIds[dep], deprel);
+  }
+});
+
+test.afterAll(async () => {
+  if (S.client && S.projectId) {
+    await S.client.projects
+      .delete(S.projectId)
+      .catch((e) => console.error('cleanup failed:', e.message));
   }
 });
 
@@ -44,7 +61,6 @@ const runPattern = (page) =>
   page.getByRole('button', { name: 'Search', exact: true }).last().click();
 
 test('runs a Grew query and shows highlighted matching sentences', async ({ page }) => {
-  expect(PID, 'a UD project with data must exist').toBeTruthy();
   await seedAuth(page);
   await page.goto(`${BASE}/#/projects/${PID}/search`);
 
@@ -64,7 +80,6 @@ test('runs a Grew query and shows highlighted matching sentences', async ({ page
 });
 
 test('reports a clear error for an unsupported feature', async ({ page }) => {
-  expect(PID).toBeTruthy();
   await seedAuth(page);
   await page.goto(`${BASE}/#/projects/${PID}/search`);
   const box = page.getByPlaceholder(/pattern \{/);
