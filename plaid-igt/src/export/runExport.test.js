@@ -223,7 +223,7 @@ describe('runExport', () => {
     expect(dom.querySelector('parsererror')).toBeNull();
     expect(dom.querySelector('lexical-unit text').textContent).toBe('perro');
     const readme = new TextDecoder().decode(files['README.txt']);
-    expect(readme).toContain('Flex.lift: the lexicon (1 entries, 1 senses)');
+    expect(readme).toContain('Flex.lift: the lexicon (1 entry, 1 sense)');
     expect(readme).toContain('Flex.flextext: 1 interlinear text');
   });
 

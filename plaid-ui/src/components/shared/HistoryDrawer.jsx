@@ -189,7 +189,9 @@ export const HistoryDrawer = ({
         {!loading && !error && reversedAuditEntries.length > 0 && (
           <div className="flex min-h-0 flex-1 flex-col p-4">
             <p className="mb-4 text-xs text-muted-foreground">
-              {reversedAuditEntries.length} entries
+              {reversedAuditEntries.length === 1
+                ? '1 entry'
+                : `${reversedAuditEntries.length.toLocaleString()} entries`}
             </p>
             <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background">
               {reversedAuditEntries.map(renderUnit)}

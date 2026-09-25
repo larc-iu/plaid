@@ -49,6 +49,7 @@ import {
   mergeTally,
 } from './precedent.js';
 import { openPrecedent, precedentBase } from './precedentCache.js';
+import { plural } from '../utils/plural.js';
 
 const MAX_SOURCE_DOCS = 25;
 const SOURCE_FETCHES_IN_FLIGHT = 4;
@@ -140,7 +141,7 @@ async function runCopyPhase(doc, copyContents, onProgress, shouldStop = () => fa
   if (!proposals.length) return 0;
   // Last chance: the write below is one operation and is not interrupted.
   checkpoint(shouldStop);
-  onProgress({ percent: null, message: `Copying onto ${proposals.length} words…` });
+  onProgress({ percent: null, message: `Copying onto ${plural(proposals.length, 'word')}…` });
   return doc.bulkApplyAnalyses(proposals, ANALYSIS_COPY_SOURCE);
 }
 
@@ -187,11 +188,11 @@ async function remoteTalliesFor(
       done++;
       onProgress({
         percent: (done / docIds.length) * 100,
-        message: `Read ${done} of ${docIds.length} documents…`,
+        message: `Read ${done} of ${plural(docIds.length, 'document')}…`,
       });
     }
   };
-  onProgress({ percent: 0, message: `Reading ${docIds.length} documents…` });
+  onProgress({ percent: 0, message: `Reading ${plural(docIds.length, 'document')}…` });
   await Promise.all(
     Array.from({ length: Math.min(SOURCE_FETCHES_IN_FLIGHT, docIds.length) }, worker),
   );
@@ -229,7 +230,7 @@ async function runLinkPhase(doc, onProgress = () => {}, shouldStop = () => false
   let linked = 0;
   if (proposals.length) {
     checkpoint(shouldStop);
-    onProgress({ percent: null, message: `Linking ${proposals.length} words…` });
+    onProgress({ percent: null, message: `Linking ${plural(proposals.length, 'word')}…` });
     const n = await doc.bulkLinkVocab(proposals, AUTO_LINK_SOURCE);
     if (n === false) return false;
     linked += n;
