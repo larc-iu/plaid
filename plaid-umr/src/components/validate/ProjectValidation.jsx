@@ -53,8 +53,9 @@ export const ProjectValidation = () => {
       });
       // The position in the report is the row's identity: two identical
       // problems in one sentence are two rows, and nothing else tells them
-      // apart.
-      setProblems((found || []).map((p, i) => ({ ...p, key: `${i}` })));
+      // apart. Zero-padded, since the table breaks a tie on the key as text
+      // and the report's order (by sentence) is the one wanted.
+      setProblems((found || []).map((p, i) => ({ ...p, key: String(i).padStart(8, '0') })));
     } catch (err) {
       console.error('Validation scan failed:', err);
       notifyError(humanizeError(err, 'Could not read the project.'), 'Scan failed');

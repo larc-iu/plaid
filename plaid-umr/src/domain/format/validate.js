@@ -310,6 +310,7 @@ function checkAlignment(sentence, findings, options) {
         level: 'warning',
         code: 'unaligned-token',
         message: `Word ${i + 1} ('${word}') is not aligned to any node.`,
+        word: i + 1,
       });
     });
   }

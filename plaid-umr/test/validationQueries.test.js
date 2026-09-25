@@ -12,6 +12,7 @@ import {
   validateProject,
   documentsWithNodes,
   documentsWithWords,
+  reportOf,
 } from '../src/domain/validationQueries.js';
 
 const FIXTURE = path.join(
@@ -107,17 +108,64 @@ test('a document with neither a graph nor a word is never read', async () => {
   assert.deepEqual([...new Set(rows.map((r) => r.documentName))], ['doc 2', 'doc 5', 'doc 7']);
 });
 
-// The report is how a corpus manager finds the documents nobody has started:
-// the validator's own answer for one is a warning per word carrying no node.
-test('a document with words and no graph is reported, word by word', async () => {
+// The report is how a corpus manager finds the documents nobody has started.
+// The validator's own answer for one is a warning per word carrying no node,
+// which is one row per graphless SENTENCE here, counting its words.
+test('a document with words and no graph is reported, a row per sentence', async () => {
   const f = fakeClient(2, new Set(['doc 0']));
   const rows = await validateProject(f.client, 'p1', LAYERS);
   assert.deepEqual(f.reads, ['d0', 'd1']);
   const unannotated = rows.filter((r) => r.documentName === 'doc 1');
-  assert.ok(unannotated.length > 0, 'the unannotated document is in the report');
+  const sentences = RAW.textLayers[0].tokenLayers[0].tokens.length;
+  assert.equal(unannotated.length, sentences, 'one row per sentence');
   assert.deepEqual([...new Set(unannotated.map((r) => r.code))], ['unaligned-token']);
   assert.ok(unannotated.every((r) => r.level === 'warning'));
-  assert.match(unannotated[0].message, /is not aligned to any node/);
+  assert.match(unannotated[0].message, /^No graph\. \d+ words are not aligned to any node\.$/);
+  assert.deepEqual(
+    unannotated.map((r) => r.sentenceIndex),
+    Array.from({ length: sentences }, (_, i) => i + 1),
+  );
+});
+
+test('a report is in sentence order, with one row for a graphless sentence', () => {
+  const w = (sentence, n) => ({
+    sentence,
+    level: 'warning',
+    code: 'unaligned-token',
+    message: `Word ${n} ('x') is not aligned to any node.`,
+    word: n,
+  });
+  const words = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const doc = {
+    sentences: [
+      // Word 3 carries a node the root does not reach: the export leaves the
+      // node out, so the validator sees the word bare.
+      { index: 1, words, nodes: [{ wordIds: ['a'] }, { wordIds: ['c'] }] },
+      { index: 2, words, nodes: [] },
+      { index: 3, words, nodes: [] },
+    ],
+    // As `problems` has them: the per-sentence checks, then those that walk
+    // the whole graph, then a document-level one.
+    problems: [
+      w(1, 2),
+      w(1, 3),
+      w(2, 1),
+      w(2, 2),
+      w(3, 1),
+      { sentence: 1, level: 'error', code: 'unreached', message: 'Not reached.' },
+      { level: 'error', code: 'doc', message: 'Document.' },
+    ],
+  };
+  assert.deepEqual(
+    reportOf(doc).map((p) => [p.sentence ?? null, p.message]),
+    [
+      [null, 'Document.'],
+      [1, "Word 2 ('x') is not aligned to any node."],
+      [1, 'Not reached.'],
+      [2, 'No graph. 2 words are not aligned to any node.'],
+      [3, 'No graph. 1 word is not aligned to any node.'],
+    ],
+  );
 });
 
 test('the reads run a few at a time, not one after another and not all at once', async () => {

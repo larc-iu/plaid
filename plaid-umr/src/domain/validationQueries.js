@@ -9,9 +9,9 @@
 //
 // A document is worth loading when it holds a graph OR holds words. The
 // second half is not optional: `checkUnalignedToken` warns about every word
-// carrying no node, so a document nobody has annotated yet reports one
-// warning per word, and that report is how a corpus manager sees it is not
-// annotated. Asking only for the graphs read clean over a corpus that had
+// carrying no node, so a document nobody has annotated yet reports its
+// sentences as graphless (`reportOf` makes that a row per sentence), and that
+// report is how a corpus manager sees it is not annotated. Asking only for the graphs read clean over a corpus that had
 // barely been started. A document with neither has nothing to check: every
 // check walks either the nodes or the words.
 import { UmrDocument } from './UmrDocument.js';
@@ -36,7 +36,7 @@ export const documentsWithNodes = (projectId, conceptLayerId) => ({
  * The ids of the project's documents that hold at least one word, from one
  * query. A document with no words and no graph has nothing for any check to
  * walk; one with words and no graph is an unannotated document, which the
- * report names word by word.
+ * report names sentence by sentence.
  */
 export const documentsWithWords = (projectId, wordLayerId) => ({
   where: [['token', '?t', { layer: wordLayerId, doc: { var: '?d' } }]],
@@ -56,6 +56,68 @@ async function mapLimit(items, limit, work) {
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
   return out;
+}
+
+/**
+ * One document's rows, in sentence order (the checks that walk the whole
+ * graph report after the per-sentence ones), with a document-level problem
+ * first.
+ *
+ * Two kinds of the validator's `unaligned-token` warning are folded, since a
+ * sentence being worked through would otherwise bury every other problem
+ * under a row per word:
+ * - a sentence with no graph at all gets ONE row for its words, counted;
+ * - a word that IS aligned, to a node the root does not reach, gets none. The
+ *   export leaves that node out, which is why the validator sees the word
+ *   bare, and the node's `unreached-by-root` row already says so.
+ */
+export function reportOf(doc) {
+  const graphless = new Set();
+  // 1-based word numbers with a node on them, by sentence.
+  const alignedWords = new Map();
+  (doc.sentences || []).forEach((s) => {
+    if (!s.nodes?.length) graphless.add(s.index);
+    const ids = new Set((s.nodes || []).flatMap((n) => n.wordIds || []));
+    alignedWords.set(
+      s.index,
+      new Set((s.words || []).flatMap((w, i) => (ids.has(w.id) ? [i + 1] : []))),
+    );
+  });
+  // The one row of each graphless sentence, and how many words it stands for.
+  const collapsed = new Map();
+  const rows = [];
+  doc.problems.forEach((p) => {
+    if (p.code !== 'unaligned-token') {
+      rows.push(p);
+      return;
+    }
+    if (alignedWords.get(p.sentence)?.has(p.word)) return;
+    if (!graphless.has(p.sentence)) {
+      rows.push(p);
+      return;
+    }
+    const row = collapsed.get(p.sentence);
+    if (row) row.count += 1;
+    else {
+      const first = { problem: p, count: 1 };
+      collapsed.set(p.sentence, first);
+      rows.push(first);
+    }
+  });
+  return rows
+    .map((row) =>
+      row.problem
+        ? {
+            ...row.problem,
+            message: `No graph. ${row.count} ${
+              row.count === 1 ? 'word is' : 'words are'
+            } not aligned to any node.`,
+          }
+        : row,
+    )
+    .map((p, i) => [p, i])
+    .sort(([a, ai], [b, bi]) => (a.sentence ?? 0) - (b.sentence ?? 0) || ai - bi)
+    .map(([p]) => p);
 }
 
 /**
@@ -92,7 +154,7 @@ export async function validateProject(
   const perDocument = await mapLimit(candidates, READERS, async (summary) => {
     const raw = await client.documents.get(summary.id, true);
     const doc = new UmrDocument({ raw, client, projectId });
-    const rows = doc.problems.map((p) => ({
+    const rows = reportOf(doc).map((p) => ({
       documentId: summary.id,
       documentName: summary.name,
       sentenceIndex: p.sentence ?? null,
