@@ -72,12 +72,15 @@ export const formatAlphabet = (units) => (units || []).join(' ');
 // search for `ọkọ` never reached it. Yoruba has no precomposed form for
 // dot-below plus tone, so `ọ̀ ọ́ ẹ̀ ẹ́` are all two code points and this hit most
 // of the tone-marked vowels in the language.
+//
+// One segmenter for the module. Building one per call cost seconds: sorting
+// the 4,215 Lamkang headwords split every alphabet unit again for each form.
+const segmenter =
+  typeof Intl !== 'undefined' && Intl.Segmenter
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
 const splitClusters = (s) => {
-  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-    return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map(
-      (part) => part.segment,
-    );
-  }
+  if (segmenter) return [...segmenter.segment(s)].map((part) => part.segment);
   return s.match(/\P{M}\p{M}*|\p{M}+/gu) || [];
 };
 
@@ -85,13 +88,25 @@ const splitClusters = (s) => {
  * A form split into the alphabet's units. A position that matches no unit
  * yields one grapheme cluster, so every form splits into something.
  */
+// The units longest first, counted in clusters, so "ch" is tried before "c",
+// with each one's length. Remembered per alphabet array: a collator splits
+// thousands of forms against the same one.
+const prepared = new WeakMap();
+const prepare = (units) => {
+  const list = units || [];
+  let found = prepared.get(list);
+  if (!found) {
+    const span = new Map(list.map((unit) => [unit, splitClusters(unit).length]));
+    const order = [...list].sort((a, b) => span.get(b) - span.get(a));
+    found = { order, span };
+    if (units) prepared.set(units, found);
+  }
+  return found;
+};
+
 export const splitGraphemes = (form, units) => {
   const chars = splitClusters(String(form ?? '').toLowerCase());
-  // Longest unit first, counted in clusters, so "ch" is tried before "c".
-  const order = [...(units || [])].sort(
-    (a, b) => splitClusters(b).length - splitClusters(a).length,
-  );
-  const span = new Map(order.map((unit) => [unit, splitClusters(unit).length]));
+  const { order, span } = prepare(units);
   const out = [];
   let at = 0;
   while (at < chars.length) {
