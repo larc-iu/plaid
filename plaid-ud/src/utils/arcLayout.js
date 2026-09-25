@@ -227,8 +227,8 @@ export const ROOT_LINE = ROOT_Y + ROOT_BAR_HEIGHT / 2;
 // with no arc: anywhere below it, the legs of the root word's own dependents
 // rise beside the drop and ran straight through a label there. The baseline is
 // 3px under the midline because 11px glyphs are centred about 3px above it.
-export const ROOT_BAR_BOTTOM = ROOT_Y + ROOT_BAR_HEIGHT;
-export const ROOT_LABEL_Y = ROOT_LINE + 3;
+const ROOT_BAR_BOTTOM = ROOT_Y + ROOT_BAR_HEIGHT;
+const ROOT_LABEL_Y = ROOT_LINE + 3;
 // How far down the bar a release still counts as a release ON the bar. Past
 // its midline, so letting go just under the line the arc is drawn from still
 // makes a root, and short of its bottom edge, where the words' own column
