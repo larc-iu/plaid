@@ -12,6 +12,7 @@ import { AlertTriangle, AudioLines, FileText, Film, Plus, X } from 'lucide-react
 import { Button } from '@ui/components/ui/button';
 import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
+import { plural } from '@/utils/plural';
 import { conversionNeed, conversionNote, estimateMp3Bytes } from '@/domain/media/transcodeToMp3';
 import { Panel } from '../ImportPanels.jsx';
 import { ElanSection } from './ElanSection.jsx';
@@ -192,7 +193,7 @@ export const ElanFiles = ({
                       {doc.sentences.length} sentence{doc.sentences.length === 1 ? '' : 's'}
                     </span>
                   ) : (
-                    <span className={TONES.muted}>{eaf.tiers.length} tiers</span>
+                    <span className={TONES.muted}>{plural(eaf.tiers.length, 'tier')}</span>
                   )}
                   {!recording && named && <span className={TONES.warn}>recording not chosen</span>}
                   {imported &&

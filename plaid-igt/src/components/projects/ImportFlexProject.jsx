@@ -37,6 +37,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { humanizeFieldName } from '@/domain/vocabFields';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { plural } from '@/utils/plural';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`, which also names the route a resume comes back to).
@@ -453,14 +454,20 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                   : `Contents of “${parsed.sourceName}”`}
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{parsed.build.stats.documents} texts</p>
-                <p>{parsed.build.stats.sentences.toLocaleString()} sentences</p>
-                <p>{parsed.build.stats.words.toLocaleString()} words</p>
-                <p>{parsed.build.stats.morphemes.toLocaleString()} morphemes</p>
+                <p>{plural(parsed.build.stats.documents, 'text')}</p>
+                <p>{plural(parsed.build.stats.sentences, 'sentence')}</p>
+                <p>{plural(parsed.build.stats.words, 'word')}</p>
+                <p>{plural(parsed.build.stats.morphemes, 'morpheme')}</p>
                 {!flextext && (
                   <>
-                    <p>{parsed.build.stats.lexiconEntries.toLocaleString()} lexicon entries</p>
-                    <p>{parsed.build.stats.lexiconSenses.toLocaleString()} senses</p>
+                    <p>
+                      {plural(
+                        parsed.build.stats.lexiconEntries,
+                        'lexicon entry',
+                        'lexicon entries',
+                      )}
+                    </p>
+                    <p>{plural(parsed.build.stats.lexiconSenses, 'sense')}</p>
                   </>
                 )}
               </div>
@@ -520,8 +527,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
               <div className="rounded-lg border bg-card p-4">
                 <p className="mb-1 font-medium">Lexicon</p>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  The FLEx lexicon ({parsed.ir.lexicon.length.toLocaleString()} entries) becomes the
-                  vocabulary the interlinear links to.
+                  The FLEx lexicon ({plural(parsed.ir.lexicon.length, 'entry', 'entries')}) becomes
+                  the vocabulary the interlinear links to.
                 </p>
                 <div className="flex flex-col gap-3">
                   {resumeId ? (
@@ -673,7 +680,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                     />
                     <span className="flex-1 truncate">{d.name}</span>
                     <span className="shrink-0 text-xs text-muted-foreground">
-                      {d.sentences.length} sentences · {d.words.length.toLocaleString()} words
+                      {plural(d.sentences.length, 'sentence')} · {plural(d.words.length, 'word')}
                     </span>
                   </label>
                 ))}

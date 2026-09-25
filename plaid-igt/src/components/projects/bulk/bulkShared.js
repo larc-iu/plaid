@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { notifyError, humanizeError } from '@/utils/feedback';
 
 // What every Bulk Edit panel shares: the run state machine, the scope
-// badge classes, and the one pluralizer.
-export const plural = (n, word, words = `${word}s`) =>
-  `${n.toLocaleString()} ${n === 1 ? word : words}`;
+// badge classes, and the one pluralizer (the app's, re-exported).
+export { plural } from '@/utils/plural';
 
 // ---- shared bits ----------------------------------------------------------------
 

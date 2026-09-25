@@ -36,6 +36,7 @@ import { deriveSetupData, runCldfImport } from '../../import/cldf/importEngine';
 import { readImportState } from '../../domain/igtConfig';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+import { plural } from '@/utils/plural';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -230,12 +231,12 @@ export const ImportCldfProject = () => {
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{build.stats.documents} texts</p>
-                <p>{build.stats.sentences.toLocaleString()} sentences</p>
-                <p>{build.stats.words.toLocaleString()} words</p>
-                <p>{build.stats.morphemes.toLocaleString()} morphemes</p>
-                <p>{build.stats.lexiconEntries.toLocaleString()} lexicon entries</p>
-                <p>{build.schema.fields.length} annotation fields</p>
+                <p>{plural(build.stats.documents, 'text')}</p>
+                <p>{plural(build.stats.sentences, 'sentence')}</p>
+                <p>{plural(build.stats.words, 'word')}</p>
+                <p>{plural(build.stats.morphemes, 'morpheme')}</p>
+                <p>{plural(build.stats.lexiconEntries, 'lexicon entry', 'lexicon entries')}</p>
+                <p>{plural(build.schema.fields.length, 'annotation field')}</p>
               </div>
               {build.schema.fields.length > 0 && (
                 <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">
@@ -384,7 +385,7 @@ export const ImportCldfProject = () => {
                         Importing a dictionary on its own is not yet implemented
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        This dataset has {build.lexicon.length.toLocaleString()} entries but no
+                        This dataset has {plural(build.lexicon.length, 'entry', 'entries')} but no
                         ExampleTable, so there are no texts to build a project around. Bringing a
                         CLDF dictionary in as a standalone vocabulary is still to do.
                       </p>

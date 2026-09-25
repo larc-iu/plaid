@@ -257,7 +257,7 @@ test('review: each grouping mode is its own option, and does what it says', asyn
   ]);
 
   await page.getByRole('option', { name: 'One text for everything', exact: true }).click();
-  await expect(page.getByText('1 texts', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 text', { exact: true })).toBeVisible();
   await expect(page.getByText('3 sentences', { exact: true })).toBeVisible();
 
   await choose(page, 'How the examples split into texts', 'By the dataset’s own text ids');
@@ -274,7 +274,7 @@ test('review: per-example grouping is the default when examples carry media', as
   // Any other grouping collapses them into one text and loses the audio, which
   // the screen has to say before the user commits to it.
   await choose(page, 'How the examples split into texts', 'One text for everything');
-  await expect(page.getByText('1 texts', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 text', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('listitem').filter({ hasText: /2 examples have their own media file/ }),
   ).toBeVisible();

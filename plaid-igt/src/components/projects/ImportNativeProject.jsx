@@ -19,6 +19,7 @@ import { readNativeArchive } from '../../import/native/readArchive';
 import { deriveSetupData, runNativeImport } from '../../import/native/importEngine';
 import { useResumeImport } from '@/hooks/useResumeImport';
 import { useProjectImportRun } from '@/hooks/useProjectImportRun';
+import { plural } from '@/utils/plural';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -173,17 +174,18 @@ export const ImportNativeProject = () => {
                 </span>
               </p>
               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-3">
-                <p>{archive.documents.length} documents</p>
+                <p>{plural(archive.documents.length, 'document')}</p>
+                <p>{plural(archive.vocabularies.length, 'vocabulary', 'vocabularies')}</p>
+                <p>{plural(itemCount, 'entry', 'entries')}</p>
+                <p>{plural(fieldCount, 'annotation field')}</p>
                 <p>
-                  {archive.vocabularies.length} vocabular
-                  {archive.vocabularies.length === 1 ? 'y' : 'ies'}
+                  {plural(
+                    manifest.schema?.orthographies?.length ?? 0,
+                    'orthography',
+                    'orthographies',
+                  )}
                 </p>
-                <p>{itemCount.toLocaleString()} entries</p>
-                <p>{fieldCount} annotation fields</p>
-                <p>{manifest.schema?.orthographies?.length ?? 0} orthographies</p>
-                <p>
-                  {mediaCount} media file{mediaCount === 1 ? '' : 's'}
-                </p>
+                <p>{plural(mediaCount, 'media file')}</p>
               </div>
             </div>
 
