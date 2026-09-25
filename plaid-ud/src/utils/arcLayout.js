@@ -219,8 +219,16 @@ export const computeLowerBand = (relations, indexById) => {
 // The ROOT bar across the top of the overlay, in the overlay's coordinates.
 export const ROOT_Y = 25;
 export const ROOT_BAR_HEIGHT = 20;
-// Where a root's straight drop springs from: the bar's own midline.
+// Where an arc dragged out of the bar springs from: the bar's own midline,
+// where the hand took it.
 export const ROOT_LINE = ROOT_Y + ROOT_BAR_HEIGHT / 2;
+// A drawn root drops from the bar's bottom edge, and its label sits IN the bar,
+// over its word. Nothing else is drawn in the bar, so the label can collide
+// with no arc: anywhere below it, the legs of the root word's own dependents
+// rise beside the drop and ran straight through a label there. The baseline is
+// 3px under the midline because 11px glyphs are centred about 3px above it.
+export const ROOT_BAR_BOTTOM = ROOT_Y + ROOT_BAR_HEIGHT;
+export const ROOT_LABEL_Y = ROOT_LINE + 3;
 // How far down the bar a release still counts as a release ON the bar. Past
 // its midline, so letting go just under the line the arc is drawn from still
 // makes a root, and short of its bottom edge, where the words' own column
@@ -331,14 +339,14 @@ export const wordInColumn = (positions, point, { below = false, frame }) => {
 
 // One arc of the tree, over the words: its path, its arrowhead and where its
 // label sits. A root is not an arc but a straight drop from the ROOT bar onto
-// its own word, and its label rides halfway down that drop.
+// its own word, and its label sits in the bar above it.
 export const treeArc = ({ fromX, toX, toRoot = false, height, frame }) => {
-  const { baselineY, tokenY } = frame;
+  const { baselineY } = frame;
   if (toRoot) {
     return {
-      d: `M ${fromX} ${baselineY} L ${fromX} ${ROOT_LINE}`,
+      d: `M ${fromX} ${baselineY} L ${fromX} ${ROOT_BAR_BOTTOM}`,
       arrow: arrowPoints(fromX, baselineY + ARROW_OVERSHOOT),
-      label: { x: fromX, y: (tokenY + ROOT_Y) / 2 },
+      label: { x: fromX, y: ROOT_LABEL_Y },
     };
   }
   const offset = toX > fromX ? HEAD_OFFSET : -HEAD_OFFSET;

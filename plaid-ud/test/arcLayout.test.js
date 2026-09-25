@@ -432,10 +432,28 @@ test('an arc of the tree leaves its head a few pixels along, either way', () => 
 
 test('a root is a straight drop from the ROOT bar onto its word', () => {
   const root = treeArc({ fromX: 100, toRoot: true, frame: FRAME });
-  assert.equal(root.d, `M 100 ${FRAME.baselineY} L 100 ${ROOT_LINE}`);
+  assert.equal(root.d, `M 100 ${FRAME.baselineY} L 100 ${ROOT_Y + ROOT_BAR_HEIGHT}`);
   assert.equal(root.arrow, arrowPoints(100, FRAME.baselineY + 2));
-  // Its label rides halfway down the drop.
-  assert.deepEqual(root.label, { x: 100, y: (FRAME.tokenY + ROOT_Y) / 2 });
+});
+
+// The root word's own dependents rise right beside its drop, so a label
+// anywhere down the drop sat on one of their legs ("r|oot"). In the bar,
+// where no arc is drawn, it can meet none of them.
+test('a root label sits inside the ROOT bar, above every arc', () => {
+  const root = treeArc({ fromX: 100, toRoot: true, frame: FRAME });
+  assert.equal(root.label.x, 100);
+  assert.ok(root.label.y > ROOT_Y + 8 && root.label.y <= ROOT_Y + ROOT_BAR_HEIGHT);
+  // Whatever the depth of the stack, the tallest arc's label (11px glyphs
+  // over their baseline) stays under the bar.
+  for (const maxLevel of [1, 5, 20]) {
+    const { treeHeight } = computeArcLayout(
+      Array.from({ length: maxLevel }, (_, i) => ({ id: `r${i}`, source: 'x', target: `y${i}` })),
+      new Map([['x', 0], ...Array.from({ length: maxLevel }, (_, i) => [`y${i}`, i + 1])]),
+    );
+    const frame = treeFrame(treeHeight);
+    const tallest = treeArc({ fromX: 0, toX: 300, height: arcHeight(maxLevel), frame });
+    assert.ok(tallest.label.y - 11 >= ROOT_Y + ROOT_BAR_HEIGHT, `level ${maxLevel}`);
+  }
 });
 
 test('an arc of the band below the words is the tree arc turned over', () => {
