@@ -18,6 +18,7 @@ import { resolveIlg, ilgLinesFor } from './ilg.js';
 import {
   buildDocumentGraph,
   toUmrSentences,
+  sentencePenman,
   nextVariable,
   CYCLE_ROLES,
   crossSentenceEdges,
@@ -27,14 +28,8 @@ import {
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
 import { serializeUmrFile, readAlignment } from './format/umrFile.js';
-import {
-  conceptProblem,
-  relationProblem,
-  attrValueProblem,
-  parsePenman,
-  serializePenman,
-} from './format/penman.js';
-import { validateDocument } from './format/validate.js';
+import { conceptProblem, relationProblem, attrValueProblem, parsePenman } from './format/penman.js';
+import { validateDocument, unknownRelationProblem } from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 
@@ -1266,29 +1261,17 @@ export class UmrDocument extends DocumentModel {
 
   // ----- text mode -----
 
-  // The sentence's graph as PENMAN, the text mode's starting point.
+  // The sentence's graph as PENMAN, the text mode's starting point: every
+  // node of it, the parts the root does not reach as further graphs after
+  // the root's (`sentencePenman`), so what Apply deletes is what the text
+  // left out and nothing on the canvas is out of its reach.
   penmanOf(sentenceIndex) {
-    const sent = toUmrSentences(this.graph)[sentenceIndex - 1];
-    if (sent?.graph) return serializePenman(sent.graph);
+    const sentence = this.sentence(sentenceIndex);
+    if (sentence?.nodes.length) return sentencePenman(sentence, this.graph.nodesById);
     // A graph the import could not read, kept as text: text mode opens on it
     // so it can be mended and applied, where it opened empty.
+    const sent = toUmrSentences(this.graph)[sentenceIndex - 1];
     return typeof sent?.rawGraph === 'string' ? sent.rawGraph : '';
-  }
-
-  // The nodes the text is answerable for: what the sentence's first root
-  // reaches. A fragment the text never showed is none of its business.
-  _writtenFrom(sentence) {
-    const written = new Set();
-    const stack = [...sentence.roots.slice(0, 1)];
-    while (stack.length) {
-      const n = stack.pop();
-      if (!n || written.has(n.id)) continue;
-      written.add(n.id);
-      n.out.forEach((e) => {
-        if (this.node(e.target)?.sentence === sentence.index) stack.push(this.node(e.target));
-      });
-    }
-    return written;
   }
 
   /**
@@ -1333,10 +1316,12 @@ export class UmrDocument extends DocumentModel {
   planPenman(sentenceIndex, text) {
     const sentence = this.sentence(sentenceIndex);
     if (!sentence) return { errors: [{ message: 'No such sentence.' }] };
-    const parsed = parsePenman(text);
+    const parsed = parsePenman(text, { several: true });
     if (parsed.errors.length) return { errors: parsed.errors };
     if (!parsed.root) return { errors: [{ message: 'The text has no graph.' }] };
-    const written = this._writtenFrom(sentence);
+    // The text shows every node of the sentence, so every one is its to keep
+    // or delete.
+    const written = new Set(sentence.nodes.map((n) => n.id));
     const rename = this._renameIn(sentence, parsed, written);
     // The renamed node answers to its new name everywhere below, so the rest
     // of the plan reads as though it had always been called that.
@@ -1429,8 +1414,7 @@ export class UmrDocument extends DocumentModel {
         }
       });
     });
-    // The text is the root's graph, so only what the root reaches is the
-    // text's to delete: a fragment the text never showed stays.
+    // A node the text no longer names goes.
     sentence.nodes.forEach((n) => {
       if (written.has(n.id) && !newVars.has(nameOf(n))) plan.delete.push(n.id);
     });
@@ -1446,8 +1430,8 @@ export class UmrDocument extends DocumentModel {
 
     // What the canvas refuses, text mode refuses too: a new node's variable
     // malformed or taken elsewhere in the document, a concept, relation or
-    // value the file cannot hold, and a new edge closing a cycle through
-    // anything but a quote.
+    // value the file cannot hold, a relation UMR does not have, and a new
+    // edge closing a cycle through anything but a quote.
     const errors = [];
     [...plan.create.map((c) => c.var), ...plan.rename.map((r) => r.to)].forEach((v) => {
       const why = this._newVariableProblem(v, sentenceIndex);
@@ -1459,6 +1443,7 @@ export class UmrDocument extends DocumentModel {
       node.children.forEach((child) => {
         const bad =
           relationProblem(child.rel) ||
+          unknownRelationProblem(child.rel) ||
           (child.kind === 'node' ? null : attrValueProblem(child.value));
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });

@@ -170,13 +170,18 @@ class Scanner {
  * Parse PENMAN text into a graph. Never throws: everything it cannot read
  * becomes an entry in `errors`.
  *
+ * A file holds one graph a sentence. With `several`, text mode's reading,
+ * further top-level graphs may follow the first, and `tops` lists every
+ * top-level variable, the root first.
+ *
  * @param {string} text
- * @returns {{ root: string|null, nodes: Map<string, object>, errors: Array<{message: string, line: number, col: number}> }}
+ * @param {{several?: boolean}} [options]
+ * @returns {{ root: string|null, tops: string[], nodes: Map<string, object>, errors: Array<{message: string, line: number, col: number}> }}
  *   Each node is `{ var, concept, children: [{ rel, kind, value, inline }] }`.
  *   `kind` is 'node' (value is the target variable, `inline` true where the
  *   child node was written out), 'string' (value keeps its quotes) or 'atom'.
  */
-export function parsePenman(text) {
+export function parsePenman(text, { several = false } = {}) {
   const errors = [];
   const nodes = new Map();
   const source = typeof text === 'string' ? text : '';
@@ -278,23 +283,31 @@ export function parsePenman(text) {
   }
 
   scanner.skip();
-  if (scanner.done) return { root: null, nodes, errors };
+  if (scanner.done) return { root: null, tops: [], nodes, errors };
   if (scanner.peek() !== '(') {
     fail(
       `Expected the opening bracket of the root node, found '${scanner.rest()}'.`,
       scanner.here(),
     );
-    return { root: null, nodes, errors };
+    return { root: null, tops: [], nodes, errors };
   }
   const root = readNode();
+  const tops = root ? [root] : [];
   scanner.skip();
+  // Text mode's further graphs: the parts of a sentence its root does not
+  // reach, each written as a graph of its own after the root's.
+  while (several && !scanner.done && scanner.peek() === '(' && !errors.length) {
+    const top = readNode();
+    if (top) tops.push(top);
+    scanner.skip();
+  }
   if (!scanner.done) {
     fail(
       `Unexpected content after the topmost closing bracket: '${scanner.rest()}'.`,
       scanner.here(),
     );
   }
-  return { root: root ?? null, nodes, errors };
+  return { root: root ?? null, tops, nodes, errors };
 }
 
 const edgeKey = (parent, index) => `${parent}\u0000${index}`;

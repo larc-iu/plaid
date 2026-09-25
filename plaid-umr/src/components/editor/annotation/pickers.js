@@ -20,6 +20,7 @@ import {
   relationProblem,
   attrValueProblem,
 } from '../../../domain/format/penman.js';
+import { unknownRelationProblem } from '../../../domain/format/validate.js';
 
 // How a temporal relation reads, child first: the label of `:before` in
 // `(document-creation-time :before s9p)` is "s9p before document-creation-time".
@@ -44,7 +45,7 @@ export const docRelationOptions = (group, sets = 'validator', ends = null) => {
     group === 'temporal' && ends
       ? rels.map((rel) => ({
           value: rel,
-          label: `${ends.target} ${TEMPORAL_READING[rel] || rel} ${ends.source}`,
+          label: `${rel} ${ends.target} ${TEMPORAL_READING[rel] || rel} ${ends.source}`,
         }))
       : rels;
   return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
@@ -185,7 +186,7 @@ export const readAttrLine = (line) => {
   while (rest) {
     const rel = /^(:[^\s]*)(\s+|$)/.exec(rest);
     if (!rel) return fail(`An attribute starts with its relation, after a colon: ${rest}`);
-    const relProblem = relationProblem(rel[1]);
+    const relProblem = relationProblem(rel[1]) || unknownRelationProblem(rel[1]);
     if (relProblem) return fail(relProblem);
     rest = rest.slice(rel[0].length);
     const value = /^("(?:[^"\\]|\\.)*"|[^\s]+)(\s+|$)/.exec(rest);

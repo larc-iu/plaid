@@ -203,3 +203,18 @@ describe('serializePenman', () => {
     assert.equal(serializePenman({ root: null, nodes: new Map() }), '');
   });
 });
+
+// Text mode's reading: a sentence's loose parts follow the root's graph as
+// graphs of their own. A file holds one graph, so that stays an error there.
+test('several top-level graphs are read only when asked for', () => {
+  const text = '(s1a / a :ARG0 s1b)\n\n(s1b / b)\n(s1c / c :mod s1a)';
+  const one = parsePenman(text);
+  assert.match(one.errors[0].message, /Unexpected content after the topmost closing bracket/);
+  const several = parsePenman(text, { several: true });
+  assert.deepEqual(several.errors, []);
+  assert.equal(several.root, 's1a');
+  assert.deepEqual(several.tops, ['s1a', 's1b', 's1c']);
+  assert.deepEqual([...several.nodes.keys()], ['s1a', 's1b', 's1c']);
+  // Junk between graphs is still junk.
+  assert.ok(parsePenman('(s1a / a) junk (s1b / b)', { several: true }).errors.length);
+});

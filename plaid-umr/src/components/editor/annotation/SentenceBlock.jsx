@@ -19,6 +19,7 @@ import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import { conceptProblem, relationProblem } from '../../../domain/format/penman.js';
+import { unknownRelationProblem } from '../../../domain/format/validate.js';
 import {
   roleOptions,
   normalizeRole,
@@ -481,9 +482,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // Every lookup of a node's element goes through `followIds`: the node made
   // a moment ago may have its server id by the time the lookup runs, and its
   // element is kept under that one.
+  //
+  // When focus is still in the editor (Enter, Escape), it moves at once, in
+  // the same task as the key: a tick later, a key typed straight after
+  // Enter went to the page. The editor has already committed or cancelled
+  // by then, so the blur this causes does nothing.
   const closeEditor = () => {
     setEditor(null);
     if (!focusedId) return;
+    if (document.activeElement?.closest?.('.umr-inline-editor')) {
+      nodeRefs.current.get(followIds(focusedId))?.focus();
+    }
     setTimeout(() => {
       const now = document.activeElement;
       if (now && now !== document.body) return;
@@ -1567,9 +1576,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                       ? (text) => missingWord(editor, text) || conceptProblem(text)
                       : editor.kind === 'concept'
                         ? conceptProblem
-                        : editor.kind === 'role' || editor.kind === 'docRole'
-                          ? relationProblem
-                          : undefined
+                        : editor.kind === 'role'
+                          ? (text) =>
+                              relationProblem(text) || unknownRelationProblem(normalizeRole(text))
+                          : editor.kind === 'docRole'
+                            ? relationProblem
+                            : undefined
                 }
               />
             )}

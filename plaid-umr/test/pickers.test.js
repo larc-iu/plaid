@@ -2,11 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLexicon } from '../src/domain/vocabLexicon.js';
+import { unknownRelationProblem } from '../src/domain/format/validate.js';
 import { conceptProblem } from '../src/domain/format/penman.js';
 import {
   conceptOptions,
   roleOptions,
   docRelationOptions,
+  readAttrLine,
 } from '../src/components/editor/annotation/pickers.js';
 import { rolesetProblem } from '../../plaid-igt/src/domain/vocabUmr.js';
 
@@ -77,10 +79,10 @@ test('a temporal relation is offered with what it says, child first', () => {
     target: 's9p',
   });
   const before = items.find((o) => o.value === ':before');
-  assert.equal(before.label, 's9p before document-creation-time');
+  assert.equal(before.label, ':before s9p before document-creation-time');
   assert.equal(
     items.find((o) => o.value === ':contained').label,
-    's9p within document-creation-time',
+    ':contained s9p within document-creation-time',
   );
   // With no ends, and for other groups, the bare relations.
   assert.ok(docRelationOptions('temporal')[0].items.includes(':before'));
@@ -89,4 +91,16 @@ test('a temporal relation is offered with what it says, child first', () => {
       ':full-affirmative',
     ),
   );
+});
+
+// Roles are a closed set, a concept is not: the role editor, the attribute
+// line and text mode refuse a relation the validator calls unknown.
+test('a relation UMR does not have is refused', () => {
+  assert.equal(unknownRelationProblem(':poss'), "Unknown relation ':poss'.");
+  assert.equal(unknownRelationProblem('poss'), "Unknown relation ':poss'.");
+  assert.equal(unknownRelationProblem(':possessor'), null);
+  assert.equal(unknownRelationProblem(':ARG1-of'), null);
+  assert.equal(unknownRelationProblem(':op12'), null);
+  assert.equal(readAttrLine(':colour red').problem, "Unknown relation ':colour'.");
+  assert.equal(readAttrLine(':aspect state').problem, null);
 });

@@ -4,7 +4,9 @@ import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { parsePenman } from '../../../domain/format/penman.js';
 
 // The text mode of one sentence: its graph as PENMAN in a textarea, applied
-// as one operation on Apply. A half-typed graph is not a state to keep, so
+// as one operation on Apply. Every node of the sentence is in the text: the
+// parts its root does not reach follow the root's graph as graphs of their
+// own. A half-typed graph is not a state to keep, so
 // nothing is written until then, and the parser's first complaint shows
 // under the text as it is typed.
 //
@@ -33,7 +35,7 @@ export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
   const { problem, losses, rename } = useMemo(() => {
-    const parsed = parsePenman(text);
+    const parsed = parsePenman(text, { several: true });
     if (parsed.errors.length) return { problem: parsed.errors[0], losses: [], rename: [] };
     if (!parsed.root && text.trim()) {
       return { problem: { message: 'The text has no graph.' }, losses: [], rename: [] };

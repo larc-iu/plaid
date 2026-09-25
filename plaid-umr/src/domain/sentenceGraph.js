@@ -26,7 +26,7 @@
 // By its real path rather than through `@ui`: the node suite has no alias.
 import { cpSlice } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE } from '../utils/umrLayerUtils.js';
-import { treeEdges } from './format/penman.js';
+import { treeEdges, serializePenman } from './format/penman.js';
 import { perWordStored } from './ilg.js';
 
 const umrMeta = (entity) => entity?.metadata?.[UMR_NAMESPACE] || {};
@@ -571,28 +571,7 @@ export function toUmrSentences(graph) {
     // Only the nodes the file writes: the alignment block and the checks read
     // this map, and a node left out still wrote its line (`0-0`, for want of
     // one) and failed the official checks.
-    const nodes = new Map();
-    s.nodes.forEach((node) => {
-      if (!written.has(node.id)) return;
-      const children = [
-        ...node.attrs.map((a) => ({
-          rel: a.rel,
-          kind: a.value.startsWith('"') ? 'string' : 'atom',
-          value: a.value,
-          order: a.order ?? 0,
-        })),
-        ...node.out
-          .filter((e) => nodesById.get(e.target)?.sentence === s.index)
-          .map((e) => ({
-            rel: e.role,
-            kind: 'node',
-            value: nodesById.get(e.target).var,
-            inline: false,
-            order: e.order,
-          })),
-      ].sort((a, b) => a.order - b.order);
-      nodes.set(node.var, { var: node.var, concept: node.concept, children });
-    });
+    const nodes = penmanNodes(s, nodesById, (node) => written.has(node.id));
     const root = s.roots[0]?.var ?? null;
     let penman = null;
     if (root) {
@@ -633,6 +612,60 @@ export function toUmrSentences(graph) {
       docGraph: hasTriples ? { var: `s${s.index}s0`, ...groups } : null,
     };
   });
+}
+
+// A sentence's nodes as parsePenman's map, each node's attributes and
+// in-sentence edges in their stored order. `keep` picks the nodes.
+function penmanNodes(s, nodesById, keep = () => true) {
+  const nodes = new Map();
+  s.nodes.forEach((node) => {
+    if (!keep(node)) return;
+    const children = [
+      ...node.attrs.map((a) => ({
+        rel: a.rel,
+        kind: a.value.startsWith('"') ? 'string' : 'atom',
+        value: a.value,
+        order: a.order ?? 0,
+      })),
+      ...node.out
+        .filter((e) => nodesById.get(e.target)?.sentence === s.index)
+        .map((e) => ({
+          rel: e.role,
+          kind: 'node',
+          value: nodesById.get(e.target).var,
+          inline: false,
+          order: e.order,
+        })),
+    ].sort((a, b) => a.order - b.order);
+    nodes.set(node.var, { var: node.var, concept: node.concept, children });
+  });
+  return nodes;
+}
+
+/**
+ * EVERY node of a sentence as PENMAN, for text mode: the root's graph, as the
+ * file writes it, then each part the root does not reach as a graph of its
+ * own, in the canvas's order of roots. A node is written out once, in the
+ * first graph that reaches it, and named by its variable anywhere after.
+ */
+export function sentencePenman(s, nodesById) {
+  const all = penmanNodes(s, nodesById);
+  const shown = new Set();
+  const parts = [];
+  const tops = [...s.roots.map((r) => r.var), ...all.keys()];
+  tops.forEach((top) => {
+    if (shown.has(top) || !all.has(top)) return;
+    const nodes = new Map([...all].filter(([v]) => !shown.has(v)));
+    parts.push(serializePenman({ root: top, nodes }));
+    const stack = [top];
+    while (stack.length) {
+      const v = stack.pop();
+      if (shown.has(v) || !nodes.has(v)) continue;
+      shown.add(v);
+      nodes.get(v).children.forEach((c) => c.kind === 'node' && stack.push(c.value));
+    }
+  });
+  return parts.join('\n\n');
 }
 
 // A word as the file's Words line holds it. The line is split on spaces, so

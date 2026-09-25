@@ -28,6 +28,24 @@ const ARG_OF = /^:ARG[0-6]-of$/;
 
 const uninvert = (relation) => relation.replace(/-of$/, '');
 
+// What the validator knows of a relation, inverse or numbered `:opN` read as
+// their base, or null for a relation it calls unknown.
+const knownRelation = (relation) => {
+  const base = uninvert(relation);
+  return KNOWN_RELATIONS[base] ?? (OP.test(base) ? KNOWN_RELATIONS[':op1'] : null);
+};
+
+/**
+ * Why `relation` is not a UMR relation, or null when it is. Roles are a
+ * closed set (a concept is free text): the canvas and text mode refuse what
+ * the validator would report as `unknown-relation`.
+ */
+export const unknownRelationProblem = (relation) => {
+  const text = String(relation ?? '').trim();
+  const rel = text.startsWith(':') ? text : `:${text}`;
+  return knownRelation(rel) ? null : `Unknown relation '${rel}'.`;
+};
+
 // The value set a relation's atom is judged against. An attribute validate.py
 // leaves open is still enumerated in the guidelines, so the schema set is used
 // for it when the caller asked for the schema inventory.
@@ -383,12 +401,12 @@ function checkContents(sentence, findings, options) {
     // Unknown relations, and values where a child node was expected.
     children.forEach((child) => {
       const base = uninvert(child.rel);
-      const known = KNOWN_RELATIONS[base] ?? (OP.test(base) ? KNOWN_RELATIONS[':op1'] : null);
+      const known = knownRelation(child.rel);
       if (!known) {
         findings.push({
           level: 'error',
           code: 'unknown-relation',
-          message: `Unknown relation '${child.rel}'.`,
+          message: unknownRelationProblem(child.rel),
           var: variable,
         });
         return;

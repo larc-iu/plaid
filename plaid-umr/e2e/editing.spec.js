@@ -523,17 +523,61 @@ test.describe('editing', () => {
         .getByRole('menuitem', { name: /Temporal relation/ })
         .click();
       await page.locator('[role="option"]', { hasText: /^s1c chase-01/ }).click();
-      await page.locator('[role="option"]', { hasText: /^:after/ }).click();
-      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['● :after s1c']);
-      await expect(byVar('s1c').locator('.umr-doc-tag')).toContainText(['s2e :after']);
+      // The node picked is s2e's reference time, and the option says so.
+      await page.locator('[role="option"]', { hasText: /^:after s2e after s1c/ }).click();
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['s1c :after ●']);
+      await expect(byVar('s1c').locator('.umr-doc-tag')).toContainText(['● :after s2e']);
       await expect(links).toHaveCount(1);
 
       // Changed from the earlier end: the tag there opens the same relation.
       await byVar('s1c').click();
-      await byVar('s1c').locator('.umr-doc-tag', { hasText: 's2e :after' }).click();
+      await byVar('s1c').locator('.umr-doc-tag', { hasText: ':after s2e' }).click();
       await expect(editor(page)).toHaveValue(':after');
       await page.locator('[role="option"]', { hasText: /^:overlap/ }).click();
-      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['● :overlap s1c']);
+      await expect(byVar('s2e').locator('.umr-doc-tag')).toHaveText(['s1c :overlap ●']);
+
+      const clean = cleanDiagnostics(diag);
+      expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+      expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+    } finally {
+      await own.client.documents.delete(own.documentId);
+    }
+  });
+
+  // Text mode shows every node of the sentence: a part the root does not
+  // reach is a graph of its own after the root's, applying the text as shown
+  // changes nothing, and a node taken out of the text goes. A role UMR does
+  // not have is refused before anything is written.
+  test('text mode holds the loose parts of a sentence', async ({ page }) => {
+    const own = await makeDocument();
+    try {
+      const diag = collectClientErrors(page);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
+      const block = page.locator('.umr-block').first();
+      await expect(block.locator('.umr-edge-label').first()).toBeVisible();
+      await block.locator('.umr-text-toggle').click();
+      const area = block.locator('textarea.umr-penman-text');
+      const stored = await area.inputValue();
+      await area.fill(`${stored}\n\n(s1z / zebra\n    :mod (s1s / striped))`);
+      await block.getByRole('button', { name: 'Apply' }).click();
+      await expect(nodeByConcept(page, 'zebra')).toBeVisible();
+      await expect(nodeByConcept(page, 'striped')).toBeVisible();
+
+      await block.locator('.umr-text-toggle').click();
+      await expect(area).toHaveValue(/\n\n\(s1z \/ zebra\n {4}:mod \(s1s \/ striped\)\)$/);
+      await expect(block.locator('.umr-penman-status')).toHaveText('As stored.');
+
+      await area.fill(stored.replace(':ARG0 s1p', ':poss s1p'));
+      await expect(block.locator('.umr-penman-status')).toContainText("Unknown relation ':poss'");
+      await expect(block.getByRole('button', { name: 'Apply' })).toBeDisabled();
+
+      await area.fill(stored);
+      await expect(block.locator('.umr-penman-status')).toContainText('Changed');
+      await block.getByRole('button', { name: 'Apply' }).click();
+      await expect(nodeByConcept(page, 'zebra')).toHaveCount(0);
+      await expect(nodeByConcept(page, 'striped')).toHaveCount(0);
+      await expect(nodeByConcept(page, 'leave-02')).toBeVisible();
 
       const clean = cleanDiagnostics(diag);
       expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);

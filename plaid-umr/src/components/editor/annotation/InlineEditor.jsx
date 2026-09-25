@@ -68,6 +68,11 @@ export function InlineEditor({
       onCancel();
       return;
     }
+    // A blur commits too, and must not take what Enter refuses.
+    if (check?.(text)) {
+      onCancel();
+      return;
+    }
     onCommit(text, option);
   };
   // The option Enter takes for typed text when the arrows chose none. A

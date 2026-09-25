@@ -130,13 +130,38 @@ test('an edge into a deleted node is left to the cascade, not deleted twice', as
   assert.ok(!calls.some((c) => c.name === 'relations.delete'));
 });
 
-test("a fragment the text never showed is not the text's to delete", async () => {
+// Text mode shows every node of the sentence: a part the root does not
+// reach is a graph of its own after the root's, so the text round-trips,
+// and one left out of the text is deleted like any other node.
+test('a loose node is in the text as a graph of its own, and goes when left out', async () => {
   const { doc } = load();
   const r = await doc.createNode({ sentenceIndex: 1, concept: 'thing' });
   assert.ok(r);
   const text = doc.penmanOf(1);
-  assert.doesNotMatch(text, /thing/);
+  const [rootGraph, loose] = text.split('\n\n');
+  assert.match(rootGraph, /^\(s1l \/ leave-02/);
+  assert.match(loose, /^\(s1t \/ thing\)$/);
   assert.equal(doc.planPenman(1, text).changes, 0);
+  const without = doc.planPenman(1, rootGraph);
+  assert.deepEqual(
+    without.delete.map((id) => doc.node(id).var),
+    ['s1t'],
+  );
+});
+
+test('a fragment with a child, and a new loose node typed as its own graph', async () => {
+  const { doc } = load();
+  const text = `${doc.penmanOf(1)}
+
+(s1t / thing
+    :mod (s1b / big))
+
+(s1q / quick)`;
+  const plan = doc.planPenman(1, text);
+  assert.equal(plan.errors, undefined);
+  assert.deepEqual(plan.create.map((c) => c.var).sort(), ['s1b', 's1q', 's1t']);
+  assert.equal(plan.root, null);
+  assert.deepEqual(plan.delete, []);
 });
 
 test('re-rooting onto a node the text creates clears the old mark first', async () => {
@@ -239,6 +264,18 @@ test('text mode refuses what the canvas refuses', () => {
     /would close a cycle/,
   );
   assert.equal(doc.planPenman(1, withChild('(s1l2 / thing)')).errors, undefined);
+  // A role UMR does not have is refused, as the canvas's role editor does, not
+  // stored and then reported. A concept stays free text.
+  assert.match(
+    doc.planPenman(1, base.replace(':ARG0 s1p', ':poss s1p')).errors[0].message,
+    /s1e: Unknown relation ':poss'/,
+  );
+  assert.match(
+    doc.planPenman(1, base.replace(':aspect performance)', ':colour red)')).errors[0].message,
+    /Unknown relation ':colour'/,
+  );
+  assert.equal(doc.planPenman(1, base.replace(':ARG0 s1p', ':ARG0-of s1p')).errors, undefined);
+  assert.equal(doc.planPenman(1, withChild('(s1l2 / wholly-new-concept)')).errors, undefined);
 });
 
 // A variable typed over is the same node under a new name: it keeps its
@@ -286,7 +323,7 @@ test('a 30-node apply is three requests, not ninety', async () => {
   const { doc, calls, requests } = load();
   const children = Array.from(
     { length: 30 },
-    (_, i) => `    :ARG${i} (s1t${i} / thing-${i} :refer-number singular)`,
+    (_, i) => `    :op${i + 1} (s1t${i} / thing-${i} :refer-number singular)`,
   ).join('\n');
   const text = `(s1l / leave-02\n${children})`;
   const plan = doc.planPenman(1, text);
