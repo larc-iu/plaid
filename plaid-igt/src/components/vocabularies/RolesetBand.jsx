@@ -43,7 +43,7 @@ export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
             className="h-8"
             value={roleset}
             disabled={disabled}
-            placeholder="leave-02"
+            placeholder="Roleset"
             aria-invalid={refused ? true : undefined}
             onChange={(e) => write({ roleset: e.target.value })}
           />
@@ -77,7 +77,7 @@ export const RolesetBand = ({ uid, fields, setFields, disabled = false }) => {
                 className="h-8 min-w-0 flex-1"
                 value={arg.description}
                 disabled={disabled}
-                placeholder="the one who leaves"
+                placeholder="Description"
                 onChange={(e) => setArg(i, { description: e.target.value })}
               />
               {!disabled && (
