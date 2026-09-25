@@ -90,12 +90,15 @@ export const UmrNode = React.memo(function UmrNode({
   })();
   const shownItems = tagItems.length > MAX_TAGS ? tagItems.slice(0, MAX_TAGS - 1) : tagItems;
   const hiddenItems = tagItems.slice(shownItems.length).flatMap((i) => i.tags);
-  const clickable = !!onDocTagClick && focused;
+  // A tag is the exception to the rule above: it opens its relation on the
+  // FIRST click. It is small and plainly a control of its own, and a click
+  // there that only focused the node read as the tag not working.
+  const clickable = !!onDocTagClick;
   const clickTag = (t) =>
     clickable
       ? (e) => {
           e.stopPropagation();
-          if (wasFocused.current) onDocTagClick(t);
+          onDocTagClick(t);
         }
       : undefined;
   // The rest of a node's relations, past what it shows: read off the

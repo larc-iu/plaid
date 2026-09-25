@@ -3,7 +3,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLexicon } from '../src/domain/vocabLexicon.js';
 import { conceptProblem } from '../src/domain/format/penman.js';
-import { conceptOptions, roleOptions } from '../src/components/editor/annotation/pickers.js';
+import {
+  conceptOptions,
+  roleOptions,
+  docRelationOptions,
+} from '../src/components/editor/annotation/pickers.js';
 import { rolesetProblem } from '../../plaid-igt/src/domain/vocabUmr.js';
 
 const lex = buildLexicon([
@@ -62,4 +66,27 @@ test("igt's roleset rule is UMR's concept rule", () => {
   for (const s of samples) {
     assert.equal(!!rolesetProblem(s), !!conceptProblem(s.trim()), s);
   }
+});
+
+// A temporal label says how the child (the target) stands to its reference
+// time (the source), which reads backwards in the triple's own order, so
+// each relation is offered with what it says about the two.
+test('a temporal relation is offered with what it says, child first', () => {
+  const [{ items }] = docRelationOptions('temporal', 'validator', {
+    source: 'document-creation-time',
+    target: 's9p',
+  });
+  const before = items.find((o) => o.value === ':before');
+  assert.equal(before.label, 's9p before document-creation-time');
+  assert.equal(
+    items.find((o) => o.value === ':contained').label,
+    's9p within document-creation-time',
+  );
+  // With no ends, and for other groups, the bare relations.
+  assert.ok(docRelationOptions('temporal')[0].items.includes(':before'));
+  assert.ok(
+    docRelationOptions('modal', 'validator', { source: 'author', target: 's9p' })[0].items.includes(
+      ':full-affirmative',
+    ),
+  );
 });

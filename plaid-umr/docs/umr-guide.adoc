@@ -153,10 +153,10 @@ Which layers feed which lines is set in **Project Settings, UMR settings** (see 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
 Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
 A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in purple, temporal ones in teal, coreference in amber.
-The tag reads the triple in its own order, with a dot where the node itself stands: `● :before s3b` on the node that is before `s3b`, and `s3d :before ●` on the node `s3d` is before.
+The tag reads the triple in its own order, with a dot where the node itself stands: `(s3d :before s3b)` is `● :before s3b` on `s3d` and `s3d :before ●` on `s3b`. A temporal relation says how the second node stands to the first, its reference time, so here `s3b` is before `s3d`.
 The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
 `author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
-A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked on a focused node.
+A node wears at most five tags and a tag names at most four other nodes. Past that a count (`+22`) takes their place, which lists them all when clicked on a focused node. A click on a tag changes its relation.
 Focusing or hovering a node draws its own relations, each in its tag's color: a line to the constant, a line to the other node, and for a node of another sentence a line across the sentences between, with the node at the far end outlined.
 Nothing is drawn for the others, so a long sentence stays readable.
 
@@ -255,10 +255,10 @@ Temporal, modal and coreference relations are UMR's document-level annotation.
 In this editor they are made from the same canvas as the sentence graph.
 
 * Drag a node's grip onto a constant in the margin: a modal relation for `author`, `root` or `null-conceiver`, a temporal one for `document-creation-time` and the reference constants. The relation is asked at the drop and appears as a tag on the node.
-* Hold Ctrl (Cmd) while dragging from a node onto another node for a temporal relation between two events.
+* Hold Ctrl (Cmd) while dragging from an event onto another node for a temporal relation: the node dropped on is the event's reference time.
 * Drag onto a node of another sentence for a coreference (without Ctrl) or a temporal relation (with Ctrl).
 * **c** on the focused node starts a coreference: pick the other node by its variable, then the relation (`:same-entity`, `:same-event`, `:subset-of`).
-* **t** starts a temporal relation: pick a constant or another node's variable, then the relation.
+* **t** starts a temporal relation: pick the event's reference time (a constant or another node's variable), then the relation. Each relation is listed with what it says, so `:before` on `s9p` with `document-creation-time` reads "s9p before document-creation-time" and is written `(document-creation-time :before s9p)`.
 * **o** starts a modal relation: pick the conceiver (`author`, `root`, `null-conceiver`, or a node), then the relation.
 
 A tag on a node opens its relation to change it, at either end, and the trash button or Shift+Backspace there deletes it.

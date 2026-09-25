@@ -532,7 +532,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       );
       setEditor(null);
       if (tag) {
-        askDocRole({ tripleId: tag.id, role: tag.rel, group: tag.group }, positionBelow(ed.nodeId));
+        askDocRole(
+          {
+            tripleId: tag.id,
+            role: tag.rel,
+            group: tag.group,
+            ends: { source: tag.source, target: tag.target },
+          },
+          positionBelow(ed.nodeId),
+        );
       } else closeEditor();
       return;
     }
@@ -560,12 +568,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         closeEditor();
         return;
       }
-      // A coreference or temporal relation runs from this node to the other;
-      // a modal one runs from the conceiver picked to this node.
+      // A coreference relation runs from this node to the other. A modal one
+      // runs from the conceiver picked to this node, and a temporal one from
+      // the reference time picked to this node, as a constant's does above:
+      // UMR's temporal label says how the child stands to its parent, so
+      // `t` on s9p, s3b, `:before` is `(s3b :before s9p)`, s9p before s3b.
       const triple =
-        ed.group === 'modal'
-          ? { source: other.id, target: ed.nodeId, group: 'modal' }
-          : { source: ed.nodeId, target: other.id, group: ed.group };
+        ed.group === 'coref'
+          ? { source: ed.nodeId, target: other.id, group: 'coref' }
+          : { source: other.id, target: ed.nodeId, group: ed.group };
       askDocRole({ triple }, at);
       return;
     }
@@ -957,15 +968,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             positionBelow(d.sourceId),
           );
         } else if (over?.kind === 'foreign') {
-          // Onto another sentence's node: temporal with Ctrl/Cmd, else coreference.
-          const group = d.doc ? 'temporal' : 'coref';
-          askDocRole(
-            { triple: { source: d.sourceId, target: over.id, group } },
-            positionBelow(d.sourceId),
-          );
+          // Onto another sentence's node: temporal with Ctrl/Cmd, else
+          // coreference. A temporal drop, like one on a constant, makes the
+          // node dropped on the reference time of the node dragged from.
+          const triple = d.doc
+            ? { source: over.id, target: d.sourceId, group: 'temporal' }
+            : { source: d.sourceId, target: over.id, group: 'coref' };
+          askDocRole({ triple }, positionBelow(d.sourceId));
         } else if (over?.kind === 'node' && over.id !== d.sourceId && d.doc) {
           askDocRole(
-            { triple: { source: d.sourceId, target: over.id, group: 'temporal' } },
+            { triple: { source: over.id, target: d.sourceId, group: 'temporal' } },
             positionBelow(over.id),
           );
         } else if (over?.kind === 'node' && over.id !== d.sourceId) {
@@ -1051,8 +1063,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       return conceptOptions(words, frames, ed.typed || '', vocabFor(words));
     }
     if (ed.kind === 'docRole') {
-      const group = ed.pending.tripleId ? ed.pending.group : ed.pending.triple.group;
-      return docRelationOptions(group);
+      const p = ed.pending;
+      const ends = p.tripleId ? p.ends : p.triple;
+      // A constant's end is its name, a node's its id.
+      const nameOf = (end) => nodesById.get(end)?.var ?? end;
+      return docRelationOptions(
+        p.tripleId ? p.group : p.triple.group,
+        'validator',
+        ends ? { source: nameOf(ends.source), target: nameOf(ends.target) } : null,
+      );
     }
     if (ed.kind === 'docList') {
       return [
@@ -1417,7 +1436,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     ? undefined
                     : (t) =>
                         askDocRole(
-                          { tripleId: t.id, role: t.rel, group: t.group },
+                          {
+                            tripleId: t.id,
+                            role: t.rel,
+                            group: t.group,
+                            ends: { source: t.source, target: t.target },
+                          },
                           positionBelow(node.id),
                         )
                 }

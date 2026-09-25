@@ -21,10 +21,32 @@ import {
   attrValueProblem,
 } from '../../../domain/format/penman.js';
 
+// How a temporal relation reads, child first: the label of `:before` in
+// `(document-creation-time :before s9p)` is "s9p before document-creation-time".
+// UMR's temporal labels say how the child (the target) stands to its
+// reference time (the source), which the triple's own order hides.
+const TEMPORAL_READING = {
+  ':before': 'before',
+  ':after': 'after',
+  ':overlap': 'overlaps',
+  ':contained': 'within',
+  ':contains': 'contains',
+  ':depends-on': 'depends on',
+};
+
 // The relations of one document-level group, the validator's set first.
-export const docRelationOptions = (group, sets = 'validator') => {
+// Given the triple's two ends by name, a temporal relation is labelled with
+// what it says about them.
+export const docRelationOptions = (group, sets = 'validator', ends = null) => {
   const byset = DOC_RELATIONS?.[group] || {};
-  const items = byset[sets] || byset.validator || byset.schema || [];
+  const rels = byset[sets] || byset.validator || byset.schema || [];
+  const items =
+    group === 'temporal' && ends
+      ? rels.map((rel) => ({
+          value: rel,
+          label: `${ends.target} ${TEMPORAL_READING[rel] || rel} ${ends.source}`,
+        }))
+      : rels;
   return [{ group: group.charAt(0).toUpperCase() + group.slice(1), items }];
 };
 

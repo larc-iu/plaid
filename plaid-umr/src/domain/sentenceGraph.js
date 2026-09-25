@@ -449,9 +449,10 @@ function alignmentOf(node, words) {
  * The tag a node wears for a document-level triple it takes part in: the
  * triple read in its OWN order with the node itself left out, so
  * `(author :full-affirmative s1l)` reads `author :full-affirmative` on s1l
- * and `(s1l :before document-creation-time)` reads `:before
- * document-creation-time` on s1l. Direction is the whole of what the
- * relation says, and a tag that always put the other end first reversed it.
+ * and `(s1l :before s3b)` reads `:before s3b` on s1l (s3b before s1l: a
+ * temporal label says how the target stands to the source). Direction is the
+ * whole of what the relation says, and a tag that always put the other end
+ * first reversed it.
  *
  * @param {{source: string, target: string, rel: string}} triple
  * @param {string} selfId the node wearing the tag

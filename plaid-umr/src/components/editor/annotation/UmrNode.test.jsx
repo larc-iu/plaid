@@ -79,6 +79,23 @@ describe('UmrNode document tags', () => {
     await r.unmount();
   });
 
+  it('opens a tag on the first click, the node not yet focused', async () => {
+    const onDocTagClick = vi.fn();
+    const tags = [tag('a', ':before', 's9p', { group: 'temporal' })];
+    const r = await renderComponent(
+      <UmrNode
+        node={node}
+        position={position}
+        docTags={tags}
+        onAction={() => {}}
+        onDocTagClick={onDocTagClick}
+      />,
+    );
+    await r.step(() => r.container.querySelector('.umr-doc-tag').click());
+    expect(onDocTagClick).toHaveBeenCalledWith(tags[0]);
+    await r.unmount();
+  });
+
   // The node 26 others are a subset of: one tag, three of the ends and a
   // count of the rest, which lists them all once the node is focused.
   it('caps the ends one tag lists', async () => {

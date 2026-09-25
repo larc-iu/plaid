@@ -276,6 +276,24 @@ test.describe('editing', () => {
       block.locator('.umr-doc-tag', { hasText: 'document-creation-time :before' }),
     ).toBeVisible();
     await block.screenshot({ path: process.env.UMR_LANE_SHOT || 'test-results/lane.png' });
+    // A tag opens its relation on the first click, the node not focused, and
+    // each temporal relation says what it means for the two ends.
+    await nodeByConcept(page, 'lunch').click();
+    await block.locator('.umr-doc-tag', { hasText: 'document-creation-time :before' }).click();
+    await expect(
+      page.getByRole('option', { name: /s1e before document-creation-time/ }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    // `t` from an event: the node picked is its reference time, so the
+    // triple runs from it to the event.
+    await nodeByConcept(page, 'today').click();
+    await page.keyboard.press('t');
+    await editor(page).fill('s1l');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('option', { name: /s1t before s1l/ })).toBeVisible();
+    await editor(page).fill(':before');
+    await page.keyboard.press('Enter');
+    await expect(block.locator('.umr-doc-tag', { hasText: 's1l :before' })).toBeVisible();
 
     // Alt+Right moves a child later in the written order. eat-01 was typed
     // with :time first; afterwards :ARG0 comes first in text mode.
@@ -304,6 +322,7 @@ test.describe('editing', () => {
     await expect(page.locator('pre, textarea').first()).toContainText(
       '(document-creation-time :before s1e)',
     );
+    await expect(page.locator('pre, textarea').first()).toContainText('(s1l :before s1t)');
   });
 
   // Every gesture has a mouse path: the node's own parts are click targets,
