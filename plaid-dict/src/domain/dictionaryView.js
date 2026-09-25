@@ -121,6 +121,17 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
 };
 
 /**
+ * The page an address names. A page is named by its form as the reader sees
+ * it, markers and all (`-ka`), but an address that names the stored form
+ * (`ka`, as every link did before affixes had pages of their own, or as a
+ * reader types it) still finds the entry: when no page has that name, the
+ * first page spelled that way without its markers answers. The caller sends
+ * the reader on to that page's own address.
+ */
+export const findFormPage = (pages, form) =>
+  (pages || []).find((p) => p.form === form) || (pages || []).find((p) => p.bare === form) || null;
+
+/**
  * The letter a form is filed under: its first character, without its diacritics,
  * uppercased. A form that starts with something uncased (a digit, a glottal stop
  * mark, the zero morph) is filed under that character as it stands. Digraphs get

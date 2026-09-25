@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDictionary } from '@/contexts/DictionaryContext';
@@ -8,6 +8,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { dictTitle } from '@/domain/dictConfig';
 import { dictionaryPath, formPath } from '@/domain/paths';
 import { EntryArticle } from '@/components/dictionary/EntryArticle';
+import { findFormPage } from '@/domain/dictionaryView';
 
 // One page per surface form, with every published headword spelled that way on
 // it, in homograph order.
@@ -17,7 +18,7 @@ export const FormPage = () => {
   const { slug, vocab, pages, fields, objectLang, resolveRef, exampleLayers, loading, missing } =
     useDictionary();
 
-  const page = useMemo(() => (pages || []).find((p) => p.form === form) || null, [pages, form]);
+  const page = useMemo(() => findFormPage(pages, form), [pages, form]);
   // The forms either side, so a reader can page through the dictionary.
   const neighbours = useMemo(() => {
     const at = (pages || []).findIndex((p) => p.form === form);
@@ -53,6 +54,9 @@ export const FormPage = () => {
       </div>
     );
   }
+
+  // An address naming the form without its affix markers: on to the page's own.
+  if (page.form !== form) return <Navigate to={formPath(slug, page.form)} replace />;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">

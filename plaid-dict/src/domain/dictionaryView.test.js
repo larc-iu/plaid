@@ -3,6 +3,7 @@ import {
   buildFormPages,
   buildIndex,
   buildSearchIndex,
+  findFormPage,
   indexLetter,
   readDictionary,
   searchPages,
@@ -358,5 +359,24 @@ describe('searchPages over a real tone-marked dictionary', () => {
     // Not a folding effect: `ọkọ́` literally starts with `ọkọ`, exactly as
     // `igb` reaches `igba`. Marks make a query precise, not anchored.
     expect(find('ọkọ')).toEqual(['ọkọ', 'ọkọ́', 'ọkọ̀']);
+  });
+});
+
+describe('findFormPage', () => {
+  const pages = [
+    { form: 'ka', bare: 'ka' },
+    { form: '-ka', bare: 'ka' },
+    { form: "-'", bare: "'" },
+  ];
+
+  it('finds a page by the form it is named by', () => {
+    expect(findFormPage(pages, '-ka')).toBe(pages[1]);
+    expect(findFormPage(pages, 'ka')).toBe(pages[0]);
+  });
+
+  it('finds an affix by its form without the markers when no page has that name', () => {
+    expect(findFormPage(pages, "'")).toBe(pages[2]);
+    expect(findFormPage(pages, 'kaa')).toBeNull();
+    expect(findFormPage(null, 'ka')).toBeNull();
   });
 });
