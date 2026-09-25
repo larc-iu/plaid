@@ -87,7 +87,10 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // one it was typed over.
   const commitOthers = () => {
     const line = otherLine.trim();
-    const { attrs: next, problem: why } = readAttrLine(line);
+    const { attrs: next, problem: why } = readAttrLine(
+      line,
+      others.map((a) => a.rel),
+    );
     setProblem(why || null);
     if (why) return;
     if (attrsToLine(next) === attrsToLine(others)) return;

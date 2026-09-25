@@ -1604,7 +1604,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                         ? conceptProblem
                         : editor.kind === 'role'
                           ? (text) =>
-                              relationProblem(text) || unknownRelationProblem(normalizeRole(text))
+                              relationProblem(text) ||
+                              // The edge's own role, kept, is not refused again.
+                              (normalizeRole(text) === editor.value
+                                ? null
+                                : unknownRelationProblem(normalizeRole(text)))
                           : editor.kind === 'docRole'
                             ? relationProblem
                             : undefined

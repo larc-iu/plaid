@@ -278,6 +278,22 @@ test('text mode refuses what the canvas refuses', () => {
   assert.equal(doc.planPenman(1, withChild('(s1l2 / wholly-new-concept)')).errors, undefined);
 });
 
+// A graph imported with a relation UMR does not have can still be edited in
+// text mode: only a relation the text brings in is refused.
+test('a stored unknown relation does not block text mode', async () => {
+  const plan = planImport(
+    parseUmrFile(FILE.replace(':ARG0 s1p :aspect', ':poss s1p :aspect')).sentences,
+    [],
+  );
+  const { client } = recordingClient();
+  const doc = new UmrDocument({ raw: rawFromPlan(plan), client });
+  const text = doc.penmanOf(1);
+  assert.match(text, /:poss s1p/);
+  const edited = text.replace('leave-02', 'leave-01');
+  assert.equal(doc.planPenman(1, edited).errors, undefined);
+  assert.equal(doc.planPenman(1, edited).concept.length, 1);
+});
+
 // A variable typed over is the same node under a new name: it keeps its
 // anchor, its edges and its document-level relations.
 test('a variable typed over is read as a rename', () => {

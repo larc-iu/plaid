@@ -103,4 +103,6 @@ test('a relation UMR does not have is refused', () => {
   assert.equal(unknownRelationProblem(':op12'), null);
   assert.equal(readAttrLine(':colour red').problem, "Unknown relation ':colour'.");
   assert.equal(readAttrLine(':aspect state').problem, null);
+  // One the node already has (an imported file's) is not refused again.
+  assert.equal(readAttrLine(':colour red', [':colour']).problem, null);
 });

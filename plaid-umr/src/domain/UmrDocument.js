@@ -1437,13 +1437,18 @@ export class UmrDocument extends DocumentModel {
       const why = this._newVariableProblem(v, sentenceIndex);
       if (why) errors.push({ message: why });
     });
+    // A relation already in the stored graph (an imported file may carry one
+    // UMR does not have) is not the text's to refuse.
+    const storedRels = new Set(
+      sentence.nodes.flatMap((n) => [...n.attrs.map((a) => a.rel), ...n.out.map((e) => e.role)]),
+    );
     parsed.nodes.forEach((node, v) => {
       const why = conceptProblem(node.concept);
       if (why) errors.push({ message: `${v}: ${why}` });
       node.children.forEach((child) => {
         const bad =
           relationProblem(child.rel) ||
-          unknownRelationProblem(child.rel) ||
+          (storedRels.has(child.rel) ? null : unknownRelationProblem(child.rel)) ||
           (child.kind === 'node' ? null : attrValueProblem(child.value));
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });
