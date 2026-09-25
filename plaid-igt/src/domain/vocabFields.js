@@ -75,12 +75,24 @@ const FIELD_LABELS = {
  * rather than a convenience.
  */
 export const humanizeFieldName = (name) => {
-  if (FIELD_LABELS[name]) return FIELD_LABELS[name];
   const raw = String(name ?? '');
-  // The base, i.e. without a trailing "(ru)" language suffix, which IS machine
-  // made and must still be title cased ("pos (ru)" → "Pos (ru)").
-  if (/\s/.test(raw.replace(/\s*\([^)]*\)\s*$/, ''))) return raw;
-  const words = String(name ?? '')
+  // A trailing "(ru)" or "(lmk-Qaaa-x-LMKL)" names the field's language. Only
+  // the base is made readable, and the suffix is kept exactly, because it is a
+  // language tag and splitting it on its hyphens turned it into
+  // "(lmk Qaaa X LMKL)". So "gloss (ru)" reads "Gloss (ru)", as bare "gloss"
+  // reads "Gloss".
+  const suffixed = /^(.*?\S)(\s*\([^()]*\))\s*$/.exec(raw);
+  if (suffixed) {
+    const base = humanizeBase(suffixed[1]);
+    return base ? `${base}${suffixed[2]}` : raw;
+  }
+  return humanizeBase(raw);
+};
+
+const humanizeBase = (raw) => {
+  if (FIELD_LABELS[raw]) return FIELD_LABELS[raw];
+  if (/\s/.test(raw)) return raw;
+  const words = raw
     .replace(/[_-]+/g, ' ')
     .replace(/([a-z\d])([A-Z])/g, '$1 $2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')

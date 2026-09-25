@@ -113,7 +113,7 @@ describe('resolving a field tagset', () => {
     const governed = vocabGovernedFields(fields, config);
     expect(governed.map((g) => [g.name, g.field, g.scope, g.tagsetName])).toEqual([
       ['pos', 'POS', 'entry', 'POS'],
-      ['pos (ru)', 'Pos (ru)', 'entry', 'POS'],
+      ['pos (ru)', 'POS (ru)', 'entry', 'POS'],
     ]);
     expect(vocabTagsetByField(fields, config).get('pos')).toEqual(governed[0].tagset);
   });
@@ -206,8 +206,27 @@ describe('humanizeFieldName', () => {
     expect(humanizeFieldName('scientific name')).toBe('scientific name');
     // ...but a trailing language suffix is machine made, so the base is still
     // title cased around it.
-    expect(humanizeFieldName('pos (ru)')).toBe('Pos (ru)');
+    expect(humanizeFieldName('pos (ru)')).toBe('POS (ru)');
+    expect(humanizeFieldName('lexemeForm (ru)')).toBe('Lexeme Form (ru)');
     expect(humanizeFieldName('Scientific name (Latin)')).toBe('Scientific name (Latin)');
+  });
+
+  it('never touches the language tag in a suffix', () => {
+    // It split the tag on its hyphens and capitalized the parts, so the entry
+    // editor read "Gloss (lmk Qaaa X LMKL)" beside the grid's
+    // "Gloss (lmk-Qaaa-x-LMKL)".
+    expect(humanizeFieldName('gloss (qaa-x-Eng)')).toBe('Gloss (qaa-x-Eng)');
+    expect(humanizeFieldName('gloss (lmk-Qaaa-x-LMKL)')).toBe('Gloss (lmk-Qaaa-x-LMKL)');
+    expect(humanizeFieldName('Comment (pt-BR)')).toBe('Comment (pt-BR)');
+    expect(humanizeFieldName('source_id (en)')).toBe('Source Id (en)');
+  });
+
+  it('keeps what it cannot split', () => {
+    expect(humanizeFieldName('(en)')).toBe('(en)');
+    expect(humanizeFieldName('')).toBe('');
+    expect(humanizeFieldName(undefined)).toBe('');
+    expect(humanizeFieldName('a (b) (c)')).toBe('a (b) (c)');
+    expect(humanizeFieldName('gloss (')).toBe('gloss (');
   });
 });
 
