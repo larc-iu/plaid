@@ -46,6 +46,19 @@ export const unknownRelationProblem = (relation) => {
   return knownRelation(rel) ? null : `Unknown relation '${rel}'.`;
 };
 
+/**
+ * Why `relation` is not one of the document-level `group`'s relations
+ * (`temporal`, `modal`, `coref`), or null when it is: the same closed set
+ * `unknown-document-relation` judges by, so the canvas refuses what the
+ * validator would report (`:FullAff` as the guidelines' examples write it).
+ */
+export const unknownDocRelationProblem = (group, relation, sets = 'validator') => {
+  const known = DOC_RELATIONS[group]?.[sets] ?? DOC_RELATIONS[group]?.validator ?? [];
+  return known.includes(relation)
+    ? null
+    : `Unknown document-level ${group} relation '${relation}'.`;
+};
+
 // The value set a relation's atom is judged against. An attribute validate.py
 // leaves open is still enumerated in the guidelines, so the schema set is used
 // for it when the caller asked for the schema inventory.
@@ -343,13 +356,13 @@ function checkDocGraph(sentence, findings, options) {
   const sets = options.sets ?? 'validator';
 
   for (const group of ['temporal', 'modal', 'coref']) {
-    const known = new Set(DOC_RELATIONS[group][sets] ?? DOC_RELATIONS[group].validator);
     for (const [a, relation, b] of docGraph[group] ?? []) {
-      if (!known.has(relation)) {
+      const unknown = unknownDocRelationProblem(group, relation, sets);
+      if (unknown) {
         findings.push({
           level: 'error',
           code: 'unknown-document-relation',
-          message: `Unknown document-level ${group} relation '${relation}'.`,
+          message: unknown,
         });
       }
       const place = (variable) =>

@@ -19,7 +19,10 @@ import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
 import { conceptProblem, relationProblem } from '../../../domain/format/penman.js';
-import { unknownRelationProblem } from '../../../domain/format/validate.js';
+import {
+  unknownRelationProblem,
+  unknownDocRelationProblem,
+} from '../../../domain/format/validate.js';
 import {
   roleOptions,
   normalizeRole,
@@ -1343,7 +1346,12 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                     : (ev) => {
                         ev.stopPropagation();
                         askDocRole(
-                          { tripleId: t.id, role: t.rel, group: t.group },
+                          {
+                            tripleId: t.id,
+                            role: t.rel,
+                            group: t.group,
+                            ends: { source: t.source, target: t.target },
+                          },
                           { x: 8, y: listedTop + i * CONST_STEP + 24 },
                         );
                       }
@@ -1610,7 +1618,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                                 ? null
                                 : unknownRelationProblem(normalizeRole(text)))
                           : editor.kind === 'docRole'
-                            ? relationProblem
+                            ? (text) =>
+                                relationProblem(text) ||
+                                // The triple's own relation, kept, is not refused again.
+                                (normalizeRole(text) === editor.value
+                                  ? null
+                                  : unknownDocRelationProblem(
+                                      editor.pending.tripleId
+                                        ? editor.pending.group
+                                        : editor.pending.triple.group,
+                                      normalizeRole(text),
+                                    ))
                             : undefined
                 }
               />

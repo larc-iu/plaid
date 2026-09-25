@@ -2,7 +2,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLexicon } from '../src/domain/vocabLexicon.js';
-import { unknownRelationProblem } from '../src/domain/format/validate.js';
+import {
+  unknownRelationProblem,
+  unknownDocRelationProblem,
+} from '../src/domain/format/validate.js';
 import { conceptProblem } from '../src/domain/format/penman.js';
 import {
   conceptOptions,
@@ -105,4 +108,18 @@ test('a relation UMR does not have is refused', () => {
   assert.equal(readAttrLine(':aspect state').problem, null);
   // One the node already has (an imported file's) is not refused again.
   assert.equal(readAttrLine(':colour red', [':colour']).problem, null);
+});
+
+// A document-level relation is a closed set too, per group: the relation
+// editor refuses what `unknown-document-relation` reports, `:FullAff` as the
+// guidelines' examples write it among them.
+test('a document-level relation outside its group is refused', () => {
+  assert.equal(unknownDocRelationProblem('modal', ':full-affirmative'), null);
+  assert.equal(
+    unknownDocRelationProblem('modal', ':FullAff'),
+    "Unknown document-level modal relation ':FullAff'.",
+  );
+  assert.equal(unknownDocRelationProblem('temporal', ':before'), null);
+  assert.ok(unknownDocRelationProblem('temporal', ':same-entity'));
+  assert.equal(unknownDocRelationProblem('coref', ':same-entity'), null);
 });
