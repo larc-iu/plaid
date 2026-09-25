@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   alphabetCollator,
   formatAlphabet,
+  isLetterCluster,
+  letterLikeCharacters,
   outsideAlphabet,
   parseAlphabet,
   splitGraphemes,
@@ -141,6 +143,65 @@ describe('suggestAlphabet', () => {
 
   it('is empty for no forms', () => {
     expect(suggestAlphabet([])).toEqual([]);
+  });
+
+  it('offers only letters, taking the first one after any punctuation', () => {
+    // Lamkang's headwords proposed ' ( { † ° ∅ ᴵ ᴿ as letters.
+    const forms = ["'ii", '(p)li', '{lampa}', '†a²²ther', '°nu', '∅', 'ᴵᴵ', 'ᴿᴱᴰᵁᴾ', 'kaang'];
+    expect(suggestAlphabet(forms)).toEqual(['a', 'i', 'k', 'l', 'n', 'p', 'r']);
+  });
+
+  it('keeps a digit that is a letter, and a letter-like character the project declares', () => {
+    // Arapaho writes a letter with 3, and its glottal stop with an apostrophe.
+    expect(suggestAlphabet(["'", "3i'", 'ceese'])).toEqual(['3', 'c']);
+    expect(suggestAlphabet(["'", "3i'", 'ceese'], new Intl.Collator(), ["'"])).toEqual([
+      "'",
+      '3',
+      'c',
+    ]);
+  });
+
+  it('takes a modifier letter apostrophe as the letter it is', () => {
+    expect(suggestAlphabet(['\u02BCa'])).toEqual(['\u02BC']);
+  });
+});
+
+describe('isLetterCluster', () => {
+  it('is true for letters, digits, and declared characters only', () => {
+    expect(isLetterCluster('a')).toBe(true);
+    expect(isLetterCluster('ọ̀')).toBe(true);
+    expect(isLetterCluster('3')).toBe(true);
+    expect(isLetterCluster("'")).toBe(false);
+    expect(isLetterCluster("'", ["'"])).toBe(true);
+    expect(isLetterCluster('∅')).toBe(false);
+    expect(isLetterCluster('')).toBe(false);
+  });
+});
+
+describe('letterLikeCharacters', () => {
+  const project = (vocabId, ignoredTokens) => ({
+    vocabs: [{ id: vocabId }],
+    textLayers: [
+      {
+        config: { plaid: { role: 'baseline' } },
+        tokenLayers: [{ config: { plaid: { role: 'word' }, igt: { ignoredTokens } } }],
+      },
+    ],
+  });
+
+  it("unions the exceptions of every project that links the vocabulary, and no other's", () => {
+    const projects = [
+      project('v', { type: 'unicodePunctuation', whitelist: ["'"] }),
+      project('v', { type: 'unicodePunctuation', whitelist: ['-', "'", 'ab'] }),
+      project('w', { type: 'unicodePunctuation', whitelist: ['!'] }),
+      project('v', { type: 'blacklist', blacklist: ['?'] }),
+    ];
+    expect(letterLikeCharacters(projects, 'v')).toEqual(["'", '-']);
+  });
+
+  it('is empty when nothing is declared', () => {
+    expect(letterLikeCharacters([project('v', undefined)], 'v')).toEqual([]);
+    expect(letterLikeCharacters(null, 'v')).toEqual([]);
   });
 });
 

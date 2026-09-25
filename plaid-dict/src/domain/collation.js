@@ -18,6 +18,12 @@
 // A position is a GRAPHEME CLUSTER, not a code point, so a letter keeps the
 // combining marks written on it. See splitClusters.
 
+import {
+  findBaselineTextLayer,
+  findWordTokenLayer,
+  readIgnoredTokens,
+} from '@igt/domain/igtConfig.js';
+
 // Every unlisted grapheme ranks after every listed one, and among themselves by
 // code point, so they gather after Z instead of scattering.
 const UNLISTED = 1e7;
@@ -157,11 +163,39 @@ export const alphabetCollator = (units) => {
 };
 
 /**
+ * Is this grapheme cluster a letter of the language? A letter or a digit
+ * (Arapaho writes a letter with 3), or a character one of the vocabulary's
+ * projects declares letter-like, the way plaid-igt's tokenizer reads that
+ * list (see letterLikeCharacters). Everything else, the apostrophe included
+ * unless declared, is punctuation or a symbol: a bracket, a dagger, the zero
+ * morph.
+ */
+export const isLetterCluster = (cluster, letterLike = []) => {
+  const first = [...String(cluster ?? '')][0];
+  if (!first) return false;
+  if (letterLike.includes(first)) return true;
+  return /[\p{L}\p{N}]/u.test([...first.normalize('NFKC')][0] ?? '');
+};
+
+// A letter written in a compatibility form (a superscript `ᴵ`, a ligature) is
+// that letter, lowercased: the collator already files it there.
+const plainLetter = (cluster) => {
+  const compat = cluster.normalize('NFKC');
+  if (compat === cluster.normalize('NFC')) return cluster;
+  return splitClusters(compat.toLowerCase())[0] ?? cluster;
+};
+
+/**
  * The alphabet units a dictionary's own headwords need, in the order the
  * fallback collator puts them: what the setup form offers as a starting point,
- * one unit per distinct first grapheme, AS WRITTEN. N-graphs are the compiler's
- * to add, since nothing in the data says "ch" is a letter rather than c then h,
- * and marked letters are theirs to remove, for the mirror reason.
+ * one unit per distinct first LETTER, AS WRITTEN. A form that opens with
+ * punctuation (`{lampa}`, `†a²²ther`) offers the letter after it. N-graphs are
+ * the compiler's to add, since nothing in the data says "ch" is a letter
+ * rather than c then h, and marked letters are theirs to remove, for the mirror
+ * reason.
+ *
+ * `letterLike` is the characters the vocabulary's projects declare
+ * letter-like (letterLikeCharacters). An apostrophe is a letter only then.
  *
  * This used to fold the mark away, which read as the safe default and was not.
  * Nothing in the data separates a letter-forming mark from a tone mark: a dot
@@ -173,13 +207,35 @@ export const alphabetCollator = (units) => {
  * mark files with its base letter (see splitGraphemes); before that fix it was
  * the deletion that broke the order.
  */
-export const suggestAlphabet = (forms, collator = new Intl.Collator()) => {
+export const suggestAlphabet = (forms, collator = new Intl.Collator(), letterLike = []) => {
   const units = new Set();
   for (const form of forms || []) {
-    const first = splitClusters(String(form ?? '').toLowerCase())[0];
-    if (first) units.add(first);
+    const first = splitClusters(String(form ?? '').toLowerCase()).find((cluster) =>
+      isLetterCluster(cluster, letterLike),
+    );
+    if (first) units.add(plainLetter(first));
   }
   return [...units].sort(collator.compare);
+};
+
+/**
+ * The characters the projects using a vocabulary declare letter-like: the
+ * exceptions list of each word layer's punctuation rule, plaid-igt's
+ * `config.igt.ignoredTokens`. A vocabulary has no orthography of its own, so
+ * the union over every project the reader can see that links it.
+ */
+export const letterLikeCharacters = (projects, vocabularyId) => {
+  const chars = new Set();
+  for (const project of projects || []) {
+    if (!(project?.vocabs || []).some((v) => v?.id === vocabularyId)) continue;
+    const baseline = findBaselineTextLayer(project.textLayers || []);
+    const word = findWordTokenLayer(baseline?.tokenLayers || []);
+    const rule = readIgnoredTokens(word?.config);
+    if (rule?.type !== 'unicodePunctuation') continue;
+    // One character each; a longer entry matches nothing in plaid-igt either.
+    for (const c of rule.whitelist || []) if ([...String(c)].length === 1) chars.add(c);
+  }
+  return [...chars];
 };
 
 /** The headwords whose first unit the alphabet does not account for. */

@@ -18,6 +18,7 @@ import { publicationCounts, publishAll, statusKeyOfConfig } from '@/domain/publi
 import { discoverExampleLayers } from '@/domain/exampleLayers';
 import {
   formatAlphabet,
+  letterLikeCharacters,
   outsideAlphabet,
   parseAlphabet,
   suggestAlphabet,
@@ -160,6 +161,10 @@ export const Setup = () => {
   // The alphabet is edited as text so a trailing space survives typing; the
   // draft holds the parsed units.
   const [alphabetText, setAlphabetText] = useState('');
+  // The characters this vocabulary's projects declare letter-like, which
+  // count as letters when the alphabet is filled from the entries. Empty until
+  // the projects are read, and when none can be.
+  const [letterLike, setLetterLike] = useState([]);
 
   // Seed once from what the server has, or from the vocabulary's name for a
   // dictionary being set up for the first time.
@@ -183,6 +188,20 @@ export const Setup = () => {
         if (alive) setItems([]);
       }
     })();
+    return () => {
+      alive = false;
+    };
+  }, [client, vocabularyId]);
+
+  useEffect(() => {
+    if (!client || !vocabularyId) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((projects) => {
+        if (alive) setLetterLike(letterLikeCharacters(projects, vocabularyId));
+      })
+      .catch((err) => console.error('Failed to read the projects:', err));
     return () => {
       alive = false;
     };
@@ -390,6 +409,7 @@ export const Setup = () => {
                 const units = suggestAlphabet(
                   headwordForms,
                   dictCollator({ ...draft, alphabet: [] }),
+                  letterLike,
                 );
                 setAlphabetText(formatAlphabet(units));
                 set({ alphabet: units });
