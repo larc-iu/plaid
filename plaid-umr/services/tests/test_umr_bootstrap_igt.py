@@ -440,3 +440,12 @@ def test_a_word_of_one_stem_is_not_named_by_a_headword_it_happens_to_spell():
     vocab = {**SEG_VOCAB, 'items': SEG_VOCAB['items'] + [
         {'id': 'e-mhii', 'form': 'mhii', 'metadata': {}}]}
     assert [c for c, _ in _segmented_run(_segmented(), vocab)][0] == 'hii'
+
+
+def test_int_is_not_read_as_a_question():
+    """INT is not a Leipzig abbreviation, and grammars use it for an
+    intensifier (Lamkang IDEO:INT.rhythmic) as often as for a question, so the
+    default table leaves it to a language table. Q is Leipzig's question."""
+    table = boot.ABBREVIATIONS
+    assert boot.read_gloss('IDEO:INT.rhythmic', table)['attrs'] == []
+    assert boot.read_gloss('Q', table)['attrs'] == [(':mode', 'interrogative')]

@@ -110,7 +110,6 @@ ABBREVIATIONS: Dict[str, Optional[tuple]] = {
     'NEG': (':polarity', '-'),
     'IMP': (':mode', 'imperative'),
     'Q': (':mode', 'interrogative'),
-    'INT': (':mode', 'interrogative'),
     'POSS': ('possessive',),
     'POS': ('possessive',),
     'HAB': (':aspect', 'habitual'),
