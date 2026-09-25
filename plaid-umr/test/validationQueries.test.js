@@ -136,17 +136,22 @@ test('a report is in sentence order, with one row for a graphless sentence', () 
     word: n,
   });
   const words = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  // Word 3 carries a node the root does not reach: the export leaves the
+  // node out, so the validator sees the word bare. Word 1 carries the root,
+  // which the export writes, so a warning on it is a real fault and stays.
+  const root = { id: 'n1', sentence: 1, wordIds: ['a'], out: [] };
+  const loose = { id: 'n2', sentence: 1, wordIds: ['c'], out: [] };
   const doc = {
+    graph: { nodesById: new Map([root, loose].map((n) => [n.id, n])) },
     sentences: [
-      // Word 3 carries a node the root does not reach: the export leaves the
-      // node out, so the validator sees the word bare.
-      { index: 1, words, nodes: [{ wordIds: ['a'] }, { wordIds: ['c'] }] },
-      { index: 2, words, nodes: [] },
-      { index: 3, words, nodes: [] },
+      { index: 1, words, nodes: [root, loose], roots: [root, loose] },
+      { index: 2, words, nodes: [], roots: [] },
+      { index: 3, words, nodes: [], roots: [] },
     ],
     // As `problems` has them: the per-sentence checks, then those that walk
     // the whole graph, then a document-level one.
     problems: [
+      w(1, 1),
       w(1, 2),
       w(1, 3),
       w(2, 1),
@@ -160,6 +165,7 @@ test('a report is in sentence order, with one row for a graphless sentence', () 
     reportOf(doc).map((p) => [p.sentence ?? null, p.message]),
     [
       [null, 'Document.'],
+      [1, "Word 1 ('x') is not aligned to any node."],
       [1, "Word 2 ('x') is not aligned to any node."],
       [1, 'Not reached.'],
       [2, 'No graph. 2 words are not aligned to any node.'],

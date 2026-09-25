@@ -15,6 +15,7 @@
 // barely been started. A document with neither has nothing to check: every
 // check walks either the nodes or the words.
 import { UmrDocument } from './UmrDocument.js';
+import { writtenIds } from './sentenceGraph.js';
 
 // How many document reads are in flight at once. Enough to cover the round
 // trip on a remote server, few enough that a scan does not monopolise the
@@ -73,11 +74,16 @@ async function mapLimit(items, limit, work) {
  */
 export function reportOf(doc) {
   const graphless = new Set();
-  // 1-based word numbers with a node on them, by sentence.
+  // 1-based word numbers with a node the export leaves out on them, by
+  // sentence. Only those: a word the export does write a node for and the
+  // validator still calls bare is a real fault, and keeps its row.
   const alignedWords = new Map();
   (doc.sentences || []).forEach((s) => {
     if (!s.nodes?.length) graphless.add(s.index);
-    const ids = new Set((s.nodes || []).flatMap((n) => n.wordIds || []));
+    const written = writtenIds(s, doc.graph.nodesById);
+    const ids = new Set(
+      (s.nodes || []).filter((n) => !written.has(n.id)).flatMap((n) => n.wordIds || []),
+    );
     alignedWords.set(
       s.index,
       new Set((s.words || []).flatMap((w, i) => (ids.has(w.id) ? [i + 1] : []))),

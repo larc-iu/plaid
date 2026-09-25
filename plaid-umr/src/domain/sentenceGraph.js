@@ -371,7 +371,7 @@ function rootsOf(sentence, nodesById) {
 
 // The ids of the nodes the export writes for a sentence: what its first root
 // reaches.
-function writtenIds(sentence, nodesById) {
+export function writtenIds(sentence, nodesById) {
   const seen = new Set();
   const stack = sentence.roots.slice(0, 1);
   while (stack.length) {
