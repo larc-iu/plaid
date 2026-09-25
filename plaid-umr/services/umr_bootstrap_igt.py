@@ -5,12 +5,26 @@ annotation, with no model.
 For every sentence it makes one node per word that the project already says
 something about: a word linked to a vocabulary entry takes the entry's
 HEADWORD as its concept (UMR's stage 0, "use the lemma as is"), and a word
-with a gloss but no link takes the lexical part of its gloss. Grammatical
-gloss abbreviations (Leipzig rules, plus whatever a language adds) become
-the attributes they stand for: `3SG` is `:refer-person 3rd :refer-number
-singular`, `NEG` is `:polarity -`, `HAB` is `:aspect habitual`. The word
-whose glosses carry tense or aspect is marked as the sentence's root, else
-the first node is.
+with a gloss but no link takes the lexical part of its gloss. A headword of
+several words is joined with hyphens, UMR's multi-word concept (`take-out`).
+Grammatical gloss abbreviations (Leipzig rules, plus whatever a language adds)
+become the attributes they stand for: `3SG` is `:refer-person 3rd
+:refer-number singular`, `NEG` is `:polarity -`, `HAB` is `:aspect habitual`.
+The word whose glosses carry tense or aspect is marked as the sentence's root,
+else the first node is.
+
+In a segmented word the concept comes from its LEXICAL morpheme: never an
+affix, a clitic or a zero morph (`∅`), and of the rest the first with a morph
+type (a stem or root), else the first whose gloss has a lexical part. An
+affix's entry or gloss never names the word (`m-` 3.POSS + `hii` blood is
+`hii`, not `m`). A link on the word itself comes first.
+
+A person and number describe the node only when the gloss is the node's own:
+a gloss that marks possession (`POSS`), or that carries a person on another
+morpheme than the lexical one or beside a lexical part (`sbj:3`, `go.3SG`), is
+agreement with or the possessor of another participant, and that participant
+would need a node and an edge. Its person and number are dropped rather than
+put on the wrong node.
 
 It draws NO edges. A role is a claim about who did what, and glosses do not
 say; the annotator connects the nodes on the canvas, where a node with its
@@ -67,10 +81,11 @@ person edits or confirms it.
 """
 
 #: What a grammatical gloss abbreviation stands for: an attribute and its
-#: value, or `('root',)` for a tense or aspect marker that says the word is
-#: the sentence's event. Leipzig Glossing Rules abbreviations, upper case.
-#: Only values the validator accepts, so nothing written here is an error the
-#: annotator has to clean up.
+#: value, `('root',)` for a tense or aspect marker that says the word is the
+#: sentence's event, or `('possessive',)` for a marker that says the gloss's
+#: person and number are a possessor's. Leipzig Glossing Rules abbreviations,
+#: upper case, and Lamkang's `POS` beside `POSS`. Only values the validator
+#: accepts, so nothing written here is an error the annotator has to clean up.
 ABBREVIATIONS: Dict[str, Optional[tuple]] = {
     'SG': (':refer-number', 'singular'),
     'PL': (':refer-number', 'plural'),
@@ -86,6 +101,8 @@ ABBREVIATIONS: Dict[str, Optional[tuple]] = {
     'IMP': (':mode', 'imperative'),
     'Q': (':mode', 'interrogative'),
     'INT': (':mode', 'interrogative'),
+    'POSS': ('possessive',),
+    'POS': ('possessive',),
     'HAB': (':aspect', 'habitual'),
     'PFV': (':aspect', 'perfective'),
     'IPFV': (':aspect', 'imperfective'),
@@ -129,10 +146,12 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
 def read_gloss(gloss: str, table) -> Dict[str, Any]:
     """One gloss value read into what it says: the lexical part (the first
     piece that is not an abbreviation), the attributes its abbreviations
-    stand for, and whether one of them marks tense or aspect."""
+    stand for, whether one of them marks tense or aspect, and whether one
+    marks possession."""
     lexical = None
     attrs: List[tuple] = []
     eventive = False
+    possessive = False
     for piece in _GLOSS_CUT.split(str(gloss or '').strip()):
         if not piece:
             continue
@@ -144,6 +163,8 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
                 what = table.get(k.upper())
                 if what == ('root',):
                     eventive = True
+                elif what == ('possessive',):
+                    possessive = True
                 elif what:
                     attrs.append(what)
             continue
@@ -153,14 +174,62 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
             continue
         if lexical is None and _LETTER.search(piece):
             lexical = piece
-    return {'lexical': lexical, 'attrs': attrs, 'eventive': eventive}
+    return {'lexical': lexical, 'attrs': attrs, 'eventive': eventive, 'possessive': possessive}
+
+
+#: The attributes that describe a participant, which a gloss may give for
+#: another one than the node (agreement, a possessor).
+_PARTICIPANT = (':refer-person', ':refer-number')
+
+
+def own_attrs(read: Dict[str, Any], lexical_home: bool) -> List[tuple]:
+    """The attributes of one read gloss that belong on the node. `lexical_home`
+    is whether the gloss is the word's own or its lexical morpheme's. A
+    possessive gloss, or a person on another morpheme or beside a lexical part,
+    is another participant's person and number, so both are left out."""
+    has_person = any(rel == ':refer-person' for rel, _ in read['attrs'])
+    foreign = read['possessive'] or (has_person and (not lexical_home or read['lexical']))
+    return [(rel, value) for rel, value in read['attrs']
+            if not (foreign and rel in _PARTICIPANT)]
+
+
+def is_bound(morph_type: Optional[str]) -> bool:
+    """An affix or a clitic, by IGT's morph type (FLEx's names): never the
+    morpheme that names a word. As `isBoundType` in plaid-igt."""
+    t = (morph_type or '').lower()
+    return 'clitic' in t or t.endswith('fix')
+
+
+#: A zero morph as IGT writes it (`Alt+0` types U+2205), or a form emptied by
+#: hand: nothing a word could be named after.
+_ZERO_FORMS = {'', '\u2205', '0'}
+
+
+def is_zero(form: str) -> bool:
+    return (form or '').strip() in _ZERO_FORMS
+
+
+def lexical_morpheme(morphemes, reads_by_morpheme, links, headwords):
+    """The morpheme a segmented word takes its concept from, or None. Never
+    an affix, a clitic or a zero morph. Of the rest, the first whose morph type
+    is set (a stem or root), else the first whose gloss has a lexical part,
+    then the first linked to an entry."""
+    rest = [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
+    typed = next((m for m in rest if m.morph_type), None)
+    if typed:
+        return typed
+    for m in rest:
+        if any(r['lexical'] for r in reads_by_morpheme.get(m.id, [])):
+            return m
+    return next((m for m in rest
+                 if any(e in headwords for e in links.get(m.id, []))), None)
 
 
 def concept_from(text: str) -> str:
     """A concept from a headword or a lexical gloss: lower case, spaces as
     hyphens, nothing a PENMAN reader would choke on."""
     out = re.sub(r'\s+', '-', str(text or '').strip().lower())
-    out = re.sub(r'[()"\s/]', '', out)
+    out = re.sub(r'[()":#\s/]', '', out)
     return out
 
 
@@ -208,29 +277,40 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         if not _LETTER.search(word.text) and not re.search(r'\d', word.text):
             continue
         morphemes = sentence.morphemes_of(word)
-        tokens = [word.id] + [m.id for m in morphemes]
-        entry = next((e for t in tokens for e in links.get(t, []) if e in headwords), None)
-        glosses = []
+        word_reads = []
+        by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
         for layer in gloss_layers:
             of = values.get(layer.id) or {}
             if layer.scope == 'word':
                 value = of.get(word.id)
                 if value:
-                    glosses.append(value)
+                    word_reads.append(read_gloss(value, table))
             elif layer.scope == 'morpheme':
-                glosses.extend(v for v in (of.get(m.id) for m in morphemes) if v)
-        read = [read_gloss(g, table) for g in glosses]
-        lexical = next((r['lexical'] for r in read if r['lexical']), None)
+                for m in morphemes:
+                    value = of.get(m.id)
+                    if value:
+                        by_morpheme.setdefault(m.id, []).append(read_gloss(value, table))
+        home = lexical_morpheme(morphemes, by_morpheme, links, headwords) if morphemes else None
+        home_reads = by_morpheme.get(home.id, []) if home else []
+        entry = next((e for t in [word.id] + ([home.id] if home else [])
+                      for e in links.get(t, []) if e in headwords), None)
+        lexical = next((r['lexical'] for r in home_reads + word_reads if r['lexical']), None)
         concept = concept_from(headwords[entry]) if entry else concept_from(lexical or '')
         if not concept:
             continue
+        # Word glosses, then each morpheme's in order: the lexical morpheme's
+        # and the word's are the node's own.
+        placed = [(r, True) for r in word_reads]
+        for m in morphemes:
+            placed.extend((r, m is home) for r in by_morpheme.get(m.id, []))
         attrs = []
         seen = set()
-        for r in read:
-            for rel, value in r['attrs']:
+        for r, own in placed:
+            for rel, value in own_attrs(r, own):
                 if rel not in seen:
                     seen.add(rel)
                     attrs.append({'rel': rel, 'value': value, 'order': len(attrs)})
+        read = [r for r, _ in placed]
         var = next_variable(sentence.index, concept, taken)
         taken.add(var)
         if root_at is None and any(r['eventive'] for r in read):

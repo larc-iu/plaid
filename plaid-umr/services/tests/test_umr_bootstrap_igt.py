@@ -75,10 +75,10 @@ def _ops(client, kind):
 def test_a_gloss_is_read_into_its_lexical_part_and_its_attributes():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('bark.PRS', table) == {
-        'lexical': 'bark', 'attrs': [], 'eventive': True}
+        'lexical': 'bark', 'attrs': [], 'eventive': True, 'possessive': False}
     assert boot.read_gloss('3SG', table) == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular')],
-        'eventive': False}
+        'eventive': False, 'possessive': False}
     assert boot.read_gloss('go=1PL.IRR', table)['attrs'] == [
         (':refer-person', '1st'), (':refer-number', 'plural')]
     assert boot.read_gloss('go=1PL.IRR', table)['eventive'] is True
@@ -201,3 +201,93 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
     assert service.client.writes == [], f'a {why} graph is not deleted'
     assert result['notice'] == {'level': 'warning', 'title': 'Document not modified',
                                 'message': 'Kept 1 sentence a person had worked on.'}
+
+
+# --- segmented words: the lexical morpheme names the word ----------------------------
+
+#: Lamkang, as IGT stores it: full-width morpheme tokens with `metadata.form`,
+#: `morphType` and precedence. "mhii" is m- 3.POS + hii 'blood', "pbulda" is
+#: p- CAUS + bul 'smear' + -da sbj:3.pfv, "eekda" is a zero prefix obj:3 +
+#: eek + -da. Every morpheme but the zero one is linked to an entry.
+SEG_BODY = 'mhii pbulda eekda\n'
+SEG_WORDS = [(0, 4), (5, 11), (12, 17)]
+SEG_MORPHEMES = [
+    # (id, word index, form, morphType, gloss, entry)
+    ('m1', 0, 'm', 'prefix', '3.POS', 'e-m'),
+    ('m2', 0, 'hii', 'stem', 'blood', 'e-hii'),
+    ('m3', 1, 'p', 'prefix', 'CAUS', 'e-p'),
+    ('m4', 1, 'bul', 'stem', 'smear', 'e-bul'),
+    ('m5', 1, 'da', 'suffix', 'sbj:3.pfv', 'e-da'),
+    ('m6', 2, '∅', 'prefix', 'obj:3', None),
+    ('m7', 2, 'eek', 'stem', 'see', 'e-eek'),
+    ('m8', 2, 'da', 'suffix', 'sbj:3.pfv', 'e-da'),
+]
+SEG_VOCAB = {'id': 'v1', 'name': 'Lexicon', 'items': [
+    {'id': f'e-{form}', 'form': form, 'metadata': {}}
+    for form in ('m', 'hii', 'p', 'bul', 'da', 'eek')]}
+
+
+def _segmented(*, typed=True, links=True, word_glosses=()):
+    document = draft_tests._document(body=SEG_BODY, sentences=((0, 18),), words=SEG_WORDS,
+                                     gloss_spans=list(word_glosses))
+    tokens, glosses, vocab_links = [], [], []
+    for n, (mid, w, form, morph_type, gloss, entry) in enumerate(SEG_MORPHEMES):
+        begin, end = SEG_WORDS[w]
+        precedence = sum(1 for m in SEG_MORPHEMES[:n] if m[1] == w) + 1
+        meta = {'form': form, **({'morphType': morph_type} if typed else {})}
+        tokens.append({'id': mid, 'begin': begin, 'end': end, 'precedence': precedence,
+                       'metadata': meta})
+        glosses.append({'id': f'g-{mid}', 'tokens': [mid], 'value': gloss})
+        if links and entry:
+            vocab_links.append({'id': f'l-{mid}', 'vocab_item': {'id': entry}, 'tokens': [mid]})
+    document['text_layers'][0]['token_layers'].append({
+        'id': 'morphL', 'name': 'Morphemes', 'config': {'plaid': {'role': 'morpheme'}},
+        'tokens': tokens,
+        'span_layers': [{'id': 'mglossL', 'name': 'Gloss', 'config': {'igt': {'scope': 'Morpheme'}},
+                         'spans': glosses}],
+        'vocabs': [{'id': 'v1', 'vocab_links': vocab_links}],
+    })
+    return document
+
+
+def _segmented_run(document):
+    service = _service(documents=[document])
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: SEG_VOCAB
+    helper = servicetest.run(service, REQUEST)
+    assert helper.errors == []
+    return [(n['value'], n['metadata']['umr']['attrs'])
+            for n in _ops(service.client, 'spans.bulk_create')]
+
+
+def test_a_segmented_word_is_named_by_its_stem_never_an_affix_or_a_zero_morph():
+    assert [concept for concept, _ in _segmented_run(_segmented())] == ['hii', 'bul', 'eek']
+
+
+def test_untyped_morphemes_name_the_word_by_the_first_lexical_gloss():
+    # No morph types: the stem is the morpheme whose gloss is lexical, so
+    # neither 3.POS, CAUS nor the zero morph's `obj:3` names the word.
+    concepts = [c for c, _ in _segmented_run(_segmented(typed=False, links=False))]
+    assert concepts == ['blood', 'smear', 'see']
+
+
+def test_a_person_on_an_affix_or_a_possessive_is_not_put_on_the_node():
+    # 3.POS is the possessor's person and sbj:3 the subject's: neither is the
+    # node's own, and the skeleton draws no node for them.
+    for _, attrs in _segmented_run(_segmented()):
+        assert attrs == []
+    table = boot.ABBREVIATIONS
+    assert boot.read_gloss('3.POSS', table)['possessive'] is True
+    # A pronoun's own person and number stay, and so does a noun's plural.
+    assert boot.own_attrs(boot.read_gloss('3SG', table), True) == [
+        (':refer-person', '3rd'), (':refer-number', 'singular')]
+    assert boot.own_attrs(boot.read_gloss('PL', table), False) == [
+        (':refer-number', 'plural')]
+    assert boot.own_attrs(boot.read_gloss('3SG.POSS', table), True) == []
+    assert boot.own_attrs(boot.read_gloss('go.3SG', table), True) == []
+    assert boot.own_attrs(boot.read_gloss('go.3SG.NEG', table), True) == [(':polarity', '-')]
+
+
+def test_a_headword_of_several_words_is_a_hyphenated_concept():
+    assert boot.concept_from("a va'") == "a-va'"
+    # Nothing PENMAN would end a concept on survives.
+    assert boot.concept_from('10:30 C# "x"') == '1030-c-x'

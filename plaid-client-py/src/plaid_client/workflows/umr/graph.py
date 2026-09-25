@@ -91,6 +91,9 @@ class Morpheme:
     begin: int
     end: int
     text: str
+    #: IGT's ``metadata.morphType``, the FLEx morph-type name ("stem",
+    #: "prefix", "enclitic"), or None where the morpheme has none.
+    morph_type: Optional[str] = None
 
 
 @dataclass
@@ -374,10 +377,13 @@ def read_document(raw: dict, layers: UmrLayers,
         s = sentence_of(token['begin'])
         if s is None:
             continue
-        form = (token.get('metadata') or {}).get('form')
+        meta = token.get('metadata') or {}
+        form = meta.get('form')
+        morph_type = meta.get('morphType')
         s.morphemes.append(Morpheme(
             id=token['id'], begin=token['begin'], end=token['end'],
-            text=form if isinstance(form, str) else body[token['begin']:token['end']]))
+            text=form if isinstance(form, str) else body[token['begin']:token['end']],
+            morph_type=morph_type if isinstance(morph_type, str) and morph_type else None))
 
     node_tokens = {t['id']: t for t in ((layers.node_layer or {}).get('tokens') or [])}
     nodes_by_id: Dict[str, Node] = {}
