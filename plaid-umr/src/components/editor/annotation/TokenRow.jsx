@@ -7,6 +7,9 @@ import { HEADERS, morphemeJoinersFor } from '../../../domain/ilg.js';
 // as a row of its own below. Every line's name sits in the margin to its
 // left, level with it, so the lines themselves start where the words do.
 //
+// Lines are keyed by position: a project may have several lines of one kind
+// (a morpheme gloss in each of three languages), so `line.key` repeats.
+//
 // The MORPHEME lines of a word share one grid, a column per morpheme, so a
 // morpheme's form sits above its gloss and its category the way an
 // interlinear text is read and the way plaid-igt's grid draws it. They are
@@ -79,9 +82,9 @@ export const TokenRow = React.memo(function TokenRow({
                         </span>
                       )}
                       <div className="umr-morph-col">
-                        {block.lines.map((line) => (
+                        {block.lines.map((line, li) => (
                           <span
-                            key={line.key}
+                            key={li}
                             className={`umr-word-gloss${
                               line.key === 'morphemes' ? ' umr-morph-form' : ''
                             }`}
@@ -96,8 +99,8 @@ export const TokenRow = React.memo(function TokenRow({
                   ))}
                 </div>
               ) : (
-                block.lines.map((line) => (
-                  <span key={line.key} className="umr-word-gloss" dir="auto" title={line.header}>
+                block.lines.map((line, li) => (
+                  <span key={li} className="umr-word-gloss" dir="auto" title={line.header}>
                     {line.perWord[i].join(' ')}
                   </span>
                 ))
