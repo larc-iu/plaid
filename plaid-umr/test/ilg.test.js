@@ -121,6 +121,22 @@ test('lines come from the layers, grouped under the words, stored lines after', 
   assert.equal(lines[4].perWord, null);
 });
 
+test('a value with spaces is shown with them, and written with underscores', () => {
+  const info = layerInfo();
+  info.glossLayers[0].layer.spans[2].value = 'its  blood';
+  info.glossLayers[1].layer.spans[0].value = ' noun phrase ';
+  const s = sentence();
+  s.morphemes[2].text = 'har nuu';
+  const lines = ilgLinesFor(s, info, resolveIlg(null, info));
+  const byKey = Object.fromEntries(lines.map((l) => [l.key, l]));
+  assert.deepEqual(byKey.pos.perWord, [['noun phrase'], ['_']]);
+  assert.deepEqual(byKey.pos.items, ['noun_phrase', '_']);
+  assert.deepEqual(byKey.morphemes.perWord, [['dog', '-s'], ['har nuu']]);
+  assert.deepEqual(byKey.morphemes.items, ['dog', '-s', 'har_nuu']);
+  assert.deepEqual(byKey['morpheme-gloss'].perWord, [['dog', 'PL'], ['its blood']]);
+  assert.deepEqual(byKey['morpheme-gloss'].items, ['dog', 'PL', 'its_blood']);
+});
+
 test('a stored line the layers also produce is not written twice', () => {
   const info = layerInfo();
   const s = sentence();

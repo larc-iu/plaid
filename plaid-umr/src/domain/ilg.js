@@ -114,8 +114,9 @@ const STORED_KEYS = new Set(HEADERS.map((h) => h.key));
 /**
  * The lines of one sentence, in the mapping's order. Each line is
  * `{ header, key, lang, items, perWord }`: `items` is what the file writes
- * (whitespace-joined), `perWord` groups the items under the words for the
- * canvas (null for a sentence-level line).
+ * (whitespace-joined, so a space inside a value is written `_`), `perWord`
+ * groups the values under the words for the canvas, spaces kept (null for a
+ * sentence-level line).
  *
  * @param {object} sentence from buildDocumentGraph, with words, morphemes and
  *   the stored lines in `storedIlg`
@@ -149,9 +150,9 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
     if (entry.source === 'morphemes') {
       // A word with no morphemes (IGT's unanalyzed word) keeps its place.
       const perWord = morphemesByWord.map((ms) =>
-        ms.length ? ms.map((m) => item(m.text)) : ['_'],
+        ms.length ? ms.map((m) => shown(m.text)) : ['_'],
       );
-      push({ ...base, items: perWord.flat(), perWord });
+      push({ ...base, items: fileItems(perWord), perWord });
       return;
     }
     const id = String(entry.source).replace(/^layer:/, '');
@@ -160,12 +161,12 @@ export function ilgLinesFor(sentence, layerInfo, mapping) {
     const valueOf = valueByToken(g.layer);
     if (g.scope === 'morpheme') {
       const perWord = morphemesByWord.map((ms) =>
-        ms.length ? ms.map((m) => item(valueOf(m.id))) : ['_'],
+        ms.length ? ms.map((m) => shown(valueOf(m.id))) : ['_'],
       );
-      push({ ...base, items: perWord.flat(), perWord });
+      push({ ...base, items: fileItems(perWord), perWord });
     } else if (g.scope === 'word') {
-      const perWord = words.map((w) => [item(valueOf(w.id))]);
-      push({ ...base, items: perWord.flat(), perWord });
+      const perWord = words.map((w) => [shown(valueOf(w.id))]);
+      push({ ...base, items: fileItems(perWord), perWord });
     } else {
       const text = valueOf(sentence.tokenId) ?? '';
       const items = String(text).split(/\s+/).filter(Boolean);
@@ -265,10 +266,17 @@ export const morphemeJoinersFor = (sentence) =>
     ms.map((m, i) => (i === 0 ? '' : morphemeJoiner(ms[i - 1]?.morphType, m.morphType))),
   );
 
-const item = (value) => {
-  const v = value == null ? '' : String(value).trim().replace(/\s+/g, '_');
+// A value as the canvas shows it: its spaces are spaces (`its blood`), and
+// only the file needs them made visible.
+const shown = (value) => {
+  const v = value == null ? '' : String(value).trim().replace(/\s+/g, ' ');
   return v || '_';
 };
+
+const item = (value) => shown(value).replace(/ /g, '_');
+
+// What the file writes for a line laid out word by word.
+const fileItems = (perWord) => perWord.flat().map(item);
 
 // The two- or three-letter code a gloss header takes, from whatever a
 // layer or a person wrote (`en`, `pt-BR`, `qaa-x-eng`): `und` when there is
