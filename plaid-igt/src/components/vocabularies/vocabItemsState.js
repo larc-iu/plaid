@@ -51,18 +51,25 @@ export const metaEqual = (a, b) => {
   return ka.every((k) => sameAs(ca[k]) === sameAs(cb[k]));
 };
 
-// Does the draft differ from what it would be saved over? A new entry is
-// dirty once anything is typed; an existing one once the form or a field
-// differs from the entry as stored.
+// Does the draft differ from what it would be saved over? This is what Save,
+// Cancel and Enter ask. A new entry is dirty once it holds anything, so a new
+// sense, which starts from its headword's form, can be created as it stands.
+// An existing one is dirty once the form or a field differs from the entry as
+// stored.
 export const isDirty = (draft, item) => {
-  if (!item) {
-    // A new sense starts from its headword's form, which is nothing typed.
-    const seeded = (draft.seedForm ?? '').trim();
-    return draft.form.trim() !== seeded || Object.keys(cleanMeta(draft.fields)).length > 0;
-  }
+  if (!item) return draft.form.trim() !== '' || Object.keys(cleanMeta(draft.fields)).length > 0;
   return (
     draft.form.trim() !== item.form || !metaEqual(draft.fields, editableMetadata(item.metadata))
   );
+};
+
+// Would leaving the draft lose something the user typed? This is what the
+// unsaved guard asks. It differs from isDirty only for a new entry, which has
+// typed nothing while it still holds only what it was seeded with.
+export const hasTyped = (draft, item) => {
+  if (item) return isDirty(draft, item);
+  const seeded = (draft.seedForm ?? '').trim();
+  return draft.form.trim() !== seeded || Object.keys(cleanMeta(draft.fields)).length > 0;
 };
 
 export const initialState = {

@@ -5,6 +5,7 @@ import {
   emptyFieldOf,
   initialState,
   isDirty,
+  hasTyped,
   metaEqual,
   reducer,
   seedKeyFor,
@@ -101,12 +102,35 @@ describe('isDirty', () => {
     expect(isDirty({ form: 'a', fields: {} }, null)).toBe(true);
     expect(isDirty({ form: '', fields: { gloss: 'x' } }, null)).toBe(true);
   });
-  it('treats a new sense as clean until its headword form is changed', () => {
+  it('lets a new sense seeded with its headword form be saved as it stands', () => {
     const seeded = run({ type: 'draft/seed', seedKey: 'new|p', form: 'kai', fields: {} }).draft;
-    expect(isDirty(seeded, null)).toBe(false);
-    expect(
-      isDirty(reducer({ draft: seeded }, { type: 'draft/form', form: 'kaii' }).draft, null),
-    ).toBe(true);
+    expect(isDirty(seeded, null)).toBe(true);
+  });
+});
+
+describe('hasTyped', () => {
+  it('counts nothing typed into a new sense until its headword form is changed', () => {
+    const seeded = run({ type: 'draft/seed', seedKey: 'new|p', form: 'kai', fields: {} }).draft;
+    expect(hasTyped(seeded, null)).toBe(false);
+    expect(hasTyped({ ...seeded, form: ' kai ' }, null)).toBe(false);
+    expect(hasTyped({ ...seeded, form: 'kaii' }, null)).toBe(true);
+    expect(hasTyped({ ...seeded, form: '' }, null)).toBe(true);
+    expect(hasTyped({ ...seeded, fields: { gloss: 'sun' } }, null)).toBe(true);
+  });
+  it('counts anything in a new headword', () => {
+    const blank = run({ type: 'draft/seed', seedKey: 'new|', form: '', fields: {} }).draft;
+    expect(hasTyped(blank, null)).toBe(false);
+    expect(hasTyped({ ...blank, form: 'a' }, null)).toBe(true);
+  });
+  it('agrees with isDirty for an existing entry', () => {
+    const item = { form: 'kai', metadata: { gloss: 'sun' } };
+    for (const draft of [
+      { seedForm: 'kai', form: 'kai', fields: { gloss: 'sun' } },
+      { seedForm: 'kai', form: 'kaii', fields: { gloss: 'sun' } },
+      { seedForm: 'kai', form: 'kai', fields: { gloss: 'moon' } },
+    ]) {
+      expect(hasTyped(draft, item)).toBe(isDirty(draft, item));
+    }
   });
   it('compares metadata with blanks dropped and values as strings', () => {
     expect(cleanMeta({ a: '', b: null, c: ' x ' })).toEqual({ c: ' x ' });

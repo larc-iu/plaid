@@ -254,6 +254,28 @@ describe('the entry form', () => {
     await view.unmount();
   });
 
+  it('creates a new sense with nothing typed, and does not call it unsaved', async () => {
+    // Add sense seeds the form with its headword's form. That sense can be
+    // created as it stands, to be filled in later, and leaving it loses
+    // nothing, so no way out asks.
+    const { client, calls } = stub([{ id: 'a', form: 'uno' }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() =>
+      all(document.body, 'a')
+        .find((a) => a.textContent.trim() === 'Add sense')
+        .click(),
+    );
+    expect(formInput().value).toBe('uno');
+    expect(hasUnsavedDraft()).toBeNull();
+    expect(button('Create').disabled).toBe(false);
+    await view.step(async () => {
+      button('Create').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls.map(([kind]) => kind)).toEqual(['create']);
+    await view.unmount();
+  });
+
   it('asks before an entry with unsaved edits is left, whichever way out', async () => {
     const { client } = stub([{ id: 'a', form: 'uno' }]);
     const view = await mount(client, '/vocabularies/v1?item=a');

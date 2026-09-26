@@ -71,6 +71,7 @@ import {
   emptyFieldOf,
   initialState,
   isDirty,
+  hasTyped,
   reducer,
   seedKeyFor,
 } from './vocabItemsState';
@@ -551,6 +552,9 @@ export const VocabularyItems = ({
   }, [selectedId, newParent, items, tree, draft.seedKey]);
 
   const dirty = isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false;
+  // What leaving would lose. A new sense still holding only its headword's
+  // form can be saved, but leaving it loses nothing.
+  const typed = isNew ? hasTyped(draft, null) : dirty;
   // Only a CHANGED value is held to its tagset, so an off-tagset value an
   // import left behind does not lock the entry (see changedValuesAllowed).
   const tagsetsAllow = changedValuesAllowed(
@@ -584,9 +588,9 @@ export const VocabularyItems = ({
 
   // Leaving an entry with unsaved edits asks first, whichever way out: a row,
   // a link in a panel, the vocabulary's tabs, the shell, Back, or a closed tab.
-  useUnsavedDraft(dirty ? 'The entry you have typed' : null);
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
+  useUnsavedDraft(typed ? 'The entry you have typed' : null);
+  const typedRef = useRef(typed);
+  typedRef.current = typed;
 
   // A bulk import can fill in the very item the detail editor has open, which
   // would leave its draft showing pre-import values (and looking dirty against
@@ -595,7 +599,7 @@ export const VocabularyItems = ({
   // the entry writes still queued (see fetchItems).
   const handleImported = async () => {
     const refreshed = await fetchItems({ quiet: true });
-    if (!refreshed || dirtyRef.current) return;
+    if (!refreshed || typedRef.current) return;
     dispatch({ type: 'draft/unseed' });
     const openId = settledId(selectedIdRef.current);
     if (!openId || openId === NEW_ID) return;
