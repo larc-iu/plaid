@@ -15,21 +15,9 @@ import copy
 import fnmatch
 from contextlib import contextmanager
 
-from plaid_client import apply_metadata_ops
 from plaid_client.http import PlaidAPIError
+from plaid_client.testing import checked_ops
 from plaid_agent.core.conversation import now_iso
-
-
-def checked_ops(ops):
-    """A metadata patch as the server takes it, a list of ops, refused here
-    as there when it is anything else."""
-    if not isinstance(ops, list):
-        raise PlaidAPIError('A metadata patch is a list of ops', status=400)
-    try:
-        apply_metadata_ops({}, ops)
-    except ValueError as e:
-        raise PlaidAPIError(str(e), status=400)
-    return ops
 
 
 def as_fragment(ops):

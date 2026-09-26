@@ -191,9 +191,10 @@ class _Batch:
         self.results = []
 
 
-def _checked_ops(ops):
+def checked_ops(ops):
     """A metadata patch as the server takes it, a list of ops (see
-    ``plaid_client.metadata_ops``), refused here as there when it is not."""
+    ``plaid_client.metadata_ops``), refused here as there when it is not.
+    Every fake client checks a patch with this one, plaid-agent's included."""
     if not isinstance(ops, list):
         raise PlaidAPIError('HTTP 400 A metadata patch is a list of ops', status=400)
     try:
@@ -231,7 +232,7 @@ class Resource:
         items = list(items)
         for item in items:
             if 'metadata' in item:
-                _checked_ops(item['metadata'])
+                checked_ops(item['metadata'])
         self._call('bulk_update', items, {'body': {'count': len(items)}})
         return {'count': len(items)}
 
@@ -242,7 +243,7 @@ class Resource:
         self._call('bulk_delete', list(ids), {'body': {}})
 
     def patch_metadata(self, entity_id, ops):
-        _checked_ops(ops)
+        checked_ops(ops)
         self._call('patch_metadata', (entity_id, ops), {'body': {}})
 
     def set_metadata(self, entity_id, metadata):
