@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
@@ -11,6 +11,7 @@ import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
 import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
+import { listedCount, locateFailing } from './locateFailing.js';
 import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
@@ -66,7 +67,9 @@ const Occurrences = ({ res, projectId }) => (
     )}
     {res && !res.failed && res.groups.length === 0 && (
       <p className="text-sm text-muted-foreground">
-        No occurrences found. The value may have been changed since the last check.
+        {res.passed > 0
+          ? 'Every occurrence found is in the tagset as read in its word.'
+          : 'No occurrences found. The value may have been changed since the last check.'}
       </p>
     )}
     {res &&
@@ -108,12 +111,18 @@ const Occurrences = ({ res, projectId }) => (
               )}
             </Link>
           ))}
+          {grp.capped && (
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              More in this document not shown.
+            </p>
+          )}
         </div>
       ))}
     {res && !res.failed && res.remainingDocs > 0 && (
       <p className="text-xs text-muted-foreground">
-        {res.remainingHits} more in {res.remainingDocs} document
-        {res.remainingDocs === 1 ? '' : 's'} not shown.
+        {res.remainingHits == null
+          ? `${res.remainingDocs} more document${res.remainingDocs === 1 ? '' : 's'} with this value not shown.`
+          : `${res.remainingHits} more in ${res.remainingDocs} document${res.remainingDocs === 1 ? '' : 's'} not shown.`}
       </p>
     )}
   </div>
@@ -126,6 +135,9 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
   const [fields, setFields] = useState(null);
   const [expanded, setExpanded] = useState(null); // `${layerId}:${value}`
   const [hits, setHits] = useState({});
+  // Which scan the opened rows belong to. A row opened before a re-check
+  // lands nowhere once it answers.
+  const scanRun = useRef(0);
   const [zeros, setZeros] = useState(null);
 
   // Morpheme forms that look like a zero someone spelled another way. A
@@ -151,6 +163,11 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   const scan = useCallback(async () => {
     setBusy(true);
+    // What an opened row found belongs to the scan before, and its count
+    // would stand in for the new scan's.
+    scanRun.current += 1;
+    setHits({});
+    setExpanded(null);
     try {
       const rows = await Promise.all(
         (governed || []).map(async (g) => {
@@ -199,20 +216,29 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     }
     setExpanded(key);
     if (hits[key]) return;
+    const run = scanRun.current;
+    const record = (res) => {
+      if (scanRun.current === run) setHits((h) => ({ ...h, [key]: res }));
+    };
     try {
       // A metadata violation is a property of a whole document, so there is no
       // sentence to show in context: the answer is which documents hold it.
+      // A span field lists only the occurrences that fail where they sit, as
+      // the scan counted only the failing ones. The zero-morph pseudo-field has
+      // no tagset, so every occurrence of its form is listed.
       const res =
         g.kind === 'metadata'
           ? await locateMetadata(client, projectId, g.field, value)
-          : await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
-      setHits((h) => ({ ...h, [key]: res }));
+          : g.kind === 'span'
+            ? await locateFailing(client, project, layerInfo, g, value)
+            : await runHitsSearch(client, project, layerInfo, g.domain, value, 'exact');
+      record(res);
     } catch (err) {
       console.error('Could not locate value:', err);
       notifyError(humanizeError(err), 'Could not find these values');
       // Record the failure. Leaving the entry unset would sit on "Finding
       // occurrences…" forever, which reads as a hang once the toast is gone.
-      setHits((h) => ({ ...h, [key]: { failed: true, groups: [] } }));
+      record({ failed: true, groups: [] });
     }
   };
 
@@ -363,6 +389,9 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             const unknownParts = row.violations
               .filter((v) => v.reason === 'unknown')
               .map((v) => v.part);
+            // The scan's count reads each morpheme alone. Once the row is open
+            // and lists every failing occurrence, their number replaces it.
+            const count = listedCount(res) ?? row.count;
             return (
               <div key={row.value} className="border-b last:border-b-0">
                 <div className="flex items-center gap-3 px-3 py-2">
@@ -390,8 +419,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                     {row.value}
                   </code>
                   <span className="text-xs text-muted-foreground">
-                    {row.count} occurrence{row.count === 1 ? '' : 's'} ·{' '}
-                    {reasonText(row.violations)}
+                    {count} occurrence{count === 1 ? '' : 's'} · {reasonText(row.violations)}
                   </span>
                   <div className="ml-auto flex shrink-0 items-center gap-1">
                     {unknownParts.length > 0 && (

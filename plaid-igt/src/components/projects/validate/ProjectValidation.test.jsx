@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { renderComponent, all, byText, texts } from '@ui/test/renderComponent.jsx';
 import { ProjectValidation } from './ProjectValidation.jsx';
+import { MIXED, hitsClient } from './cellReadingFixture.js';
 
 // The Validation tab's own logic: which fields it decides are governed, that it
 // finds violations WITHOUT loading a document, that a metadata field goes down
@@ -204,6 +205,76 @@ describe('a morpheme field', () => {
     expect(container.textContent).toContain('"sbj:3", "pfv" not in the tagset');
     expect(container.textContent).toContain('2 distinct values');
     expect(container.textContent).not.toContain('go.PL');
+    await unmount();
+  });
+});
+
+describe('opening a morpheme field value', () => {
+  // The scan sees one failing sbj:3.pfv, the suffix's. The document holds it
+  // three times: the suffix's, a stem's alone in its word (passes) and a stem's
+  // beside another stem (fails in the grid, which the scan cannot see).
+  const mixed = {
+    ...project,
+    config: {
+      igt: { ...project.config.igt, tagsets: { ...project.config.igt.tagsets, Leipzig: MIXED } },
+    },
+  };
+  const client = (docIds = ['doc-1']) => {
+    const gloss = [
+      ['sbj:3.pfv', 'suffix', 'ti', 1],
+      ['sbj:3.pfv', 'stem', 'sa', 1],
+      ['sbj:3.pfv', 'stem', 'bu', 1],
+      ['go', 'stem', 'ka', 1],
+      ['dog', 'stem', 'har', 1],
+    ];
+    // Each scan asks for the Gloss rows, the metadata rows and the forms.
+    const scan = clientWith([gloss, [], [], gloss, [], []]);
+    const hits = hitsClient(docIds);
+    return {
+      query: vi.fn(async (q) =>
+        q?.return?.group?.[0] === '?d' || q?.find?.[0] === '?s' ? hits.query(q) : scan.query(q),
+      ),
+      documents: hits.documents,
+    };
+  };
+
+  const open = async (c) => {
+    const view = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation project={mixed} projectId="p-1" client={c} />
+      </MemoryRouter>,
+    );
+    expect(view.container.textContent).toContain('1 occurrence ·');
+    const toggle = all(view.container, 'button[title="Show occurrences"]')[0];
+    await view.step(() => toggle.click());
+    return view;
+  };
+
+  it('lists only the occurrences the grid flags, and counts those', async () => {
+    const { container, unmount } = await open(client());
+    const rows = texts(container, 'a[href*="doc-1"]');
+    expect(rows).toEqual(['1kati', '3harbu']);
+    // The document's count and the row's are the two listed.
+    expect(container.textContent).toContain('Text doc-1(2)');
+    expect(container.textContent).toContain('2 occurrences ·');
+    await unmount();
+  });
+
+  it('names only documents, not hits, for the documents it did not load', async () => {
+    const ids = Array.from({ length: 13 }, (_, i) => `doc-${i + 1}`);
+    const { container, unmount } = await open(client(ids));
+    expect(container.textContent).toContain('1 more document with this value not shown.');
+    // Not every document was loaded, so the scan's count stands.
+    expect(container.textContent).toContain('1 occurrence ·');
+    await unmount();
+  });
+
+  it("puts the scan's count back on a re-check", async () => {
+    const { container, step, unmount } = await open(client());
+    expect(container.textContent).toContain('2 occurrences ·');
+    await step(() => byText(container, 'button', 'Re-check').click());
+    expect(container.textContent).toContain('1 occurrence ·');
+    expect(container.textContent).not.toContain('harbu');
     await unmount();
   });
 });

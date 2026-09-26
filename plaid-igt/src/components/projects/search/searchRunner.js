@@ -8,6 +8,7 @@
 // hits in M more documents" accounting from the grouped-by-doc counts.
 
 import { cpSlice } from '@larc-iu/plaid-client';
+import { morphemeGlossReading } from '@/domain/tagsets';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
@@ -19,6 +20,23 @@ const morphFormOf = (m) => {
   const meta = m?.metadata;
   if (meta && Object.prototype.hasOwnProperty.call(meta, 'form')) return meta.form ?? '';
   return m?.content ?? '';
+};
+
+/**
+ * How the Analyze grid reads `morph`'s `field` cell under a tagset
+ * (morphemeGlossReading): its morph type and form, with the glosses of the
+ * word `token`'s other morphemes beside it. For readingTagset.
+ */
+export const morphemeCellReading = (token, morph, field) => {
+  const siblings = token?.morphemes || [];
+  return morphemeGlossReading(
+    siblings.map((m) => ({
+      morphType: m.morphType,
+      form: morphFormOf(m),
+      gloss: m.annotations?.[field]?.value ?? '',
+    })),
+    siblings.indexOf(morph),
+  );
 };
 
 async function runAll(client, queries) {
@@ -91,6 +109,42 @@ export function locateHits(doc, domain, hitIds) {
   return [...bySentence.values()];
 }
 
+/**
+ * The hit ids in one derived document that `keep` accepts. `keep` is asked
+ * about each hit where it sits: { sentence, token, morpheme, span }, a span
+ * hit with its span, a word's or a morpheme's with the token it is on.
+ */
+function keptHits(doc, domain, hitIds, keep) {
+  const kept = new Set();
+  const ask = (id, site) => {
+    if (id && hitIds.has(id) && keep(site)) kept.add(id);
+  };
+  const spanScope = domain.kind === 'span' ? domain.scope : null;
+  for (const sentence of doc.sentences || []) {
+    if (spanScope === 'sentence') {
+      const span = sentence.annotations?.[domain.field];
+      ask(span?.id, { sentence, span });
+      continue;
+    }
+    for (const token of sentence.tokens || []) {
+      if (domain.kind === 'token' || domain.kind === 'lexicon') ask(token.id, { sentence, token });
+      if (spanScope === 'word') {
+        const span = token.annotations?.[domain.field];
+        ask(span?.id, { sentence, token, span });
+      }
+      for (const morpheme of token.morphemes || []) {
+        if (domain.kind === 'morpheme' || domain.kind === 'lexicon')
+          ask(morpheme.id, { sentence, token, morpheme });
+        if (spanScope === 'morpheme') {
+          const span = morpheme.annotations?.[domain.field];
+          ask(span?.id, { sentence, token, morpheme, span });
+        }
+      }
+    }
+  }
+  return kept;
+}
+
 // Build sentence-context rows for one derived document: slice the sentence text
 // (code points), rebase the hit marks to be sentence-relative, and pull a
 // sentence-layer translation. Shared by project search + the vocab concordance.
@@ -123,7 +177,21 @@ export function buildContextRows(doc, domain, hitIds) {
     .sort((a, b) => a.sentenceIndex - b.sentenceIndex);
 }
 
-export async function runHitsSearch(client, project, layerInfo, domain, queryText, matchType) {
+/**
+ * `keep`, when given, narrows the hits to the ones it accepts where they sit
+ * (keptHits). A group's `docHits` is then the hits it lists, a document left
+ * with none is dropped, and `remainingHits` is null: the documents not loaded
+ * hold the value, but how many of their hits `keep` accepts is not known.
+ */
+export async function runHitsSearch(
+  client,
+  project,
+  layerInfo,
+  domain,
+  queryText,
+  matchType,
+  { keep = null } = {},
+) {
   const spec = buildMatchSpec(queryText, matchType);
   // The counts first: they say which documents are worth loading, and they are
   // grouped aggregates, so they are exact where the id list is capped.
@@ -151,8 +219,8 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
         client.documents.get(docId, true),
         runAll(client, hitsQueries(domain, spec, docId)),
       ]);
-      const hitIds = new Set();
-      for (const r of idResults) for (const rowv of r?.results || []) hitIds.add(String(rowv[0]));
+      const found = new Set();
+      for (const r of idResults) for (const rowv of r?.results || []) found.add(String(rowv[0]));
       const doc = new IgtDocument({
         raw,
         project,
@@ -160,19 +228,22 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
         client,
         projectId: project.id,
       });
+      const hitIds = keep ? keptHits(doc, domain, found, keep) : found;
       return { doc, hitIds, capped: idResults.some((r) => r?.truncated) };
     }),
   );
 
-  const groups = loaded.map(({ doc, hitIds, capped }, i) => ({
-    docId: toLoad[i][0],
-    docName: doc.document?.name || '(untitled)',
-    docHits: toLoad[i][1],
-    // More hits in this one document than a single query returns, so its rows
-    // stop short of its count. The group says so rather than the count lying.
-    capped,
-    rows: buildContextRows(doc, domain, hitIds),
-  }));
+  const groups = loaded
+    .map(({ doc, hitIds, capped }, i) => ({
+      docId: toLoad[i][0],
+      docName: doc.document?.name || '(untitled)',
+      docHits: keep ? hitIds.size : toLoad[i][1],
+      // More hits in this one document than a single query returns, so its rows
+      // stop short of its count. The group says so rather than the count lying.
+      capped,
+      rows: buildContextRows(doc, domain, hitIds),
+    }))
+    .filter((g) => !keep || g.docHits > 0);
 
   const loadedHits = toLoad.reduce((a, [, n]) => a + n, 0);
   return {
@@ -180,7 +251,7 @@ export async function runHitsSearch(client, project, layerInfo, domain, queryTex
     totalHits,
     totalDocs: docCounts.size,
     groups,
-    remainingHits: totalHits - loadedHits,
+    remainingHits: keep ? null : totalHits - loadedHits,
     remainingDocs: docCounts.size - toLoad.length,
     truncated,
   };
