@@ -29,16 +29,24 @@ cancellation semantics: ``progress`` is a cancellation checkpoint, a real
 ``CancelScope`` is behind ``critical()``, and EVERY terminal report is
 remembered, so a test can see a request reported twice.
 
+``FakeClient`` also answers a caller that works on a whole project, such as
+plaid-agent's assistants: given its documents as a dict by id, a project, an
+audit log, guidelines and comments, it reads them back the way the server
+would and records every write in the same ``(kind, payload)`` log.
+
 It lives in the shipped package rather than beside the tests because a
 test-only copy had no home either app could import from, and the two apps kept
 byte-identical copies of it instead.
 """
 
 import contextlib
+import copy
+import fnmatch
 import importlib.util
 import itertools
 import pathlib
 import sys
+from datetime import datetime, timezone
 
 from plaid_client.http import PlaidAPIError
 from plaid_client.metadata_ops import apply_metadata_ops
@@ -152,10 +160,54 @@ def run(service, request, helper=None):
     return helper
 
 
+def checked_ops(ops):
+    """A metadata patch as the server takes it, a list of ops (see
+    ``plaid_client.metadata_ops``), refused here as there when it is not."""
+    if not isinstance(ops, list):
+        raise PlaidAPIError('HTTP 400 A metadata patch is a list of ops', status=400)
+    try:
+        apply_metadata_ops({}, ops)
+    except ValueError as e:
+        raise PlaidAPIError(f'HTTP 400 {e}', status=400)
+    return ops
+
+
+def as_fragment(ops):
+    """A recorded metadata patch read back as the object it writes, a key an
+    op deletes reading as None, so a test can look a key up."""
+    out = {}
+    for op in checked_ops(ops):
+        node = out
+        *parents, last = op['path']
+        for k in parents:
+            node = node.setdefault(k, {})
+        node[last] = op['value'] if op['op'] == 'set' else None
+    return out
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def _payload(args, kwargs):
+    """What a call records: its one positional argument bare, several as a
+    tuple, or ``{'args', 'kwargs'}`` when it was given keywords."""
+    if kwargs:
+        return {'args': args, 'kwargs': kwargs}
+    return args[0] if len(args) == 1 else args
+
+
+def _root(writer):
+    """The client behind a writer, which is the client itself or a batch on it."""
+    return getattr(writer, 'client', writer)
+
+
 class _Batch:
-    """The batch a handler writes on (``client.batched()`` / ``client.batch()``):
+    """The batch a caller writes on (``client.batched()`` / ``client.batch()``):
     the same resources as the fake client, recording into this batch's queue
-    rather than the client's log until it submits."""
+    rather than the client's log until it submits. A write made on the client
+    itself is never held by an open batch. A read made on a batch answers from
+    the client."""
 
     def __init__(self, client):
         self.client = client
@@ -164,6 +216,13 @@ class _Batch:
         self.open = True
         for name in client.RESOURCES:
             setattr(self, name, Resource(self, name))
+        # The client's own resources, bound to this batch so their writes
+        # queue. One a test swapped in for its own is used as it is.
+        for name in ('documents', 'comments', 'guidelines'):
+            resource = getattr(client, name)
+            if isinstance(resource, (FakeClient._Documents, FakeClient._Comments,
+                                     FakeClient._Guidelines)):
+                setattr(self, name, type(resource)(self))
 
     def __getattr__(self, name):
         return getattr(self.client, name)
@@ -179,7 +238,9 @@ class _Batch:
         self.results.append(result if result is not None else {'body': {}})
 
     def submit(self):
+        assert self.open, 'this batch was already submitted or aborted'
         self.open = False
+        self.client.batches.append(list(self.queued))
         for entry in self.queued:
             self.client.calls.append(entry)
         return self.results
@@ -191,23 +252,13 @@ class _Batch:
         self.results = []
 
 
-def checked_ops(ops):
-    """A metadata patch as the server takes it, a list of ops (see
-    ``plaid_client.metadata_ops``), refused here as there when it is not.
-    Every fake client checks a patch with this one, plaid-agent's included."""
-    if not isinstance(ops, list):
-        raise PlaidAPIError('HTTP 400 A metadata patch is a list of ops', status=400)
-    try:
-        apply_metadata_ops({}, ops)
-    except ValueError as e:
-        raise PlaidAPIError(f'HTTP 400 {e}', status=400)
-    return ops
-
-
 class Resource:
-    """One resource of the fake client: records every call in order and hands
-    back plausible ids, which is what a batch's ``results`` carry. A metadata
-    patch, direct or in a bulk update entry, must be a list of ops."""
+    """One resource of the fake client: records every call in order, as
+    ``('<resource>.<method>', payload)``, and hands back plausible ids, which
+    is what a batch's ``results`` carry. A create records ``{'args',
+    'kwargs'}``. Any other method records its one positional argument bare,
+    several as a tuple, or ``{'args', 'kwargs'}`` when it was given keywords.
+    A metadata patch, direct or in a bulk update entry, must be a list of ops."""
 
     def __init__(self, client, name):
         self._client = client
@@ -236,9 +287,6 @@ class Resource:
         self._call('bulk_update', items, {'body': {'count': len(items)}})
         return {'count': len(items)}
 
-    def delete(self, entity_id):
-        self._call('delete', entity_id, {'body': {}})
-
     def bulk_delete(self, ids):
         self._call('bulk_delete', list(ids), {'body': {}})
 
@@ -246,38 +294,68 @@ class Resource:
         checked_ops(ops)
         self._call('patch_metadata', (entity_id, ops), {'body': {}})
 
-    def set_metadata(self, entity_id, metadata):
-        self._call('set_metadata', (entity_id, metadata), {'body': {}})
+    def __getattr__(self, method):
+        """Any other write (``update``, ``delete``, ``split``, ``merge``,
+        ``set_metadata`` ...), recorded by the rule above."""
+        if method.startswith('_'):
+            raise AttributeError(method)
 
-    def update(self, entity_id, ops):
-        self._call('update', (entity_id, ops), {'body': {}})
+        def call(*args, **kwargs):
+            self._call(method, _payload(args, kwargs), {'body': {}})
+            return {}
+        return call
 
 
 class FakeClient:
-    """Enough of PlaidClient to drive a handler: documents to read back, and a
-    log of everything it is asked to do, in order.
+    """Enough of PlaidClient to drive a handler or an assistant: documents to
+    read back, and a log of everything it is asked to do, in order.
 
     Models the two things a handler test must get right: a batch ABORTS on an
     exception, so nothing it queued reaches the server, and ``locked()``
     releases on the way out however the block ends.
+
+    ``documents`` is either a list or a dict. A list is the one document a
+    handler works on, as each read finds it: the first read answers with the
+    first, the next with the next, and the last is repeated. A dict is a
+    project's documents by id, which is what a caller reading several asks.
+
+    A project-level caller also finds ``project`` (``projects.get``), its
+    ``audit`` log, its ``guidelines`` and ``comments``, the user's private
+    store (``user_data``, kept in memory and not logged) and a document
+    restore that answers a dry run with ``restore_summary``.
     """
 
-    #: resources a handler may reach for; each records under its own name.
-    RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links')
+    #: resources a caller may write through, each recording under its own name.
+    RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links', 'vocab_items')
 
-    def __init__(self, documents, fails=None):
-        self._documents = list(documents)
+    def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
+                 comments=None, restore_summary=None):
+        self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
         #: (kind, payload) for everything that reached the server, in order.
         #: kind is 'lock' / 'unlock' / 'read' / 'operation' / '<resource>.<method>'.
         self.calls = []
+        #: each submitted batch, as the (kind, payload) entries it sent together
+        self.batches = []
+        #: {'id', 'layers'} per document read
         self.reads = []
+        #: {'order', 'start_time'} per paged audit read
+        self.audit_pages = []
         self.operations = []
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
+        self.project = project
+        self.audit = list(audit or [])
+        self.guideline_rows = list(guidelines or [])
+        self.comment_rows = list(comments or [])
+        self.restore_summary = restore_summary
         self._ids = itertools.count(1)
-        self.documents = self._Documents(self)
+        self.documents = FakeClient._Documents(self)
+        self.projects = FakeClient._Projects(self)
+        self.comments = FakeClient._Comments(self)
+        self.guidelines = FakeClient._Guidelines(self)
+        self.user_data = FakeClient._UserData()
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
 
@@ -306,6 +384,29 @@ class FakeClient:
     def payloads(self, kind):
         return [payload for k, payload in self.calls if k == kind]
 
+    def patches(self, resource):
+        """Every metadata patch that reached ``resource``, as ``(id, ops)`` in
+        order, whether it was sent alone or as an entry of a bulk update."""
+        out = []
+        for kind, payload in self.calls:
+            if kind == f'{resource}.patch_metadata':
+                out.append(tuple(payload))
+            elif kind == f'{resource}.bulk_update':
+                out.extend((item['id'], item['metadata']) for item in payload
+                           if item.get('metadata'))
+        return out
+
+    def updates(self, resource):
+        """Every value written to ``resource``, as ``(id, value)`` in order,
+        whether by ``update(id, value)`` or as an entry of a bulk update."""
+        out = []
+        for kind, payload in self.calls:
+            if kind == f'{resource}.update' and isinstance(payload, tuple) and len(payload) == 2:
+                out.append(payload)
+            elif kind == f'{resource}.bulk_update':
+                out.extend((item['id'], item['value']) for item in payload if 'value' in item)
+        return out
+
     def document(self, index=-1):
         return self._documents[index]
 
@@ -329,22 +430,199 @@ class FakeClient:
         self.record('operation', message)
         yield self
 
-    class _Documents:
-        def __init__(self, client):
-            self._client = client
+    def _audit_page(self, entries, order, limit, start_time):
+        self.audit_pages.append({'order': order, 'start_time': start_time})
+        entries = [e for e in entries if not start_time or (e.get('time') or '') >= start_time]
+        entries = sorted(entries, key=lambda e: e.get('time') or '', reverse=(order == 'desc'))
+        return {'entries': entries[:limit] if limit else entries, 'next_cursor': None}
 
-        def get(self, document_id, include_body=None, layers=None):
-            self._client.reads.append({'id': document_id, 'layers': layers})
-            self._client.record('read', document_id)
-            index = min(len(self._client.reads) - 1, len(self._client._documents) - 1)
-            return self._client._documents[index]
+    class _Documents(Resource):
+        """Reads answer from the fixture. Writes record like any resource's,
+        and queue when made on a batch."""
+
+        def __init__(self, writer):
+            super().__init__(writer, 'documents')
+            self._root = _root(writer)
+
+        def get(self, document_id, include_body=None, layers=None, **kw):
+            root = self._root
+            root.reads.append({'id': document_id, 'layers': layers})
+            root.record('read', document_id)
+            if isinstance(root._documents, dict):
+                if document_id not in root._documents:
+                    raise PlaidAPIError('Document not found', status=404)
+                return root._documents[document_id]
+            index = min(len(root.reads) - 1, len(root._documents) - 1)
+            return root._documents[index]
 
         @contextlib.contextmanager
         def locked(self, document_id):
             # The lock routes are out-of-band signals: made on the client, and
             # logged straight through.
-            self._client.calls.append(('lock', document_id))
+            self._root.calls.append(('lock', document_id))
             try:
                 yield self
             finally:
-                self._client.calls.append(('unlock', document_id))
+                self._root.calls.append(('unlock', document_id))
+
+        def audit(self, document_id, **kw):
+            return [e for e in self._root.audit
+                    if any(d['id'] == document_id for d in e.get('documents', []))]
+
+        def audit_page(self, document_id, *, order=None, limit=None, cursor=None,
+                       start_time=None, **kw):
+            return self._root._audit_page(self.audit(document_id), order, limit, start_time)
+
+        def restore(self, document_id, as_of, dry_run=False, **kw):
+            """The server's restore, recorded dry or not. A dry run answers
+            with ``restore_summary``, what WOULD change."""
+            self._call('restore', {'args': (document_id, as_of), 'kwargs': {'dry_run': dry_run}},
+                       {'body': {'id': document_id}})
+            if dry_run:
+                return self._root.restore_summary
+            return {'id': document_id}
+
+    class _Projects:
+        def __init__(self, client):
+            self._client = client
+
+        def get(self, project_id, **kw):
+            return self._client.project
+
+        def audit(self, project_id, start_time=None, **kw):
+            return [e for e in self._client.audit
+                    if not start_time or (e.get('time') or '') >= start_time]
+
+        def audit_page(self, project_id, *, order=None, limit=None, cursor=None,
+                       start_time=None, **kw):
+            return self._client._audit_page(self._client.audit, order, limit, start_time)
+
+        def list_documents(self, project_id, **kw):
+            docs = self._client._documents
+            docs = docs.values() if isinstance(docs, dict) else docs
+            return [{'id': d.get('id'), 'name': d.get('name'), 'version': d.get('version'),
+                     'time_modified': d.get('time_modified')} for d in docs]
+
+    class _Comments:
+        def __init__(self, writer):
+            self._writer = writer
+            self._root = _root(writer)
+
+        def list(self, project_id, document_id=None, entity_type=None, entity_id=None, **kw):
+            rows = self._root.comment_rows
+            if document_id:
+                rows = [r for r in rows if r.get('document_id') == document_id]
+            if entity_id:
+                rows = [r for r in rows
+                        if r.get('entity_type') == entity_type and r.get('entity_id') == entity_id]
+            return list(rows)
+
+        def create(self, entity_type, entity_id, body, **kwargs):
+            new = self._writer.new_id('comments')
+            self._writer.fail_if_asked('comments.create')
+            self._writer.record('comments.create',
+                                {'args': (entity_type, entity_id, body), 'kwargs': kwargs},
+                                {'body': {'id': new}})
+            return {'id': new}
+
+    class _Guidelines:
+        """The project's annotation manual. A write changes the rows at once
+        and is recorded like any other, queued when made on a batch."""
+
+        def __init__(self, writer):
+            self._writer = writer
+            self._rows = _root(writer).guideline_rows
+
+        def list(self, project_id, *, include_bodies=None, **kw):
+            if include_bodies:
+                return [dict(r) for r in self._rows]
+            return [{k: v for k, v in r.items() if k != 'body'} | {'body_chars': len(r.get('body') or '')}
+                    for r in self._rows]
+
+        def get(self, guideline_id, **kw):
+            for r in self._rows:
+                if r.get('id') == guideline_id:
+                    return dict(r)
+            raise PlaidAPIError('Guideline not found', status=404)
+
+        def create(self, project_id, title, *, body=None, pinned=None, **kw):
+            self._writer.fail_if_asked('guidelines.create')
+            row = {'id': f'gl-new-{len(self._rows)}', 'title': title, 'body': body or '',
+                   'pinned': bool(pinned), 'updated_at': _now_iso()}
+            self._rows.append(row)
+            self._writer.record('guidelines.create',
+                                {'args': (project_id, title), 'kwargs': {'body': body or ''}},
+                                {'body': {'id': row['id']}})
+            return {'id': row['id']}
+
+        def update(self, guideline_id, *, title=None, body=None, pinned=None,
+                   expected_updated_at=None, **kw):
+            """The server's own rule: given ``expected_updated_at`` and no
+            longer matching, nothing is written and this is a 409. Omitted, the
+            write is unconditional."""
+            self._writer.fail_if_asked('guidelines.update')
+            row = next((r for r in self._rows if r.get('id') == guideline_id), None)
+            if row is None:
+                raise PlaidAPIError('Guideline not found', status=404)
+            if expected_updated_at and expected_updated_at != row.get('updated_at'):
+                raise PlaidAPIError('This guideline was changed by someone else after you '
+                                    'opened it', status=409)
+            changed = {k: v for k, v in (('title', title), ('body', body), ('pinned', pinned))
+                       if v is not None}
+            row.update(changed)
+            row['updated_at'] = _now_iso()
+            self._writer.record('guidelines.update',
+                                {'args': (guideline_id,),
+                                 'kwargs': {'expected_updated_at': expected_updated_at, **changed}},
+                                {'body': {'id': guideline_id}})
+            return {'id': guideline_id}
+
+    class _UserData:
+        """The user's private key/value store, in memory."""
+
+        def __init__(self):
+            self.store = {}
+
+        def get(self, user_id, key):
+            if (user_id, key) not in self.store:
+                raise PlaidAPIError(f'No entry {key}', status=404)
+            return {'key': key, 'value': copy.deepcopy(self.store[(user_id, key)])}
+
+        def put(self, user_id, key, value):
+            self.store[(user_id, key)] = copy.deepcopy(value)
+            return {'key': key, 'updated_at': _now_iso()}
+
+        def delete(self, user_id, key):
+            self.store.pop((user_id, key), None)
+
+        def _entries(self, user_id, prefix, pattern, include_values):
+            """Every matching entry, ordered by key like the server's listing."""
+            rows = [{'key': k, **({'value': copy.deepcopy(v)} if include_values else {})}
+                    for (u, k), v in self.store.items()
+                    if u == user_id
+                    and (not prefix or k.startswith(prefix))
+                    and (not pattern or fnmatch.fnmatchcase(k, pattern))]
+            rows.sort(key=lambda r: r['key'])
+            return rows
+
+        def list(self, user_id, *, prefix=None, pattern=None, include_values=False,
+                 page_size=100):
+            """The full flat list, as the real client's auto-paginating list.
+
+            ``pattern`` is a GLOB over the whole key (``*`` any run, ``?`` one
+            character). ``page_size`` only sets how many entries a request
+            carries, so here it is accepted and unused.
+            """
+            return self._entries(user_id, prefix, pattern, include_values)
+
+        def list_page(self, user_id, *, prefix=None, pattern=None, include_values=False,
+                      limit=None, cursor=None):
+            """One page, as the envelope the real client hands back. The cursor
+            is opaque to a caller, so it is the last key of the page it came
+            from."""
+            rows = self._entries(user_id, prefix, pattern, include_values)
+            if cursor is not None:
+                rows = [r for r in rows if r['key'] > cursor]
+            page, rest = rows[:limit or 100], rows[limit or 100:]
+            return {'entries': page,
+                    'next_cursor': page[-1]['key'] if rest else None}
