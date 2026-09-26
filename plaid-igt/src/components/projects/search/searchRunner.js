@@ -243,7 +243,9 @@ export async function runHitsSearch(
       capped,
       rows: buildContextRows(doc, domain, hitIds),
     }))
-    .filter((g) => !keep || g.docHits > 0);
+    // A document with nothing left to list goes, unless its hits were capped:
+    // the ones past the cap may be the ones that fail.
+    .filter((g) => !keep || g.docHits > 0 || g.capped);
 
   const loadedHits = toLoad.reduce((a, [, n]) => a + n, 0);
   return {

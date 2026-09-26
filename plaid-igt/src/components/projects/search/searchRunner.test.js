@@ -33,6 +33,18 @@ describe('runHitsSearch', () => {
     expect(res.groups).toEqual([]);
   });
 
+  it('with a filter, keeps a capped document even when none of the hits it got fail', async () => {
+    // More hits in one document than a query returns: the ones past the cap
+    // may fail, so the document stays and says it stops short.
+    const client = hitsClient();
+    const ids = client.query;
+    client.query = async (q) => ({ ...(await ids(q)), ...(q?.return ? {} : { truncated: true }) });
+    const res = await search(client, { keep: () => false });
+    expect(res.groups).toHaveLength(1);
+    expect(res.groups[0].capped).toBe(true);
+    expect(res.groups[0].rows).toEqual([]);
+  });
+
   it('with a filter, does not claim a number of hits in the documents it did not load', async () => {
     const ids = Array.from({ length: 13 }, (_, i) => `doc-${i + 1}`);
     const plain = await search(hitsClient(ids));
