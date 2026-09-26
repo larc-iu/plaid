@@ -131,6 +131,30 @@ def test_any_write_is_recorded_by_one_rule():
         c.tokens._private
 
 
+def test_only_a_write_the_real_client_has_is_recorded():
+    # A typo, a method PlaidClient does not have, or a read nobody modelled is
+    # an error, never a write that answers {}.
+    c = _project_client()
+    for resource, method in [('tokens', 'bulk_crate'), ('documents', 'get_many'),
+                             ('tokens', 'get'), ('spans', 'list')]:
+        with pytest.raises(AttributeError):
+            getattr(getattr(c, resource), method)
+    assert c.writes == []
+
+
+def test_a_write_queued_on_a_batch_answers_as_the_real_batch_does():
+    # A queued write has no id yet: the real PlaidBatch answers {'batched': True},
+    # and the ids arrive in the results when it submits.
+    c = _project_client()
+    b = c.batch()
+    assert b.spans.create('L', ['t'], 'v') == {'batched': True}
+    assert b.tokens.bulk_create([{'begin': 0}]) == {'batched': True}
+    assert b.tokens.update('t1', precedence=2) == {'batched': True}
+    out = b.submit()
+    assert out[0]['body']['id'] == 'spans-1'
+    assert c.spans.create('L', ['t'], 'now') == {'id': 'spans-3'}
+
+
 def test_a_batch_queues_until_it_submits_and_answers_per_op():
     c = _project_client()
     b = c.batch()

@@ -48,6 +48,7 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
+from plaid_client import client as _client
 from plaid_client.http import PlaidAPIError
 from plaid_client.metadata_ops import apply_metadata_ops
 from plaid_client.services import CancelScope, requester_message
@@ -252,6 +253,19 @@ class _Batch:
         self.results = []
 
 
+#: the real client's class for each resource the fake writes through, so the
+#: fake accepts only a method PlaidClient has.
+_REAL_RESOURCES = {
+    'tokens': _client.TokensResource,
+    'spans': _client.SpansResource,
+    'relations': _client.RelationsResource,
+    'texts': _client.TextsResource,
+    'vocab_links': _client.VocabLinksResource,
+    'vocab_items': _client.VocabItemsResource,
+    'documents': _client.DocumentsResource,
+}
+
+
 class Resource:
     """One resource of the fake client: records every call in order, as
     ``('<resource>.<method>', payload)``, and hands back plausible ids, which
@@ -264,45 +278,52 @@ class Resource:
         self._client = client
         self._name = name
 
-    def _call(self, method, payload, result):
+    def _call(self, method, payload, result, answer):
+        """Record the call and answer it. A write queued on a batch answers
+        as the real PlaidBatch does, ``{'batched': True}``: its ids arrive in
+        the results when the batch submits."""
         self._client.fail_if_asked(f'{self._name}.{method}')
         self._client.record(f'{self._name}.{method}', payload, result)
+        return {'batched': True} if isinstance(self._client, _Batch) else answer
 
     def create(self, *args, **kwargs):
         new = self._client.new_id(self._name)
-        self._call('create', {'args': args, 'kwargs': kwargs}, {'body': {'id': new}})
-        return {'id': new}
+        return self._call('create', {'args': args, 'kwargs': kwargs}, {'body': {'id': new}},
+                          {'id': new})
 
     def bulk_create(self, ops):
         ops = list(ops)
         ids = [self._client.new_id(self._name) for _ in ops]
-        self._call('bulk_create', ops, {'body': {'ids': ids}})
-        return {'ids': ids}
+        return self._call('bulk_create', ops, {'body': {'ids': ids}}, {'ids': ids})
 
     def bulk_update(self, items):
         items = list(items)
         for item in items:
             if 'metadata' in item:
                 checked_ops(item['metadata'])
-        self._call('bulk_update', items, {'body': {'count': len(items)}})
-        return {'count': len(items)}
+        return self._call('bulk_update', items, {'body': {'count': len(items)}},
+                          {'count': len(items)})
 
     def bulk_delete(self, ids):
-        self._call('bulk_delete', list(ids), {'body': {}})
+        return self._call('bulk_delete', list(ids), {'body': {}}, None)
 
     def patch_metadata(self, entity_id, ops):
         checked_ops(ops)
-        self._call('patch_metadata', (entity_id, ops), {'body': {}})
+        return self._call('patch_metadata', (entity_id, ops), {'body': {}}, None)
 
     def __getattr__(self, method):
-        """Any other write (``update``, ``delete``, ``split``, ``merge``,
-        ``set_metadata`` ...), recorded by the rule above."""
-        if method.startswith('_'):
-            raise AttributeError(method)
+        """Any other write the real resource has (``update``, ``delete``,
+        ``split``, ``merge``, ``set_metadata`` ...), recorded by the rule above.
+        A name the real resource lacks (a typo) is an AttributeError, and so is
+        a read nobody modelled here (``get``, ``list...``), which would
+        otherwise answer ``{}`` as if it had been a write."""
+        real = _REAL_RESOURCES.get(self._name)
+        if (method.startswith('_') or real is None or not hasattr(real, method)
+                or method.startswith(('get', 'list'))):
+            raise AttributeError(f'the fake {self._name} resource has no {method!r}')
 
         def call(*args, **kwargs):
-            self._call(method, _payload(args, kwargs), {'body': {}})
-            return {}
+            return self._call(method, _payload(args, kwargs), {'body': {}}, {})
         return call
 
 
@@ -476,11 +497,10 @@ class FakeClient:
         def restore(self, document_id, as_of, dry_run=False, **kw):
             """The server's restore, recorded dry or not. A dry run answers
             with ``restore_summary``, what WOULD change."""
-            self._call('restore', {'args': (document_id, as_of), 'kwargs': {'dry_run': dry_run}},
-                       {'body': {'id': document_id}})
-            if dry_run:
-                return self._root.restore_summary
-            return {'id': document_id}
+            answer = self._root.restore_summary if dry_run else {'id': document_id}
+            return self._call('restore',
+                              {'args': (document_id, as_of), 'kwargs': {'dry_run': dry_run}},
+                              {'body': {'id': document_id}}, answer)
 
     class _Projects:
         def __init__(self, client):
