@@ -35,39 +35,39 @@ notation to each other over the corner cases the grammar turns on, and
 from . import graph, inventory, layers, penman, write
 from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, MISSING,
                     Morpheme, Node, Piece, Sentence, Triple, UmrDocument, Word,
-                    alignment_of, begins_in, group_of, next_order, penman_nodes, penman_of,
+                    alignment_of, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
                     with_attribute)
-from .inventory import (DOC_RELATIONS, KNOWN_RELATIONS, is_known_relation,
+from .inventory import (DOC_RELATIONS, KNOWN_RELATIONS,
                         unknown_doc_relation_problem, unknown_relation_problem)
-from .layers import (CONCEPTS, DOCUMENT_GRAPH, GlossLayer, NODES, RELATIONS, REQUIRED,
-                     UMR_NAMESPACE, UmrLayers, find_flagged, gloss_layers_of, gloss_values,
-                     owns_umr, project_language, resolve_layers, umr_config, umr_metadata)
-from .penman import (Child, Graph, ParseError, graph_text, is_variable, next_variable,
+from .layers import (CONCEPTS, GlossLayer, NODES, REQUIRED,
+                     UMR_NAMESPACE, UmrLayers, gloss_values,
+                     project_language, resolve_layers, umr_config)
+from .penman import (Child, Graph, graph_text, is_variable, next_variable,
                      parse_attribute_line, parse_penman, serialize_penman, tree_edges,
                      variable_from)
-from .write import (DraftProgress, DraftRun, anchor_pieces, begin_draft, build_draft_notice,
-                    draft_params, finish_draft, write_graphs)
+from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, finish_draft,
+                    write_graphs)
 
 __all__ = [
     'graph', 'inventory', 'layers', 'penman', 'write',
     # inventory
-    'KNOWN_RELATIONS', 'DOC_RELATIONS', 'is_known_relation', 'unknown_relation_problem',
+    'KNOWN_RELATIONS', 'DOC_RELATIONS', 'unknown_relation_problem',
     'unknown_doc_relation_problem',
     # layers
-    'UMR_NAMESPACE', 'NODES', 'CONCEPTS', 'RELATIONS', 'DOCUMENT_GRAPH', 'REQUIRED',
-    'GlossLayer', 'UmrLayers', 'resolve_layers', 'gloss_layers_of', 'gloss_values',
-    'find_flagged', 'owns_umr', 'umr_config', 'umr_metadata', 'project_language',
+    'UMR_NAMESPACE', 'NODES', 'CONCEPTS', 'REQUIRED',
+    'GlossLayer', 'UmrLayers', 'resolve_layers', 'gloss_values',
+    'umr_config', 'project_language',
     # graph
     'Piece', 'Word', 'Morpheme', 'Edge', 'Triple', 'Node', 'Sentence', 'UmrDocument',
-    'read_document', 'roots_of', 'alignment_of', 'begins_in', 'group_of',
+    'read_document', 'roots_of', 'alignment_of', 'group_of',
     'DOC_CONSTANTS', 'GROUPS', 'COREF_RELATIONS', 'CYCLE_ROLES', 'MISSING',
     'penman_nodes', 'penman_of', 'reachable_from_root',
     'next_order', 'place_attributes', 'with_attribute',
     # penman
-    'Child', 'Graph', 'ParseError', 'parse_penman', 'serialize_penman', 'tree_edges',
+    'Child', 'Graph', 'parse_penman', 'serialize_penman', 'tree_edges',
     'graph_text', 'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
     # write
-    'anchor_pieces', 'write_graphs', 'DraftProgress', 'build_draft_notice',
-    'draft_params', 'DraftRun', 'begin_draft', 'finish_draft',
+    'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
+    'finish_draft',
 ]
