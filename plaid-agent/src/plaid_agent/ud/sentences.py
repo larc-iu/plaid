@@ -121,18 +121,21 @@ def crossing_suppressors(doc: UdDoc, sentence: Sentence, char_pos: int) -> List[
     across a plan, and merging the two sentences back puts the pair within one
     sentence again with the stale suppressor still over it.
 
+    Every row over a crossing pair goes, since nothing stops a writer leaving
+    two over one pair, and the editor's walk sees each row.
+
     Both ends are resolved among the words of the sentence being cut, by lemma
     span, with the same conservatism as the tree: an end that is not one of
     them is left alone, and a self-relation is on one side by definition.
     """
     word_of = {w.fields['lemma'].id: w for w in sentence.words if w.fields.get('lemma')}
     out = []
-    for (source_span, target_span), rel_id in doc.suppressors.items():
+    for (source_span, target_span), rel_ids in doc.suppressors.items():
         source, target = word_of.get(source_span), word_of.get(target_span)
         if source is None or target is None or source is target:
             continue
         if (target.token.begin < char_pos) != (source.token.begin < char_pos):
-            out.append(rel_id)
+            out.extend(rel_ids)
     return out
 
 

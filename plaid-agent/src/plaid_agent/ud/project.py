@@ -244,7 +244,8 @@ class Word:
     #: CoNLL-U's DEPS column writes them. Empty where the sentence says
     #: nothing about the enhanced graph, which means it equals its tree.
     enhanced: List[Tuple[int, str]] = dc_field(default_factory=list)
-    #: The suppressor lying over this word's basic relation, if there is one.
+    #: The suppressor lying over this word's basic relation, if there is one:
+    #: the first row over its pair, as plaid-ud's ``suppressorFor`` answers.
     #: It belongs to that relation and goes when it goes: left behind it would
     #: suppress nothing, and would quietly suppress the next relation drawn
     #: over the same pair.
@@ -326,15 +327,19 @@ class UdDoc:
     metadata: dict
     version: Optional[int]
     #: The enhanced layer's suppressors, by the pair of lemma spans each lies
-    #: over. What a writer of a BASIC relation has to look in, since a
-    #: suppressor belongs to the relation under it.
-    suppressors: Dict[Tuple[str, str], str] = dc_field(default_factory=dict)
+    #: over, every row in the layer's order. What a writer of a BASIC relation
+    #: has to look in, since a suppressor belongs to the relation under it.
+    #: A pair can hold more than one row, and a split takes them all, as the
+    #: editor's ``relationsCrossing`` does.
+    suppressors: Dict[Tuple[str, str], List[str]] = dc_field(default_factory=dict)
 
     def suppressor_over(self, source_span_id: str, target_span_id: str) -> Optional[str]:
-        """The suppressor over this pair of lemma spans, if there is one."""
+        """The suppressor over this pair of lemma spans, if there is one: the
+        first row, as plaid-ud's ``suppressorFor`` answers, which is the one a
+        head write there takes with it."""
         if not source_span_id or not target_span_id:
             return None
-        return self.suppressors.get((source_span_id, target_span_id))
+        return next(iter(self.suppressors.get((source_span_id, target_span_id)) or ()), None)
 
     @property
     def word_count(self) -> int:
@@ -457,7 +462,7 @@ def parse_document(raw: dict, project: UdProject) -> UdDoc:
 
 def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
                    by_lemma_span: Dict[str, Word],
-                   sentences: List[Sentence]) -> Dict[Tuple[str, str], str]:
+                   sentences: List[Sentence]) -> Dict[Tuple[str, str], List[str]]:
     """Fill in each word's heads in the ENHANCED graph, where the sentence has
     one.
 
@@ -477,8 +482,10 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
     rows = _relations(word_layer, project.enhanced_relation_layer_id)
     if not rows:
         return {}
-    suppressed = {(r.get('source'), r.get('target')): r['id']
-                  for r in rows if _suppresses(r)}
+    suppressed: Dict[Tuple[str, str], List[str]] = {}
+    for r in rows:
+        if _suppresses(r):
+            suppressed.setdefault((r.get('source'), r.get('target')), []).append(r['id'])
     basic_by_target = {r.get('target'): r for r in basic}
     extras: Dict[str, List[Tuple[int, str]]] = {}
     # The same extras by relation ID rather than deprel, which is what a write
@@ -514,7 +521,8 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
             lemma = w.fields.get('lemma')
             rel = basic_by_target.get(lemma.id) if lemma else None
             if rel is not None:
-                w.suppressor_id = suppressed.get((rel.get('source'), rel.get('target')))
+                over = suppressed.get((rel.get('source'), rel.get('target')))
+                w.suppressor_id = over[0] if over else None
             if w.head is not None and w.deprel and rel is not None and not w.suppressor_id:
                 edges.append((w.head, w.deprel))
             edges += extras.get(w.id, [])

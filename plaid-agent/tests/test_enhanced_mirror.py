@@ -7,8 +7,11 @@ Three rules live in plaid-ud's JavaScript and have a Python copy here:
   plus the extra edges (``ud/project.py`` ``_read_enhanced`` against
   ``enhancedGraph.js`` as the CoNLL-U export reads it),
 - the suppressor lying over a basic relation, which a write that moves or
-  deletes that relation takes with it (``Word.suppressor_id``, swept by
-  ``ud/plan.py`` ``_suppressors``, against ``suppressorFor``),
+  deletes that relation takes with it (``Word.suppressor_id`` against
+  ``suppressorFor``), and the suppressor rows a head write or a head removal
+  actually sends deletes for (``t_set_head`` and ``t_del_relation`` through
+  ``ud/plan.py`` ``_suppressors``, against ``createRelation``,
+  ``updateRelation`` and ``deleteRelation``),
 - what a sentence split sends: the cut and every relation of either layer it
   would leave spanning two sentences, and what a merge sends
   (``ud/sentences.py`` against ``ConlluDocument.toggleSentenceBoundary``).
@@ -36,7 +39,7 @@ import pytest
 from plaid_agent.ud.plan import execute_plan
 from plaid_agent.ud.project import deps_of, load_project
 from plaid_agent.ud.sentences import t_merge_sentences, t_split_sentence
-from plaid_agent.ud.tools import Workspace
+from plaid_agent.ud.tools import Workspace, t_del_relation, t_set_head
 from ud_fixtures import (DEPREL, ENHANCED, FEATS, FORM, LEMMA, PID, SENT_LAYER, TEXT_ID,
                          TEXT_LAYER, TOK_LAYER, UPOS, WORD_LAYER, XPOS, FakeClient, project_raw)
 
@@ -67,8 +70,8 @@ def _node():
 def _case(seed: int) -> dict:
     """One document in the live API's shape: one to three sentences, some
     multi-word tokens, a tree with gaps in it, and an enhanced layer holding
-    extra edges, suppressors, a suppressor over no basic relation, and a
-    valueless row that is no suppressor."""
+    extra edges, suppressors, two suppressors over one pair, a suppressor over
+    no basic relation, and a valueless row that is no suppressor."""
     r = random.Random(seed)
     body = ''
     sentences, tokens, words = [], [], []
@@ -109,18 +112,21 @@ def _case(seed: int) -> dict:
                           'value': r.choice(LABELS + [''] if r.random() < 0.1 else LABELS)})
         if r.random() < 0.35 or not sent_words:
             continue
-        pairs = set()
+        def suppress(source, target):
+            # Now and then a second row over the same pair, which nothing
+            # stops a writer leaving: a split takes every one, a head write
+            # the first, as the editor reads them.
+            for _ in range(2 if r.random() < 0.25 else 1):
+                rows.append({'id': nid('e'), 'source': source, 'target': target,
+                             'value': None, 'metadata': {'suppress': True}})
         for rel in basic:
             if rel['target'] in sent_words and r.random() < 0.35:
-                rows.append({'id': nid('e'), 'source': rel['source'], 'target': rel['target'],
-                             'value': None, 'metadata': {'suppress': True}})
-                pairs.add((rel['source'], rel['target']))
-        if r.random() < 0.2:
+                suppress(rel['source'], rel['target'])
+        if r.random() < 0.35:
             # A suppressor over a pair with no basic relation: dangling.
             pair = (r.choice(sent_words), r.choice(sent_words))
-            if pair not in pairs and not any((b['source'], b['target']) == pair for b in basic):
-                rows.append({'id': nid('e'), 'source': pair[0], 'target': pair[1],
-                             'value': None, 'metadata': {'suppress': True}})
+            if not any((b['source'], b['target']) == pair for b in basic):
+                suppress(*pair)
         for _ in range(r.randint(0, 3)):
             target = r.choice(sent_words)
             source = target if r.random() < 0.15 else r.choice(sent_words)
@@ -194,9 +200,57 @@ def _sent(client):
     return out
 
 
+def _deletes(client):
+    return [op[1] for op in _sent(client) if op[0] == 'delete']
+
+
+def _head_writes(raw: dict, doc) -> list:
+    """The head writes to run on both sides, each one word's: removing its
+    head, a relabel under the head it has, the root, a head onto every pair a
+    suppressor already lies over (dangling or not), and one other word of its
+    sentence."""
+    r = random.Random(json.dumps(raw, sort_keys=True))
+    suppressed_from = {}
+    for source, target in _suppressor_rows(raw).values():
+        suppressed_from.setdefault(target, []).append(source)
+    out = []
+    for s in doc.sentences:
+        lemma_of = {w.index: w.fields['lemma'].id for w in s.words if w.fields.get('lemma')}
+        index_of = {v: k for k, v in lemma_of.items()}
+        for w in s.words:
+            if w.index not in lemma_of:
+                continue
+            target, ref = lemma_of[w.index], f's{s.index}.w{w.index}'
+            if w.relation_id:
+                out.append({'key': f'del {target}', 'kind': 'del', 'ref': ref, 'target': target})
+            heads = [0]
+            if w.relation_id and w.head is not None:
+                heads.append(w.head)
+            heads += [index_of[src] for src in suppressed_from.get(target, []) if src in index_of]
+            heads.append(r.choice(sorted(lemma_of)))
+            for head in dict.fromkeys(heads):
+                if head == w.index:
+                    continue
+                source = target if head == 0 else lemma_of[head]
+                out.append({'key': f'head {target} {source}', 'kind': 'head', 'ref': ref,
+                            'head': head, 'target': target, 'source': source,
+                            'deprel': 'root' if head == 0 else 'nmod'})
+    return out
+
+
 def _python_side(raw: dict) -> dict:
     client, ws = _workspace(raw)
     doc = ws.doc(NAME)
+    heads = {}
+    actions = _head_writes(raw, doc)
+    for a in actions:
+        client, ws = _workspace(raw)
+        if a['kind'] == 'del':
+            t_del_relation(ws, document=NAME, refs=[a['ref']])
+        else:
+            t_set_head(ws, document=NAME, ref=a['ref'], head=a['head'], deprel=a['deprel'])
+        execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
+        heads[a['key']] = _deletes(client)
     deps, has_enhanced, suppressor_of = [], [], {}
     for s in doc.sentences:
         has_enhanced.append(s.has_enhanced)
@@ -221,7 +275,7 @@ def _python_side(raw: dict) -> dict:
             execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
             merges[str(s.tokens[0].begin)] = _sent(client)
     return {'deps': deps, 'hasEnhanced': has_enhanced, 'suppressorOf': suppressor_of,
-            'splits': splits, 'merges': merges}
+            'splits': splits, 'merges': merges, 'heads': heads, 'actions': actions}
 
 
 @pytest.fixture(scope='module')
@@ -232,7 +286,10 @@ def compared():
     raws = [_case(s) for s in range(CASES)]
     py = [_python_side(raw) for raw in raws]
     cases = [{'raw': _camel(raw), 'splitAt': [int(k) for k in p['splits']],
-              'mergeAt': [int(k) for k in p['merges']]} for raw, p in zip(raws, py)]
+              'mergeAt': [int(k) for k in p['merges']],
+              'heads': [{k: a[k] for k in ('key', 'kind', 'target', 'source', 'deprel') if k in a}
+                        for a in p['actions']]}
+             for raw, p in zip(raws, py)]
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, 'cases.json')
         with open(path, 'w', encoding='utf-8') as fh:
@@ -252,6 +309,39 @@ def test_the_cases_reach_every_shape_they_are_for(compared):
     assert sum(any(op[0] == 'delete' for ops in p['splits'].values() for op in ops)
                for p in py) > CASES // 3
     assert sum(bool(p['merges']) for p in py) > CASES // 3
+    rows = [_suppressor_rows(raw) for raw in raws]
+    # Two suppressors over one pair, and a split that sends both.
+    assert sum(len(set(pairs.values())) < len(pairs) for pairs in rows) > CASES // 10
+    assert sum(any(sum(op[0] == 'delete' and pairs.get(op[1]) == pair for op in ops) > 1
+                   for ops in p['splits'].values() for pair in set(pairs.values()))
+               for p, pairs in zip(py, rows)) > CASES // 20
+    # A head write that sweeps a suppressor, and one onto a dangling pair.
+    assert sum(any(i in pairs for ids in p['heads'].values() for i in ids)
+               for p, pairs in zip(py, rows)) > CASES // 5
+    assert sum(any(a['kind'] == 'head' and _dangling(raw, a['source'], a['target'])
+                   for a in p['actions']) for raw, p in zip(raws, py)) > CASES // 10
+
+
+def _relation_layers(raw):
+    """The lemma layer's two relation layers, the tree's then the enhanced
+    graph's, as _case lays them out."""
+    return raw['text_layers'][0]['token_layers'][2]['span_layers'][1]['relation_layers']
+
+
+def _enhanced_rows(raw):
+    return _relation_layers(raw)[1]['relations']
+
+
+def _suppressor_rows(raw):
+    """Each suppressor row's id, to the pair it lies over."""
+    return {row['id']: (row['source'], row['target']) for row in _enhanced_rows(raw)
+            if (row.get('metadata') or {}).get('suppress')}
+
+
+def _dangling(raw, source, target):
+    basic = _relation_layers(raw)[0]['relations']
+    return ((source, target) in set(_suppressor_rows(raw).values())
+            and not any((b['source'], b['target']) == (source, target) for b in basic))
 
 
 def _differ(key, i, a, b, raws):
@@ -301,3 +391,18 @@ def test_a_sentence_boundary_sends_what_the_editor_sends(compared, key):
         port = {k: norm(v) for k, v in b[key].items()}
         if app != port:
             _differ(key, i, app, port, raws)
+
+
+def test_a_head_write_sweeps_the_suppressors_the_editor_sweeps(compared):
+    """The suppressor rows a head removal, a relabel, a new head and a root
+    each send a delete for, against ``deleteRelation``, ``updateRelation`` and
+    ``createRelation``. Only enhanced rows are compared: the port writes a
+    relabel as a delete and a create of the basic relation, where the editor
+    updates it in place, and either is the same tree."""
+    raws, js, py = compared
+    for i, (a, b) in enumerate(zip(js, py)):
+        rows = {row['id'] for row in _enhanced_rows(raws[i])}
+        app = {k: sorted(x for x in v if x in rows) for k, v in a['heads'].items()}
+        port = {k: sorted(x for x in v if x in rows) for k, v in b['heads'].items()}
+        if app != port:
+            _differ('heads', i, app, port, raws)

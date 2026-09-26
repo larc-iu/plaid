@@ -6,8 +6,9 @@
 // stdout. Each document is opened as the editor opens it (a ConlluDocument
 // over the raw document), and each answer comes from the code the editor runs:
 // DEPS from the CoNLL-U export, the suppressor over a basic relation from
-// `suppressorFor`, and a split or merge from `toggleSentenceBoundary` against a
-// stub client that records what it would send.
+// `suppressorFor`, a split or merge from `toggleSentenceBoundary`, and a head
+// write from `createRelation`, `updateRelation` or `deleteRelation`, each
+// against a stub client that records what it would send.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -60,6 +61,32 @@ const toggle = async (raw, charPos) => {
   return sent;
 };
 
+// The relation deletes one head write sends, from a fresh document. A new head
+// or a root is the head picker's `createRelation`, a new label under the head
+// the word has is the label cell's `updateRelation`, and a removal is
+// `deleteRelation` of the basic relation into the word.
+const headWrite = async (raw, write) => {
+  const deleted = [];
+  const client = withOps({
+    relations: {
+      create: async () => ({ id: 'new-relation' }),
+      update: async () => ({}),
+      delete: async (id) => {
+        deleted.push(id);
+        return {};
+      },
+    },
+  });
+  const doc = new ConlluDocument({ raw: structuredClone(raw), client });
+  const basic = (doc.layerInfo.relationLayer?.relations || []).find(
+    (rel) => rel.target === write.target,
+  );
+  if (write.kind === 'del') await doc.deleteRelation(basic.id);
+  else if (basic && basic.source === write.source) await doc.updateRelation(basic.id, write.deprel);
+  else await doc.createRelation(write.source, write.target, write.deprel);
+  return deleted;
+};
+
 const cases = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const out = [];
 for (const c of cases) {
@@ -75,12 +102,15 @@ for (const c of cases) {
   for (const pos of c.splitAt) splits[pos] = await toggle(c.raw, pos);
   const merges = {};
   for (const pos of c.mergeAt) merges[pos] = await toggle(c.raw, pos);
+  const heads = {};
+  for (const write of c.heads) heads[write.key] = await headWrite(c.raw, write);
   out.push({
     deps: depsBySentence(doc.toConllu()),
     hasEnhanced: doc.sentences.map((s) => (s.enhancedRelations || []).length > 0),
     suppressorOf,
     splits,
     merges,
+    heads,
   });
 }
 process.stdout.write(JSON.stringify(out));
