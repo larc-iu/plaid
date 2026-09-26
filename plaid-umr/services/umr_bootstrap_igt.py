@@ -247,8 +247,9 @@ def is_bound(morph_type: Optional[str]) -> bool:
 
 
 #: A zero morph as IGT writes it (`Alt+0` types U+2205), or a form emptied by
-#: hand: nothing a word could be named after.
-_ZERO_FORMS = {'', '\u2205', '0'}
+#: hand: nothing a word could be named after. The digit 0 is a real form (a
+#: numeral), as `isZeroMorph` in plaid-igt has it.
+_ZERO_FORMS = {'', '\u2205'}
 
 
 def is_zero(form: str) -> bool:

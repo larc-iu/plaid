@@ -449,3 +449,13 @@ def test_int_is_not_read_as_a_question():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('IDEO:INT.rhythmic', table)['attrs'] == []
     assert boot.read_gloss('Q', table)['attrs'] == [(':mode', 'interrogative')]
+
+
+def test_the_digit_0_is_a_form_and_not_a_zero_morph():
+    """plaid-igt's zero morph is U+2205 and nothing else (zeroMorph.js): a
+    numeral written 0 is a real form, and the word it stands for is named."""
+    assert boot.is_zero('∅') and boot.is_zero('')
+    assert not boot.is_zero('0')
+    morphemes = [('m1', 0, 'I', 'stem', '1SG', None), ('m2', 1, '0', 'stem', 'zero', None)]
+    document = _segmented(body='I 0\n', words=[(0, 1), (2, 3)], morphemes=morphemes)
+    assert [c for c, _ in _segmented_run(document, _compound_vocab())] == ['zero']
