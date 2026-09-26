@@ -60,17 +60,19 @@
   (session-of email))
 
 (defn- stub-channel
-  "An open channel that accepts writes until it is closed."
-  [closed]
-  (reify http-kit/Channel
-    (open? [_] (not @closed))
-    (websocket? [_] false)
-    (close [_] (reset! closed true) true)
-    (send! [_ _] (not @closed))
-    (send! [_ _ _] (not @closed))
-    (on-receive [_ _])
-    (on-ping [_ _])
-    (on-close [_ _])))
+  "An open channel that accepts writes until it is closed, and records each
+  write in `sent` when given one."
+  ([closed] (stub-channel closed (atom [])))
+  ([closed sent]
+   (reify http-kit/Channel
+     (open? [_] (not @closed))
+     (websocket? [_] false)
+     (close [_] (reset! closed true) true)
+     (send! [_ data] (swap! sent conj data) (not @closed))
+     (send! [_ data _] (swap! sent conj data) (not @closed))
+     (on-receive [_ _])
+     (on-ping [_ _])
+     (on-close [_ _]))))
 
 (defn- open!
   "Open service `sid` on `pid` through the real route with `token`. Returns
@@ -199,7 +201,8 @@
         _ (writer! pid "svc-a@example.com")
         {token :token tid :id} (mint! "svc-a@example.com")
         closed (atom false)
-        ch (stub-channel closed)]
+        sent (atom [])
+        ch (stub-channel closed sent)]
     (with-redefs [http-kit/as-channel
                   (fn [_ {:keys [on-open]}]
                     (is (= 204 (:status (api-call admin-request
@@ -211,7 +214,24 @@
                                               (str "/api/v1/projects/" pid "/services/svc/requests?service-name=svc"))))
     (is @closed)
     (is (not (live? pid "svc")))
-    (is (not (some #(= "svc" (:service-id %)) (events/list-live-services pid))))))
+    (is (not (some #(= "svc" (:service-id %)) (events/list-live-services pid))))
+    (testing "the service is told why before the channel closes"
+      (is (some #(and (string? %) (re-find #"^event: error" %)) @sent)))))
+
+(deftest an-admin-opening-a-channel-on-a-missing-project-is-refused
+  ;; The privilege check lets an admin in on any project id, so the route
+  ;; itself has to refuse a project that does not exist, before the SSE
+  ;; headers go out. A 200 followed by a silent close reads to a client as a
+  ;; blip, and it reconnects forever.
+  (events/reset-state!)
+  (let [opened (atom false)
+        missing (str (java.util.UUID/randomUUID))]
+    (with-redefs [http-kit/as-channel (fn [_ _] (reset! opened true) {:status 200 :body ""})]
+      (let [resp (fix/rest-handler (admin-request :get (str "/api/v1/projects/" missing
+                                                            "/services/svc/requests?service-name=svc")))]
+        (is (= 403 (:status resp)))
+        (is (not @opened))))
+    (is (not (live? missing "svc")))))
 
 (deftest a-submit-never-reaches-a-channel-whose-opener-lost-the-right
   ;; The writes above close the channel at once. A submit asks again, since

@@ -185,6 +185,10 @@
   requests routed to it, and close it."
   [{:keys [db project-id service-id channel]}]
   (events/unregister-service-channel! project-id service-id channel)
+  (try (http-kit/send! channel
+                       (sse-event "error" {:error "This connection's credentials no longer allow it"})
+                       false)
+       (catch Exception _))
   (when-not (events/get-service-channel project-id service-id)
     (try (service-registry/touch-last-seen! db project-id service-id)
          (catch Exception _))
@@ -240,8 +244,17 @@
               :db db}]
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
-    (if (events/channel-alive? (events/get-service-channel id service-id))
+    (cond
+      ;; The privilege check lets an admin in on any project id, so a project
+      ;; that does not exist is refused here, while a status can still be
+      ;; sent. The same 403 a non-admin gets.
+      (nil? (prj/get db id))
+      {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to open a service channel on project " id)}}
+
+      (events/channel-alive? (events/get-service-channel id service-id))
       {:status 409 :body {:error (str "Service '" service-id "' is already connected to this project")}}
+
+      :else
       (http-kit/as-channel
        req
        {:on-open
