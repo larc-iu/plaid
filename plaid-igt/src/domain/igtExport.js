@@ -18,8 +18,8 @@
 // grammatical abbreviations in small caps (texGloss). Untokenized baseline
 // text (punctuation) gets its own column with empty gloss cells.
 
-import { joinMorphemes } from './affixMarkers.js';
-import { lexicalFlagsOf } from './tagsets.js';
+import { canNameWord, joinMorphemes } from './affixMarkers.js';
+import { boundByPieces, lexicalFlagsOf } from './tagsets.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -58,9 +58,14 @@ export const joinMorphemeTexts = (morphemes, texts) =>
     : '';
 
 // Per-word cells: segmented form + one joined-gloss string per morph field +
-// one value per word field.
+// one value per word field. morphPieces holds, per morph field, each
+// morpheme's gloss and whether it can never name the word, which is how the
+// LaTeX small caps read the joined gloss (texGloss).
 function wordCells(token, { morphFields, wordFields }) {
   const morphemes = token.morphemes || [];
+  const bound = morphemes.map(
+    (m) => !canNameWord(m.morphType ?? m.metadata?.morphType, morphFormOf(m)),
+  );
   const segmented = morphemes.length
     ? joinMorphemeTexts(
         morphemes,
@@ -75,8 +80,11 @@ function wordCells(token, { morphFields, wordFields }) {
         )
       : '',
   );
+  const morphPieces = morphFields.map((f) =>
+    morphemes.map((m, i) => ({ text: m.annotations?.[f]?.value ?? '', bound: bound[i] })),
+  );
   const wordLines = wordFields.map((f) => token.annotations?.[f]?.value ?? '');
-  return { segmented, morphLines, wordLines };
+  return { segmented, morphLines, morphPieces, wordLines };
 }
 
 // One cell column per piece of the sentence in reading order: word tokens plus
@@ -99,6 +107,7 @@ function columnCells(sentence, fields) {
     cells.push({
       segmented: text,
       morphLines: fields.morphFields.map(() => ''),
+      morphPieces: fields.morphFields.map(() => null),
       wordLines: fields.wordFields.map(() => ''),
     });
   }
@@ -109,7 +118,11 @@ function tiers(sentence, fields) {
   const cells = columnCells(sentence, fields);
   const lines = [{ label: null, cells: cells.map((c) => c.segmented) }];
   fields.morphFields.forEach((f, i) => {
-    lines.push({ label: f, cells: cells.map((c) => c.morphLines[i]) });
+    lines.push({
+      label: f,
+      cells: cells.map((c) => c.morphLines[i]),
+      pieces: cells.map((c) => c.morphPieces[i]),
+    });
   });
   fields.wordFields.forEach((f, i) => {
     lines.push({ label: f, cells: cells.map((c) => c.wordLines[i]) });
@@ -167,9 +180,11 @@ const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).jo
 // A gloss as a paper sets it: each grammatical abbreviation in small caps,
 // written in lowercase because \textsc only changes lowercase letters and
 // \textsc{NOM} prints as full capitals. "1SG.NOM" gives \textsc{1sg}.\textsc{nom}.
-// Grammatical versus lexical is the tagsets' rule, read over the whole gloss
-// (lexicalFlagsOf), so "I" is set in small caps like any tag, and so is the pfv
-// of go.3sg.pfv. A part with no letters is left bare, since
+// Grammatical versus lexical is the tagsets' rule (lexicalFlagsOf), so "I" is
+// set in small caps like any tag, and so is the pfv of go.3sg.pfv. A word's
+// joined morpheme gloss is read by its pieces: its stems' glosses as one unit
+// with the fall-back, so pass.PST=and keeps pass, and an affix's or a clitic's
+// with none, so the suffix of pass.PST-sbj:3.pfv is all tags. A part with no letters is left bare, since
 // small caps would not change it. A part holds only letters, marks and digits,
 // none of them a LaTeX special.
 const GLOSS_PART_RE = /[\p{L}\p{M}\p{N}]+/gu;
@@ -178,11 +193,12 @@ const HAS_LETTER_RE = /\p{L}/u;
 // plus a combining dot above everywhere but a Turkish locale, and the dot
 // would then print over a small-caps i. It is set as a plain i.
 const smallCapsText = (part) => part.replace(/\u0130/g, 'i').toLowerCase();
-const texGloss = (s) => {
+const texGloss = (s, pieces) => {
   const matches = [...s.matchAll(GLOSS_PART_RE)];
   const lexical = lexicalFlagsOf(
     s,
     matches.map((m) => ({ text: m[0], begin: m.index, end: m.index + m[0].length })),
+    { bound: boundByPieces(pieces) },
   );
   let out = '';
   let at = 0;
@@ -205,13 +221,18 @@ const texWord = (render) => (s) => {
   return text.includes(' ') ? `{${render(text)}}` : render(text);
 };
 const texCell = texWord(texEscape);
-const texGlossCell = texWord(texGloss);
+// A gloss line's cells, each read by its morpheme pieces when it has them
+// (a word field's line has none, and each cell is one word's gloss).
+const texGlossCells = (line, n) =>
+  (line?.cells ?? Array.from({ length: n }, () => '')).map((c, i) =>
+    texWord((t) => texGloss(t, line?.pieces?.[i]))(c),
+  );
 
 export function formatGb4e(sentence, fields) {
   const lines = tiers(sentence, fields);
   const forms = lines[0].cells.map(texCell).join(' ');
   // gb4e's \gll takes exactly two aligned lines: forms + the first gloss tier.
-  const gloss = (lines[1]?.cells ?? lines[0].cells.map(() => '')).map(texGlossCell).join(' ');
+  const gloss = texGlossCells(lines[1], lines[0].cells.length).join(' ');
   const tr = translations(sentence, fields)[0]?.value ?? '';
   return [
     '\\begin{exe}',
@@ -226,7 +247,7 @@ export function formatGb4e(sentence, fields) {
 export function formatExpex(sentence, fields) {
   const lines = tiers(sentence, fields);
   const forms = lines[0].cells.map(texCell).join(' ');
-  const gloss = (lines[1]?.cells ?? lines[0].cells.map(() => '')).map(texGlossCell).join(' ');
+  const gloss = texGlossCells(lines[1], lines[0].cells.length).join(' ');
   const tr = translations(sentence, fields)[0]?.value ?? '';
   return [
     '\\ex',

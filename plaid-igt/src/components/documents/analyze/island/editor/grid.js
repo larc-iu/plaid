@@ -4,6 +4,7 @@ import { cpLength, provOrigin, PROV_STATES } from '@larc-iu/plaid-client';
 import { isTokenIgnored } from '@/domain/igtConfig';
 import { allowedGuess } from '@/domain/glossGuess';
 import { morphemeJoiner } from '@/domain/affixMarkers';
+import { morphemeGlossReading, readingTagset } from '@/domain/tagsets';
 import { KINDS } from '@/domain/precedent';
 import { extractAnalysis } from '@/domain/analysisMemory.js';
 import {
@@ -318,8 +319,21 @@ export const grid = {
             },
           )}
         </div>
-        ${ctx.morphFields.map(
-          (name) => html`
+        ${ctx.morphFields.map((name) => {
+          // The tagset as this cell reads its gloss: an affix's with no
+          // fall-back, a stem's together with the word's other stems' glosses.
+          const tagset = readingTagset(
+            this._tagsetFor('morpheme', name),
+            morphemeGlossReading(
+              siblings.map((m) => ({
+                morphType: m.morphType,
+                form: morphFormOf(m),
+                gloss: m.annotations?.[name]?.value ?? '',
+              })),
+              siblings.indexOf(morph),
+            ),
+          );
+          return html`
             <div class="igt-morph-cell${this._rowCls(`morph:${name}`)}" data-row=${`morph:${name}`}>
               ${this._field({
                 key: `ma:${morph.id}:${name}`,
@@ -335,14 +349,14 @@ export const grid = {
                 extraClass: 'igt-morph-field',
                 ariaLabel: `${name} for morpheme${value ? ` ${value}` : ''}`,
                 fieldName: name,
-                tagset: this._tagsetFor('morpheme', name),
+                tagset,
                 guessTarget: morph.id,
                 guess: allowedGuess(
                   ctx.guess?.guessFor('morpheme', value, name, {
                     vocabItem: morph.vocabItem,
                     ...this._entryPairing('morpheme', name, morph.vocabItem),
                   }) ?? null,
-                  this._tagsetFor('morpheme', name),
+                  tagset,
                 ),
                 alternatives: () =>
                   this._alternatives({
@@ -353,15 +367,15 @@ export const grid = {
                     vocabItem: morph.vocabItem,
                     ...this._entryPairing('morpheme', name, morph.vocabItem),
                     span: morph.annotations?.[name],
-                    tagset: this._tagsetFor('morpheme', name),
+                    tagset,
                   }),
                 prov: provDisplay(morph.annotations?.[name]?.metadata),
                 provOrigin: provOrigin(morph.annotations?.[name]?.metadata),
                 confirmWord: word.id,
               })}
             </div>
-          `,
-        )}
+          `;
+        })}
       </div>
     `;
   },

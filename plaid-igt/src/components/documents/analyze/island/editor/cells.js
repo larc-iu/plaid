@@ -474,12 +474,15 @@ export const cells = {
    * The result depends only on (kind, form, field, linked entry) once the
    * precedent tally is fixed, and a document repeats the same morpheme form
    * hundreds of times, so the hit rate is high. A cell whose span carries a
-   * model prediction is per-cell by definition and skips the memo.
+   * model prediction is per-cell by definition and skips the memo. The key
+   * holds how the cell reads a gloss (readingTagset), since a stem's list and
+   * an affix's of the same form keep different values under a mixed tagset.
    */
   _alternatives(args) {
     const detail = args.span?.metadata?.[PROV.detailKey];
     if (detail) return listAlternatives(args);
-    const key = `${args.kind}\u0000${args.form}\u0000${args.field}\u0000${args.vocabItem?.id ?? ''}`;
+    const reading = JSON.stringify(args.tagset?.reading ?? null);
+    const key = `${args.kind}\u0000${args.form}\u0000${args.field}\u0000${args.vocabItem?.id ?? ''}\u0000${reading}`;
     const memo = (this._altsMemo ||= new Map());
     let hit = memo.get(key);
     if (!hit) memo.set(key, (hit = listAlternatives(args)));

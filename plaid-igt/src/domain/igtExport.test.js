@@ -259,6 +259,51 @@ describe('LaTeX gloss small caps', () => {
   });
 });
 
+describe('LaTeX small caps read a word by its morphemes', () => {
+  const F = { morphFields: ['Gloss'], wordFields: [], sentFields: [] };
+  const word = (...ms) => ({
+    annotations: {},
+    tokens: [
+      {
+        content: 'w',
+        annotations: {},
+        morphemes: ms.map(([form, morphType, gloss]) => ({
+          metadata: { form, morphType },
+          annotations: { Gloss: span(gloss) },
+        })),
+      },
+    ],
+  });
+  const glossLine = (s) => formatGb4e(s, F).split('\n')[3].trim().replace(/\\\\$/, '');
+
+  it("keeps a stem's pass beside a clitic glossed with a word", () => {
+    expect(glossLine(word(['pa', 'stem', 'pass.PST'], ['ka', 'enclitic', 'and']))).toBe(
+      'pass.\\textsc{pst}=and',
+    );
+  });
+
+  it("reads a suffix's lower-case abbreviations as tags beside a stem", () => {
+    expect(glossLine(word(['pa', 'stem', 'pass.PST'], ['ti', 'suffix', 'sbj:3.pfv']))).toBe(
+      'pass.\\textsc{pst}-\\textsc{sbj}:3.\\textsc{pfv}',
+    );
+  });
+
+  it('never falls back for a zero morph', () => {
+    expect(glossLine(word(['go', 'stem', 'go'], ['∅', 'suffix', 'sbj:3.pfv']))).toBe(
+      'go-\\textsc{sbj}:3.\\textsc{pfv}',
+    );
+  });
+
+  it('still falls back for a word gloss line', () => {
+    const s = {
+      annotations: {},
+      tokens: [{ content: 'w', annotations: { Gloss: span('pass.PST') }, morphemes: [] }],
+    };
+    const out = formatGb4e(s, { morphFields: [], wordFields: ['Gloss'], sentFields: [] });
+    expect(out.split('\n')[3].trim()).toBe('pass.\\textsc{pst}\\\\');
+  });
+});
+
 describe('LaTeX cells stay one word each', () => {
   const words = (...cells) => ({
     annotations: {},

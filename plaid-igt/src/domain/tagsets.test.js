@@ -21,7 +21,11 @@ import {
   isLexicalPart,
   GLOSS_ABBREVIATIONS,
   lexicalFlags,
+  lenientFlags,
   lexicalFlagsOf,
+  boundByPieces,
+  morphemeGlossReading,
+  readingTagset,
   glossMorphemes,
   offTagsetParts,
   offTagsetValues,
@@ -562,6 +566,71 @@ describe('the lenient reading in tagset checks', () => {
       tags: [{ value: '3' }, { value: 'pfv' }],
       lexical: [{ value: 'go' }],
     });
+  });
+});
+
+describe('the unit a gloss is read in', () => {
+  const flags = (value) => lenientFlags(glossMorphemes(value)).flat();
+  const mixed = { delimiters: '.:-=', mode: 'mixed', values: [{ value: 'PST' }, { value: '3' }] };
+  const word = (...ms) => ms.map(([morphType, form, gloss]) => ({ morphType, form, gloss }));
+
+  it('reads an affix gloss with no fall-back', () => {
+    expect(flags('sbj:3.pfv')).toEqual([false, false, false]);
+    expect(flags('pass.PST')).toEqual([false, false]);
+    expect(flags('go.3SG.pfv')).toEqual([true, false, false]);
+  });
+
+  it('holds a suffix cell to the list where a stem cell falls back', () => {
+    const suffix = word(['stem', 'pa', 'pass.PST'], ['suffix', 'ti', 'sbj:3.pfv']);
+    const affix = readingTagset(mixed, morphemeGlossReading(suffix, 1));
+    expect(validateValue('sbj:3.pfv', affix).map((v) => v.part)).toEqual(['sbj', 'pfv']);
+    expect(
+      validateValue('pass.PST', readingTagset(mixed, morphemeGlossReading(suffix, 0))),
+    ).toEqual([]);
+    // With no morph type beside it, a value is a stem's gloss.
+    expect(validateValue('sbj:3.pfv', mixed)).toEqual([]);
+  });
+
+  it("reads a clitic's and a zero morph's gloss as an affix's", () => {
+    const w = word(['stem', 'pa', 'pass'], ['enclitic', 'ka', 'sbj:3'], [null, '∅', 'top.PST']);
+    expect(morphemeGlossReading(w, 1)).toEqual({ bound: true, beside: [] });
+    expect(morphemeGlossReading(w, 2)).toEqual({ bound: true, beside: [] });
+  });
+
+  it("reads a stem's gloss with the word's other stems, so one lexical stem ends the fall-back", () => {
+    const w = word(['stem', 'pa', 'pass.PST'], ['root', 'go', 'go'], ['suffix', 's', 'PL']);
+    expect(morphemeGlossReading(w, 0)).toEqual({ bound: false, beside: ['go'] });
+    const stem = readingTagset(mixed, morphemeGlossReading(w, 0));
+    expect(validateValue('pass.PST', stem).map((v) => v.part)).toEqual(['pass']);
+  });
+
+  it('reads a joined gloss by its pieces', () => {
+    const value = 'pass.PST-sbj:3.pfv=and';
+    const bound = boundByPieces([
+      { text: 'pass.PST', bound: false },
+      { text: 'sbj:3.pfv', bound: true },
+      { text: 'and', bound: true },
+    ]);
+    expect(lexicalFlagsOf(value, scanValue(value, '.:-='), { bound })).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('checks a morpheme in an analysis as its cell reads it', () => {
+    const tagsetFor = (scope) => (scope === 'morpheme' ? mixed : null);
+    const analysis = {
+      word: { fields: {} },
+      morphemes: [
+        { form: 'pa', morphType: 'stem', fields: { Gloss: 'pass.PST' } },
+        { form: 'ti', morphType: 'suffix', fields: { Gloss: 'sbj:3.pfv' } },
+      ],
+    };
+    expect(analysisViolations(analysis, tagsetFor).map((v) => v.value)).toEqual(['sbj:3.pfv']);
   });
 });
 

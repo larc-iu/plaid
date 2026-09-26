@@ -47,6 +47,26 @@ MORPH_TYPES = [None, '', 'stem', 'root', 'prefix', 'suffix', 'infix', 'circumfix
                'clitic', 'enclitic', 'proclitic', 'particle', 'bound root', 'suprafix', 'fix',
                'prefixing interfix', 3]
 FORMS = ['∅', '0', 'Ø', 'ø', '', ' ∅', 'a', None]
+NAMERS = [[t, f] for t in [None, 'stem', 'suffix', 'enclitic', 'bound root'] for f in FORMS]
+#: One word's gloss line, each morpheme (gloss, morph type, form). The first
+#: three are the probes the skeleton and the app once read apart: a stem's
+#: pass.PST beside a clitic glossed with a word, beside a suffix glossed with
+#: lower-case abbreviations, and that suffix's cell alone.
+LINES = [
+    [['pass.PST', 'stem', 'pa'], ['and', 'enclitic', 'ka']],
+    [['pass.PST', 'stem', 'pa'], ['sbj:3.pfv', 'suffix', 'ti']],
+    [['sbj:3.pfv', 'suffix', 'ti']],
+    [['pass.PST', None, 'pa']],
+    [['sbj:3.pfv', 'stem', 'ti']],
+    [['pass.PST', 'stem', 'pa'], ['go', 'root', 'go'], ['PL', 'suffix', 's']],
+    [['pass.PST', 'stem', 'pa'], ['top.PL', 'stem', 'ki']],
+    [['top.PL', 'stem', 'x'], ['pfv.3', None, '∅']],
+    [['sbj:3.pfv', 'stem', '']],
+    [['1SG', 'prefix', 'ni'], ['lay.pfv', 'stem', 'la'], ['3sg.pfv', 'suffix', 'a']],
+    [['pass.PST', 'bound root', 'pa'], ['pass.PST', 'suffix', 'u']],
+    [['art.PL', 'proclitic', 'l'], ['dog', 'stem', 'kalb']],
+    [['go.3SG.pfv', 'stem', 'ik'], ['ipfv.PL', 'enclitic', 'ma']],
+]
 
 
 @pytest.fixture(scope='module')
@@ -58,6 +78,7 @@ def js(tmp_path_factory):
     cases.write_text(json.dumps({
         'values': VALUES, 'scanned': [v for v in VALUES if not any(c.isspace() for c in v)],
         'units': UNITS, 'parts': PARTS, 'morphTypes': MORPH_TYPES, 'forms': FORMS,
+        'namers': NAMERS, 'lines': LINES,
     }), encoding='utf-8')
     out = subprocess.run([exe, SCRIPT, str(cases)], capture_output=True, text=True, timeout=60,
                          check=True).stdout
@@ -100,3 +121,39 @@ def test_the_lenient_reading_is_the_rule_less_its_fall_back():
             assert lenient == glossing.lexical_flags(unit)
     assert glossing.lenient_flags(glossing.gloss_morphemes('sbj:3.pfv')) == [[False] * 3]
     assert glossing.lexical_flags(glossing.gloss_morphemes('sbj:3.pfv')) == [[True, False, True]]
+
+
+def test_a_morpheme_names_its_word_as_the_app_says(js):
+    assert [glossing.can_name_word(t, f) for t, f in NAMERS] == js['names']
+
+
+def _skeleton_line(line):
+    """The skeleton's reading of one word's gloss line (``line_flags`` with
+    the morphemes that could name the word, as ``plan_sentence`` passes it)."""
+    return glossing.line_flags([g for g, _, _ in line],
+                               [glossing.can_name_word(t, f) for _, t, f in line])
+
+
+def test_a_word_line_is_read_in_latex_as_the_skeleton_reads_it(js):
+    """The gb4e gloss line of one word, joined from its morphemes' glosses,
+    sets in small caps exactly the parts the skeleton reads as grammatical."""
+    def lettered(line):
+        return [f for gloss, flags in zip([g for g, _, _ in line], _skeleton_line(line))
+                for parts, fs in zip(glossing.gloss_morphemes(gloss), flags)
+                for p, f in zip(parts, fs) if any(c.isalpha() for c in p)]
+    assert [lettered(line) for line in LINES] == [r['tex'] for r in js['lines']]
+
+
+def test_a_morpheme_cell_is_checked_as_the_skeleton_reads_it(js):
+    """Each morpheme's cell under a mixed tagset lets through as a word
+    exactly the parts the skeleton reads as lexical."""
+    assert [[[f for fs in flags for f in fs] for flags in _skeleton_line(line)]
+            for line in LINES] == [r['cells'] for r in js['lines']]
+
+
+def test_the_probes_read_as_the_rule_says():
+    """pass.PST keeps pass beside a clitic and a suffix, and a suffix glossed
+    sbj:3.pfv is all abbreviations whatever stands beside it."""
+    assert _skeleton_line(LINES[0]) == [[[True, False]], [[True]]]
+    assert _skeleton_line(LINES[1]) == [[[True, False]], [[False, False, False]]]
+    assert _skeleton_line(LINES[2]) == [[[False, False, False]]]

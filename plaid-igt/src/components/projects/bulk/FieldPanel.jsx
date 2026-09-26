@@ -11,7 +11,13 @@ import {
   SelectLabel,
 } from '@ui/components/ui/select';
 import { notifySuccess } from '@/utils/feedback';
-import { isValueAllowed, readTagsetName, resolveTagset, tagsetEnforces } from '@/domain/tagsets';
+import {
+  isValueAllowed,
+  readingTagset,
+  readTagsetName,
+  resolveTagset,
+  tagsetEnforces,
+} from '@/domain/tagsets';
 import { searchDomains } from '../search/searchQueries.js';
 import { buildReplacer } from './bulkPlan.js';
 import { planField, applyField } from './bulkRunner.js';
@@ -108,7 +114,9 @@ export const FieldPanel = ({ project, projectId, client, layerInfo }) => {
     // rest of the replace is usually fine, and seeing WHICH values are refused
     // is how you decide whether to fix the replacement or the tagset.
     const rows = tagsetEnforces(tagset)
-      ? plan.rows.map((x) => (isValueAllowed(x.new, tagset) ? x : { ...x, invalid: true }))
+      ? plan.rows.map((x) =>
+          isValueAllowed(x.new, readingTagset(tagset, x.reading)) ? x : { ...x, invalid: true },
+        )
       : plan.rows;
     r.setPlan({ ...plan, rows, find, repl, target, tagset });
     r.setSelected(new Set(rows.filter((x) => !x.invalid).map((x) => x.id)));

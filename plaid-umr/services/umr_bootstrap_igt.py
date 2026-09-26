@@ -80,8 +80,7 @@ from plaid_client import BaseService, TASKS, stamp_inferred, service_source
 from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params, finish_draft,
                                         next_variable, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
-                                                 gloss_morphemes, is_bound_type, is_zero_morph,
-                                                 lenient_flags, lexical_flags)
+                                                 can_name_word, gloss_morphemes, line_flags)
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -208,18 +207,20 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
     return table
 
 
-def read_glosses(glosses: List[str], table, fall_back: bool = True) -> List[Dict[str, Any]]:
+def read_glosses(glosses: List[str], table,
+                 names: Optional[List[bool]] = None) -> List[Dict[str, Any]]:
     """Glosses read as one unit, each into what it says: the lexical part
     (the first part that is not grammatical), the attributes its
     abbreviations stand for, whether one of them marks tense or aspect, and
     whether one marks possession. Which part is a word is plaid-igt's rule
-    (`lexical_flags`): a lower-case abbreviation counts beside a grammatical
+    (`line_flags`): a lower-case abbreviation counts beside a grammatical
     part of the SAME morpheme (`sbj:3.pfv`), never because another morpheme
-    is grammatical, and when that leaves the unit with no lexical part the
-    case rule stands (`pass.PST` is `pass`). `plan_sentence` makes the unit
-    the glosses that could name a word, one gloss line at a time. With
-    `fall_back` false (a gloss that can never name its word, an affix's or a
-    clitic's) the case rule never stands (`lenient_flags`).
+    is grammatical, and when that leaves the glosses that could name the
+    word with no lexical part the case rule stands for them (`pass.PST` is
+    `pass`). `names[i]` says whether gloss `i` could name the word (all of
+    them by default), and a gloss that never can (an affix's, a clitic's, a
+    zero morph's) is never read by the case rule alone. `plan_sentence`
+    passes one word's glosses on one gloss line.
 
     `marked` runs beside `attrs`: whether the morpheme an attribute came from
     also carries a person or a possessive, which is what makes its person and
@@ -228,11 +229,10 @@ def read_glosses(glosses: List[str], table, fall_back: bool = True) -> List[Dict
     whether some morpheme carries a person with no possessive (`1-see-PL`),
     which makes a number on another morpheme that person's too."""
     cut = [gloss_morphemes(str(g or '').strip()) for g in glosses]
-    read_flags = lexical_flags if fall_back else lenient_flags
-    flags = read_flags([m for morphemes in cut for m in morphemes], _known(table))
-    flags_at = iter(flags)
+    flags = line_flags([str(g or '') for g in glosses], names, _known(table))
     out = []
-    for morphemes in cut:
+    for morphemes, gloss_flags in zip(cut, flags):
+        flags_at = iter(gloss_flags)
         lexical = None
         attrs: List[tuple] = []
         marked: List[bool] = []
@@ -296,22 +296,10 @@ def own_attrs(read: Dict[str, Any], lexical_home: bool,
                     and (marked or (agreement and rel == ':refer-number')))]
 
 
-def is_bound(morph_type: Optional[str]) -> bool:
-    """An affix or a clitic, by IGT's morph type (`is_bound_type`): never the
-    morpheme that names a word."""
-    return is_bound_type(morph_type)
-
-
-def is_zero(form: str) -> bool:
-    """A zero morph (`is_zero_morph`, U+2205 and not the digit 0), or a form
-    emptied by hand: nothing a word could be named after."""
-    return is_zero_morph(form) or not (form or '').strip()
-
-
 def _candidates(morphemes):
-    """The morphemes that could name a word: never an affix, a clitic or a
-    zero morph."""
-    return [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
+    """The morphemes that could name a word (`can_name_word`): never an
+    affix, a clitic, a zero morph or a form emptied by hand."""
+    return [m for m in morphemes if can_name_word(m.morph_type, m.text)]
 
 
 def _glossed_as_word(m, reads_by_morpheme) -> bool:
@@ -443,11 +431,9 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
                     glossed.append((None, of[word.id]))
             elif layer.scope == 'morpheme':
                 glossed.extend((m.id, of[m.id]) for m in morphemes if of.get(m.id))
-            names = [g for g in glossed if g[0] is None or g[0] in namers]
-            rest = [g for g in glossed if not (g[0] is None or g[0] in namers)]
-            reads = dict(zip(names, read_glosses([v for _, v in names], table)))
-            reads.update(zip(rest, read_glosses([v for _, v in rest], table, fall_back=False)))
-            in_order.extend((mid, reads[(mid, value)]) for mid, value in glossed)
+            reads = read_glosses([v for _, v in glossed], table,
+                                 [mid is None or mid in namers for mid, _ in glossed])
+            in_order.extend((mid, r) for (mid, _), r in zip(glossed, reads))
         word_reads = [r for mid, r in in_order if mid is None]
         by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
         for mid, r in in_order:

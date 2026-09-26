@@ -26,9 +26,14 @@ two letters or more beside it in the same morpheme is grammatical too
 
 **The fall-back.** When the lenient reading leaves a unit with no lexical part
 where the case rule found one, the case rule stands for the whole unit:
-``pass.PST`` is the verb ``pass``, not two abbreviations. The unit is what the
-caller reads as one: a cell in the app, all of one word's glosses in the
-skeleton.
+``pass.PST`` is the verb ``pass``, not two abbreviations. The unit is the
+glosses on one gloss line that could name one word (``can_name_word``): the
+word's own gloss read alone, or its stems' glosses together. An affix's, a
+clitic's or a zero morph's gloss never names its word and is read with no
+fall-back (``lenient_flags``), so a suffix glossed ``sbj:3.pfv`` is all
+abbreviations. ``line_flags`` reads one word's line by this rule, in the app
+(tagset checks, LaTeX small caps) and in the skeleton alike. A value read with
+no morph type beside it is a stem's or a word's gloss.
 """
 
 import re
@@ -55,6 +60,13 @@ def is_bound_type(morph_type) -> bool:
     morpheme that names a word (``isBoundType``)."""
     return isinstance(morph_type, str) and (
         is_clitic(morph_type) or morph_type.lower().endswith('fix'))
+
+
+def can_name_word(morph_type, form) -> bool:
+    """Whether a morpheme could name its word (``canNameWord``): not an affix
+    or a clitic, not the zero morph and not a form emptied by hand."""
+    return (not is_bound_type(morph_type) and not is_zero_morph(form)
+            and isinstance(form, str) and bool(form.strip()))
 
 
 #: The abbreviations a gloss part may stand for, upper case: the Leipzig
@@ -135,6 +147,21 @@ def lenient_flags(morphemes: Sequence[Sequence[str]],
     return _lenient_flags(morphemes, _strict_flags(morphemes, known), known)
 
 
+def line_flags(glosses: Sequence[str], names: Optional[Sequence[bool]] = None,
+               known: Optional[Iterable[str]] = None) -> List[List[List[bool]]]:
+    """Which parts of one word's glosses on one gloss line are lexical, gloss
+    by gloss and morpheme by morpheme. ``names[i]`` says whether gloss ``i``
+    could name the word (the word's own gloss, a stem's), and defaults to
+    True for all. Those glosses are one unit, read with the fall-back
+    (``lexical_flags``), and the rest are read with none (``lenient_flags``)."""
+    names = [True] * len(glosses) if names is None else list(names)
+    cut = [gloss_morphemes(str(g if g is not None else '').strip()) for g in glosses]
+    unit = lexical_flags([m for c, n in zip(cut, names) if n for m in c], known)
+    rest = lenient_flags([m for c, n in zip(cut, names) if not n for m in c], known)
+    unit_at, rest_at = iter(unit), iter(rest)
+    return [[next(unit_at if n else rest_at) for _ in c] for c, n in zip(cut, names)]
+
+
 def is_lexical_part(part, known: Optional[Iterable[str]] = None) -> bool:
     """Whether one part, read on its own, is a lexical gloss (``isLexicalPart``)."""
     return lexical_flags([[part if isinstance(part, str) else '']], known)[0][0]
@@ -153,4 +180,4 @@ def gloss_morphemes(value) -> List[List[str]]:
 
 __all__ = ['ZERO_MORPH', 'is_zero_morph', 'is_clitic', 'is_bound_type', 'GLOSS_ABBREVIATIONS',
            'PERSON_NUMBER', 'MORPHEME_CUT', 'PART_CUT', 'lexical_flags', 'lenient_flags',
-           'is_lexical_part', 'gloss_morphemes']
+           'line_flags', 'can_name_word', 'is_lexical_part', 'gloss_morphemes']

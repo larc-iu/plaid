@@ -21,6 +21,7 @@
 import { cpSlice } from '@larc-iu/plaid-client';
 import { extractAnalysis, analysisSignature } from '../../../domain/analysisMemory.js';
 import { morphemeJoiner } from '../../../domain/affixMarkers.js';
+import { morphemeGlossReading } from '../../../domain/tagsets.js';
 
 export const OPERATIONS = [
   {
@@ -161,7 +162,23 @@ export function respellOps(rows) {
 
 // ---- field ------------------------------------------------------------------
 
-// Spans (or morpheme forms) in `doc` whose value changes. `target` is a
+// How a morpheme's new gloss is read under a tagset (morphemeGlossReading),
+// with the word's other glosses as this replace leaves them.
+const glossReadingAfter = (morphemes, m, field, apply) =>
+  morphemeGlossReading(
+    morphemes.map((x) => {
+      const old = x.annotations?.[field]?.value ?? '';
+      return {
+        morphType: x.morphType ?? x.metadata?.morphType,
+        form: morphFormOf(x),
+        gloss: x.annotations?.[field]?.id ? (apply(old) ?? old) : old,
+      };
+    }),
+    morphemes.indexOf(m),
+  );
+
+// Spans (or morpheme forms) in `doc` whose value changes. A morpheme span's
+// row carries the `reading` its new value is checked by (readingTagset). `target` is a
 // Search-tab domain: { kind: 'span', layerId, scope, field } or
 // { kind: 'morpheme' } (morpheme forms live in token metadata).
 export function collectFieldRows(doc, target, apply) {
@@ -197,6 +214,7 @@ export function collectFieldRows(doc, target, apply) {
               kind: 'span',
               word: t.content,
               morpheme: morphFormOf(m),
+              reading: glossReadingAfter(t.morphemes, m, target.field, apply),
             });
           }
         }

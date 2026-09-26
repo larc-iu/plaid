@@ -34,6 +34,7 @@
 // off-tagset values. That is what the violations view is for: closed means
 // "closed to typing here", and the way you find out otherwise is by looking.
 
+import { canNameWord } from './affixMarkers.js';
 import { IGT_NAMESPACE } from './igtConfig.js';
 
 const str = (v) => (typeof v === 'string' ? v : '');
@@ -85,9 +86,14 @@ export const EMPTY_TAGSET = Object.freeze({
  * glossing tradition may write its abbreviations in lower case inside a
  * compound gloss (Lamkang sbj:3.pfv). Where a part of a morpheme's gloss is a
  * tag by the case rule, a known abbreviation of two letters or more beside it
- * in the same morpheme is a tag too. When that leaves the value with no
- * lexical part where the case rule found one, the case rule stands: pass.PST
- * is the verb pass. The UMR skeleton reads glosses by the same rule
+ * in the same morpheme is a tag too. When that leaves a unit with no lexical
+ * part where the case rule found one, the case rule stands: pass.PST is the
+ * verb pass. The unit is the glosses that could name one word on one line,
+ * its stems' (or the word's own gloss, read alone). An affix's, a clitic's
+ * or a zero morph's gloss is read by the lenient reading with no fall-back,
+ * so a suffix glossed sbj:3.pfv is all tags. A value read with no morph type
+ * beside it (a word's cell, a free-standing value) is a stem's or a word's.
+ * The UMR skeleton reads glosses by the same rule
  * (plaid_client.workflows.igt.glossing, with a mirror test).
  */
 const LOWERCASE_RE = /\p{Ll}/u;
@@ -115,23 +121,37 @@ const isCaseLexical = (part, known) => {
   return LOWERCASE_RE.test(part) || (LETTER_RE.test(part) && !CAPITAL_RE.test(part));
 };
 
-/**
- * Which parts of one value are lexical, morpheme by morpheme: `morphemes` is
- * an array of morphemes, each an array of part strings. The case rule, the
- * lenient reading within each morpheme and the fall-back over the whole.
- */
-export const lexicalFlags = (morphemes, known = GLOSS_ABBREVIATIONS) => {
-  const strict = morphemes.map((parts) => parts.map((p) => isCaseLexical(p, known)));
-  const lenient = morphemes.map((parts, i) => {
+const strictFlags = (morphemes, known) =>
+  morphemes.map((parts) => parts.map((p) => isCaseLexical(p, known)));
+
+const lenientOf = (morphemes, strict, known) =>
+  morphemes.map((parts, i) => {
     const flags = strict[i];
     const mixed = parts.length > 1 && parts.some((p, j) => !flags[j] && MARK_RE.test(p));
     return parts.map(
       (p, j) => flags[j] && !(mixed && [...p].length > 1 && known.has(p.toUpperCase())),
     );
   });
-  const any = (fs) => fs.some((f) => f.some(Boolean));
-  return any(strict) && !any(lenient) ? strict : lenient;
+
+const anyFlag = (fs) => fs.some((f) => f.some(Boolean));
+
+/**
+ * Which parts of one unit are lexical, morpheme by morpheme: `morphemes` is
+ * an array of morphemes, each an array of part strings. The case rule, the
+ * lenient reading within each morpheme and the fall-back over the whole.
+ */
+export const lexicalFlags = (morphemes, known = GLOSS_ABBREVIATIONS) => {
+  const strict = strictFlags(morphemes, known);
+  const lenient = lenientOf(morphemes, strict, known);
+  return anyFlag(strict) && !anyFlag(lenient) ? strict : lenient;
 };
+
+/**
+ * lexicalFlags without the fall-back, for a gloss that can never name its
+ * word (an affix's, a clitic's, a zero morph's): sbj:3.pfv stays all tags.
+ */
+export const lenientFlags = (morphemes, known = GLOSS_ABBREVIATIONS) =>
+  lenientOf(morphemes, strictFlags(morphemes, known), known);
 
 /** One part read on its own. */
 export const isLexicalPart = (part) => lexicalFlags([[str(part)]])[0][0];
@@ -155,12 +175,21 @@ export const glossMorphemes = (value) =>
  * part of that reading that stayed lexical. So the pfv of go-3SG.pfv is a
  * tag under a tagset that splits on "." alone, and the PL of go+PL is one
  * under a tagset that splits on "+".
+ *
+ * `bound` says which of the value's gloss parts belong to a gloss that can
+ * never name its word, read with no fall-back: true or false for the whole
+ * value, or a function of a gloss part's position among the value's parts
+ * (boundByPieces). `beside` is the other glosses in the unit of the value's
+ * stems, which count toward the fall-back and are not flagged themselves.
+ * With neither, the value is one stem's or one word's gloss.
  */
 const GLOSS_PART_RE = /[^.:;\\\-=~<>\s]+/gu;
-export const lexicalFlagsOf = (value, parts) => {
+export const lexicalFlagsOf = (value, parts, { bound = false, beside = [] } = {}) => {
   const s = str(value);
+  const boundAt = typeof bound === 'function' ? bound : () => !!bound;
   const cut = [...s.matchAll(GLOSS_PART_RE)];
   const morphemes = [];
+  const bounds = [];
   const at = [];
   let current = [];
   let end = null;
@@ -169,12 +198,18 @@ export const lexicalFlagsOf = (value, parts) => {
       morphemes.push(current);
       current = [];
     }
+    if (!current.length) bounds.push(boundAt(k));
     at[k] = [morphemes.length, current.length];
     current.push(m[0]);
     end = m.index + m[0].length;
   });
   if (current.length) morphemes.push(current);
-  const flags = lexicalFlags(morphemes);
+  const namers = morphemes.filter((_, i) => !bounds[i]);
+  const unit = lexicalFlags([...namers, ...beside.flatMap(glossMorphemes)]);
+  const lenient = lenientFlags(morphemes.filter((_, i) => bounds[i]));
+  let n = 0;
+  let b = 0;
+  const flags = morphemes.map((_, i) => (bounds[i] ? lenient[b++] : unit[n++]));
   return parts.map((p) => {
     const text = str(p.text).trim();
     if (!text || !isCaseLexical(text, GLOSS_ABBREVIATIONS)) return false;
@@ -182,6 +217,38 @@ export const lexicalFlagsOf = (value, parts) => {
       (m, k) => m.index < p.end && p.begin < m.index + m[0].length && flags[at[k][0]][at[k][1]],
     );
   });
+};
+
+/**
+ * The `bound` of lexicalFlagsOf for a value joined from a word's morpheme
+ * glosses: `pieces` is [{ text, bound }] in order, each piece one morpheme's
+ * gloss, and the joints between them are separators. A position past the
+ * last piece is not bound.
+ */
+export const boundByPieces = (pieces) => {
+  const flags = (pieces || []).flatMap((p) =>
+    [...str(p.text).matchAll(GLOSS_PART_RE)].map(() => !!p.bound),
+  );
+  return (k) => flags[k] ?? false;
+};
+
+/**
+ * One morpheme's gloss cell as the rule reads it: whether the gloss can
+ * never name its word (canNameWord), and the glosses of the word's other
+ * morphemes that could, which share its unit. `morphemes` is the word's
+ * morphemes in order, each { morphType, form, gloss }, and `i` the cell's.
+ */
+export const morphemeGlossReading = (morphemes, i) => {
+  const names = (m) => canNameWord(m.morphType, m.form);
+  const self = morphemes[i];
+  if (!self || !names(self)) return { bound: true, beside: [] };
+  return {
+    bound: false,
+    beside: morphemes
+      .filter((m, j) => j !== i && names(m))
+      .map((m) => str(m.gloss))
+      .filter((g) => g.trim()),
+  };
 };
 
 // --- reading config --------------------------------------------------------
@@ -345,18 +412,35 @@ export const unreachableValues = (tagset) => {
  * carry the same defect — so this asks about the analysis itself, before any of
  * it is written.
  *
- * `tagsetFor(scope, fieldName)` resolves the governing tagset, or null.
+ * `tagsetFor(scope, fieldName)` resolves the governing tagset, or null. A
+ * morpheme's gloss is read as its cell in the grid reads it (readingTagset).
  */
 export const analysisViolations = (analysis, tagsetFor) => {
   const out = [];
-  const check = (scope, fields) => {
+  const check = (scope, fields, readingOf = () => undefined) => {
     for (const [field, value] of Object.entries(fields || {})) {
-      const violations = validateValue(value ?? '', tagsetFor(scope, field));
+      const tagset = tagsetFor(scope, field);
+      const violations = validateValue(
+        value ?? '',
+        tagset && readingTagset(tagset, readingOf(field)),
+      );
       if (violations.length) out.push({ scope, field, value, violations });
     }
   };
   check('word', analysis?.word?.fields);
-  for (const m of analysis?.morphemes || []) check('morpheme', m?.fields);
+  const morphemes = analysis?.morphemes || [];
+  morphemes.forEach((m, i) =>
+    check('morpheme', m?.fields, (field) =>
+      morphemeGlossReading(
+        morphemes.map((x) => ({
+          morphType: x?.morphType,
+          form: x?.form,
+          gloss: x?.fields?.[field],
+        })),
+        i,
+      ),
+    ),
+  );
   return out;
 };
 
@@ -502,6 +586,11 @@ export const sortedValues = (tagset) =>
  * stem in the project. `mixed` is its own mode rather than the default because
  * part of speech tags are frequently lowercase themselves (n, v, adj), and a
  * POS tagset in mixed mode would quietly stop enforcing anything.
+ *
+ * A tagset may carry the `reading` of the cell it is asked about (see
+ * readingTagset): a morpheme's gloss cell reads an affix's gloss with no
+ * fall-back and a stem's with the word's other stems. Without one, the value
+ * is one stem's or one word's gloss.
  */
 export const validateValue = (value, tagset) => {
   if (!tagset) return [];
@@ -509,7 +598,7 @@ export const validateValue = (value, tagset) => {
   if (s.trim() === '') return [];
   const out = [];
   const parts = scanValue(s, tagset.delimiters);
-  const lexical = lexicalFlagsOf(s, parts);
+  const lexical = lexicalFlagsOf(s, parts, tagset.reading ?? undefined);
   parts.forEach((p, i) => {
     const text = p.text.trim();
     if (!text) out.push({ part: p.text, begin: p.begin, end: p.end, reason: 'empty' });
@@ -522,6 +611,13 @@ export const validateValue = (value, tagset) => {
   });
   return out;
 };
+
+/**
+ * `tagset` as one cell reads it, `reading` being morphemeGlossReading's
+ * answer for that cell. Every check that takes the tagset (validateValue,
+ * isValueAllowed, the picker's filter) then reads the cell's value by it.
+ */
+export const readingTagset = (tagset, reading) => (tagset ? { ...tagset, reading } : null);
 
 /** May this value be written to a cell governed by `tagset`? */
 export const isValueAllowed = (value, tagset) => validateValue(value, tagset).length === 0;

@@ -59,6 +59,7 @@ export const morphTypeOptions = (current = null) =>
 // place morph types are reasoned about here.
 export { isClitic, morphemeJoiner } from '@ui/domain/morphemes.js';
 import { isClitic, morphemeJoiner } from '@ui/domain/morphemes.js';
+import { isZeroMorph } from './zeroMorph.js';
 
 /**
  * Is this morph type a bound form (an affix or a clitic)? Bound forms only
@@ -66,6 +67,15 @@ import { isClitic, morphemeJoiner } from '@ui/domain/morphemes.js';
  */
 export const isBoundType = (morphType) =>
   typeof morphType === 'string' && (isClitic(morphType) || /fix$/.test(morphType.toLowerCase()));
+
+/**
+ * Could a morpheme with this morph type and form name its word? Not an affix
+ * or a clitic, not the zero morph and not a form emptied by hand. Its gloss
+ * is read with the word's other such glosses, with the gloss rule's fall-back
+ * (tagsets.js). The UMR skeleton asks the same (can_name_word).
+ */
+export const canNameWord = (morphType, form) =>
+  !isBoundType(morphType) && !isZeroMorph(form) && typeof form === 'string' && form.trim() !== '';
 
 // --- Per-type markers, for talking to FLEx ---------------------------------
 // The Prefix/Postfix of each MoMorphType, read off the factory objects in real

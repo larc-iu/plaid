@@ -30,8 +30,8 @@ const projectWith = (tagset) => ({
 });
 
 // buildRawDoc's morpheme span layer is msl-0; point it at the tagset.
-function docWith(tagset) {
-  const raw = buildRawDoc();
+function docWith(tagset, rawOpts = {}) {
+  const raw = buildRawDoc(rawOpts);
   // The editor builds its precedent tally from project-wide queries on first
   // render; makeFakeClient has no query, and an empty result is what we want
   // anyway (these tests are about the tagset, not about precedent).
@@ -53,8 +53,8 @@ function docWith(tagset) {
 let host;
 let editor;
 
-const mount = (tagset = LEIPZIG) => {
-  const doc = docWith(tagset);
+const mount = (tagset = LEIPZIG, rawOpts = {}) => {
+  const doc = docWith(tagset, rawOpts);
   host = document.createElement('div');
   document.body.appendChild(host);
   editor = new IgtEditor(host, doc, {});
@@ -392,6 +392,55 @@ const twoSharingAForm = async (doc, g0, g1) => {
 };
 const key = (el, k) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+describe('a morpheme cell reads its gloss by its morph type', () => {
+  // One word, a stem and a suffix. A suffix's gloss never names the word, so
+  // a mixed tagset never lets its lower-case abbreviations through as words.
+  const kat = {
+    body: 'kat',
+    words: [{ id: 'w-1', begin: 0, end: 3 }],
+    morphemes: [
+      {
+        id: 'm-1',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 1,
+        metadata: { form: 'ka', morphType: 'stem' },
+      },
+      {
+        id: 'm-2',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 2,
+        metadata: { form: 't', morphType: 'suffix' },
+      },
+    ],
+  };
+  const mixed = { delimiters: '.:', mode: 'mixed', values: [{ value: '3' }] };
+  const cellOf = (id) => host.querySelector(`input[data-cell-key="ma:${id}:Gloss"]`);
+
+  it("refuses sbj:3.pfv in a suffix's cell", async () => {
+    const doc = mount(mixed, kat);
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan');
+    const cell = cellOf('m-2');
+    focus(cell);
+    type(cell, 'sbj:3.pfv');
+    await blur(cell);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("takes the same gloss in the stem's cell, which falls back to reading sbj and pfv as words", async () => {
+    const doc = mount(mixed, kat);
+    const spy = vi.spyOn(doc, 'updateMorphemeSpan').mockResolvedValue(true);
+    const cell = cellOf('m-1');
+    focus(cell);
+    type(cell, 'sbj:3.pfv');
+    await blur(cell);
+    expect(spy).toHaveBeenCalled();
+  });
+});
 
 describe('Enter on an untouched governed cell', () => {
   // The list opens on focus, so Enter reaches the picker on every plain

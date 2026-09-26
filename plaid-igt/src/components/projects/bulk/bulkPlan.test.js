@@ -14,6 +14,7 @@ import {
   collectLinksToMove,
   groupByDoc,
 } from './bulkPlan.js';
+import { isValueAllowed, readingTagset } from '../../../domain/tagsets.js';
 
 const docOf = (opts) => new IgtDocument({ raw: buildRawDoc(opts), client: makeFakeClient() });
 
@@ -196,6 +197,52 @@ describe('collectFieldRows', () => {
     expect(rows.map((r) => [r.id, r.kind, r.old, r.new])).toEqual([
       ['m-2', 'morphForm', 'cat', 'cad'],
     ]);
+  });
+});
+
+describe('collectFieldRows: how a new gloss is read', () => {
+  const raw = buildRawDoc({
+    body: 'kat',
+    words: [{ id: 'w-1', begin: 0, end: 3 }],
+    morphemes: [
+      {
+        id: 'm-1',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 1,
+        metadata: { form: 'ka', morphType: 'stem' },
+      },
+      {
+        id: 'm-2',
+        text: 'text-1',
+        begin: 0,
+        end: 3,
+        precedence: 2,
+        metadata: { form: 't', morphType: 'suffix' },
+      },
+    ],
+  });
+  raw.textLayers[0].tokenLayers[2].spanLayers[0].spans = [
+    { id: 'sp-1', tokens: ['m-1'], value: 'pass.PST' },
+    { id: 'sp-2', tokens: ['m-2'], value: 'sbj:3.PFV' },
+  ];
+  const doc = new IgtDocument({ raw, client: makeFakeClient() });
+
+  it("reads a suffix's new gloss as an affix's, so a mixed tagset holds it to the list", () => {
+    const { apply } = buildReplacer('PFV', 'contains', 'pfv');
+    const rows = collectFieldRows(doc, { kind: 'span', scope: 'morpheme', field: 'Gloss' }, apply);
+    expect(rows.map((r) => [r.id, r.new, r.reading])).toEqual([
+      ['sp-2', 'sbj:3.pfv', { bound: true, beside: [] }],
+    ]);
+    const mixed = { delimiters: '.:', mode: 'mixed', values: [{ value: '3' }] };
+    expect(isValueAllowed(rows[0].new, readingTagset(mixed, rows[0].reading))).toBe(false);
+  });
+
+  it("reads a stem's new gloss with the word's other stems as the replace leaves them", () => {
+    const { apply } = buildReplacer('pass.PST', 'exact', 'top.PL');
+    const rows = collectFieldRows(doc, { kind: 'span', scope: 'morpheme', field: 'Gloss' }, apply);
+    expect(rows.map((r) => [r.id, r.reading])).toEqual([['sp-1', { bound: false, beside: [] }]]);
   });
 });
 
