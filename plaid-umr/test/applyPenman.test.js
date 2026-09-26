@@ -478,6 +478,10 @@ test('text mode keeps a stored unknown relation only where it is stored', () => 
   assert.equal(plan(text.replace('leave-02', 'leave-01')).errors, undefined);
   assert.equal(plan(text.replace(':colour red', ':colour blue')).errors, undefined);
   assert.equal(plan(text.replaceAll('s1l', 's1l9')).errors, undefined);
+  // The target of the stored :poss edge renamed, the mirror of the assistant's
+  // test_a_renamed_variable_keeps_what_its_node_and_edges_hold.
+  assert.equal(plan(text.replaceAll('s1p', 's1p9')).rename[0].to, 's1p9');
+  assert.equal(plan(text.replaceAll('s1p', 's1p9')).errors, undefined);
   // A new node, another node, or another edge does not share the exemption.
   assert.match(
     plan(text.replace(':poss s1p', ':poss s1p :ARG1 (s1x / thing :poss s1p)')).errors[0].message,

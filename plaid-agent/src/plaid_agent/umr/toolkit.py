@@ -134,7 +134,7 @@ TOOLS = [
         'old one goes. The text is the ROOT\'s graph, so a node the root does not reach is left '
         'alone. A node this creates is UNALIGNED until somebody anchors it to words on the canvas. '
         'Start from what read_document printed and edit it. Roles are a closed set: one UMR does '
-        'not have (:poss for :possessor) is refused unless the sentence already holds it.',
+        'not have (:poss for :possessor) is refused unless that node or edge already holds it.',
         {'document': _DOC, 'sentence': _SENTENCE,
          'text': {'type': 'string',
                   'description': 'The whole sentence graph in PENMAN, from its root node.'}},

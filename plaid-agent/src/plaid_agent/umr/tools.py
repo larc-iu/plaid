@@ -98,7 +98,9 @@ class Workspace(BaseWorkspace):
         a relation already stored among that node's attributes is kept (an
         imported file may carry one UMR does not have), and one stored only on
         another node or edge is not. A new edge and a new node hold nothing
-        yet, so everything they bring is judged.
+        yet, so everything they bring is judged, unless ``plan_penman`` marks
+        them as a renamed node or an edge re-created for one, which keep what
+        the old node or edge holds, as text mode keeps it through a rename.
         """
         kind = op.get('kind')
         if kind == 'create_triple':
@@ -108,9 +110,12 @@ class Workspace(BaseWorkspace):
             return
         doc = self._docs.get(op.get('document_id'))
         if kind == 'create_edge':
-            written = [(op.get('role'), set())]
+            was = _stored_edge(doc, op.get('renamed_edge'))
+            written = [(op.get('role'), {was.role} if was is not None else set())]
         elif kind == 'create_node':
-            written = [(a.get('rel'), set()) for a in op.get('attrs') or []]
+            was = doc.nodes_by_id.get(op.get('renamed_from')) if doc is not None else None
+            kept = {a.get('rel') for a in was.attrs} if was is not None else set()
+            written = [(a.get('rel'), kept) for a in op.get('attrs') or []]
         elif kind == 'set_attrs':
             node = doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
             kept = {a.get('rel') for a in node.attrs} if node is not None else set()
@@ -242,6 +247,13 @@ def _node(doc: UmrDoc, sentence: Sentence, var: str) -> GNode:
 
 
 # --- planning ------------------------------------------------------------------
+
+def _stored_edge(doc: Optional[UmrDoc], relation_id: Optional[str]):
+    """The stored edge with that id, or None."""
+    if doc is None or not relation_id:
+        return None
+    return next((e for n in doc.nodes_by_id.values() for e in n.out if e.id == relation_id), None)
+
 
 def _staged(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """One tool call's ops, tagged with the call that made them, so a second

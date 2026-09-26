@@ -9,6 +9,12 @@ would have to guess which of two edits a rewritten graph meant.
 The text is the ROOT's graph, so only what the root reaches is the text's to
 delete: a second fragment the text never showed stays where it is.
 
+One variable typed over, where text mode would read a rename
+(``UmrDocument._renameIn``), is still planned as a delete and a create here,
+but the create and the edges it re-creates carry what they stand for
+(``renamed_from``, ``renamed_edge``), so the relations the old node and its
+edges already hold are kept as text mode keeps them.
+
 The ops this returns are the plan's own, one per change, so the card the user
 approves names each of them.
 """
@@ -47,6 +53,35 @@ class GraphDiff:
     @property
     def changes(self) -> int:
         return len(self.ops)
+
+
+def _rename_in(doc: UmrDoc, sentence: Sentence, parsed: Graph, written) -> Tuple[Any, str]:
+    """The one node the text renames and its new variable, or ``(None, '')``.
+    plaid-umr's ``UmrDocument._renameIn``: exactly one variable goes and one
+    arrives, with the same concept, under the same parents by the same
+    relations, or both the sentence's root."""
+    gone = [n for n in sentence.nodes if n.id in written and n.var not in parsed.nodes]
+    olds = {n.var for n in sentence.nodes}
+    fresh = [v for v in parsed.nodes if v not in olds]
+    if len(gone) != 1 or len(fresh) != 1:
+        return None, ''
+    node, to = gone[0], fresh[0]
+    if parsed.nodes[to].concept != node.concept:
+        return None, ''
+    old_parents = set()
+    for e in node.into:
+        source = doc.nodes_by_id.get(e.source)
+        if source is not None and source.sentence == sentence.index:
+            old_parents.add(f'{e.role} {source.var}')
+    new_parents = {f'{child.rel} {v}' for v, parent in parsed.nodes.items()
+                   for child in parent.children if child.kind == 'node' and child.value == to}
+    if old_parents != new_parents:
+        return None, ''
+    # A parentless node is the root or nothing: renaming the root is a
+    # rename, renaming a loose fragment's head is a guess.
+    if not old_parents and not (node.root and parsed.root == to):
+        return None, ''
+    return node, to
 
 
 def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject) -> GraphDiff:
@@ -129,6 +164,19 @@ def plan_penman(doc: UmrDoc, sentence: Sentence, text: str, project: UmrProject)
                     'target_var': e['target'], 'role': e['role'], 'order': e['order'],
                     'source_span_id': old.id,
                     'label': f'{var} {e["role"]} {e["target"]}'})
+
+    renamed, renamed_to = _rename_in(doc, sentence, parsed, reachable_from_root(doc, sentence))
+    if renamed is not None:
+        name_of = {n.id: (renamed_to if n.id == renamed.id else n.var) for n in sentence.nodes}
+        for op in creates:
+            if op['var'] == renamed_to:
+                op['renamed_from'] = renamed.id
+        stored_edges = {(name_of.get(e.source), e.role, name_of.get(e.target)): e.id
+                        for n in sentence.nodes for e in n.out}
+        for op in edges_add:
+            rid = stored_edges.get((op['source_var'], op['role'], op['target_var']))
+            if rid is not None:
+                op['renamed_edge'] = rid
 
     # The ends of a new edge, where both are nodes that already exist. A var
     # the plan is creating is left to the executor, which knows the span id

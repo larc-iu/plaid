@@ -71,7 +71,7 @@ def test_an_inverse_role_is_judged_by_its_base(ws):
 
 def _with_stored_unknown():
     """The fixture with an imported ':legacy 1' on s1d, a relation UMR does
-    not have that the sentence already holds."""
+    not have that s1d already holds."""
     raw = document_raw()
     dog = next(s for tl in raw['text_layers'][0]['token_layers']
                for sl in tl.get('span_layers', []) for s in sl['spans'] if s['id'] == 'mc-d')
@@ -140,6 +140,43 @@ def test_a_stored_edge_role_is_kept_on_that_edge_only():
     w.ops.clear()
     out = run(w, 'apply_penman', document='Story', sentence=1, text=stored.replace(
         ':aspect performance', ':aspect performance\n    :legacy-arg (s1x / person)'))
+    assert "Unknown relation ':legacy-arg'" in out and w.ops == [], out
+
+
+def test_a_renamed_variable_keeps_what_its_node_and_edges_hold():
+    """Text mode reads one variable typed over as the same node
+    (``UmrDocument._renameIn``) and keeps its stored unknown relations. The
+    assistant plans the rename as a delete and a create, and those carry the
+    old node's and edges' own relations, or the assistant refused what the
+    canvas takes."""
+    w = _with_stored_unknown()
+    text = ('(s1b / bark-01\n    :ARG0 (s1e / dog\n        :refer-number singular\n'
+            '        :legacy 1)\n    :aspect performance)')
+    out = run(w, 'apply_penman', document='Story', sentence=1, text=text)
+    assert any(op['kind'] == 'create_node' and op['var'] == 's1e' for op in w.ops), out
+    # Kept on the renamed node only: s1b taking it too is still refused.
+    w = _with_stored_unknown()
+    out = run(w, 'apply_penman', document='Story', sentence=1,
+              text=text.replace(':aspect performance', ':aspect performance :legacy 1'))
+    assert "s1b: Unknown relation ':legacy'" in out and w.ops == [], out
+    # A concept typed over too is not plainly the same node, as in text mode.
+    w = _with_stored_unknown()
+    out = run(w, 'apply_penman', document='Story', sentence=1,
+              text=text.replace('s1e / dog', 's1e / cat'))
+    assert "s1e: Unknown relation ':legacy'" in out and w.ops == [], out
+
+    stored = ('(s1b / bark-01\n    :legacy-arg (s1d / dog\n        :refer-number singular)\n'
+              '    :aspect performance)')
+    for renamed in (stored.replace('s1d', 's1e'), stored.replace('s1b', 's1c')):
+        w = _with_stored_unknown_edge()
+        out = run(w, 'apply_penman', document='Story', sentence=1, text=renamed)
+        assert any(op['kind'] == 'create_edge' and op['role'] == ':legacy-arg'
+                   for op in w.ops), (renamed, out)
+    # The edge's role, not the node's: a second edge under it is refused.
+    w = _with_stored_unknown_edge()
+    out = run(w, 'apply_penman', document='Story', sentence=1, text=stored.replace(
+        's1d', 's1e').replace(':aspect performance',
+                              ':aspect performance\n    :legacy-arg (s1x / person)'))
     assert "Unknown relation ':legacy-arg'" in out and w.ops == [], out
 
 
