@@ -76,10 +76,11 @@ def _ops(client, kind):
 def test_a_gloss_is_read_into_its_lexical_part_and_its_attributes():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('bark.PRS', table) == {
-        'lexical': 'bark', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False}
+        'lexical': 'bark', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False,
+        'agreement': False}
     assert boot.read_gloss('3SG', table) == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular')],
-        'marked': [True, True], 'eventive': False, 'possessive': False}
+        'marked': [True, True], 'eventive': False, 'possessive': False, 'agreement': True}
     assert boot.read_gloss('go=1PL.IRR', table)['attrs'] == [
         (':refer-person', '1st'), (':refer-number', 'plural')]
     assert boot.read_gloss('go=1PL.IRR', table)['eventive'] is True
@@ -347,19 +348,21 @@ def test_a_lower_case_abbreviation_beside_a_grammatical_part_is_grammatical():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('sbj:3.pfv', table) == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':aspect', 'perfective')],
-        'marked': [True, True], 'eventive': True, 'possessive': False}
+        'marked': [True, True], 'eventive': True, 'possessive': False, 'agreement': True}
     assert boot.read_gloss('obj:3', table)['lexical'] is None
     assert boot.read_gloss('go.3sg.ipfv', table) == {
         'lexical': 'go', 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular'),
                                    (':aspect', 'imperfective')],
-        'marked': [True, True, True], 'eventive': True, 'possessive': False}
+        'marked': [True, True, True], 'eventive': True, 'possessive': False,
+        'agreement': True}
     assert boot.read_gloss('go.3SG.prf', table)['eventive'] is True
     assert boot.read_gloss('sbj:3sg.pfv', table)['attrs'] == [
         (':refer-person', '3rd'), (':refer-number', 'singular'), (':aspect', 'perfective')]
     assert boot.read_gloss('lay-sbj:3.pfv', table)['lexical'] == 'lay'
     # Leipzig's other separators for one form of several meanings.
     assert boot.read_gloss('hit;PST', table) == {
-        'lexical': 'hit', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False}
+        'lexical': 'hit', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False,
+        'agreement': False}
     assert boot.read_gloss('sing\\PST', table)['lexical'] == 'sing'
     # An aspect abbreviation elects the root as a tense one does.
     assert boot.read_gloss('go.HAB', table)['eventive'] is True
@@ -371,7 +374,8 @@ def test_the_case_rule_still_holds_without_a_grammatical_part_beside():
     because ANOTHER morpheme is grammatical."""
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('lay.pfv', table) == {
-        'lexical': 'lay', 'attrs': [], 'marked': [], 'eventive': False, 'possessive': False}
+        'lexical': 'lay', 'attrs': [], 'marked': [], 'eventive': False, 'possessive': False,
+        'agreement': False}
     assert boot.read_gloss('come.out', table)['lexical'] == 'come'
     assert boot.read_gloss('pass', table)['lexical'] == 'pass'
     assert boot.read_gloss('3SG-pfv', table)['lexical'] == 'pfv'
@@ -471,6 +475,29 @@ def test_a_gloss_in_a_script_with_no_case_is_lexical(gloss):
     # A capital with no lower case beside it is still grammatical.
     assert boot.read_gloss('水.DEM', boot.ABBREVIATIONS)['lexical'] == '水'
     assert boot.read_gloss('DEM', boot.ABBREVIATIONS)['lexical'] is None
+
+
+@pytest.mark.parametrize('gloss', ['1-see-PL', 'see-3-PL', 'PL-see-1', '1-see.PL'])
+def test_a_number_beside_an_agreement_person_is_the_agreeing_participants(gloss):
+    """Georgian v-xedav-t, 1-see-PL: the plural agrees with the subject as the
+    person does, on its own morpheme or not, so neither goes on the verb."""
+    table = boot.ABBREVIATIONS
+    assert boot.own_attrs(boot.read_gloss(gloss, table), True) == []
+
+
+def test_a_segmented_verb_leaves_its_agreement_number_off_the_node():
+    """The same verb segmented, each morpheme glossed on its own: the PL
+    morpheme is not the stem and agrees with the person beside it."""
+    morphemes = [('m1', 0, 'v', 'prefix', '1', None), ('m2', 0, 'xedav', 'stem', 'see', None),
+                 ('m3', 0, 't', 'suffix', 'PL', None)]
+    document = _segmented(body='vxedavt\n', words=[(0, 7)], morphemes=morphemes)
+    assert _segmented_run(document, _compound_vocab()) == [('see', [])]
+    # A plural suffix on a noun with no person beside it is the noun's.
+    morphemes = [('m1', 0, 'kuca', 'stem', 'house', None), ('m2', 0, 'ebi', 'suffix', 'PL', None)]
+    document = _segmented(body='kucaebi\n', words=[(0, 7)], morphemes=morphemes)
+    assert [(c, [(a['rel'], a['value']) for a in attrs])
+            for c, attrs in _segmented_run(document, _compound_vocab())] == [
+        ('house', [(':refer-number', 'plural')])]
 
 
 def test_a_possessed_noun_keeps_its_own_plural():

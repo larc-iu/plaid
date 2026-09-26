@@ -37,7 +37,9 @@ than the lexical one or beside a lexical part (`m-` 3.POSS + `hii` blood,
 `sbj:3`, `go.3SG`) is agreement with or the possessor of another participant,
 and that participant would need a node and an edge. The person and number of
 that morpheme are dropped rather than put on the wrong node, and a number on a
-morpheme of its own stays (`house-PL-1SG.POSS` is plural). A free possessive
+morpheme of its own stays (`house-PL-1SG.POSS` is plural) unless the word also
+carries a person that is not a possessor's, whose number it is (`1-see-PL`,
+Georgian v-xedav-t, is not a plural event). A free possessive
 pronoun is the exception that proves it: a word glossed `3SG.POSS` and nothing
 else IS the possessor, so its node keeps them.
 
@@ -244,17 +246,20 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
     `marked` runs beside `attrs`: whether the morpheme an attribute came from
     also carries a person or a possessive, which is what makes its person and
     number maybe another participant's (`own_attrs`). In `house-PL-1SG.POSS`
-    the plural is on a morpheme of its own and is not marked."""
+    the plural is on a morpheme of its own and is not marked. `agreement` is
+    whether some morpheme carries a person with no possessive (`1-see-PL`),
+    which makes a number on another morpheme that person's too."""
     lexical = None
     attrs: List[tuple] = []
     marked: List[bool] = []
     eventive = False
     possessive = False
+    agreement = False
     for morpheme in _MORPHEME_CUT.split(str(gloss or '').strip()):
         parts = [p for p in _PART_CUT.split(morpheme) if p]
         lenient = len(parts) > 1 and any(_keys(p, table, False) is not None for p in parts)
         found: List[tuple] = []
-        participant = False
+        person = owner = False
         for part in parts:
             keys = _keys(part, table, lenient)
             if keys is None:
@@ -266,17 +271,18 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
                 if what == ('root',):
                     eventive = True
                 elif what == ('possessive',):
-                    possessive = participant = True
+                    possessive = owner = True
                 elif what:
                     found.append(what)
                     if what[0] == ':refer-person':
-                        participant = True
+                        person = True
                     if what[0] == ':aspect':
                         eventive = True
         attrs.extend(found)
-        marked.extend(participant for _ in found)
+        marked.extend((person or owner) for _ in found)
+        agreement = agreement or (person and not owner)
     return {'lexical': lexical, 'attrs': attrs, 'marked': marked, 'eventive': eventive,
-            'possessive': possessive}
+            'possessive': possessive, 'agreement': agreement}
 
 
 #: The attributes that describe a participant, which a gloss may give for
@@ -284,7 +290,8 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
 _PARTICIPANT = (':refer-person', ':refer-number')
 
 
-def own_attrs(read: Dict[str, Any], lexical_home: bool) -> List[tuple]:
+def own_attrs(read: Dict[str, Any], lexical_home: bool,
+              agreement: Optional[bool] = None) -> List[tuple]:
     """The attributes of one read gloss that belong on the node. `lexical_home`
     is whether the gloss is the word's own or its lexical morpheme's. A person
     or a number on a morpheme that carries a person or a possessive is another
@@ -292,10 +299,16 @@ def own_attrs(read: Dict[str, Any], lexical_home: bool) -> List[tuple]:
     the node's own or the gloss has a lexical part, so it is left out. Where
     the gloss is the node's own and has no lexical part (a free pronoun,
     `3SG.POSS`), the node is that participant and keeps them. A number on a
-    morpheme of its own (the `PL` of `house-PL-1SG.POSS`) is the node's."""
+    morpheme of its own is the node's (the `PL` of `house-PL-1SG.POSS`),
+    unless the word also carries an agreement person (`1-see-PL`), whose
+    number it then is. `agreement` is whether the word does, over all its
+    glosses, and defaults to this gloss's own."""
+    if agreement is None:
+        agreement = read['agreement']
     foreign_here = not lexical_home or bool(read['lexical'])
     return [(rel, value) for (rel, value), marked in zip(read['attrs'], read['marked'])
-            if not (foreign_here and marked and rel in _PARTICIPANT)]
+            if not (foreign_here and rel in _PARTICIPANT
+                    and (marked or (agreement and rel == ':refer-number')))]
 
 
 def is_bound(morph_type: Optional[str]) -> bool:
@@ -439,10 +452,11 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         placed = [(r, True) for r in word_reads]
         for m in morphemes:
             placed.extend((r, m is home) for r in by_morpheme.get(m.id, []))
+        agreement = any(r['agreement'] for r, _ in placed)
         attrs = []
         seen = set()
         for r, own in placed:
-            for rel, value in own_attrs(r, own):
+            for rel, value in own_attrs(r, own, agreement):
                 if rel not in seen:
                     seen.add(rel)
                     attrs.append({'rel': rel, 'value': value, 'order': len(attrs)})
