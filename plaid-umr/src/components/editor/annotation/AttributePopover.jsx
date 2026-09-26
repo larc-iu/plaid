@@ -56,12 +56,19 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // The line last written, so the leaving that follows an Enter or a blur
   // does not write it again before `attrs` comes back with it.
   const writtenRef = useRef(null);
+  // Whether the line holds an edit not yet written: a refused one, or one
+  // still being typed. A row's pick changes `attrs` but not the line, and
+  // resetting the line then dropped a refused one while its reason showed.
+  const dirtyRef = useRef(false);
+  const storedLine = attrsToLine(others);
   useEffect(() => {
-    const line = attrsToLine(others);
-    setOtherLine(line);
-    lineRef.current = line;
     writtenRef.current = null;
   }, [others]);
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    setOtherLine(storedLine);
+    lineRef.current = storedLine;
+  }, [storedLine]);
 
   // Focus lands on the first row's chosen value, or its first value: never
   // on a row's clear button, where Enter would clear the value.
@@ -111,7 +118,8 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
     );
     setProblem(why || null);
     if (why) return false;
-    if (attrsToLine(next) === attrsToLine(others) || line === writtenRef.current) return true;
+    dirtyRef.current = false;
+    if (attrsToLine(next) === storedLine || line === writtenRef.current) return true;
     writtenRef.current = line;
     onChange([...attrs.filter((a) => PICKED.includes(a.rel)), ...next]);
     return true;
@@ -241,6 +249,7 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
           onChange={(e) => {
             setOtherLine(e.target.value);
             lineRef.current = e.target.value;
+            dirtyRef.current = true;
             setProblem(null);
           }}
           onBlur={commitOthers}

@@ -137,6 +137,35 @@ describe('AttributePopover', () => {
     await r.unmount();
     outside.remove();
   });
+
+  // A row's pick changes the node's attributes and not the line: resetting
+  // the line then dropped a refused one while its reason still showed, and
+  // the next click outside closed the picker with nothing written.
+  it('keeps a refused line through a pick on a row', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    const popover = (attrs) => (
+      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />
+    );
+    const r = await renderComponent(popover([{ rel: ':mod', value: 'x' }]));
+    const other = document.body.querySelector('.umr-attr-other');
+    await r.step(() => other.focus());
+    await typeLine(r, other, 'quant 4');
+    await r.step(() => button('-').focus());
+    expect(document.body.querySelector('.umr-attr-problem')).not.toBe(null);
+    await r.step(() => button('-').click());
+    expect(onChange).toHaveBeenLastCalledWith([
+      { rel: ':mod', value: 'x' },
+      { rel: ':polarity', value: '-' },
+    ]);
+    await r.rerender(popover(onChange.mock.lastCall[0]));
+    expect(other.value).toBe('quant 4');
+    expect(document.body.querySelector('.umr-attr-problem')).not.toBe(null);
+    await r.step(() => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
 });
 
 const typeLine = (r, input, text) =>
