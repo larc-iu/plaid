@@ -273,6 +273,64 @@ describe('InlineEditor', () => {
     field.remove();
   });
 
+  // A menu or dialog opened by that click traps focus, and pulling it back to
+  // the input would fight the trap and leave the menu dead.
+  it.each([['menu'], ['dialog'], ['listbox']])(
+    'leaves focus in a %s after a refused blur, and Escape there still closes the editor',
+    async (role) => {
+      const onCancel = vi.fn();
+      const popup = document.createElement('div');
+      popup.setAttribute('role', role);
+      const item = document.createElement('div');
+      item.tabIndex = -1;
+      item.textContent = 'Delete';
+      popup.appendChild(item);
+      document.body.appendChild(popup);
+      const r = await renderComponent(
+        <InlineEditor
+          x={0}
+          y={0}
+          value=""
+          onCommit={() => {}}
+          onCancel={onCancel}
+          check={() => "Unknown relation ':zzqq'."}
+        />,
+      );
+      const input = r.container.querySelector('input');
+      await type(r, input, 'zzqq');
+      await r.step(() => item.focus());
+      await r.step(() => new Promise((done) => setTimeout(done, 10)));
+      expect(document.activeElement).toBe(item);
+      expect(onCancel).not.toHaveBeenCalled();
+      await r.step(() => press(item, 'Escape'));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      await r.unmount();
+      popup.remove();
+    },
+  );
+
+  it('takes focus back after a refused blur to a plain button on the page', async () => {
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        onCommit={() => {}}
+        onCancel={() => {}}
+        check={() => "Unknown relation ':zzqq'."}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'zzqq');
+    await r.step(() => button.focus());
+    await r.step(() => new Promise((done) => setTimeout(done, 10)));
+    expect(document.activeElement).toBe(input);
+    await r.unmount();
+    button.remove();
+  });
+
   it('cancels on Escape', async () => {
     const onCancel = vi.fn();
     const r = await renderComponent(

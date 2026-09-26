@@ -26,8 +26,9 @@ import { textIncludes } from '@ui/domain/collation.js';
 // Tab, a click on an option or a blur on a refused value leaves the editor
 // open with the reason under it, so what was typed is there to correct and
 // nothing is dropped without a word. After a refused blur, focus comes back
-// to the input unless it went to another field, and Escape closes the editor
-// wherever focus is, so the keyboard is never left with no way out.
+// to the input unless it went to another field or into a menu, dialog or
+// list, which hold on to focus themselves. Escape closes the editor wherever
+// focus is, so the keyboard is never left with no way out.
 export function InlineEditor({
   x,
   y,
@@ -120,7 +121,7 @@ export function InlineEditor({
     if (attempt(chosen(null))) return;
     setTimeout(() => {
       const root = rootRef.current;
-      if (!root || doneRef.current || editable(document.activeElement)) return;
+      if (!root || doneRef.current || !fellToPage(document.activeElement)) return;
       root.querySelector('input')?.focus();
     }, 0);
   };
@@ -232,9 +233,18 @@ export function InlineEditor({
   );
 }
 
-// Whether focus sits where the keyboard types into something else.
-const editable = (el) =>
-  !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+// Whether focus, after a blur, sits where nothing else answers the keyboard:
+// on the page, or on something plain like a node or a button. Never in a
+// field, which the keyboard types into, and never in a menu, dialog or list,
+// which trap focus and would pull it straight back.
+const fellToPage = (el) => {
+  if (!el || el === document.body || el === document.documentElement) return true;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return false;
+  return !el.closest?.(FOCUS_HOLDERS);
+};
+
+const FOCUS_HOLDERS =
+  '[role="menu"], [role="menubar"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
 
 // Every option as `{ value, label? }`, groups flattened.
 const flatOptions = (options) =>
