@@ -81,7 +81,7 @@ from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params
                                         next_variable, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  gloss_morphemes, is_bound_type, is_zero_morph,
-                                                 lexical_flags)
+                                                 lenient_flags, lexical_flags)
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -208,16 +208,18 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
     return table
 
 
-def read_glosses(glosses: List[str], table) -> List[Dict[str, Any]]:
-    """The glosses of one word (its own and its morphemes'), each read into
-    what it says: the lexical part (the first part that is not grammatical),
-    the attributes its abbreviations stand for, whether one of them marks
-    tense or aspect, and whether one marks possession. Which part is a word is
-    plaid-igt's rule (`lexical_flags`), read over the word as one unit: a
-    lower-case abbreviation counts beside a grammatical part of the SAME
-    morpheme (`sbj:3.pfv`), never because another morpheme is grammatical,
-    and when that leaves the word with no lexical part the case rule stands
-    (`pass.PST` is `pass`).
+def read_glosses(glosses: List[str], table, fall_back: bool = True) -> List[Dict[str, Any]]:
+    """Glosses read as one unit, each into what it says: the lexical part
+    (the first part that is not grammatical), the attributes its
+    abbreviations stand for, whether one of them marks tense or aspect, and
+    whether one marks possession. Which part is a word is plaid-igt's rule
+    (`lexical_flags`): a lower-case abbreviation counts beside a grammatical
+    part of the SAME morpheme (`sbj:3.pfv`), never because another morpheme
+    is grammatical, and when that leaves the unit with no lexical part the
+    case rule stands (`pass.PST` is `pass`). `plan_sentence` makes the unit
+    the glosses that could name a word, one gloss line at a time. With
+    `fall_back` false (a gloss that can never name its word, an affix's or a
+    clitic's) the case rule never stands (`lenient_flags`).
 
     `marked` runs beside `attrs`: whether the morpheme an attribute came from
     also carries a person or a possessive, which is what makes its person and
@@ -226,7 +228,8 @@ def read_glosses(glosses: List[str], table) -> List[Dict[str, Any]]:
     whether some morpheme carries a person with no possessive (`1-see-PL`),
     which makes a number on another morpheme that person's too."""
     cut = [gloss_morphemes(str(g or '').strip()) for g in glosses]
-    flags = lexical_flags([m for morphemes in cut for m in morphemes], _known(table))
+    read_flags = lexical_flags if fall_back else lenient_flags
+    flags = read_flags([m for morphemes in cut for m in morphemes], _known(table))
     flags_at = iter(flags)
     out = []
     for morphemes in cut:
@@ -425,17 +428,26 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         morphemes = sentence.morphemes_of(word)
         # Every gloss of the word with the morpheme it glosses (None for the
         # word), in the order of `gloss_layers`, which is the order a concept
-        # is looked for. They are read together, as one word.
-        glossed: List[tuple] = []
+        # is looked for. On each gloss line the glosses that could name the
+        # word (its own and its stems') are read together as one unit, and
+        # those that never can (an affix's, a clitic's, a zero morph's) with
+        # no fall-back, so neither a clitic's gloss nor another line's
+        # decides whether pass.PST is pass.
+        namers = {m.id for m in _candidates(morphemes)}
+        in_order: List[tuple] = []
         for layer in gloss_layers:
             of = values.get(layer.id) or {}
+            glossed: List[tuple] = []
             if layer.scope == 'word':
                 if of.get(word.id):
                     glossed.append((None, of[word.id]))
             elif layer.scope == 'morpheme':
                 glossed.extend((m.id, of[m.id]) for m in morphemes if of.get(m.id))
-        in_order = list(zip([mid for mid, _ in glossed],
-                            read_glosses([value for _, value in glossed], table)))
+            names = [g for g in glossed if g[0] is None or g[0] in namers]
+            rest = [g for g in glossed if not (g[0] is None or g[0] in namers)]
+            reads = dict(zip(names, read_glosses([v for _, v in names], table)))
+            reads.update(zip(rest, read_glosses([v for _, v in rest], table, fall_back=False)))
+            in_order.extend((mid, reads[(mid, value)]) for mid, value in glossed)
         word_reads = [r for mid, r in in_order if mid is None]
         by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
         for mid, r in in_order:

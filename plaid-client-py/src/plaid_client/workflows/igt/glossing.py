@@ -99,6 +99,19 @@ def _is_mark(part: str) -> bool:
     return _category(part, 'L') or _category(part, 'N')
 
 
+def _strict_flags(morphemes, known) -> List[List[bool]]:
+    return [[_is_case_lexical(p, known) for p in parts] for parts in morphemes]
+
+
+def _lenient_flags(morphemes, strict, known) -> List[List[bool]]:
+    lenient = []
+    for parts, flags in zip(morphemes, strict):
+        mixed = len(parts) > 1 and any(not f and _is_mark(p) for p, f in zip(parts, flags))
+        lenient.append([f and not (mixed and len(p) > 1 and p.upper() in known)
+                        for p, f in zip(parts, flags)])
+    return lenient
+
+
 def lexical_flags(morphemes: Sequence[Sequence[str]],
                   known: Optional[Iterable[str]] = None) -> List[List[bool]]:
     """Which parts of one unit are lexical, morpheme by morpheme: the case
@@ -106,15 +119,20 @@ def lexical_flags(morphemes: Sequence[Sequence[str]],
     unit. ``morphemes`` is a list of morphemes, each a list of parts.
     ``known`` is the abbreviations, ``GLOSS_ABBREVIATIONS`` by default."""
     known = GLOSS_ABBREVIATIONS if known is None else frozenset(known)
-    strict = [[_is_case_lexical(p, known) for p in parts] for parts in morphemes]
-    lenient = []
-    for parts, flags in zip(morphemes, strict):
-        mixed = len(parts) > 1 and any(not f and _is_mark(p) for p, f in zip(parts, flags))
-        lenient.append([f and not (mixed and len(p) > 1 and p.upper() in known)
-                        for p, f in zip(parts, flags)])
+    strict = _strict_flags(morphemes, known)
+    lenient = _lenient_flags(morphemes, strict, known)
     if any(any(f) for f in strict) and not any(any(f) for f in lenient):
         return strict
     return lenient
+
+
+def lenient_flags(morphemes: Sequence[Sequence[str]],
+                  known: Optional[Iterable[str]] = None) -> List[List[bool]]:
+    """``lexical_flags`` without the fall-back: for a gloss that can never
+    name its word (an affix's, a clitic's), which the fall-back is not there
+    to serve. ``sbj:3.pfv`` stays all grammatical."""
+    known = GLOSS_ABBREVIATIONS if known is None else frozenset(known)
+    return _lenient_flags(morphemes, _strict_flags(morphemes, known), known)
 
 
 def is_lexical_part(part, known: Optional[Iterable[str]] = None) -> bool:
@@ -134,5 +152,5 @@ def gloss_morphemes(value) -> List[List[str]]:
 
 
 __all__ = ['ZERO_MORPH', 'is_zero_morph', 'is_clitic', 'is_bound_type', 'GLOSS_ABBREVIATIONS',
-           'PERSON_NUMBER', 'MORPHEME_CUT', 'PART_CUT', 'lexical_flags', 'is_lexical_part',
-           'gloss_morphemes']
+           'PERSON_NUMBER', 'MORPHEME_CUT', 'PART_CUT', 'lexical_flags', 'lenient_flags',
+           'is_lexical_part', 'gloss_morphemes']

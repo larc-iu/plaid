@@ -89,3 +89,14 @@ def test_a_tagset_check_reads_a_value_as_the_skeleton_does(js):
 def test_bound_types_and_the_zero_morph_are_the_apps(js):
     assert [glossing.is_bound_type(t) for t in MORPH_TYPES] == js['bound']
     assert [glossing.is_zero_morph(f) for f in FORMS] == js['zero']
+
+
+def test_the_lenient_reading_is_the_rule_less_its_fall_back():
+    """``lenient_flags`` is ``lexical_flags`` wherever the fall-back does not
+    fire, and never falls back itself (``sbj:3.pfv`` stays grammatical)."""
+    for unit in [glossing.gloss_morphemes(v) for v in VALUES] + UNITS:
+        lenient = glossing.lenient_flags(unit)
+        if any(any(f) for f in lenient) or not any(any(f) for f in glossing.lexical_flags(unit)):
+            assert lenient == glossing.lexical_flags(unit)
+    assert glossing.lenient_flags(glossing.gloss_morphemes('sbj:3.pfv')) == [[False] * 3]
+    assert glossing.lexical_flags(glossing.gloss_morphemes('sbj:3.pfv')) == [[True, False, True]]

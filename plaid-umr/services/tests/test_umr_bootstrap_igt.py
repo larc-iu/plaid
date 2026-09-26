@@ -446,6 +446,37 @@ def test_a_word_that_spells_an_abbreviation_is_a_word_when_nothing_else_is():
         assert [c for c, _ in _segmented_run(document, _compound_vocab())] == ['dog', concept]
 
 
+def test_only_a_gloss_that_could_name_the_word_keeps_it_from_the_fall_back():
+    """The fall-back asks whether the word has a lexical part among the
+    glosses that could name it: the word's own and its stems', one gloss line
+    at a time. A clitic's lexical gloss, or another line's, does not take
+    pass away from pass.PST, and a suffix never falls back itself."""
+    body = 'pasand\n'
+    words = [(0, 6)]
+    clitic = [('m1', 0, 'pas', 'stem', 'pass.PST', None), ('m2', 0, 'and', 'enclitic', 'and', None)]
+    assert _segmented_run(_segmented(body=body, words=words, morphemes=clitic),
+                          _compound_vocab())[0][0] == 'pass'
+    # sbj:3.pfv on a suffix stays grammatical beside a stem that falls back.
+    suffix = [('m1', 0, 'pas', 'stem', 'pass.PST', None),
+              ('m2', 0, 'and', 'suffix', 'sbj:3.pfv', None)]
+    nodes = _segmented_nodes(_segmented(body=body, words=words, morphemes=suffix),
+                             _compound_vocab())
+    assert [n['value'] for n in nodes] == ['pass']
+    assert (':aspect', 'perfective') in [(a['rel'], a['value'])
+                                         for a in nodes[0]['metadata']['umr']['attrs']]
+    # An English project: a Spanish word gloss does not change how the English
+    # morpheme gloss reads.
+    document = _segmented(body=body, words=words, morphemes=clitic[:1], word_glosses=(
+        {'id': 'gw', 'tokens': ['w1'], 'value': 'pasar'},))
+    mapping = [{'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:mglossL'},
+               {'header': 'word-gloss', 'lang': 'es', 'source': 'layer:glossL'}]
+    service = _service(documents=[document])
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: _compound_vocab()
+    service.client.projects._project['config'] = {'umr': {'language': 'en', 'ilg': mapping}}
+    assert servicetest.run(service, REQUEST).errors == []
+    assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['pass']
+
+
 def test_the_verb_with_sbj_3_pfv_is_the_root():
     """∅-eek-da (obj:3-lay-sbj:3.pfv) after a noun: the verb is the root, not
     the first node, and its node carries the aspect but not the subject's
