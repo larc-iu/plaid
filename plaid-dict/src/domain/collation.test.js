@@ -188,6 +188,21 @@ describe('suggestAlphabet', () => {
   it('takes a modifier letter apostrophe as the letter it is', () => {
     expect(suggestAlphabet(['\u02BCa'])).toEqual(['\u02BC']);
   });
+
+  it('offers the letter a ligature is filed under, and files it there', () => {
+    // Fill offered f for ﬁla while the collator filed it after z under FI.
+    const forms = ['\uFB01la', 'fa', 'zu'];
+    const units = suggestAlphabet(forms);
+    expect(units).toEqual(['f', 'z']);
+    const collator = alphabetCollator(units);
+    expect(collator.letterOf('\uFB01la')).toBe('F');
+    expect(outsideAlphabet(forms, units)).toEqual([]);
+    // Filed as the letters it stands for: ﬁla sorts with fila, not after zu.
+    expect(['zu', '\uFB01la', 'fa'].sort(collator.compare)).toEqual(['fa', '\uFB01la', 'zu']);
+    expect(splitGraphemes('\uFB01la', parseAlphabet('a f i l'))).toEqual(['f', 'i', 'l', 'a']);
+    // A listed digraph the ligature spells is still one unit.
+    expect(splitGraphemes('\uFB01la', parseAlphabet('a f fi l'))).toEqual(['fi', 'l', 'a']);
+  });
 });
 
 describe('isLetterCluster', () => {

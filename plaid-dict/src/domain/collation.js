@@ -125,7 +125,14 @@ export const splitGraphemes = (form, units) => {
     // No unit as written. Try the character's base form, so an accented letter
     // files under the letter the alphabet does list.
     const folded = foldChar(chars[at]);
-    out.push(order.includes(folded) ? folded : chars[at]);
+    if (!order.includes(folded) && splitClusters(folded).length > 1) {
+      // A compatibility form that stands for several letters (the ligature
+      // `ﬁ`) is filed as those letters. Folding again leaves them as they
+      // are, so this goes one level deep.
+      out.push(...splitGraphemes(folded, units));
+    } else {
+      out.push(order.includes(folded) ? folded : chars[at]);
+    }
     at += 1;
   }
   return out;
@@ -210,7 +217,8 @@ export const isLetterCluster = (cluster, letterLike = []) => {
 };
 
 // A letter written in a compatibility form (a superscript `ᴵ`, a ligature) is
-// that letter, lowercased: the collator already files it there.
+// that letter, lowercased, the first one for a ligature: the collator files it
+// there (see splitGraphemes).
 const plainLetter = (cluster) => {
   const compat = cluster.normalize('NFKC');
   if (compat === cluster.normalize('NFC')) return cluster;
