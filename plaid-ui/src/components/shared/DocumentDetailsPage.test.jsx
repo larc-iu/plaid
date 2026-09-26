@@ -145,16 +145,23 @@ const typeAName = async (view) => {
 };
 
 // A rename the server refuses: shown at once, then taken back by the reload
-// that follows the refusal, as the write queue does it.
+// that follows the refusal, as the write queue does it. `renaming` is the
+// rename in flight, so a test waits for its answer rather than for a clock:
+// under a loaded run a fixed wait ended between the reload and the refusal.
 class RefusingDoc extends Doc {
-  async rename(name) {
-    this._applyRawPatch((raw) => {
-      raw.name = name;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    this._swapRaw({ ...this.raw, name: 'One' });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    return false;
+  renaming = null;
+
+  rename(name) {
+    this.renaming = (async () => {
+      this._applyRawPatch((raw) => {
+        raw.name = name;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      this._swapRaw({ ...this.raw, name: 'One' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return false;
+    })();
+    return this.renaming;
   }
 }
 
@@ -165,7 +172,9 @@ describe('the document details screen', () => {
     await typeAName(view);
     await view.step(async () => {
       click(button(view.container, 'Save'));
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // The screen awaited this same promise first, so its handling of the
+      // refusal has run by the time this await returns.
+      await editor.doc.renaming;
     });
     expect(editor.doc.name).toBe('One');
     expect(view.container.querySelector('#document-name').value).toBe('Two');
