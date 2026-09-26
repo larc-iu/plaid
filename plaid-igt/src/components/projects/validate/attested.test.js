@@ -13,8 +13,10 @@ const metaField = { kind: 'metadata', scope: 'document', layerId: null, field: '
 
 describe('governedFreqQueries', () => {
   it("asks a morpheme field's linked morphemes for their entry's type and the rest for their own", () => {
-    const [linked, unlinked, ...rest] = governedFreqQueries(morphField, 'p');
+    const [linked, unlinked, doubled, ...rest] = governedFreqQueries(morphField, 'p');
     expect(rest).toEqual([]);
+    expect(doubled.where).toContainEqual(['!=', '?v.id', '?w.id']);
+    expect(doubled.return.group.slice(0, 4)).toEqual(['?s', '?t', '?v', '?val']);
     expect(linked.where).toContainEqual(['covers', '?s', '?t']);
     expect(linked.where).toContainEqual(['vocab-link', '?t', '?v']);
     expect(linked.return.group).toEqual([
@@ -114,8 +116,35 @@ const serverOver = (morphemes, lexicon) => {
     return [...out].map(([k, n]) => [...JSON.parse(k), n]);
   };
   const has = (q, head) => q.where.some((c) => c[0] === head);
+  // A morpheme names its entry (`entry`) or several (`entries`), as a
+  // morpheme linked twice by an import or through the API would.
+  const entriesOf = (m) => m.entries ?? (m.entry ? [m.entry] : []);
   return {
     query: vi.fn(async (q) => {
+      if (q.where.filter((c) => c[0] === 'vocab-link').length === 2) {
+        // One row per span, token and entry of a morpheme linked to two or
+        // more entries.
+        return {
+          results: morphemes.flatMap((m, i) =>
+            entriesOf(m).length < 2
+              ? []
+              : entriesOf(m).map((id) => {
+                  const e = byId.get(id);
+                  return [
+                    `s${i}`,
+                    `t${i}`,
+                    id,
+                    m.gloss,
+                    e.type ?? null,
+                    e.parent ?? null,
+                    m.cached ?? null,
+                    m.form,
+                    1,
+                  ];
+                }),
+          ),
+        };
+      }
       if (has(q, 'vocab')) {
         const heads = new Set(lexicon.map((e) => e.parent).filter(Boolean));
         return {
@@ -127,16 +156,16 @@ const serverOver = (morphemes, lexicon) => {
       if (has(q, 'vocab-link')) {
         return {
           results: tally(
-            morphemes
-              .filter((m) => m.entry)
-              .map((m) => {
-                const e = byId.get(m.entry);
+            morphemes.flatMap((m) =>
+              entriesOf(m).map((id) => {
+                const e = byId.get(id);
                 return [m.gloss, e.type ?? null, e.parent ?? null, m.cached ?? null, m.form];
               }),
+            ),
           ),
         };
       }
-      const rows = has(q, 'not') ? morphemes.filter((m) => !m.entry) : morphemes;
+      const rows = has(q, 'not') ? morphemes.filter((m) => !entriesOf(m).length) : morphemes;
       return { results: tally(rows.map((m) => [m.gloss, m.cached ?? null, m.form])) };
     }),
   };
@@ -185,12 +214,35 @@ describe("a linked morpheme's type", () => {
     ]);
   });
 
+  it('counts a morpheme linked to two entries once, by its cached type', async () => {
+    // The grid takes one of the two links, and opening the document syncs the
+    // token's cached type to it, so the cache is what the grid reads.
+    const client = serverOver(
+      [
+        { gloss: 'sbj:3.pfv', cached: 'suffix', form: 'ti', entries: ['e1', 'e2'] },
+        { gloss: 'sbj:3.pfv', cached: 'stem', form: 'sa', entry: 'e2' },
+      ],
+      [
+        { id: 'e1', type: 'suffix' },
+        { id: 'e2', type: 'stem' },
+      ],
+    );
+    const rows = await loadAttested(client, 'p', morphField);
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        ['sbj:3.pfv', 1, BOUND],
+        ['sbj:3.pfv', 1, undefined],
+      ]),
+    );
+  });
+
   it('asks for the headwords only when a linked entry has no type of its own', async () => {
     const client = serverOver(
       [{ gloss: 'PL', cached: 'stem', form: 's', entry: 'e1' }],
       [{ id: 'e1', type: 'suffix' }],
     );
     await loadAttested(client, 'p', morphField);
-    expect(client.query).toHaveBeenCalledTimes(2);
+    expect(client.query).toHaveBeenCalledTimes(3);
   });
 });

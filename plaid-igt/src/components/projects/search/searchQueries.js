@@ -227,10 +227,14 @@ const ANY_VALUE = { regex: '.' };
  * morpheme's type from its linked lexicon entry (the entry's own, else its
  * headword's) and falls back to the token's cached metadata.morphType, which
  * is refreshed only when a document is opened. The query language has no
- * left join, so a morpheme field takes two queries: the linked morphemes,
- * rows [value, entry type, entry parent, cached type, form, count], and the
- * unlinked ones, rows [value, cached type, form, count]. Any other field
- * takes one query with rows [value, count].
+ * left join, so a morpheme field takes three queries: the linked morphemes,
+ * rows [value, entry type, entry parent, cached type, form, count], the
+ * unlinked ones, rows [value, cached type, form, count], and the morphemes
+ * linked to two or more entries, which the first counts once per entry. That
+ * last is one row per span, token and entry, [span, token, entry, value,
+ * entry type, entry parent, cached type, form, count], and is nearly always
+ * empty (loadAttested corrects the first by it). Any other field takes one
+ * query with rows [value, count].
  */
 export const governedFreqQueries = (g, projectId) => {
   if (g.kind === 'metadata') return [metadataFreqQuery(projectId, g.field)];
@@ -258,6 +262,27 @@ export const governedFreqQueries = (g, projectId) => {
     {
       where: [...morph, ['not', ['vocab-link', '?t', '?v']]],
       return: { group: ['?val', '?t.metadata.morphType', '?t.metadata.form'], aggregates },
+    },
+    {
+      where: [
+        ...morph,
+        ['vocab-link', '?t', '?v'],
+        ['vocab-link', '?t', '?w'],
+        ['!=', '?v.id', '?w.id'],
+      ],
+      return: {
+        group: [
+          '?s',
+          '?t',
+          '?v',
+          '?val',
+          '?v.metadata.morphType',
+          '?v.metadata.parent',
+          '?t.metadata.morphType',
+          '?t.metadata.form',
+        ],
+        aggregates,
+      },
     },
   ];
 };

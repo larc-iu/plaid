@@ -67,11 +67,38 @@ const resolveLinkedRows = (rows, headwords = new Map()) =>
     n,
   ]);
 
+/**
+ * The linked rows with a morpheme linked to two or more entries counted once.
+ * The linked query counts it once per entry, and `doubled` holds one row per
+ * span, token and entry of such a morpheme. Each is taken off the linked row
+ * it added to, and each span and token goes back once as an unlinked row, by
+ * the token's cached type: the grid reads one of the links, and opening the
+ * document syncs the cached type to it.
+ */
+const withoutDoubleLinks = (linked, unlinked, doubled) => {
+  if (!doubled.length) return [linked, unlinked];
+  const key = (row) => JSON.stringify(row.slice(0, 5));
+  const over = new Map();
+  const once = new Map();
+  for (const [s, t, , value, own, parent, cached, form] of doubled) {
+    const k = key([value, own, parent, cached, form]);
+    over.set(k, (over.get(k) || 0) + 1);
+    once.set(JSON.stringify([s, t, value]), [value, cached, form, 1]);
+  }
+  const kept = linked
+    .map((row) => {
+      const less = over.get(key(row)) || 0;
+      return less ? [...row.slice(0, 5), row[5] - less] : row;
+    })
+    .filter((row) => row[5] > 0);
+  return [kept, [...unlinked, ...once.values()]];
+};
+
 /** One governed field's attested rows, asked of the server. */
 export const loadAttested = async (client, projectId, g) => {
   const res = await Promise.all(governedFreqQueries(g, projectId).map((q) => client.query(q)));
   if (res.length === 1) return attestedRows(g, res[0]?.results);
-  const [linked, unlinked] = res.map((r) => r?.results || []);
+  const [linked, unlinked] = withoutDoubleLinks(...res.map((r) => r?.results || []));
   const headwords = new Map();
   if (linked.some(([, own, parent]) => !typed(own) && parent)) {
     const hw = await client.query(headwordTypesQuery(projectId));

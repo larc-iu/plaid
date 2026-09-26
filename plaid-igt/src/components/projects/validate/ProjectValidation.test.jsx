@@ -55,9 +55,13 @@ const project = {
  */
 const clientWith = (rowsByCall, linked = []) => {
   let i = 0;
-  const isLinked = (q) => q?.where?.some((c) => c[0] === 'vocab-link');
+  const links = (q) => (q?.where || []).filter((c) => c[0] === 'vocab-link').length;
   return {
-    query: vi.fn(async (q) => ({ results: isLinked(q) ? linked : (rowsByCall[i++] ?? []) })),
+    query: vi.fn(async (q) => {
+      // Two link clauses ask for morphemes linked twice: there are none here.
+      if (links(q) === 2) return { results: [] };
+      return { results: links(q) === 1 ? linked : (rowsByCall[i++] ?? []) };
+    }),
   };
 };
 
@@ -106,7 +110,7 @@ describe('the scan', () => {
     expect(container.textContent).toContain('document');
     // Two governed fields: the morpheme field's linked and unlinked queries
     // and the metadata one, plus the morpheme-form sweep the zero-morph check runs.
-    expect(client.query).toHaveBeenCalledTimes(4);
+    expect(client.query).toHaveBeenCalledTimes(5);
     await unmount();
   });
 
