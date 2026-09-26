@@ -379,6 +379,15 @@
                                      o))))))]
       (walk m path 0))))
 
+(defn apply-metadata-ops
+  "Apply a list of metadata ops to the string-keyed map `m` and return the
+  result, without the shape caps (`patch-metadata!` checks those). Throws a
+  400 ex-info on the first op the rules refuse. The clients' optimistic
+  mirrors (`applyMetadataOps`, `apply_metadata_ops`) run the same case table,
+  src/test/plaid/sql/metadata_op_cases.json."
+  [m ops]
+  (reduce apply-op m ops))
+
 (defn patch-metadata!
   "Apply a list of path ops to the entity's metadata, then emit a single
   synthetic parent-row audit row capturing the transition.
@@ -402,7 +411,7 @@
   [tx entity-type entity-id ops]
   (when (seq ops)
     (let [pre (get-metadata tx entity-type entity-id)
-          post (reduce apply-op pre ops)
+          post (apply-metadata-ops pre ops)
           touched (distinct (map #(key-str (first (:path %))) ops))]
       (when-let [err (validate-metadata-shape! post)]
         (throw (ex-info err {:code 400})))

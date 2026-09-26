@@ -1,11 +1,15 @@
 """metadata_ops turns a top-level fragment into the ops a metadata PATCH
 takes, and apply_metadata_ops mirrors the server on a local copy. The
-server's rules are in plaid.sql.metadata/patch-metadata!, and these cases
-follow its tests."""
+server's rules are in plaid.sql.metadata/patch-metadata!, and the cases are
+the shared table in plaid-core/src/test/plaid/sql/metadata_op_cases.json."""
+
+import json
+import re
+from pathlib import Path
 
 import pytest
 
-from plaid_client import apply_metadata_ops, contribute_on_edit, merge_metadata, metadata_ops
+from plaid_client import apply_metadata_ops, metadata_ops
 
 
 def test_metadata_ops_sets_each_key_and_deletes_a_none_one():
@@ -17,59 +21,29 @@ def test_metadata_ops_sets_each_key_and_deletes_a_none_one():
     assert metadata_ops(None) == []
 
 
-def test_apply_edits_nested_keys_and_leaves_the_rest():
-    m = {'corefud': {'counts': {'c': 9}, 'entities': {'c8': 'animal', 'c9': 'fish'}}, 'other': 1}
-    out = apply_metadata_ops(m, [
+def test_apply_leaves_its_input_alone():
+    m = {'corefud': {'entities': {'c8': 'animal', 'c9': 'fish'}}}
+    apply_metadata_ops(m, [
         {'op': 'set', 'path': ['corefud', 'entities', 'c10'], 'value': 'bird'},
-        {'op': 'set', 'path': ['corefud', 'counts', 'c'], 'value': 10},
         {'op': 'delete', 'path': ['corefud', 'entities', 'c8']},
     ])
-    assert out == {'corefud': {'counts': {'c': 10}, 'entities': {'c9': 'fish', 'c10': 'bird'}},
-                   'other': 1}
-    assert m['corefud']['entities'] == {'c8': 'animal', 'c9': 'fish'}, 'input untouched'
+    assert m == {'corefud': {'entities': {'c8': 'animal', 'c9': 'fish'}}}
 
 
-def test_set_creates_missing_objects_stores_none_and_one_key_replaces_whole():
-    assert apply_metadata_ops({}, [{'op': 'set', 'path': ['a', 'b'], 'value': None}]) == {'a': {'b': None}}
-    assert apply_metadata_ops({'a': {'x': 1}}, [{'op': 'set', 'path': ['a'], 'value': {'y': 2}}]) == {'a': {'y': 2}}
+# The case table plaid-core and plaid-client-js run too.
+CASES = json.loads(
+    (Path(__file__).resolve().parents[2] / 'plaid-core' / 'src' / 'test' / 'plaid' / 'sql'
+     / 'metadata_op_cases.json').read_text(encoding='utf-8'))['cases']
 
 
-def test_delete_of_an_absent_key_or_under_an_absent_object_is_a_noop():
-    m = {'a': 1}
-    assert apply_metadata_ops(m, [{'op': 'delete', 'path': ['b']},
-                                  {'op': 'delete', 'path': ['b', 'c']}]) == m
+def test_the_shared_case_table_is_there():
+    assert len(CASES) > 40
 
 
-@pytest.mark.parametrize('m, op', [
-    ({'s': 'x'}, {'op': 'set', 'path': ['s', 't'], 'value': 1}),
-    ({'l': [1]}, {'op': 'delete', 'path': ['l', '0']}),
-    ({}, {'op': 'set', 'path': [], 'value': 1}),
-    ({}, {'op': 'set', 'path': ['a']}),
-    ({}, {'op': 'merge', 'path': ['a'], 'value': 1}),
-])
-def test_what_the_server_refuses_raises(m, op):
-    with pytest.raises(ValueError):
-        apply_metadata_ops(m, [op])
-
-
-def test_merge_metadata_is_apply_over_metadata_ops():
-    m = {'prov': 'inferred', 'provConfirmed': True, 'keep': 1}
-    fragment = contribute_on_edit(m, 'u@example.org')
-    assert merge_metadata(m, fragment) == apply_metadata_ops(m, metadata_ops(fragment))
-
-
-@pytest.mark.parametrize('key', ['', '   ', '\u2003', 'a\u0001b', 'a\u007f', 'x' * 201, '🙂' * 101])
-def test_apply_metadata_ops_refuses_the_top_level_keys_the_server_refuses(key):
-    with pytest.raises(ValueError, match='Invalid metadata key'):
-        apply_metadata_ops({}, [{'op': 'set', 'path': [key], 'value': 1}])
-    with pytest.raises(ValueError, match='Invalid metadata key'):
-        apply_metadata_ops({}, [{'op': 'delete', 'path': [key]}])
-
-
-@pytest.mark.parametrize('key', ['x' * 200, '\u00a0', 'N/A', '🙂' * 100])
-def test_apply_metadata_ops_takes_the_keys_the_server_takes(key):
-    assert apply_metadata_ops({}, [{'op': 'set', 'path': [key], 'value': 1}]) == {key: 1}
-
-
-def test_apply_metadata_ops_checks_only_the_first_key():
-    assert apply_metadata_ops({}, [{'op': 'set', 'path': ['a', ''], 'value': 1}]) == {'a': {'': 1}}
+@pytest.mark.parametrize('case', CASES, ids=[c['name'] for c in CASES])
+def test_shared_case(case):
+    if 'error' in case:
+        with pytest.raises(ValueError, match=re.escape(case['error'])):
+            apply_metadata_ops(case['metadata'], case['ops'])
+    else:
+        assert apply_metadata_ops(case['metadata'], case['ops']) == case['result']

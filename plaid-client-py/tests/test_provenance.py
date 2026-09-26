@@ -14,10 +14,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from plaid_client.provenance import (
     HUMAN, MACHINE, CONTRIBUTED_STATE, VERIFIED, INFERRED, CONTRIBUTED,
     stamp_inferred, confirmed_inferred, stamp_contributed, prov_state, prov_origin,
-    is_protected, needs_review, verify_on_edit, contribute_on_edit, merge_metadata,
+    is_protected, needs_review, verify_on_edit, contribute_on_edit,
     service_source, user_source,
     REVIEW_KEY, read_review, project_role, is_reviewed, with_reviewed_user, WriterPolicy,
 )
+from plaid_client.metadata_ops import apply_metadata_ops, metadata_ops
 
 CONTRIB = {'prov': 'contributed', 'provSource': 'user:ann@x.com'}
 
@@ -73,17 +74,10 @@ def test_contribute_on_edit_marks_anything_contributed_and_drops_the_confirmatio
     frag = contribute_on_edit(confirmed_inferred('service:x'), 'ann@x.com')
     assert frag == {**CONTRIB, 'provConfirmed': None}
     before = confirmed_inferred('service:x', prob=0.8, detail={'value': 'PL'})
-    after = merge_metadata(before, frag)
+    after = apply_metadata_ops(before, metadata_ops(frag))
     assert after == {**CONTRIB, 'provProb': 0.8, 'provDetail': {'value': 'PL'}}
     assert prov_state(after) == CONTRIBUTED_STATE
-    assert prov_state(merge_metadata(None, frag)) == CONTRIBUTED_STATE
-
-
-def test_merge_metadata_deletes_none_valued_keys_and_leaves_the_input_alone():
-    m = {'a': 1, 'b': 2}
-    assert merge_metadata(m, {'a': None, 'c': 3}) == {'b': 2, 'c': 3}
-    assert m == {'a': 1, 'b': 2}
-    assert merge_metadata(None, None) == {}
+    assert prov_state(apply_metadata_ops(None, metadata_ops(frag))) == CONTRIBUTED_STATE
 
 
 # --- review norm + writer policy --------------------------------------------------

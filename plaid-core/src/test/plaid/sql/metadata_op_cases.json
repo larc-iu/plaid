@@ -1,0 +1,924 @@
+{
+  "about": "The metadata op cases, run by plaid-core (plaid.sql.metadata-op-cases-test), plaid-client-js (test/metadataOps.test.js) and plaid-client-py (tests/test_metadata_ops.py). Each case applies ops to metadata and gives the result, or an error, a substring of the message all three raise. The shape caps (depth, key count, string length, total size) are checked by the server only and are not here. Edit it by hand.",
+  "cases": [
+    {
+      "name": "a deep set and a deep delete edit only the keys they name",
+      "metadata": {
+        "corefud": {
+          "counts": {
+            "c": 9,
+            "i": 4
+          },
+          "entities": {
+            "c8": "other-land-animal",
+            "c9": "fish",
+            "i3": "moon"
+          }
+        },
+        "other": "untouched"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "corefud",
+            "entities",
+            "c10"
+          ],
+          "value": "bird"
+        },
+        {
+          "op": "set",
+          "path": [
+            "corefud",
+            "counts",
+            "c"
+          ],
+          "value": 10
+        },
+        {
+          "op": "delete",
+          "path": [
+            "corefud",
+            "entities",
+            "c8"
+          ]
+        }
+      ],
+      "result": {
+        "corefud": {
+          "counts": {
+            "c": 10,
+            "i": 4
+          },
+          "entities": {
+            "c9": "fish",
+            "c10": "bird",
+            "i3": "moon"
+          }
+        },
+        "other": "untouched"
+      }
+    },
+    {
+      "name": "set creates the missing objects along its path",
+      "metadata": {
+        "k": 1
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "new",
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "k": 1,
+        "new": {
+          "a": {
+            "b": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "a one-key path replaces that top-level key whole",
+      "metadata": {
+        "a": {
+          "x": 1
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "value": {
+            "y": 2
+          }
+        }
+      ],
+      "result": {
+        "a": {
+          "y": 2
+        }
+      }
+    },
+    {
+      "name": "a deep set replaces the value at its end whole",
+      "metadata": {
+        "a": {
+          "b": {
+            "x": 1
+          },
+          "c": 2
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {
+            "y": 2
+          }
+        }
+      ],
+      "result": {
+        "a": {
+          "b": {
+            "y": 2
+          },
+          "c": 2
+        }
+      }
+    },
+    {
+      "name": "set stores null at a nested path",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": null
+        }
+      ],
+      "result": {
+        "a": {
+          "b": null
+        }
+      }
+    },
+    {
+      "name": "set stores null and every falsy value, since deletion is its own op",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "n"
+          ],
+          "value": null
+        },
+        {
+          "op": "set",
+          "path": [
+            "f"
+          ],
+          "value": false
+        },
+        {
+          "op": "set",
+          "path": [
+            "z"
+          ],
+          "value": 0
+        },
+        {
+          "op": "set",
+          "path": [
+            "e"
+          ],
+          "value": ""
+        },
+        {
+          "op": "set",
+          "path": [
+            "m"
+          ],
+          "value": {}
+        }
+      ],
+      "result": {
+        "n": null,
+        "f": false,
+        "z": 0,
+        "e": "",
+        "m": {}
+      }
+    },
+    {
+      "name": "delete of an absent key, or under an absent object, is a no-op",
+      "metadata": {
+        "corefud": {
+          "counts": {
+            "c": 9,
+            "i": 4
+          },
+          "entities": {
+            "c8": "other-land-animal",
+            "c9": "fish",
+            "i3": "moon"
+          }
+        },
+        "other": "untouched"
+      },
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "nope"
+          ]
+        },
+        {
+          "op": "delete",
+          "path": [
+            "nope",
+            "deeper"
+          ]
+        },
+        {
+          "op": "delete",
+          "path": [
+            "corefud",
+            "entities",
+            "zz"
+          ]
+        }
+      ],
+      "result": {
+        "corefud": {
+          "counts": {
+            "c": 9,
+            "i": 4
+          },
+          "entities": {
+            "c8": "other-land-animal",
+            "c9": "fish",
+            "i3": "moon"
+          }
+        },
+        "other": "untouched"
+      }
+    },
+    {
+      "name": "ops apply in order",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "seq"
+          ],
+          "value": 1
+        },
+        {
+          "op": "delete",
+          "path": [
+            "seq"
+          ]
+        },
+        {
+          "op": "set",
+          "path": [
+            "seq2"
+          ],
+          "value": 2
+        }
+      ],
+      "result": {
+        "seq2": 2
+      }
+    },
+    {
+      "name": "a later op walks into a value an earlier op of the same list set",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "fresh"
+          ],
+          "value": {
+            "x": {
+              "y": 1
+            }
+          }
+        },
+        {
+          "op": "delete",
+          "path": [
+            "fresh",
+            "x",
+            "y"
+          ]
+        },
+        {
+          "op": "set",
+          "path": [
+            "fresh",
+            "x",
+            "w"
+          ],
+          "value": 2
+        }
+      ],
+      "result": {
+        "fresh": {
+          "x": {
+            "w": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "deleting every top-level key leaves no metadata",
+      "metadata": {
+        "a": 1,
+        "b": {
+          "c": 2
+        }
+      },
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "a"
+          ]
+        },
+        {
+          "op": "delete",
+          "path": [
+            "b"
+          ]
+        }
+      ],
+      "result": {}
+    },
+    {
+      "name": "an empty op list changes nothing",
+      "metadata": {
+        "a": 1
+      },
+      "ops": [],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "name": "a slash in a key is an ordinary character",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "N/A",
+            "a/b"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "N/A": {
+          "a/b": 1
+        }
+      }
+    },
+    {
+      "name": "only the first key of a path is checked",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a",
+            ""
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "a": {
+          "": 1
+        }
+      }
+    },
+    {
+      "name": "set through a string is refused",
+      "metadata": {
+        "s": "text"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "s",
+            "x"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "delete through a string is refused",
+      "metadata": {
+        "s": "text"
+      },
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "s",
+            "x"
+          ]
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "delete through an array is refused",
+      "metadata": {
+        "l": [
+          1
+        ]
+      },
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "l",
+            "0"
+          ]
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "set through a stored null is refused",
+      "metadata": {
+        "n": null
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "n",
+            "x"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "a deep path through a nested number is refused",
+      "metadata": {
+        "a": {
+          "b": 3
+        }
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "a refused op refuses the whole list, earlier ops included",
+      "metadata": {
+        "s": "text"
+      },
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "ok"
+          ],
+          "value": 1
+        },
+        {
+          "op": "set",
+          "path": [
+            "s",
+            "x"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "holds a value that is not an object"
+    },
+    {
+      "name": "an empty path is refused",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [],
+          "value": 1
+        }
+      ],
+      "error": "A metadata op needs a non-empty path"
+    },
+    {
+      "name": "a set with no value is refused",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a"
+          ]
+        }
+      ],
+      "error": "A set op needs a value"
+    },
+    {
+      "name": "an unknown op is refused",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "merge",
+          "path": [
+            "a"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Unknown metadata op"
+    },
+    {
+      "name": "set refuses a top-level key that is empty",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            ""
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is empty",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            ""
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is spaces",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "   "
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is spaces",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "   "
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is an em space",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\u2003"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is an em space",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "\u2003"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is a line separator",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\u2028"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is a line separator",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "\u2028"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is a tab",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\t"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is a tab",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "\t"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is a control character inside",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a\u0001b"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is a control character inside",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "a\u0001b"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is DEL",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a\u007f"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is DEL",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "a\u007f"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is a newline inside",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "a\nb"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is a newline inside",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "a\nb"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is 201 characters",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is 201 characters",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "set refuses a top-level key that is 101 emoji, 202 UTF-16 units",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42"
+          ],
+          "value": 1
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "delete refuses a top-level key that is 101 emoji, 202 UTF-16 units",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "delete",
+          "path": [
+            "\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42"
+          ]
+        }
+      ],
+      "error": "Invalid metadata key"
+    },
+    {
+      "name": "a top-level key that is 200 characters is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": 1
+      }
+    },
+    {
+      "name": "a top-level key that is a no-break space is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\u00a0"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "\u00a0": 1
+      }
+    },
+    {
+      "name": "a top-level key that is a figure space is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\u2007"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "\u2007": 1
+      }
+    },
+    {
+      "name": "a top-level key that is 100 emoji, 200 UTF-16 units is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42\ud83d\ude42": 1
+      }
+    },
+    {
+      "name": "a top-level key that is padded with spaces is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            " a "
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        " a ": 1
+      }
+    },
+    {
+      "name": "a top-level key that is non-ASCII letters is taken",
+      "metadata": {},
+      "ops": [
+        {
+          "op": "set",
+          "path": [
+            "t\u00e9l\u00e9"
+          ],
+          "value": 1
+        }
+      ],
+      "result": {
+        "t\u00e9l\u00e9": 1
+      }
+    }
+  ]
+}
