@@ -459,3 +459,14 @@ def test_the_digit_0_is_a_form_and_not_a_zero_morph():
     morphemes = [('m1', 0, 'I', 'stem', '1SG', None), ('m2', 1, '0', 'stem', 'zero', None)]
     document = _segmented(body='I 0\n', words=[(0, 1), (2, 3)], morphemes=morphemes)
     assert [c for c, _ in _segmented_run(document, _compound_vocab())] == ['zero']
+
+
+@pytest.mark.parametrize('gloss', ['水', 'पानी', 'ماء', 'go.水'])
+def test_a_gloss_in_a_script_with_no_case_is_lexical(gloss):
+    """The case rule asks for a capital, as igt's isLexicalPart does: a script
+    with no letter case has none, so its gloss is a word and names the node."""
+    read = boot.read_gloss(gloss, boot.ABBREVIATIONS)
+    assert read['lexical'] == gloss.split('.')[0]
+    # A capital with no lower case beside it is still grammatical.
+    assert boot.read_gloss('水.DEM', boot.ABBREVIATIONS)['lexical'] == '水'
+    assert boot.read_gloss('DEM', boot.ABBREVIATIONS)['lexical'] is None

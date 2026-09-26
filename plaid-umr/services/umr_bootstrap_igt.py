@@ -61,6 +61,7 @@ Requirements (on top of plaid-client): none.
 import argparse
 import json
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
@@ -136,6 +137,13 @@ _MORPHEME_CUT = re.compile(r'[\-=~<>\s]+')
 _PART_CUT = re.compile(r'[.:;\\]+')
 _LETTER = re.compile(r'[^\W\d_]', re.UNICODE)
 
+
+def _has_capital(part: str) -> bool:
+    """Whether a part has a capital (upper or title case) letter. A script
+    with no letter case (水, पानी, ماء) has none, so its words are never read
+    as abbreviations, as in `isLexicalPart` in plaid-igt."""
+    return any(unicodedata.category(c) in ('Lu', 'Lt') for c in part)
+
 #: Leipzig abbreviations that stand for no attribute here but are grammatical
 #: all the same, so that written in lower case inside a compound gloss
 #: (`sbj:3.pfv`, `obj:3`) they are not taken for the word. Single letters
@@ -153,7 +161,7 @@ def _keys(part: str, table, lenient: bool) -> Optional[List[str]]:
     part that stands for nothing, None for a word. The case rule: a part in
     upper case, with no letter (`3`) or a person and number in either case
     (`3SG`, `3sg`, never a word), is grammatical; a part with a lower case
-    letter is a word. `lenient` is the one exception, a compound gloss that
+    letter, or with letters of a script that has no case, is a word. `lenient` is the one exception, a compound gloss that
     also has a part grammatical by that rule (`sbj:3.pfv`, `go.3SG.pfv`):
     there a known abbreviation in lower case is grammatical too."""
     m = _PERSON_NUMBER.match(part.upper())
@@ -161,7 +169,7 @@ def _keys(part: str, table, lenient: bool) -> Optional[List[str]]:
         return [m.group(1), m.group(2)]
     if part.upper() in table and (part.upper() == part or not _LETTER.search(part)):
         return [part]
-    if part.upper() == part and _LETTER.search(part):
+    if part.upper() == part and _has_capital(part):
         return []
     if lenient and len(part) > 1 and (part.upper() in table or part.upper() in GRAMMATICAL):
         return [part]
