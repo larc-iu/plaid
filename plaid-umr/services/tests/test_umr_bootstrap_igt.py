@@ -75,10 +75,10 @@ def _ops(client, kind):
 def test_a_gloss_is_read_into_its_lexical_part_and_its_attributes():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('bark.PRS', table) == {
-        'lexical': 'bark', 'attrs': [], 'eventive': True, 'possessive': False}
+        'lexical': 'bark', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False}
     assert boot.read_gloss('3SG', table) == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular')],
-        'eventive': False, 'possessive': False}
+        'marked': [True, True], 'eventive': False, 'possessive': False}
     assert boot.read_gloss('go=1PL.IRR', table)['attrs'] == [
         (':refer-person', '1st'), (':refer-number', 'plural')]
     assert boot.read_gloss('go=1PL.IRR', table)['eventive'] is True
@@ -346,19 +346,19 @@ def test_a_lower_case_abbreviation_beside_a_grammatical_part_is_grammatical():
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('sbj:3.pfv', table) == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':aspect', 'perfective')],
-        'eventive': True, 'possessive': False}
+        'marked': [True, True], 'eventive': True, 'possessive': False}
     assert boot.read_gloss('obj:3', table)['lexical'] is None
     assert boot.read_gloss('go.3sg.ipfv', table) == {
         'lexical': 'go', 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular'),
                                    (':aspect', 'imperfective')],
-        'eventive': True, 'possessive': False}
+        'marked': [True, True, True], 'eventive': True, 'possessive': False}
     assert boot.read_gloss('go.3SG.prf', table)['eventive'] is True
     assert boot.read_gloss('sbj:3sg.pfv', table)['attrs'] == [
         (':refer-person', '3rd'), (':refer-number', 'singular'), (':aspect', 'perfective')]
     assert boot.read_gloss('lay-sbj:3.pfv', table)['lexical'] == 'lay'
     # Leipzig's other separators for one form of several meanings.
     assert boot.read_gloss('hit;PST', table) == {
-        'lexical': 'hit', 'attrs': [], 'eventive': True, 'possessive': False}
+        'lexical': 'hit', 'attrs': [], 'marked': [], 'eventive': True, 'possessive': False}
     assert boot.read_gloss('sing\\PST', table)['lexical'] == 'sing'
     # An aspect abbreviation elects the root as a tense one does.
     assert boot.read_gloss('go.HAB', table)['eventive'] is True
@@ -370,7 +370,7 @@ def test_the_case_rule_still_holds_without_a_grammatical_part_beside():
     because ANOTHER morpheme is grammatical."""
     table = boot.ABBREVIATIONS
     assert boot.read_gloss('lay.pfv', table) == {
-        'lexical': 'lay', 'attrs': [], 'eventive': False, 'possessive': False}
+        'lexical': 'lay', 'attrs': [], 'marked': [], 'eventive': False, 'possessive': False}
     assert boot.read_gloss('come.out', table)['lexical'] == 'come'
     assert boot.read_gloss('pass', table)['lexical'] == 'pass'
     assert boot.read_gloss('3SG-pfv', table)['lexical'] == 'pfv'
@@ -470,3 +470,21 @@ def test_a_gloss_in_a_script_with_no_case_is_lexical(gloss):
     # A capital with no lower case beside it is still grammatical.
     assert boot.read_gloss('水.DEM', boot.ABBREVIATIONS)['lexical'] == '水'
     assert boot.read_gloss('DEM', boot.ABBREVIATIONS)['lexical'] is None
+
+
+def test_a_possessed_noun_keeps_its_own_plural():
+    """house-PL-1SG.POSS: the possessor's person and number are on their own
+    morpheme and are dropped, and the noun's plural on another is kept. A
+    number fused with the possessive in one morpheme stays the possessor's."""
+    table = boot.ABBREVIATIONS
+    assert boot.own_attrs(boot.read_gloss('house-PL-1SG.POSS', table), True) == [
+        (':refer-number', 'plural')]
+    assert boot.own_attrs(boot.read_gloss('1SG.POSS-house-PL', table), True) == [
+        (':refer-number', 'plural')]
+    assert boot.own_attrs(boot.read_gloss('PL.POSS-hand', table), True) == []
+    assert boot.own_attrs(boot.read_gloss('go-3SG', table), True) == []
+    document = _segmented(body='kuca\n', words=[(0, 4)], morphemes=[], word_glosses=(
+        {'id': 'gw', 'tokens': ['w1'], 'value': 'house-PL-1SG.POSS'},))
+    assert [(c, [(a['rel'], a['value']) for a in attrs])
+            for c, attrs in _segmented_run(document, _compound_vocab())] == [
+        ('house', [(':refer-number', 'plural')])]

@@ -30,10 +30,11 @@ A person and number describe the node only when the gloss is the node's own:
 a gloss that carries a person or marks possession (`POSS`) on another morpheme
 than the lexical one or beside a lexical part (`m-` 3.POSS + `hii` blood,
 `sbj:3`, `go.3SG`) is agreement with or the possessor of another participant,
-and that participant would need a node and an edge. Its person and number are
-dropped rather than put on the wrong node. A free possessive pronoun is the
-exception that proves it: a word glossed `3SG.POSS` and nothing else IS the
-possessor, so its node keeps them.
+and that participant would need a node and an edge. The person and number of
+that morpheme are dropped rather than put on the wrong node, and a number on a
+morpheme of its own stays (`house-PL-1SG.POSS` is plural). A free possessive
+pronoun is the exception that proves it: a word glossed `3SG.POSS` and nothing
+else IS the possessor, so its node keeps them.
 
 It draws NO edges. A role is a claim about who did what, and glosses do not
 say; the annotator connects the nodes on the canvas, where a node with its
@@ -161,9 +162,10 @@ def _keys(part: str, table, lenient: bool) -> Optional[List[str]]:
     part that stands for nothing, None for a word. The case rule: a part in
     upper case, with no letter (`3`) or a person and number in either case
     (`3SG`, `3sg`, never a word), is grammatical; a part with a lower case
-    letter, or with letters of a script that has no case, is a word. `lenient` is the one exception, a compound gloss that
-    also has a part grammatical by that rule (`sbj:3.pfv`, `go.3SG.pfv`):
-    there a known abbreviation in lower case is grammatical too."""
+    letter, or with letters of a script that has no case, is a word.
+    `lenient` is the one exception, a compound gloss that also has a part
+    grammatical by that rule (`sbj:3.pfv`, `go.3SG.pfv`): there a known
+    abbreviation in lower case is grammatical too."""
     m = _PERSON_NUMBER.match(part.upper())
     if m:
         return [m.group(1), m.group(2)]
@@ -201,14 +203,22 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
     for, whether one of them marks tense or aspect, and whether one marks
     possession. Each morpheme's gloss is read on its own, so a lower-case
     abbreviation counts only beside a grammatical part of the SAME morpheme
-    (`sbj:3.pfv`), never because another morpheme is grammatical."""
+    (`sbj:3.pfv`), never because another morpheme is grammatical.
+
+    `marked` runs beside `attrs`: whether the morpheme an attribute came from
+    also carries a person or a possessive, which is what makes its person and
+    number maybe another participant's (`own_attrs`). In `house-PL-1SG.POSS`
+    the plural is on a morpheme of its own and is not marked."""
     lexical = None
     attrs: List[tuple] = []
+    marked: List[bool] = []
     eventive = False
     possessive = False
     for morpheme in _MORPHEME_CUT.split(str(gloss or '').strip()):
         parts = [p for p in _PART_CUT.split(morpheme) if p]
         lenient = len(parts) > 1 and any(_keys(p, table, False) is not None for p in parts)
+        found: List[tuple] = []
+        participant = False
         for part in parts:
             keys = _keys(part, table, lenient)
             if keys is None:
@@ -220,12 +230,17 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
                 if what == ('root',):
                     eventive = True
                 elif what == ('possessive',):
-                    possessive = True
+                    possessive = participant = True
                 elif what:
-                    attrs.append(what)
+                    found.append(what)
+                    if what[0] == ':refer-person':
+                        participant = True
                     if what[0] == ':aspect':
                         eventive = True
-    return {'lexical': lexical, 'attrs': attrs, 'eventive': eventive, 'possessive': possessive}
+        attrs.extend(found)
+        marked.extend(participant for _ in found)
+    return {'lexical': lexical, 'attrs': attrs, 'marked': marked, 'eventive': eventive,
+            'possessive': possessive}
 
 
 #: The attributes that describe a participant, which a gloss may give for
@@ -236,15 +251,15 @@ _PARTICIPANT = (':refer-person', ':refer-number')
 def own_attrs(read: Dict[str, Any], lexical_home: bool) -> List[tuple]:
     """The attributes of one read gloss that belong on the node. `lexical_home`
     is whether the gloss is the word's own or its lexical morpheme's. A person
-    or a possessive on another morpheme or beside a lexical part is another
-    participant's (a possessor, an agreeing subject), so its person and number
-    are left out. Where the gloss is the node's own and has no lexical part
-    (a free pronoun, `3SG.POSS`), the node is that participant and keeps them."""
-    has_person = any(rel == ':refer-person' for rel, _ in read['attrs'])
-    foreign = ((read['possessive'] or has_person)
-               and (not lexical_home or bool(read['lexical'])))
-    return [(rel, value) for rel, value in read['attrs']
-            if not (foreign and rel in _PARTICIPANT)]
+    or a number on a morpheme that carries a person or a possessive is another
+    participant's (a possessor, an agreeing subject) when that morpheme is not
+    the node's own or the gloss has a lexical part, so it is left out. Where
+    the gloss is the node's own and has no lexical part (a free pronoun,
+    `3SG.POSS`), the node is that participant and keeps them. A number on a
+    morpheme of its own (the `PL` of `house-PL-1SG.POSS`) is the node's."""
+    foreign_here = not lexical_home or bool(read['lexical'])
+    return [(rel, value) for (rel, value), marked in zip(read['attrs'], read['marked'])
+            if not (foreign_here and marked and rel in _PARTICIPANT)]
 
 
 def is_bound(morph_type: Optional[str]) -> bool:
