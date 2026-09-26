@@ -28,8 +28,17 @@ import {
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
 import { serializeUmrFile, readAlignment } from './format/umrFile.js';
-import { conceptProblem, relationProblem, attrValueProblem, parsePenman } from './format/penman.js';
-import { validateDocument, unknownRelationProblem } from './format/validate.js';
+import {
+  conceptProblem,
+  relationProblem as relationFormProblem,
+  attrValueProblem,
+  parsePenman,
+} from './format/penman.js';
+import {
+  validateDocument,
+  unknownRelationProblem,
+  unknownDocRelationProblem,
+} from './format/validate.js';
 
 const VARIABLE = /^s[0-9]+\p{Ll}+[0-9]*$/u;
 
@@ -437,11 +446,12 @@ export class UmrDocument extends DocumentModel {
     const sentence = this.sentence(sentenceIndex);
     if (!sentence || !concept) return false;
     if (parentId && !role) return false;
-    const refused = conceptProblem(concept);
-    if (refused) {
-      this.setError(refused);
-      return false;
-    }
+    const refused = this._refused(
+      conceptProblem(concept),
+      parentId ? this.relationProblem(role) : null,
+      ...attrs.map((a) => this.relationProblem(a.rel) || attrValueProblem(a.value)),
+    );
+    if (refused) return false;
     const parent = parentId ? this.node(parentId) : null;
     const label = 'Failed to add the node';
     if (!this._canWrite(label)) return false;
@@ -571,6 +581,43 @@ export class UmrDocument extends DocumentModel {
     return `from ${this.node(source)?.var || source} to ${this.node(target)?.var || target}`;
   }
 
+  /**
+   * Why `rel` cannot be written at `at`, or null when it can: a relation the
+   * file cannot hold, or one UMR does not have. `at` names the place:
+   * `{ nodeId }` among that node's attributes, `{ edgeId }` as that edge's
+   * role, `{ tripleId }` as that document-level relation, `{ group }` as a
+   * new one of that group, and nothing for a new edge or a new node's
+   * attribute. A relation already stored at that very place is kept (an
+   * imported file may carry one UMR does not have), never one stored on
+   * another node or edge: only a relation the write brings there is refused.
+   * Every write method asks this, and so do the screens and text mode.
+   */
+  relationProblem(rel, { nodeId = null, edgeId = null, tripleId = null, group = null } = {}) {
+    const why = relationFormProblem(rel);
+    if (why) return why;
+    const text = String(rel).trim();
+    const r = text.startsWith(':') ? text : `:${text}`;
+    const triple = tripleId ? this.triple(tripleId) : null;
+    const stored = edgeId
+      ? [this.edge(edgeId)?.role]
+      : tripleId
+        ? [triple?.rel]
+        : nodeId
+          ? (this.node(nodeId)?.attrs ?? []).map((a) => a.rel)
+          : [];
+    if (stored.includes(r)) return null;
+    const g = triple ? triple.group || groupOf(triple.rel) : group;
+    return g ? unknownDocRelationProblem(g, r) : unknownRelationProblem(r);
+  }
+
+  // The first of `problems` that is not null, shown, and whether there was
+  // one: a write method refuses with it.
+  _refused(...problems) {
+    const why = problems.find(Boolean);
+    if (why) this.setError(why);
+    return !!why;
+  }
+
   /** Why `variable` cannot name the node, or null when it can. */
   variableProblem(nodeId, variable) {
     const node = this.node(nodeId);
@@ -607,6 +654,10 @@ export class UmrDocument extends DocumentModel {
   async setAttrs(nodeId, attrs) {
     const node = this.node(nodeId);
     if (!node) return false;
+    const refused = this._refused(
+      ...attrs.map((a) => this.relationProblem(a.rel, { nodeId }) || attrValueProblem(a.value)),
+    );
+    if (refused) return false;
     // An attribute keeps its place among the node's children when one with
     // its relation was there before; a new one goes after everything.
     const free = node.attrs.map((a) => ({ rel: a.rel, order: a.order ?? 0 }));
@@ -709,6 +760,7 @@ export class UmrDocument extends DocumentModel {
     const source = this.node(sourceId);
     const target = this.node(targetId);
     if (!source || !target || !role) return false;
+    if (this._refused(this.relationProblem(role))) return false;
     if (source.sentence !== target.sentence) {
       this.setError('An edge joins two nodes of one sentence.');
       return false;
@@ -753,6 +805,7 @@ export class UmrDocument extends DocumentModel {
   async setRole(edgeId, role) {
     const edge = this.edge(edgeId);
     if (!edge || !role || edge.role === role) return false;
+    if (this._refused(this.relationProblem(role, { edgeId }))) return false;
     const label = 'Failed to change the relation';
     if (!this._canWrite(label)) return false;
     // Relabelling a drafted edge settles it, as re-typing a cell does in ud.
@@ -1142,6 +1195,7 @@ export class UmrDocument extends DocumentModel {
     if (!isConst(source) && !s) return false;
     if (!isConst(target) && !t) return false;
     const g = group || groupOf(rel);
+    if (this._refused(this.relationProblem(rel, { group: g }))) return false;
     // Already there, in this direction, or in either for a coreference.
     const same = (x, from, to) => x.rel === rel && x.target === to && x.source === from;
     const there =
@@ -1204,6 +1258,7 @@ export class UmrDocument extends DocumentModel {
   async setTripleRelation(id, rel) {
     const t = this.triple(id);
     if (!t || !rel || t.rel === rel) return false;
+    if (this._refused(this.relationProblem(rel, { tripleId: id }))) return false;
     // The same pair under the same relation, as createTriple refuses it: the
     // node wore the tag twice and the file wrote the triple twice.
     const source = this.node(t.source) || this.constantNode(t.source);
@@ -1447,7 +1502,7 @@ export class UmrDocument extends DocumentModel {
       if (why) errors.push({ message: `${v}: ${why}` });
       node.children.forEach((child) => {
         const bad =
-          relationProblem(child.rel) ||
+          relationFormProblem(child.rel) ||
           (storedRels.has(child.rel) ? null : unknownRelationProblem(child.rel)) ||
           (child.kind === 'node' ? null : attrValueProblem(child.value));
         if (bad) errors.push({ message: `${v}: ${bad}` });

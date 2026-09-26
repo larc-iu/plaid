@@ -367,3 +367,90 @@ test('an apply that makes nothing new is one request', async () => {
     ['batch'],
   );
 });
+
+// The document refuses a relation UMR does not have on every write, not only
+// where a screen asks first. One stored at the very place written (an
+// imported file's) is kept, and one stored on another node or edge is not.
+test('every write refuses an unknown relation, keeping one stored at that place', async () => {
+  const file = FILE.replace(':ARG0 s1p :aspect', ':poss s1p :aspect').replace(
+    ':aspect performance\n    :purpose',
+    ':aspect performance\n    :colour red\n    :purpose',
+  );
+  const { client, calls } = recordingClient();
+  const doc = new UmrDocument({
+    raw: rawFromPlan(planImport(parseUmrFile(file).sentences, [])),
+    client,
+  });
+  let refused = null;
+  doc.onError = (msg) => {
+    refused = msg;
+  };
+  const node = (v) => doc.node(nodeId(doc, v));
+  const leave = node('s1l');
+  const eat = node('s1e');
+  const poss = eat.out.find((e) => e.role === ':poss');
+  const arg0 = leave.out.find((e) => e.role === ':ARG0');
+  assert.ok(poss && arg0 && leave.attrs.some((a) => a.rel === ':colour'));
+
+  assert.equal(doc.relationProblem(':poss', { edgeId: poss.id }), null);
+  assert.equal(doc.relationProblem('poss', { edgeId: arg0.id }), "Unknown relation ':poss'.");
+  assert.equal(doc.relationProblem(':poss'), "Unknown relation ':poss'.");
+  assert.equal(doc.relationProblem(':colour', { nodeId: leave.id }), null);
+  assert.equal(doc.relationProblem(':colour', { nodeId: eat.id }), "Unknown relation ':colour'.");
+  assert.match(doc.relationProblem(':a b'), /letters, digits and hyphens only/);
+  assert.equal(doc.relationProblem(':ARG1-of'), null);
+  assert.equal(doc.relationProblem(':before', { group: 'temporal' }), null);
+  assert.match(doc.relationProblem(':poss', { group: 'temporal' }), /Unknown document-level/);
+
+  const refuses = async (write, why) => {
+    doc.setError(null);
+    refused = null;
+    const before = calls.length;
+    assert.equal(await write(), false);
+    assert.match(refused, why);
+    assert.equal(calls.length, before);
+  };
+  const unknown = /Unknown relation/;
+  await refuses(
+    () => doc.setAttrs(eat.id, [...eat.attrs, { rel: ':colour', value: 'red' }]),
+    unknown,
+  );
+  await refuses(() => doc.setAttrs(eat.id, [{ rel: ':mod', value: 'a"b' }]), /quote/);
+  await refuses(() => doc.setRole(arg0.id, ':poss'), unknown);
+  await refuses(() => doc.createEdge(leave.id, node('s1n').id, ':poss'), unknown);
+  await refuses(
+    () => doc.createNode({ sentenceIndex: 1, concept: 'thing', parentId: leave.id, role: ':poss' }),
+    unknown,
+  );
+  await refuses(
+    () =>
+      doc.createNode({
+        sentenceIndex: 1,
+        concept: 'thing',
+        attrs: [{ rel: ':colour', value: 'x' }],
+      }),
+    unknown,
+  );
+  await refuses(
+    () => doc.createTriple({ source: leave.id, target: eat.id, rel: ':poss', group: 'temporal' }),
+    /Unknown document-level temporal relation/,
+  );
+  const triple = await doc.createTriple({
+    source: leave.id,
+    target: eat.id,
+    rel: ':before',
+    group: 'temporal',
+  });
+  assert.ok(triple);
+  await refuses(() => doc.setTripleRelation(triple, ':poss'), /Unknown document-level/);
+
+  // The node's own unknown attribute is kept through an edit of the others.
+  refused = null;
+  assert.ok(
+    await doc.setAttrs(leave.id, [
+      ...leave.attrs.filter((a) => a.rel !== ':aspect'),
+      { rel: ':aspect', value: 'state' },
+    ]),
+  );
+  assert.equal(refused, null);
+});

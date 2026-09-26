@@ -395,14 +395,14 @@ test('an audit label says what changed, and a relation by both its ends', async 
   const edge = landslide.out.find((e) => e.target === country.id);
   const concept = country.concept;
   assert.equal(await doc.setConcept(country.id, 'nation'), true);
-  assert.equal(await doc.setRole(edge.id, ':location'), true);
+  assert.equal(await doc.setRole(edge.id, ':manner'), true);
   assert.equal(await doc.deleteEdge(edge.id, { subtree: false }), 0);
   assert.deepEqual(
     calls.filter((c) => c.name === 'operation').map((c) => c.args[0]),
     [
       `Change s1c from ${concept} to nation`,
-      `Relabel ${edge.role} from s1l to s1c as :location`,
-      'Delete :location from s1l to s1c',
+      `Relabel ${edge.role} from s1l to s1c as :manner`,
+      'Delete :manner from s1l to s1c',
     ],
   );
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { AttributePopover } from './AttributePopover.jsx';
+import { unknownRelationProblem } from '../../../domain/format/validate.js';
 
 // The picker is portaled out of the mount container (it must escape the
 // canvas, which clips), so everything is looked up in the document.
@@ -17,7 +18,12 @@ describe('AttributePopover', () => {
       { rel: ':quant', value: '3' },
     ];
     const r = await renderComponent(
-      <AttributePopover attrs={attrs} onChange={onChange} onClose={() => {}} />,
+      <AttributePopover
+        attrs={attrs}
+        relationProblem={unknownRelationProblem}
+        onChange={onChange}
+        onClose={() => {}}
+      />,
     );
     expect(pressed()).toEqual(['performance', '-']);
     // The aspect row shows four lines: the top level and the children down
@@ -50,7 +56,12 @@ describe('AttributePopover', () => {
     const onClose = vi.fn();
     const attrs = [{ rel: ':aspect', value: 'state' }];
     const r = await renderComponent(
-      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />,
+      <AttributePopover
+        attrs={attrs}
+        relationProblem={unknownRelationProblem}
+        onChange={onChange}
+        onClose={onClose}
+      />,
     );
     // Focus opens on the current value of the first row.
     expect(document.activeElement.textContent).toBe('state');
@@ -93,7 +104,12 @@ describe('AttributePopover', () => {
     const onClose = vi.fn();
     const attrs = [{ rel: ':aspect', value: 'state' }];
     const r = await renderComponent(
-      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />,
+      <AttributePopover
+        attrs={attrs}
+        relationProblem={unknownRelationProblem}
+        onChange={onChange}
+        onClose={onClose}
+      />,
     );
     const other = document.body.querySelector('.umr-attr-other');
     await r.step(() => other.focus());
@@ -118,7 +134,12 @@ describe('AttributePopover', () => {
     const outside = document.createElement('button');
     document.body.appendChild(outside);
     const r = await renderComponent(
-      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />,
+      <AttributePopover
+        attrs={attrs}
+        relationProblem={unknownRelationProblem}
+        onChange={onChange}
+        onClose={onClose}
+      />,
     );
     const other = document.body.querySelector('.umr-attr-other');
     await r.step(() => other.focus());
@@ -145,7 +166,12 @@ describe('AttributePopover', () => {
     const onChange = vi.fn();
     const onClose = vi.fn();
     const popover = (attrs) => (
-      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />
+      <AttributePopover
+        attrs={attrs}
+        relationProblem={unknownRelationProblem}
+        onChange={onChange}
+        onClose={onClose}
+      />
     );
     const r = await renderComponent(popover([{ rel: ':mod', value: 'x' }]));
     const other = document.body.querySelector('.umr-attr-other');

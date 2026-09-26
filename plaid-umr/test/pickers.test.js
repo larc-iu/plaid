@@ -104,10 +104,18 @@ test('a relation UMR does not have is refused', () => {
   assert.equal(unknownRelationProblem(':possessor'), null);
   assert.equal(unknownRelationProblem(':ARG1-of'), null);
   assert.equal(unknownRelationProblem(':op12'), null);
-  assert.equal(readAttrLine(':colour red').problem, "Unknown relation ':colour'.");
-  assert.equal(readAttrLine(':aspect state').problem, null);
-  // One the node already has (an imported file's) is not refused again.
-  assert.equal(readAttrLine(':colour red', [':colour']).problem, null);
+  // The line asks the document about each relation, which keeps one the node
+  // already stores (UmrDocument.relationProblem, in mutations.test.js).
+  assert.equal(
+    readAttrLine(':colour red', unknownRelationProblem).problem,
+    "Unknown relation ':colour'.",
+  );
+  assert.equal(readAttrLine(':aspect state', unknownRelationProblem).problem, null);
+  assert.equal(readAttrLine(':colour red', () => null).problem, null);
+  assert.deepEqual(readAttrLine(':colour red :quant 2', () => null).attrs, [
+    { rel: ':colour', value: 'red' },
+    { rel: ':quant', value: '2' },
+  ]);
 });
 
 // A document-level relation is a closed set too, per group: the relation

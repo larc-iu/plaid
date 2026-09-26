@@ -15,12 +15,7 @@ import {
   entryLabel,
 } from '../../../domain/vocabLexicon.js';
 import { DOC_RELATIONS, DOC_CONSTANTS } from '../../../domain/format/inventory.js';
-import {
-  conceptProblem,
-  relationProblem,
-  attrValueProblem,
-} from '../../../domain/format/penman.js';
-import { unknownRelationProblem } from '../../../domain/format/validate.js';
+import { conceptProblem, attrValueProblem } from '../../../domain/format/penman.js';
 
 // How a temporal relation reads, child first: the label of `:before` in
 // `(document-creation-time :before s9p)` is "s9p before document-creation-time".
@@ -175,20 +170,19 @@ export const attrsToLine = (attrs) => attrs.map((a) => `${a.rel} ${a.value}`).jo
  * One line of attributes, and why it cannot be read, rather than what a
  * scanner could pick out of it: `:wiki Barack Obama` dropped Obama, and
  * `quant 4`, a forgotten colon, read as nothing and deleted the attribute it
- * was typed over. A relation UMR does not have is refused unless it is one of
- * `kept`, the node's own already (an imported file may carry one).
+ * was typed over. `relationProblem` says why a relation cannot be written on
+ * the node (the document's, which keeps one the node already stores).
  *
  * @returns {{ attrs: {rel: string, value: string}[], problem: string|null }}
  */
-export const readAttrLine = (line, kept = []) => {
+export const readAttrLine = (line, relationProblem) => {
   const attrs = [];
   let rest = String(line ?? '').trim();
   const fail = (problem) => ({ attrs, problem });
   while (rest) {
     const rel = /^(:[^\s]*)(\s+|$)/.exec(rest);
     if (!rel) return fail(`An attribute starts with its relation, after a colon: ${rest}`);
-    const relProblem =
-      relationProblem(rel[1]) || (kept.includes(rel[1]) ? null : unknownRelationProblem(rel[1]));
+    const relProblem = relationProblem(rel[1]);
     if (relProblem) return fail(relProblem);
     rest = rest.slice(rel[0].length);
     const value = /^("(?:[^"\\]|\\.)*"|[^\s]+)(\s+|$)/.exec(rest);

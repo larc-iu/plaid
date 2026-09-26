@@ -145,7 +145,7 @@ test("a person's edit of a drafted node confirms it, on the wire and in the grap
 
 test("a person's edit of a drafted edge confirms it", async () => {
   const cases = {
-    setRole: (doc, e) => doc.setRole(e.id, ':location'),
+    setRole: (doc, e) => doc.setRole(e.id, ':manner'),
     shiftEdge: (doc, e) => doc.shiftEdge(e.id, -1),
   };
   for (const [name, run] of Object.entries(cases)) {
@@ -168,7 +168,7 @@ test('a re-parented edge and a new edge are the writer’s own work', async () =
   const s1 = doc.sentence(1);
   const a = byVar(doc, 's1l');
   const b = byVar(doc, 's1c');
-  const edgeId = await doc.createEdge(a.id, b.id, ':location');
+  const edgeId = await doc.createEdge(a.id, b.id, ':manner');
   assert.ok(edgeId);
   const made = calls.filter((c) => c.name === 'relations.create').at(-1).args[4];
   assert.equal(made[PROV.key], PROV.CONTRIBUTED);

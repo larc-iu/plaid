@@ -18,11 +18,7 @@ import { NodeMenu } from './NodeMenu.jsx';
 import { linkedEntries } from '../../../domain/vocabLexicon.js';
 import { docTagsOf } from '../../../domain/sentenceGraph.js';
 import { PenmanEditor } from './PenmanEditor.jsx';
-import { conceptProblem, relationProblem } from '../../../domain/format/penman.js';
-import {
-  unknownRelationProblem,
-  unknownDocRelationProblem,
-} from '../../../domain/format/validate.js';
+import { conceptProblem } from '../../../domain/format/penman.js';
 import {
   roleOptions,
   normalizeRole,
@@ -1555,6 +1551,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               <AttributePopover
                 nodeId={editor.nodeId}
                 attrs={nodesById.get(editor.nodeId).attrs}
+                relationProblem={(rel) => doc.relationProblem(rel, { nodeId: editor.nodeId })}
                 onChange={(attrs) => doc.setAttrs(editor.nodeId, attrs)}
                 onClose={closeEditor}
               />
@@ -1611,24 +1608,15 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                       : editor.kind === 'concept'
                         ? conceptProblem
                         : editor.kind === 'role'
-                          ? (text) =>
-                              relationProblem(text) ||
-                              // The edge's own role, kept, is not refused again.
-                              (normalizeRole(text) === editor.value
-                                ? null
-                                : unknownRelationProblem(normalizeRole(text)))
+                          ? (text) => doc.relationProblem(text, { edgeId: editor.pending.edgeId })
                           : editor.kind === 'docRole'
                             ? (text) =>
-                                relationProblem(text) ||
-                                // The triple's own relation, kept, is not refused again.
-                                (normalizeRole(text) === editor.value
-                                  ? null
-                                  : unknownDocRelationProblem(
-                                      editor.pending.tripleId
-                                        ? editor.pending.group
-                                        : editor.pending.triple.group,
-                                      normalizeRole(text),
-                                    ))
+                                doc.relationProblem(
+                                  text,
+                                  editor.pending.tripleId
+                                    ? { tripleId: editor.pending.tripleId }
+                                    : { group: editor.pending.triple.group },
+                                )
                             : undefined
                 }
               />

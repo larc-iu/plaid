@@ -29,7 +29,15 @@ const PICKED = [
 // the picker closes it too, and so does a click outside it. Both write the
 // text line first, and a line the file cannot hold keeps the picker open with
 // the reason. Escape gives the line up.
-export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, onClose }) {
+export function AttributePopover({
+  nodeId,
+  width = 470,
+  attrs,
+  sets,
+  relationProblem,
+  onChange,
+  onClose,
+}) {
   const rootRef = useRef(null);
   const place = usePlacement(nodeId, width);
   const byRel = useMemo(() => new Map(attrs.map((a) => [a.rel, a])), [attrs]);
@@ -112,10 +120,7 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // Whether the line is written or needs no writing: false when it is refused.
   const commitOthers = () => {
     const line = lineRef.current.trim();
-    const { attrs: next, problem: why } = readAttrLine(
-      line,
-      others.map((a) => a.rel),
-    );
+    const { attrs: next, problem: why } = readAttrLine(line, relationProblem);
     setProblem(why || null);
     if (why) return false;
     dirtyRef.current = false;
