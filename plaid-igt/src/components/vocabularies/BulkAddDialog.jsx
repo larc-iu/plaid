@@ -309,6 +309,9 @@ export const BulkAddDialog = ({
   tagsetFor = NO_TAGSETS,
   existingItems,
   client,
+  // `send(label, write)` runs the import's writes in their turn behind the
+  // entry saves (see VocabularyItems' sendPlanned).
+  send,
   onImported,
 }) => {
   // An Entry field holds a reference to another entry, which no spreadsheet
@@ -442,35 +445,35 @@ export const BulkAddDialog = ({
     let created = 0;
     let updated = 0;
     setProgress({ done: 0, total, phase: creates.length ? 'adding' : 'updating' });
-    try {
-      await client.withOperation(
-        `Bulk add to ${vocabularyName || 'vocabulary'}`,
-        async (setMessage) => {
-          for (let i = 0; i < creates.length; i += CHUNK) {
-            const chunk = creates.slice(i, i + CHUNK);
-            await client.vocabItems.bulkCreate(
-              chunk.map((c) => ({
-                vocabLayerId: vocabularyId,
-                form: c.form,
-                ...(Object.keys(c.metadata).length ? { metadata: c.metadata } : {}),
-              })),
-            );
-            created += chunk.length;
-            setProgress({ done: created, total, phase: 'adding' });
-          }
-          for (let i = 0; i < updates.length; i += CHUNK) {
-            const chunk = updates.slice(i, i + CHUNK);
-            await client.vocabItems.bulkUpdate(
-              chunk.map((u) => ({ id: u.id, metadata: metadataOps(u.patch) })),
-            );
-            updated += chunk.length;
-            setProgress({ done: created + updated, total, phase: 'updating' });
-          }
-          setMessage(
-            `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
+    const { landed, error } = await send(
+      `Bulk add to ${vocabularyName || 'vocabulary'}`,
+      async (setMessage) => {
+        for (let i = 0; i < creates.length; i += CHUNK) {
+          const chunk = creates.slice(i, i + CHUNK);
+          await client.vocabItems.bulkCreate(
+            chunk.map((c) => ({
+              vocabLayerId: vocabularyId,
+              form: c.form,
+              ...(Object.keys(c.metadata).length ? { metadata: c.metadata } : {}),
+            })),
           );
-        },
-      );
+          created += chunk.length;
+          setProgress({ done: created, total, phase: 'adding' });
+        }
+        for (let i = 0; i < updates.length; i += CHUNK) {
+          const chunk = updates.slice(i, i + CHUNK);
+          await client.vocabItems.bulkUpdate(
+            chunk.map((u) => ({ id: u.id, metadata: metadataOps(u.patch) })),
+          );
+          updated += chunk.length;
+          setProgress({ done: created + updated, total, phase: 'updating' });
+        }
+        setMessage(
+          `Bulk add: ${created} entr${created === 1 ? 'y' : 'ies'} added, ${updated} updated`,
+        );
+      },
+    );
+    if (landed) {
       await onImported();
       notifySuccess(
         [
@@ -482,15 +485,16 @@ export const BulkAddDialog = ({
         'Bulk Add Complete',
       );
       close();
-    } catch (err) {
-      console.error('Bulk add failed:', err);
-      setFailure({
-        message: humanizeError(err, 'The server rejected the import.'),
-        created,
-        updated,
-      });
-      await onImported();
+      return;
     }
+    if (error) console.error('Bulk add failed:', error);
+    setFailure({
+      message: error
+        ? humanizeError(error, 'The server rejected the import.')
+        : 'An edit made before the import was not saved. Nothing was imported.',
+      created,
+      updated,
+    });
   };
 
   // ---- steps -------------------------------------------------------------

@@ -70,6 +70,9 @@ export const ReplaceDialog = ({
   items,
   numbers,
   client,
+  // `send(label, write)` runs the writes in their turn behind the entry
+  // saves (see VocabularyItems' sendPlanned).
+  send,
   onApplied,
 }) => {
   // The form, then every text field. Morph types are a fixed set shown by
@@ -138,11 +141,11 @@ export const ReplaceDialog = ({
     if (!writes.length) return;
     setBusy(true);
     let done = 0;
+    const label = filling
+      ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
+      : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
     try {
-      const label = filling
-        ? `Set ${target.label} to “${repl}” where empty in ${vocabularyName || 'vocabulary'}`
-        : `Replace “${find}” → “${repl}” in ${target.label} of ${vocabularyName || 'vocabulary'}`;
-      await client.withOperation(label, async () => {
+      const { landed, error } = await send(label, async () => {
         for (let i = 0; i < writes.length; i += CHUNK) {
           const chunk = writes.slice(i, i + CHUNK);
           await client.vocabItems.bulkUpdate(chunk);
@@ -150,24 +153,30 @@ export const ReplaceDialog = ({
           setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);
         }
       });
-      await onApplied();
-      notifySuccess(
-        `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.`,
-        filling ? 'Set' : 'Replaced',
-      );
-      setFind('');
-      setRepl('');
-      onOpenChange(false);
-    } catch (err) {
-      console.error('Replace failed:', err);
-      notifyError(
-        humanizeError(
-          err,
-          `Replaced ${done.toLocaleString()} of ${writes.length.toLocaleString()}.`,
-        ),
-        'Replace failed',
-      );
-      await onApplied();
+      if (landed) {
+        await onApplied();
+        notifySuccess(
+          `${plural(writes.length, 'value')} ${filling ? 'set' : 'replaced'} in ${target.label}.`,
+          filling ? 'Set' : 'Replaced',
+        );
+        setFind('');
+        setRepl('');
+        onOpenChange(false);
+      } else if (error) {
+        console.error('Replace failed:', error);
+        notifyError(
+          humanizeError(
+            error,
+            `Replaced ${done.toLocaleString()} of ${writes.length.toLocaleString()}.`,
+          ),
+          'Replace failed',
+        );
+      } else {
+        notifyError(
+          'An edit made before this was not saved. Nothing was replaced.',
+          'Not replaced',
+        );
+      }
     } finally {
       setBusy(false);
       setProgress('');

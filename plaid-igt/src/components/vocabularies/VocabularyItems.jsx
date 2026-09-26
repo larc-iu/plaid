@@ -468,6 +468,24 @@ export const VocabularyItems = ({
       },
     });
 
+  // Bulk Add and Replace: a run of writes planned against the entries as
+  // shown, which can hold a save still on its way. The run takes its turn
+  // behind that save, and is not sent at all when a save before it was
+  // refused, because its plan counted on it. Resolves `{ landed, error }`:
+  // neither landed nor an error means it was not sent. A refusal re-reads the
+  // entries here, the dialog reports it.
+  const sendPlanned = async (label, write) => {
+    let error = null;
+    const landed = await writes.push(() => client.withOperation(label, write), {
+      refused: async (err) => {
+        error = err;
+        dispatch({ type: 'draft/unseed' });
+        await fetchItems({ quiet: true, inTurn: true });
+      },
+    });
+    return { landed, error };
+  };
+
   // The draft as of the latest render, for the async writes below that finish
   // a round trip later and need to know what the form was filled from.
   const draftRef = useRef(draft);
@@ -1136,6 +1154,7 @@ export const VocabularyItems = ({
         tagsetFor={tagsetFor}
         existingItems={items}
         client={client}
+        send={sendPlanned}
         onImported={handleImported}
       />
 
@@ -1150,6 +1169,7 @@ export const VocabularyItems = ({
         items={items}
         numbers={numbers}
         client={client}
+        send={sendPlanned}
         onApplied={handleImported}
       />
 

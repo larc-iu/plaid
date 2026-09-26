@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
@@ -64,7 +64,7 @@ const stub = (items) => {
     calls,
     holds,
     client: {
-      withOperation: (_label, fn) => fn(),
+      withOperation: (_label, fn) => fn(() => {}),
       query: async () => ({ results: [] }),
       vocabLayers: {
         get: async () => ({ id: 'v1', name: 'Lexicon', config: {}, items: structuredClone(items) }),
@@ -73,6 +73,7 @@ const stub = (items) => {
       vocabItems: {
         create: write('create', () => ({ id: 'server-1' })),
         update: write('update', () => ({})),
+        bulkCreate: write('bulkCreate', (specs) => ({ ids: specs.map((_, i) => `bulk-${i}`) })),
         bulkUpdate: write('bulkUpdate', () => ({})),
         patchMetadata: write('patchMetadata', () => ({})),
         setMetadata: write('setMetadata', () => ({})),
@@ -288,5 +289,92 @@ describe('the entry form', () => {
     await view.step(() => button('Save').click());
     expect(hasUnsavedDraft()).toBeNull();
     await view.unmount();
+  });
+});
+
+// Bulk Add and Replace plan against the entries as shown, which can hold a
+// save still on its way. Their writes take their turn behind it, and a plan
+// made over a save the server then refused is not sent.
+describe('Bulk Add and Replace', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const kinds = (calls) => calls.map(([kind]) => kind);
+  const replaceEdit = async (view) => {
+    await view.step(() => button('Replace').click());
+    await view.step(() => setValue(document.getElementById('vocab-replace-find'), 'EDIT'));
+    await view.step(() => setValue(document.getElementById('vocab-replace-with'), 'X'));
+    await view.step(async () => {
+      button('Replace 1 value').click();
+      await settle();
+    });
+  };
+  const bulkAdd = async (view) => {
+    await view.step(() => button('Bulk Add').click());
+    await view.step(() => setValue(document.querySelector('textarea'), 'dos\ttwo\ntres\tthree'));
+    await view.step(() => button('Next: columns').click());
+    await view.step(() => button('Next: review').click());
+    await view.step(async () => {
+      button('Add 2').click();
+      await settle();
+    });
+  };
+  let mounted = null;
+  afterEach(async () => {
+    await mounted?.unmount();
+    mounted = null;
+  });
+  const saving = async () => {
+    const stubbed = stub([{ id: 'a', form: 'uno' }]);
+    const held = deferred();
+    stubbed.holds.push(held);
+    const view = await mount(stubbed.client, '/vocabularies/v1?item=a');
+    mounted = view;
+    await view.step(() => setValue(formInput(), 'uno-EDIT'));
+    await view.step(() => button('Save').click());
+    return { ...stubbed, held, view };
+  };
+
+  it('sends a Replace behind a save still on its way', async () => {
+    const { calls, held, view } = await saving();
+    await replaceEdit(view);
+    expect(kinds(calls)).toEqual(['bulkUpdate']);
+    await view.step(async () => {
+      held.resolve();
+      await settle();
+    });
+    expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkUpdate']);
+    expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
+  });
+
+  it('does not send a Replace planned over a save that was refused', async () => {
+    const { calls, held, view } = await saving();
+    await replaceEdit(view);
+    await view.step(async () => {
+      held.reject(new Error('refused'));
+      await settle();
+    });
+    expect(kinds(calls)).toEqual(['bulkUpdate']);
+  });
+
+  it('sends a Bulk Add behind a save still on its way', async () => {
+    const { calls, held, view } = await saving();
+    await bulkAdd(view);
+    expect(kinds(calls)).toEqual(['bulkUpdate']);
+    await view.step(async () => {
+      held.resolve();
+      await settle();
+    });
+    expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkCreate']);
+  });
+
+  it('does not send a Bulk Add planned over a save that was refused', async () => {
+    const { calls, held, view } = await saving();
+    await bulkAdd(view);
+    await view.step(async () => {
+      held.reject(new Error('refused'));
+      await settle();
+    });
+    expect(kinds(calls)).toEqual(['bulkUpdate']);
   });
 });
