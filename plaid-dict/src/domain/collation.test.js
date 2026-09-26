@@ -203,6 +203,36 @@ describe('suggestAlphabet', () => {
     // A listed digraph the ligature spells is still one unit.
     expect(splitGraphemes('\uFB01la', parseAlphabet('a f fi l'))).toEqual(['fi', 'l', 'a']);
   });
+
+  it('keeps the mark a ligature carries when it files it as its letters', () => {
+    // The ligature \u01C6 is d with \u017E. Folding it whole lost the caron.
+    const withDigraph = parseAlphabet('a d d\u017E e m z \u017E');
+    expect(splitGraphemes('\u01C6em', withDigraph)).toEqual(['d\u017E', 'e', 'm']);
+    const collator = alphabetCollator(withDigraph);
+    expect(collator.letterOf('\u01C6em')).toBe('D\u017E');
+    expect(['d\u017Eem', 'dzem', '\u01C6em'].sort(collator.compare)).toEqual([
+      'dzem',
+      'd\u017Eem',
+      '\u01C6em',
+    ]);
+    expect(outsideAlphabet(['\u01C6em'], withDigraph)).toEqual([]);
+    // Only the caron letter listed: d then \u017E, not d then z.
+    expect(splitGraphemes('\u01C6em', parseAlphabet('a d e m z \u017E'))).toEqual([
+      'd',
+      '\u017E',
+      'e',
+      'm',
+    ]);
+    // A listed dz does not take it either.
+    expect(splitGraphemes('\u01C6em', parseAlphabet('a d dz d\u017E e m'))).toEqual([
+      'd\u017E',
+      'e',
+      'm',
+    ]);
+    // Uppercase and titlecase forms of the ligature file the same way.
+    expect(splitGraphemes('\u01C4em', withDigraph)).toEqual(['d\u017E', 'e', 'm']);
+    expect(splitGraphemes('\u01C5em', withDigraph)).toEqual(['d\u017E', 'e', 'm']);
+  });
 });
 
 describe('isLetterCluster', () => {

@@ -122,15 +122,17 @@ export const splitGraphemes = (form, units) => {
       at += span.get(unit) ?? 1;
       continue;
     }
-    // No unit as written. Try the character's base form, so an accented letter
-    // files under the letter the alphabet does list.
-    const folded = foldChar(chars[at]);
-    if (!order.includes(folded) && splitClusters(folded).length > 1) {
-      // A compatibility form that stands for several letters (the ligature
-      // `ﬁ`) is filed as those letters. Folding again leaves them as they
-      // are, so this goes one level deep.
-      out.push(...splitGraphemes(folded, units));
+    // No unit as written. A compatibility form that stands for several
+    // letters (the ligature `ﬁ`, or `ǆ` with its caron) is filed as those
+    // letters, marks kept, before any folding. NFKC leaves them as they are,
+    // so this goes one level deep.
+    const compat = chars[at].normalize('NFKC');
+    if (splitClusters(compat).length > 1) {
+      out.push(...splitGraphemes(compat, units));
     } else {
+      // Try the character's base form, so an accented letter files under the
+      // letter the alphabet does list.
+      const folded = foldChar(chars[at]);
       out.push(order.includes(folded) ? folded : chars[at]);
     }
     at += 1;
