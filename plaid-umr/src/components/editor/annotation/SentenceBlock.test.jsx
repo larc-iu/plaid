@@ -307,3 +307,66 @@ describe('SentenceBlock review', () => {
     await r.unmount();
   });
 });
+
+describe('SentenceBlock node menu', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const nodeEl = (root, concept) =>
+    all(root, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === concept,
+    );
+
+  // The menu hands focus back only once it has really gone, after its exit
+  // animation. The action it ran may have moved focus by then: a delete
+  // hands it to the parent. Handing it to the node the menu was opened on
+  // named a node that no longer exists, so nothing was focused and every key
+  // went to the page.
+  it('leaves focus on the parent after deleting a node from its menu', async () => {
+    const { sentence, nodesById } = fixture();
+    const deleted = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canConfirm: () => false,
+      orphanedBy: () => [],
+      deleteNode: (id) => deleted.push(id),
+    };
+    const props = { doc, dataVersion: 1, readOnly: false };
+    const r = await renderComponent(
+      <SentenceBlock {...props} sentence={sentence} nodesById={nodesById} />,
+    );
+    await r.step(() =>
+      nodeEl(r.container, 'eat-01').dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+      ),
+    );
+    const item = all(document, '[role="menuitem"]').find((m) =>
+      m.textContent.includes('Delete node and all below it'),
+    );
+    await r.step(() => item.click());
+    expect(deleted).toEqual(['n3']);
+    // The document without the node, as the next render has it.
+    const eat = nodesById.get('n3');
+    const leave = nodesById.get('n1');
+    const after = new Map([...nodesById].filter(([id]) => id !== 'n3'));
+    after.set('n1', { ...leave, out: leave.out.filter((e) => e.target !== 'n3') });
+    await r.rerender(
+      <SentenceBlock
+        {...props}
+        dataVersion={2}
+        nodesById={after}
+        sentence={{
+          ...sentence,
+          nodes: sentence.nodes.filter((n) => n !== eat),
+          edges: sentence.edges.filter((e) => e.source !== 'n3' && e.target !== 'n3'),
+          roots: [after.get('n1')],
+        }}
+      />,
+    );
+    // The menu's close, then the frame it waits for.
+    await r.step(() => wait(100));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(nodeEl(r.container, 'leave-02'));
+    expect(texts(r.container, '.umr-node--focused .umr-node-concept')).toEqual(['leave-02']);
+    await r.unmount();
+  });
+});

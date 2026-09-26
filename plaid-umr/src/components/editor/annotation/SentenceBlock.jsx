@@ -161,9 +161,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // The node menu: which node it is about and where it was asked for, in
   // graph coordinates.
   const [menu, setMenu] = useFollowedState(null);
-  // The node the open menu is about, readable once `menu` itself has been
-  // cleared (the menu closes before it hands focus on).
-  const menuNodeRef = useRef(null);
+  // The node the block last handed focus to, or that took it. The menu hands
+  // focus back only after its exit animation, by which time the action it ran
+  // may have moved focus on (a delete hands it to the parent), so it reads
+  // this then and not the node it was opened on.
+  const focusTargetRef = useRef(null);
+  const takeFocus = useCallback(
+    (id) => {
+      focusTargetRef.current = id;
+      setFocusedId(id);
+    },
+    [setFocusedId],
+  );
   // How far the canvas has scrolled sideways, on the stage's own physical
   // axis (stageLeftOffset). The margin sticks to the visible left edge, so a
   // line to a constant ends where the chip is seen.
@@ -404,10 +413,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const focusNode = useCallback(
     (id) => {
       if (!id) return;
-      setFocusedId(id);
+      takeFocus(id);
       nodeRefs.current.get(followIds(id))?.focus();
     },
-    [nodeRefs, setFocusedId],
+    [nodeRefs, takeFocus],
   );
 
   // A node just made is in the document before React has drawn it, so its
@@ -686,7 +695,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // block, on the section itself, so the page does not jump and the next
   // click or key starts from here.
   const unfocus = () => {
-    setFocusedId(null);
+    takeFocus(null);
     sectionRef.current?.focus({ preventScroll: true });
   };
 
@@ -820,7 +829,6 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const openMenu = (id, clientX, clientY) => {
     if (readOnly || mode) return;
     focusNode(id);
-    menuNodeRef.current = id;
     setMenu({ id, ...graphPoint(clientX, clientY) });
   };
 
@@ -1442,7 +1450,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 focused={shownFocusId === node.id}
                 dropTarget={overNodeId === node.id}
                 modeTarget={!!mode && mode.nodeId !== node.id && mode.kind !== 'anchor'}
-                onFocus={setFocusedId}
+                onFocus={takeFocus}
                 onClick={clickNode}
                 onGripPointerDown={
                   readOnly ? null : (e) => startDrag('edge', { sourceId: node.id }, e)
@@ -1517,8 +1525,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               onAction={(action) => runAction(action, menu.id)}
               onClose={() => setMenu(null)}
               // Once the menu has gone: whatever it opened takes focus, and
-              // failing that the node, so a mode's Escape and the next
-              // shortcut reach the block.
+              // failing that the node the block last focused, so a mode's
+              // Escape and the next shortcut reach the block.
               onClosed={() =>
                 requestAnimationFrame(() => {
                   // The inline editor is in place, the attribute picker is
@@ -1530,7 +1538,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   const picker = document.querySelector('.umr-attr-popover');
                   if (input) input.focus();
                   else if (picker) focusValue(picker);
-                  else focusNode(menuNodeRef.current);
+                  else focusNode(focusTargetRef.current);
                 })
               }
             />
