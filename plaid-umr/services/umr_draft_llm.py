@@ -49,7 +49,7 @@ from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_ser
 from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, build_draft_notice,
                                         gloss_values, next_variable, parse_penman,
                                         project_language, read_document, resolve_layers,
-                                        write_graphs)
+                                        unknown_relation_problem, write_graphs)
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
 
@@ -286,7 +286,8 @@ def edge_only(rel: str, concept: str) -> bool:
 def validate_graph(graph) -> Optional[str]:
     """What is wrong with a parsed graph, in one line for the requester, or
     None. Everything here would otherwise land as an unreadable node the
-    annotator has to find and delete."""
+    annotator has to find and delete. A relation UMR does not have is refused
+    with the inventory's own check, the one the assistant's guard uses."""
     if graph.errors:
         return graph.errors[0].message
     if not graph.root or graph.root not in graph.nodes:
@@ -297,6 +298,9 @@ def validate_graph(graph) -> Optional[str]:
         for child in node.children:
             if not str(child.rel).startswith(':'):
                 return f"The relation {child.rel} on {var} does not start with a colon."
+            unknown = unknown_relation_problem(child.rel)
+            if unknown:
+                return unknown
             if child.kind == 'node' and child.value not in graph.nodes:
                 return f"{var} {child.rel} names {child.value}, which no node defines."
             if child.kind != 'node' and edge_only(child.rel, node.concept):

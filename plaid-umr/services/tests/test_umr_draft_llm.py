@@ -493,6 +493,16 @@ def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
     ('(v1 / bark-01 :manner s1Y)\n\n# alignment:\nv1: 3-3\n', ':manner takes a node'),
     ('(v1 / bark-01 :temporal s1Y)\n\n# alignment:\nv1: 3-3\n', ':temporal takes a node'),
     ('(v1 / dog :possessor s1Y)\n\n# alignment:\nv1: 2-2\n', ':possessor takes a node'),
+    # A relation UMR does not have is refused as the app and the assistant
+    # refuse it, edge or value, and the reason names the likeliest one meant.
+    ('(v1 / dog :poss (v2 / person))\n\n# alignment:\nv1: 2-2\nv2: 0-0\n',
+     "Unknown relation ':poss': UMR has no such relation. Did you mean :possessor?"),
+    ('(v1 / person :poss-of (v2 / dog))\n\n# alignment:\nv1: 0-0\nv2: 2-2\n',
+     "Unknown relation ':poss-of'"),
+    ('(v1 / bark-01 :polarityy -)\n\n# alignment:\nv1: 3-3\n',
+     "Unknown relation ':polarityy'"),
+    ('(v1 / dog :refer-numbr singular)\n\n# alignment:\nv1: 2-2\n',
+     'Did you mean :refer-number?'),
 ])
 def test_a_malformed_answer_is_counted_and_named_rather_than_written(reply, fragment):
     service = _service(model=_Model([reply]))
@@ -672,6 +682,14 @@ def test_an_alignment_line_that_cannot_be_read_leaves_its_node_unaligned():
 
 def test_a_roleset_that_takes_a_value_as_its_argument_is_drafted():
     reply = '(v1 / have-polarity-91 :ARG1 (v2 / dog) :ARG2 -)\n\n# alignment:\nv1: 0-0\nv2: 2-2\n'
+    service = _service(model=_Model([reply]))
+    [result] = servicetest.run(service, REQUEST).results
+    assert (result['drafted'], result['failed']) == (1, 0)
+
+
+def test_a_numbered_op_and_an_inverse_role_are_known_relations():
+    reply = ('(v1 / and :op1 (v2 / dog) :op3 (v3 / cat :ARG0-of (v4 / bark-01)))'
+             '\n\n# alignment:\nv1: 0-0\nv2: 2-2\nv3: 0-0\nv4: 3-3\n')
     service = _service(model=_Model([reply]))
     [result] = servicetest.run(service, REQUEST).results
     assert (result['drafted'], result['failed']) == (1, 0)
