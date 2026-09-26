@@ -42,6 +42,7 @@ import {
   statusFieldKey,
   itemLabel,
 } from '@/domain/vocabDictionary';
+import { dropPrecedent } from '@/domain/precedentCache';
 import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { writeTracker } from './writeTracker.js';
@@ -795,7 +796,12 @@ export const VocabularyItems = ({
       `Delete entry "${selectedItem.form}"`,
       async () => {
         if (patches.length) await bulkRepoint(patches, before);
-        await client.vocabItems.delete(settledId(deletedId));
+        try {
+          await client.vocabItems.delete(settledId(deletedId));
+        } finally {
+          // Its links go with it, in documents no editor has open.
+          dropPrecedent();
+        }
       },
       'Failed to delete the entry',
     );

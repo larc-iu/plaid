@@ -26,6 +26,11 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
 }));
 vi.mock('@ui/components/assistant/useDock.js', () => ({ useWideEnoughToDock: () => false }));
 
+// The entry's links go with it, in every document, so the project precedent
+// reads an editor took before (precedentCache.js) are dropped.
+const precedent = vi.hoisted(() => ({ dropPrecedent: vi.fn() }));
+vi.mock('@/domain/precedentCache', () => precedent);
+
 const auth = vi.hoisted(() => ({ client: null, user: { id: 'u', isAdmin: true } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
@@ -105,6 +110,7 @@ describe('deleting an entry other entries point at', () => {
     await view.step(() => confirm.click());
 
     expect(calls.deleted).toEqual(['head']);
+    expect(precedent.dropPrecedent).toHaveBeenCalled();
     // Six entries repointed, one request.
     expect(calls.bulkUpdate).toHaveLength(1);
     expect(calls.bulkUpdate[0].map((u) => u.id).sort()).toEqual([

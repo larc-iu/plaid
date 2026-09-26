@@ -14,6 +14,7 @@
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { readIgnoredTokens } from '@/domain/igtConfig';
 import { chunk } from '@/domain/bulk';
+import { dropPrecedent } from '@/domain/precedentCache';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
   collectRespellRows,
@@ -23,6 +24,18 @@ import {
   collectLinksToMove,
   respellOps,
 } from './bulkPlan.js';
+
+// Every apply, under one operation. The writes reach documents no editor has
+// open, so the project precedent reads an editor took before them (the
+// guesses, the lexicon popover's ranking) are dropped, whether the writes
+// all landed or not.
+async function writeAcrossDocuments(client, label, fn) {
+  try {
+    return await client.withOperation(label, fn);
+  } finally {
+    dropPrecedent();
+  }
+}
 
 // Documents with at least one server-side match for `domain`/`spec`, busiest
 // first: [[docId, count], ...].
@@ -102,7 +115,7 @@ export async function applyRespell(
   const formPatches = (part) =>
     part.map((m) => ({ id: m.id, metadata: [{ op: 'set', path: ['form'], value: m.new }] }));
 
-  await client.withOperation(label, async () => {
+  await writeAcrossDocuments(client, label, async () => {
     for (const docRows of byDoc.values()) {
       const textId = docRows[0].textId;
       const morphPatches = includeMorphemes ? docRows.flatMap((r) => r.morphemes) : [];
@@ -145,7 +158,7 @@ export async function applyField(client, { rows }, { label }) {
   let changed = 0;
   const morphRows = rows.filter((r) => r.kind === 'morphForm');
   const spanRows = rows.filter((r) => r.kind !== 'morphForm');
-  await client.withOperation(label, async () => {
+  await writeAcrossDocuments(client, label, async () => {
     for (const part of chunk(spanRows)) {
       await client.spans.bulkUpdate(part.map((r) => ({ id: r.id, value: r.new })));
       changed += part.length;
@@ -193,7 +206,7 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
   const docById = new Map(docs.map((d) => [d.id, d]));
   let changed = 0;
   let failedDoc = null;
-  await client.withOperation(label, async () => {
+  await writeAcrossDocuments(client, label, async () => {
     for (const [docId, docRows] of byDoc) {
       const doc = docById.get(docId);
       if (!doc) continue;
@@ -257,7 +270,7 @@ export async function applyMerge(
     if (!byDoc.has(l.docId)) byDoc.set(l.docId, []);
     byDoc.get(l.docId).push(l);
   }
-  await client.withOperation(label, async () => {
+  await writeAcrossDocuments(client, label, async () => {
     for (const docLinks of byDoc.values()) {
       for (const part of chunk(docLinks)) {
         await client.vocabLinks.bulkCreate(
