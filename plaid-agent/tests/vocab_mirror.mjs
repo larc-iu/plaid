@@ -6,8 +6,22 @@
 // stdout. Every key here has a counterpart in the Python runner; a key added
 // on one side and not the other fails the test rather than passing quietly.
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { registerHooks } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
+
+// plaid-igt's domain code imports through the app's `@ui` alias
+// (affixMarkers.js, reached from vocabDictionary.js), mapped here to
+// plaid-ui's source as vite maps it.
+const UI = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-ui/src');
+registerHooks({
+  resolve(specifier, context, next) {
+    if (specifier.startsWith('@ui/')) {
+      return next(pathToFileURL(resolve(UI, specifier.slice(4))).href, context);
+    }
+    return next(specifier, context);
+  },
+});
 
 const DOMAIN = resolve(dirname(fileURLToPath(import.meta.url)), '../../plaid-igt/src/domain');
 const dictMod = await import(`${DOMAIN}/vocabDictionary.js`);
