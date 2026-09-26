@@ -25,6 +25,7 @@ import {
   lexicalFlagsOf,
   boundByPieces,
   morphemeGlossReading,
+  glossReadingOf,
   readingTagset,
   glossMorphemes,
   offTagsetParts,
@@ -631,6 +632,88 @@ describe('the unit a gloss is read in', () => {
       ],
     };
     expect(analysisViolations(analysis, tagsetFor).map((v) => v.value)).toEqual(['sbj:3.pfv']);
+  });
+});
+
+describe('a value known only by its own morph type', () => {
+  const mixed = { delimiters: '.:-=', mode: 'mixed', values: [{ value: 'PST' }, { value: '3' }] };
+  const suffix = glossReadingOf('suffix', 'ti');
+
+  it("reads an affix's, a clitic's and a zero morph's gloss as the grid does", () => {
+    expect(suffix).toEqual({ bound: true, beside: [] });
+    expect(glossReadingOf('enclitic', 'ka')).toEqual({ bound: true, beside: [] });
+    expect(glossReadingOf(null, '∅')).toEqual({ bound: true, beside: [] });
+    expect(glossReadingOf('stem', '')).toEqual({ bound: true, beside: [] });
+  });
+
+  it("reads a stem's, an untyped morpheme's and a formless morpheme's alone", () => {
+    expect(glossReadingOf('stem', 'pa')).toBeUndefined();
+    expect(glossReadingOf(null, 'pa')).toBeUndefined();
+    expect(glossReadingOf('root', null)).toBeUndefined();
+    expect(glossReadingOf(undefined)).toBeUndefined();
+  });
+
+  it("counts only a suffix's occurrences of a value a stem's pass", () => {
+    const attested = [
+      ['sbj:3.pfv', 9],
+      ['sbj:3.pfv', 4, suffix],
+      ['pass.PST', 2, suffix],
+    ];
+    expect(offTagsetValues(attested, mixed)).toEqual([
+      {
+        value: 'sbj:3.pfv',
+        count: 4,
+        violations: [
+          { part: 'sbj', begin: 0, end: 3, reason: 'unknown' },
+          { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
+        ],
+      },
+      {
+        value: 'pass.PST',
+        count: 2,
+        violations: [{ part: 'pass', begin: 0, end: 4, reason: 'unknown' }],
+      },
+    ]);
+  });
+
+  it('merges one value failing under two readings into one row', () => {
+    const closedish = { ...mixed, values: [{ value: 'PST' }] };
+    expect(
+      offTagsetValues(
+        [
+          ['sbj:3.pfv', 9],
+          ['sbj:3.pfv', 4, suffix],
+        ],
+        closedish,
+      ),
+    ).toEqual([
+      {
+        value: 'sbj:3.pfv',
+        count: 13,
+        violations: [
+          { part: 'sbj', begin: 0, end: 3, reason: 'unknown' },
+          { part: '3', begin: 4, end: 5, reason: 'unknown' },
+          { part: 'pfv', begin: 6, end: 9, reason: 'unknown' },
+        ],
+      },
+    ]);
+  });
+
+  it("files a suffix's lower-case abbreviations with the tags when seeding", () => {
+    const fresh = { delimiters: '.:', mode: 'suggest', values: [] };
+    expect(seedCandidates([['sbj:3.pfv', 1, suffix]], fresh)).toEqual({
+      tags: [{ value: '3' }, { value: 'pfv' }, { value: 'sbj' }],
+      lexical: [],
+    });
+    expect(seedCandidates([['sbj:3.pfv', 1]], fresh)).toEqual({
+      tags: [{ value: '3' }],
+      lexical: [{ value: 'pfv' }, { value: 'sbj' }],
+    });
+    expect(offTagsetParts([['sbj:3.pfv', 2, suffix]], { ...fresh, mode: 'mixed' })).toEqual([
+      { part: '3', count: 2 },
+      { part: 'pfv', count: 2 },
+      { part: 'sbj', count: 2 },
+    ]);
   });
 });
 

@@ -34,7 +34,7 @@
 // off-tagset values. That is what the violations view is for: closed means
 // "closed to typing here", and the way you find out otherwise is by looking.
 
-import { canNameWord } from './affixMarkers.js';
+import { canNameWord, isBoundType } from './affixMarkers.js';
 import { IGT_NAMESPACE } from './igtConfig.js';
 
 const str = (v) => (typeof v === 'string' ? v : '');
@@ -92,7 +92,9 @@ export const EMPTY_TAGSET = Object.freeze({
  * its stems' (or the word's own gloss, read alone). An affix's, a clitic's
  * or a zero morph's gloss is read by the lenient reading with no fall-back,
  * so a suffix glossed sbj:3.pfv is all tags. A value read with no morph type
- * beside it (a word's cell, a free-standing value) is a stem's or a word's.
+ * beside it (a word's cell, a sentence's, a document's) is a stem's or a word's.
+ * A value known only by its own morph type (an aggregate count, a lexicon
+ * entry) is read by glossReadingOf.
  * The UMR skeleton reads glosses by the same rule
  * (plaid_client.workflows.igt.glossing, with a mirror test).
  */
@@ -250,6 +252,23 @@ export const morphemeGlossReading = (morphemes, i) => {
       .filter((g) => g.trim()),
   };
 };
+
+const BOUND_READING = Object.freeze({ bound: true, beside: Object.freeze([]) });
+
+/**
+ * The reading of a gloss known only by its own morpheme's morph type and form,
+ * with none of its word's other glosses beside it: an aggregate count of a
+ * morpheme field's values, or a lexicon entry's field. An affix's, a clitic's
+ * or a zero morph's gloss is read as morphemeGlossReading reads it, and any
+ * other is read alone, as a one-morpheme word's stem. `form` null means the
+ * morpheme states none (it shows its word's text, so it can name the word).
+ * Undefined, the reading of a stem's or a word's gloss, when the gloss can
+ * name its word.
+ */
+export const glossReadingOf = (morphType, form = null) =>
+  isBoundType(morphType) || (typeof form === 'string' && !canNameWord(morphType, form))
+    ? BOUND_READING
+    : undefined;
 
 // --- reading config --------------------------------------------------------
 
@@ -633,9 +652,11 @@ export const tagsetEnforces = (tagset) => !!tagset && tagset.mode !== MODES.SUGG
 // --- inventory: seeding and violations -------------------------------------
 
 /**
- * Given the field's attested values (the [value, count] rows a frequency query
- * returns over its span layer), the parts that are NOT in the tagset, most
- * frequent first: [{ part, count }].
+ * Given the field's attested values (the [value, count, reading] rows a
+ * frequency query returns over its span layer, `reading` being how the grid
+ * reads the value: glossReadingOf for a morpheme field's, absent for any
+ * other), the parts that are NOT in the tagset, most frequent first:
+ * [{ part, count }].
  *
  * Used by "add values used in this project", which turns these into value
  * records. Its sibling offTagsetValues answers the other question — which
@@ -652,9 +673,9 @@ const readOffTagsetParts = (attested, tagset) => {
   if (!tagset) return [];
   const counts = new Map();
   const lexical = new Map();
-  for (const [value, n] of attested || []) {
+  for (const [value, n, reading] of attested || []) {
     const parts = scanValue(value ?? '', tagset.delimiters);
-    const flags = lexicalFlagsOf(value ?? '', parts);
+    const flags = lexicalFlagsOf(value ?? '', parts, reading ?? undefined);
     parts.forEach((p, i) => {
       const text = p.text.trim();
       if (!text || tagsetHas(tagset, text)) return;
@@ -681,12 +702,27 @@ const readOffTagsetParts = (attested, tagset) => {
  */
 export const offTagsetValues = (attested, tagset) => {
   if (!tagset) return [];
-  const out = [];
-  for (const [value, n] of attested || []) {
-    const violations = validateValue(value ?? '', tagset);
-    if (violations.length) out.push({ value: value ?? '', count: n || 0, violations });
+  // One row per value. A value attested under two readings (a stem's and a
+  // suffix's) counts only the occurrences that fail, with every part that
+  // fails under any of them.
+  const byValue = new Map();
+  for (const [raw, n, reading] of attested || []) {
+    const value = raw ?? '';
+    const violations = validateValue(value, readingTagset(tagset, reading));
+    if (!violations.length) continue;
+    const row = byValue.get(value);
+    if (!row) {
+      byValue.set(value, { value, count: n || 0, violations });
+      continue;
+    }
+    row.count += n || 0;
+    const seen = new Set(row.violations.map((v) => `${v.begin}:${v.end}:${v.reason}`));
+    row.violations = [
+      ...row.violations,
+      ...violations.filter((v) => !seen.has(`${v.begin}:${v.end}:${v.reason}`)),
+    ].sort((a, b) => a.begin - b.begin);
   }
-  return out.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+  return [...byValue.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 };
 
 /** Those parts as value records, ready to append to a tagset's `values`. */

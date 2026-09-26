@@ -116,3 +116,56 @@ describe('the project tagsets section', () => {
     await unmount();
   });
 });
+
+describe('the values a seed reads', () => {
+  it("carry a morpheme's morph type reading, merged across the fields that use the tagset", async () => {
+    const leipzig = { delimiters: '.:', mode: 'suggest', values: [] };
+    const project = {
+      id: 'p-1',
+      config: {
+        igt: {
+          tagsets: { Leipzig: leipzig },
+          documentMetadata: [{ name: 'Tag', tagset: 'Leipzig' }],
+        },
+      },
+      textLayers: [
+        {
+          id: 'tl-1',
+          config: { plaid: { role: 'baseline' } },
+          tokenLayers: [
+            {
+              id: 'ml-1',
+              config: { plaid: { role: 'morpheme' } },
+              spanLayers: [
+                {
+                  id: 'msl',
+                  name: 'Gloss',
+                  config: { igt: { scope: 'Morpheme', tagset: 'Leipzig' } },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const client = {
+      query: vi.fn(async (q) => ({
+        results: q.scope
+          ? [['sbj:3.pfv', 2]]
+          : [
+              ['sbj:3.pfv', 'suffix', 'ti', 4],
+              ['sbj:3.pfv', 'stem', 'sa', 1],
+            ],
+      })),
+    };
+    const { unmount } = await renderComponent(
+      <TagsetsSettings project={project} projectId="p-1" client={client} />,
+    );
+    const rows = await tagsetsManager.props.onLoadAttested('Leipzig');
+    expect(rows).toEqual([
+      ['sbj:3.pfv', 4, { bound: true, beside: [] }],
+      ['sbj:3.pfv', 3, undefined],
+    ]);
+    await unmount();
+  });
+});

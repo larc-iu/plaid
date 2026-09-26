@@ -158,6 +158,47 @@ describe('the scan', () => {
   });
 });
 
+describe('a morpheme field', () => {
+  // A mixed Leipzig tagset: the grid holds a suffix's sbj:3.pfv to the list and
+  // lets a stem's through, and so must the scan.
+  const mixed = {
+    ...project,
+    config: {
+      igt: {
+        ...project.config.igt,
+        tagsets: { ...project.config.igt.tagsets, Leipzig: { ...LEIPZIG, mode: 'mixed' } },
+      },
+    },
+  };
+
+  it("asks for each value's morph type and form, and flags only a suffix's occurrences", async () => {
+    const client = clientWith([
+      [
+        ['sbj:3.pfv', 'stem', 'sa', 9],
+        ['sbj:3.pfv', 'suffix', 'ti', 4],
+        ['go.PL', 'stem', 'ka', 6],
+      ],
+      [['Song', 4]],
+    ]);
+    const { container, unmount } = await renderComponent(
+      <MemoryRouter>
+        <ProjectValidation project={mixed} projectId="p-1" client={client} />
+      </MemoryRouter>,
+    );
+    expect(client.query.mock.calls[0][0].return.group).toEqual([
+      '?val',
+      '?t.metadata.morphType',
+      '?t.metadata.form',
+    ]);
+    expect(container.textContent).toContain('sbj:3.pfv');
+    expect(container.textContent).toContain('4 occurrences');
+    expect(container.textContent).toContain('"sbj:3", "pfv" not in the tagset');
+    expect(container.textContent).toContain('2 distinct values');
+    expect(container.textContent).not.toContain('go.PL');
+    await unmount();
+  });
+});
+
 describe('what it offers to do about a violation', () => {
   it('gives both remedies: add the tag, or go fix the values', async () => {
     // Which one is right is a judgement about the data, so it offers both

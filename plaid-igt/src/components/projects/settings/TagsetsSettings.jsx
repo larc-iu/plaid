@@ -4,14 +4,7 @@ import { notifyError } from '@/utils/feedback';
 import { IGT_NAMESPACE, readDocumentMetadata } from '@/domain/igtConfig';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { byTagsetName, governedFields, readTagsets } from '@/domain/tagsets';
-import { freqQueries, metadataFreqQuery } from '../search/searchQueries.js';
-
-// Every span in a layer, regardless of value. The REGEXP UDF matches on
-// CONTAINS (plaid-core sql/query/exec.clj), so "." means "has at least one
-// character" — the same spec the orthography usage count uses. Clearing a cell
-// deletes its span (domain/mutations/spans.js), so no real annotation has an
-// empty value to miss.
-const ANY_VALUE = { regex: '.' };
+import { loadAttested, mergeAttested } from '../validate/attested.js';
 
 // Everything here is derived from the LIVE project rather than a private fetch.
 // `usage` (which fields point at which tagset) changes when the field table
@@ -83,30 +76,14 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     }
   };
 
-  // The [value, count] rows actually present in the fields using this tagset,
-  // merged. One aggregate query per field: the server returns the field's whole
+  // The [value, count, reading] rows actually present in the fields using
+  // this tagset, merged (see attested.js). One aggregate query per field: the server returns the field's whole
   // value inventory, so nothing has to load a document to find out what is
   // there. This is what the seed button and (later) the violations view read.
   const handleLoadAttested = async (name) => {
     const fields = byName[name] || [];
     if (!fields.length) return [];
-    const results = await Promise.all(
-      fields.flatMap((g) =>
-        g.kind === 'metadata'
-          ? [client.query(metadataFreqQuery(projectId, g.field))]
-          : freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
-              client.query(q),
-            ),
-      ),
-    );
-    const counts = new Map();
-    for (const r of results) {
-      for (const [value, n] of r?.results || []) {
-        if (typeof value !== 'string') continue;
-        counts.set(value, (counts.get(value) || 0) + (n || 0));
-      }
-    }
-    return [...counts.entries()];
+    return mergeAttested(await Promise.all(fields.map((g) => loadAttested(client, projectId, g))));
   };
 
   return (

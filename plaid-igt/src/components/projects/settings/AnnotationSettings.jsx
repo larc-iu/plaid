@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
-import { freqQueries, metadataFreqQuery } from '../search/searchQueries.js';
+import { loadAttested } from '../validate/attested.js';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
 import { FieldsSettings } from './FieldsSettings.jsx';
 import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
-
-// Every span in a layer regardless of value (the REGEXP UDF matches on
-// contains), matching the Validation tab's scan.
-const ANY_VALUE = { regex: '.' };
 
 // Everything a tagset can govern: the interlinear tiers, the values they may
 // take, the tokens that are skipped, and the fields recorded about each
@@ -57,19 +53,7 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
       await Promise.all(
         governed.map(async (g) => {
           try {
-            const results = await Promise.all(
-              g.kind === 'metadata'
-                ? [client.query(metadataFreqQuery(projectId, g.field))]
-                : freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
-                    client.query(q),
-                  ),
-            );
-            const attested = [];
-            for (const r of results) {
-              for (const [value, n] of r?.results || []) {
-                if (typeof value === 'string') attested.push([value, n || 0]);
-              }
-            }
+            const attested = await loadAttested(client, projectId, g);
             counts[`${g.scope}:${g.field}`] = offTagsetValues(attested, g.tagset).length;
           } catch {
             /* leave this field unbadged */

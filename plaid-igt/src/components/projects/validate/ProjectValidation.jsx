@@ -9,13 +9,9 @@ import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
 import { governedFields, offTagsetValues, readTagsets } from '@/domain/tagsets';
 import { ZERO_MORPH, looksLikeZeroMorph } from '@/domain/zeroMorph';
-import {
-  freqQueries,
-  metadataFreqQuery,
-  metadataHitsQuery,
-  searchDomains,
-} from '../search/searchQueries.js';
+import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQueries.js';
 import { runHitsSearch } from '../search/searchRunner.js';
+import { distinctValues, loadAttested } from './attested.js';
 import { MarkedText } from '@/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { scopeBadgeClass } from '@/domain/scopeColors';
@@ -158,19 +154,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     try {
       const rows = await Promise.all(
         (governed || []).map(async (g) => {
-          const results = await Promise.all(
-            g.kind === 'metadata'
-              ? [client.query(metadataFreqQuery(projectId, g.field))]
-              : freqQueries({ kind: 'span', layerId: g.layerId }, ANY_VALUE).map((q) =>
-                  client.query(q),
-                ),
-          );
-          const attested = [];
-          for (const r of results) {
-            for (const [value, n] of r?.results || []) {
-              if (typeof value === 'string') attested.push([value, n || 0]);
-            }
-          }
+          const attested = await loadAttested(client, projectId, g);
           return { ...g, attested, bad: offTagsetValues(attested, g.tagset) };
         }),
       );
@@ -357,8 +341,8 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
             </Badge>
             <span className="font-medium">{g.field}</span>
             <span className="text-xs text-muted-foreground">
-              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {g.attested.length} distinct value
-              {g.attested.length === 1 ? '' : 's'}
+              {g.tagsetName} · {MODE_LABELS[g.tagset.mode]} · {distinctValues(g.attested)} distinct
+              value{distinctValues(g.attested) === 1 ? '' : 's'}
             </span>
             {g.bad.length > 0 ? (
               <span className="ml-auto flex items-center gap-1.5 text-sm font-medium text-destructive">

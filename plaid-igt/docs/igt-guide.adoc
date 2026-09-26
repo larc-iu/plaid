@@ -646,6 +646,11 @@ Each tagset has a mode:
 * **Closed**: only values on the list can be entered. For a fixed inventory such as part of speech.
 * **Closed, plus lexical glosses**: a value is allowed if it has a lowercase letter or is in a script without capitals, and anything else must be on the list. This is made for glosses, where a stem's gloss is a word like `dog` and a grammatical gloss like `1SG.NOM` is built from tags.
 
+In the third mode a lowercase abbreviation beside a tag in the same morpheme's gloss is read as a tag, so the `sbj` and `pfv` of Lamkang's `sbj:3.pfv` must be on the list.
+A word whose stem glosses would then hold no word at all is read by case alone, so `pass.PST` on a stem is the verb _pass_.
+The gloss of an affix, a clitic or a zero morph is never read by case alone.
+The grid and the Validation tab tell these apart by each morpheme's type.
+
 A gloss is composite, so a tagset lists the parts and names the **delimiters** that join them (for Leipzig, `.`, `:`, and `>`).
 In a governed cell the list opens on its own and offers the part under the caret, and a value the tagset refuses is underlined in red.
 A value can carry a description, shown beside it in the list.

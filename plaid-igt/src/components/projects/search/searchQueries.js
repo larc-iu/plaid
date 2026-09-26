@@ -214,6 +214,36 @@ export function freqQueries(domain, spec) {
   }));
 }
 
+// ---- a governed field's value inventory -----------------------------------
+
+/** Every span in a layer regardless of value (the REGEXP UDF matches on contains). */
+const ANY_VALUE = { regex: '.' };
+
+/**
+ * The frequency query for one field a tagset governs (a governedFields
+ * record). A morpheme field's values are grouped by their morpheme's morph
+ * type and form as well, [value, morphType, form, count], because a tagset
+ * reads a suffix's gloss otherwise than a stem's (glossReadingOf). Any other
+ * field's rows are [value, count].
+ */
+export const governedFreqQuery = (g, projectId) => {
+  if (g.kind === 'metadata') return metadataFreqQuery(projectId, g.field);
+  const where = [
+    ['span', '?s', { layer: g.layerId, value: ANY_VALUE }],
+    ['span', '?s', { value: { var: '?val' } }],
+  ];
+  if (g.scope !== 'morpheme') {
+    return { where, return: { group: ['?val'], aggregates: [['count']] } };
+  }
+  return {
+    where: [...where, ['covers', '?s', '?t']],
+    return: {
+      group: ['?val', '?t.metadata.morphType', '?t.metadata.form'],
+      aggregates: [['count']],
+    },
+  };
+};
+
 // ---- document metadata -----------------------------------------------------
 // Metadata is not a span layer, so it needs its own queries. A document clause
 // carries no layer id, and a layer id is what implicitly scopes every other
