@@ -26,6 +26,7 @@ guessing, so a mistagged project fails loudly instead of writing somewhere
 unexpected.
 """
 
+import re
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional
 
@@ -205,3 +206,139 @@ def project_language(project) -> str:
     """The project's language as a BCP-47 tag, from ``config.umr.language``."""
     tag = umr_config(project).get('language')
     return tag.strip() if isinstance(tag, str) else ''
+
+
+# --- the gloss-line mapping (ILG) ------------------------------------------------
+#
+# The Python side of ``plaid-umr/src/domain/ilg.js``: which of a project's gloss
+# layers is its word gloss, its morpheme gloss, its part of speech, and so on.
+# The project's own mapping is ``config.umr.ilg``, an ordered list of
+# ``{header, lang, source}``, and a project with none has one proposed from its
+# layers' names. ``plaid-umr/services/tests/test_umr_bootstrap_igt.py`` runs
+# ``ilg.js`` and fails when the two classify a layer differently.
+
+#: Every header by its scope, and whether it carries a language (``HEADERS``).
+ILG_HEADERS: Dict[str, tuple] = {
+    'morphemes': ('morpheme', False),
+    'morpheme-gloss': ('morpheme', True),
+    'morpheme-category': ('morpheme', False),
+    'word-gloss': ('word', True),
+    'pos': ('word', False),
+    'sentence-gloss': ('sentence', True),
+    'sentence': ('sentence', False),
+}
+
+#: The headers whose line glosses a word or a morpheme, the ones a concept may
+#: be read from. A part of speech or a category is never a gloss.
+GLOSS_HEADERS = ('word-gloss', 'morpheme-gloss')
+
+_SCOPE_RANK = {'word': 0, 'morpheme': 1, 'sentence': 2}
+
+
+def language_code(lang) -> str:
+    """The two- or three-letter code a gloss header takes (``languageCode``):
+    ``und`` when there is none to be had."""
+    base = re.split(r'[-_]', str(lang or '').strip().lower())[0]
+    return base if re.fullmatch(r'[a-z]{2,3}', base) else 'und'
+
+
+def _scope_rank(entry) -> int:
+    header = ILG_HEADERS.get((entry or {}).get('header'))
+    if not header:
+        return 4
+    return _SCOPE_RANK.get(header[0], 3)
+
+
+def _sort_ilg(mapping) -> List[dict]:
+    """Word lines, then morpheme lines, then sentence lines, stable within a
+    scope (``sortIlg``)."""
+    return sorted(mapping or [], key=_scope_rank)
+
+
+def _looks_like(name, pattern: str) -> bool:
+    return re.search(pattern, str(name or ''), re.IGNORECASE) is not None
+
+
+def propose_ilg(layers: UmrLayers) -> List[dict]:
+    """A mapping proposed from the layers' names (``proposeIlg``): a field
+    named like a gloss is the gloss of its scope, one named like a category
+    or a tag is the part of speech, anything else is not a line."""
+    out: List[dict] = []
+    if layers.morpheme_layer:
+        out.append({'header': 'morphemes', 'lang': None, 'source': 'morphemes'})
+    for g in layers.gloss_layers:
+        header = None
+        if g.scope == 'morpheme':
+            if _looks_like(g.name, r'gloss|meaning'):
+                header = 'morpheme-gloss'
+            elif _looks_like(g.name, r'cat|pos|part|type|class'):
+                header = 'morpheme-category'
+        elif g.scope == 'word':
+            if _looks_like(g.name, r'gloss|meaning'):
+                header = 'word-gloss'
+            elif _looks_like(g.name, r'pos|part|tag|class'):
+                header = 'pos'
+        elif g.scope == 'sentence':
+            if _looks_like(g.name, r'trans|gloss|free|meaning'):
+                header = 'sentence-gloss'
+        if not header:
+            continue
+        out.append({'header': header,
+                    'lang': language_code(g.lang) if ILG_HEADERS[header][1] else None,
+                    'source': f'layer:{g.id}'})
+    out.append({'header': None, 'lang': None, 'source': 'stored'})
+    return _sort_ilg(out)
+
+
+def ilg_config(project) -> Optional[list]:
+    """The project's own mapping, ``config.umr.ilg``, or None when unset
+    (``readIlgConfig``)."""
+    mapping = umr_config(project).get('ilg')
+    return mapping if isinstance(mapping, list) else None
+
+
+def resolve_ilg(config, layers: UmrLayers) -> List[dict]:
+    """The project's mapping when it has one, else the proposal. An entry whose
+    layer is gone takes the layer the proposal names for the same line
+    (``resolveIlg``)."""
+    if not isinstance(config, list) or not config:
+        return propose_ilg(layers)
+    live = {g.id for g in layers.gloss_layers}
+
+    def is_layer(source) -> bool:
+        return str(source if source is not None else '').startswith('layer:')
+
+    def slot(entry) -> str:
+        return f"{entry.get('header')}|{entry.get('lang') or ''}"
+
+    proposed = {slot(e): e['source'] for e in propose_ilg(layers) if is_layer(e['source'])}
+    out = []
+    for entry in config:
+        if not isinstance(entry, dict):
+            continue
+        source = entry.get('source')
+        if not is_layer(source) or str(source)[len('layer:'):] in live:
+            out.append(entry)
+            continue
+        replacement = proposed.get(slot(entry))
+        out.append({**entry, 'source': replacement} if replacement else entry)
+    return _sort_ilg(out)
+
+
+def lexical_gloss_layers(project, layers: UmrLayers) -> List[GlossLayer]:
+    """The gloss layers a concept may be read from: those the project's mapping
+    (or the proposal) files as a word or morpheme gloss, in the mapping's
+    order, with a gloss in the project's language first."""
+    by_id = {g.id: g for g in layers.gloss_layers}
+    picked: List[tuple] = []
+    for entry in resolve_ilg(ilg_config(project), layers):
+        source = str(entry.get('source') or '')
+        if entry.get('header') not in GLOSS_HEADERS or not source.startswith('layer:'):
+            continue
+        g = by_id.get(source[len('layer:'):])
+        if g and all(g is not p for p, _ in picked):
+            picked.append((g, language_code(entry.get('lang'))))
+    want = language_code(project_language(project))
+    if want != 'und':
+        picked.sort(key=lambda p: p[1] != want)
+    return [g for g, _ in picked]

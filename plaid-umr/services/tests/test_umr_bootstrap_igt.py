@@ -513,3 +513,92 @@ def test_every_default_abbreviation_is_a_umr_relation_or_a_marker():
     for key, what in boot.ABBREVIATIONS.items():
         assert what in (('root',), ('possessive',)) or (
             len(what) == 2 and unknown_relation_problem(what[0]) is None), key
+
+
+# --- which layers are glosses ---------------------------------------------------
+
+def _with_pos_line(document, values):
+    """A word-scoped part-of-speech field beside the gloss, as IGT makes one."""
+    word_layer = document['text_layers'][0]['token_layers'][1]
+    word_layer['span_layers'].append({
+        'id': 'posL', 'name': 'POS', 'config': {'igt': {'scope': 'Word', 'lang': 'en'}},
+        'spans': [{'id': f'p{n}', 'tokens': [w], 'value': v}
+                  for n, (w, v) in enumerate(values.items())]})
+    return document
+
+
+def test_a_part_of_speech_line_never_names_a_node():
+    """Only a gloss line names a node, classified as the app's ILG mapping
+    classifies it (ilg.js): a field named POS is the part-of-speech line, and
+    'Praoloon', with no gloss, gets no node rather than a node named npr."""
+    document = _with_pos_line(
+        draft_tests._document(body='Praoloon went\n', sentences=((0, 14),),
+                              words=[(0, 8), (9, 13)],
+                              gloss_spans=[{'id': 'g2', 'tokens': ['w2'], 'value': 'go.PST'}]),
+        {'w1': 'npr', 'w2': 'v'})
+    assert [c for c, _ in _segmented_run(document, _compound_vocab())] == ['go']
+
+
+def test_the_projects_own_ilg_mapping_says_which_layer_is_the_gloss():
+    """A mapping on the project (config.umr.ilg) is the authority: the line it
+    files as Word Gloss names the node, whatever the layer is called, and a
+    layer it files as anything else does not."""
+    document = _with_pos_line(_document(), {'w2': 'canine', 'w3': 'yap'})
+    service = _service(documents=[document])
+    service.client.projects._project['config'] = {'umr': {'ilg': [
+        {'header': 'word-gloss', 'lang': 'en', 'source': 'layer:posL'},
+        {'header': 'pos', 'lang': None, 'source': 'layer:glossL'},
+    ]}}
+    assert servicetest.run(service, REQUEST).errors == []
+    # barks keeps its headword; dog is named by the mapped line, not dog-PL.
+    assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['canine', 'bark']
+
+
+# The app's own classification, run in node: which layer is which line must be
+# the same on the canvas and in the skeleton. Skips where node cannot run, and
+# never when the two disagree.
+ILG_JS = SERVICES.parent / 'src' / 'domain' / 'ilg.js'
+_NAMES = ('Gloss', 'Word gloss', 'Meaning', 'POS', 'Part of speech', 'Tag', 'Class', 'Category',
+          'Morph type', 'Translation', 'Free translation', 'Notes', '', 'Glosa', 'PARTS', 'pos-en')
+_LANGS = ('en', 'pt-BR', 'qaa-x-eng', None, 'ENG', 'e', 'lmk_x')
+ILG_LAYERS = [{'id': f'L{n}', 'name': name, 'scope': scope, 'lang': _LANGS[n % len(_LANGS)]}
+              for n, (name, scope) in enumerate(
+                  (name, scope) for name in _NAMES for scope in ('word', 'morpheme', 'sentence'))]
+ILG_CONFIGS = [
+    None, [],
+    [{'header': 'word-gloss', 'lang': 'en', 'source': 'layer:L0'},
+     {'header': 'morphemes', 'lang': None, 'source': 'morphemes'},
+     {'header': 'pos', 'lang': None, 'source': 'layer:L9'},
+     {'header': None, 'lang': None, 'source': 'stored'}],
+    # A layer gone (a copied project): the proposal's layer for the same slot.
+    [{'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:gone'},
+     {'header': 'word-gloss', 'lang': 'fr', 'source': 'layer:gone2'},
+     {'header': 'sentence-gloss', 'lang': 'und', 'source': 'layer:L2'}],
+]
+
+
+def _umr_layers(specs, morphemes=True):
+    from plaid_client.workflows.umr import GlossLayer, UmrLayers
+    return UmrLayers(*([{}] * 7), morpheme_layer={'id': 'morphL'} if morphemes else None,
+                     gloss_layers=[GlossLayer(id=s['id'], name=s['name'], scope=s['scope'],
+                                              lang=s['lang']) for s in specs])
+
+
+def test_the_gloss_line_mapping_is_the_apps():
+    import shutil
+    import subprocess
+    from plaid_client.workflows.umr import layers as umr_layers
+    exe = shutil.which('node')
+    if not exe or not ILG_JS.is_file():
+        pytest.skip('node or ilg.js is not here')
+    info = {'morphemeTokenLayer': {'id': 'morphL'},
+            'glossLayers': [{'layer': {'id': s['id'], 'name': s['name']}, 'scope': s['scope'],
+                             'lang': s['lang']} for s in ILG_LAYERS]}
+    script = (f"const m = await import({json.dumps(ILG_JS.as_uri())});\n"
+              f"const info = {json.dumps(info)};\n"
+              f"const configs = {json.dumps(ILG_CONFIGS)};\n"
+              "console.log(JSON.stringify(configs.map((c) => m.resolveIlg(c, info))));\n")
+    out = subprocess.run([exe, '--input-type=module', '-e', script], capture_output=True,
+                         text=True, timeout=60, check=True).stdout
+    layers = _umr_layers(ILG_LAYERS)
+    assert [umr_layers.resolve_ilg(c, layers) for c in ILG_CONFIGS] == json.loads(out)

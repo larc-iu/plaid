@@ -399,3 +399,37 @@ def test_reading_a_document_does_not_change_it():
     before = copy.deepcopy(raw)
     _read(raw)
     assert raw == before
+
+
+# --- which gloss layer is which line --------------------------------------------
+
+def _gloss_layers(*specs):
+    from plaid_client.workflows.umr import GlossLayer, UmrLayers
+    return UmrLayers(*([{}] * 7), gloss_layers=[
+        GlossLayer(id=i, name=name, scope=scope, lang=lang) for i, name, scope, lang in specs])
+
+
+def test_only_a_line_filed_as_a_gloss_is_a_lexical_gloss_layer():
+    from plaid_client.workflows.umr.layers import lexical_gloss_layers
+    layers = _gloss_layers(('pos', 'POS', 'word', None), ('g', 'Gloss', 'word', 'en'),
+                           ('cat', 'Category', 'morpheme', None),
+                           ('mg', 'Morpheme gloss', 'morpheme', 'en'),
+                           ('tr', 'Translation', 'sentence', 'en'), ('n', 'Notes', 'word', None))
+    assert [g.id for g in lexical_gloss_layers(None, layers)] == ['g', 'mg']
+
+
+def test_the_projects_mapping_overrides_the_names_and_a_gloss_in_its_language_comes_first():
+    from plaid_client.workflows.umr.layers import lexical_gloss_layers
+    layers = _gloss_layers(('en', 'Gloss', 'word', 'en'), ('es', 'Glosa', 'word', 'es'),
+                           ('pos', 'POS', 'word', None))
+    project = {'config': {'umr': {'language': 'es-MX', 'ilg': [
+        {'header': 'word-gloss', 'lang': 'en', 'source': 'layer:en'},
+        {'header': 'word-gloss', 'lang': 'es', 'source': 'layer:es'},
+        {'header': 'word-gloss', 'lang': 'es', 'source': 'layer:es'},
+        {'header': 'pos', 'lang': None, 'source': 'layer:pos'},
+        {'header': 'word-gloss', 'lang': 'fr', 'source': 'layer:missing'},
+    ]}}}
+    assert [g.id for g in lexical_gloss_layers(project, layers)] == ['es', 'en']
+    # With no language of its own, the mapping's order stands.
+    project['config']['umr'].pop('language')
+    assert [g.id for g in lexical_gloss_layers(project, layers)] == ['en', 'es']

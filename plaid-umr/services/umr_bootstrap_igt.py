@@ -13,6 +13,11 @@ become the attributes they stand for: `3SG` is `:refer-person 3rd
 The word whose glosses carry tense or aspect is marked as the sentence's root,
 else the first node is.
 
+A gloss is a line the project's gloss-line mapping (`config.umr.ilg`, or the
+one proposed from the layers' names, as the canvas reads it) files as a word
+or morpheme gloss, a gloss in the project's language first. A part of speech,
+a category or a note never names a node.
+
 In a segmented word the concept comes from its LEXICAL morpheme: never an
 affix, a clitic or a zero morph (`∅`), and of the rest the first with a morph
 type (a stem or root), else the first whose gloss has a lexical part. An
@@ -71,6 +76,7 @@ from plaid_client.service import check_unchanged
 from plaid_client.workflows.umr import (DraftProgress, build_draft_notice, gloss_values,
                                         next_variable, read_document, resolve_layers,
                                         unknown_relation_problem, write_graphs)
+from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
 DEFAULT_SERVICE_ID = 'umr-bootstrap-igt'
 
@@ -508,8 +514,10 @@ class UmrBootstrapService(BaseService):
         document = read_document(raw, layers, gloss=gloss_values(raw, layers))
         sentences = document.sentences
 
-        # The project's vocabularies, for the headword a linked word takes.
+        # The project's vocabularies, for the headword a linked word takes,
+        # and its gloss-line mapping, for which layers are glosses.
         headwords: Dict[str, str] = {}
+        project = None
         if project_id:
             progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
             try:
@@ -521,6 +529,7 @@ class UmrBootstrapService(BaseService):
                 print(f'Could not read the vocabularies: {exc}')
         links = links_by_token(layers)
         listed = listed_forms(headwords)
+        glosses = lexical_gloss_layers(project, layers)
 
         in_scope = sentences
         if scope == 'sentence':
@@ -549,7 +558,7 @@ class UmrBootstrapService(BaseService):
         plans = []
         failures = []
         for sentence in targets:
-            pieces, nodes, edges = plan_sentence(sentence, layers.gloss_layers, document.gloss,
+            pieces, nodes, edges = plan_sentence(sentence, glosses, document.gloss,
                                                  links, headwords, self.abbreviations, taken,
                                                  listed)
             if not nodes:
