@@ -41,14 +41,7 @@ import {
   computeAutoLinkProposals,
   computeMweProposals,
 } from './autoLink.js';
-import {
-  linkPrecedentQueries,
-  createTally,
-  foldDocumentLinks,
-  foldLinkRows,
-  mergeTally,
-} from './precedent.js';
-import { openPrecedent, precedentBase } from './precedentCache.js';
+import { linkPrecedentQueries, createTally, foldLinkRows } from './precedent.js';
 import { plural } from '../utils/plural.js';
 
 const MAX_SOURCE_DOCS = 25;
@@ -200,14 +193,12 @@ async function remoteTalliesFor(
 }
 
 // What each form has been linked to across the project, this document
-// included as it stands now. The editor's shared project read
-// (precedentCache.js) with this document's rows swapped for its live state,
-// which after the copy phase already holds what that phase wrote. Asks the
-// project directly when the shared read is unavailable.
+// included as it stands now: asked of the project when the run starts, which
+// after the copy phase already holds what that phase wrote. Not the editor's
+// shared read (precedentCache.js), which can be minutes old and would write
+// by links since changed or entries since deleted. A failed query fails the
+// run: linking without the project's precedent would link by smallest id.
 async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
-  await openPrecedent(doc);
-  const base = precedentBase(doc, ignoredCfg);
-  if (base) return foldDocumentLinks(mergeTally(createTally(), base), doc.sentences, ignoredCfg);
   const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
   return foldLinkRows(createTally(), results, ignoredCfg);
 }

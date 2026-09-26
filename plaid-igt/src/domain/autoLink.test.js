@@ -13,6 +13,7 @@ const VOCABS = {
       { id: 'i-all', form: 'todos' },
       { id: 'i-se1', form: 'se' },
       { id: 'i-se2', form: 'se' }, // homograph: 'se' is never a unique match
+      { id: 'i-prec', form: 'prec' }, // reached by precedent only
     ],
   },
 };
@@ -113,6 +114,16 @@ describe('computeAutoLinkProposals', () => {
     ]);
   });
 
+  it('never proposes an entry the lexicon no longer holds, whatever the precedent says', () => {
+    // A precedent read before the entry was deleted or merged away.
+    const precedent = precedentOf(res([['i-gone', null, 'todos', 'word', null, 5]]));
+    const sentences = sentence([word('w1', 'todos')]);
+    const proposals = computeAutoLinkProposals({ sentences, vocabularies: VOCABS, precedent });
+    expect(proposals).toEqual([
+      { tokenId: 'w1', vocabItemId: 'i-all', form: 'todos', kind: 'word' },
+    ]);
+  });
+
   it('a precedent tie breaks to the lexicographically smaller item id', () => {
     const precedent = precedentOf(
       res([
@@ -165,7 +176,7 @@ describe('a form written either way is one form', () => {
     const precedent = precedentOf(res([['i-prec', null, PRE, 'morpheme', null, 2]]));
     const proposals = computeAutoLinkProposals({
       sentences: sentence([word('w1', 'whole', null, [morph('m1', DEC)])]),
-      vocabularies: {},
+      vocabularies: { v1: { id: 'v1', items: [{ id: 'i-prec', form: 'prec' }] } },
       precedent,
     });
     expect(proposals).toEqual([

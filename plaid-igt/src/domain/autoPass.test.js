@@ -146,31 +146,72 @@ describe('runBuiltinAnalysis: reading the source documents', () => {
 });
 
 describe('runBuiltinAnalysis: link precedent', () => {
-  it('reads it from the project read the editor already made', async () => {
+  // Auto-analyze in b writes by what the project holds when it runs, not by
+  // a read the editor took earlier, which can predate someone's relinking in
+  // another document.
+  const items = [
+    { id: 'kai1', form: 'kai' },
+    { id: 'kai2', form: 'kai' },
+  ];
+  const linked = (id) => ({ content: 'kai', vocabItem: { id, prov: 'human' }, morphemes: [] });
+  const makeLinkDoc = (server, id = 'b') => ({
+    id,
+    projectId: 'p1',
+    raw: { id, version: 1 },
+    sentences: [
+      {
+        tokens: [
+          ...server[id].map(linked),
+          { id: 't-open', content: 'kai', vocabItem: null, morphemes: [] },
+        ],
+      },
+    ],
+    layerInfo: {
+      primaryTokenLayer: { id: 'word-layer', config: {} },
+      morphemeTokenLayer: null,
+      spanLayers: { word: [], morpheme: [], sentence: [] },
+    },
+    vocabularies: { v1: { id: 'v1', items } },
+    dataVersion: 0,
+    client: {
+      baseUrl: 'http://core',
+      token: 'autopass-link',
+      projects: {
+        listDocuments: async () => Object.keys(server).map((d) => ({ id: d, version: 1 })),
+      },
+      // Link rows [item, ?, form, kind, ?, count] over the documents asked for.
+      query: vi.fn(async (q) => {
+        const scope = q.where.map((c) => c[2]?.doc).find(Boolean);
+        if (!q.where.some((c) => c[0] === 'vocab-link')) return { results: [] };
+        const counts = new Map();
+        for (const [d, links] of Object.entries(server)) {
+          if (scope && d !== scope) continue;
+          for (const id of links) counts.set(id, (counts.get(id) || 0) + 1);
+        }
+        return { results: [...counts].map(([id, n]) => [id, null, 'kai', 'word', null, n]) };
+      }),
+    },
+    bulkLinkVocab: vi.fn(async (proposals) => proposals.length),
+    bulkLinkMwes: vi.fn(async () => 0),
+  });
+
+  it('asks the project when it runs, not an older read the editor holds', async () => {
     const { openPrecedent } = await import('./precedentCache.js');
-    const doc = {
-      id: 'doc-under-test',
-      projectId: 'p1',
-      sentences: [{ tokens: [] }],
-      layerInfo: {
-        primaryTokenLayer: { id: 'word-layer', config: {} },
-        morphemeTokenLayer: null,
-        spanLayers: { word: [], morpheme: [], sentence: [] },
-      },
-      vocabularies: { v1: { id: 'v1', items: [] } },
-      dataVersion: 0,
-      client: {
-        baseUrl: 'http://core',
-        token: 'autopass-link',
-        query: vi.fn(async () => ({ results: [] })),
-      },
-    };
-    await openPrecedent(doc);
-    const projectWide = () =>
-      doc.client.query.mock.calls.filter(([q]) => !q.where.some((c) => c[2]?.doc)).length;
-    const before = projectWide();
+    const server = { a: ['kai1', 'kai1'], b: [] };
+    await openPrecedent(makeLinkDoc(server, 'a')); // the editor's read, in a
+    server.a = ['kai2', 'kai2']; // someone relinks a since
+    const doc = makeLinkDoc(server);
+    await openPrecedent(doc); // b opens
     const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
     expect(res.ok).toBe(true);
-    expect(projectWide()).toBe(before);
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai2']);
+  });
+
+  it('fails the run when the project cannot be asked, rather than linking without it', async () => {
+    const server = { b: ['kai2', 'kai2'] };
+    const doc = makeLinkDoc(server);
+    doc.client.query.mockRejectedValue(new Error('504'));
+    await expect(runBuiltinAnalysis(doc, { copy: false, link: true })).rejects.toThrow('504');
+    expect(doc.bulkLinkVocab).not.toHaveBeenCalled();
   });
 });

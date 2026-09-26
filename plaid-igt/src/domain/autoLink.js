@@ -71,6 +71,7 @@ export function buildItemIndex(vocabularies) {
   const folded = new Map();
   const bound = new Set();
   const phrase = new Set();
+  const known = new Set();
   const parentOf = new Map();
   const add = (map, key, id) => {
     const list = map.get(key);
@@ -83,6 +84,7 @@ export function buildItemIndex(vocabularies) {
     // sense made by hand under an affix is an affix too.
     const view = lexiconView(vocab.items || []);
     for (const it of vocab.items || []) {
+      known.add(it.id);
       if (!it.form) continue;
       add(exact, nfc(it.form), it.id);
       add(folded, collationKey(it.form), it.id);
@@ -94,7 +96,7 @@ export function buildItemIndex(vocabularies) {
     }
   }
   dropCoveredHeadwords([exact, folded], parentOf);
-  return { exact, folded, bound, phrase };
+  return { exact, folded, bound, phrase, known };
 }
 
 /**
@@ -134,8 +136,15 @@ function dropCoveredHeadwords(maps, parentOf) {
 // computeMweProposals). Returns null only when nothing matches at any tier.
 const smallestId = (ids) => (ids && ids.length ? ids.reduce((a, b) => (b < a ? b : a)) : null);
 function resolveForm(form, kind, precedent, items) {
+  // `known`: a precedent read before an entry was deleted or merged away
+  // still names it, and a link to it would be a link to nothing.
   const ok = (id) =>
-    id && !(kind === KINDS.WORD && items.bound.has(id)) && !items.phrase.has(id) ? id : null;
+    id &&
+    items.known.has(id) &&
+    !(kind === KINDS.WORD && items.bound.has(id)) &&
+    !items.phrase.has(id)
+      ? id
+      : null;
   const pick = (ids) => smallestId((ids || []).filter((id) => ok(id)));
   const p = ok(precedentFor(precedent, form, kind));
   if (p) return p;
