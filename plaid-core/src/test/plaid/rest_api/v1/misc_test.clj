@@ -7,6 +7,7 @@
             [plaid.server.config :as config]
             [plaid.server.locks :as locks]
             [plaid.sql.guideline :as guideline]
+            [plaid.sql.user :as user]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin)
@@ -30,7 +31,8 @@
       (doseq [k [:batch-operations :metadata-depth :metadata-key-count
                  :metadata-string-length :metadata-total-bytes
                  :user-data-value-bytes :lock-expiration-ms
-                 :guideline-title-length :guideline-body-length]]
+                 :guideline-title-length :guideline-body-length
+                 :password-min-length]]
         (is (pos-int? (get limits k)) (str k " should be a positive number")))
       (doseq [[k v] limits]
         (is (pos-int? v) (str k " should be a positive number, not " (pr-str v))))
@@ -42,6 +44,10 @@
     (let [limits (-> (get-info) :body :limits)]
       (is (= guideline/max-title-length (:guideline-title-length limits)))
       (is (= guideline/max-body-length (:guideline-body-length limits)))))
+
+  (testing "the password minimum is the one every password write enforces"
+    (is (= 8 user/min-password-length))
+    (is (= user/min-password-length (-> (get-info) :body :limits :password-min-length))))
 
   (testing "the lock window is the one the lock table actually enforces"
     ;; Both clients carried a hard-coded 60000 for this because there was

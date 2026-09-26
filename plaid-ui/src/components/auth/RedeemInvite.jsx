@@ -3,17 +3,13 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { authService } from '../../services/auth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { usePasswordMinimum, passwordTooShort } from '../../hooks/usePasswordMinimum.js';
 import { notifySuccess } from '../../lib/notify.js';
 import { isEmail, EMAIL_REQUIRED_MESSAGE, EMAIL_INVALID_MESSAGE } from '../../lib/email.js';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
-
-// Matches the server's minimum. Stated up front rather than only on rejection:
-// this is the one password the user will have to remember, and finding out the
-// rule after typing it twice is a bad first minute with the app.
-const MIN_PASSWORD = 8;
 
 // Why a code can be dead, in the words the holder needs. The server sends the
 // status because the holder already has the code: there is nothing left to
@@ -34,6 +30,9 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
   const { code } = useParams();
   const navigate = useNavigate();
   const { redeemInvite, user } = useAuth();
+  // Stated up front rather than only on rejection: this is the one password
+  // the user will have to remember.
+  const passwordMinimum = usePasswordMinimum();
 
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -77,8 +76,8 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
     setError('');
     if (!isReset && !email.trim()) return setError(EMAIL_REQUIRED_MESSAGE);
     if (!isReset && !isEmail(email)) return setError(EMAIL_INVALID_MESSAGE);
-    if (password.length < MIN_PASSWORD)
-      return setError(`Password must be at least ${MIN_PASSWORD} characters`);
+    const tooShort = passwordTooShort(password, passwordMinimum);
+    if (tooShort) return setError(tooShort);
     if (password !== confirm) return setError('Passwords do not match');
 
     setSubmitting(true);
@@ -220,7 +219,11 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
                   autoComplete="new-password"
                   autoFocus={isReset}
                 />
-                <p className="text-xs text-muted-foreground">At least {MIN_PASSWORD} characters.</p>
+                {passwordMinimum && (
+                  <p className="text-xs text-muted-foreground">
+                    At least {passwordMinimum} characters.
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5">

@@ -205,6 +205,21 @@
     (throw (ex-info "Display name cannot be blank" {:code 400})))
   true)
 
+(def min-password-length
+  "The shortest password any account may be given, by an admin, by its owner,
+  through an invite or reset link, or at first startup. Every password write in
+  this namespace checks it, and `GET /info` publishes it for the browser to ask
+  the same. A password set before the minimum rose still logs in, since login
+  compares hashes and never looks at length."
+  8)
+
+(defn- assert-valid-password!
+  "Throw a 400 unless `password` is at least `min-password-length` characters."
+  [password]
+  (when-not (and (string? password) (>= (count password) min-password-length))
+    (throw (ex-info (str "Password must be at least " min-password-length " characters")
+                    {:code 400}))))
+
 (defn insert-user-row!
   "Insert a fresh user row inside a tx. `id` is the account's email address.
   `display-name` is optional: nil takes `default-display-name`.
@@ -227,6 +242,7 @@
   ([tx id is-admin password] (insert-user-row! tx id is-admin password nil))
   ([tx id is-admin password display-name]
    (assert-valid-email! id)
+   (assert-valid-password! password)
    (let [display-name (or (not-empty (some-> display-name clojure.string/trim))
                           (default-display-name id))
          _ (assert-valid-display-name! display-name)
@@ -289,6 +305,8 @@
                              :user acting-user-id}]
                      (when-let [n (:user/display-name m)]
                        (assert-valid-display-name! n))
+                     (when (some? (:password m))
+                       (assert-valid-password! (:password m)))
                      (let [intern (get-internal tx eid)]
                        (when (nil? intern)
                          (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))
@@ -304,7 +322,7 @@
                          (throw (ex-info (str "Cannot remove admin status from the last admin (" eid ")")
                                          {:code 400 :id eid})))
                        (let [attrs {}
-                             attrs (if-let [new-password (:password m)]
+                             attrs (if-some [new-password (:password m)]
                                      (-> attrs
                                          (assoc :password_hash (hashers/derive new-password))
                                          (assoc :password_changes (inc (or (:user/password-changes intern) 0))))
@@ -333,6 +351,7 @@
 
   404s if the user is missing. Returns `eid`."
   [tx eid password]
+  (assert-valid-password! password)
   (let [intern (get-internal tx eid)]
     (when (nil? intern)
       (throw (ex-info (psc/err-msg-not-found "User" eid) {:code 404 :id eid})))

@@ -101,7 +101,7 @@
 ;; ---------------------------------------------------------------------------
 
 (deftest survives-password-change
-  (let [session (create-and-login! "pw-user@example.com" "origpw")
+  (let [session (create-and-login! "pw-user@example.com" "original-password")
         tok (-> (mint! (token-req-fn session) "pw-user@example.com" "svc") :body :token)]
     (testing "both session + API token work initially"
       (assert-ok (api-call (token-req-fn session) {:method :get :path (tokens-path "pw-user@example.com")}))
@@ -116,7 +116,7 @@
       (assert-ok (api-call (token-req-fn tok) {:method :get :path (tokens-path "pw-user@example.com")})))))
 
 (deftest survives-logout
-  (let [session (create-and-login! "lo-user@example.com" "origpw")
+  (let [session (create-and-login! "lo-user@example.com" "original-password")
         tok (-> (mint! (token-req-fn session) "lo-user@example.com" "svc") :body :token)]
     (testing "logout bumps password_changes → session token dies"
       (assert-no-content (api-call (token-req-fn session) {:method :post :path "/api/v1/logout"}))

@@ -4,7 +4,7 @@ import { renderComponent, byText } from '../../test/renderComponent.jsx';
 import { RedeemInvite } from './RedeemInvite.jsx';
 
 const { authService, auth, notifySuccess } = vi.hoisted(() => ({
-  authService: { lookupInvite: vi.fn() },
+  authService: { lookupInvite: vi.fn(), serverLimits: vi.fn() },
   auth: { redeemInvite: vi.fn(), user: null },
   notifySuccess: vi.fn(),
 }));
@@ -44,6 +44,7 @@ describe('RedeemInvite', () => {
     vi.clearAllMocks();
     auth.user = null;
     authService.lookupInvite.mockResolvedValue(ACTIVE);
+    authService.serverLimits.mockResolvedValue({ passwordMinLength: 8 });
   });
 
   it('names what the project is offering', async () => {
@@ -65,11 +66,12 @@ describe('RedeemInvite', () => {
 
     await step(async () => {
       fill(container, 'invite-email', 'ada@example.com');
-      fill(container, 'invite-password', 'short');
-      fill(container, 'invite-confirm', 'short');
+      fill(container, 'invite-password', 'abc1234');
+      fill(container, 'invite-confirm', 'abc1234');
       submit(container);
     });
     expect(alertText(container)).toBe('Password must be at least 8 characters');
+    expect(container.textContent).toContain('At least 8 characters.');
 
     await step(async () => {
       fill(container, 'invite-password', 'longenough');
@@ -77,6 +79,20 @@ describe('RedeemInvite', () => {
       submit(container);
     });
     expect(alertText(container)).toBe('Passwords do not match');
+    expect(auth.redeemInvite).not.toHaveBeenCalled();
+  });
+
+  it('states and asks the minimum the server publishes', async () => {
+    authService.serverLimits.mockResolvedValue({ passwordMinLength: 12 });
+    const { container, step } = await mount();
+    expect(container.textContent).toContain('At least 12 characters.');
+    await step(async () => {
+      fill(container, 'invite-email', 'ada@example.com');
+      fill(container, 'invite-password', 'longenough');
+      fill(container, 'invite-confirm', 'longenough');
+      submit(container);
+    });
+    expect(alertText(container)).toBe('Password must be at least 12 characters');
     expect(auth.redeemInvite).not.toHaveBeenCalled();
   });
 

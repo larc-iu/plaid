@@ -106,12 +106,6 @@
 (def ^:private default-ttl-days 14)
 (def ^:private max-ttl-days 365)
 
-(def ^:private min-password-length
-  "Minimum length for a password chosen through a redemption. Enforced here
-  rather than only in the UI because this is an unauthenticated endpoint and
-  the browser is not the only thing that can post to it."
-  8)
-
 (defn- ->bool [v] (boolean (and (some? v) (not (zero? (long v))))))
 
 (defn- expired?
@@ -471,12 +465,6 @@
                                                      :grant-admin (->bool (:grant_admin row))
                                                      :project-id (:project_id row)
                                                      :target-user-id (:target_user_id row)})
-                         (when (str/blank? password)
-                           (throw (ex-info "A password is required" {:code 400})))
-                         (when (< (count password) min-password-length)
-                           (throw (ex-info (str "Password must be at least "
-                                                min-password-length " characters")
-                                           {:code 400})))
                          ;; Checked here, not just at mint: the target could
                          ;; have been deactivated in between. Without this the
                          ;; reset would "succeed" and hand back a token that
@@ -495,9 +483,9 @@
                          (let [user-id
                                (if reset?
                                  (user/set-password-in-tx! tx (:target_user_id row) password)
-                                 ;; Shape checks (non-blank, length, email) live in
-                                 ;; `user/insert-user-row!` so every account-creating
-                                 ;; path enforces exactly one rule.
+                                 ;; Shape checks (password length, email) live in
+                                 ;; `user/insert-user-row!` and `set-password-in-tx!`
+                                 ;; so every path enforces exactly one rule.
                                  (user/insert-user-row! tx email
                                                         (->bool (:grant_admin row))
                                                         password

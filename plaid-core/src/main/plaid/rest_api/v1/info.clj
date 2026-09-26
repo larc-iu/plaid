@@ -14,6 +14,7 @@
             [plaid.server.config :refer [config]]
             [plaid.server.locks :as locks]
             [plaid.sql.guideline :as guideline]
+            [plaid.sql.user :as user]
             [plaid.sql.user-data :as user-data]))
 
 (defn- mb->bytes [mb]
@@ -41,6 +42,9 @@
          ;; refused at save is a page of writing held in a draft.
          :guideline-title-length guideline/max-title-length
          :guideline-body-length  guideline/max-body-length
+         ;; The shortest password any account may be given, so a form can
+         ;; say so before the person types it twice.
+         :password-min-length    user/min-password-length
          ;; The window a document lock is held for. A client reads the
          ;; `expires-at` on the acquire response first, since that names the
          ;; moment; this is what it plans with before it has one, and what it

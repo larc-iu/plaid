@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { notifySuccess, notifyError } from '../lib/notify.js';
 import { humanizeError } from '../lib/errors.js';
 import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
+import { usePasswordMinimum, passwordTooShort } from './usePasswordMinimum.js';
 
 // Account administration, shared by every screen that does it: the Access
 // screen of a project in each app (where an admin creates the account they are
@@ -12,11 +13,6 @@ import { isEmail, EMAIL_INVALID_MESSAGE } from '../lib/email.js';
 // refused, memberships are stripped, and the row stays with a timestamp —
 // and `users.activate` reverses it. The copy here says so.
 
-// The shortest password this screen sets. Core refuses a shorter one too, with
-// the same number, and the profile screen asks the same.
-const MIN_PASSWORD_LENGTH = 6;
-const PASSWORD_TOO_SHORT = `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`;
-
 const EMPTY_USER = {
   email: '',
   displayName: '',
@@ -26,6 +22,7 @@ const EMPTY_USER = {
 };
 
 export const useUserAdmin = ({ client, currentUser, onChanged }) => {
+  const passwordMinimum = usePasswordMinimum();
   const [createOpen, setCreateOpen] = useState(false);
   const [newUser, setNewUser] = useState(EMPTY_USER);
   const [creating, setCreating] = useState(false);
@@ -58,8 +55,9 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       notifyError(EMAIL_INVALID_MESSAGE, 'Check the email address');
       return;
     }
-    if (newUser.password.length < MIN_PASSWORD_LENGTH) {
-      notifyError(PASSWORD_TOO_SHORT, 'Check the password');
+    const tooShort = passwordTooShort(newUser.password, passwordMinimum);
+    if (tooShort) {
+      notifyError(tooShort, 'Check the password');
       return;
     }
     // Typed twice because whoever types it is not the person who will use it:
@@ -108,8 +106,9 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
   };
 
   const updateUser = async () => {
-    if (editForm.password && editForm.password.length < MIN_PASSWORD_LENGTH) {
-      notifyError(PASSWORD_TOO_SHORT, 'Check the password');
+    const tooShort = editForm.password && passwordTooShort(editForm.password, passwordMinimum);
+    if (tooShort) {
+      notifyError(tooShort, 'Check the password');
       return;
     }
     if (editForm.password !== editForm.confirmPassword) {

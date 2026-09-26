@@ -13,6 +13,7 @@ import { Label } from '../ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { UserAvatar } from '../shared/UserAvatar';
 import { useConfirm } from '../shared/ConfirmProvider';
+import { usePasswordMinimum, passwordTooShort } from '../../hooks/usePasswordMinimum.js';
 
 const EMPTY = (displayName = '') => ({
   displayName,
@@ -33,6 +34,7 @@ export const UserProfile = ({ className, children }) => {
   const navigate = useNavigate();
   const confirm = useConfirm();
   const { user, client, updateUser } = useAuth();
+  const passwordMinimum = usePasswordMinimum();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fields, setFields] = useState(EMPTY(user?.displayName));
@@ -164,8 +166,8 @@ export const UserProfile = ({ className, children }) => {
   const validate = () => {
     const er = {};
     if (!fields.displayName.trim()) er.displayName = 'Enter a display name';
-    if (fields.newPassword && fields.newPassword.length < 6)
-      er.newPassword = 'Password must be at least 6 characters long';
+    const tooShort = fields.newPassword && passwordTooShort(fields.newPassword, passwordMinimum);
+    if (tooShort) er.newPassword = tooShort;
     if (fields.newPassword && fields.confirmPassword !== fields.newPassword)
       er.confirmPassword = 'Passwords do not match';
     if (fields.newPassword && !fields.currentPassword)

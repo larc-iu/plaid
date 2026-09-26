@@ -9,6 +9,7 @@ import PlaidClient from '@larc-iu/plaid-client';
 const BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 let client = null;
+let limitsRequest = null;
 
 // Where the app's sign-in page is, as a hash route. The app names it, the way
 // it names `createProtectedRoute`'s `loginPath`: a routing table is an app's
@@ -109,6 +110,21 @@ export const authService = {
       console.error('Login failed:', error);
       throw error;
     }
+  },
+
+  // The limits the server enforces, read once. Unauthenticated, since the
+  // invite page needs the password minimum before anyone has a session. A
+  // failed read is not kept, so the next caller asks again.
+  serverLimits() {
+    if (!limitsRequest) {
+      limitsRequest = PlaidClient.info(BASE_URL)
+        .then((info) => info?.limits ?? null)
+        .catch((err) => {
+          limitsRequest = null;
+          throw err;
+        });
+    }
+    return limitsRequest;
   },
 
   // Describe an invite code. Deliberately NOT authenticated: whoever follows

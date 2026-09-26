@@ -2,7 +2,9 @@
   (:require [clojure.test :refer :all]
             [clojure.string]
             [ring.mock.request :as mock]
-            [plaid.fixtures :refer [with-db
+            [plaid.sql.user :as user]
+            [plaid.fixtures :refer [db
+                                    with-db
                                     with-mount-states
                                     with-rest-handler
                                     rest-handler
@@ -80,13 +82,13 @@
   (testing "Authentication"
     (testing "Create test user for login"
       (let [req (-> (admin-request :post "/api/v1/users")
-                    (mock/json-body {:email "test@example.com" :password "test123" :is-admin false}))
+                    (mock/json-body {:email "test@example.com" :password "test1234" :is-admin false}))
             resp (rest-handler req)]
         (is (= (:status resp) 201))))
 
     (testing "Login succeeds with correct credentials"
       (let [req (-> (admin-request :post "/api/v1/login")
-                    (mock/json-body {:user-id "test@example.com" :password "test123"}))
+                    (mock/json-body {:user-id "test@example.com" :password "test1234"}))
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 200))
@@ -103,7 +105,7 @@
 
     (testing "Login fails with non-existent user"
       (let [req (-> (admin-request :post "/api/v1/login")
-                    (mock/json-body {:user-id "nonexistent@example.com" :password "test123"}))
+                    (mock/json-body {:user-id "nonexistent@example.com" :password "test1234"}))
             resp (rest-handler req)
             body (parse-response-body resp)]
         (is (= (:status resp) 401))
@@ -315,27 +317,62 @@
       (is (= 200 (:status (rest-handler (user1-request :get "/api/v1/users"))))))))
 
 (deftest a-short-password-is-refused
-  (testing "creating an account with a password under six characters is a 400 that says why"
+  (testing "creating an account with a password under eight characters is a 400 that says why"
     (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
-                                 (mock/json-body {:email "short@b.com" :password "abc12" :is-admin false})))]
+                                 (mock/json-body {:email "short@b.com" :password "abc1234" :is-admin false})))]
       (is (= 400 (:status resp)))
-      (is (clojure.string/includes? (:error (parse-response-body resp)) "at least 6 characters"))
+      (is (clojure.string/includes? (:error (parse-response-body resp)) "at least 8 characters"))
       (is (= 404 (:status (rest-handler (admin-request :get "/api/v1/users/short@b.com")))))))
 
-  (testing "six characters is enough"
+  (testing "eight characters is enough"
     (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
-                                 (mock/json-body {:email "six@b.com" :password "abc123" :is-admin false})))]
+                                 (mock/json-body {:email "eight@b.com" :password "abc12345" :is-admin false})))]
       (is (= 201 (:status resp)))))
 
   (testing "changing a password to a short one is refused, for an admin and for yourself"
-    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/six@b.com")
+    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/eight@b.com")
+                                 (mock/json-body {:password "abc1234"})))]
+      (is (= 400 (:status resp)))
+      (is (clojure.string/includes? (:error (parse-response-body resp)) "at least 8 characters")))
+    ;; A throwaway account: a change that wrongly went through would bump
+    ;; the standing user1's password counter and end its session for every
+    ;; later test.
+    (let [token (-> (rest-handler (-> (mock/request :post "/api/v1/login")
+                                      (mock/header "accept" "application/edn")
+                                      (mock/json-body {:user-id "eight@b.com" :password "abc12345"})))
+                    :body slurp read-string :token)
+          self-patch (fn [password]
+                       (rest-handler (-> (mock/request :patch "/api/v1/users/eight@b.com")
+                                         (mock/header "accept" "application/edn")
+                                         (mock/header "Authorization" (str "Bearer " token))
+                                         (mock/json-body {:password password}))))]
+      (is (string? token))
+      (is (= 400 (:status (self-patch "abc1234"))))
+      (is (= 400 (:status (self-patch ""))))))
+
+  (testing "someone else's short password change is still a 403, not a 400"
+    (let [resp (rest-handler (-> (user1-request :patch "/api/v1/users/eight@b.com")
                                  (mock/json-body {:password "abc"})))]
-      (is (= 400 (:status resp))))
-    (let [resp (rest-handler (-> (user1-request :patch "/api/v1/users/user1@example.com")
-                                 (mock/json-body {:password ""})))]
-      (is (= 400 (:status resp)))))
+      (is (= 403 (:status resp)))))
 
   (testing "a PATCH that leaves the password alone is not checked"
-    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/six@b.com")
-                                 (mock/json-body {:display-name "Six"})))]
+    (let [resp (rest-handler (-> (admin-request :patch "/api/v1/users/eight@b.com")
+                                 (mock/json-body {:display-name "Eight"})))]
+      (is (= 200 (:status resp))))))
+
+(deftest the-password-minimum-holds-below-the-routes
+  ;; The first admin is created at startup straight through `user/create`,
+  ;; with no route in front of it.
+  (testing "the bootstrap path refuses a short password"
+    (let [result (user/create db "boot@b.com" true "abc1234" nil)]
+      (is (false? (:success result)))
+      (is (= 400 (:code result)))
+      (is (nil? (user/get db "boot@b.com")))))
+
+  (testing "an account whose password predates the minimum still logs in"
+    (with-redefs [user/min-password-length 1]
+      (is (:success (user/create db "old@b.com" false "abc" nil))))
+    (let [resp (rest-handler (-> (mock/request :post "/api/v1/login")
+                                 (mock/header "accept" "application/edn")
+                                 (mock/json-body {:user-id "old@b.com" :password "abc"})))]
       (is (= 200 (:status resp))))))

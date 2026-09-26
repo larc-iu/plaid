@@ -171,8 +171,10 @@
 (deftest redemption-validates-without-burning-the-invite
   (let [pid (h/create-test-project admin-request "P")
         code (-> (mint! admin-request {:project-id pid :project-role "reader"}) :body :code)]
-    (testing "a short password is refused"
-      (assert-bad-request (redeem! {:code code :email "x@example.com" :password "short"})))
+    (testing "a short password is refused, seven characters included"
+      (assert-bad-request (redeem! {:code code :email "x@example.com" :password "short"}))
+      (assert-bad-request (redeem! {:code code :email "x@example.com" :password "abc1234"}))
+      (assert-bad-request (redeem! {:code code :email "x@example.com" :password ""})))
     (testing "an id that is not an email address is refused"
       ;; Usernames ARE email addresses instance-wide; redemption is one of the
       ;; three account-creating paths, so it enforces the same rule.
@@ -373,6 +375,10 @@
           (is (= "password-reset" (-> pv :body :kind)))
           (is (= target (-> pv :body :email)))
           (is (nil? (-> pv :body :project-name)))))
+
+      (testing "a short new password is refused and leaves the link usable"
+        (assert-bad-request (redeem! {:code code :password "abc1234"}))
+        (assert-ok (lookup! code)))
 
       (testing "redeeming sets the new password and returns a live session"
         (let [r (redeem! {:code code :password "brand-new-password"})]

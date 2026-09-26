@@ -21,6 +21,9 @@ const { toast, auth, confirm } = vi.hoisted(() => ({
 vi.mock('sonner', () => ({ toast }));
 vi.mock('../shared/ConfirmProvider', () => ({ useConfirm: () => confirm }));
 vi.mock('../../contexts/useAuth.js', () => ({ useAuth: () => auth }));
+vi.mock('../../services/auth.js', () => ({
+  authService: { serverLimits: async () => ({ passwordMinLength: 12 }) },
+}));
 
 const { UserProfile } = await import('./UserProfile.jsx');
 
@@ -163,6 +166,24 @@ describe('the profile form', () => {
     await submitAround(view, view.container.querySelector('#newPassword'));
 
     expect(view.container.textContent).toContain('Current password is required to change password');
+    expect(update).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('asks the password minimum the server publishes', async () => {
+    const update = vi.fn();
+    auth.client = { ...baseClient(), users: { avatarUrl: () => null, update } };
+    const view = await mount();
+    await openEditor(view);
+
+    await view.step(() => {
+      typeInto(view.container.querySelector('#currentPassword'), 'the-old-one');
+      typeInto(view.container.querySelector('#newPassword'), 'elevenchars');
+      typeInto(view.container.querySelector('#confirmPassword'), 'elevenchars');
+    });
+    await submitAround(view, view.container.querySelector('#newPassword'));
+
+    expect(view.container.textContent).toContain('Password must be at least 12 characters');
     expect(update).not.toHaveBeenCalled();
     await view.unmount();
   });

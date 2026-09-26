@@ -554,6 +554,8 @@ interface ServerLimits {
   userDataValueBytes?: number;
   guidelineTitleLength?: number;
   guidelineBodyLength?: number;
+  /** The shortest password the server accepts on any path. */
+  passwordMinLength?: number;
   /** How long a document lock is held before it lapses. */
   lockExpirationMs?: number;
 }
