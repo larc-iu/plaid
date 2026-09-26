@@ -322,7 +322,11 @@
                                  (mock/json-body {:email "short@b.com" :password "abc1234" :is-admin false})))]
       (is (= 400 (:status resp)))
       (is (clojure.string/includes? (:error (parse-response-body resp)) "at least 8 characters"))
-      (is (= 404 (:status (rest-handler (admin-request :get "/api/v1/users/short@b.com")))))))
+      (is (= 404 (:status (rest-handler (admin-request :get "/api/v1/users/short@b.com"))))))
+    (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
+                                 (mock/json-body {:email "blank@b.com" :password "        " :is-admin false})))]
+      (is (= 400 (:status resp)) "eight spaces are not a password")
+      (is (= 404 (:status (rest-handler (admin-request :get "/api/v1/users/blank@b.com")))))))
 
   (testing "eight characters is enough"
     (let [resp (rest-handler (-> (admin-request :post "/api/v1/users")
@@ -348,7 +352,11 @@
                                          (mock/json-body {:password password}))))]
       (is (string? token))
       (is (= 400 (:status (self-patch "abc1234"))))
-      (is (= 400 (:status (self-patch ""))))))
+      (is (= 400 (:status (self-patch ""))))
+      (is (= 400 (:status (self-patch "        "))))
+      (is (= 400 (:status (rest-handler (-> (admin-request :patch "/api/v1/users/eight@b.com")
+                                            (mock/json-body {:password "\t\t\t\t\t\t\t\t"})))))
+          "an admin cannot set one either")))
 
   (testing "someone else's short password change is still a 403, not a 400"
     (let [resp (rest-handler (-> (user1-request :patch "/api/v1/users/eight@b.com")
@@ -368,6 +376,12 @@
       (is (false? (:success result)))
       (is (= 400 (:code result)))
       (is (nil? (user/get db "boot@b.com")))))
+
+  (testing "a password of only whitespace is refused however long it is"
+    (let [result (user/create db "blank-boot@b.com" true "        " nil)]
+      (is (false? (:success result)))
+      (is (= 400 (:code result)))
+      (is (nil? (user/get db "blank-boot@b.com")))))
 
   (testing "an account whose password predates the minimum still logs in"
     (with-redefs [user/min-password-length 1]

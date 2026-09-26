@@ -214,11 +214,14 @@
   8)
 
 (defn- assert-valid-password!
-  "Throw a 400 unless `password` is at least `min-password-length` characters."
+  "Throw a 400 unless `password` is at least `min-password-length` characters
+  and not only whitespace."
   [password]
   (when-not (and (string? password) (>= (count password) min-password-length))
     (throw (ex-info (str "Password must be at least " min-password-length " characters")
-                    {:code 400}))))
+                    {:code 400})))
+  (when (clojure.string/blank? password)
+    (throw (ex-info "Password cannot be blank" {:code 400}))))
 
 (defn insert-user-row!
   "Insert a fresh user row inside a tx. `id` is the account's email address.
