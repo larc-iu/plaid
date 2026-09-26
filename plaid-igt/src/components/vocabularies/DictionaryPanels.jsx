@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, CornerLeftUp, X, FileText, Plus } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@ui/components/ui/popover';
@@ -20,24 +20,10 @@ import { MarkedText } from '@/components/shared/MarkedText.jsx';
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
 
-/**
- * The guard the entry list puts on its own rows, as `{select, newSense}`: a
- * plain click that would discard an unsaved draft asks first. Every link here
- * opens another entry the same way the list does, so they take the guard from
- * context rather than through five levels of props.
- */
-const NavGuardContext = createContext(null);
-export const NavGuardProvider = NavGuardContext.Provider;
-
 /** An entry named inline as a link to it: form, number, gloss. */
 const ItemLink = ({ item, numbers, itemTo, className }) => {
-  const guard = useContext(NavGuardContext);
   return (
-    <Link
-      to={itemTo(item.id)}
-      onClick={(e) => guard?.select?.(e, item.id)}
-      className={cn('no-underline hover:underline', className)}
-    >
+    <Link to={itemTo(item.id)} className={cn('no-underline hover:underline', className)}>
       <FormLabel form={item.form} index={numbers?.get(item.id)} className="font-medium" />
       {item.metadata?.gloss ? (
         <span className="ml-1 text-xs text-muted-foreground">{String(item.metadata.gloss)}</span>
@@ -137,7 +123,6 @@ export const EntryPlace = ({
   // Which item the picker is choosing a parent for: this one (the lone
   // entry's link) or one dropped on Another entry.
   const [pickFor, setPickFor] = useState(null);
-  const guard = useContext(NavGuardContext);
   const parentId = tree.parentOf.get(item.id);
   const parent = parentId ? tree.byId.get(parentId) : null;
   const number = tree.numberOf.get(item.id);
@@ -214,7 +199,6 @@ export const EntryPlace = ({
         {canManage && (
           <Link
             to={newSenseTo(item.id)}
-            onClick={(e) => guard?.newSense?.(e, item.id)}
             className="inline-flex items-center gap-1 text-primary no-underline hover:underline"
           >
             <Plus className="h-3 w-3" /> Add sense
@@ -541,7 +525,6 @@ export const ReferencedByPanel = ({ item, items, fields, numbers, itemTo }) => {
 
 /** One sentence of context, as the concordance and the examples draw it. */
 export const ContextRow = ({ row, to }) => {
-  const guard = useContext(NavGuardContext);
   const body = (
     <>
       <p className="text-sm text-foreground">
@@ -563,7 +546,6 @@ export const ContextRow = ({ row, to }) => {
   return to ? (
     <Link
       to={to}
-      onClick={(e) => guard?.leave?.(e, to)}
       className="block min-w-0 flex-1 px-3 py-1.5 text-left no-underline hover:bg-muted/50"
       title="Open in Analyze (middle-click for a new tab)"
     >

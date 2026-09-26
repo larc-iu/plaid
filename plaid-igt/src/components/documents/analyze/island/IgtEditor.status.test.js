@@ -44,6 +44,10 @@ afterEach(() => {
   host?.remove();
 });
 
+// Whether the document's write queue is sending, as the editor reads it.
+const saving = (doc, value) =>
+  Object.defineProperty(doc, 'isSaving', { configurable: true, get: () => value });
+
 describe('the save-status pill', () => {
   const pill = () => host.querySelector('.igt-status');
 
@@ -51,7 +55,7 @@ describe('the save-status pill', () => {
     const doc = mount();
     expect(pill().dataset.state).toBe('idle');
 
-    doc._isSaving = true;
+    saving(doc, true);
     editor._syncStatus();
     expect(pill().dataset.state).toBe('saving');
     expect(pill().textContent).toBe('Saving…');
@@ -62,7 +66,7 @@ describe('the save-status pill', () => {
     expect(pill().dataset.state).toBe('saving');
     expect(pill().textContent).toBe('Saving…');
 
-    doc._isSaving = false;
+    saving(doc, false);
     editor._syncStatus();
     expect(pill().dataset.state).toBe('saved');
     expect(pill().textContent).toBe('Saved ✓');
@@ -71,9 +75,9 @@ describe('the save-status pill', () => {
   it('goes quiet again when the flash is over', () => {
     vi.useFakeTimers();
     const doc = mount();
-    doc._isSaving = true;
+    saving(doc, true);
     editor._syncStatus();
-    doc._isSaving = false;
+    saving(doc, false);
     editor._syncStatus();
     vi.advanceTimersByTime(2000);
     expect(pill().dataset.state).toBe('idle');

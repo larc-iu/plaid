@@ -18,9 +18,13 @@ vi.mock('@ui/domain/useCommentStore', () => ({ useCommentStore: () => 0 }));
 vi.mock('@ui/components/assistant/useAssistantAvailable.js', () => ({
   useAssistantAvailable: () => false,
 }));
+// The assistant's "applied" callback is the screen's refetch after an import.
+const subject = vi.hoisted(() => ({ current: null }));
 vi.mock('@ui/components/assistant/subject.js', () => ({
   useAskAssistant: () => null,
-  useAssistantSubject: () => {},
+  useAssistantSubject: (s) => {
+    subject.current = s;
+  },
 }));
 vi.mock('@ui/components/assistant/useDock.js', () => ({ useWideEnoughToDock: () => false }));
 
@@ -28,6 +32,8 @@ const auth = vi.hoisted(() => ({ client: null, user: { id: 'u', isAdmin: true } 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const { VocabularyItems } = await import('./VocabularyItems.jsx');
+const { WriteQueue } = await import('@ui/domain/WriteQueue.js');
+const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
 
 const FIELDS = [{ name: 'gloss', type: 'text' }];
 
@@ -86,6 +92,7 @@ const mount = async (client, at) => {
         vocabulary={{ id: 'v1' }}
         client={client}
         fields={FIELDS}
+        writes={new WriteQueue()}
       />
     </MemoryRouter>,
   );
@@ -211,5 +218,53 @@ describe('the entry form', () => {
     held.resolve();
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     expect(asks()).toBe(false);
+  });
+
+  it('reads the entries again after an import only once the saves queued before it have landed', async () => {
+    const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
+    // A server that applies the save once it lands.
+    const server = [{ id: 'a', form: 'uno' }];
+    const gets = [];
+    client.vocabLayers.get = async () => {
+      gets.push(calls.length);
+      return { id: 'v1', name: 'Lexicon', config: {}, items: structuredClone(server) };
+    };
+    const held = deferred();
+    holds.push(held);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    const loads = gets.length;
+
+    await view.step(() => setValue(formInput(), 'uno-EDIT'));
+    await view.step(() => button('Save').click());
+    await view.step(async () => {
+      subject.current.onApplied();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    // Nothing is read while the save is still on its way.
+    expect(gets.length).toBe(loads);
+    expect(listed()).toEqual(['uno-EDIT']);
+
+    await view.step(async () => {
+      server[0].form = 'uno-EDIT';
+      held.resolve();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(gets.length).toBe(loads + 1);
+    expect(listed()).toEqual(['uno-EDIT']);
+    await view.unmount();
+  });
+
+  it('asks before an entry with unsaved edits is left, whichever way out', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.step(() => setValue(formInput(), 'uno-EDIT'));
+    expect(hasUnsavedDraft()).toBe('The entry you have typed');
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    await view.step(() => button('Save').click());
+    expect(hasUnsavedDraft()).toBeNull();
+    await view.unmount();
   });
 });

@@ -19,7 +19,12 @@ describe('the draft', () => {
       { type: 'draft/seed', seedKey: 'e1', form: 'kai', fields: { gloss: 'sun' } },
       { type: 'draft/form', form: 'kaii' },
     );
-    expect(s.draft).toEqual({ seedKey: 'e1', form: 'kaii', fields: { gloss: 'sun' } });
+    expect(s.draft).toEqual({
+      seedKey: 'e1',
+      seedForm: 'kai',
+      form: 'kaii',
+      fields: { gloss: 'sun' },
+    });
   });
 
   it('resets to the stored values without forgetting its seed', () => {
@@ -28,7 +33,7 @@ describe('the draft', () => {
       { type: 'draft/form', form: 'x' },
       { type: 'draft/reset', form: 'kai', fields: {} },
     );
-    expect(s.draft).toEqual({ seedKey: 'e1', form: 'kai', fields: {} });
+    expect(s.draft).toEqual({ seedKey: 'e1', seedForm: 'kai', form: 'kai', fields: {} });
   });
 
   it('unseeds so the next sync fills it again', () => {
@@ -96,6 +101,13 @@ describe('isDirty', () => {
     expect(isDirty({ form: 'a', fields: {} }, null)).toBe(true);
     expect(isDirty({ form: '', fields: { gloss: 'x' } }, null)).toBe(true);
   });
+  it('treats a new sense as clean until its headword form is changed', () => {
+    const seeded = run({ type: 'draft/seed', seedKey: 'new|p', form: 'kai', fields: {} }).draft;
+    expect(isDirty(seeded, null)).toBe(false);
+    expect(
+      isDirty(reducer({ draft: seeded }, { type: 'draft/form', form: 'kaii' }).draft, null),
+    ).toBe(true);
+  });
   it('compares metadata with blanks dropped and values as strings', () => {
     expect(cleanMeta({ a: '', b: null, c: ' x ' })).toEqual({ c: ' x ' });
     expect(metaEqual({ n: 1 }, { n: '1' })).toBe(true);
@@ -153,11 +165,6 @@ describe('dialogs', () => {
       kind: 'delete',
     });
     expect(run({ type: 'dialog/open', kind: 'bulk' }, { type: 'dialog/close' }).dialog).toBeNull();
-  });
-  it('remembers where a discard was heading, and forgets it on close', () => {
-    const asked = run({ type: 'dialog/askDiscard', target: { id: 'e2', parent: null } });
-    expect(asked.dialog).toEqual({ kind: 'discard', target: { id: 'e2', parent: null } });
-    expect(reducer(asked, { type: 'dialog/close' }).dialog).toBeNull();
   });
   it('closing with nothing open is a no-op that keeps the state identity', () => {
     expect(reducer(initialState, { type: 'dialog/close' })).toBe(initialState);

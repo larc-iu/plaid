@@ -7,7 +7,7 @@ import {
   useCallback,
   useReducer,
 } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
@@ -45,7 +45,7 @@ import {
 import { dropPrecedent } from '@/domain/precedentCache';
 import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
-import { writeTracker } from './writeTracker.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import {
   followIds,
   pendingId,
@@ -54,12 +54,7 @@ import {
   stableKey,
 } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
-import {
-  HomographDialog,
-  ReferencedByPanel,
-  ExamplesPanel,
-  NavGuardProvider,
-} from './DictionaryPanels';
+import { HomographDialog, ReferencedByPanel, ExamplesPanel } from './DictionaryPanels';
 import { validateValue, changedValuesAllowed } from '@/domain/tagsets';
 import { useItemConcordance } from './useItemConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
@@ -93,16 +88,18 @@ import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
 // The Entries screen of a vocabulary. This component owns the data (the
-// entries, their usage counts) and every write; the selection lives in the
-// URL; the draft, the list's scope, and the open dialog live in one reducer
-// (vocabItemsState.js); the list's order and paging in useEntryList; and the
-// concordance in useItemConcordance. The panes are EntryList, EntryEditor,
-// ConcordancePanel, and EntryDialogs.
+// entries, their usage counts) and every write, sent through `writes`, the
+// vocabulary's entry WriteQueue, which outlives this screen; the selection
+// lives in the URL; the draft, the list's scope, and the open dialog live in
+// one reducer (vocabItemsState.js); the list's order and paging in
+// useEntryList; and the concordance in useItemConcordance. The panes are
+// EntryList, EntryEditor, ConcordancePanel, and EntryDialogs.
 export const VocabularyItems = ({
   vocabularyId,
   vocabulary,
   client,
   fields,
+  writes,
   canManage = true,
   comments = null,
   canComment = false,
@@ -152,7 +149,6 @@ export const VocabularyItems = ({
   // The pane links keep the open entry, so a middle-click opens the same one.
   const { pathname } = useLocation();
   const paneTo = (name) => paneHref(pathname, name);
-  const navigate = useNavigate();
   const confirm = useConfirm();
   const goItem = (id, options, parent = null) =>
     setSearchParams(itemQuery(id, parent).replace(/^\?/, ''), options);
@@ -346,14 +342,20 @@ export const VocabularyItems = ({
   // replaces the whole two-pane layout, so using it for a refresh AFTER an edit
   // tears down the list and the open editor, losing scroll position and focus
   // for a change the user already sees. Only the first load earns it.
-  const fetchItems = async ({ quiet = false } = {}) => {
+  //
+  // A read waits for the entry writes still queued, and reads again when one
+  // is made while it is on the wire, so the list never drops an edit the
+  // server is still to get. `inTurn` is the refused write's own refetch, which
+  // the queue is waiting on.
+  const fetchItems = async ({ quiet = false, inTurn = false } = {}) => {
     try {
       if (!quiet) setLoading(true);
       if (!client) throw new Error('Not authenticated');
       if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
         throw new Error('Invalid vocabulary ID');
       }
-      const vocabularyData = await client.vocabLayers.get(vocabularyId, true);
+      const read = () => client.vocabLayers.get(vocabularyId, true);
+      const vocabularyData = await (inTurn ? read() : writes.readWhenIdle(read));
       const fetched = vocabularyData.items || [];
       setItems(fetched);
       setError('');
@@ -435,14 +437,13 @@ export const VocabularyItems = ({
     );
   };
 
-  // Every write here shows first and is sent in its turn: the list is patched,
-  // then the write waits behind any still in flight, so two quick drags reach
-  // the server in the order they were made. An entry made here is in the list
-  // under a pending id until the server answers, and `settleEntries` swaps
-  // the server's in, in the list, in any reference to it, and in `?item=`.
-  // A refused write says so and fetches the list again, which puts back what
-  // the screen showed.
-  const writesRef = useRef(Promise.resolve());
+  // Every write here shows first and is sent in its turn in `writes`, so two
+  // quick drags reach the server in the order they were made. An entry made
+  // here is in the list under a pending id until the server answers, and
+  // `settleEntries` swaps the server's in, in the list, in any reference to
+  // it, and in `?item=`. A refused write says so and fetches the list again,
+  // which puts back what the screen showed, and the writes queued behind it
+  // are not sent. Resolves to whether the write landed.
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   const settleEntries = (ids) => {
@@ -455,37 +456,16 @@ export const VocabularyItems = ({
   };
   // Closing the tab asks first while a write is still on its way, and keeps
   // asking after this screen is left, since the writes go on without it.
-  const [writes] = useState(writeTracker);
   useSavingGuard(writes);
-  // The refetch after a refusal takes the writes queued behind it off the
-  // list, and the ones made while it was on its way were made on the list it
-  // replaced, so neither is sent: the generation moves on before the refetch
-  // and again after it. Resolves to whether the write landed.
-  const writeGenerationRef = useRef(0);
-  const sendInTurn = (label, write, failure) => {
-    const generation = writeGenerationRef.current;
-    writes.begin();
-    const send = async () => {
-      try {
-        if (generation !== writeGenerationRef.current) return false;
-        await client.withOperation(label, write);
-        return true;
-      } catch (err) {
-        writeGenerationRef.current += 1;
+  const sendInTurn = (label, write, failure) =>
+    writes.push(() => client.withOperation(label, write), {
+      refused: async (err) => {
         console.error(`${label}:`, err);
         notifyError(failure, 'Error');
         dispatch({ type: 'draft/unseed' });
-        await fetchItems({ quiet: true });
-        writeGenerationRef.current += 1;
-        return false;
-      } finally {
-        writes.end();
-      }
-    };
-    const result = writesRef.current.then(send);
-    writesRef.current = result.catch(() => {});
-    return result;
-  };
+        await fetchItems({ quiet: true, inTurn: true });
+      },
+    });
 
   // The draft as of the latest render, for the async writes below that finish
   // a round trip later and need to know what the form was filled from.
@@ -497,38 +477,37 @@ export const VocabularyItems = ({
   // write, under one operation. Once per mount: after a repair there is
   // nothing left to repair.
   const repairedRef = useRef(false);
-  const repairRefs = async (fetched) => {
+  const repairRefs = (fetched) => {
     if (!canManage || repairedRef.current) return;
     repairedRef.current = true;
     const { patches, findings } = validateVocabRefs(fetched, fields);
     if (!patches.length) return;
-    try {
-      // A vocabulary that has lost a pile of entries has as many writes as it
-      // has references to them, so they go out in bulk.
-      await client.withOperation('Repair entry references', () =>
-        bulkRepoint(patches, metadataNow(fetched)),
-      );
-      // The repair lands a round trip after the draft was seeded, so an entry
-      // it touched is re-seeded from the repaired metadata. Left alone the
-      // form still holds the cleared value and a Save writes it back.
-      if (patches.some((p) => p.id === draftRef.current.seedKey)) {
-        dispatch({ type: 'draft/unseed' });
-      }
-      foldPatches(patches);
-      if (findings.length) {
-        console.group('Vocabulary references repaired');
-        for (const f of findings) console.info(f.form, f.id, f.reasons.join('; '));
-        console.groupEnd();
-        // Not always a deleted entry: a field changed to Entry holds text that
-        // names no entry either, and this is what clears it.
-        notifyWarning(
-          `${findings.length} entr${findings.length === 1 ? 'y' : 'ies'} held a value that names no entry. Those values were cleared.`,
-          'Entries repaired',
-        );
-      }
-    } catch (err) {
-      console.error('Repairing references failed:', err);
+    const before = metadataNow(fetched);
+    // An entry the repair touches is re-seeded from the repaired metadata.
+    // Left alone the form still holds the cleared value and a Save writes it
+    // back.
+    if (patches.some((p) => p.id === draftRef.current.seedKey)) {
+      dispatch({ type: 'draft/unseed' });
     }
+    foldPatches(patches);
+    if (findings.length) {
+      console.group('Vocabulary references repaired');
+      for (const f of findings) console.info(f.form, f.id, f.reasons.join('; '));
+      console.groupEnd();
+      // Not always a deleted entry: a field changed to Entry holds text that
+      // names no entry either, and this is what clears it.
+      notifyWarning(
+        `${findings.length} entr${findings.length === 1 ? 'y' : 'ies'} held a value that names no entry. Those values were cleared.`,
+        'Entries repaired',
+      );
+    }
+    // A vocabulary that has lost a pile of entries has as many writes as it
+    // has references to them, so they go out in bulk.
+    sendInTurn(
+      'Repair entry references',
+      () => bulkRepoint(patches, before),
+      'Failed to repair entry references',
+    );
   };
 
   useEffect(() => {
@@ -603,60 +582,23 @@ export const VocabularyItems = ({
     }
   };
 
-  // Switching away with unsaved edits would silently discard them: the
-  // discard dialog asks first. The rows are links, so this only intercepts
-  // the plain click that would lose the draft: a modified click opens a new
-  // browser tab and leaves this one (draft and all) exactly as it was.
-  const isModifiedClick = (e) => e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0;
-  const guardSelect = (e, id, parent = null) => {
-    if (isModifiedClick(e)) return;
-    // `?parent=` gives NEW_ID two destinations: a new entry, and a new sense of
-    // some entry. Only the one on screen is already open, or New would do
-    // nothing while an Add sense form is up.
-    const sameTarget = id === selectedId && (parent ?? null) === (id === NEW_ID ? newParent : null);
-    if (sameTarget) {
-      e.preventDefault(); // already open
-      return;
-    }
-    if (dirty) {
-      e.preventDefault();
-      dispatch({ type: 'dialog/askDiscard', target: { id, parent } });
-    }
-  };
-  // A link that leaves this screen altogether (a concordance row, an example)
-  // would discard the draft with no dialog at all, so it asks the same way.
-  const guardLeave = (e, to) => {
-    if (isModifiedClick(e) || !dirty) return;
-    e.preventDefault();
-    dispatch({ type: 'dialog/askDiscard', target: { to } });
-  };
-  // The same guards for the links inside the dictionary panels, which open
-  // another entry exactly as a row does.
-  const navGuard = useMemo(
-    () => ({
-      select: (e, id) => guardSelect(e, id),
-      newSense: (e, parentId) => guardSelect(e, NEW_ID, parentId),
-      leave: guardLeave,
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedId, newParent, dirty],
-  );
-  // Where a confirmed discard goes: off the screen, or to the entry asked for.
-  const discardTo = (target) => {
-    if (target?.to) navigate(target.to);
-    else goItem(target?.id ?? null, undefined, target?.parent ?? null);
-  };
+  // Leaving an entry with unsaved edits asks first, whichever way out: a row,
+  // a link in a panel, the vocabulary's tabs, the shell, Back, or a closed tab.
+  useUnsavedDraft(dirty ? 'The entry you have typed' : null);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   // A bulk import can fill in the very item the detail editor has open, which
   // would leave its draft showing pre-import values (and looking dirty against
   // the refreshed item). Re-seed the draft from what came back, unless the
-  // user really does have unsaved edits, which stay theirs.
+  // user really does have unsaved edits, which stay theirs. The read waits for
+  // the entry writes still queued (see fetchItems).
   const handleImported = async () => {
-    const wasDirty = dirty;
-    const openId = selectedId;
-    if (!wasDirty) dispatch({ type: 'draft/unseed' });
     const refreshed = await fetchItems({ quiet: true });
-    if (wasDirty || !openId || openId === NEW_ID || !refreshed) return;
+    if (!refreshed || dirtyRef.current) return;
+    dispatch({ type: 'draft/unseed' });
+    const openId = settledId(selectedIdRef.current);
+    if (!openId || openId === NEW_ID) return;
     if (!refreshed.some((i) => i.id === openId)) goItem(null, { replace: true });
   };
 
@@ -1020,45 +962,43 @@ export const VocabularyItems = ({
   }
 
   return (
-    <NavGuardProvider value={navGuard}>
-      <div ref={paneWrapRef} className="flex items-start gap-4">
-        <EntryList
-          list={list}
-          scope={scope}
-          dispatch={dispatch}
-          emptyOnly={emptyOnly}
-          emptyField={emptyField}
-          emptyCount={emptyCount}
-          offTagsetIds={offTagsetIds}
-          items={items}
-          fieldNames={fieldNames}
-          hasGloss={hasGloss}
-          selectedId={selectedId}
-          numbers={numbers}
-          comments={comments}
-          usageCounts={usageCounts}
-          canManage={canManage}
-          itemTo={itemTo}
-          guardSelect={guardSelect}
-          maxHeight={paneMaxH}
-          onBulkAdd={() => dispatch({ type: 'dialog/open', kind: 'bulk' })}
-          onReplace={() => dispatch({ type: 'dialog/open', kind: 'replace' })}
-          onExport={handleExportTsv}
-        />
+    <div ref={paneWrapRef} className="flex items-start gap-4">
+      <EntryList
+        list={list}
+        scope={scope}
+        dispatch={dispatch}
+        emptyOnly={emptyOnly}
+        emptyField={emptyField}
+        emptyCount={emptyCount}
+        offTagsetIds={offTagsetIds}
+        items={items}
+        fieldNames={fieldNames}
+        hasGloss={hasGloss}
+        selectedId={selectedId}
+        numbers={numbers}
+        comments={comments}
+        usageCounts={usageCounts}
+        canManage={canManage}
+        itemTo={itemTo}
+        maxHeight={paneMaxH}
+        onBulkAdd={() => dispatch({ type: 'dialog/open', kind: 'bulk' })}
+        onReplace={() => dispatch({ type: 'dialog/open', kind: 'replace' })}
+        onExport={handleExportTsv}
+      />
 
-        {/* ---- right pane: the entry, its concordance, its comments ---- */}
-        <div className="min-w-0 flex-1">
-          {!selectedId ? (
-            <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
-              <p className="text-sm text-muted-foreground">
-                Select an entry, or click “New” to add one.
-              </p>
-            </div>
-          ) : isNew ? (
-            entryEditor
-          ) : (
-            <Tabs value={pane} onValueChange={setPane}>
-              {/* Ask shares the tab strip's row rather than taking one of its
+      {/* ---- right pane: the entry, its concordance, its comments ---- */}
+      <div className="min-w-0 flex-1">
+        {!selectedId ? (
+          <div className="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed bg-card/50">
+            <p className="text-sm text-muted-foreground">
+              Select an entry, or click “New” to add one.
+            </p>
+          </div>
+        ) : isNew ? (
+          entryEditor
+        ) : (
+          <Tabs value={pane} onValueChange={setPane}>
+            {/* Ask shares the tab strip's row rather than taking one of its
                   own. In its own row it floated in the right margin with
                   nothing around it, and because it comes and goes with the
                   selection it moved the tabs down whenever an entry was
@@ -1066,161 +1006,158 @@ export const VocabularyItems = ({
                   reflows either way. Just "Ask": the entry it is about is the
                   heading directly below, so naming it in the label repeated a
                   fact from a centimetre away. */}
-              <div className="mb-3 flex items-start justify-between gap-4">
-                <TabsList>
-                  <TabsTrigger value="entry" to={paneTo('entry')}>
-                    Entry
-                  </TabsTrigger>
-                  <TabsTrigger value="concordance" to={paneTo('concordance')}>
-                    Concordance
-                    {conc.concPlan && (
-                      <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                        {conc.concPlan.totalHits.toLocaleString()}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger value="comments" to={paneTo('comments')}>
-                    Comments
-                    {(comments?.countFor(selectedId) ?? 0) > 0 && (
-                      <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                        {comments.countFor(selectedId)}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-                {assistantAvailable && wideEnoughForAssistant && selectedItem && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 gap-1.5"
-                    onClick={askAboutEntry}
-                    title="Ask the assistant about this entry"
-                  >
-                    <AssistantMark className="h-3.5 w-3.5" />
-                    Ask
-                  </Button>
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <TabsList>
+                <TabsTrigger value="entry" to={paneTo('entry')}>
+                  Entry
+                </TabsTrigger>
+                <TabsTrigger value="concordance" to={paneTo('concordance')}>
+                  Concordance
+                  {conc.concPlan && (
+                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {conc.concPlan.totalHits.toLocaleString()}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="comments" to={paneTo('comments')}>
+                  Comments
+                  {(comments?.countFor(selectedId) ?? 0) > 0 && (
+                    <span className="rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
+                      {comments.countFor(selectedId)}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+              {assistantAvailable && wideEnoughForAssistant && selectedItem && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  onClick={askAboutEntry}
+                  title="Ask the assistant about this entry"
+                >
+                  <AssistantMark className="h-3.5 w-3.5" />
+                  Ask
+                </Button>
+              )}
+            </div>
+
+            <TabsContent value="entry">
+              <div className="flex flex-col gap-4">
+                {entryEditor}
+                {selectedItem && (
+                  <>
+                    <ExamplesPanel
+                      item={selectedItem}
+                      client={client}
+                      linkedTokenIds={
+                        conc.concPlan && !conc.concPlan.hitIdsCapped ? conc.concPlan.hitIds : null
+                      }
+                      canManage={canManage}
+                      onRemove={handleRemoveExample}
+                    />
+                    <ReferencedByPanel
+                      item={selectedItem}
+                      items={items}
+                      fields={fields}
+                      numbers={numbers}
+                      itemTo={itemTo}
+                    />
+                  </>
                 )}
               </div>
+            </TabsContent>
 
-              <TabsContent value="entry">
-                <div className="flex flex-col gap-4">
-                  {entryEditor}
-                  {selectedItem && (
-                    <>
-                      <ExamplesPanel
-                        item={selectedItem}
-                        client={client}
-                        linkedTokenIds={
-                          conc.concPlan && !conc.concPlan.hitIdsCapped ? conc.concPlan.hitIds : null
-                        }
-                        canManage={canManage}
-                        onRemove={handleRemoveExample}
-                      />
-                      <ReferencedByPanel
-                        item={selectedItem}
-                        items={items}
-                        fields={fields}
-                        numbers={numbers}
-                        itemTo={itemTo}
-                      />
-                    </>
-                  )}
-                </div>
-              </TabsContent>
+            <TabsContent value="concordance">
+              <ConcordancePanel
+                conc={conc}
+                selectedItem={selectedItem}
+                canManage={canManage}
+                onAddExample={handleAddExample}
+              />
+            </TabsContent>
 
-              <TabsContent value="concordance">
-                <ConcordancePanel
-                  conc={conc}
-                  selectedItem={selectedItem}
-                  canManage={canManage}
-                  onAddExample={handleAddExample}
-                />
-              </TabsContent>
-
-              <TabsContent value="comments">
-                {selectedItem && comments && (
-                  <div className="rounded-lg border bg-card">
-                    <div className="flex items-center justify-between border-b px-4 py-2">
-                      <span className="text-sm font-medium">Comments</span>
-                      {comments.countFor(selectedItem.id) > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {comments.countFor(selectedItem.id)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="px-4 py-3">
-                      <EntryComments
-                        store={comments}
-                        itemId={selectedItem.id}
-                        caption={anchorCaption({
-                          kind: 'entry',
-                          label: selectedItem.form,
-                          detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
-                        })}
-                        canWrite={canComment}
-                        canDeleteAny={canManage}
-                      />
-                    </div>
+            <TabsContent value="comments">
+              {selectedItem && comments && (
+                <div className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between border-b px-4 py-2">
+                    <span className="text-sm font-medium">Comments</span>
+                    {comments.countFor(selectedItem.id) > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        {comments.countFor(selectedItem.id)}
+                      </span>
+                    )}
                   </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          )}
-        </div>
-
-        {homographs.length > 1 && (
-          <HomographDialog
-            open={dialog?.kind === 'homograph'}
-            onOpenChange={(o) => {
-              if (!o) dispatch({ type: 'dialog/close' });
-            }}
-            group={homographs}
-            currentId={tree.rootOf.get(selectedId)}
-            onReorder={handleHomographOrder}
-          />
+                  <div className="px-4 py-3">
+                    <EntryComments
+                      store={comments}
+                      itemId={selectedItem.id}
+                      caption={anchorCaption({
+                        kind: 'entry',
+                        label: selectedItem.form,
+                        detail: hasGloss ? selectedItem.metadata?.gloss || '' : '',
+                      })}
+                      canWrite={canComment}
+                      canDeleteAny={canManage}
+                    />
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
-
-        <BulkAddDialog
-          open={dialog?.kind === 'bulk'}
-          onOpenChange={(o) => {
-            if (!o) dispatch({ type: 'dialog/close' });
-          }}
-          vocabularyId={vocabularyId}
-          vocabularyName={vocabulary?.name}
-          fields={fields}
-          tagsetFor={tagsetFor}
-          existingItems={items}
-          client={client}
-          onImported={handleImported}
-        />
-
-        <ReplaceDialog
-          open={dialog?.kind === 'replace'}
-          onOpenChange={(o) => {
-            if (!o) dispatch({ type: 'dialog/close' });
-          }}
-          vocabularyName={vocabulary?.name}
-          fields={fields}
-          tagsetFor={tagsetFor}
-          items={items}
-          numbers={numbers}
-          client={client}
-          onApplied={handleImported}
-        />
-
-        <EntryDialogs
-          dialog={dialog}
-          dispatch={dispatch}
-          selectedItem={selectedItem}
-          draftForm={draft.form}
-          usageCounts={usageCounts}
-          deleteRefPatches={deleteRefPatches}
-          deleteFreesSenses={deleteFreesSenses}
-          onConfirmDelete={handleConfirmDelete}
-          onDiscard={discardTo}
-        />
       </div>
-    </NavGuardProvider>
+
+      {homographs.length > 1 && (
+        <HomographDialog
+          open={dialog?.kind === 'homograph'}
+          onOpenChange={(o) => {
+            if (!o) dispatch({ type: 'dialog/close' });
+          }}
+          group={homographs}
+          currentId={tree.rootOf.get(selectedId)}
+          onReorder={handleHomographOrder}
+        />
+      )}
+
+      <BulkAddDialog
+        open={dialog?.kind === 'bulk'}
+        onOpenChange={(o) => {
+          if (!o) dispatch({ type: 'dialog/close' });
+        }}
+        vocabularyId={vocabularyId}
+        vocabularyName={vocabulary?.name}
+        fields={fields}
+        tagsetFor={tagsetFor}
+        existingItems={items}
+        client={client}
+        onImported={handleImported}
+      />
+
+      <ReplaceDialog
+        open={dialog?.kind === 'replace'}
+        onOpenChange={(o) => {
+          if (!o) dispatch({ type: 'dialog/close' });
+        }}
+        vocabularyName={vocabulary?.name}
+        fields={fields}
+        tagsetFor={tagsetFor}
+        items={items}
+        numbers={numbers}
+        client={client}
+        onApplied={handleImported}
+      />
+
+      <EntryDialogs
+        dialog={dialog}
+        dispatch={dispatch}
+        selectedItem={selectedItem}
+        usageCounts={usageCounts}
+        deleteRefPatches={deleteRefPatches}
+        deleteFreesSenses={deleteFreesSenses}
+        onConfirmDelete={handleConfirmDelete}
+      />
+    </div>
   );
 };

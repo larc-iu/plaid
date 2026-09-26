@@ -1,14 +1,14 @@
 // The lifecycle every editable document shares, whichever app's linguistics sit
 // on top: the raw document and who is writing it, a subscription a React hook
-// or a vanilla island can follow, the write queue that runs each mutation as
-// one logical operation in the order it was made and resyncs on failure (and
-// the older single-flight gate, which drops a write made during another), the
-// optimistic raw patch, reload in place, and the snapshot beside the live document. What a
-// document MEANS (its layers, rows, and every mutation) is the subclass's.
+// or a vanilla island can follow, the write queue (WriteQueue.js) that runs
+// each mutation as one logical operation in the order it was made and resyncs
+// on failure, the optimistic raw patch, reload in place, and the snapshot
+// beside the live document. What a document MEANS (its layers, rows, and every
+// mutation) is the subclass's.
 //
-// Imports one sibling with no imports of its own, and nothing else: plaid-ud's
-// node suite reaches this file by relative path, where no alias and no package
-// resolves. Errors leave through `onError`.
+// Imports two siblings with no imports of their own, and nothing else:
+// plaid-ud's node suite reaches this file by relative path, where no alias and
+// no package resolves. Errors leave through `onError`.
 
 import {
   AUTO,
@@ -19,6 +19,7 @@ import {
   textDirectionOps,
   withTextDirection,
 } from './textDirection.js';
+import { WriteQueue } from './WriteQueue.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -56,15 +57,15 @@ export class DocumentModel {
     this._dataVersion = 0;
     this._listeners = new Set();
     this._derivedCache = new Map();
-    this._isSaving = false;
     this._error = '';
-    // The write queue behind `_queueWrite`: the tail every new send chains
-    // onto, how many sends are waiting or in flight, and the generation a
-    // failure bumps to skip the sends queued behind it.
-    this._writeTail = Promise.resolve();
-    this._queuedWrites = 0;
-    this._writeGeneration = 0;
-    this._reloadWhenDrained = false;
+    // The queue behind `_queueWrite`. A write starting clears the last error.
+    this._writes = new WriteQueue({
+      onSavingChange: (saving) => {
+        if (saving) this._error = '';
+        this._emit();
+      },
+      reloadDrained: () => this._reloadDrained(),
+    });
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -99,7 +100,7 @@ export class DocumentModel {
     return this._asOf;
   }
   get isSaving() {
-    return this._isSaving;
+    return this._writes.isSaving;
   }
   get error() {
     return this._error;
@@ -275,13 +276,11 @@ export class DocumentModel {
   }
 
   // An optimistic write in two halves. The caller has already shown the edit
-  // (`_canWrite`, then `_applyRawPatch`); `send` makes the server calls. Sends
-  // run one at a time, in the order the edits were made, so an edit made while
-  // another is in flight is on screen at once and its send waits its turn.
-  // A failed send reloads the document,
-  // which takes the edits queued behind it off the screen as well, so their
-  // sends are skipped. Resolves true when `send` landed, false otherwise.
-  // `isSaving` holds while anything is queued.
+  // (`_canWrite`, then `_applyRawPatch`); `send` makes the server calls, in
+  // its turn in the write queue (WriteQueue.js, which says how a refusal
+  // skips what was planned on it). A refused send reloads the document.
+  // Resolves true when `send` landed, false otherwise. `isSaving` holds while
+  // anything is queued.
   //
   // `reload: true` is for the one write whose effect the server works out and
   // the screen cannot replay: the document is refetched once the queue has
@@ -289,9 +288,7 @@ export class DocumentModel {
   // the edits still queued behind it from the screen. A send that needs the
   // server's state to go on calls `_reloadInSend` instead.
   //
-  // `shown: false` is for a write that put nothing on screen (a copy): its
-  // failure is reported and takes nothing back, and skips nothing behind it,
-  // and a refusal ahead of it does not skip it.
+  // `shown: false` is for a write that put nothing on screen (a copy).
   //
   // Every write goes through here, one at a time, so nothing is ever sent
   // beside a send or a refetch: a rename made while an edit is saving is sent
@@ -305,48 +302,17 @@ export class DocumentModel {
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
     if (!this._canWrite(label)) return Promise.resolve(false);
-    const generation = this._writeGeneration;
-    this._queuedWrites += 1;
-    if (!this._isSaving) {
-      this._isSaving = true;
-      this._error = '';
-      this._emit();
-    }
-    const run = async () => {
-      try {
-        // A refusal ahead took back what was planned on top of it. A write
-        // that put nothing on screen had nothing planned on it, so it is
-        // still sent: a copy asked for is made.
-        if (shown && generation !== this._writeGeneration) return false;
+    return this._writes.push(
+      async () => {
         await this._client.withOperation(operation, send);
-        if (reload) this._reloadWhenDrained = true;
-        return true;
-      } catch (err) {
-        if (!shown) {
-          await this._writeFailed(label, err, null);
-          return false;
-        }
-        this._reloadWhenDrained = false;
-        await this._writeFailed(label, err, () => this._reloadAfterFailure());
-        return false;
-      } finally {
-        if (this._queuedWrites === 1 && this._reloadWhenDrained) {
-          try {
-            await this._reloadDrained();
-          } catch (err) {
-            console.error('Reload after a write failed:', err);
-          }
-        }
-        this._queuedWrites -= 1;
-        if (this._queuedWrites === 0) {
-          this._isSaving = false;
-          this._emit();
-        }
-      }
-    };
-    const result = this._writeTail.then(run);
-    this._writeTail = result.catch(() => {});
-    return result;
+        if (reload) this._writes.reloadWhenDrained = true;
+      },
+      {
+        shown,
+        refused: (err) =>
+          this._writeFailed(label, err, shown ? () => this._reloadAfterFailure() : null),
+      },
+    );
   }
 
   // What a patch producer is handed beside the clone of `_raw` (a fresh layer
@@ -406,14 +372,16 @@ export class DocumentModel {
   // - `_reloadAfterFailure` and `_reloadDrained`, the queue's own.
   async _reload() {
     if (!this._client || !this.id) return;
-    const editedSince = (seen) => this._dataVersion !== seen || this._queuedWrites > 0;
+    const writes = this._writes;
     for (;;) {
-      while (this._queuedWrites > 0) await this._writeTail;
+      await writes.whenIdle();
       const seen = this._dataVersion;
+      const pushes = writes.pushes;
+      const edited = () => this._dataVersion !== seen || writes.pushes !== pushes;
       const updated = await this._fetch();
-      if (editedSince(seen)) continue;
+      if (edited()) continue;
       await this._adoptReload(updated);
-      if (editedSince(seen)) continue;
+      if (edited()) continue;
       this._swapRaw(updated);
       return;
     }
@@ -426,20 +394,16 @@ export class DocumentModel {
   async _reloadInSend() {
     if (!this._client || !this.id) return;
     await this._fetchAndAdopt();
-    if (this._queuedWrites > 1) this._reloadWhenDrained = true;
+    if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
   }
 
   // After a refused send. The screen still holds the refused edit and the
-  // edits planned on top of it, so the refetch takes them all back and the
-  // sends queued behind are skipped, an edit made while this fetch was on the
-  // wire included. Skipped even when the fetch fails.
+  // edits planned on top of it, so the refetch takes them all back, and the
+  // queue skips the sends queued behind (an edit made while this fetch was on
+  // the wire included) once it has finished or failed.
   async _reloadAfterFailure() {
     if (!this._client || !this.id) return;
-    try {
-      await this._fetchAndAdopt();
-    } finally {
-      this._writeGeneration += 1;
-    }
+    await this._fetchAndAdopt();
   }
 
   // The last send has landed and one before it asked for the server's view.
@@ -447,13 +411,14 @@ export class DocumentModel {
   // fetch is not put on screen: that edit's own send refetches once it lands.
   async _reloadDrained() {
     if (!this._client || !this.id) return;
-    this._reloadWhenDrained = false;
+    const writes = this._writes;
+    writes.reloadWhenDrained = false;
     const seen = this._dataVersion;
     const updated = await this._fetch();
-    const edited = () => this._dataVersion !== seen || this._queuedWrites > 1;
+    const edited = () => this._dataVersion !== seen || writes.queued > 1;
     if (!edited()) await this._adoptReload(updated);
     if (edited()) {
-      this._reloadWhenDrained = true;
+      writes.reloadWhenDrained = true;
       return;
     }
     this._swapRaw(updated);

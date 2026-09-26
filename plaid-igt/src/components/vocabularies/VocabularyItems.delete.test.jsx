@@ -35,6 +35,7 @@ const auth = vi.hoisted(() => ({ client: null, user: { id: 'u', isAdmin: true } 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const { VocabularyItems } = await import('./VocabularyItems.jsx');
+const { WriteQueue } = await import('@ui/domain/WriteQueue.js');
 
 const FIELDS = [
   { name: 'gloss', type: 'text' },
@@ -94,6 +95,7 @@ describe('deleting an entry other entries point at', () => {
           vocabulary={{ id: 'v1' }}
           client={client}
           fields={FIELDS}
+          writes={new WriteQueue()}
         />
       </MemoryRouter>,
     );

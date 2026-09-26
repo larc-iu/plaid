@@ -58,6 +58,9 @@ import { canEditProject, canManageVocabulary } from '@ui/domain/permissions.js';
 import { CHUNK } from '@/domain/bulk';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
+import { WriteQueue } from '@ui/domain/WriteQueue.js';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
@@ -120,6 +123,19 @@ export const VocabularyDetail = () => {
   // One token per vocabulary id, cancelled by the effect's cleanup, and every
   // writer of `vocabulary` checks it.
   const live = useRef(null);
+
+  // Two write queues per vocabulary (see WriteQueue.js): its schema and name,
+  // and its entries. They outlive the tab that made the writes, so a read
+  // from another tab waits for them, and closing the browser tab asks while
+  // either is still sending.
+  const writes = useMemo(
+    () => ({ schema: new WriteQueue(), entries: new WriteQueue() }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vocabularyId],
+  );
+  useSavingGuard(writes.schema);
+  useSavingGuard(writes.entries);
+  const guardLeavingTab = useUnsavedGuard();
 
   const fetchVocabulary = async (token) => {
     if (isNewVocabulary) {
@@ -241,8 +257,10 @@ export const VocabularyDetail = () => {
     { ready: !loading },
   );
 
-  // Lightweight update function that only updates vocabulary data without loading state
-  const updateVocabulary = async () => {
+  // Read the vocabulary again without the loading state. A read from outside
+  // the schema queue waits for it (see WriteQueue.js). `inTurn` is a refused
+  // schema write's own refetch, which the queue is waiting on.
+  const updateVocabulary = async ({ inTurn = false } = {}) => {
     if (isNewVocabulary) return;
     const token = live.current;
 
@@ -255,7 +273,8 @@ export const VocabularyDetail = () => {
         throw new Error('Invalid vocabulary ID');
       }
 
-      const vocabularyData = await client.vocabLayers.get(vocabularyId);
+      const read = () => client.vocabLayers.get(vocabularyId);
+      const vocabularyData = await (inTurn ? read() : writes.schema.readWhenIdle(read));
       if (token?.cancelled) return;
       setVocabulary(vocabularyData);
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
@@ -329,19 +348,24 @@ export const VocabularyDetail = () => {
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
         notifySuccess('Vocabulary created successfully', 'Success');
       } else {
-        // A new name shows at once; a refused one reloads the vocabulary,
-        // which puts the old name back.
-        if (editedName !== vocabulary.name) {
-          const name = editedName.trim();
+        // A new name shows at once and takes its turn in the schema queue. A
+        // refused one reloads the vocabulary, which puts the old name back,
+        // and leaves the typed name in the field.
+        const name = editedName.trim();
+        setEditedName(name);
+        if (name !== vocabulary.name) {
           setVocabulary((v) => ({ ...v, name }));
-          setIsEditing(false);
-          try {
-            await client.vocabLayers.update(vocabularyId, name);
-          } catch (err) {
-            await updateVocabulary();
-            throw err;
-          }
-          notifySuccess('Vocabulary name updated successfully', 'Success');
+          writes.schema
+            .push(() => client.vocabLayers.update(vocabularyId, name), {
+              refused: async (err) => {
+                console.error('Error renaming vocabulary:', err);
+                notifyError('Failed to save vocabulary', 'Error');
+                await updateVocabulary({ inTurn: true });
+              },
+            })
+            .then((landed) => {
+              if (landed) notifySuccess('Vocabulary name updated successfully', 'Success');
+            });
         }
       }
 
@@ -418,20 +442,14 @@ export const VocabularyDetail = () => {
     await saveFields(next);
   };
 
-  // Write the schema. The table shows it at once and the write waits behind
-  // any schema write still in flight, so the next edit builds on what the
-  // server will hold. A refused write says so and reloads the vocabulary,
-  // which puts back what the table showed, and the writes queued behind it
-  // (made on the refused schema) are not sent. Resolves to whether it landed.
-  const schemaWrites = useRef({ tail: Promise.resolve(), generation: 0 });
+  // Write the schema. The table shows it at once and the write takes its turn
+  // in the schema queue. A refused write says so and reloads the vocabulary,
+  // which puts back what the table showed. Resolves to whether it landed.
   const saveFields = (updatedFields, { quiet = false } = {}) => {
     setFields(updatedFields);
     if (isNewVocabulary) return Promise.resolve(true);
-    const queue = schemaWrites.current;
-    const generation = queue.generation;
-    const send = async () => {
-      if (generation !== queue.generation) return false;
-      try {
+    return writes.schema.push(
+      async () => {
         await client.vocabLayers.setConfig(
           vocabularyId,
           IGT_NAMESPACE,
@@ -439,18 +457,15 @@ export const VocabularyDetail = () => {
           fieldsToConfig(updatedFields),
         );
         if (!quiet) notifySuccess('Fields updated successfully', 'Success');
-        return true;
-      } catch (err) {
-        queue.generation += 1;
-        console.error('Error saving custom fields:', err);
-        notifyError('Failed to save fields', 'Error');
-        await updateVocabulary();
-        return false;
-      }
-    };
-    const result = queue.tail.then(send);
-    queue.tail = result.catch(() => {});
-    return result;
+      },
+      {
+        refused: async (err) => {
+          console.error('Error saving custom fields:', err);
+          notifyError('Failed to save fields', 'Error');
+          await updateVocabulary({ inTurn: true });
+        },
+      },
+    );
   };
 
   // Point a field at one of the vocabulary's tagsets (or at none). By name,
@@ -471,7 +486,9 @@ export const VocabularyDetail = () => {
    * cost nothing: the ids survive the reshape (see `refIds`).
    */
   const countTypeChangeLoss = async (fieldName, nextFields) => {
-    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+    const { items = [] } = await writes.entries.readWhenIdle(() =>
+      client.vocabLayers.get(vocabularyId, true),
+    );
     const live = new Set(items.map((it) => it.id));
     const after = nextFields.find((f) => f.name === fieldName);
     let cleared = 0;
@@ -500,17 +517,28 @@ export const VocabularyDetail = () => {
    * Done here rather than left to the entry list's load-time repair: the
    * dialog has just said how many values go, and a promise kept only once a
    * writer next opens that screen is not kept.
+   *
+   * Takes its turn behind the entry writes, and reads the entries in it.
+   * Resolves to whether it landed.
    */
-  const pruneFieldValues = async (after, label) => {
-    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
-    const writes = fieldPruneWrites(items, after);
-    if (!writes.length) return;
-    await client.withOperation(`Change "${label}"`, async () => {
-      for (let i = 0; i < writes.length; i += CHUNK) {
-        await client.vocabItems.bulkUpdate(writes.slice(i, i + CHUNK));
-      }
-    });
-  };
+  const pruneFieldValues = (after, label) =>
+    writes.entries.push(
+      async () => {
+        const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+        const updates = fieldPruneWrites(items, after);
+        if (!updates.length) return;
+        await client.withOperation(`Change "${label}"`, async () => {
+          for (let i = 0; i < updates.length; i += CHUNK) {
+            await client.vocabItems.bulkUpdate(updates.slice(i, i + CHUNK));
+          }
+        });
+      },
+      {
+        shown: false,
+        refused: (err) =>
+          console.error('Error rewriting entry values after a field type change:', err),
+      },
+    );
 
   const handleSetType = async (fieldName, key) => {
     const choice = TYPE_CHOICES.find((c) => c.key === key);
@@ -573,13 +601,12 @@ export const VocabularyDetail = () => {
       // leaves the new type holding values the entry list's load-time repair
       // finishes clearing.
       if (!(await saveFields(next))) return;
-      try {
-        await pruneFieldValues(
+      if (
+        !(await pruneFieldValues(
           next.find((f) => f.name === fieldName),
           label,
-        );
-      } catch (err) {
-        console.error('Error rewriting entry values after a field type change:', err);
+        ))
+      ) {
         // Arriving at Entry, the entry list's load-time repair finishes the
         // clearing. Leaving it, nothing else will: the ids stay in a text
         // field until the type is changed again.
@@ -600,26 +627,35 @@ export const VocabularyDetail = () => {
   };
 
   // Fields reference a tagset by name, so a rename repoints every field that
-  // used the old name in the same operation, or they quietly fall back to
-  // free. Same contract as the project's TagsetsSettings.
+  // used the old name right behind it, or they quietly fall back to free.
+  // Same contract as the project's TagsetsSettings. Both take their turn in
+  // the schema queue, and a refusal throws, which is how TagsetsManager
+  // learns to roll back.
   const handleSaveTagsets = async (next, meta) => {
-    try {
-      await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', next);
-      const renamed = meta?.renamed;
-      if (renamed && fields.some((f) => f.tagset === renamed.from)) {
-        await saveFields(
-          fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f)),
-          { quiet: true },
-        );
-      }
-      setDraftTagsets(next);
-      await updateVocabulary();
-      setDraftTagsets(null);
-    } catch (err) {
-      console.error('Failed to save tagsets:', err);
-      notifyError('Failed to save tagsets', 'Save Error');
-      throw err;
-    }
+    setDraftTagsets(next);
+    const tagsetsLanded = writes.schema.push(
+      () => client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', next),
+      {
+        refused: async (err) => {
+          console.error('Failed to save tagsets:', err);
+          notifyError('Failed to save tagsets', 'Save Error');
+          setDraftTagsets(null);
+          await updateVocabulary({ inTurn: true });
+        },
+      },
+    );
+    const renamed = meta?.renamed;
+    const fieldsLanded =
+      renamed && fields.some((f) => f.tagset === renamed.from)
+        ? saveFields(
+            fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f)),
+            { quiet: true },
+          )
+        : true;
+    const landed = (await tagsetsLanded) && (await fieldsLanded);
+    if (!landed) throw new Error('Failed to save tagsets');
+    await updateVocabulary();
+    setDraftTagsets(null);
   };
 
   // The [value, count] rows present in the fields this tagset governs, for
@@ -627,7 +663,9 @@ export const VocabularyDetail = () => {
   const handleLoadAttested = async (name) => {
     const names = (tagsetUsage[name] || []).map((g) => g.name);
     if (!names.length) return [];
-    const { items = [] } = await client.vocabLayers.get(vocabularyId, true);
+    const { items = [] } = await writes.entries.readWhenIdle(() =>
+      client.vocabLayers.get(vocabularyId, true),
+    );
     const counts = new Map();
     for (const it of items) {
       for (const n of names) {
@@ -933,7 +971,7 @@ export const VocabularyDetail = () => {
         )}
 
         {!isNewVocabulary && !isEditing && (
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={setActiveTab} guard={guardLeavingTab}>
             <TabsList>
               <TabsTrigger value="items" to={tabHref(vocabPath, 'items')}>
                 <BookText className="h-4 w-4" /> Entries
@@ -964,6 +1002,7 @@ export const VocabularyDetail = () => {
                 vocabulary={vocabulary}
                 client={client}
                 fields={fields}
+                writes={writes.entries}
                 canManage={canManageVocabulary(vocabulary, user)}
                 comments={comments}
                 canComment={canComment}

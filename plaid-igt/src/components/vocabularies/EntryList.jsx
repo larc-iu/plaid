@@ -44,7 +44,6 @@ export const EntryList = ({
   usageCounts,
   canManage,
   itemTo,
-  guardSelect,
   maxHeight,
   onBulkAdd,
   onReplace,
@@ -65,7 +64,7 @@ export const EntryList = ({
           <span className="text-sm font-medium">Entries</span>
           {canManage && (
             <Button size="sm" className="h-7" asChild>
-              <Link to={itemTo(NEW_ID)} onClick={(e) => guardSelect(e, NEW_ID)}>
+              <Link to={itemTo(NEW_ID)}>
                 <Plus className="h-3.5 w-3.5" /> New
               </Link>
             </Button>
@@ -198,7 +197,6 @@ export const EntryList = ({
               <li key={item.id}>
                 <Link
                   to={itemTo(item.id)}
-                  onClick={(e) => guardSelect(e, item.id)}
                   data-selected={selectedId === item.id || undefined}
                   data-depth={depth || undefined}
                   data-context={context || undefined}

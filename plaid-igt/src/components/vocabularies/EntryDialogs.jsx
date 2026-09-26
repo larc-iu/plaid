@@ -9,19 +9,16 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 
-// The two confirmations the screen asks: deleting the open entry, and leaving
-// a draft with unsaved edits. Which one is open is the reducer's `dialog`;
-// `onDiscard(target)` is the navigation a confirmed discard performs.
+// The confirmation the screen asks before deleting the open entry. Whether it
+// is open is the reducer's `dialog`.
 export const EntryDialogs = ({
   dialog,
   dispatch,
   selectedItem,
-  draftForm,
   usageCounts,
   deleteRefPatches,
   deleteFreesSenses,
   onConfirmDelete,
-  onDiscard,
 }) => {
   const close = () => dispatch({ type: 'dialog/close' });
   const uses = usageCounts?.[selectedItem?.id] ?? 0;
@@ -81,35 +78,6 @@ export const EntryDialogs = ({
               onClick={onConfirmDelete}
             >
               <Trash2 className="h-4 w-4" /> Delete entry
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={dialog?.kind === 'discard'}
-        onOpenChange={(o) => {
-          if (!o) close();
-        }}
-      >
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
-          </AlertDialogHeader>
-          <p className="text-sm text-muted-foreground">
-            You have unsaved edits to <strong>"{draftForm || selectedItem?.form}"</strong>.
-            Switching away will discard them.
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={close}>Keep editing</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                onDiscard(dialog?.target ?? null);
-                close();
-              }}
-            >
-              Discard changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

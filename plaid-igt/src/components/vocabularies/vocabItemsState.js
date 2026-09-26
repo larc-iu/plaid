@@ -56,7 +56,11 @@ export const metaEqual = (a, b) => {
 // dirty once anything is typed; an existing one once the form or a field
 // differs from the entry as stored.
 export const isDirty = (draft, item) => {
-  if (!item) return draft.form.trim() !== '' || Object.keys(cleanMeta(draft.fields)).length > 0;
+  if (!item) {
+    // A new sense starts from its headword's form, which is nothing typed.
+    const seeded = (draft.seedForm ?? '').trim();
+    return draft.form.trim() !== seeded || Object.keys(cleanMeta(draft.fields)).length > 0;
+  }
   return (
     draft.form.trim() !== item.form || !metaEqual(draft.fields, editableMetadata(item.metadata))
   );
@@ -66,7 +70,6 @@ export const initialState = {
   draft: { seedKey: undefined, form: '', fields: {} },
   scope: { search: '', field: ANY_FIELD, emptyOnly: false, offTagsetOnly: false },
   // null | { kind: 'bulk' | 'replace' | 'delete' | 'homograph' }
-  //      | { kind: 'discard', target: { id, parent } | { to } }
   dialog: null,
 };
 
@@ -81,7 +84,12 @@ export function reducer(state, action) {
     case 'draft/seed':
       return {
         ...state,
-        draft: { seedKey: action.seedKey, form: action.form, fields: action.fields },
+        draft: {
+          seedKey: action.seedKey,
+          seedForm: action.form,
+          form: action.form,
+          fields: action.fields,
+        },
       };
     case 'draft/form':
       return { ...state, draft: { ...state.draft, form: action.form } };
@@ -121,8 +129,6 @@ export function reducer(state, action) {
     // ---- dialogs: one at a time ----
     case 'dialog/open':
       return { ...state, dialog: { kind: action.kind } };
-    case 'dialog/askDiscard':
-      return { ...state, dialog: { kind: 'discard', target: action.target } };
     case 'dialog/close':
       return state.dialog ? { ...state, dialog: null } : state;
     default:
