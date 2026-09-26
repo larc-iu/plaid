@@ -17,6 +17,10 @@ vi.mock('sonner', () => ({ toast }));
 // what these tests are about.
 vi.mock('./ProjectInvites.jsx', () => ({ ProjectInvites: () => null }));
 vi.mock('./UserSearch.jsx', () => ({ UserSearch: () => null }));
+// The password minimum comes from the server. Held here, so no test reaches
+// for a real server and none passes only because that request failed.
+const limits = vi.hoisted(() => ({ passwordMinLength: 8 }));
+vi.mock('../../services/auth.js', () => ({ authService: { serverLimits: async () => limits } }));
 
 const { ProjectAccessScreen } = await import('./ProjectAccessScreen.jsx');
 
@@ -101,13 +105,29 @@ describe('creating an account from the access screen', () => {
     const view = await mount(client);
     await openCreate(view);
     await view.step(() => typeInto(field('user-admin-email'), 'grace@example.com'));
-    await view.step(() => typeInto(field('user-admin-password'), 'hopper1'));
-    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper1'));
+    await view.step(() => typeInto(field('user-admin-password'), 'hopper123'));
+    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper123'));
     await submit(view);
 
     expect(client.users.create).toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith('Could not create the account', {
       description: 'Could not reach the server. Check your connection and try again.',
+    });
+    await view.unmount();
+  });
+
+  it('will not send a password shorter than the server allows', async () => {
+    const client = fakeClient();
+    const view = await mount(client);
+    await openCreate(view);
+    await view.step(() => typeInto(field('user-admin-email'), 'grace@example.com'));
+    await view.step(() => typeInto(field('user-admin-password'), 'hopper1'));
+    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper1'));
+    await submit(view);
+
+    expect(client.users.create).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('Check the password', {
+      description: 'Password must be at least 8 characters',
     });
     await view.unmount();
   });
@@ -120,8 +140,8 @@ describe('creating an account from the access screen', () => {
     const view = await mount(client);
     await openCreate(view);
     await view.step(() => typeInto(field('user-admin-email'), 'grace@example.com'));
-    await view.step(() => typeInto(field('user-admin-password'), 'hopper1'));
-    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper2'));
+    await view.step(() => typeInto(field('user-admin-password'), 'hopper123'));
+    await view.step(() => typeInto(field('user-admin-password-confirm'), 'hopper124'));
     await submit(view);
 
     expect(client.users.create).not.toHaveBeenCalled();
