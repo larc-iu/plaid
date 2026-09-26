@@ -220,29 +220,65 @@ export function freqQueries(domain, spec) {
 const ANY_VALUE = { regex: '.' };
 
 /**
- * The frequency query for one field a tagset governs (a governedFields
- * record). A morpheme field's values are grouped by their morpheme's morph
- * type and form as well, [value, morphType, form, count], because a tagset
- * reads a suffix's gloss otherwise than a stem's (glossReadingOf). Any other
- * field's rows are [value, count].
+ * The frequency queries for one field a tagset governs (a governedFields
+ * record). A morpheme field's values are grouped by what gives their
+ * morpheme its morph type, and by its form, because a tagset reads a
+ * suffix's gloss otherwise than a stem's (glossReadingOf). The grid takes a
+ * morpheme's type from its linked lexicon entry (the entry's own, else its
+ * headword's) and falls back to the token's cached metadata.morphType, which
+ * is refreshed only when a document is opened. The query language has no
+ * left join, so a morpheme field takes two queries: the linked morphemes,
+ * rows [value, entry type, entry parent, cached type, form, count], and the
+ * unlinked ones, rows [value, cached type, form, count]. Any other field
+ * takes one query with rows [value, count].
  */
-export const governedFreqQuery = (g, projectId) => {
-  if (g.kind === 'metadata') return metadataFreqQuery(projectId, g.field);
+export const governedFreqQueries = (g, projectId) => {
+  if (g.kind === 'metadata') return [metadataFreqQuery(projectId, g.field)];
   const where = [
     ['span', '?s', { layer: g.layerId, value: ANY_VALUE }],
     ['span', '?s', { value: { var: '?val' } }],
   ];
-  if (g.scope !== 'morpheme') {
-    return { where, return: { group: ['?val'], aggregates: [['count']] } };
-  }
-  return {
-    where: [...where, ['covers', '?s', '?t']],
-    return: {
-      group: ['?val', '?t.metadata.morphType', '?t.metadata.form'],
-      aggregates: [['count']],
+  const aggregates = [['count']];
+  if (g.scope !== 'morpheme') return [{ where, return: { group: ['?val'], aggregates } }];
+  const morph = [...where, ['covers', '?s', '?t']];
+  return [
+    {
+      where: [...morph, ['vocab-link', '?t', '?v']],
+      return: {
+        group: [
+          '?val',
+          '?v.metadata.morphType',
+          '?v.metadata.parent',
+          '?t.metadata.morphType',
+          '?t.metadata.form',
+        ],
+        aggregates,
+      },
     },
-  };
+    {
+      where: [...morph, ['not', ['vocab-link', '?t', '?v']]],
+      return: { group: ['?val', '?t.metadata.morphType', '?t.metadata.form'], aggregates },
+    },
+  ];
 };
+
+/**
+ * Every lexicon entry that is another's headword, as [id, morph type,
+ * parent, count] rows, for a sense whose own type is empty: it goes by its
+ * headword's (vocabDictionary morphTypeOf).
+ */
+export const headwordTypesQuery = (projectId) => ({
+  scope: { projectIds: [projectId] },
+  where: [
+    ['vocab', '?h', {}],
+    ['vocab', '?e', {}],
+    ['=', '?h.id', '?e.metadata.parent'],
+  ],
+  return: {
+    group: ['?h', '?h.metadata.morphType', '?h.metadata.parent'],
+    aggregates: [['count']],
+  },
+});
 
 // ---- document metadata -----------------------------------------------------
 // Metadata is not a span layer, so it needs its own queries. A document clause

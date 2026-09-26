@@ -42,12 +42,15 @@ const project = {
 describe('the off-tagset badge', () => {
   it("counts a suffix's sbj:3.pfv and not a stem's", async () => {
     const client = {
-      query: vi.fn(async () => ({
-        results: [
-          ['sbj:3.pfv', 'suffix', 'ti', 4],
-          ['pass:3', 'stem', 'ka', 2],
-          ['pass:3', 'suffix', 'ku', 1],
-        ],
+      // The unlinked morphemes' rows, and none linked to an entry.
+      query: vi.fn(async (q) => ({
+        results: q.where.some((c) => c[0] === 'vocab-link')
+          ? []
+          : [
+              ['sbj:3.pfv', 'suffix', 'ti', 4],
+              ['pass:3', 'stem', 'ka', 2],
+              ['pass:3', 'suffix', 'ku', 1],
+            ],
       })),
     };
     const { step, unmount } = await renderComponent(

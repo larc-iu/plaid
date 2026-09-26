@@ -152,10 +152,12 @@ describe('the values a seed reads', () => {
       query: vi.fn(async (q) => ({
         results: q.scope
           ? [['sbj:3.pfv', 2]]
-          : [
-              ['sbj:3.pfv', 'suffix', 'ti', 4],
-              ['sbj:3.pfv', 'stem', 'sa', 1],
-            ],
+          : q.where.some((c) => c[0] === 'vocab-link')
+            ? []
+            : [
+                ['sbj:3.pfv', 'suffix', 'ti', 4],
+                ['sbj:3.pfv', 'stem', 'sa', 1],
+              ],
       })),
     };
     const { unmount } = await renderComponent(

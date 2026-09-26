@@ -48,10 +48,17 @@ const project = {
   ],
 };
 
-/** A client whose `query` answers each aggregate with canned [value, count] rows. */
-const clientWith = (rowsByCall) => {
+/**
+ * A client whose `query` answers each aggregate with canned [value, count]
+ * rows. A morpheme field's linked-morpheme query takes `linked` instead and
+ * uses up no canned answer, so the field's rows go to its unlinked query.
+ */
+const clientWith = (rowsByCall, linked = []) => {
   let i = 0;
-  return { query: vi.fn(async () => ({ results: rowsByCall[i++] ?? [] })) };
+  const isLinked = (q) => q?.where?.some((c) => c[0] === 'vocab-link');
+  return {
+    query: vi.fn(async (q) => ({ results: isLinked(q) ? linked : (rowsByCall[i++] ?? []) })),
+  };
 };
 
 const render = (client) =>
@@ -97,9 +104,9 @@ describe('the scan', () => {
     const { container, unmount } = await render(client);
     expect(container.textContent).toContain('Ballad');
     expect(container.textContent).toContain('document');
-    // Two governed fields, so two aggregate queries (one span, one metadata),
-    // plus the morpheme-form sweep the zero-morph check runs.
-    expect(client.query).toHaveBeenCalledTimes(3);
+    // Two governed fields: the morpheme field's linked and unlinked queries
+    // and the metadata one, plus the morpheme-form sweep the zero-morph check runs.
+    expect(client.query).toHaveBeenCalledTimes(4);
     await unmount();
   });
 
@@ -171,25 +178,23 @@ describe('a morpheme field', () => {
     },
   };
 
-  it("asks for each value's morph type and form, and flags only a suffix's occurrences", async () => {
-    const client = clientWith([
+  it("reads each value by its morph type and form, and flags only a suffix's occurrences", async () => {
+    const client = clientWith(
       [
-        ['sbj:3.pfv', 'stem', 'sa', 9],
-        ['sbj:3.pfv', 'suffix', 'ti', 4],
-        ['go.PL', 'stem', 'ka', 6],
+        [
+          ['sbj:3.pfv', 'stem', 'sa', 9],
+          ['go.PL', 'stem', 'ka', 6],
+        ],
+        [['Song', 4]],
       ],
-      [['Song', 4]],
-    ]);
+      // Linked to a suffix entry, though the token's cached type still says stem.
+      [['sbj:3.pfv', 'suffix', null, 'stem', 'ti', 4]],
+    );
     const { container, unmount } = await renderComponent(
       <MemoryRouter>
         <ProjectValidation project={mixed} projectId="p-1" client={client} />
       </MemoryRouter>,
     );
-    expect(client.query.mock.calls[0][0].return.group).toEqual([
-      '?val',
-      '?t.metadata.morphType',
-      '?t.metadata.form',
-    ]);
     expect(container.textContent).toContain('sbj:3.pfv');
     expect(container.textContent).toContain('4 occurrences');
     expect(container.textContent).toContain('"sbj:3", "pfv" not in the tagset');
