@@ -16,6 +16,8 @@ vi.mock('@ui/components/shared/UserSearch.jsx', () => ({ UserSearch: () => null 
 
 const auth = vi.hoisted(() => ({ getClient: vi.fn(), user: { id: 'u', isAdmin: false } }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
+// The access screen's password field asks the server for its minimum.
+vi.mock('@ui/services/auth.js', () => ({ authService: { serverLimits: async () => ({}) } }));
 
 const { ProjectManagement } = await import('./ProjectManagement.jsx');
 
