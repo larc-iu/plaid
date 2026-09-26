@@ -62,6 +62,18 @@ def test_a_read_shows_the_enhanced_graph_where_a_sentence_has_one():
     assert rows['1'][-1] == '0:root'
 
 
+def test_an_extra_edge_with_no_label_writes_nothing_in_deps_as_the_export_does():
+    """DEPS names a head and a relation, and plaid-ud's export leaves out an
+    edge with no relation to name. The read wrote `1:` for one."""
+    ws = _enhanced_ws([{'id': 'e-1', 'source': 'sp-l1', 'target': 'sp-l3', 'value': ''},
+                       {'id': 'e-2', 'source': 'sp-l1', 'target': 'sp-l4', 'value': None}])
+    out = run(ws, 'read_document', document='Viaje')
+    rows = {line.split('\t')[0]: line.split('\t') for line in out.split('# sent_id = s2')[0]
+            .splitlines() if '\t' in line}
+    assert rows['4'][-1] == '1:obl'
+    assert rows['5'][-1] == '1:punct'
+
+
 def test_a_citation_carries_the_enhanced_graph_only_where_there_is_one():
     from plaid_agent.ud.citations import resolve_citations
     rows = [{'id': 'e-1', 'source': 'sp-l1', 'target': 'sp-l3', 'value': 'nsubj'}]

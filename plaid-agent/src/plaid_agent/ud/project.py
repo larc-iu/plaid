@@ -497,7 +497,10 @@ def _read_enhanced(word_layer, project: UdProject, basic: List[dict],
         head = 0 if source is target else (source.index if source else None)
         if head is None:
             continue
-        extras.setdefault(target.id, []).append((head, row.get('value') or ''))
+        # A row with no label is still an edge a split takes with it, but DEPS
+        # has nothing to write for it and the app's export leaves it out.
+        if row.get('value'):
+            extras.setdefault(target.id, []).append((head, row['value']))
         if row.get('id'):
             extra_ids.setdefault(target.id, []).append((head, row['id']))
     for s in sentences:
