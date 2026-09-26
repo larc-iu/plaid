@@ -11,8 +11,8 @@
 //   − the rows of each document edited earlier in this session
 //   + that document as it was left      (a local fold, taken on the way out)
 //
-// The first two lines make up for the `!= doc` the project queries used to
-// carry. The last two keep what a person just decided in one document
+// The first two lines leave the open document out of the project's rows,
+// which it would otherwise count twice. The last two keep what a person just decided in one document
 // counting in the next, since the project's rows predate it. Every document's
 // rows are read once per project read and kept, so going back to a document
 // sends nothing, and subtracting them undoes what the project's rows hold for

@@ -221,13 +221,11 @@ export const EntryEditor = ({
               }}
             />
           </div>
-          {/* Status belongs here, with everything else Save governs. It used to
-            sit up in the header beside the headword and the usage count, both
-            of which are read-only, so it read as a status chip that saves
-            itself the moment you pick one. It does not: it dirties the draft
-            like any other field, and navigating away without pressing Save
-            dropped the choice silently. Every other editable value on this
-            panel is below the divider. */}
+          {/* Status belongs here, with everything else Save governs. Beside
+            the headword and the usage count, both read-only, it would read as
+            a chip that saves itself when picked. It dirties the draft like any
+            other field, and every editable value on this panel is below the
+            divider. */}
           {formGroups.status && (
             <div className="flex min-w-0 flex-col gap-1">
               <Label

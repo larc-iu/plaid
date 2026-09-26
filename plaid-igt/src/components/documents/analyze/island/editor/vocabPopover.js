@@ -811,13 +811,8 @@ export const vocabPopover = {
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
-            // Through the op chain like every other edit: the doc drops a
-            // mutation that overlaps one in flight.
-            this._run(() =>
-              linked
-                ? this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value)
-                : this.doc.setMorphemeType(morphemeId, value),
-            );
+            if (linked) this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
+            else this.doc.setMorphemeType(morphemeId, value);
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>

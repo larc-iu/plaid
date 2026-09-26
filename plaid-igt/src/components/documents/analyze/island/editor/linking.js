@@ -23,7 +23,7 @@ export const linking = {
   // mutation did not consume is dropped once that mutation settles.
   _runThenFocus(target, fn) {
     this._pendingFocus = target;
-    return this._run(fn).then((result) => {
+    return Promise.resolve(fn()).then((result) => {
       if (this._pendingFocus === target) this._pendingFocus = null;
       return result;
     });

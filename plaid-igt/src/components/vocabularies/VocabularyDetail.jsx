@@ -300,8 +300,8 @@ export const VocabularyDetail = () => {
       notifyError('Vocabulary name cannot be empty', 'Invalid Name');
       return;
     }
-    // Two fast clicks used to run two creates, each reading createdRef before
-    // the other resolved, leaving two vocabularies under the one name.
+    // A second click while a create is on its way would read createdRef before
+    // the first resolved and make a second vocabulary under the one name.
     if (saving) return;
     setSaving(true);
 
@@ -704,8 +704,7 @@ export const VocabularyDetail = () => {
         <div className="overflow-x-auto rounded-md border">
           <table className="w-full text-sm">
             <thead>
-              {/* The same header as every other table here. It used to be
-                  uppercased, the one shouting table in the app. */}
+              {/* The same header as every other table here. */}
               <tr className="bg-muted/50">
                 <th className="px-3 py-2 text-left font-medium">Field</th>
                 <th className="px-3 py-2 text-left font-medium">Inline</th>

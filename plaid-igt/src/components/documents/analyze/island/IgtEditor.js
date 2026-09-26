@@ -186,8 +186,8 @@ export class IgtEditor {
       this._repositionRowMenu();
       this._repositionAlts();
     };
-    // Refuse to let a hard reload / tab close silently drop an uncommitted
-    // cell edit or a save still in flight (the browser shows its own prompt).
+    // Refuse to let a hard reload or a tab close silently drop an uncommitted
+    // cell edit (the browser shows its own prompt).
     this._onBeforeUnload = (e) => {
       if (!this._hasUnsavedWork()) return;
       e.preventDefault();
@@ -403,10 +403,10 @@ export class IgtEditor {
     render(nothing, this.container);
   }
 
-  // An in-flight save, or a focused cell whose value differs from what it
-  // was focused with (i.e. typed but not yet committed by blur/Enter).
+  // A focused cell whose value differs from what it was focused with (typed
+  // but not yet committed by blur or Enter). A save still on its way is
+  // useSavingGuard's question, which DocumentDetail asks for the document.
   _hasUnsavedWork() {
-    if (this.doc.isSaving) return true;
     const el = document.activeElement;
     if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
     return (el.value ?? '') !== (el.dataset.orig ?? '');
@@ -449,25 +449,14 @@ export class IgtEditor {
     render(this._statusPill(), host);
   }
 
-  // Run a doc mutation now. Every mutation shows its edit before it returns
-  // (the document patches first and queues the server call behind any in
-  // flight), so the grid has re-rendered by the time this does. The promise
-  // is the mutation's result once the server has answered: false when it was
-  // refused, before anything showed or by the server (which reloads).
-  _run(fn) {
-    try {
-      return Promise.resolve(fn());
-    } catch (err) {
-      return Promise.reject(err);
-    }
-  }
-
-  // Run a structural edit and say whether it showed. A refusal before any
-  // change is the one case a handler puts its cell back for: a refusal from
-  // the server reloads the document, which puts back everything.
+  // Run a structural edit and say whether it showed. Every mutation shows its
+  // edit before it returns and resolves once the server has answered: false
+  // when it was refused, before anything showed or by the server (which
+  // reloads). A refusal before any change is the one case a handler puts its
+  // cell back for: a refusal from the server puts back everything.
   async _showStructural(fn) {
     const before = this.doc.dataVersion;
-    const saving = this._run(fn);
+    const saving = fn();
     if (this.doc.dataVersion !== before) return true;
     return (await saving) !== false;
   }

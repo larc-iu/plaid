@@ -4,9 +4,8 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 
 // Deleting a headword repoints everything that names it: its senses become
 // entries of their own, and every field that points at it is cleared. That is
-// one write per referring entry, and it used to be one whole-map PUT each,
-// inside the one operation that holds the vocabulary's write lock. The same
-// walk on load has gone out in bulk since the bulk conversion.
+// one write per referring entry, sent in bulk under the one operation, as the
+// same walk on load is.
 
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),

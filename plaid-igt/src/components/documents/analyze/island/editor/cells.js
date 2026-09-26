@@ -445,7 +445,7 @@ export const cells = {
     // a retry is measured against. Read now rather than after the failure,
     // when the cell may have been refocused (and restamped) in the meantime.
     const saved = el.dataset.orig ?? '';
-    this._run(fn).then((ok) => {
+    Promise.resolve(fn()).then((ok) => {
       if (ok !== false || !key) return;
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       if (!cell) return;
@@ -539,7 +539,7 @@ export const cells = {
       // The DOM still holds the discarded text until the re-render: don't let
       // the blur from the hop write it back.
       el.dataset.suppressCommit = '1';
-      this._run(() => this.doc.discardSentenceSpan(sid, field));
+      this.doc.discardSentenceSpan(sid, field);
       if (!this._navMove(el, 'next')) el.blur();
       return;
     }
@@ -570,7 +570,7 @@ export const cells = {
         if (!this._navMove(el, 'next')) el.blur();
         return;
       }
-      this._run(() => this.doc.confirmSentenceSpan(sid, field));
+      this.doc.confirmSentenceSpan(sid, field);
       // Same beat as the word gesture, and for a stronger reason: the hop is
       // to the NEXT SENTENCE, so without it the pulse plays on a row already
       // scrolled past.

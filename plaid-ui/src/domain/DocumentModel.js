@@ -479,9 +479,8 @@ export class DocumentModel {
   // loaded document.
   //
   // Concurrent callers (StrictMode's double invoke, a quick tab switch) share
-  // ONE in-flight pass and its result. A bare single-flight gate handed the
-  // second caller an empty result, which is what the screen reported, so
-  // integrity findings were never shown in dev.
+  // ONE in-flight pass and its result, so the second caller reports the same
+  // findings as the first.
   async reconcileOnOpen() {
     if (this._reconcilePromise) return this._reconcilePromise;
     this._reconcilePromise = this._client

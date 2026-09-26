@@ -95,7 +95,7 @@ export const review = {
       );
       return true;
     }
-    this._run(() => this.doc.confirmWordAnalysis(wordId, adoptions));
+    this.doc.confirmWordAnalysis(wordId, adoptions);
     this._pulseWord(wordId);
     const from = e.target;
     this._afterABeat(() => {
@@ -195,7 +195,7 @@ export const review = {
       return true;
     }
     e.target.dataset.suppressCommit = '1';
-    this._run(() => this.doc.discardWordAnalysis(wordId));
+    this.doc.discardWordAnalysis(wordId);
     if (this._advanceToNextWord(e.target, wordId)) {
       const key = document.activeElement?.dataset?.cellKey;
       if (key) this._pendingFocus = { cellKey: key };
@@ -452,7 +452,7 @@ export const review = {
       const wordId = el.closest('[data-word-col]')?.dataset.wordCol;
       if (!wordId) return;
       e.preventDefault();
-      this._run(() => this.doc.discardWordAnalysis(wordId));
+      this.doc.discardWordAnalysis(wordId);
       return;
     }
     if (e.key === 'Enter') {
@@ -479,7 +479,7 @@ export const review = {
   _reviewLink(mutate) {
     const next = this._adjacentChip('next');
     if (!next) {
-      this._run(mutate);
+      mutate();
       return;
     }
     this._runThenFocus({ vocabOpener: next.dataset.vocabOpener }, mutate);

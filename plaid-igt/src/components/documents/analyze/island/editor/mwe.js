@@ -507,9 +507,7 @@ export const mwe = {
           @change=${(e) => {
             e.stopPropagation();
             const value = e.target.value || null;
-            this._run(() =>
-              this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value),
-            );
+            this.doc.setVocabItemMorphType(currentItem.vocabId, currentItem.id, value);
           }}
         >
           <option value="" ?selected=${current === ''}>—</option>

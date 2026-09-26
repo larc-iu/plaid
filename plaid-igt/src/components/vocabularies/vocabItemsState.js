@@ -30,10 +30,9 @@ export const cleanMeta = (obj) => {
 };
 
 // A value as it compares: a string by its text, anything else by its shape
-// with its keys in a fixed order. Every field used to hold a string, and
-// `String(value)` was enough; an entry's `umr` object is one value that is
-// not, and `String({...})` is "[object Object]" whatever is inside, so the
-// roleset could be edited and the draft still call itself clean.
+// with its keys in a fixed order. An entry's `umr` object is not a string, and
+// `String({...})` is "[object Object]" whatever is inside, so comparing by
+// text alone would call the draft clean after an edit to the roleset.
 const sameAs = (v) => {
   if (v === null || typeof v !== 'object') return String(v);
   if (Array.isArray(v)) return JSON.stringify(v.map(sameAs));
