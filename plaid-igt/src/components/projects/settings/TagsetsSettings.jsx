@@ -50,22 +50,36 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
     }
   };
 
+  // Only a refused tagsets write throws, so the editor rolls back. When the
+  // rename lands and repointing its fields is refused, the server holds the new
+  // name, so the editor must show that rather than roll back to a name that is
+  // gone. The vocabulary screen's handleSaveTagsets keeps the same contract.
   const handleSaveChanges = async (next, meta) => {
     try {
       if (!client) throw new Error('Not authenticated');
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
-      if (meta?.renamed) await repointFields(meta.renamed);
-      // Hold what we just wrote until the refreshed project comes back, so the
-      // editor does not flicker to the pre-save value in between.
-      setDraftTagsets(next);
-      // The field table below reads the tagset names off the project, so a new
-      // tagset is not pickable until this lands.
-      await onProjectUpdate?.();
-      setDraftTagsets(null);
     } catch (error) {
       console.error('Failed to save tagsets:', error);
       notifyError('Failed to save tagsets', 'Save Error');
       throw error;
+    }
+    // Hold what we just wrote until the refreshed project comes back, so the
+    // editor does not flicker to the pre-save value in between.
+    setDraftTagsets(next);
+    if (meta?.renamed) {
+      try {
+        await repointFields(meta.renamed);
+      } catch (error) {
+        console.error('Failed to repoint fields:', error);
+        notifyError(`Some fields still name the tagset "${meta.renamed.from}"`, 'Save Error');
+      }
+    }
+    // The field table below reads the tagset names off the project, so a new
+    // tagset is not pickable until this lands.
+    try {
+      await onProjectUpdate?.();
+    } finally {
+      setDraftTagsets(null);
     }
   };
 
