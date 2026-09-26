@@ -27,10 +27,14 @@ const item = (id, form, { status, parent, senseOrder, homograph, gloss } = {}) =
 
 const pub = (id, form, rest = {}) => item(id, form, { ...rest, status: 'published' });
 
+// The pages of a vocabulary that keeps its status under plaid-igt's seed key.
+const pagesOf = (items, collator) =>
+  buildFormPages(items, readDictionary(items, 'status'), collator);
+
 describe('readDictionary', () => {
   it('keeps an unpublished headword as the spine over a published sense', () => {
     const items = [item('kat', 'kat'), pub('kat1', 'kat', { parent: 'kat' })];
-    const { visible, headwords } = readDictionary(items);
+    const { visible, headwords } = readDictionary(items, 'status');
     expect([...visible].sort()).toEqual(['kat', 'kat1']);
     expect(headwords.map((h) => h.id)).toEqual(['kat']);
   });
@@ -41,14 +45,21 @@ describe('readDictionary', () => {
       { id: 'kat1', form: 'kat', metadata: { Status: 'published', parent: 'kat' } },
     ];
     const reading = readDictionary(items, 'Status');
-    const [page] = buildFormPages(items, new Intl.Collator(), reading);
+    const [page] = buildFormPages(items, reading);
     expect(page.headwords[0].shown).toBe(true);
     expect(page.headwords[0].senses[0].shown).toBe(true);
   });
 
+  it('is always given the status key, and pages always a reading', () => {
+    // A default of `status` hid every entry of a vocabulary that spells it "Status".
+    const items = [{ id: 'kat', form: 'kat', metadata: { Status: 'published' } }];
+    expect(() => readDictionary(items)).toThrow(TypeError);
+    expect(() => buildFormPages(items)).toThrow(TypeError);
+  });
+
   it('drops a headword with nothing published under it', () => {
     const items = [item('kat', 'kat'), item('kat1', 'kat', { parent: 'kat', status: 'draft' })];
-    expect(readDictionary(items).headwords).toEqual([]);
+    expect(readDictionary(items, 'status').headwords).toEqual([]);
   });
 
   it('drops an unpublished sense of a published headword', () => {
@@ -57,7 +68,7 @@ describe('readDictionary', () => {
       pub('kat1', 'kat', { parent: 'kat' }),
       item('kat2', 'kat', { parent: 'kat', status: 'draft' }),
     ];
-    const { visible } = readDictionary(items);
+    const { visible } = readDictionary(items, 'status');
     expect(visible.has('kat2')).toBe(false);
   });
 });
@@ -69,7 +80,7 @@ describe('buildFormPages', () => {
       pub('cat', 'kat', { homograph: 1, gloss: 'cat' }),
       pub('dog', 'imbwa'),
     ];
-    const pages = buildFormPages(items);
+    const pages = pagesOf(items);
     expect(pages.map((p) => p.form)).toEqual(['imbwa', 'kat']);
     const kat = pages.find((p) => p.form === 'kat');
     expect(kat.headwords.map((h) => h.item.id)).toEqual(['cat', 'cut']);
@@ -82,7 +93,7 @@ describe('buildFormPages', () => {
       pub('lioness', 'kat', { parent: 'kat', senseOrder: 2 }),
       pub('lion', 'kat', { parent: 'kat', senseOrder: 1 }),
     ];
-    const [page] = buildFormPages(items);
+    const [page] = pagesOf(items);
     const [headword] = page.headwords;
     expect(headword.shown).toBe(true);
     expect(headword.senses.map((s) => s.item.id)).toEqual(['lion', 'lioness']);
@@ -91,14 +102,14 @@ describe('buildFormPages', () => {
 
   it('marks an unpublished headword as not shown but keeps it as the heading', () => {
     const items = [item('kat', 'kat'), pub('lion', 'kat', { parent: 'kat' })];
-    const [page] = buildFormPages(items);
+    const [page] = pagesOf(items);
     expect(page.headwords[0].shown).toBe(false);
     expect(page.headwords[0].senses.map((s) => s.item.id)).toEqual(['lion']);
   });
 
   it('sorts pages with the collator it is given', () => {
     const items = [pub('a', 'zebra'), pub('b', 'apple'), pub('c', 'Ábaco')];
-    const forms = buildFormPages(items, new Intl.Collator('es')).map((p) => p.form);
+    const forms = pagesOf(items, new Intl.Collator('es')).map((p) => p.form);
     expect(forms).toEqual(['Ábaco', 'apple', 'zebra']);
   });
 });
@@ -152,7 +163,7 @@ describe('affixes', () => {
     affix('c', 'ceese', 'stem', 'one'),
   ];
   const collator = alphabetCollator(parseAlphabet("' c k n"));
-  const pages = buildFormPages(items, collator);
+  const pages = pagesOf(items, collator);
 
   it('puts each affix on a page of its own, under the form with its markers', () => {
     expect(pages.map((p) => p.form)).toEqual(["-'", 'ceese', 'ka', '-ka', 'ni-']);
@@ -183,7 +194,7 @@ describe('affixes', () => {
         metadata: { status: 'published', morphType: 'suffix', gloss: 'PFV' },
       },
     ];
-    const pgs = buildFormPages(affix);
+    const pgs = pagesOf(affix);
     const idx = buildSearchIndex(affix, normalizeVocabFields({ gloss: { inline: true } }));
     const find = (q) => searchPages(pgs, q, idx).map((p) => p.form);
     expect(find('cheh')).toEqual(['-cheḥ']);
@@ -208,7 +219,7 @@ describe('buildSearchIndex / searchPages', () => {
     { id: 'draft', form: 'zzz', metadata: { status: 'draft', gloss: 'water' } },
   ];
   const index = buildSearchIndex(items, fields);
-  const pages = buildFormPages(items);
+  const pages = pagesOf(items);
 
   it('indexes only what is published, in both spellings', () => {
     expect(index.has('draft')).toBe(false);
@@ -263,7 +274,7 @@ describe('buildSearchIndex / searchPages', () => {
       },
     ];
     const ix = buildSearchIndex(lexicon, flex);
-    const ps = buildFormPages(lexicon);
+    const ps = pagesOf(lexicon);
     const forms = (q) => searchPages(ps, q, ix).map((p) => p.form);
     expect(forms('kaang')).toEqual(['kaang']);
     expect(forms('breast')).toEqual(['daar']);
@@ -286,7 +297,7 @@ describe('searchPages and the marks a keyboard cannot make', () => {
     { id: 'money', form: 'owó', metadata: { status: 'published', gloss: 'money' } },
   ];
   const index = buildSearchIndex(items, fields);
-  const pages = buildFormPages(items);
+  const pages = pagesOf(items);
   const found = (q) => searchPages(pages, q, index).map((p) => p.form);
 
   it('finds a marked headword from an unmarked query', () => {
@@ -310,7 +321,7 @@ describe('searchPages and the marks a keyboard cannot make', () => {
       { id: 'x', form: 'abc', metadata: { status: 'published', gloss: 'jalapeño' } },
     ];
     const idx = buildSearchIndex(withAccent, fields);
-    const pgs = buildFormPages(withAccent);
+    const pgs = pagesOf(withAccent);
     expect(searchPages(pgs, 'jalapeno', idx).map((p) => p.form)).toEqual(['abc']);
   });
 
@@ -318,7 +329,7 @@ describe('searchPages and the marks a keyboard cannot make', () => {
     // NFKD does not take the stroke off an l, so `l` must not find `ł`.
     const polish = [{ id: 'p', form: 'łuk', metadata: { status: 'published', gloss: 'bow' } }];
     const idx = buildSearchIndex(polish, fields);
-    const pgs = buildFormPages(polish);
+    const pgs = pagesOf(polish);
     expect(searchPages(pgs, 'luk', idx)).toEqual([]);
     expect(searchPages(pgs, 'łuk', idx).map((p) => p.form)).toEqual(['łuk']);
   });
@@ -355,7 +366,7 @@ describe('searchPages over a real tone-marked dictionary', () => {
     metadata: { status: 'published', gloss: 'x' },
   }));
   const index = buildSearchIndex(items, fields);
-  const pages = buildFormPages(items);
+  const pages = pagesOf(items);
   const find = (q) => searchPages(pages, q, index).map((p) => p.form);
 
   it('reaches every marked spelling from a bare one', () => {

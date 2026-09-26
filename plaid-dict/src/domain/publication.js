@@ -22,15 +22,25 @@ export const statusKeyOf = (fields) => statusFieldKey(fields) ?? STATUS_FIELD;
 /** The same, from a vocab layer's whole config. */
 export const statusKeyOfConfig = (config) => statusKeyOf(readVocabFields(config));
 
-export const statusOf = (item, key = STATUS_FIELD) => {
-  const v = item?.metadata?.[key];
+/**
+ * The key every status read takes, from statusKeyOf. There is no default: a
+ * read under `status` hid every entry of a vocabulary that spells it "Status".
+ */
+export const requireStatusKey = (key) => {
+  if (typeof key !== 'string' || !key) throw new TypeError('A status read needs the status key');
+  return key;
+};
+
+export const statusOf = (item, key) => {
+  const v = item?.metadata?.[requireStatusKey(key)];
   return typeof v === 'string' ? v : '';
 };
 
-export const isPublished = (item, key = STATUS_FIELD) => statusOf(item, key) === PUBLISHED;
+export const isPublished = (item, key) => statusOf(item, key) === PUBLISHED;
 
 /** How many of a vocabulary's entries are published, and how many there are. */
-export const publicationCounts = (items, key = STATUS_FIELD) => {
+export const publicationCounts = (items, key) => {
+  requireStatusKey(key);
   const list = items || [];
   return { published: list.filter((it) => isPublished(it, key)).length, total: list.length };
 };

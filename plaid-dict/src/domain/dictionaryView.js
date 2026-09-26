@@ -9,10 +9,10 @@
 // The tree, the numbering and the homograph order all come from plaid-igt's
 // vocabDictionary.js, so an entry is called the same thing in both apps.
 
-import { homographOf, lexiconView, STATUS_FIELD } from '@igt/domain/vocabDictionary.js';
+import { homographOf, lexiconView } from '@igt/domain/vocabDictionary.js';
 import { foldDiacritics } from './collation.js';
 import { displayForm, searchableText } from './entryFields.js';
-import { isPublished, statusKeyOf } from './publication.js';
+import { isPublished, requireStatusKey, statusKeyOf } from './publication.js';
 
 /**
  * One entry and the senses under it, as the page draws them.
@@ -35,7 +35,8 @@ import { isPublished, statusKeyOf } from './publication.js';
  *   statusKey: string,             the key the status is read under
  * }}
  */
-export const readDictionary = (items, statusKey = STATUS_FIELD) => {
+export const readDictionary = (items, statusKey) => {
+  requireStatusKey(statusKey);
   const list = items || [];
   const { tree, numbers } = lexiconView(list);
 
@@ -78,8 +79,8 @@ const nodeOf = (item, reading) => ({
  *
  * @returns {{form: string, bare: string, folded: string, headwords: Node[]}[]}
  */
-export const buildFormPages = (items, collator = new Intl.Collator(), dict = null) => {
-  const reading = dict ?? readDictionary(items);
+export const buildFormPages = (items, reading, collator = new Intl.Collator()) => {
+  if (!reading) throw new TypeError('Pages need the reading, which holds the status key');
   const position = new Map((items || []).map((it, i) => [it.id, i]));
 
   const byForm = new Map();

@@ -63,7 +63,7 @@ export const DictionaryProvider = () => {
     const fields = normalizeVocabFields(readVocabFields(vocab?.config));
     const collator = dictCollator(record);
     const dictionary = readDictionary(items || [], statusKeyOf(fields));
-    const pages = items ? buildFormPages(items, collator, dictionary) : [];
+    const pages = items ? buildFormPages(items, dictionary, collator) : [];
     const objectLang = record?.languages?.object?.iso639P3 || undefined;
     // A reference to an entry the dictionary does not show is not a link to
     // nowhere: it is dropped.

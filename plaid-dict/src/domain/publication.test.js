@@ -6,21 +6,33 @@ const entry = (id, status) => ({ id, metadata: status ? { status } : {} });
 
 describe('statusOf / isPublished', () => {
   it('reads the status field, and nothing else counts as published', () => {
-    expect(statusOf(entry('a', 'draft'))).toBe('draft');
-    expect(statusOf(entry('a'))).toBe('');
-    expect(statusOf({ id: 'a', metadata: { status: 3 } })).toBe('');
-    expect(isPublished(entry('a', 'published'))).toBe(true);
-    expect(isPublished(entry('a', 'reviewed'))).toBe(false);
-    expect(isPublished(entry('a'))).toBe(false);
+    expect(statusOf(entry('a', 'draft'), 'status')).toBe('draft');
+    expect(statusOf(entry('a'), 'status')).toBe('');
+    expect(statusOf({ id: 'a', metadata: { status: 3 } }, 'status')).toBe('');
+    expect(isPublished(entry('a', 'published'), 'status')).toBe(true);
+    expect(isPublished(entry('a', 'reviewed'), 'status')).toBe(false);
+    expect(isPublished(entry('a'), 'status')).toBe(false);
+  });
+});
+
+describe('the status key', () => {
+  it('is always named: a read without it throws rather than look under status', () => {
+    // A default of `status` hid every entry of a vocabulary that spells it "Status".
+    const items = [{ id: 'a', metadata: { Status: 'published' } }];
+    expect(() => statusOf(items[0])).toThrow(TypeError);
+    expect(() => isPublished(items[0])).toThrow(TypeError);
+    expect(() => publicationCounts(items)).toThrow(TypeError);
+    expect(isPublished(items[0], 'Status')).toBe(true);
+    expect(publicationCounts(items, 'Status')).toEqual({ published: 1, total: 1 });
   });
 });
 
 describe('publicationCounts', () => {
   it('counts published against the whole vocabulary', () => {
     const items = [entry('a', 'published'), entry('b', 'draft'), entry('c')];
-    expect(publicationCounts(items)).toEqual({ published: 1, total: 3 });
-    expect(publicationCounts([])).toEqual({ published: 0, total: 0 });
-    expect(publicationCounts(null)).toEqual({ published: 0, total: 0 });
+    expect(publicationCounts(items, 'status')).toEqual({ published: 1, total: 3 });
+    expect(publicationCounts([], 'status')).toEqual({ published: 0, total: 0 });
+    expect(publicationCounts(null, 'status')).toEqual({ published: 0, total: 0 });
   });
 });
 
@@ -218,7 +230,7 @@ describe('publishAll', () => {
     client.layer.items.push(entry('d'));
     const again = await publishAll(client, { vocabularyId: 'v' });
     expect(again).toBe(1);
-    expect(client.layer.items.every((it) => isPublished(it))).toBe(true);
+    expect(client.layer.items.every((it) => isPublished(it, 'status'))).toBe(true);
   });
 
   it('publishes the rest when an entry is deleted while it runs', async () => {
@@ -230,7 +242,7 @@ describe('publishAll', () => {
     const n = await publishAll(client, { vocabularyId: 'v' });
     expect(n).toBe(449);
     expect(client.layer.items).toHaveLength(449);
-    expect(client.layer.items.every((it) => isPublished(it))).toBe(true);
+    expect(client.layer.items.every((it) => isPublished(it, 'status'))).toBe(true);
   });
 
   it('still fails on an error that is not a deleted entry', async () => {
