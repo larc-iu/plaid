@@ -2,8 +2,10 @@
 
 The corpus-wide half of reading (search over every document, the statistics
 and worklists) is :mod:`.stats` and :mod:`.corpus`, which ask the query engine.
-What is here reads one document or one entry and renders it for the model. The
-change history is :mod:`..core.history`, shared with the other apps.
+What is here reads one entry, or looks across documents for a form. Reading a
+document is :func:`..core.tools.read_document`, rendered by the workspace, and the
+change history and comments are :mod:`..core.history`, all shared with the other
+apps.
 """
 
 import json
@@ -11,11 +13,11 @@ import unicodedata
 from collections import Counter
 from typing import Dict, List, Optional
 
-from ..core.args import clamp_limit, read_int, sentence_number
-from ..core.limits import READ_LIMITS, RENDER_BUDGET
+from ..core.args import clamp_limit, read_int
+from ..core.limits import READ_LIMITS
 from ..core.tools import ToolError, truncate
 
-from .project import (Word, Morpheme, document_lines, joiner, render_document, render_overview,
+from .project import (Word, Morpheme, document_lines, joiner, render_overview,
                       render_word, segmentation, word_ref)
 from .lexview import LexView, _num_key, entry_line
 from .vocab import RESERVED_ITEM_KEYS, all_examples, arrange_as_tree, homograph_group, references_to
@@ -54,13 +56,6 @@ def t_list_documents(ws: Workspace, pattern: Optional[str] = None, metadata_fiel
     if offset + len(page) < len(docs):
         lines.append(f'  … list_documents(offset={offset + len(page)}) for the next page')
     return truncate('\n'.join(lines))
-
-
-def t_read_document(ws: Workspace, document: str, from_sentence: int = 1, to_sentence: Optional[int] = None) -> str:
-    doc = ws.doc(document)
-    return render_document(doc, ws.project, start=sentence_number(from_sentence, 'from_sentence') or 1,
-                           end=sentence_number(to_sentence, 'to_sentence'),
-                           ref_name=ws.corpus.ref_name(doc.id), budget=RENDER_BUDGET)
 
 
 def t_search(ws: Workspace, pattern: str = '', where: str = 'baseline', document: Optional[str] = None,

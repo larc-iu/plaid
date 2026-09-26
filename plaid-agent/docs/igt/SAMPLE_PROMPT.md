@@ -111,9 +111,10 @@ The documents by name, a page at a time, optionally filtered by a name substring
 
 ### read_document
 
-Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call, fewer when they are long: the header says which were shown and where to continue.
+Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to 40 sentences per call, fewer when they are long: the header says which were shown and where to continue. WHEN YOU ALREADY KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get them all in ONE call.
 
 - `document` (string, required): Document id or exact name (see project_overview).
+- `sentences` (array of string): Just these sentences, e.g. ["s3","s8"]. A reference like "s3.w2" names its sentence. Overrides the range below.
 - `from_sentence` (integer or string): First sentence to show: 3 or "s3" (default 1).
 - `to_sentence` (integer or string): Last sentence to show: 8 or "s8".
 

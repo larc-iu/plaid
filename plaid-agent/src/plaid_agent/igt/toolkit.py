@@ -19,7 +19,7 @@ from ..core.webtools import t_read_url, t_web_search
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.tools import fn, limit_arg, run_tool, tools_for as core_tools_for
+from ..core.tools import fn, limit_arg, read_document as t_read_document, run_tool, tools_for as core_tools_for
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -29,7 +29,7 @@ from .lexicon import (t_add_sense, t_create_entry, t_free_sense, t_make_sense_of
 from .query import t_query, t_query_help
 from ..core.history import recent_changes as t_recent_changes
 from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
-                    t_list_documents, t_plan_status, t_project_overview, t_read_document,
+                    t_list_documents, t_plan_status, t_project_overview,
                     t_read_lexicon, t_search)
 from .sandbox import t_code_help, t_run_code
 from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_words,
@@ -88,8 +88,13 @@ TOOLS = [
         'Read a document as compact interlinear text: baseline sentences, sentence fields, and one line per word '
         'with its segmentation, glosses, word fields, orthographies, and lexicon links. Up to '
         f'{MAX_SENTENCES_PER_READ} sentences per '
-        'call, fewer when they are long: the header says which were shown and where to continue.',
+        'call, fewer when they are long: the header says which were shown and where to continue. WHEN YOU ALREADY '
+        'KNOW WHICH SENTENCES YOU NEED (a search told you, or an earlier read did), name them in `sentences` and get '
+        'them all in ONE call.',
         {'document': _DOC,
+         'sentences': {'type': 'array', 'items': {'type': 'string'},
+                       'description': 'Just these sentences, e.g. ["s3","s8"]. A reference like "s3.w2" names its '
+                                      'sentence. Overrides the range below.'},
          'from_sentence': {'type': ['integer', 'string'],
                            'description': 'First sentence to show: 3 or "s3" (default 1).'},
          'to_sentence': {'type': ['integer', 'string'],

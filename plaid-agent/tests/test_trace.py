@@ -44,6 +44,8 @@ def test_lines_read_as_sentences():
         == 'Read “Text 1” (sentences 3–9)'
     assert describe_step('read_document', {'document': 'Text 1', 'from_sentence': 3}) \
         == 'Read “Text 1” (sentences 3 on)'
+    assert describe_step('read_document', {'document': 'Text 1', 'sentences': ['s3', 's8']}) \
+        == 'Read “Text 1” (2 sentences)'
     assert describe_step('search', {'pattern': 'di'}) == 'Searched the baseline for “di”'
     assert describe_step('search', {'pattern': 'di', 'where': 'Gloss', 'document': 'Text 1'}) \
         == 'Searched Gloss for “di” in “Text 1”'

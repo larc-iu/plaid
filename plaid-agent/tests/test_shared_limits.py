@@ -233,10 +233,8 @@ def test_every_read_renders_against_the_one_render_budget():
     """`MAX_RESULT_CHARS - 100` was written out in all three apps, with the
     100 (room for the header the tool writes around the render) nowhere."""
     from plaid_agent.core import tools as core_tools
-    from plaid_agent.igt import reads as igt_reads
     assert limits.RENDER_BUDGET == limits.MAX_RESULT_CHARS - limits.RENDER_HEADER_ROOM
-    for mod in (igt_reads, core_tools):
-        assert mod.RENDER_BUDGET is limits.RENDER_BUDGET
+    assert core_tools.RENDER_BUDGET is limits.RENDER_BUDGET
 
 
 def test_the_bulk_cap_is_the_plan_cap():
@@ -245,3 +243,16 @@ def test_the_bulk_cap_is_the_plan_cap():
     from plaid_agent.core.plan import PLAN_MAX_OPS
     from plaid_agent.igt import bulk
     assert bulk.PLAN_MAX_OPS is PLAN_MAX_OPS
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_every_app_reads_a_document_through_core(app):
+    """igt kept its own read_document when ud and umr moved to core's, and so
+    could not read named sentences in one call. What an app owns is how a
+    sentence is rendered (its workspace's render), not which ones are read."""
+    import importlib
+    from plaid_agent.core import tools as core_tools
+    toolkit = importlib.import_module(f'plaid_agent.{app}.toolkit')
+    assert toolkit._IMPL['read_document'] is core_tools.read_document
+    spec = next(t['function'] for t in toolkit.TOOLS if t['function']['name'] == 'read_document')
+    assert 'sentences' in spec['parameters']['properties']

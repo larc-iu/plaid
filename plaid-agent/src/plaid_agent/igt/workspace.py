@@ -23,7 +23,7 @@ from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
 from .plan import KIND, removed_entries
-from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, resolve
+from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, render_document, resolve
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import RESERVED_ITEM_KEYS, fields_for_item
 
@@ -78,6 +78,11 @@ class Workspace(BaseWorkspace):
         name = self.corpus.doc_name(doc_id)
         head = f'"{name}"' if quote else name
         return head if self.corpus.ref_name(doc_id) == name else f'{head} ({doc_id})'
+
+    def render(self, doc, from_sentence: int = 1, to_sentence: Optional[int] = None,
+               indexes: Optional[List[int]] = None, budget: Optional[int] = None) -> str:
+        return render_document(doc, self.project, start=from_sentence, end=to_sentence, indexes=indexes,
+                               ref_name=self.corpus.ref_name(doc.id), budget=budget)
 
     def use_scan(self, document: Optional[str]) -> bool:
         """Scan (one document, or everything when asked) rather than query."""

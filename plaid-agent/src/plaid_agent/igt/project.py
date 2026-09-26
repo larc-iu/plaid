@@ -670,15 +670,15 @@ FORMAT_LEGEND = ('Format: [sN] baseline sentence; then sentence fields; then one
 
 def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optional[int] = None,
                     max_sentences: int = MAX_SENTENCES_PER_READ, ref_name: Optional[str] = None,
-                    budget: Optional[int] = None) -> str:
-    """``ref_name`` is how a reference to this document must name it (its id
-    where another document shares its name): shown so what is read back is
-    unambiguous. ``budget`` is the most characters the result may hold:
-    sentences are rendered until it is spent and the header names the ones
-    shown, so the model is never told it got forty and handed nine."""
+                    budget: Optional[int] = None, indexes: Optional[List[int]] = None) -> str:
+    """Either a range (``start`` to ``end``) or the sentences numbered in
+    ``indexes``, in that order. ``ref_name`` is how a reference to this
+    document must name it (its id where another document shares its name):
+    shown so what is read back is unambiguous. ``budget`` is the most
+    characters the result may hold: sentences are rendered until it is spent
+    and the header names the ones shown, so the model is never told it got
+    forty and handed nine."""
     n = len(doc.sentences)
-    start = max(1, start)
-    end = min(n, end if end is not None else start + max_sentences - 1)
     head = f'Document "{doc.name}"' + (f' id={doc.id}' if ref_name and ref_name != doc.name else '') \
         + f': {n} sentences, {doc.word_count()} words'
     shown = {k: v for k, v in doc.metadata.items() if k in project.document_metadata and v not in (None, '')}
@@ -686,23 +686,36 @@ def render_document(doc: IgtDoc, project: IgtProject, start: int = 1, end: Optio
         head += ' | ' + ', '.join(f'{k}={v}' for k, v in shown.items())
     if n == 0:
         return head + '\n(no sentences yet)'
-    if start > n:
-        return head + f'\nThe document has only {n} sentences; from_sentence={start} is past the end.'
-    if end - start + 1 > max_sentences:
-        end = start + max_sentences - 1
+    if indexes is not None:
+        wanted = [i for i in indexes if 1 <= i <= n][:max_sentences]
+        if not wanted:
+            return head + '\nNone of those sentences exist.'
+    else:
+        start = max(1, start)
+        end = min(n, end if end is not None else start + max_sentences - 1)
+        if start > n:
+            return head + f'\nThe document has only {n} sentences; from_sentence={start} is past the end.'
+        if end - start + 1 > max_sentences:
+            end = start + max_sentences - 1
+        wanted = list(range(start, end + 1))
     rendered: List[str] = []
+    done: List[int] = []
     used = len(head) + len(FORMAT_LEGEND) + 250  # the showing line and the trailing note
-    last = start - 1
-    for s in doc.sentences[start - 1:end]:
-        text = render_sentence(s, project)
+    for i in wanted:
+        text = render_sentence(doc.sentences[i - 1], project)
         if budget is not None and rendered and used + len(text) + 1 > budget:
             break
         rendered.append(text)
+        done.append(i)
         used += len(text) + 1
-        last += 1
-    cut = last < end
-    end = last
-    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if cut else '')]
+    left = wanted[len(done):]
+    if indexes is not None:
+        showing = 'Showing ' + ', '.join(f's{i}' for i in done) + '.'
+        if left:
+            showing += ' Not shown, as they did not fit: ' + ', '.join(f's{i}' for i in left) + '. Ask for them in another call.'
+        return '\n'.join([head, FORMAT_LEGEND, showing] + rendered)
+    end = done[-1] if done else start - 1
+    lines = [head, FORMAT_LEGEND, f'Showing s{start}-s{end}.' + (' The rest did not fit in one call.' if left else '')]
     lines += rendered
     if end < n:
         lines.append(f'... {n - end} more sentences (read_document with from_sentence={end + 1} for the next batch).')

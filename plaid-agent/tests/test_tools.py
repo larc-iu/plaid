@@ -623,15 +623,19 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op_and_applies_whole(mon
 
 def test_a_read_that_does_not_fit_says_so_and_where_to_continue(monkeypatch):
     """The header said s1-s40 while the text was cut off inside sentence nine."""
-    from plaid_agent.igt import reads
+    from plaid_agent.core import tools as core_tools
     w = scan_ws(FakeClient())
     whole = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert '\n[s2]' in whole, 'the fixture needs two sentences for this'
-    monkeypatch.setattr(reads, 'RENDER_BUDGET', whole.index('\n[s2]') + 200)
+    monkeypatch.setattr(core_tools, 'RENDER_BUDGET', whole.index('\n[s2]') + 200)
     out = call_tool(w, 'read_document', {'document': 'Text 1'})
     assert 'Showing s1-s1. The rest did not fit in one call.' in out
     assert 'read_document with from_sentence=2 for the next batch' in out
     assert '[s2]' not in out and '[truncated' not in out
+    # Named sentences say which did not fit, and nothing about a range.
+    out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s1', 's2']})
+    assert 'Showing s1. Not shown, as they did not fit: s2. Ask for them in another call.' in out
+    assert '[s2]' not in out and 'from_sentence' not in out
 
 
 def test_hits_from_one_document_are_capped_and_the_rest_counted():
@@ -723,3 +727,25 @@ def test_igt_search_and_concordance_match_case_only_when_asked():
     assert 'No hits' in call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}) \
         or call_tool(w, 'search', {'pattern': 'ali', 'where': 'baseline', 'case_sensitive': True}).startswith('0 ')
     assert 's1.w1' in call_tool(w, 'search', {'pattern': 'Ali', 'where': 'baseline', 'case_sensitive': True})
+
+
+def test_read_document_reads_the_sentences_named_in_one_call():
+    """igt's read_document took only a range, so a reader that knew it wanted
+    s2 had to page to it. It is core's read_document now, as in ud and umr,
+    rendered by this app's workspace."""
+    from plaid_agent.core import tools as core_tools
+    assert _IMPL['read_document'] is core_tools.read_document
+    w = ws()
+    out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s2']})
+    assert 'Showing s2.' in out and '[s2]' in out and '[s1]' not in out
+    out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s2', 's1.w2']})
+    assert 'Showing s2, s1.' in out and out.index('[s2]') < out.index('[s1]')
+    out = call_tool(w, 'read_document', {'document': 'Text 1', 'sentences': ['s9']})
+    assert 'None of those sentences exist.' in out and '[s' not in out
+    # The range still reads as before, with the document's id where its name is shared.
+    out = call_tool(w, 'read_document', {'document': 'Text 1', 'from_sentence': 's2'})
+    assert 'Showing s2-s2.' in out and '[s1]' not in out
+    assert 'from_sentence=5 is past the end' in call_tool(w, 'read_document',
+                                                          {'document': 'Text 1', 'from_sentence': 5})
+    spec = next(t['function'] for t in TOOLS if t['function']['name'] == 'read_document')
+    assert 'sentences' in spec['parameters']['properties'] and 'sentences' in spec['description']
