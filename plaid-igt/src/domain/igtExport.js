@@ -19,7 +19,7 @@
 // text (punctuation) gets its own column with empty gloss cells.
 
 import { joinMorphemes } from './affixMarkers.js';
-import { isLexicalPart } from './tagsets.js';
+import { lexicalFlagsOf } from './tagsets.js';
 
 export const COPY_FORMATS = [
   { id: 'plain', label: 'Plain text (aligned)' },
@@ -167,8 +167,9 @@ const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).jo
 // A gloss as a paper sets it: each grammatical abbreviation in small caps,
 // written in lowercase because \textsc only changes lowercase letters and
 // \textsc{NOM} prints as full capitals. "1SG.NOM" gives \textsc{1sg}.\textsc{nom}.
-// Grammatical versus lexical is the tagsets' case rule (isLexicalPart), so "I"
-// is set in small caps like any tag. A part with no letters is left bare, since
+// Grammatical versus lexical is the tagsets' rule, read over the whole gloss
+// (lexicalFlagsOf), so "I" is set in small caps like any tag, and so is the pfv
+// of go.3sg.pfv. A part with no letters is left bare, since
 // small caps would not change it. A part holds only letters, marks and digits,
 // none of them a LaTeX special.
 const GLOSS_PART_RE = /[\p{L}\p{M}\p{N}]+/gu;
@@ -178,15 +179,19 @@ const HAS_LETTER_RE = /\p{L}/u;
 // would then print over a small-caps i. It is set as a plain i.
 const smallCapsText = (part) => part.replace(/\u0130/g, 'i').toLowerCase();
 const texGloss = (s) => {
+  const matches = [...s.matchAll(GLOSS_PART_RE)];
+  const lexical = lexicalFlagsOf(
+    s,
+    matches.map((m) => ({ text: m[0], begin: m.index, end: m.index + m[0].length })),
+  );
   let out = '';
   let at = 0;
-  for (const m of s.matchAll(GLOSS_PART_RE)) {
+  matches.forEach((m, i) => {
     const part = m[0];
     out += texEscape(s.slice(at, m.index));
-    out +=
-      HAS_LETTER_RE.test(part) && !isLexicalPart(part) ? `\\textsc{${smallCapsText(part)}}` : part;
+    out += HAS_LETTER_RE.test(part) && !lexical[i] ? `\\textsc{${smallCapsText(part)}}` : part;
     at = m.index + part.length;
-  }
+  });
   return out + texEscape(s.slice(at));
 };
 

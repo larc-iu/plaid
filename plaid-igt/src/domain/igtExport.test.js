@@ -232,6 +232,12 @@ describe('LaTeX gloss small caps', () => {
     );
   });
 
+  it('sets a lower-case abbreviation beside a tag in small caps, by the tagsets rule', () => {
+    expect(glossLine(glossed('go.3sg.pfv', 'pass.PST'))).toBe(
+      'go.\\textsc{3sg}.\\textsc{pfv} pass.\\textsc{pst}',
+    );
+  });
+
   it('treats a capital I as grammatical, by the tagsets case rule', () => {
     expect(glossLine(glossed('I', 'A'))).toBe('\\textsc{i} \\textsc{a}');
   });

@@ -74,22 +74,114 @@ export const EMPTY_TAGSET = Object.freeze({
  * letter, or when it has letters but no capital at all. The second clause is
  * what makes this work for a metalanguage without case: a Hindi or Japanese
  * stem gloss (कुत्ता, 犬) cannot be written in capitals, so it cannot be
- * carrying the mark, while NOM and 1SG beside it still are. Under the plain
- * "has a lowercase letter" rule every such stem was refused, and mixed mode
- * was closed mode for anyone glossing in those scripts.
+ * carrying the mark, while NOM and 1SG beside it still are. A person and
+ * number is a tag in either case (3sg is never a word).
  *
  * It is deliberately not clever. `I` for a first-person pronoun is a capital
- * and counts as grammatical, which means listing it in the tagset — exactly
+ * and counts as grammatical, which means listing it in the tagset, exactly
  * what a tagset is for. A bare digit (3) has no letters and is a tag too.
- * Guessing whether a pronoun is "really" functional is the part that defies
- * rules, so nothing here tries.
+ *
+ * Read with the rest of its value (lexicalFlags), one exception applies: a
+ * glossing tradition may write its abbreviations in lower case inside a
+ * compound gloss (Lamkang sbj:3.pfv). Where a part of a morpheme's gloss is a
+ * tag by the case rule, a known abbreviation of two letters or more beside it
+ * in the same morpheme is a tag too. When that leaves the value with no
+ * lexical part where the case rule found one, the case rule stands: pass.PST
+ * is the verb pass. The UMR skeleton reads glosses by the same rule
+ * (plaid_client.workflows.igt.glossing, with a mirror test).
  */
 const LOWERCASE_RE = /\p{Ll}/u;
 const CAPITAL_RE = /[\p{Lu}\p{Lt}]/u;
 const LETTER_RE = /\p{L}/u;
-export const isLexicalPart = (part) => {
-  const s = str(part);
-  return LOWERCASE_RE.test(s) || (LETTER_RE.test(s) && !CAPITAL_RE.test(s));
+const MARK_RE = /[\p{L}\p{N}]/u;
+const PERSON_NUMBER_RE = /^[1-4](SG|PL|DU|TRI|PAUC|NSG)$/i;
+
+/**
+ * The abbreviations the lenient reading knows, upper case: the Leipzig
+ * Glossing Rules list, with Lamkang's POS beside POSS.
+ */
+export const GLOSS_ABBREVIATIONS = Object.freeze(
+  new Set(
+    `1 2 3 4 A ABL ABS ACC ADJ ADV AGR ALL ANTIP APPL ART AUX BEN CAUS CLF COM COMP
+    COMPL COND COP CVB DAT DECL DEF DEM DET DIST DISTR DU DUR ERG EXCL F FOC FUT GEN
+    HAB IMP INCL IND INDF INF INS INTR IPFV IRR LOC M N NEG NMLZ NOM NPST NSG OBJ OBL
+    P PASS PAUC PFV PL POS POSS PRED PRF PROG PROH PROX PRS PST PTCP PURP Q QUOT
+    REAL RECP REFL REL RES S SBJ SBJV SG TOP TR TRI VOC`.split(/\s+/),
+  ),
+);
+
+const isCaseLexical = (part, known) => {
+  if (PERSON_NUMBER_RE.test(part) || known.has(part)) return false;
+  return LOWERCASE_RE.test(part) || (LETTER_RE.test(part) && !CAPITAL_RE.test(part));
+};
+
+/**
+ * Which parts of one value are lexical, morpheme by morpheme: `morphemes` is
+ * an array of morphemes, each an array of part strings. The case rule, the
+ * lenient reading within each morpheme and the fall-back over the whole.
+ */
+export const lexicalFlags = (morphemes, known = GLOSS_ABBREVIATIONS) => {
+  const strict = morphemes.map((parts) => parts.map((p) => isCaseLexical(p, known)));
+  const lenient = morphemes.map((parts, i) => {
+    const flags = strict[i];
+    const mixed = parts.length > 1 && parts.some((p, j) => !flags[j] && MARK_RE.test(p));
+    return parts.map(
+      (p, j) => flags[j] && !(mixed && [...p].length > 1 && known.has(p.toUpperCase())),
+    );
+  });
+  const any = (fs) => fs.some((f) => f.some(Boolean));
+  return any(strict) && !any(lenient) ? strict : lenient;
+};
+
+/** One part read on its own. */
+export const isLexicalPart = (part) => lexicalFlags([[str(part)]])[0][0];
+
+/** What a gloss is cut into morphemes on, and a morpheme into parts on. */
+const MORPHEME_CUT_RE = /[-=~<>\s]+/u;
+const PART_CUT_RE = /[.:;\\]+/u;
+
+/** A gloss value as morphemes, each an array of its parts, empties left out. */
+export const glossMorphemes = (value) =>
+  str(value)
+    .split(MORPHEME_CUT_RE)
+    .map((m) => m.split(PART_CUT_RE).filter(Boolean))
+    .filter((parts) => parts.length > 0);
+
+/**
+ * Which of `parts` (each { text, begin, end }, cut out of `value` in any way:
+ * a tagset's delimiters, the letters of a LaTeX line) read as lexical.
+ * lexicalFlags reads the value as glossMorphemes cuts it, and a part is
+ * lexical when its own text is lexical by the case rule and it overlaps a
+ * part of that reading that stayed lexical. So the pfv of go-3SG.pfv is a
+ * tag under a tagset that splits on "." alone, and the PL of go+PL is one
+ * under a tagset that splits on "+".
+ */
+const GLOSS_PART_RE = /[^.:;\\\-=~<>\s]+/gu;
+export const lexicalFlagsOf = (value, parts) => {
+  const s = str(value);
+  const cut = [...s.matchAll(GLOSS_PART_RE)];
+  const morphemes = [];
+  const at = [];
+  let current = [];
+  let end = null;
+  cut.forEach((m, k) => {
+    if (end !== null && MORPHEME_CUT_RE.test(s.slice(end, m.index))) {
+      morphemes.push(current);
+      current = [];
+    }
+    at[k] = [morphemes.length, current.length];
+    current.push(m[0]);
+    end = m.index + m[0].length;
+  });
+  if (current.length) morphemes.push(current);
+  const flags = lexicalFlags(morphemes);
+  return parts.map((p) => {
+    const text = str(p.text).trim();
+    if (!text || !isCaseLexical(text, GLOSS_ABBREVIATIONS)) return false;
+    return cut.some(
+      (m, k) => m.index < p.end && p.begin < m.index + m[0].length && flags[at[k][0]][at[k][1]],
+    );
+  });
 };
 
 // --- reading config --------------------------------------------------------
@@ -416,16 +508,18 @@ export const validateValue = (value, tagset) => {
   const s = value ?? '';
   if (s.trim() === '') return [];
   const out = [];
-  for (const p of scanValue(s, tagset.delimiters)) {
+  const parts = scanValue(s, tagset.delimiters);
+  const lexical = lexicalFlagsOf(s, parts);
+  parts.forEach((p, i) => {
     const text = p.text.trim();
     if (!text) out.push({ part: p.text, begin: p.begin, end: p.end, reason: 'empty' });
     else if (
       tagset.mode !== MODES.SUGGEST &&
       !tagsetHas(tagset, text) &&
-      !(tagset.mode === MODES.MIXED && isLexicalPart(text))
+      !(tagset.mode === MODES.MIXED && lexical[i])
     )
       out.push({ part: text, begin: p.begin, end: p.end, reason: 'unknown' });
-  }
+  });
   return out;
 };
 
@@ -453,21 +547,30 @@ export const tagsetEnforces = (tagset) => !!tagset && tagset.mode !== MODES.SUGG
  * document: both read a field's whole value inventory from one aggregate
  * query.
  */
-export const offTagsetParts = (attested, tagset) => {
+export const offTagsetParts = (attested, tagset) =>
+  readOffTagsetParts(attested, tagset).map(({ part, count }) => ({ part, count }));
+
+// offTagsetParts, with whether each part read as lexical in every value it
+// came from (lexicalFlagsOf, which reads a part with the rest of its value).
+const readOffTagsetParts = (attested, tagset) => {
   if (!tagset) return [];
   const counts = new Map();
+  const lexical = new Map();
   for (const [value, n] of attested || []) {
-    for (const p of scanValue(value ?? '', tagset.delimiters)) {
+    const parts = scanValue(value ?? '', tagset.delimiters);
+    const flags = lexicalFlagsOf(value ?? '', parts);
+    parts.forEach((p, i) => {
       const text = p.text.trim();
-      if (!text || tagsetHas(tagset, text)) continue;
+      if (!text || tagsetHas(tagset, text)) return;
       // A lexical gloss is not a tag. Seeding `dog` into a Leipzig tagset would
       // turn a grammatical inventory into a word list.
-      if (tagset.mode === MODES.MIXED && isLexicalPart(text)) continue;
+      if (tagset.mode === MODES.MIXED && flags[i]) return;
       counts.set(text, (counts.get(text) || 0) + (n || 0));
-    }
+      lexical.set(text, (lexical.get(text) ?? true) && flags[i]);
+    });
   }
   return [...counts.entries()]
-    .map(([part, count]) => ({ part, count }))
+    .map(([part, count]) => ({ part, count, lexical: lexical.get(part) }))
     .sort((a, b) => b.count - a.count || a.part.localeCompare(b.part));
 };
 
@@ -499,8 +602,9 @@ export const seedValueRecords = (attested, tagset) =>
  *
  *   { tags: [{ value }], lexical: [{ value }] }
  *
- * `lexical` holds the parts that read as lexical glosses (isLexicalPart: they
- * contain a lowercase letter). They are kept apart because seeding a Leipzig
+ * `lexical` holds the parts that read as lexical glosses wherever they occur
+ * (lexicalFlagsOf: a lowercase letter, read with the rest of the value, so
+ * the pfv of go.3.pfv is a tag). They are kept apart because seeding a Leipzig
  * tagset from a glossed project would otherwise turn a grammatical inventory
  * into a word list: a project's stems outnumber its tags many times over, and
  * a `suggest` tagset (what a new one starts as) pulled in every one of them
@@ -516,8 +620,8 @@ export const seedValueRecords = (attested, tagset) =>
 export const seedCandidates = (attested, tagset) => {
   const tags = [];
   const lexical = [];
-  for (const { part } of offTagsetParts(attested, tagset)) {
-    (isLexicalPart(part) ? lexical : tags).push({ value: part });
+  for (const { part, lexical: isLexical } of readOffTagsetParts(attested, tagset)) {
+    (isLexical ? lexical : tags).push({ value: part });
   }
   return { tags, lexical };
 };

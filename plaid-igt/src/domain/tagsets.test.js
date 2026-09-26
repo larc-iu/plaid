@@ -19,6 +19,10 @@ import {
   validateValue,
   isValueAllowed,
   isLexicalPart,
+  GLOSS_ABBREVIATIONS,
+  lexicalFlags,
+  lexicalFlagsOf,
+  glossMorphemes,
   offTagsetParts,
   offTagsetValues,
   seedValueRecords,
@@ -492,6 +496,72 @@ describe('isLexicalPart', () => {
 
   it('counts a mixed-case gloss as lexical, so a typo is not a hard block', () => {
     expect(isLexicalPart('Dog')).toBe(true);
+  });
+});
+
+describe('lexicalFlags: the lenient reading and its fall-back', () => {
+  const flags = (value) => lexicalFlags(glossMorphemes(value)).flat();
+
+  it('reads a known abbreviation in lower case as grammatical beside a tag in its morpheme', () => {
+    expect(flags('sbj:3.pfv-go')).toEqual([false, false, false, true]);
+    expect(flags('go.3SG.pfv')).toEqual([true, false, false]);
+  });
+
+  it('reads a person and number as grammatical in either case', () => {
+    expect(isLexicalPart('3sg')).toBe(false);
+    expect(flags('go.3sg.ipfv')).toEqual([true, false, false]);
+  });
+
+  it('never reads a part as grammatical because another morpheme is', () => {
+    expect(flags('3SG-pfv')).toEqual([false, true]);
+    expect(flags('lay.pfv')).toEqual([true, true]);
+  });
+
+  it('knows only upper-case abbreviations, so an exact match is never a word', () => {
+    expect([...GLOSS_ABBREVIATIONS].every((a) => a === a.toUpperCase())).toBe(true);
+    expect(GLOSS_ABBREVIATIONS.has('PFV')).toBe(true);
+  });
+
+  it('keeps a single letter lexical beside a tag', () => {
+    expect(flags('a.3SG')).toEqual([true, false]);
+  });
+
+  it('falls back to the case rule when the lenient reading leaves no lexical part', () => {
+    expect(flags('pass.PST')).toEqual([true, false]);
+    expect(flags('top.PL')).toEqual([true, false]);
+    expect(flags('sbj:3.pfv')).toEqual([true, false, true]);
+  });
+
+  it('reads parts cut any way by the reading of their whole value', () => {
+    const flagsOf = (value, delimiters) => lexicalFlagsOf(value, scanValue(value, delimiters));
+    expect(flagsOf('go.3SG.pfv-sbj:3', '.:-')).toEqual([true, false, false, false, false]);
+    // An empty part is not a part, and never lexical.
+    expect(flagsOf('go..pfv.3', '.')).toEqual([true, false, false, false]);
+    // A tagset that does not split on "-": pfv is still beside 3SG.
+    expect(flagsOf('go-3SG.pfv', '.')).toEqual([true, false]);
+    // A tagset that splits finer than a gloss is cut: PL is a tag.
+    expect(flagsOf('go+PL', '+')).toEqual([true, false]);
+  });
+});
+
+describe('the lenient reading in tagset checks', () => {
+  const gloss = { delimiters: '.:-', mode: 'mixed', values: [{ value: 'PL' }, { value: '3' }] };
+
+  it('holds a lower-case abbreviation beside a tag to the list', () => {
+    expect(validateValue('go.3.pfv', gloss).map((v) => v.part)).toEqual(['pfv']);
+    expect(offTagsetParts([['go.3.pfv', 2]], gloss)).toEqual([{ part: 'pfv', count: 2 }]);
+  });
+
+  it('lets a word that spells an abbreviation through when nothing else is lexical', () => {
+    expect(validateValue('pass.PL', gloss)).toEqual([]);
+  });
+
+  it('files a lower-case abbreviation read as grammatical with the tags when seeding', () => {
+    const fresh = { delimiters: '.', mode: 'suggest', values: [] };
+    expect(seedCandidates([['go.3.pfv', 1]], fresh)).toEqual({
+      tags: [{ value: '3' }, { value: 'pfv' }],
+      lexical: [{ value: 'go' }],
+    });
   });
 });
 

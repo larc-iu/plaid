@@ -288,7 +288,9 @@ def test_tagset_for_and_governed_fields_resolve_by_name_and_ignore_dangling_refe
 
 def test_tagset_rules_and_value_lines_for_a_prompt():
     leipzig = read_tagsets(raw_project()['config'])['Leipzig']
-    assert mode_rule(leipzig) == ('A grammatical tag, written in capitals or digits, must be a listed value. '
+    assert mode_rule(leipzig) == ('A grammatical tag, written in capitals or digits, must be a listed '
+                                  'value, and so must a known abbreviation written in lowercase beside '
+                                  'a tag in the same morpheme (the pfv of sbj:3.pfv). '
                                   'A lexical gloss, an ordinary word in lowercase or in a script without capitals, '
                                   "may be anything. A composite value joins its parts with '.' or ':'.")
     assert mode_rule({'mode': 'closed', 'delimiters': ''}) == 'Only the listed values are accepted.'

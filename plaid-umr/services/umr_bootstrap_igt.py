@@ -74,7 +74,6 @@ Requirements (on top of plaid-client): none.
 import argparse
 import json
 import re
-import unicodedata
 from typing import Any, Dict, List, Optional
 
 from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
@@ -82,6 +81,9 @@ from plaid_client.service import check_unchanged
 from plaid_client.workflows.umr import (DraftProgress, build_draft_notice, gloss_values,
                                         next_variable, read_document, resolve_layers,
                                         unknown_relation_problem, write_graphs)
+from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
+                                                 gloss_morphemes, is_bound_type, is_zero_morph,
+                                                 lexical_flags)
 from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
@@ -142,54 +144,24 @@ ABBREVIATIONS: Dict[str, Optional[tuple]] = {
     'REAL': ('root',),
 }
 
-#: A person and number written as one abbreviation: `3SG`, `1PL`, `2DU`.
-_PERSON_NUMBER = re.compile(r'^([1-4])(SG|PL|DU|TRI|PAUC|NSG)$')
-#: What a gloss is cut into morphemes on: `dog-PL`, `3SG=go`, `go out`.
-_MORPHEME_CUT = re.compile(r'[\-=~<>\s]+')
-#: What one morpheme's gloss is cut into parts on, the Leipzig separators for
-#: one form that means several things: `bark.PRS`, `sbj:3.pfv`, `hit;PST`,
-#: `sing\PST`.
-_PART_CUT = re.compile(r'[.:;\\]+')
+#: What a morpheme's gloss is cut into morphemes and parts on, and the case
+#: rule that says which part is a word, are plaid-igt's
+#: (`plaid_client.workflows.igt.glossing`), so a part IGT sets in small caps is
+#: one read here as an abbreviation.
 _LETTER = re.compile(r'[^\W\d_]', re.UNICODE)
 
 
-def _has_capital(part: str) -> bool:
-    """Whether a part has a capital (upper or title case) letter. A script
-    with no letter case (水, पानी, ماء) has none, so its words are never read
-    as abbreviations, as in `isLexicalPart` in plaid-igt."""
-    return any(unicodedata.category(c) in ('Lu', 'Lt') for c in part)
-
-#: Leipzig abbreviations that stand for no attribute here but are grammatical
-#: all the same, so that written in lower case inside a compound gloss
-#: (`sbj:3.pfv`, `obj:3`) they are not taken for the word. Single letters
-#: (A, S, P, M, F, N) are left out: in lower case they are too often a word.
-GRAMMATICAL = frozenset('''
-    ABL ABS ACC ADJ ADV AGR ALL ANTIP APPL ART AUX BEN CAUS CLF COM COMP COND
-    COP CVB DAT DECL DEF DEM DET DIST DISTR DUR ERG EXCL FOC GEN INCL IND INDF
-    INF INS INTR LOC NMLZ NOM OBJ OBL PASS PRED PROH PROX PTCP PURP QUOT RECP
-    REFL REL RES SBJ SBJV TOP TR VOC
-'''.split())
+def _known(table) -> frozenset:
+    """The abbreviations the lenient reading knows: the Leipzig list, less a
+    default the language table removed, plus what it added."""
+    return (GLOSS_ABBREVIATIONS - set(ABBREVIATIONS)) | set(table)
 
 
-def _keys(part: str, table, lenient: bool) -> Optional[List[str]]:
-    """The abbreviations one part of a gloss stands for, [] for a grammatical
-    part that stands for nothing, None for a word. The case rule: a part in
-    upper case, with no letter (`3`) or a person and number in either case
-    (`3SG`, `3sg`, never a word), is grammatical; a part with a lower case
-    letter, or with letters of a script that has no case, is a word.
-    `lenient` is the one exception, a compound gloss that also has a part
-    grammatical by that rule (`sbj:3.pfv`, `go.3SG.pfv`): there a known
-    abbreviation in lower case is grammatical too."""
-    m = _PERSON_NUMBER.match(part.upper())
-    if m:
-        return [m.group(1), m.group(2)]
-    if part.upper() in table and (part.upper() == part or not _LETTER.search(part)):
-        return [part]
-    if part.upper() == part and _has_capital(part):
-        return []
-    if lenient and len(part) > 1 and (part.upper() in table or part.upper() in GRAMMATICAL):
-        return [part]
-    return None
+def _keys(part: str) -> List[str]:
+    """The table keys a grammatical part stands for: a person and number
+    written as one (`3SG`, `3sg`) is two."""
+    m = PERSON_NUMBER.match(part)
+    return [m.group(1), m.group(2)] if m else [part]
 
 
 #: The one-word entries a language table may map an abbreviation to.
@@ -238,13 +210,16 @@ def load_abbreviations(path: Optional[str]) -> Dict[str, Optional[tuple]]:
     return table
 
 
-def read_gloss(gloss: str, table) -> Dict[str, Any]:
-    """One gloss value read into what it says: the lexical part (the first
-    part that is not grammatical), the attributes its abbreviations stand
-    for, whether one of them marks tense or aspect, and whether one marks
-    possession. Each morpheme's gloss is read on its own, so a lower-case
-    abbreviation counts only beside a grammatical part of the SAME morpheme
-    (`sbj:3.pfv`), never because another morpheme is grammatical.
+def read_glosses(glosses: List[str], table) -> List[Dict[str, Any]]:
+    """The glosses of one word (its own and its morphemes'), each read into
+    what it says: the lexical part (the first part that is not grammatical),
+    the attributes its abbreviations stand for, whether one of them marks
+    tense or aspect, and whether one marks possession. Which part is a word is
+    plaid-igt's rule (`lexical_flags`), read over the word as one unit: a
+    lower-case abbreviation counts beside a grammatical part of the SAME
+    morpheme (`sbj:3.pfv`), never because another morpheme is grammatical,
+    and when that leaves the word with no lexical part the case rule stands
+    (`pass.PST` is `pass`).
 
     `marked` runs beside `attrs`: whether the morpheme an attribute came from
     also carries a person or a possessive, which is what makes its person and
@@ -252,40 +227,46 @@ def read_gloss(gloss: str, table) -> Dict[str, Any]:
     the plural is on a morpheme of its own and is not marked. `agreement` is
     whether some morpheme carries a person with no possessive (`1-see-PL`),
     which makes a number on another morpheme that person's too."""
-    lexical = None
-    attrs: List[tuple] = []
-    marked: List[bool] = []
-    eventive = False
-    possessive = False
-    agreement = False
-    for morpheme in _MORPHEME_CUT.split(str(gloss or '').strip()):
-        parts = [p for p in _PART_CUT.split(morpheme) if p]
-        lenient = len(parts) > 1 and any(_keys(p, table, False) is not None for p in parts)
-        found: List[tuple] = []
-        person = owner = False
-        for part in parts:
-            keys = _keys(part, table, lenient)
-            if keys is None:
-                if lexical is None and _LETTER.search(part):
-                    lexical = part
-                continue
-            for k in keys:
-                what = table.get(k.upper())
-                if what == ('root',):
-                    eventive = True
-                elif what == ('possessive',):
-                    possessive = owner = True
-                elif what:
-                    found.append(what)
-                    if what[0] == ':refer-person':
-                        person = True
-                    if what[0] == ':aspect':
+    cut = [gloss_morphemes(str(g or '').strip()) for g in glosses]
+    flags = lexical_flags([m for morphemes in cut for m in morphemes], _known(table))
+    flags_at = iter(flags)
+    out = []
+    for morphemes in cut:
+        lexical = None
+        attrs: List[tuple] = []
+        marked: List[bool] = []
+        eventive = possessive = agreement = False
+        for parts in morphemes:
+            found: List[tuple] = []
+            person = owner = False
+            for part, is_lexical in zip(parts, next(flags_at)):
+                if is_lexical:
+                    if lexical is None:
+                        lexical = part
+                    continue
+                for k in _keys(part):
+                    what = table.get(k.upper())
+                    if what == ('root',):
                         eventive = True
-        attrs.extend(found)
-        marked.extend((person or owner) for _ in found)
-        agreement = agreement or (person and not owner)
-    return {'lexical': lexical, 'attrs': attrs, 'marked': marked, 'eventive': eventive,
-            'possessive': possessive, 'agreement': agreement}
+                    elif what == ('possessive',):
+                        possessive = owner = True
+                    elif what:
+                        found.append(what)
+                        if what[0] == ':refer-person':
+                            person = True
+                        if what[0] == ':aspect':
+                            eventive = True
+            attrs.extend(found)
+            marked.extend((person or owner) for _ in found)
+            agreement = agreement or (person and not owner)
+        out.append({'lexical': lexical, 'attrs': attrs, 'marked': marked,
+                    'eventive': eventive, 'possessive': possessive, 'agreement': agreement})
+    return out
+
+
+def read_gloss(gloss: str, table) -> Dict[str, Any]:
+    """One gloss read as a word's only one (`read_glosses`)."""
+    return read_glosses([gloss], table)[0]
 
 
 #: The attributes that describe a participant, which a gloss may give for
@@ -315,20 +296,15 @@ def own_attrs(read: Dict[str, Any], lexical_home: bool,
 
 
 def is_bound(morph_type: Optional[str]) -> bool:
-    """An affix or a clitic, by IGT's morph type (FLEx's names): never the
-    morpheme that names a word. As `isBoundType` in plaid-igt."""
-    t = (morph_type or '').lower()
-    return 'clitic' in t or t.endswith('fix')
-
-
-#: A zero morph as IGT writes it (`Alt+0` types U+2205), or a form emptied by
-#: hand: nothing a word could be named after. The digit 0 is a real form (a
-#: numeral), as `isZeroMorph` in plaid-igt has it.
-_ZERO_FORMS = {'', '\u2205'}
+    """An affix or a clitic, by IGT's morph type (`is_bound_type`): never the
+    morpheme that names a word."""
+    return is_bound_type(morph_type)
 
 
 def is_zero(form: str) -> bool:
-    return (form or '').strip() in _ZERO_FORMS
+    """A zero morph (`is_zero_morph`, U+2205 and not the digit 0), or a form
+    emptied by hand: nothing a word could be named after."""
+    return is_zero_morph(form) or not (form or '').strip()
 
 
 def _candidates(morphemes):
@@ -449,24 +425,24 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         if not _LETTER.search(word.text) and not re.search(r'\d', word.text):
             continue
         morphemes = sentence.morphemes_of(word)
-        word_reads = []
-        by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
-        # Every read with the morpheme it glosses (None for the word), in the
-        # order of `gloss_layers`, which is the order a concept is looked for.
-        in_order: List[tuple] = []
+        # Every gloss of the word with the morpheme it glosses (None for the
+        # word), in the order of `gloss_layers`, which is the order a concept
+        # is looked for. They are read together, as one word.
+        glossed: List[tuple] = []
         for layer in gloss_layers:
             of = values.get(layer.id) or {}
             if layer.scope == 'word':
-                value = of.get(word.id)
-                if value:
-                    word_reads.append(read_gloss(value, table))
-                    in_order.append((None, word_reads[-1]))
+                if of.get(word.id):
+                    glossed.append((None, of[word.id]))
             elif layer.scope == 'morpheme':
-                for m in morphemes:
-                    value = of.get(m.id)
-                    if value:
-                        by_morpheme.setdefault(m.id, []).append(read_gloss(value, table))
-                        in_order.append((m.id, by_morpheme[m.id][-1]))
+                glossed.extend((m.id, of[m.id]) for m in morphemes if of.get(m.id))
+        in_order = list(zip([mid for mid, _ in glossed],
+                            read_glosses([value for _, value in glossed], table)))
+        word_reads = [r for mid, r in in_order if mid is None]
+        by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
+        for mid, r in in_order:
+            if mid is not None:
+                by_morpheme.setdefault(mid, []).append(r)
         home = lexical_morpheme(morphemes, by_morpheme, links, headwords) if morphemes else None
         # The word's own link, then a compound's headword, then the lexical
         # morpheme's link, then the lexical part of a gloss.

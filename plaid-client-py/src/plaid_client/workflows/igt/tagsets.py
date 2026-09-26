@@ -24,7 +24,8 @@ A tagset's ``mode`` is one of three, from advice to rule:
     closed   only listed values are accepted
     mixed    listed values, plus lexical glosses: a part with a lowercase
              letter, or with letters but no capital (a stem gloss in a
-             script without case)
+             script without case), read with the rest of its value as
+             :mod:`glossing` has it
 """
 
 from typing import Dict, Iterator, List, Optional
@@ -157,7 +158,9 @@ def mode_rule(tagset) -> str:
     if mode == CLOSED:
         rule = 'Only the listed values are accepted.'
     elif mode == MIXED:
-        rule = ('A grammatical tag, written in capitals or digits, must be a listed value. '
+        rule = ('A grammatical tag, written in capitals or digits, must be a listed value, and so '
+                'must a known abbreviation written in lowercase beside a tag in the same morpheme '
+                '(the pfv of sbj:3.pfv). '
                 'A lexical gloss, an ordinary word in lowercase or in a script without capitals, may be anything.')
     else:
         rule = 'The listed values are the ones in use, and any other value is also accepted.'

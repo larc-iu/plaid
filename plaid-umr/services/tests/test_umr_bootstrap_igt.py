@@ -343,20 +343,21 @@ def test_a_headword_of_several_words_is_a_hyphenated_concept():
 # --- compound glosses: sbj:3.pfv -------------------------------------------------------
 
 def test_a_lower_case_abbreviation_beside_a_grammatical_part_is_grammatical():
-    """Lamkang writes sbj:3.pfv: the 3 is grammatical by the case rule, so pfv
-    and sbj beside it are too, and pfv is aspect."""
+    """Lamkang writes sbj:3.pfv on a verb's suffix: the 3 is grammatical by the
+    case rule, so pfv and sbj beside it are too, and pfv is aspect. The stem's
+    gloss is read with it, as the glosses of one word are."""
     table = boot.ABBREVIATIONS
-    assert boot.read_gloss('sbj:3.pfv', table) == {
+    assert boot.read_glosses(['lay', 'sbj:3.pfv'], table)[1] == {
         'lexical': None, 'attrs': [(':refer-person', '3rd'), (':aspect', 'perfective')],
         'marked': [True, True], 'eventive': True, 'possessive': False, 'agreement': True}
-    assert boot.read_gloss('obj:3', table)['lexical'] is None
+    assert boot.read_glosses(['lay', 'obj:3'], table)[1]['lexical'] is None
     assert boot.read_gloss('go.3sg.ipfv', table) == {
         'lexical': 'go', 'attrs': [(':refer-person', '3rd'), (':refer-number', 'singular'),
                                    (':aspect', 'imperfective')],
         'marked': [True, True, True], 'eventive': True, 'possessive': False,
         'agreement': True}
     assert boot.read_gloss('go.3SG.prf', table)['eventive'] is True
-    assert boot.read_gloss('sbj:3sg.pfv', table)['attrs'] == [
+    assert boot.read_glosses(['lay', 'sbj:3sg.pfv'], table)[1]['attrs'] == [
         (':refer-person', '3rd'), (':refer-number', 'singular'), (':aspect', 'perfective')]
     assert boot.read_gloss('lay-sbj:3.pfv', table)['lexical'] == 'lay'
     # Leipzig's other separators for one form of several meanings.
@@ -382,6 +383,25 @@ def test_the_case_rule_still_holds_without_a_grammatical_part_beside():
     assert boot.read_gloss('3SG-pfv', table)['eventive'] is False
     # A single letter stays a word even beside a grammatical part.
     assert boot.read_gloss('a.3SG', table)['lexical'] == 'a'
+
+
+def test_a_word_that_spells_an_abbreviation_is_a_word_when_nothing_else_is():
+    """pass.PST: read leniently, pass would be PASS and the word would have
+    no lexical part, so the case rule stands for the whole word (ruling 2)."""
+    table = boot.ABBREVIATIONS
+    assert boot.read_gloss('pass.PST', table)['lexical'] == 'pass'
+    assert boot.read_gloss('pass.PST', table)['eventive'] is True
+    assert boot.read_gloss('top.PL', table)['lexical'] == 'top'
+    # The unit is the word: a stem's gloss beside it keeps the lenient reading.
+    assert boot.read_glosses(['go', 'pass.PST'], table)[1]['lexical'] is None
+    # A word glossed with abbreviations only is named by the first word-like one.
+    assert boot.read_gloss('sbj:3.pfv', table)['lexical'] == 'sbj'
+    body = 'dog passed\n'
+    words = [(0, 3), (4, 10)]
+    for gloss, concept in (('pass.PST', 'pass'), ('top.PL', 'top')):
+        morphemes = [('m1', 0, 'dog', 'stem', 'dog', None), ('m2', 1, 'passed', 'stem', gloss, None)]
+        document = _segmented(body=body, words=words, morphemes=morphemes)
+        assert [c for c, _ in _segmented_run(document, _compound_vocab())] == ['dog', concept]
 
 
 def test_the_verb_with_sbj_3_pfv_is_the_root():
@@ -696,3 +716,12 @@ def test_the_gloss_line_mapping_is_the_apps():
                          text=True, timeout=60, check=True).stdout
     layers = _umr_layers(ILG_LAYERS)
     assert [umr_layers.resolve_ilg(c, layers) for c in ILG_CONFIGS] == json.loads(out)
+
+
+def test_the_default_table_knows_the_abbreviations_igt_knows():
+    """With no language table, the lenient reading knows what plaid-igt's does
+    (GLOSS_ABBREVIATIONS, pinned to tagsets.js by the client's mirror test), and
+    every abbreviation the table gives a meaning is one of them."""
+    from plaid_client.workflows.igt.glossing import GLOSS_ABBREVIATIONS
+    assert boot._known(boot.ABBREVIATIONS) == GLOSS_ABBREVIATIONS
+    assert set(boot.ABBREVIATIONS) <= GLOSS_ABBREVIATIONS
