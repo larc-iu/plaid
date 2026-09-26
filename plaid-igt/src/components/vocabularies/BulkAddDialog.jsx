@@ -21,6 +21,7 @@ import {
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
 import { CHUNK } from '@/domain/bulk';
+import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
@@ -454,7 +455,7 @@ export const BulkAddDialog = ({
             chunk.map((c) => ({
               vocabLayerId: vocabularyId,
               form: c.form,
-              ...(Object.keys(c.metadata).length ? { metadata: c.metadata } : {}),
+              ...(Object.keys(c.metadata).length ? { metadata: followIds(c.metadata) } : {}),
             })),
           );
           created += chunk.length;
@@ -463,7 +464,9 @@ export const BulkAddDialog = ({
         for (let i = 0; i < updates.length; i += CHUNK) {
           const chunk = updates.slice(i, i + CHUNK);
           await client.vocabItems.bulkUpdate(
-            chunk.map((u) => ({ id: u.id, metadata: metadataOps(u.patch) })),
+            // An entry still being made when this was planned is named by the
+            // server's id now that its create has landed.
+            chunk.map((u) => ({ id: settledId(u.id), metadata: followIds(metadataOps(u.patch)) })),
           );
           updated += chunk.length;
           setProgress({ done: created + updated, total, phase: 'updating' });

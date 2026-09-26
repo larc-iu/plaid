@@ -29,6 +29,7 @@ import { buildReplacer, MATCH_EMPTY } from '@/domain/replacer';
 import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 import { CHUNK } from '@/domain/bulk';
+import { followIds, settledId } from '@ui/domain/pendingIds.js';
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the
@@ -147,7 +148,13 @@ export const ReplaceDialog = ({
     try {
       const { landed, error } = await send(label, async () => {
         for (let i = 0; i < writes.length; i += CHUNK) {
-          const chunk = writes.slice(i, i + CHUNK);
+          // An entry still being made when this was planned is named by the
+          // server's id now that its create has landed.
+          const chunk = writes.slice(i, i + CHUNK).map((w) => ({
+            ...w,
+            id: settledId(w.id),
+            ...(w.metadata ? { metadata: followIds(w.metadata) } : {}),
+          }));
           await client.vocabItems.bulkUpdate(chunk);
           done += chunk.length;
           setProgress(`${done.toLocaleString()} of ${writes.length.toLocaleString()}`);

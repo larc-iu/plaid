@@ -309,13 +309,13 @@ describe('Bulk Add and Replace', () => {
       await settle();
     });
   };
-  const bulkAdd = async (view) => {
+  const bulkAdd = async (view, label = 'Add 2') => {
     await view.step(() => button('Bulk Add').click());
     await view.step(() => setValue(document.querySelector('textarea'), 'dos\ttwo\ntres\tthree'));
     await view.step(() => button('Next: columns').click());
     await view.step(() => button('Next: review').click());
     await view.step(async () => {
-      button('Add 2').click();
+      button(label).click();
       await settle();
     });
   };
@@ -366,6 +366,42 @@ describe('Bulk Add and Replace', () => {
       await settle();
     });
     expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkCreate']);
+  });
+
+  // An entry whose create is still on its way is shown under a pending id, and
+  // a run planned against it must name the server's id when it is sent.
+  const creating = async (form) => {
+    const stubbed = stub([{ id: 'a', form: 'uno' }]);
+    const held = deferred();
+    stubbed.holds.push(held);
+    const view = await mount(stubbed.client, '/vocabularies/v1?item=new');
+    mounted = view;
+    await view.step(() => setValue(formInput(), form));
+    await view.step(() => button('Create').click());
+    return { ...stubbed, held, view };
+  };
+
+  it("sends a Replace over an entry still being made under the server's id", async () => {
+    const { calls, held, view } = await creating('dos-EDIT');
+    await replaceEdit(view);
+    await view.step(async () => {
+      held.resolve();
+      await settle();
+    });
+    expect(kinds(calls)).toEqual(['create', 'bulkUpdate']);
+    expect(calls[1][1]).toEqual([{ id: 'server-1', form: 'dos-X' }]);
+  });
+
+  it("sends a Bulk Add update of an entry still being made under the server's id", async () => {
+    const { calls, held, view } = await creating('dos');
+    await bulkAdd(view, 'Add 1 · update 1');
+    await view.step(async () => {
+      held.resolve();
+      await settle();
+    });
+    const update = calls.find(([kind]) => kind === 'bulkUpdate');
+    expect(update).toBeTruthy();
+    expect(update[1].map((u) => u.id)).toEqual(['server-1']);
   });
 
   it('does not send a Bulk Add planned over a save that was refused', async () => {
