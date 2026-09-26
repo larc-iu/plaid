@@ -205,6 +205,48 @@ def test_overwrite_keeps_a_sentence_a_person_built_or_confirmed(node_metadata, w
                                 'message': 'Kept 1 sentence a person had worked on.'}
 
 
+# --- one run body for both services --------------------------------------------
+
+def _both(document):
+    """The skeleton and the draft service over the same document, each writing
+    one graph when it writes at all."""
+    skeleton = _service(documents=[document])
+    draft = draft_tests._service(model=draft_tests._Model())
+    draft.client = _Client([document], project=_project())
+    return skeleton, draft
+
+
+def test_both_services_take_the_same_parameters():
+    skeleton, draft = _both(_document())
+    assert skeleton.extras['parameters'] == draft.extras['parameters']
+
+
+@pytest.mark.parametrize('overwrite', [False, True])
+@pytest.mark.parametrize('document, why', [
+    (_document(), 'no graph'),
+    (_with_graph({'prov': 'inferred', 'provSource': 'service:umr-draft-llm'}), 'machine'),
+    (_with_graph({}), 'hand-made'),
+    (_with_graph({'prov': 'contributed', 'provSource': 'user:a@b.com'}), 'contributed'),
+])
+def test_both_services_choose_and_report_the_same_sentences(document, why, overwrite):
+    reports = []
+    for service in _both(document):
+        [result] = servicetest.run(service, {**REQUEST, 'overwrite': overwrite}).results
+        reports.append(result)
+    assert reports[0] == reports[1], why
+
+
+@pytest.mark.parametrize('request_data', [{**REQUEST, 'scope': 'sentence', 'sentence': 2},
+                                          {**REQUEST, 'document_id': None}])
+def test_both_services_refuse_the_same_requests(request_data):
+    outcomes = []
+    for service in _both(_document()):
+        helper = servicetest.run(service, request_data)
+        outcomes.append((helper.results, helper.errors, service.client.writes))
+    assert outcomes[0] == outcomes[1]
+    assert outcomes[0][0] == [] and outcomes[0][1]
+
+
 # --- segmented words: the lexical morpheme names the word ----------------------------
 
 #: Lamkang, as IGT stores it: full-width morpheme tokens with `metadata.form`,

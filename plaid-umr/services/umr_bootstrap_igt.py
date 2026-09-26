@@ -76,11 +76,9 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
-from plaid_client.service import check_unchanged
-from plaid_client.workflows.umr import (DraftProgress, build_draft_notice, gloss_values,
-                                        next_variable, read_document, resolve_layers,
-                                        unknown_relation_problem, write_graphs)
+from plaid_client import BaseService, TASKS, stamp_inferred, service_source
+from plaid_client.workflows.umr import (DraftProgress, begin_draft, draft_params, finish_draft,
+                                        next_variable, unknown_relation_problem)
 from plaid_client.workflows.igt.glossing import (GLOSS_ABBREVIATIONS, PERSON_NUMBER,
                                                  gloss_morphemes, is_bound_type, is_zero_morph,
                                                  lexical_flags)
@@ -495,20 +493,7 @@ class UmrBootstrapService(BaseService):
                         'and attributes, no relations, no model.',
             tasks=[TASKS.DRAFT_GRAPH],
             summary=SUMMARY,
-            parameters=[
-                Param.enum('scope', 'Scope',
-                           [('document', 'The whole document'), ('sentence', 'One sentence')],
-                           default='document',
-                           description='Every sentence, or one sentence by its number.'),
-                Param.number('sentence', 'Sentence', default=1, min=1,
-                             description='Which sentence, when the scope is one sentence.'),
-                Param.boolean('overwrite', 'Overwrite existing graphs', default=False,
-                              description='Write over sentences whose graph is machine-made, '
-                                          'discarding those graphs. A sentence a person built '
-                                          'or confirmed is kept either way, and so is every '
-                                          'sentence with a graph when this is off. What is '
-                                          'kept is counted in the report.'),
-            ],
+            parameters=draft_params(),
         )
         self.abbreviations = dict(ABBREVIATIONS)
 
@@ -523,72 +508,33 @@ class UmrBootstrapService(BaseService):
 
     # -- request --
     def process_request(self, request_data: Dict[str, Any], response_helper) -> None:
-        document_id = request_data.get('document_id')
-        if not document_id:
-            response_helper.error('Missing required parameter: documentId')
+        run = begin_draft(self.client, request_data, response_helper)
+        if run is None:
             return
-        project_id = request_data.get('project_id')
-        scope = (request_data.get('scope') or 'document').strip()
-        overwrite = bool(request_data.get('overwrite', False))
-        try:
-            wanted = int(request_data.get('sentence') or 1)
-        except (TypeError, ValueError):
-            wanted = 1
-
-        progress = DraftProgress(response_helper)
-        progress.report(DraftProgress.READ, 0.0, 'Reading the document…')
-        raw = self.client.documents.get(document_id, include_body=True)
-        read_version = raw.get('version')
-        layers = resolve_layers(raw)
-        document = read_document(raw, layers, gloss=gloss_values(raw, layers))
-        sentences = document.sentences
 
         # The project's vocabularies, for the headword a linked word takes,
         # and its gloss-line mapping, for which layers are glosses.
         headwords: Dict[str, str] = {}
         project = None
-        if project_id:
-            progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
+        if run.project_id:
+            run.progress.report(DraftProgress.READ, 0.5, 'Reading the vocabularies…')
             try:
-                project = self.client.projects.get(project_id)
+                project = self.client.projects.get(run.project_id)
                 vocabularies = [self.client.vocab_layers.get(v['id'], include_items=True)
                                 for v in (project.get('vocabs') or []) if v.get('id')]
                 headwords = headwords_of(vocabularies)
             except Exception as exc:
                 print(f'Could not read the vocabularies: {exc}')
-        links = links_by_token(layers)
+        links = links_by_token(run.layers)
         listed = listed_forms(headwords)
-        glosses = lexical_gloss_layers(project, layers)
+        glosses = lexical_gloss_layers(project, run.layers)
+        run.progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        in_scope = sentences
-        if scope == 'sentence':
-            in_scope = [s for s in sentences if s.index == wanted]
-            if not in_scope:
-                raise ValueError(f'The document has no sentence {wanted}.')
-        # With `overwrite` on, a sentence is KEPT and counted when a person
-        # built or confirmed any node, edge or document-level triple of it, or
-        # when another sentence's block writes an edge or triple on its nodes
-        # (the machine-writer contract, `Sentence.redraftable`): the tick
-        # redrafts machine graphs only, as igt's analyzers do.
-        with_graph = [s for s in in_scope if s.words and s.nodes]
-        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
-        linked = (len([s for s in with_graph if not s.redraftable and not s.person_made])
-                  if overwrite else 0)
-        skipped = len(with_graph) if not overwrite else 0
-        targets = [s for s in in_scope
-                   if s.words and (not s.nodes or (overwrite and s.redraftable))]
-        progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
-
-        taken = document.taken_variables
-        if overwrite:
-            for s in targets:
-                for node in s.nodes:
-                    taken.discard(node.var)
         plans = []
         failures = []
-        for sentence in targets:
-            pieces, nodes, edges = plan_sentence(sentence, glosses, document.gloss,
-                                                 links, headwords, self.abbreviations, taken,
+        for sentence in run.targets:
+            pieces, nodes, edges = plan_sentence(sentence, glosses, run.document.gloss,
+                                                 links, headwords, self.abbreviations, run.taken,
                                                  listed)
             if not nodes:
                 failures.append({'sentence': sentence.index,
@@ -597,30 +543,11 @@ class UmrBootstrapService(BaseService):
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes,
                           'edges': edges})
 
-        drafted = len(plans)
-        first_error = failures[0]['reason'] if failures else None
-        if not plans:
-            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept, linked=linked)
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({'document_id': document_id, 'status': 'success',
-                                      'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
-                                      'sentences_failed': failures, 'notice': notice})
-            return
-
         frag = stamp_inferred(service_source(self.service_id), detail={'method': 'glosses'})
-        progress.report(DraftProgress.WRITE, 0.0, f'Writing {drafted} skeletons…')
-        with response_helper.critical():
-            with self.client.operation(f'UMR skeleton from glosses ({drafted} sentences)'):
-                with self.client.documents.locked(document_id):
-                    check_unchanged(self.client, document_id, read_version)
-                    write_graphs(self.client, layers, plans, frag, progress)
-            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept, linked=linked)
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({'document_id': document_id, 'status': 'success',
-                                      'sentences': len(sentences), 'drafted': drafted,
-                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
-                                      'sentences_failed': failures, 'notice': notice})
+        finish_draft(self.client, response_helper, run, plans, failures, frag,
+                     operation=f'UMR skeleton from glosses ({len(plans)} sentences)',
+                     writing=f'Writing {len(plans)} skeletons…')
+
 
 def main():
     UmrBootstrapService().run()

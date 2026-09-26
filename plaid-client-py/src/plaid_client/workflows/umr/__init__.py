@@ -21,8 +21,9 @@ the bundled UMR services:
 - :mod:`inventory` — the closed relation sets and why a relation is not in
   them (``unknown_relation_problem``, ``unknown_doc_relation_problem``).
 - :mod:`penman` — the notation: the reader, the writer, the variable rule.
-- :mod:`write` — writing drafted graphs in three batched passes, the progress
-  budget and what a drafting run reports.
+- :mod:`write` — a drafting service's run: its parameters, the sentences it
+  drafts, writing the graphs in three batched passes, the progress budget and
+  what the run reports.
 
 The JS side of the same rules lives in ``plaid-umr/src`` (``umrLayerUtils.js``,
 ``sentenceGraph.js``, ``format/penman.js``); that split is unavoidable, and
@@ -45,7 +46,8 @@ from .layers import (CONCEPTS, DOCUMENT_GRAPH, GlossLayer, NODES, RELATIONS, REQ
 from .penman import (Child, Graph, ParseError, graph_text, is_variable, next_variable,
                      parse_attribute_line, parse_penman, serialize_penman, tree_edges,
                      variable_from)
-from .write import DraftProgress, anchor_pieces, build_draft_notice, write_graphs
+from .write import (DraftProgress, DraftRun, anchor_pieces, begin_draft, build_draft_notice,
+                    draft_params, finish_draft, write_graphs)
 
 __all__ = [
     'graph', 'inventory', 'layers', 'penman', 'write',
@@ -67,4 +69,5 @@ __all__ = [
     'graph_text', 'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
     # write
     'anchor_pieces', 'write_graphs', 'DraftProgress', 'build_draft_notice',
+    'draft_params', 'DraftRun', 'begin_draft', 'finish_draft',
 ]

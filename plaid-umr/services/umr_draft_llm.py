@@ -43,13 +43,13 @@ import argparse
 import re
 from typing import Any, Dict, List, Optional
 
-from plaid_client import BaseService, TASKS, Param, stamp_inferred, service_source
-from plaid_client.service import check_unchanged, requester_message
+from plaid_client import BaseService, TASKS, stamp_inferred, service_source
+from plaid_client.service import requester_message
 from plaid_client.workflows.llm import ChatModel, add_model_arguments, setup_service
-from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, build_draft_notice,
-                                        gloss_values, next_variable, parse_penman,
-                                        project_language, read_document, resolve_layers,
-                                        unknown_relation_problem, write_graphs)
+from plaid_client.workflows.umr import (DraftProgress, anchor_pieces, begin_draft,
+                                        draft_params, finish_draft, next_variable,
+                                        parse_penman, project_language,
+                                        unknown_relation_problem)
 from plaid_client.workflows.umr.inventory import edge_only
 
 DEFAULT_SERVICE_ID = 'umr-draft-llm'
@@ -324,20 +324,7 @@ class UmrDraftService(BaseService):
                         'on the canvas',
             tasks=[TASKS.DRAFT_GRAPH],
             summary=SUMMARY,
-            parameters=[
-                Param.enum('scope', 'Scope',
-                           [('document', 'The whole document'), ('sentence', 'One sentence')],
-                           default='document',
-                           description='Draft every sentence, or one sentence by its number.'),
-                Param.number('sentence', 'Sentence', default=1, min=1,
-                             description='Which sentence to draft, when the scope is one sentence.'),
-                Param.boolean('overwrite', 'Overwrite existing graphs', default=False,
-                              description='Draft over sentences whose graph is machine-made, '
-                                          'discarding those graphs. A sentence a person built '
-                                          'or confirmed is kept either way, and so is every '
-                                          'sentence with a graph when this is off. What is '
-                                          'kept is counted in the report.'),
-            ],
+            parameters=draft_params(),
         )
         self.model: Optional[ChatModel] = None
 
@@ -350,88 +337,39 @@ class UmrDraftService(BaseService):
 
     # -- request --
     def process_request(self, request_data: Dict[str, Any], response_helper) -> None:
-        document_id = request_data.get('document_id')
-        if not document_id:
-            response_helper.error('Missing required parameter: documentId')
+        run = begin_draft(self.client, request_data, response_helper)
+        if run is None:
             return
-        project_id = request_data.get('project_id')
-        scope = (request_data.get('scope') or 'document').strip()
-        overwrite = bool(request_data.get('overwrite', False))
-        try:
-            wanted = int(request_data.get('sentence') or 1)
-        except (TypeError, ValueError):
-            wanted = 1
-
-        progress = DraftProgress(response_helper)
-        progress.report(DraftProgress.READ, 0.0, 'Reading the document…')
-        raw = self.client.documents.get(document_id, include_body=True)
-        read_version = raw.get('version')
-        layers = resolve_layers(raw)
-        document = read_document(raw, layers, gloss=gloss_values(raw, layers))
-        sentences = document.sentences
+        progress = run.progress
 
         # The project's language, the one thing the prompt needs that the
         # document does not carry. Context only: a project that has not set one
         # is drafted without it rather than refused.
         language = ''
-        if project_id:
+        if run.project_id:
             progress.report(DraftProgress.READ, 0.5, 'Reading the project…')
             try:
-                language = project_language(self.client.projects.get(project_id))
+                language = project_language(self.client.projects.get(run.project_id))
             except Exception as exc:
                 print(f'Could not read the project language: {exc}')
-
-        in_scope = sentences
-        if scope == 'sentence':
-            in_scope = [s for s in sentences if s.index == wanted]
-            if not in_scope:
-                raise ValueError(f'The document has no sentence {wanted}.')
-        # With `overwrite` on, a sentence is KEPT and counted when a person
-        # built or confirmed any node, edge or document-level triple of it, or
-        # when another sentence's block writes an edge or triple on its nodes
-        # (the machine-writer contract, `Sentence.redraftable`): the tick
-        # redrafts machine graphs only, as igt's analyzers do.
-        with_graph = [s for s in in_scope if s.words and s.nodes]
-        kept = len([s for s in with_graph if s.person_made]) if overwrite else 0
-        linked = (len([s for s in with_graph if not s.redraftable and not s.person_made])
-                  if overwrite else 0)
-        skipped = len(with_graph) if not overwrite else 0
-        targets = [s for s in in_scope
-                   if s.words and (not s.nodes or (overwrite and s.redraftable))]
         progress.report(DraftProgress.READ, 1.0, 'Reading the document…')
 
-        if not targets:
-            notice = build_draft_notice(0, skipped, 0, kept=kept, linked=linked)
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({'document_id': document_id, 'status': 'success',
-                                      'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': 0,
-                                      'sentences_failed': [], 'notice': notice})
-            return
-
-        # One model call per sentence. A sentence the model fails is counted and
-        # named; the rest of the document is still drafted, because a run that
-        # threw away twenty good graphs over one bad reply would be worse than
-        # useless on a long document.
-        taken = document.taken_variables
-        if overwrite:
-            # The graphs about to be replaced free their variables, so a redraft
-            # of sentence 1 writes s1b again rather than s1b2.
-            for s in targets:
-                for node in s.nodes:
-                    taken.discard(node.var)
         stamp_detail = {**self.model.describe()}
         if language:
             stamp_detail['language'] = language
         frag = stamp_inferred(service_source(self.service_id), detail=stamp_detail)
 
+        # One model call per sentence. A sentence the model fails is counted and
+        # named; the rest of the document is still drafted, because a run that
+        # threw away twenty good graphs over one bad reply would be worse than
+        # useless on a long document.
         plans = []
         failures = []
-        total = len(targets)
-        for n, sentence in enumerate(targets):
+        total = len(run.targets)
+        for n, sentence in enumerate(run.targets):
             message = f'Drafting sentence {sentence.index} ({n + 1} of {total})…'
             progress.report(DraftProgress.DRAFT, n / total, message)
-            gloss_lines = gloss_lines_for(sentence, layers.gloss_layers, document.gloss)
+            gloss_lines = gloss_lines_for(sentence, run.layers.gloss_layers, run.document.gloss)
             prompt = build_user_prompt(sentence, gloss_lines, language)
             try:
                 with progress.heartbeat(DraftProgress.DRAFT, n / total, message):
@@ -456,42 +394,14 @@ class UmrDraftService(BaseService):
                 failures.append({'sentence': sentence.index, 'reason': problem})
                 continue
             pieces, nodes, edges = plan_sentence(graph, parse_alignment(alignment_text),
-                                                 sentence, taken)
+                                                 sentence, run.taken)
             plans.append({'sentence': sentence, 'pieces': pieces, 'nodes': nodes, 'edges': edges})
+        if run.targets:
+            print(self.model.usage_line())
 
-        print(self.model.usage_line())
-        drafted = len(plans)
-        first_error = failures[0]['reason'] if failures else None
-        if not plans:
-            notice = build_draft_notice(0, skipped, len(failures), first_error, kept=kept, linked=linked)
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({'document_id': document_id, 'status': 'success',
-                                      'sentences': len(sentences), 'drafted': 0,
-                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
-                                      'sentences_failed': failures, 'notice': notice})
-            return
-
-        # Everything from here must finish once begun: a stop that arrives while
-        # the document is half written would leave anchors with no nodes. The
-        # final report is inside the same block, so a checkpoint after the last
-        # write cannot throw a finished run away and call it stopped.
-        progress.report(DraftProgress.WRITE, 0.0, f'Writing {drafted} graphs…')
-        with response_helper.critical():
-            with self.client.operation(f'UMR draft ({drafted} sentences)'):
-                with self.client.documents.locked(document_id):
-                    # The plans were made from a read taken before the model
-                    # ran. If the document has moved since, the ids they point
-                    # at and the graphs they were allowed to replace are both
-                    # out of date, so nothing is written.
-                    check_unchanged(self.client, document_id, read_version)
-                    write_graphs(self.client, layers, plans, frag, progress)
-
-            notice = build_draft_notice(drafted, skipped, len(failures), first_error, kept=kept, linked=linked)
-            response_helper.progress(100, notice['title'])
-            response_helper.complete({'document_id': document_id, 'status': 'success',
-                                      'sentences': len(sentences), 'drafted': drafted,
-                                      'skipped': skipped, 'kept': kept, 'linked': linked, 'failed': len(failures),
-                                      'sentences_failed': failures, 'notice': notice})
+        finish_draft(self.client, response_helper, run, plans, failures, frag,
+                     operation=f'UMR draft ({len(plans)} sentences)',
+                     writing=f'Writing {len(plans)} graphs…')
 
 
 def main():
