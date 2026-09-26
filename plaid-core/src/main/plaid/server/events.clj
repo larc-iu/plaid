@@ -62,7 +62,10 @@
 
 ;; Connected services: project-id -> {service-id -> entry}, where an entry is
 ;; {:channel <http-kit channel> :service-id :service-name :description :extras
-;; :user-id}. The SERVICE's open inbound SSE channel IS its registration: a
+;; :user-id :token-id :token-version :db}. `:token-id` names the API token the
+;; channel was opened with (nil for a session token, whose `:token-version`
+;; is its password_changes claim), and `:db` is where its standing is checked:
+;; see `on-standing-change!`. The SERVICE's open inbound SSE channel IS its registration: a
 ;; service is present exactly while this channel is open. Discovery lists these
 ;; entries; routing pushes a request down :channel. There is no separate
 ;; registry, TTL, or heartbeat — opening the channel registers, closing it
@@ -206,9 +209,11 @@
 (defn register-service-channel!
   "Record a connected service: its open inbound request channel plus its
   discovery metadata. Opening the channel IS registration. `info` is a map of
-  {:service-name :description :extras}. Returns nil."
+  {:service-name :description :extras} plus the credential the channel was
+  opened with, {:token-id :token-version :db}. Returns nil."
   [project-id service-id channel info user-id]
-  (let [entry (merge (select-keys info [:service-name :description :extras])
+  (let [entry (merge (select-keys info [:service-name :description :extras
+                                        :token-id :token-version :db])
                      {:channel    channel
                       :service-id service-id
                       :user-id    user-id})]
@@ -271,6 +276,47 @@
              svcs)))
   (log/debug "Service disconnected:" service-id "on project" project-id)
   nil)
+
+(defn live-service-entries
+  "Every connected service's registry entry, each with its `:project-id`."
+  []
+  (for [[project-id svcs] @service-channels
+        [_ entry] svcs]
+    (assoc entry :project-id project-id)))
+
+;; Who may hold a service channel can change while it is open: its API token
+;; is revoked, its user is deactivated, logs out or changes password, or loses
+;; their role on the project. The channel was admitted when it opened and is
+;; never asked again by `wrap-read-jwt`, so each of those writes has to close
+;; it. `publish-audit-event!` sees every committed operation, and calls the
+;; listener `plaid.rest-api.v1.message` installs here whenever one of these
+;; types commits. The listener re-asks the opening question of every live
+;; channel and closes the ones that no longer pass.
+(def standing-op-types
+  "The operations that can take away someone's right to hold a service
+  channel."
+  #{:api-token/revoke
+    :user/update :user/deactivate :user/logout
+    :invite/redeem
+    :project/delete
+    :project/add-reader :project/add-writer :project/add-maintainer
+    :project/remove-reader :project/remove-writer :project/remove-maintainer})
+
+(defonce ^:private standing-listener (atom nil))
+
+(defn on-standing-change!
+  "Install `f` (no arguments) to run after any operation in
+  `standing-op-types` commits."
+  [f]
+  (reset! standing-listener f))
+
+(defn- check-standing!
+  [operations]
+  (when-let [f @standing-listener]
+    (when (some #(standing-op-types (:op/type %)) operations)
+      (try (f)
+           (catch Exception e
+             (log/error e "Could not re-check the service channels after a change of standing"))))))
 
 (defn get-service-channel
   "The open inbound channel for a service, or nil if none is connected."
@@ -543,8 +589,12 @@
    - audit/time: Timestamp of the operation
    - audit/ops: Vector of individual operations with details
    
-   Returns true if event was successfully published, false otherwise."
+   Returns true if event was successfully published, false otherwise.
+
+   It also closes the service channels an operation took the right to hold
+   away from (`check-standing!`), before the write's response goes out."
   [audit-entry operations user-id]
+  (check-standing! operations)
   (try
     (log/debug "Publishing audit event" {:audit-id (:audit/id audit-entry)
                                          :projects (:audit/projects audit-entry)

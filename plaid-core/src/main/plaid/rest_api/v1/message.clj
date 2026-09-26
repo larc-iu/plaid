@@ -2,6 +2,7 @@
   (:require [plaid.rest-api.v1.auth :as pra]
             [taoensso.timbre :as log]
             [plaid.server.events :as events]
+            [plaid.sql.api-token :as api-token]
             [plaid.sql.service-registry :as service-registry]
             [plaid.sql.user :as user]
             [clojure.core.async :as async]
@@ -153,6 +154,58 @@
       (try (http-kit/send! ch (sse-event event data) false) (catch Exception _))
       (try (http-kit/close ch) (catch Exception _)))))
 
+(defn- still-entitled?
+  "Would the credential that opened this service channel still be let in to
+  open it now? The same questions `wrap-read-jwt` and the route's
+  writer-required middleware ask: the user exists and is active, an API
+  token is not revoked, a session token's password_changes claim still
+  matches, and the user is a writer on the project or an admin."
+  [{:keys [db project-id user-id token-id token-version]}]
+  (let [account (user/get-internal db user-id)]
+    (boolean
+     (and account
+          (nil? (:user/deactivated-at account))
+          (if token-id
+            (api-token/active? db token-id)
+            (= token-version (:user/password-changes account)))
+          (pra/privileged? {:db db
+                            :parameters {:path {:id project-id}}
+                            :jwt-data {:user/id user-id}
+                            :user/record (user/get db user-id)}
+                           :project/writers
+                           get-project-id)))))
+
+(defn- drop-service-channel!
+  "Deregister a service channel whose holder lost the right to it, fail the
+  requests routed to it, and close it."
+  [{:keys [db project-id service-id channel]}]
+  (events/unregister-service-channel! project-id service-id channel)
+  (when-not (events/get-service-channel project-id service-id)
+    (try (service-registry/touch-last-seen! db project-id service-id)
+         (catch Exception _))
+    (doseq [[request-id _] (events/requests-for-service project-id service-id)]
+      (finish-request! request-id "error" {:error "Service disconnected"})))
+  (try (http-kit/close channel) (catch Exception _))
+  (log/info "Closed service channel" service-id "on project" project-id
+            "because its credential no longer admits it"))
+
+(defn close-lapsed-service-channels!
+  "Close every live service channel whose opener would no longer be let in.
+  Runs after each write that can take that right away (see
+  `events/standing-op-types`), before the write's response goes out."
+  []
+  (doseq [entry (events/live-service-entries)]
+    ;; One channel whose check fails (a busy database) stays open and does
+    ;; not keep the rest from being checked.
+    (when-not (try (still-entitled? entry)
+                   (catch Exception e
+                     (log/warn e "Could not check service channel" (:service-id entry)
+                               "on project" (:project-id entry))
+                     true))
+      (drop-service-channel! entry))))
+
+(events/on-standing-change! close-lapsed-service-channels!)
+
 (defn service-channel-handler
   "SSE stream a service opens to RECEIVE work requests (server -> service).
   Holding this channel open IS the service's registration; its discovery
@@ -169,7 +222,12 @@
               :description description
               :extras (when extras
                         (try (json/read-str extras :key-fn keyword)
-                             (catch Exception _ nil)))}]
+                             (catch Exception _ nil)))
+              ;; What opened the channel, so the channel can be closed the
+              ;; moment that credential or its user's role no longer would.
+              :token-id (:api-token/id req)
+              :token-version (-> req :jwt-data :version)
+              :db db}]
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
     (if (events/channel-alive? (events/get-service-channel id service-id))
@@ -299,6 +357,13 @@
       (and (not delegating?) (not (pra/privileged? req :project/writers get-project-id)))
       {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to write for project "
                                       id " (service '" service-id "' acts with its own credentials)")}}
+
+      ;; A write that took the channel's right away closes it at once
+      ;; (`close-lapsed-service-channels!`). Asked again here because a
+      ;; request carries the requester's own token to the service.
+      (not (still-entitled? (assoc entry :project-id id)))
+      (do (drop-service-channel! (assoc entry :project-id id))
+          {:status 503 :body {:error (str "No live service '" service-id "' on this project")}})
 
       :else
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
