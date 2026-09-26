@@ -261,7 +261,7 @@ export const useMediaOperations = () => {
   // proposals are still on screen either way.
   const persistCuts = useCallback(
     (payload) => {
-      doc.mergeMetadata({ [VAD_METADATA_KEY]: payload ?? undefined }).catch((err) => {
+      doc.setMetadataKeys({ [VAD_METADATA_KEY]: payload ?? null }).catch((err) => {
         console.error('Could not keep the detected cuts:', err);
       });
     },

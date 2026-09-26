@@ -98,3 +98,12 @@ def apply_metadata_ops(metadata, ops):
             raise ValueError("A set op needs a value")
         out = _apply_op(out, list(path), 0, op)
     return out
+
+
+def merge_metadata(metadata, fragment):
+    """Merge a top-level fragment into a local copy, a ``None`` value deleting
+    the key: :func:`apply_metadata_ops` over :func:`metadata_ops`, so the same
+    result as sending those ops, refused where the server would refuse them.
+    How a provenance stamp (``verify_on_edit``, ``contribute_on_edit``, ...) is
+    mirrored on a local copy. Returns a new dict."""
+    return apply_metadata_ops(metadata, metadata_ops(fragment))

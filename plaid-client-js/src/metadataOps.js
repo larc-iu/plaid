@@ -102,3 +102,16 @@ export const applyMetadataOps = (metadata, ops) =>
     }
     return applyOp(m, o.path, 0, o);
   }, { ...(metadata || {}) });
+
+/**
+ * Merge a top-level fragment into a local copy, a null value deleting the
+ * key: applyMetadataOps over metadataOps(fragment), so the same result as
+ * sending those ops, refused where the server would refuse them. How an app
+ * mirrors a provenance stamp (verifyOnEdit, contributeOnEdit, ...) on the row
+ * it shows. Returns a new object.
+ * @param {Object|null|undefined} metadata
+ * @param {Object|null|undefined} fragment
+ * @returns {Object}
+ */
+export const mergeMetadata = (metadata, fragment) =>
+  applyMetadataOps(metadata, metadataOps(fragment));

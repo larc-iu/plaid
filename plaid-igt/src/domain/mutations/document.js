@@ -5,7 +5,12 @@
 // Renaming a document and copying it are NOT here: they are `rename` and
 // `copyTo` on the shared DocumentModel, which every app's document inherits.
 
-import { applyMetadataOps, cpLength, isReservedMetadataKey } from '@larc-iu/plaid-client';
+import {
+  applyMetadataOps,
+  cpLength,
+  isReservedMetadataKey,
+  metadataOps,
+} from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
@@ -107,12 +112,9 @@ export const documentMutations = {
   },
 
   // Set top-level keys of the document's metadata, leaving the rest alone. A
-  // key set to undefined is removed.
-  async mergeMetadata(partial) {
-    const ops = Object.entries(partial || {}).map(([key, value]) =>
-      value === undefined ? { op: 'delete', path: [key] } : { op: 'set', path: [key], value },
-    );
-    return this.patchMetadata(ops);
+  // key set to null is removed, as the client's metadataOps has it.
+  async setMetadataKeys(partial) {
+    return this.patchMetadata(metadataOps(partial));
   },
 
   // Combined save for the Details tab: the name, and the fields whose value

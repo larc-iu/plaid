@@ -44,7 +44,7 @@ export const fakeDocument = (over = {}) => {
     body: '',
     isSaving: false,
     knownSpeakers: [],
-    mergeMetadata: vi.fn(async () => true),
+    setMetadataKeys: vi.fn(async () => true),
     uploadMedia: vi.fn(async () => true),
     deleteMedia: vi.fn(async () => true),
     saveBaselineText: vi.fn(async () => true),

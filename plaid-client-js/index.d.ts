@@ -1491,7 +1491,7 @@ export function contributeOnEdit(
   metadata: object | null | undefined,
   userId: string,
 ): { prov: "contributed"; provSource: string; provConfirmed: null };
-/** Merge a fragment into a local copy, a null value deleting the key. Equivalent to applyMetadataOps(metadata, metadataOps(fragment)). Returns a new object. */
+/** Merge a fragment into a local copy, a null value deleting the key: applyMetadataOps(metadata, metadataOps(fragment)), refused where the server would refuse it. Returns a new object. */
 export function mergeMetadata(
   metadata: object | null | undefined,
   fragment: object | null | undefined,

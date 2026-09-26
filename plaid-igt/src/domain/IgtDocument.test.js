@@ -1146,9 +1146,9 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc._raw.metadata.prov).toBe('inferred');
   });
 
-  it('mergeMetadata patches the keys it names and deletes an undefined one', async () => {
+  it('setMetadataKeys patches the keys it names and deletes a null one', async () => {
     const doc = makeDoc({ raw: buildRawDoc({ metadata: { keep: 1, vad: { a: 1 } } }) });
-    expect(await doc.mergeMetadata({ vad: undefined, seen: true })).toBe(true);
+    expect(await doc.setMetadataKeys({ vad: null, seen: true })).toBe(true);
     const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
     expect(patch.args[1]).toEqual([
       { op: 'delete', path: ['vad'] },

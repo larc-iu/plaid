@@ -242,21 +242,6 @@ export const contributeOnEdit = (metadata, userId) => ({
   [PROV.confirmedKey]: null,
 });
 
-/**
- * Merge a metadata fragment into a local copy, a null value deleting the
- * key: the same result as sending metadataOps(fragment). For callers that
- * keep a local copy or send a full replacement (setMetadata). Returns a new
- * object.
- */
-export const mergeMetadata = (metadata, fragment) => {
-  const out = { ...(metadata || {}) };
-  for (const [k, v] of Object.entries(fragment || {})) {
-    if (v === null) delete out[k];
-    else out[k] = v;
-  }
-  return out;
-};
-
 /** Canonical provSource for a service: 'service:<serviceId>'. */
 export const serviceSource = (serviceId) => `service:${serviceId}`;
 

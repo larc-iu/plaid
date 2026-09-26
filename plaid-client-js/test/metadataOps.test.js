@@ -60,6 +60,13 @@ test("mergeMetadata is applyMetadataOps over metadataOps", () => {
   assert.deepEqual(mergeMetadata(m, fragment), applyMetadataOps(m, metadataOps(fragment)));
 });
 
+test("mergeMetadata refuses a key the server refuses, as applyMetadataOps does", () => {
+  for (const key of ["", "   ", "a".repeat(201), "a\u0001b"]) {
+    assert.throws(() => applyMetadataOps({}, metadataOps({ [key]: 1 })), /Invalid metadata key/);
+    assert.throws(() => mergeMetadata({}, { [key]: 1 }), /Invalid metadata key/, JSON.stringify(key));
+  }
+});
+
 test("isReservedMetadataKey is true for the plaid namespace and the provenance keys only", () => {
   for (const k of ["plaid", "prov", "provSource", "provConfirmed", "provProb", "provDetail"]) {
     assert.equal(isReservedMetadataKey(k), true, k);

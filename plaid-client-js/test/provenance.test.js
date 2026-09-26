@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {
   PROV, PROV_STATES, PROV_CONFIRMED, stampInferred, confirmedInferred, stampContributed,
   provState, provOrigin, isMachine, isProtected, needsReview, verifyOnEdit, contributeOnEdit,
-  mergeMetadata, serviceSource, userSource,
+  serviceSource, userSource,
   REVIEW_KEY, readReview, projectRole, isReviewed, withReviewedUser, writerPolicy,
 } from '../src/provenance.js';
+import { mergeMetadata } from '../src/metadataOps.js';
 
 const CONTRIBUTED = { prov: 'contributed', provSource: 'user:ann@x.com' };
 

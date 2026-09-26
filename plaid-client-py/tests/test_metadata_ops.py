@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from plaid_client import apply_metadata_ops, is_reserved_metadata_key, metadata_ops
+from plaid_client import (
+    apply_metadata_ops,
+    contribute_on_edit,
+    is_reserved_metadata_key,
+    merge_metadata,
+    metadata_ops,
+)
 
 
 def test_metadata_ops_sets_each_key_and_deletes_a_none_one():
@@ -57,3 +63,16 @@ def test_the_plaid_namespace_and_the_provenance_keys_are_reserved(key):
 @pytest.mark.parametrize('key', ['Plaid', 'plaid.x', 'author', 'review', 'provenance', ''])
 def test_any_other_key_is_not_reserved(key):
     assert not is_reserved_metadata_key(key)
+
+
+def test_merge_metadata_is_apply_metadata_ops_over_metadata_ops():
+    m = {'prov': 'inferred', 'provConfirmed': True, 'keep': 1}
+    fragment = contribute_on_edit(m, 'u@example.org')
+    assert merge_metadata(m, fragment) == apply_metadata_ops(m, metadata_ops(fragment))
+    assert merge_metadata(None, None) == {}
+
+
+@pytest.mark.parametrize('key', ['', '   ', 'a' * 201, 'a\x01b'])
+def test_merge_metadata_refuses_a_key_the_server_refuses(key):
+    with pytest.raises(ValueError, match='Invalid metadata key'):
+        merge_metadata({}, {key: 1})

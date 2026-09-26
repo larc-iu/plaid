@@ -196,7 +196,7 @@ def contribute_on_edit(metadata, user_id):
     in (write-contract rule 3): the contributed stamp plus
     ``provConfirmed: None`` so an earlier confirmation is dropped (send it
     with :func:`metadata_ops`, which turns a ``None`` into a delete, or
-    apply it locally with :func:`apply_metadata_ops` over those ops). ``metadata`` is unused today: the fragment is the same whatever
+    apply it locally with :func:`merge_metadata`). ``metadata`` is unused today: the fragment is the same whatever
     the entity was, and the parameter keeps the shape of
     :func:`verify_on_edit`."""
     return {**stamp_contributed(user_id), PROV_CONFIRMED_KEY: None}
