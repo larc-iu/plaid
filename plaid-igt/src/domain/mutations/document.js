@@ -116,8 +116,9 @@ export const documentMutations = {
   },
 
   // Combined save for the Details tab: the name, and the fields whose value
-  // the form changed. A field left as it was is not written, so a value
-  // someone else saved to it meanwhile stays.
+  // the form changed, in one queued write. The name is written as `rename`
+  // writes it (`_planRename`): trimmed, and never blank. A field left as it
+  // was is not written, so a value someone else saved to it meanwhile stays.
   async saveNameAndMetadata(name, metadataPartial) {
     const label = 'Failed to save document';
     if (!this._canWrite(label)) return false;
@@ -127,14 +128,14 @@ export const documentMutations = {
       .filter(([key]) => !isReservedMetadataKey(key))
       .filter(([key, value]) => (value ?? '') !== (current[key] ?? ''))
       .map(([key, value]) => ({ op: 'set', path: [key], value }));
-    const nameChanged = name !== this._raw?.name;
-    if (!nameChanged && ops.length === 0) return true;
+    const nextName = this._planRename(name);
+    if (!nextName && ops.length === 0) return true;
     this._applyRawPatch((next) => {
-      if (nameChanged) next.name = name;
+      if (nextName) next.name = nextName;
       next.metadata = applyMetadataOps(next.metadata, ops);
     });
     return this._queueWrite(label, async () => {
-      if (nameChanged) await this._client.documents.update(this.id, name);
+      if (nextName) await this._client.documents.update(this.id, nextName);
       if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
     });
   },

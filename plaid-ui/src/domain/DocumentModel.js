@@ -160,14 +160,23 @@ export class DocumentModel {
    * mount calls this one method.
    */
   async rename(name) {
-    const next = (name || '').trim();
-    if (!next || next === this.name) return false;
+    const next = this._planRename(name);
+    if (!next) return false;
     const label = 'Failed to rename document';
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((raw) => {
       raw.name = next;
     });
     return this._queueWrite(label, () => this._client.documents.update(this.id, next));
+  }
+
+  // The name a rename to `name` writes: trimmed, or null when there is nothing
+  // to write because it is blank or already the name. Every writer of a
+  // document's name asks this (igt's Details save writes the name beside its
+  // fields).
+  _planRename(name) {
+    const next = (name || '').trim();
+    return next && next !== this.name ? next : null;
   }
 
   /**
