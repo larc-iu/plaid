@@ -93,6 +93,32 @@ describe('runBuiltinAnalysis: stopping', () => {
     expect(doc.bulkApplyAnalyses).not.toHaveBeenCalled();
   });
 
+  it('reports no progress once stopped, from the reads still in flight', async () => {
+    let stop = false;
+    const doc = makeDoc(10);
+    // Each read takes a moment, the first one longest: the stop lands while
+    // the other three are still out.
+    doc.client.documents.get = vi.fn(async (id) => {
+      doc.gets.push(id);
+      await new Promise((r) => setTimeout(r, id === 'src-0' ? 1 : 20));
+      if (id === 'src-0') stop = true;
+      throw new Error('unreadable');
+    });
+    const messages = [];
+    let returned = false;
+    const res = await runBuiltinAnalysis(doc, {
+      copy: true,
+      link: false,
+      copyContents: copyAll,
+      shouldStop: () => stop,
+      onProgress: ({ message }) => returned && messages.push(message),
+    });
+    returned = true;
+    expect(res.stopped).toBe(true);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(messages).toEqual([]);
+  });
+
   it('runs to the end and reports stopped: false when nothing asks it to stop', async () => {
     const doc = makeDoc(3);
     const res = await runBuiltinAnalysis(doc, { copy: true, link: false, copyContents: copyAll });

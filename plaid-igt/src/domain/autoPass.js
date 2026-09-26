@@ -150,6 +150,7 @@ async function remoteTalliesFor(
 ) {
   onProgress({ percent: null, message: 'Looking for previous analyses…' });
   const index = await doc.client.query(wordFormDocIndexQuery(wordLayerId));
+  checkpoint(shouldStop);
   const { docIds, truncated } = rankSourceDocs(index, forms, {
     excludeDocId: doc.id,
     maxDocs: MAX_SOURCE_DOCS,
@@ -178,6 +179,9 @@ async function remoteTalliesFor(
       } catch (err) {
         console.warn(`Auto-analysis: could not read document ${docId} for precedent:`, err);
       }
+      // A read that lands after the stop reports nothing: the run has ended,
+      // and the progress bar may already be the next run's.
+      checkpoint(shouldStop);
       done++;
       onProgress({
         percent: (done / docIds.length) * 100,
