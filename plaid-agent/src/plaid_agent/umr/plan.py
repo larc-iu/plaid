@@ -381,11 +381,11 @@ def validate_ops(ops: List[Dict[str, Any]]) -> None:
     # A change to something the plan deletes. The tools refuse the pair in
     # either order as it is staged; reaching here means the plan was built some
     # way neither covers.
-    for op in ops:
+    for op, doomed in zip(ops, ok.doomed_writes(KIND, ops)):
         # What the OTHER ops remove: an op never clashes with its own
         # deletion, since a delete of a relation names it so that a SECOND
         # delete of the same one is refused (ok.doomed_writes).
-        if ok.doomed_writes(KIND, op, ops):
+        if doomed:
             raise ValueError(f'{op.get("label") or op.get("kind")}: this plan deletes what '
                              f'it writes to')
 

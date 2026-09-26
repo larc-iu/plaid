@@ -526,7 +526,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
     notes: List[str] = []
     out: List[Dict[str, Any]] = []
     last: Dict[Any, int] = {}
-    for op in ops:
+    for op, doomed in zip(ops, ok.doomed_writes(KIND, ops)):
         kind = op.get('kind')
         # A change to something the OTHER ops of this plan delete. A patch of
         # a deleted span or relation is a 404 and the batch it shares is
@@ -536,7 +536,7 @@ def normalize_ops(ops: List[Dict[str, Any]]):
         # so reaching here means the plan was built some way neither covers.
         # Refusing the whole plan says so, where dropping the change left a
         # card promising it.
-        if ok.doomed_writes(KIND, op, ops):
+        if doomed:
             raise ValueError(f'{op.get("label") or kind}: this plan deletes what it writes to')
         # What an op writes to is the registry's own declaration, the same one
         # the workspace supersedes by while the plan is built. Written here as

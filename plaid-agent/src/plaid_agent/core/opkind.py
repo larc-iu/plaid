@@ -319,9 +319,24 @@ def written_to(reg: Mapping[str, OpKind], op: Dict[str, Any]) -> set:
     return out
 
 
-def doomed_writes(reg: Mapping[str, OpKind], op: Dict[str, Any],
-                  ops: Sequence[Dict[str, Any]], *, only_certain: bool = True) -> set:
-    """What ``op`` writes to that the OTHER operations of ``ops`` remove.
+def _removes(reg: Mapping[str, OpKind], op: Dict[str, Any], only_certain: bool) -> set:
+    """What one operation removes, tokens included: :func:`removed_ids` of a
+    plan of one."""
+    spec = reg.get(op.get('kind'))
+    out: set = set()
+    if spec is None or not (spec.certain or not only_certain):
+        return out
+    if spec.deletes_tokens:
+        out.update(_ids(spec.deletes_tokens, op))
+    if spec.deletes:
+        out.update(_ids(spec.deletes, op))
+    return out
+
+
+def doomed_writes(reg: Mapping[str, OpKind], ops: Sequence[Dict[str, Any]],
+                  *, only_certain: bool = True) -> List[set]:
+    """For each operation of ``ops``, in order, what it writes to that the
+    OTHER operations of ``ops`` remove.
 
     The other ones, and no more: a kind may both NEED an entity and REMOVE
     it (:attr:`OpKind.token_keys` naming what :attr:`OpKind.deletes` also
@@ -331,17 +346,19 @@ def doomed_writes(reg: Mapping[str, OpKind], op: Dict[str, Any],
     comparison altogether, and the pair this exists to refuse went through
     however many other operations removed it.
 
+    So each id counts the operations that remove it, once over the plan, and
+    an operation is doomed on an id that more operations remove than itself.
+    Two entries that are the same dict are two operations here.
+
     ``only_certain`` leaves out what an op merely GUESSES it removes, such
     as the words a text edit names before the server diffs the text.
     """
-    others = list(ops)
-    for i, other in enumerate(others):
-        if other is op:
-            del others[i]  # this op, once: two ops may be the same dict
-            break
-    if not others:
-        return set()
-    return written_to(reg, op) & removed_ids(reg, others, only_certain=only_certain)
+    removes = [_removes(reg, op, only_certain) for op in ops]
+    count: Counter = Counter()
+    for ids in removes:
+        count.update(ids)
+    return [{i for i in written_to(reg, op) if count[i] > (i in mine)}
+            for op, mine in zip(ops, removes)]
 
 
 def delete_clash(reg: Mapping[str, OpKind], planned: Sequence[Dict[str, Any]],

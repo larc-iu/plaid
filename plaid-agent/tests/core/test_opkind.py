@@ -149,3 +149,66 @@ def test_a_noun_that_collides_with_what_rides_beside_the_counts_is_refused():
     rather than by the code."""
     with pytest.raises(ValueError, match='dropped changes'):
         ok.registry([ok.OpKind('set_note', ('note', 'notes'))])
+
+
+def _doom_reg(calls):
+    def deletes(op):
+        calls.append(op)
+        return op.get('gone') or ()
+    return ok.registry([
+        ok.OpKind('set_value', ('value', 'values'), token_keys=('id',)),
+        ok.OpKind('drop_it', ('removal', 'removals'), token_keys=('id',), deletes=deletes),
+        ok.OpKind('guess_drop', ('guess', 'guesses'), token_keys=('id',),
+                  deletes_tokens=lambda op: op.get('gone') or (), certain=False),
+    ])
+
+
+def _doomed_one_by_one(reg, ops, only_certain):
+    """The rule as written before it was counted: each op against the plan
+    with that op, once, taken out."""
+    out = []
+    for op in ops:
+        others = list(ops)
+        for i, other in enumerate(others):
+            if other is op:
+                del others[i]
+                break
+        out.append(ok.written_to(reg, op) & ok.removed_ids(reg, others, only_certain=only_certain))
+    return out
+
+
+def test_what_the_other_ops_remove_is_the_rule_read_one_op_at_a_time():
+    import random
+    rng = random.Random(7)
+    ids = ['a', 'b', 'c', 'd']
+    reg = _doom_reg([])
+    for _ in range(400):
+        ops = []
+        for _ in range(rng.randint(0, 6)):
+            if ops and rng.random() < 0.15:
+                ops.append(rng.choice(ops))  # the same dict twice
+                continue
+            kind = rng.choice(['set_value', 'drop_it', 'guess_drop'])
+            op = {'kind': kind, 'id': rng.choice(ids)}
+            if kind != 'set_value':
+                op['gone'] = rng.sample(ids, rng.randint(0, 2))
+            ops.append(op)
+        for only_certain in (True, False):
+            assert ok.doomed_writes(reg, ops, only_certain=only_certain) \
+                == _doomed_one_by_one(reg, ops, only_certain), ops
+
+
+def test_an_op_is_not_doomed_by_its_own_removal_but_is_by_a_second_one():
+    reg = _doom_reg([])
+    delete = {'kind': 'drop_it', 'id': 'r', 'gone': ['r']}
+    assert ok.doomed_writes(reg, [delete]) == [set()]
+    assert ok.doomed_writes(reg, [delete, dict(delete)]) == [{'r'}, {'r'}]
+    assert ok.doomed_writes(reg, [delete, delete]) == [{'r'}, {'r'}]
+
+
+def test_the_whole_plan_check_reads_each_op_once():
+    calls = []
+    reg = _doom_reg(calls)
+    ops = [{'kind': 'drop_it', 'id': f'x{i}', 'gone': [f'x{i}']} for i in range(300)]
+    assert ok.doomed_writes(reg, ops) == [set()] * 300
+    assert len(calls) == 300

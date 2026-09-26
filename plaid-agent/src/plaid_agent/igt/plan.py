@@ -745,7 +745,9 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
     respell_at: Dict[tuple, int] = {}
     doomed = _doomed_ids(ops)
     dead = _dead_tokens(ops)
-    for op in ops:
+    certainly_doomed = ok.doomed_writes(KIND, ops)
+    maybe_doomed = ok.doomed_writes(KIND, ops, only_certain=False)
+    for op, certain, maybe in zip(ops, certainly_doomed, maybe_doomed):
         k = op.get('kind')
         # What this op writes to and the OTHER ops delete: the word a change
         # sits on, the entry a link points at, the span a comment is anchored
@@ -758,7 +760,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # with one means the plan was built some way the staging guard does not
         # cover, and refusing the whole plan says so rather than applying most
         # of it.
-        if ok.doomed_writes(KIND, op, ops):
+        if certain:
             raise ValueError(f'{op.get("label") or k}: what it names is deleted or merged away by '
                              'another change in this plan')
         # A text edit's word ids are a GUESS (the server diffs the text and
@@ -766,7 +768,7 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
         # is moot if the word goes, and the plan was already approved. A
         # confirmation covers several things and keeps the ones that survive,
         # below.
-        if ok.doomed_writes(KIND, op, ops, only_certain=False) and k != 'confirm':
+        if maybe and k != 'confirm':
             notes.append(f'dropped: {op.get("label") or k} '
                          '(what it names is deleted or merged away in this plan)')
             continue
