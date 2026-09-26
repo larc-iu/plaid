@@ -40,6 +40,7 @@ import {
   countRejected,
   rejectedFields,
   makeValueNormalizer,
+  makeRefusal,
   serializeImportReport,
 } from '@/import/vocabBulk';
 
@@ -322,6 +323,7 @@ export const BulkAddDialog = ({
     [fields],
   );
   const normalizeValue = useMemo(() => makeValueNormalizer(tagsetFor), [tagsetFor]);
+  const refuses = useMemo(() => makeRefusal(tagsetFor), [tagsetFor]);
   const fileInputRef = useRef(null);
 
   const [step, setStep] = useState('source');
@@ -363,8 +365,9 @@ export const BulkAddDialog = ({
         caseInsensitive,
         strategies,
         overrides,
+        refuses,
       }),
-    [entries, existingItems, fieldNames, caseInsensitive, strategies, overrides],
+    [entries, existingItems, fieldNames, caseInsensitive, strategies, overrides, refuses],
   );
   const overrideCount = Object.keys(overrides).length;
   // Open on the rows that need a person. When there are none, the useful first
@@ -376,10 +379,18 @@ export const BulkAddDialog = ({
     setShownRows(PREVIEW_ROWS);
   };
 
-  const rejectedRows = useMemo(() => countRejected(entries), [entries]);
+  // A value is refused as a row is read (by the row's own morph type) or as
+  // the plan lands it (by the morph type of the entry it lands on).
+  const rejectedRows = useMemo(
+    () => countRejected([...entries, ...plan.decisions]),
+    [entries, plan],
+  );
   const rejectedIn = useMemo(
-    () => rejectedFields(entries).map(humanizeFieldName).join(', '),
-    [entries],
+    () =>
+      rejectedFields([...entries, ...plan.decisions])
+        .map(humanizeFieldName)
+        .join(', '),
+    [entries, plan],
   );
   const formColumns = mapping.filter((m) => m === FORM).length;
   const ignoredColumns = mapping.filter((m) => m === IGNORE).length;

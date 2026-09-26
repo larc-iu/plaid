@@ -37,9 +37,16 @@ import {
   FIELD_TYPES,
   FIELD_SCOPES,
 } from '@/domain/vocabFields';
-import { refIds, statusTagset, statusFieldSeed, STATUS_TAGSET } from '@/domain/vocabDictionary';
+import {
+  buildSenseTree,
+  morphTypeOf,
+  refIds,
+  statusTagset,
+  statusFieldSeed,
+  STATUS_TAGSET,
+} from '@/domain/vocabDictionary';
 import { fieldPruneWrites } from '@/domain/vocabFieldPrune';
-import { readTagsets, byTagsetName } from '@/domain/tagsets';
+import { readTagsets, byTagsetName, glossReadingOf } from '@/domain/tagsets';
 import { TagsetsManager } from '@/components/projects/settings/TagsetsManager.jsx';
 import {
   Dialog,
@@ -669,15 +676,22 @@ export const VocabularyDetail = () => {
     const { items = [] } = await writes.entries.readWhenIdle(() =>
       client.vocabLayers.get(vocabularyId, true),
     );
+    // [value, count, reading] rows, each entry's values read as its morph
+    // type gives (glossReadingOf), as the entry list checks them.
+    const tree = buildSenseTree(items);
     const counts = new Map();
     for (const it of items) {
+      const reading = glossReadingOf(morphTypeOf(tree, it.id), it.form || null);
       for (const n of names) {
         const v = it.metadata?.[n];
         if (typeof v !== 'string' || !v) continue;
-        counts.set(v, (counts.get(v) || 0) + 1);
+        const key = `${reading ? 'bound' : ''}\u0000${v}`;
+        const row = counts.get(key);
+        if (row) row[1] += 1;
+        else counts.set(key, [v, 1, reading]);
       }
     }
-    return [...counts.entries()];
+    return [...counts.values()];
   };
 
   const handleDelete = async () => {

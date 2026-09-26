@@ -26,8 +26,8 @@
 // Everything in this module is pure and synchronous. The dialog owns the I/O.
 
 import { FLEX_MORPH_TYPES } from '../domain/affixMarkers.js';
-import { isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
-import { buildItemNumbers } from '../domain/vocabDictionary.js';
+import { entryTagsetFor, isValueAllowed, tagsetEnforces } from '../domain/tagsets.js';
+import { buildItemNumbers, buildSenseTree, morphTypeOf } from '../domain/vocabDictionary.js';
 
 /** Mapping sentinels: a column becomes the item's form, or is left out. */
 export const FORM = '__form__';
@@ -56,20 +56,32 @@ export const normalizeMorphType = (raw) =>
   ) ?? '';
 
 /**
+ * Does an ENFORCING tagset refuse `value` in `field` of an entry with this
+ * morph type and form? Read as the entry's morph type gives (entryTagsetFor).
+ * A suggesting tagset refuses nothing, since that is what it is for.
+ */
+export const makeRefusal =
+  (tagsetFor = () => null) =>
+  (field, value, { morphType = null, form = null } = {}) => {
+    const tagset = tagsetFor(field);
+    if (!tagsetEnforces(tagset)) return false;
+    return !isValueAllowed(value, entryTagsetFor(tagsetFor, morphType, form)(field));
+  };
+
+/**
  * The `normalizeValue` rowsToEntries takes, for a vocabulary whose fields may
  * be governed by tagsets. `tagsetFor(field)` is the tagset governing that
- * field, or null. A value an ENFORCING tagset refuses is rejected (reported
- * on the entry, never stored), the same way an unknown morph type is; a
- * suggesting tagset lets everything through, since that is what it is for.
+ * field, or null. A value an enforcing tagset refuses (makeRefusal, read as
+ * the row's own morph type gives) is rejected, reported on the entry and never
+ * stored, the same way an unknown morph type is.
  */
-export const makeValueNormalizer =
-  (tagsetFor = () => null) =>
-  (field, raw) => {
+export const makeValueNormalizer = (tagsetFor = () => null) => {
+  const refuses = makeRefusal(tagsetFor);
+  return (field, raw, entry = {}) => {
     if (field === 'morphType') return normalizeMorphType(raw);
-    const tagset = tagsetFor(field);
-    if (tagsetEnforces(tagset) && !isValueAllowed(raw, tagset)) return '';
-    return raw;
+    return refuses(field, raw, entry) ? '' : raw;
   };
+};
 
 /** What to do with rows that can fill in blanks on an existing entry. */
 export const ENRICH_FILL = 'fill';
@@ -287,28 +299,35 @@ export const guessColumns = (rows, fieldNames, humanize = (n) => n) => {
 /**
  * Apply a column mapping to the parsed rows.
  *
- * `normalizeValue(field, raw)` may clean a value up or reject it by returning
- * ''. The dialog uses it to drop morph types outside the controlled
- * vocabulary, which are reported per entry as `rejected` rather than stored.
+ * `normalizeValue(field, raw, { morphType, form })` may clean a value up or
+ * reject it by returning ''. The dialog uses it to drop morph types outside
+ * the controlled vocabulary and values a tagset refuses, which are reported
+ * per entry as `rejected` rather than stored. It is told the row's form and
+ * its morph type once cleaned, whichever column holds them.
  *
  * @returns {{line: number, form: string, values: object, rejected: {field, value}[]}[]}
  */
 export const rowsToEntries = (rows, mapping, { hasHeader = false, normalizeValue = null } = {}) => {
   const body = hasHeader ? rows.slice(1) : rows;
+  const clean = (target, raw, entry) => (normalizeValue ? normalizeValue(target, raw, entry) : raw);
   return body.map(({ cells, line }) => {
-    let form = '';
+    const cellOf = (i) => String(cells[i] ?? '').trim();
+    const formAt = mapping.lastIndexOf(FORM);
+    const form = formAt < 0 ? '' : cellOf(formAt);
+    // The morph type the row ends up with: the last column that gives a usable one.
+    let morphType = null;
+    mapping.forEach((target, i) => {
+      if (target === 'morphType' && cellOf(i))
+        morphType = clean(target, cellOf(i), {}) || morphType;
+    });
     const values = {};
     const rejected = [];
     mapping.forEach((target, i) => {
-      if (target === IGNORE) return;
-      const raw = String(cells[i] ?? '').trim();
-      if (target === FORM) {
-        form = raw;
-        return;
-      }
+      if (target === IGNORE || target === FORM) return;
+      const raw = cellOf(i);
       if (!raw) return;
-      const clean = normalizeValue ? normalizeValue(target, raw) : raw;
-      if (clean) values[target] = clean;
+      const value = clean(target, raw, { morphType, form });
+      if (value) values[target] = value;
       else rejected.push({ field: target, value: raw });
     });
     return { line, form, values, rejected };
@@ -387,6 +406,8 @@ const parseAnswer = (raw) => {
  * @param {boolean} [opts.caseInsensitive] - match forms ignoring capitalization
  * @param {object} [opts.strategies] - the per-classification policy, see DEFAULT_STRATEGIES
  * @param {object} [opts.overrides] - `{[line]: policy}`, one row's answer overriding its bucket
+ * @param {Function} [opts.refuses] - makeRefusal's: a value it refuses is left out of the write
+ *   and listed on the decision's `rejected`, judged by the morph type its entry ends up with
  * A headword and its senses share a form, so a row names the ENTRY, and its
  * senses can still be picked by hand.
  *
@@ -410,6 +431,7 @@ export const planVocabImport = ({
   caseInsensitive = false,
   strategies = DEFAULT_STRATEGIES,
   overrides = {},
+  refuses = null,
 }) => {
   const policies = { ...DEFAULT_STRATEGIES, ...strategies };
   // A headword and every sense under it carry the same form, so all of them
@@ -491,8 +513,11 @@ export const planVocabImport = ({
     canTarget,
   });
 
-  const record = (entry, d) =>
-    decisions.push({
+  // Each decision that writes, with the candidate it writes to, for the
+  // tagset check once every row has landed (below).
+  const wrote = [];
+  const record = (entry, d) => {
+    const decision = {
       line: entry.line,
       form: entry.form,
       values: { ...entry.values },
@@ -502,7 +527,10 @@ export const planVocabImport = ({
       matches: [],
       changes: [],
       ...d,
-    });
+    };
+    decisions.push(decision);
+    return decision;
+  };
 
   const createFrom = (entry, fields, kind, detail, extra = {}) => {
     // Stored as typed (trimmed only): NFC is how we COMPARE forms, not a
@@ -511,15 +539,25 @@ export const planVocabImport = ({
     const pending = { form: String(entry.form).trim(), metadata };
     creates.push(pending);
     // What this run creates is an entry of its own, never a sense.
-    push(entry.form, {
+    const created = {
       id: null,
       form: pending.form,
       values: metadata,
       pending,
       root: true,
       number: '',
-    });
-    record(entry, { kind, action: 'create', detail, changes: additions(entry, fields), ...extra });
+    };
+    push(entry.form, created);
+    wrote.push([
+      record(entry, {
+        kind,
+        action: 'create',
+        detail,
+        changes: additions(entry, fields),
+        ...extra,
+      }),
+      created,
+    ]);
   };
 
   for (const entry of entries) {
@@ -616,7 +654,7 @@ export const planVocabImport = ({
       } else {
         addUpdate(target.id, patch);
       }
-      record(entry, { ...base, action: 'update', detail: `adds ${added}` });
+      wrote.push([record(entry, { ...base, action: 'update', detail: `adds ${added}` }), target]);
       continue;
     }
 
@@ -663,7 +701,7 @@ export const planVocabImport = ({
       Object.assign(target.values, patch);
       if (target.id == null) Object.assign(target.pending.metadata, patch);
       else addUpdate(target.id, patch);
-      record(entry, { ...base, action: 'update', detail: `adds ${added}` });
+      wrote.push([record(entry, { ...base, action: 'update', detail: `adds ${added}` }), target]);
       continue;
     }
 
@@ -681,7 +719,7 @@ export const planVocabImport = ({
         Object.assign(chosen.values, patch);
         if (chosen.id == null) Object.assign(chosen.pending.metadata, patch);
         else addUpdate(chosen.id, patch);
-        record(entry, {
+        const decision = record(entry, {
           kind: 'ambiguous',
           action: 'update',
           targetId: chosen.id,
@@ -691,6 +729,7 @@ export const planVocabImport = ({
           changes,
           detail: `adds ${changes.map((c) => c.field).join(', ')}`,
         });
+        wrote.push([decision, chosen]);
         continue;
       }
       const extra = {
@@ -763,7 +802,10 @@ export const planVocabImport = ({
       } else {
         addUpdate(first.id, patch);
       }
-      record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` });
+      wrote.push([
+        record(entry, { ...base, action: 'update', detail: `replaces ${replaced}` }),
+        first,
+      ]);
       continue;
     }
     // Overwrite is the one answer that can fail to apply, and only for want of
@@ -778,17 +820,51 @@ export const planVocabImport = ({
     });
   }
 
+  // A value is judged by the morph type its entry ends up with, and a later
+  // row of this same import can change that: a row with no morph type fills a
+  // suffix's gloss, a later row types the entry an earlier row glossed. So the
+  // check waits until every row has landed. What an entry already stores is
+  // not judged, only what this import writes.
+  if (refuses) {
+    const tree = buildSenseTree(existingItems);
+    for (const [d, t] of wrote) {
+      const out = t.id == null ? t.pending.metadata : updates.get(t.id);
+      const morphType = t.values.morphType || (t.id != null ? morphTypeOf(tree, t.id) : null);
+      const bad = d.changes.filter(
+        (c) =>
+          c.field !== 'morphType' &&
+          norm(out?.[c.field]) === norm(c.to) &&
+          refuses(c.field, c.to, { morphType, form: t.form }),
+      );
+      if (!bad.length) continue;
+      for (const c of bad) delete out[c.field];
+      d.rejected = bad.map((c) => ({ field: c.field, value: c.to }));
+      d.changes = d.changes.filter((c) => !bad.includes(c));
+      if (d.action !== 'update') continue;
+      const left = d.changes.map((c) => c.field).join(', ');
+      if (!left) {
+        d.action = 'skip';
+        d.detail = `${bad.map((c) => c.field).join(', ')} not accepted`;
+      } else d.detail = `${d.detail.startsWith('replaces ') ? 'replaces' : 'adds'} ${left}`;
+    }
+  }
+
   return {
     decisions,
     counts,
     creates,
-    updates: updateOrder.map((id) => ({ id, patch: updates.get(id) })),
+    updates: updateOrder
+      .filter((id) => Object.keys(updates.get(id)).length)
+      .map((id) => ({ id, patch: updates.get(id) })),
   };
 };
 
-/** Rows whose values were partly rejected (an unusable morph type, say). */
+/**
+ * Rows whose values were partly rejected (an unusable morph type, say), from
+ * rowsToEntries' entries and planVocabImport's decisions, a row counted once.
+ */
 export const countRejected = (entries) =>
-  entries.reduce((n, e) => n + (e.rejected?.length ? 1 : 0), 0);
+  new Set(entries.filter((e) => e.rejected?.length).map((e) => e.line)).size;
 
 /** The fields that had a value rejected, in first-seen order. */
 export const rejectedFields = (entries) => {

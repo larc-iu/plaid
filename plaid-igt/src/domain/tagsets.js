@@ -638,6 +638,18 @@ export const validateValue = (value, tagset) => {
  */
 export const readingTagset = (tagset, reading) => (tagset ? { ...tagset, reading } : null);
 
+/**
+ * The `tagsetFor(fieldName)` of one lexicon entry's fields, each read as the
+ * entry's morph type gives (glossReadingOf): a suffix's, a clitic's or a zero
+ * morph's gloss with no fall-back. `morphType` is the one the entry goes by
+ * (vocabDictionary morphTypeOf: its own, else its headword's). An entry with
+ * none is read as a stem's or a word's, and so is one with no form yet.
+ */
+export const entryTagsetFor = (tagsetFor, morphType, form) => {
+  const reading = glossReadingOf(morphType, form || null);
+  return (name) => readingTagset(tagsetFor(name), reading);
+};
+
 /** May this value be written to a cell governed by `tagset`? */
 export const isValueAllowed = (value, tagset) => validateValue(value, tagset).length === 0;
 

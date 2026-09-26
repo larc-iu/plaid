@@ -41,6 +41,7 @@ import {
   withExampleRemoved,
   statusFieldKey,
   itemLabel,
+  morphTypeOf,
 } from '@/domain/vocabDictionary';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { metadataPatchTo, metadataUpdates } from '@/domain/metadataPatch';
@@ -55,7 +56,7 @@ import {
 } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '@/domain/bulk';
 import { HomographDialog, ReferencedByPanel, ExamplesPanel } from './DictionaryPanels';
-import { validateValue, changedValuesAllowed } from '@/domain/tagsets';
+import { validateValue, changedValuesAllowed, entryTagsetFor } from '@/domain/tagsets';
 import { useItemConcordance } from './useItemConcordance';
 import { serializeVocabTsv } from '@/export/vocabTsv';
 import { BulkAddDialog } from './BulkAddDialog';
@@ -192,6 +193,8 @@ export const VocabularyItems = ({
   const numbers = useMemo(() => buildItemNumbers(items), [items]);
 
   const tree = useMemo(() => buildSenseTree(items), [items]);
+  // The morph type each entry goes by: its own, else its headword's.
+  const typeOf = useCallback((id) => morphTypeOf(tree, id), [tree]);
   // `?parent=` as the lexicon actually has it. A stale id (the entry was
   // deleted, or the link was pasted) names nothing, and the new entry is
   // written as a headword, so every reader of it agrees on that.
@@ -206,20 +209,22 @@ export const VocabularyItems = ({
   const tagsetFor = useCallback((name) => tagsetByField.get(name) ?? null, [tagsetByField]);
   // Entries holding a value their field's tagset refuses (or a stray
   // delimiter). Every entry is already in memory, so the count is exact and
-  // costs nothing, where the project needs a Validation tab and a query.
+  // costs nothing, where the project needs a Validation tab and a query. Each
+  // entry's values are read as its morph type gives (entryTagsetFor).
   const offTagsetIds = useMemo(() => {
     const out = new Set();
     if (!tagsetByField.size) return out;
     for (const it of items) {
-      for (const [name, tagset] of tagsetByField) {
-        if (validateValue(String(it.metadata?.[name] ?? ''), tagset).length) {
+      const read = entryTagsetFor(tagsetFor, typeOf(it.id), it.form);
+      for (const name of tagsetByField.keys()) {
+        if (validateValue(String(it.metadata?.[name] ?? ''), read(name)).length) {
           out.add(it.id);
           break;
         }
       }
     }
     return out;
-  }, [items, tagsetByField]);
+  }, [items, typeOf, tagsetByField, tagsetFor]);
   // How many entries have nothing in the scoped field, and whether the
   // empty-only filter applies right now: it exists for a real field with
   // something to show, and is dropped by the reducer when the field changes.
@@ -573,12 +578,20 @@ export const VocabularyItems = ({
   // What leaving would lose. A new sense still holding only its headword's
   // form can be saved, but leaving it loses nothing.
   const typed = isNew ? hasTyped(draft, null) : dirty;
+  // The draft's fields read as the morph type it has now: its own, else its
+  // headword's (morphTypeOf), as the list above reads a saved entry.
+  const draftTagsetFor = entryTagsetFor(
+    tagsetFor,
+    draft.fields?.morphType ||
+      morphTypeOf(tree, isNew ? liveNewParent : (tree.parentOf.get(selectedId) ?? null)),
+    draft.form,
+  );
   // Only a CHANGED value is held to its tagset, so an off-tagset value an
   // import left behind does not lock the entry (see changedValuesAllowed).
   const tagsetsAllow = changedValuesAllowed(
     fields,
     draft.fields,
-    (f) => tagsetFor(f.name),
+    (f) => draftTagsetFor(f.name),
     isNew ? {} : editableMetadata(selectedItem?.metadata),
   );
   // The roleset likewise: one an older entry or an import left behind does not
@@ -941,7 +954,7 @@ export const VocabularyItems = ({
       dirty={dirty}
       saveAllowed={saveAllowed}
       canManage={canManage}
-      tagsetFor={tagsetFor}
+      tagsetFor={draftTagsetFor}
       statusKey={statusKey}
       formGroups={formGroups}
       umrLinked={umrLinked}
@@ -1166,6 +1179,7 @@ export const VocabularyItems = ({
         vocabularyName={vocabulary?.name}
         fields={fields}
         tagsetFor={tagsetFor}
+        morphTypeOf={typeOf}
         items={items}
         numbers={numbers}
         client={client}

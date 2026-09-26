@@ -68,6 +68,9 @@ export const ReplaceDialog = ({
   vocabularyName,
   fields,
   tagsetFor,
+  // id -> the morph type an entry goes by, which decides how its values are
+  // read under a tagset (vocabReplace).
+  morphTypeOf,
   items,
   numbers,
   client,
@@ -108,10 +111,10 @@ export const ReplaceDialog = ({
   );
   const rows = useMemo(
     () =>
-      planVocabReplace(items, { field: target.name, apply, tagset }).sort((a, b) =>
+      planVocabReplace(items, { field: target.name, apply, tagset, morphTypeOf }).sort((a, b) =>
         a.form.localeCompare(b.form),
       ),
-    [items, target, apply, tagset],
+    [items, target, apply, tagset, morphTypeOf],
   );
   // A new plan is a new selection: everything writable, nothing flagged.
   useEffect(() => {

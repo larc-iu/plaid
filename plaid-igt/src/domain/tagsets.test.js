@@ -26,6 +26,7 @@ import {
   boundByPieces,
   morphemeGlossReading,
   glossReadingOf,
+  entryTagsetFor,
   readingTagset,
   glossMorphemes,
   offTagsetParts,
@@ -714,6 +715,28 @@ describe('a value known only by its own morph type', () => {
       { part: 'pfv', count: 2 },
       { part: 'sbj', count: 2 },
     ]);
+  });
+});
+
+describe('entryTagsetFor', () => {
+  const mixed = { delimiters: '.:', mode: 'mixed', values: [{ value: '3' }] };
+  const tagsetFor = (name) => (name === 'gloss' ? mixed : null);
+
+  it("reads a suffix entry's gloss with no fall-back and a stem's alone", () => {
+    const suffix = entryTagsetFor(tagsetFor, 'suffix', 'ti');
+    expect(validateValue('sbj:3.pfv', suffix('gloss')).map((v) => v.part)).toEqual(['sbj', 'pfv']);
+    expect(validateValue('sbj:3.pfv', entryTagsetFor(tagsetFor, 'stem', 'sa')('gloss'))).toEqual(
+      [],
+    );
+    expect(suffix('pos')).toBeNull();
+  });
+
+  it('reads an untyped entry, or one with no form yet, as a stem', () => {
+    expect(validateValue('sbj:3.pfv', entryTagsetFor(tagsetFor, null, 'ka')('gloss'))).toEqual([]);
+    expect(validateValue('sbj:3.pfv', entryTagsetFor(tagsetFor, null, '')('gloss'))).toEqual([]);
+    expect(
+      validateValue('sbj:3.pfv', entryTagsetFor(tagsetFor, null, '∅')('gloss')).length,
+    ).toBeGreaterThan(0);
   });
 });
 

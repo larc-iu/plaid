@@ -219,3 +219,45 @@ describe('the vocabulary screen', () => {
     await view.unmount();
   });
 });
+
+describe('the values a vocabulary tagset seed reads', () => {
+  it("read each entry's values as its morph type gives, a sense taking its headword's", async () => {
+    const server = {
+      id: 'A',
+      name: 'Ayvale lexicon',
+      maintainers: ['u'],
+      config: {
+        igt: {
+          fields: { gloss: { tagset: 'Gloss' } },
+          tagsets: { Gloss: { mode: 'suggest', delimiters: '.:', values: [] } },
+        },
+      },
+    };
+    const items = [
+      { id: 'ti', form: 'ti', metadata: { morphType: 'suffix', gloss: 'sbj:3.pfv' } },
+      { id: 'te', form: 'te', metadata: { parent: 'ti', gloss: 'sbj:3.pfv' } },
+      { id: 'sa', form: 'sa', metadata: { morphType: 'stem', gloss: 'sbj:3.pfv' } },
+    ];
+    const client = {
+      vocabLayers: {
+        get: async (_id, withItems) => ({
+          ...structuredClone(server),
+          ...(withItems ? { items } : {}),
+        }),
+        setConfig: async () => {},
+        update: async () => {},
+      },
+      projects: { list: async () => [] },
+    };
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    let rows;
+    await view.step(async () => {
+      rows = await tagsetsManager.props.onLoadAttested('Gloss');
+    });
+    expect(rows).toEqual([
+      ['sbj:3.pfv', 2, { bound: true, beside: [] }],
+      ['sbj:3.pfv', 1, undefined],
+    ]);
+    await view.unmount();
+  });
+});

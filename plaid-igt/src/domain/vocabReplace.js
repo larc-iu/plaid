@@ -2,7 +2,7 @@
 // would change, and the writes that make the change. Pure, so the dialog can
 // preview as the person types (every entry is already in memory).
 
-import { isValueAllowed, tagsetEnforces } from './tagsets.js';
+import { entryTagsetFor, isValueAllowed, tagsetEnforces } from './tagsets.js';
 
 /**
  * One row per entry whose value in `field` the replacer rewrites.
@@ -11,9 +11,14 @@ import { isValueAllowed, tagsetEnforces } from './tagsets.js';
  * A row is `invalid` when the new value cannot be written: an empty form
  * (every entry has one), or a value an enforcing tagset refuses. Such rows are
  * shown so the person can see what the replacement would have done, and are
- * never written.
+ * never written. An entry's value is read as its morph type gives
+ * (entryTagsetFor): `morphTypeOf(id)` is the one each entry goes by, its own
+ * when not given.
  */
-export function planVocabReplace(items, { field, apply, tagset = null }) {
+export function planVocabReplace(
+  items,
+  { field, apply, tagset = null, morphTypeOf = (id, it) => it?.metadata?.morphType },
+) {
   const enforcing = tagsetEnforces(tagset);
   const rows = [];
   for (const it of items || []) {
@@ -22,7 +27,11 @@ export function planVocabReplace(items, { field, apply, tagset = null }) {
     if (next == null) continue;
     let invalid = null;
     if (field === 'form' && next.trim() === '') invalid = 'empty';
-    else if (enforcing && !isValueAllowed(next, tagset)) invalid = 'tagset';
+    else if (
+      enforcing &&
+      !isValueAllowed(next, entryTagsetFor(() => tagset, morphTypeOf(it.id, it), it.form)(field))
+    )
+      invalid = 'tagset';
     rows.push({ id: it.id, form: it.form, old, new: next, invalid });
   }
   return rows;

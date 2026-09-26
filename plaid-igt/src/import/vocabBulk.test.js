@@ -23,8 +23,10 @@ import {
   ENRICH_FILL,
   AMBIGUOUS_SKIP,
   makeValueNormalizer,
+  makeRefusal,
   normalizeMorphType,
   rejectedFields,
+  countRejected,
 } from './vocabBulk.js';
 
 const FIELDS = ['morphType', 'gloss', 'pos', 'definition'];
@@ -702,5 +704,85 @@ describe('makeValueNormalizer', () => {
     });
     expect(entries[1].values).toEqual({ gloss: 'cat', pos: 'n' });
     expect(rejectedFields(entries)).toEqual(['pos']);
+  });
+});
+
+describe("an entry's values read by its morph type", () => {
+  // A mixed gloss tagset: a suffix's sbj:3.pfv is all tags and must be listed,
+  // a stem's reads as a word.
+  const mixed = { delimiters: '.:', mode: 'mixed', values: [{ value: '3' }] };
+  const tagsetFor = (field) => (field === 'gloss' ? mixed : null);
+  const refuses = makeRefusal(tagsetFor);
+
+  it("rejects a suffix row's lower-case tags, whichever column gives the morph type", () => {
+    const rows = [
+      { line: 1, cells: ['sbj:3.pfv', 'ti', 'Suffix'] },
+      { line: 2, cells: ['sbj:3.pfv', 'sa', 'stem'] },
+      { line: 3, cells: ['sbj:3.pfv', 'ka', ''] },
+      { line: 4, cells: ['sbj:3', '∅', ''] },
+    ];
+    const entries = rowsToEntries(rows, ['gloss', FORM, 'morphType'], {
+      normalizeValue: makeValueNormalizer(tagsetFor),
+    });
+    expect(entries[0]).toMatchObject({
+      values: { morphType: 'suffix' },
+      rejected: [{ field: 'gloss', value: 'sbj:3.pfv' }],
+    });
+    expect(entries[1].values).toEqual({ gloss: 'sbj:3.pfv', morphType: 'stem' });
+    expect(entries[2].values).toEqual({ gloss: 'sbj:3.pfv' });
+    expect(entries[3].rejected).toEqual([{ field: 'gloss', value: 'sbj:3' }]);
+  });
+
+  it('judges a row with no morph type by the entry it fills', () => {
+    const existing = [
+      { id: 's1', form: 'ti', metadata: { morphType: 'suffix' } },
+      { id: 's2', form: 'sa', metadata: { morphType: 'stem' } },
+    ];
+    const p = plan(
+      [entry(1, 'ti', { gloss: 'sbj:3.pfv', pos: 'v' }), entry(2, 'sa', { gloss: 'sbj:3.pfv' })],
+      existing,
+      { refuses },
+    );
+    expect(p.updates).toEqual([
+      { id: 's1', patch: { pos: 'v' } },
+      { id: 's2', patch: { gloss: 'sbj:3.pfv' } },
+    ]);
+    expect(p.decisions[0]).toMatchObject({
+      action: 'update',
+      detail: 'adds pos',
+      rejected: [{ field: 'gloss', value: 'sbj:3.pfv' }],
+    });
+    expect(p.decisions[0].changes.map((c) => c.field)).toEqual(['pos']);
+    expect(countRejected([...[entry(1, 'ti')], ...p.decisions])).toBe(1);
+  });
+
+  it("reads a sense with no morph type of its own as its headword's", () => {
+    const existing = [
+      { id: 'h', form: 'ti', metadata: { morphType: 'suffix', gloss: 'PST' } },
+      { id: 'c', form: 'te', metadata: { parent: 'h' } },
+    ];
+    const p = plan([entry(1, 'te', { gloss: 'sbj:3.pfv' })], existing, { refuses });
+    expect(p.updates).toEqual([]);
+    expect(p.decisions[0]).toMatchObject({ action: 'skip', detail: 'gloss not accepted' });
+  });
+
+  it('judges what an earlier row wrote by the morph type a later row gives the entry', () => {
+    const p = plan(
+      [entry(1, 'ti', { gloss: 'sbj:3.pfv' }), entry(2, 'ti', { morphType: 'suffix' })],
+      [],
+      { refuses },
+    );
+    expect(p.creates).toEqual([{ form: 'ti', metadata: { morphType: 'suffix' } }]);
+    expect(p.decisions[0].rejected).toEqual([{ field: 'gloss', value: 'sbj:3.pfv' }]);
+  });
+
+  it('refuses nothing an overwrite replaces with an acceptable value', () => {
+    const existing = [{ id: 's1', form: 'ti', metadata: { morphType: 'suffix', gloss: 'PL' } }];
+    const p = plan([entry(1, 'ti', { gloss: '3' })], existing, {
+      refuses,
+      strategies: { conflict: CONFLICT_OVERWRITE },
+    });
+    expect(p.updates).toEqual([{ id: 's1', patch: { gloss: '3' } }]);
+    expect(p.decisions[0].rejected).toBeUndefined();
   });
 });

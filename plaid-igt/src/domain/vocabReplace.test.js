@@ -56,6 +56,38 @@ describe('planVocabReplace', () => {
   });
 });
 
+describe("an entry's value read by its morph type", () => {
+  const mixed = { delimiters: '.:', mode: 'mixed', values: [{ value: '3' }] };
+  const lexicon = [
+    { id: 'ti', form: 'ti', metadata: { morphType: 'suffix', gloss: 'x' } },
+    { id: 'sa', form: 'sa', metadata: { morphType: 'stem', gloss: 'x' } },
+    { id: 'ka', form: 'ka', metadata: { gloss: 'x' } },
+  ];
+  const { apply } = buildReplacer('x', 'exact', 'sbj:3.pfv');
+
+  it("refuses a suffix's lower-case tags and lets a stem's and an untyped entry's through", () => {
+    expect(
+      planVocabReplace(lexicon, { field: 'gloss', apply, tagset: mixed }).map((r) => [
+        r.id,
+        r.invalid,
+      ]),
+    ).toEqual([
+      ['ti', 'tagset'],
+      ['sa', null],
+      ['ka', null],
+    ]);
+  });
+
+  it("asks morphTypeOf for the type an entry goes by, a sense taking its headword's", () => {
+    const morphTypeOf = (id) => (id === 'ka' ? 'enclitic' : null);
+    expect(
+      planVocabReplace(lexicon, { field: 'gloss', apply, tagset: mixed, morphTypeOf }).map(
+        (r) => r.invalid,
+      ),
+    ).toEqual([null, null, 'tagset']);
+  });
+});
+
 describe('replaceWrites', () => {
   it('writes a form change as the trimmed new form', () => {
     const rows = [{ id: 'a', form: 'perro', old: 'perro', new: ' Perro ', invalid: null }];
