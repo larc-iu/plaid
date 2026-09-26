@@ -17,13 +17,13 @@ import re
 from collections import Counter
 from typing import Any, Dict, List
 
-from plaid_client import metadata_ops
+from plaid_client import created_id, created_ids, metadata_ops
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
 from ..core.opkind import OpKind
 from ..core.plan import (PlanError, Resolution, Stamps, TrackingBatcher, applying,
-                         created_id, docs_of_op, expand_ops)
+                         docs_of_op, expand_ops)
 from .project import load_document, node_ref, with_attribute
 
 UMR = 'umr'
@@ -61,16 +61,10 @@ class Context:
         self.token_at: Dict[tuple, Any] = {}
         self.span_at: Dict[tuple, Any] = {}
 
-    def _resolved(self, table: Dict[tuple, Any], key: tuple, what: str):
+    def _resolved(self, table: Dict[tuple, Any], key: tuple, what: str, read):
         at = table.get(key)
         if isinstance(at, int):
-            result = self.b.results[at] if at < len(self.b.results) else None
-            made = created_id(result)
-            if not made:
-                # A token create comes back as `ids`, a span create as `id`.
-                body = (result or {}).get('body') if isinstance(result, dict) else None
-                ids = (body or {}).get('ids') if isinstance(body, dict) else None
-                made = ids[0] if ids else None
+            made = read(self.b.results[at] if at < len(self.b.results) else None)
             if not made:
                 raise ValueError(f'could not create the {what} {key[1]} this plan needs')
             table[key] = made
@@ -78,10 +72,12 @@ class Context:
         return at
 
     def token_id(self, document_id: str, var: str):
-        return self._resolved(self.token_at, (document_id, var), 'anchor for')
+        # The anchor is one token made by a bulk create, which answers `ids`.
+        return self._resolved(self.token_at, (document_id, var), 'anchor for',
+                              lambda r: next(iter(created_ids(r)), None))
 
     def span_id(self, document_id: str, var: str):
-        return self._resolved(self.span_at, (document_id, var), 'node')
+        return self._resolved(self.span_at, (document_id, var), 'node', created_id)
 
     def end_of(self, op: Dict[str, Any], side: str):
         """One end of an edge or a triple: the span it already has, or the one

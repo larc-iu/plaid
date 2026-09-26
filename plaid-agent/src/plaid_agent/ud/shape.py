@@ -19,6 +19,8 @@ multi-word token that a later read cannot tell apart.
 
 from typing import Any, Dict
 
+from plaid_client import created_ids
+
 from .project import Token, UdDoc, Word, resolve
 from .tools import ToolError, Workspace
 
@@ -107,17 +109,8 @@ def apply_set_words(op: Dict[str, Any], b, stamp) -> None:
 
 def finish_set_words(op: Dict[str, Any], b, results, stamp) -> None:
     """Batch 2: the Form and Lemma spans on the words batch 1 created."""
-    from ..core.plan import created_id
     at = op.get('_created_at')
-    raw = results[at] if at is not None and at < len(results) else None
-    ids = []
-    if isinstance(raw, dict):
-        body = raw.get('body')
-        if isinstance(body, dict):
-            ids = list(body.get('ids') or [])
-    if not ids:
-        made = created_id(raw)
-        ids = [made] if made else []
+    ids = created_ids(results[at] if at is not None and at < len(results) else None)
     if len(ids) != len(op['forms']):
         raise ValueError(f'the words of {op.get("surface")!r} were not all created')
     forms, surface = op['forms'], op.get('surface') or ''

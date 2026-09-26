@@ -118,14 +118,15 @@ class _Batch:
         entries, self.log = self.log, []
         self.client.batches.append(entries)
         self.client.log.extend(entries)
-        # Result per op, like the server: created things carry an id, and a
-        # bulk create carries `ids`, one per item, in input order.
+        # Result per op, like the server: a create answers with an `id`, and a
+        # bulk create with `ids` alone, one per item, in input order.
         self.results = []
         for i, e in enumerate(entries):
-            body = {'id': f'new-{e[0]}-{i}'}
             if e[1].startswith('bulk_create'):
                 n = len(e[2][0]) if e[2] and isinstance(e[2][0], list) else 1
-                body['ids'] = [f'new-{e[0]}-{i}-{k}' for k in range(n)]
+                body = {'ids': [f'new-{e[0]}-{i}-{k}' for k in range(n)]}
+            else:
+                body = {'id': f'new-{e[0]}-{i}'}
             self.results.append({'status': 201, 'body': body})
         return self.results
 

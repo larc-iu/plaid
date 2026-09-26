@@ -18,7 +18,8 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 import json
 from typing import Any, Dict, List, Optional
 
-from plaid_client import metadata_ops
+# created_id is plaid_client's reader of a create response, which the plans take from here.
+from plaid_client import created_id, metadata_ops  # noqa: F401
 from plaid_client.provenance import (confirmed_inferred, stamp_contributed, PROV_KEY, PROV_SOURCE_KEY,
                                      PROV_CONFIRMED_KEY, PROV_PROB_KEY, PROV_DETAIL_KEY)
 
@@ -179,15 +180,6 @@ class TrackingBatcher(Batcher):
             e._applied = self.applied
             raise
         self.applied += n
-
-
-def created_id(r):
-    """The id of an entity a batch created, out of that op's result."""
-    if isinstance(r, dict):
-        body = r.get('body')
-        if isinstance(body, dict):
-            return body.get('id')
-    return None
 
 
 class PlanError(Exception):

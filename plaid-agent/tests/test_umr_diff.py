@@ -157,7 +157,7 @@ def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(clie
     assert (token[2][0][0]['begin'], token[2][0][0]['end']) == (s1.begin, s1.end)
     span = next(e for e in log if e[0] == 'spans')
     assert span[2][0] == 'm-concept' and span[2][2] == 'yard'
-    assert span[2][1] == ['new-tokens-0']          # the token the first batch made
+    assert span[2][1] == ['new-tokens-0-0']          # the token the first batch made
     # Unaligned, so it records its sentence.
     assert span[2][3]['umr'] == {
         'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
