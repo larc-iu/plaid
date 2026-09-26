@@ -129,7 +129,7 @@ def test_a_later_file_does_not_rename_an_earlier_one():
     """A note is written into its message once, so the name it gave a file has
     to be the name that file still answers to on every later turn."""
     first = _display(ref('f1', 'w.csv', 'a'))
-    later = first + _display(ref('f2', 'w.csv', 'a'))
+    later = first + [{'kind': 'assistant', 'text': 'ok'}] + _display(ref('f2', 'w.csv', 'a'))
     assert [a.name for a in Attachments.of(Store({}), 'c1', first)] == ['w.csv']
     assert [a.name for a in Attachments.of(Store({}), 'c1', later)] == ['w.csv', 'w (2).csv']
 
@@ -156,6 +156,22 @@ def test_a_stopped_turn_counts_as_unread_and_a_retried_one_as_read():
     # The same file sent again (a retry) is a file the model was told about.
     retried = stopped + _display(ref('f1', 'w.csv', 'a'))
     assert Attachments.of(Store({}), 'c1', retried).get('w.csv').id == 'f1'
+
+
+def test_a_file_from_a_lost_turn_does_not_take_the_name_the_model_hears():
+    """A lost turn (its request went away) leaves the message unanswered, with
+    no error after it, and the next message goes in right behind it. The model
+    never read the lost message's note, so the corrected words.csv on the new
+    message is the one it hears of."""
+    lost = _display(ref('f1', 'words.csv', 'a'))
+    display = lost + _display(ref('f2', 'words.csv', 'a'))
+    files = Attachments.of(Store({}), 'c1', display)
+    assert files.get('words.csv').id == 'f2'
+    assert files.get('words (2).csv').id == 'f1'
+    note = filetools.note(files.named(display[-1]['files']))
+    assert '"words.csv"' in note and 'words (2)' not in note
+    # Sent again as the retry, the lost file is a file the model was told about.
+    assert Attachments.of(Store({}), 'c1', lost + lost).get('words.csv').id == 'f1'
 
 
 def test_an_unknown_name_is_refused_with_what_there_is():

@@ -238,8 +238,8 @@ class Attachments:
     later changes an earlier one, so the note written into an old message still
     names the file it was written about.
 
-    A message whose turn failed or was stopped never reached the model, so
-    neither did its note. Its files are named after every file the model has
+    A message whose turn failed, was stopped or was lost never reached the
+    model, so neither did its note. Its files are named after every file the model has
     been told about: a corrected ``words.csv`` sent as a new message after a
     failed one is the ``words.csv`` the model hears of, not ``words (2).csv``.
     """
@@ -261,10 +261,12 @@ class Attachments:
         for i, item in enumerate(items_):
             if item.get('kind') != 'user':
                 continue
-            # Answered by an error (a failed or stopped turn): the model never
-            # read this message. The last message is the turn being sent.
+            # The model read this message only if the assistant answered it,
+            # or it is the last one, the turn being sent. One followed by an
+            # error (a failed or stopped turn) or by another user message (a
+            # lost turn, whose request went away) never reached it.
             answer = items_[i + 1] if i + 1 < len(items_) else None
-            into = untold if answer is not None and answer.get('kind') == 'error' else told
+            into = told if answer is None or answer.get('kind') == 'assistant' else untold
             for ref in item.get('files') or []:
                 if isinstance(ref, dict) and ref.get('id'):
                     into[str(ref['id'])] = ref
