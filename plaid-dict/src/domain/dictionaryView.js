@@ -115,6 +115,9 @@ export const buildFormPages = (items, collator = new Intl.Collator(), dict = nul
         // Folded here, not in the search: a five thousand headword dictionary
         // would otherwise fold five thousand forms on every keystroke.
         folded: foldDiacritics(bare),
+        // The same for the form as shown, markers and all, for a query that
+        // types the marker but not the diacritics.
+        foldedShown: foldDiacritics(form),
         headwords: roots.sort(byNumber).map((r) => nodeOf(r, reading)),
       }))
   );
@@ -227,11 +230,12 @@ export const searchPages = (pages, query, index) => {
   const formOf = (p) => (p.bare ?? p.form ?? '').toLowerCase();
   const shownOf = (p) => (p.form || '').toLowerCase();
   const foldedOf = (p) => p.folded ?? foldDiacritics(formOf(p));
+  const foldedShownOf = (p) => p.foldedShown ?? foldDiacritics(shownOf(p));
   const matched = (pages || []).filter(
     (p) =>
       formOf(p).includes(q) ||
       shownOf(p).includes(q) ||
-      (loose && foldedOf(p).includes(bare)) ||
+      (loose && (foldedOf(p).includes(bare) || foldedShownOf(p).includes(bare))) ||
       p.headwords.some(hit),
   );
 

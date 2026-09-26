@@ -173,6 +173,25 @@ describe('affixes', () => {
     expect(searchPages(pages, 'ka', index).map((p) => p.form)).toEqual(['ka', '-ka']);
     expect(searchPages(pages, '-ka', index).map((p) => p.form)).toEqual(['-ka']);
   });
+
+  it('finds an affix by its marker typed with the letters but not their marks', () => {
+    // A keyboard with no ḥ: `cheh` and `-cheḥ` found the suffix, `-cheh` found nothing.
+    const affix = [
+      {
+        id: 's',
+        form: 'cheḥ',
+        metadata: { status: 'published', morphType: 'suffix', gloss: 'PFV' },
+      },
+    ];
+    const pgs = buildFormPages(affix);
+    const idx = buildSearchIndex(affix, normalizeVocabFields({ gloss: { inline: true } }));
+    const find = (q) => searchPages(pgs, q, idx).map((p) => p.form);
+    expect(find('cheh')).toEqual(['-cheḥ']);
+    expect(find('-cheḥ')).toEqual(['-cheḥ']);
+    expect(find('-cheh')).toEqual(['-cheḥ']);
+    expect(find('-CHEH')).toEqual(['-cheḥ']);
+    expect(find('cheh-')).toEqual([]);
+  });
 });
 
 describe('buildSearchIndex / searchPages', () => {
