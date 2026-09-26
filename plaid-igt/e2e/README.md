@@ -69,8 +69,10 @@ not clobber each other's and fail with `browserContext.close: ENOENT`.
   - `validate.mjs` + `validators.mjs` — every export through the format's OWN
     validator: xmllint against the EAF 2.8 schema, FieldWorks'
     FlexInterlinear.xsd and the LIFT 0.13 RelaxNG, and `pycldf validate`. The
-    schemas are third-party and live outside the repo, in `~/local/schemas`
-    (`PLAID_SCHEMA_DIR`); a missing one is reported as skipped, never as a pass.
+    schemas are unmodified third-party copies in `fidelity/schemas/` (sources and
+    licenses in its README, `PLAID_SCHEMA_DIR` names another directory). A
+    missing schema or program is reported as skipped, never as a pass, and as a
+    failure under `PLAID_VALIDATORS_REQUIRED`, which the nightly gate sets.
   - `resume.mjs` — stops an import after the Nth write, resumes it the way the
     unfinished-import screen does, and compares the project with one imported
     straight through.

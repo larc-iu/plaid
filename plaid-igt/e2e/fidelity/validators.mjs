@@ -6,22 +6,27 @@
 //   CLDF        pycldf validate, over the unpacked dataset
 //   .json       parsed
 //
-// The schemas are third-party and not in the repo: PLAID_SCHEMA_DIR names the
-// directory holding EAFv2.8.xsd, FlexInterlinear.xsd and lift-0.13.rng
-// (default ~/local/schemas). A validator whose schema or program is missing is
-// reported as skipped, never as a pass. pycldf comes from the mamba base
-// environment (PLAID_PYTHON names another interpreter).
+// The schemas are unmodified third-party copies in ./schemas (sources and
+// licenses in its README). PLAID_SCHEMA_DIR names another directory. A
+// validator whose schema or program is missing is reported as skipped, never
+// as a pass, and as a failure when PLAID_VALIDATORS_REQUIRED is set, which the
+// nightly gate does so a check it counts on cannot quietly stop running.
+// pycldf comes from the mamba base environment (PLAID_PYTHON names another
+// interpreter).
 
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { unzipSync } from 'fflate';
 
 const run = promisify(execFile);
 
-const SCHEMA_DIR = process.env.PLAID_SCHEMA_DIR || `${process.env.HOME}/local/schemas`;
+const SCHEMA_DIR =
+  process.env.PLAID_SCHEMA_DIR || join(dirname(fileURLToPath(import.meta.url)), 'schemas');
+const MISSING = process.env.PLAID_VALIDATORS_REQUIRED ? 'fail' : 'skip';
 const PYTHON = process.env.PLAID_PYTHON || `${process.env.HOME}/.mambaforge/bin/python3`;
 
 const schemaPath = (name) => {
@@ -98,13 +103,13 @@ async function validateFile(dir, label, file) {
   if (!schema) {
     return {
       label: `${label} ${file.path}`,
-      state: 'skip',
+      state: MISSING,
       detail: `${v.schema} is not in ${SCHEMA_DIR}`,
     };
   }
   const result = await tool('xmllint', ['--noout', v.flag, schema, path]);
   const at = `${label} ${file.path} (${v.name})`;
-  if (result.missing) return { label: at, state: 'skip', detail: result.missing };
+  if (result.missing) return { label: at, state: MISSING, detail: result.missing };
   return result.ok
     ? { label: at, state: 'ok', detail: '' }
     : { label: at, state: 'fail', detail: clip(result.output) };
@@ -128,7 +133,7 @@ async function validateCldf(dir, label, files) {
   const at = `${label} CLDF (pycldf)`;
   if (!metadata) return { label: at, state: 'fail', detail: 'the dataset has no metadata.json' };
   const result = await tool(PYTHON, ['-m', 'pycldf', 'validate', metadata]);
-  if (result.missing) return { label: at, state: 'skip', detail: result.missing };
+  if (result.missing) return { label: at, state: MISSING, detail: result.missing };
   // pycldf leaves with 0 and a warning for some findings, so anything it says
   // at all is a finding: a clean dataset validates silently.
   return result.ok && !result.output
