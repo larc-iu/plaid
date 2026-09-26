@@ -2,7 +2,7 @@
 // question. The tab strip's half of it is tabs.test.jsx; this is the rest:
 // an in-app link, the browser's Back, and the reload prompt.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { renderComponent } from '../test/renderComponent.jsx';
 
 const { confirm } = vi.hoisted(() => ({ confirm: vi.fn(async () => false) }));
@@ -224,6 +224,48 @@ describe('an unsaved draft', () => {
     await flush();
     await flush();
     expect(followed).toBe(1);
+  });
+
+  // A link inside the screen (an entry's row) whose page stays mounted: the
+  // router pushes the next entry and the draft is seeded clean from it. The
+  // extra entry must be out before that push, or it is buried under it and
+  // one Back press later appears to do nothing.
+  it('takes its entry out before the link pushes, so one Back returns', async () => {
+    confirm.mockResolvedValue(true);
+    const Row = () => {
+      const [what, setWhat] = useState('The entry you have typed');
+      useUnsavedDraft(what);
+      return (
+        <a
+          href="#/vocabularies/v1?item=b"
+          id="row"
+          onClick={(e) => {
+            e.preventDefault();
+            window.history.pushState({ idx: (idx() ?? 0) + 1, key: 'next' }, '', '/next');
+            setWhat(null);
+          }}
+        >
+          b
+        </a>
+      );
+    };
+    view = await renderComponent(<Row />);
+    expect(idx()).toBe(1);
+    clickOn('row');
+    await flush();
+    await flush();
+    await tick();
+    await tick();
+    expect(window.history.state?.key).toBe('next');
+    expect(hasUnsavedDraft()).toBe(null);
+    await act(async () => {
+      window.history.back();
+    });
+    await flush();
+    await tick();
+    // The page's own entry, not the extra one, which carries its key too.
+    expect(window.history.state?.key).toBe(pageKey);
+    expect(idx()).toBe(0);
   });
 
   // The answer is about ONE way out. This link does not take the page (its own

@@ -238,6 +238,9 @@ const install = (ask) => {
       // second one through and the link does what it would have done. The
       // draft itself stays registered: if the click turns out not to take the
       // page, the text is still on the screen and the next way out asks again.
+      // `ask` is useUnsavedGuard's callback, which has taken the extra entry
+      // out by the time it says yes, so the push this click makes is not
+      // stacked on top of it.
       leaving += 1;
       try {
         anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
