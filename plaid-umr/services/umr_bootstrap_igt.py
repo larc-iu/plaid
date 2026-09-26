@@ -25,8 +25,10 @@ type (a stem or root), else the first whose gloss has a lexical part. An
 affix's entry or gloss never names the word (`m-` 3.POSS + `hii` blood is
 `hii`, not `m`). A link on the word itself comes first.
 
-A compound (a word of two stems or more) with no link of its own is named by
-the entry whose headword is the word as written, when the lexicon has one:
+A compound (a word of two stems or more, a stem being a morpheme typed as one
+or, untyped, glossed as a word) with no link of its own is named by the entry
+whose headword is the word as written, spaces and hyphens aside (`harbuu`,
+`har buu` and `har-buu` are one spelling), when the lexicon has one:
 Lamkang `har buu` 'chicken coop' is `har-buu`, where its first stem alone
 would make it `har` 'fowl'. Without such an entry it takes the FIRST stem, a
 default and not a claim about the head, which is on the left in some
@@ -329,42 +331,67 @@ def is_zero(form: str) -> bool:
     return (form or '').strip() in _ZERO_FORMS
 
 
+def _candidates(morphemes):
+    """The morphemes that could name a word: never an affix, a clitic or a
+    zero morph."""
+    return [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
+
+
+def _glossed_as_word(m, reads_by_morpheme) -> bool:
+    return any(r['lexical'] for r in reads_by_morpheme.get(m.id, []))
+
+
 def lexical_morpheme(morphemes, reads_by_morpheme, links, headwords):
     """The morpheme a segmented word takes its concept from, or None. Never
     an affix, a clitic or a zero morph. Of the rest, the first whose morph type
     is set (a stem or root), else the first whose gloss has a lexical part,
     then the first linked to an entry."""
-    rest = [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
+    rest = _candidates(morphemes)
     typed = next((m for m in rest if m.morph_type), None)
     if typed:
         return typed
     for m in rest:
-        if any(r['lexical'] for r in reads_by_morpheme.get(m.id, [])):
+        if _glossed_as_word(m, reads_by_morpheme):
             return m
     return next((m for m in rest
                  if any(e in headwords for e in links.get(m.id, []))), None)
 
 
+def stems_of(morphemes, reads_by_morpheme):
+    """The stems of a segmented word, by `lexical_morpheme`'s rule: a morpheme
+    typed as a stem or root, or with no type and a lexical gloss. An untyped
+    morpheme glossed `3.POS` is not one."""
+    return [m for m in _candidates(morphemes)
+            if m.morph_type or _glossed_as_word(m, reads_by_morpheme)]
+
+
+def _joined(text: str) -> str:
+    """A spelling with the joins between its parts taken out, so that
+    `harbuu`, `har buu` and `har-buu` are one key."""
+    return re.sub(r'[-=~_]', '', concept_from(text))
+
+
 def listed_forms(headwords: Dict[str, str]) -> Dict[str, str]:
-    """Every headword by the concept it makes, so that a word written `har
-    buu` or `har-buu` finds the entry `har buu`."""
+    """Every headword by its spelling with the joins taken out, so that a word
+    written `harbuu`, `har buu` or `har-buu` finds the entry `har buu`."""
     out: Dict[str, str] = {}
     for form in headwords.values():
-        key = concept_from(form)
+        key = _joined(form)
         if key:
             out.setdefault(key, form)
     return out
 
 
-def compound_headword(word, morphemes, listed: Dict[str, str]) -> Optional[str]:
-    """The headword that names a compound as a whole: the entry whose form is
-    the word as written, when the word has two stems or more. None for a word
-    of one stem, whose stem already names it, and for a compound the lexicon
-    does not list. `listed` is `listed_forms` of the headwords."""
-    stems = [m for m in morphemes if not is_bound(m.morph_type) and not is_zero(m.text)]
-    if len(stems) < 2:
+def compound_headword(word, morphemes, listed: Dict[str, str],
+                      reads_by_morpheme) -> Optional[str]:
+    """The headword that names a compound as a whole: the entry spelled as the
+    word is, joins aside, when the word has two stems or more (`stems_of`).
+    None for a word of one stem, whose stem already names it, and for a
+    compound the lexicon does not list. `listed` is `listed_forms` of the
+    headwords."""
+    if len(stems_of(morphemes, reads_by_morpheme)) < 2:
         return None
-    return listed.get(concept_from(word.text))
+    return listed.get(_joined(word.text))
 
 
 def concept_from(text: str) -> str:
@@ -444,7 +471,8 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         # The word's own link, then a compound's headword, then the lexical
         # morpheme's link, then the lexical part of a gloss.
         entry = next((e for e in links.get(word.id, []) if e in headwords), None)
-        named = headwords[entry] if entry else compound_headword(word, morphemes, listed)
+        named = headwords[entry] if entry else compound_headword(word, morphemes, listed,
+                                                                  by_morpheme)
         if not named and home:
             entry = next((e for e in links.get(home.id, []) if e in headwords), None)
             named = headwords[entry] if entry else None

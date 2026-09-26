@@ -447,6 +447,34 @@ def test_a_word_of_one_stem_is_not_named_by_a_headword_it_happens_to_spell():
     assert [c for c, _ in _segmented_run(_segmented(), vocab)][0] == 'hii'
 
 
+@pytest.mark.parametrize('body, headword, concept', [
+    ('harbuu', 'har buu', 'har-buu'),
+    ('har-buu', 'harbuu', 'harbuu'),
+    ('har buu', 'har-buu', 'har-buu'),
+    ('Harbuu', 'har buu', 'har-buu'),
+])
+def test_a_compound_finds_its_entry_however_the_two_spell_the_join(body, headword, concept):
+    """harbuu, har buu and har-buu are one compound: the lookup ignores the
+    separators, and the concept is the entry's own spelling."""
+    document = _segmented(body=f'{body}\n', words=[(0, len(body))], morphemes=COMPOUND_MORPHEMES)
+    vocab = _compound_vocab('har', 'buu', headword)
+    assert [c for c, _ in _segmented_run(document, vocab)] == [concept]
+
+
+def test_an_untyped_affix_is_not_a_stem_of_a_compound():
+    """Hand-segmented m-hii with no morph types: m is glossed 3.POS, which is
+    not a lexical gloss, so the word has one stem and an entry spelled mhii
+    does not name it."""
+    morphemes = [('m1', 0, 'm', 'prefix', '3.POS', None), ('m2', 0, 'hii', 'stem', 'blood', 'e-hii')]
+    document = _segmented(body='mhii\n', words=[(0, 4)], morphemes=morphemes, typed=False)
+    assert [c for c, _ in _segmented_run(document, _compound_vocab('hii', 'mhii'))] == ['hii']
+    # Two untyped morphemes each glossed as a word are a compound.
+    document = _segmented(body=COMPOUND_BODY, words=COMPOUND_WORDS, morphemes=COMPOUND_MORPHEMES,
+                          typed=False)
+    assert [c for c, _ in _segmented_run(document, _compound_vocab('har', 'buu', 'harbuu'))] == [
+        'harbuu']
+
+
 def test_int_is_not_read_as_a_question():
     """INT is not a Leipzig abbreviation, and grammars use it for an
     intensifier (Lamkang IDEO:INT.rhythmic) as often as for a question, so the
