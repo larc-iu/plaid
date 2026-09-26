@@ -45,6 +45,81 @@ KNOWN_RELATIONS = frozenset({
     ':undergoer', ':unit', ':value', ':vocative', ':weekday', ':wiki', ':x', ':y', ':year',
     ':year2', ':z'})
 
+#: The sentence-level relations whose value is an atom, a number or a string
+#: rather than a child node: the ``KNOWN_RELATIONS`` entries of ``inventory.js``
+#: whose type is ``attribute``. Every other known relation is a role.
+ATTRIBUTE_RELATIONS = frozenset({
+    ':aspect', ':century', ':day', ':dayperiod', ':decade', ':degree', ':end-state', ':era',
+    ':frequency', ':lat', ':list-item', ':long', ':mod', ':modal-strength', ':mode', ':month',
+    ':op1', ':polarity', ':polite', ':quant', ':quarter', ':refer-definiteness',
+    ':refer-number', ':refer-person', ':smood', ':time', ':value', ':wiki', ':x', ':y',
+    ':year', ':year2', ':z'})
+
+#: The attributes whose values the validator holds to a closed set:
+#: ``ATTRIBUTES[rel].validator`` in ``inventory.js``, the non-empty ones. An
+#: attribute not here takes any value.
+ATTRIBUTE_VALUES: Dict[str, Tuple[str, ...]] = {
+    ':aspect': ('habitual', 'generic', 'imperfective', 'state', 'reversible-state',
+                'irreversible-state', 'point-state', 'inherent-state', 'process',
+                'atelic-process', 'activity', 'directed-activity', 'undirected-activity',
+                'perfective', 'endeavor', 'semelfactive', 'undirected-endeavor',
+                'directed-endeavor', 'performance', 'inceptive', 'incremental-accomplishment',
+                'nonincremental-accomplishment', 'directed-achievement',
+                'reversible-directed-achievement', 'irreversible-directed-achievement'),
+    ':modal-strength': ('full-affirmative', 'partial-affirmative', 'neutral-affirmative',
+                        'neutral-negative', 'partial-negative', 'full-negative'),
+    ':refer-person': ('1st', '2nd', '3rd', '4th', 'non-1st', 'non-3rd'),
+    ':refer-number': ('singular', 'non-singular', 'dual', 'trial', 'paucal', 'plural'),
+    ':refer-definiteness': ('class',),
+}
+
+#: The ``:ARGn`` participant roles, which ``KNOWN_RELATIONS`` lists one by one.
+ARG_ROLE = re.compile(r'^:ARG\d+$')
+
+#: The roles that always point at a node: every known relation that is not an
+#: attribute, the ``:ARGn`` range left to ``ARG_ROLE``. The app's validator
+#: refuses a value under any of them (``validate.js``).
+NODE_ROLES = frozenset(r for r in KNOWN_RELATIONS
+                       if r not in ATTRIBUTE_RELATIONS and not ARG_ROLE.match(r))
+
+#: The rolesets whose argument really is a value, as the app's validator has
+#: them (``validate.js``, after umrtools ``validate.py:1440``).
+VALUE_ARGUMENTS = frozenset({('have-polarity-91', ':ARG2'), ('rate-entity-91', ':ARG1'),
+                             ('have-quant-91', ':ARG2'),
+                             ('have-modal-strength-91', ':ARG2')})
+
+
+def edge_only(rel: str, concept: str) -> bool:
+    """Whether a role only ever points at a node, so a value under it is a
+    mistake: an inverse role, an ``:ARGn`` outside the few rolesets that take a
+    value there, or any other role the app does not type as an attribute."""
+    if rel.endswith('-of'):
+        return True
+    if ARG_ROLE.match(rel):
+        return (concept, rel) not in VALUE_ARGUMENTS
+    return rel in NODE_ROLES
+
+
+def attribute_value_problem(rel: str, value) -> Optional[str]:
+    """Why ``value`` cannot be written as the value of the attribute ``rel`` on
+    a node, or None when it can: the relation is not an attribute, the value is
+    empty or holds a space, or it is outside the attribute's closed set
+    (``validate.js`` reports each as ``unexpected-value``)."""
+    rel = _as_relation(rel)
+    if rel not in ATTRIBUTE_RELATIONS and not _OP.match(rel):
+        return (f'{rel} is a relation to another node, not an attribute: its value would '
+                'have to be a node.')
+    text = value if isinstance(value, str) else ''
+    if not text.strip() or re.search(r'\s', text):
+        return f'{rel} needs a value of one word, not {value!r}.'
+    closed = ATTRIBUTE_VALUES.get(rel)
+    if closed and text not in closed:
+        guess = difflib.get_close_matches(text, closed, n=1, cutoff=0.7)
+        hint = f' Did you mean {guess[0]}?' if guess else ''
+        return f'{text!r} is not a value of {rel}. Its values are {", ".join(closed)}.{hint}'
+    return None
+
+
 #: The document-level relations by group: ``DOC_RELATIONS[group].validator`` in
 #: ``inventory.js``. ``:contains`` is in two groups.
 DOC_RELATIONS: Dict[str, Tuple[str, ...]] = {
@@ -144,6 +219,7 @@ def unknown_doc_relation_problem(group: Optional[str], relation) -> Optional[str
             + ', '.join(known) + '.' + hint)
 
 
-__all__ = ['KNOWN_RELATIONS', 'DOC_RELATIONS', 'DOC_CONSTANTS', 'GROUPS',
-           'is_known_relation', 'nearest', 'unknown_relation_problem',
-           'unknown_doc_relation_problem']
+__all__ = ['KNOWN_RELATIONS', 'ATTRIBUTE_RELATIONS', 'ATTRIBUTE_VALUES', 'NODE_ROLES',
+           'VALUE_ARGUMENTS', 'ARG_ROLE', 'DOC_RELATIONS', 'DOC_CONSTANTS', 'GROUPS',
+           'edge_only', 'attribute_value_problem', 'is_known_relation', 'nearest',
+           'unknown_relation_problem', 'unknown_doc_relation_problem']

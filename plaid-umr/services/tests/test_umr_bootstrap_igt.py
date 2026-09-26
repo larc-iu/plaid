@@ -498,6 +498,13 @@ def test_a_possessed_noun_keeps_its_own_plural():
     ([':refer-number'], 'a relation and a value'),
     ([':aspect', 'state', 'extra'], 'a relation and a value'),
     (['possesive'], 'a relation and a value'),
+    ([':manner', 'quickly'], 'not an attribute'),
+    ([':ARG0', 'foo'], 'not an attribute'),
+    ([':ARG1-of', 'y'], 'not an attribute'),
+    ([':mod-of', 'y'], 'not an attribute'),
+    ([':refer-number', 'plurall'], 'Did you mean plural?'),
+    ([':polarity', ''], 'a value of one word'),
+    ([':mode', 'yes no'], 'a value of one word'),
 ])
 def test_a_language_table_is_refused_when_it_names_no_umr_relation(tmp_path, value, why):
     """A table is a writer too: what it maps to is written as an attribute, so
@@ -513,6 +520,16 @@ def test_every_default_abbreviation_is_a_umr_relation_or_a_marker():
     for key, what in boot.ABBREVIATIONS.items():
         assert what in (('root',), ('possessive',)) or (
             len(what) == 2 and unknown_relation_problem(what[0]) is None), key
+        if what not in (('root',), ('possessive',)):
+            assert boot._table_entry(key, list(what)) == what, key
+
+
+def test_a_language_table_may_map_to_any_attribute_value_the_validator_takes(tmp_path):
+    path = tmp_path / 'table.json'
+    path.write_text(json.dumps({'OBV': [':refer-person', '4th'], 'ID': [':mod', 'ideophone'],
+                                'NMZ': [':op2', 'x'], 'AUG': [':degree', 'intensifier']}))
+    table = boot.load_abbreviations(str(path))
+    assert table['ID'] == (':mod', 'ideophone') and table['NMZ'] == (':op2', 'x')
 
 
 # --- which layers are glosses ---------------------------------------------------

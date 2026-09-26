@@ -50,8 +50,9 @@ The language-specific half (Buchholz et al. 2024 wrote such heuristics for
 Arapaho) is a table: `--abbreviations table.json` adds or overrides gloss
 abbreviations, `{"ABBR": [":relation", "value"], "TAM": ["root"], "X": null}`,
 where `["root"]` marks an abbreviation as a tense or aspect marker that
-elects the root and `null` removes a default. A relation UMR does not have is
-refused when the table is read, before anything is written.
+elects the root and `null` removes a default. A relation UMR does not have, a
+role that is not an attribute, or a value the validator refuses is refused
+when the table is read, before anything is written.
 
     python services/umr_bootstrap_igt.py --url http://localhost:8085
     python services/umr_bootstrap_igt.py --url ... --abbreviations arapaho.json
@@ -76,6 +77,7 @@ from plaid_client.service import check_unchanged
 from plaid_client.workflows.umr import (DraftProgress, build_draft_notice, gloss_values,
                                         next_variable, read_document, resolve_layers,
                                         unknown_relation_problem, write_graphs)
+from plaid_client.workflows.umr.inventory import attribute_value_problem
 from plaid_client.workflows.umr.layers import lexical_gloss_layers
 
 DEFAULT_SERVICE_ID = 'umr-bootstrap-igt'
@@ -191,9 +193,12 @@ _MARKERS = (('root',), ('possessive',))
 
 def _table_entry(key: str, value) -> tuple:
     """One entry of a language table, refused unless the skeleton can write
-    it: a marker, or a UMR relation and its value. What a table maps to is
-    written as an attribute, so a relation UMR does not have (`:definite`,
-    `:polarityy`) is refused here, as the app and the assistant refuse it."""
+    it: a marker, or a UMR attribute and a value the validator takes. What a
+    table maps to is written as an attribute, so a relation UMR does not have
+    (`:definite`, `:polarityy`), a role that points at a node (`:manner`,
+    `:ARG0`), and a value outside the attribute's set (`:refer-number
+    plurall`) or empty are refused here, as the app and the assistant refuse
+    them."""
     if not (isinstance(value, list) and value and all(isinstance(v, str) for v in value)):
         raise ValueError(f'Abbreviation {key!r} must map to a list of strings or null.')
     entry = tuple(value)
@@ -205,7 +210,7 @@ def _table_entry(key: str, value) -> tuple:
     rel = entry[0]
     if not rel.startswith(':'):
         raise ValueError(f'Abbreviation {key!r}: the relation {rel!r} must start with a colon.')
-    problem = unknown_relation_problem(rel)
+    problem = unknown_relation_problem(rel) or attribute_value_problem(rel, entry[1])
     if problem:
         raise ValueError(f'Abbreviation {key!r}: {problem}')
     return entry

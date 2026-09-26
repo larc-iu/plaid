@@ -28,6 +28,10 @@ SCRIPT = f"""
 const m = await import({json.dumps('file://' + JS_INVENTORY)});
 console.log(JSON.stringify({{
   known: Object.keys(m.KNOWN_RELATIONS),
+  attributes: Object.entries(m.KNOWN_RELATIONS).filter(([, v]) => v.type === 'attribute')
+    .map(([k]) => k),
+  values: Object.fromEntries(Object.entries(m.ATTRIBUTES).map(([k, v]) => [k, v.validator])
+    .filter(([, v]) => v.length)),
   doc: Object.fromEntries(Object.entries(m.DOC_RELATIONS).map(([g, v]) => [g, v.validator])),
   constants: m.DOC_CONSTANTS,
 }}));
@@ -54,3 +58,11 @@ def test_the_document_level_relations_are_the_apps_group_by_group(js):
 
 def test_the_constants_are_the_apps(js):
     assert list(inventory.DOC_CONSTANTS) == js['constants']
+
+
+def test_the_attributes_are_the_apps(js):
+    assert inventory.ATTRIBUTE_RELATIONS == frozenset(js['attributes'])
+
+
+def test_the_closed_attribute_values_are_the_apps(js):
+    assert {k: list(v) for k, v in inventory.ATTRIBUTE_VALUES.items()} == js['values']
