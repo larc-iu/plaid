@@ -122,6 +122,25 @@ describe('precedentCache', () => {
     expect(gloss(precedentBase(b))).toEqual(new Map([['go', 1]]));
   });
 
+  it('an edit still on its way when the project is read again counts once the document is left', async () => {
+    const glossByDoc = { a: [['kai', 'go']], b: [] };
+    const client = fakeClient(glossByDoc);
+    const a = docOf(client, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    // The person reglosses kai as eat, and the read that follows (the age
+    // re-read on the next render) runs while that write is still queued, so
+    // the server's rows still say go.
+    editGlosses(a, [['kai', 'eat']]);
+    a.isSaving = true;
+    await openPrecedent(a, { force: true });
+    a.isSaving = false;
+    glossByDoc.a = [['kai', 'eat']]; // the write lands
+    leavePrecedent(a, { wordFields: ['Gloss'] });
+    const b = docOf(client, 'b');
+    await openPrecedent(b);
+    expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+  });
+
   it('a forced read asks the project again and drops what the old read kept', async () => {
     const glossByDoc = { a: [['kai', 'go']], b: [] };
     const client = fakeClient(glossByDoc);

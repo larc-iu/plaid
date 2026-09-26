@@ -105,6 +105,14 @@ function versionOf(doc) {
   return doc.client?.documentVersions?.[doc.id] ?? doc.raw?.version ?? null;
 }
 
+// Where "changed while open" is counted from: this model of the document at
+// this dataVersion, whichever editor instance shows it. A document with a
+// write still queued is ahead of any rows read now, so it has no baseline and
+// counts as changed when it is left.
+function baselineOf(doc) {
+  return { doc, dataVersion: doc.isSaving ? null : doc.dataVersion };
+}
+
 // `alongside`: read in the same breath as the project, so it is not held to
 // the project's list of versions (it could only differ by an edit landing
 // between the two, and holding it to that could read the project forever).
@@ -116,9 +124,7 @@ function fetchDoc(entry, doc, { alongside = false } = {}) {
     failedAt: 0,
     version: versionOf(doc),
     alongside,
-    // Whether the document changed while open is asked of this model and
-    // this dataVersion, whichever editor instance shows it.
-    opened: { doc, dataVersion: doc.dataVersion },
+    opened: baselineOf(doc),
   };
   entry.docs.set(doc.id, rec);
   rec.promise = fetchRows(doc, doc.id)
@@ -209,7 +215,7 @@ export function openPrecedent(doc, { force = false } = {}) {
   }
   // Another model of the same document (opened again): changes are counted
   // from here.
-  if (rec.opened.doc !== doc) rec.opened = { doc, dataVersion: doc.dataVersion };
+  if (rec.opened.doc !== doc) rec.opened = baselineOf(doc);
   return project.promise || rec.promise || null;
 }
 
@@ -259,7 +265,7 @@ export function leavePrecedent(doc, opts = {}) {
   const entry = entryFor(doc, false);
   const rec = entry?.docs.get(doc.id);
   if (!rec?.results || rec.opened.doc !== doc) return;
-  if (doc.dataVersion === rec.opened.dataVersion) return;
+  if (rec.opened.dataVersion !== null && doc.dataVersion === rec.opened.dataVersion) return;
   rec.overlay = foldDocument(createTally(), doc.sentences, opts);
   entry.generation++;
 }
