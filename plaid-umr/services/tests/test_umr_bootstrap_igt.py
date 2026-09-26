@@ -598,6 +598,28 @@ def test_the_projects_own_ilg_mapping_says_which_layer_is_the_gloss():
     assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['canine', 'bark']
 
 
+def test_a_gloss_in_the_projects_language_names_the_node_whatever_its_scope():
+    """A Spanish project with an English morpheme gloss and a Spanish word
+    gloss: the concept is Spanish, though a morpheme gloss is read before a
+    word gloss in the same language."""
+    morphemes = [('m1', 0, 'kuca', 'stem', 'house', None), ('m2', 0, 'ebi', 'suffix', 'PL', None)]
+    document = _segmented(body='kucaebi\n', words=[(0, 7)], morphemes=morphemes, word_glosses=(
+        {'id': 'gw', 'tokens': ['w1'], 'value': 'casa-PL'},))
+    mapping = [{'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:mglossL'},
+               {'header': 'word-gloss', 'lang': 'es', 'source': 'layer:glossL'}]
+    service = _service(documents=[document])
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: _compound_vocab()
+    service.client.projects._project['config'] = {'umr': {'language': 'es', 'ilg': mapping}}
+    assert servicetest.run(service, REQUEST).errors == []
+    assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['casa']
+    # With no language, the stem's gloss comes first.
+    service = _service(documents=[document])
+    service.client.vocab_layers.get = lambda vocab_id, **kwargs: _compound_vocab()
+    service.client.projects._project['config'] = {'umr': {'ilg': mapping}}
+    assert servicetest.run(service, REQUEST).errors == []
+    assert [n['value'] for n in _ops(service.client, 'spans.bulk_create')] == ['house']
+
+
 # The app's own classification, run in node: which layer is which line must be
 # the same on the canvas and in the skeleton. Skips where node cannot run, and
 # never when the two disagree.

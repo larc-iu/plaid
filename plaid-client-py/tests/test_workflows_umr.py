@@ -415,7 +415,7 @@ def test_only_a_line_filed_as_a_gloss_is_a_lexical_gloss_layer():
                            ('cat', 'Category', 'morpheme', None),
                            ('mg', 'Morpheme gloss', 'morpheme', 'en'),
                            ('tr', 'Translation', 'sentence', 'en'), ('n', 'Notes', 'word', None))
-    assert [g.id for g in lexical_gloss_layers(None, layers)] == ['g', 'mg']
+    assert [g.id for g in lexical_gloss_layers(None, layers)] == ['mg', 'g']
 
 
 def test_the_projects_mapping_overrides_the_names_and_a_gloss_in_its_language_comes_first():
@@ -433,3 +433,15 @@ def test_the_projects_mapping_overrides_the_names_and_a_gloss_in_its_language_co
     # With no language of its own, the mapping's order stands.
     project['config']['umr'].pop('language')
     assert [g.id for g in lexical_gloss_layers(project, layers)] == ['en', 'es']
+
+
+def test_a_gloss_in_the_projects_language_comes_first_whatever_its_scope():
+    from plaid_client.workflows.umr.layers import lexical_gloss_layers
+    layers = _gloss_layers(('en', 'Gloss', 'morpheme', 'en'), ('es', 'Glosa', 'word', 'es'),
+                           ('mes', 'Glosa', 'morpheme', 'es'))
+    project = {'config': {'umr': {'language': 'es', 'ilg': [
+        {'header': 'morpheme-gloss', 'lang': 'en', 'source': 'layer:en'},
+        {'header': 'word-gloss', 'lang': 'es', 'source': 'layer:es'},
+        {'header': 'morpheme-gloss', 'lang': 'es', 'source': 'layer:mes'},
+    ]}}}
+    assert [g.id for g in lexical_gloss_layers(project, layers)] == ['mes', 'es', 'en']

@@ -326,9 +326,11 @@ def resolve_ilg(config, layers: UmrLayers) -> List[dict]:
 
 
 def lexical_gloss_layers(project, layers: UmrLayers) -> List[GlossLayer]:
-    """The gloss layers a concept may be read from: those the project's mapping
-    (or the proposal) files as a word or morpheme gloss, in the mapping's
-    order, with a gloss in the project's language first."""
+    """The gloss layers a concept may be read from, in the order a concept is
+    looked for: those the project's mapping (or the proposal) files as a word
+    or morpheme gloss, a gloss in the project's language first, then a
+    morpheme gloss before a word gloss (the stem's gloss names a word), then
+    the mapping's order."""
     by_id = {g.id: g for g in layers.gloss_layers}
     picked: List[tuple] = []
     for entry in resolve_ilg(ilg_config(project), layers):
@@ -339,6 +341,5 @@ def lexical_gloss_layers(project, layers: UmrLayers) -> List[GlossLayer]:
         if g and all(g is not p for p, _ in picked):
             picked.append((g, language_code(entry.get('lang'))))
     want = language_code(project_language(project))
-    if want != 'und':
-        picked.sort(key=lambda p: p[1] != want)
+    picked.sort(key=lambda p: (want != 'und' and p[1] != want, p[0].scope != 'morpheme'))
     return [g for g, _ in picked]

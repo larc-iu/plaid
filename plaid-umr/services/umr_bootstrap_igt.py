@@ -15,8 +15,9 @@ else the first node is.
 
 A gloss is a line the project's gloss-line mapping (`config.umr.ilg`, or the
 one proposed from the layers' names, as the canvas reads it) files as a word
-or morpheme gloss, a gloss in the project's language first. A part of speech,
-a category or a note never names a node.
+or morpheme gloss. A gloss in the project's language is read first whatever
+its scope, then the lexical morpheme's gloss before the word's. A part of
+speech, a category or a note never names a node.
 
 In a segmented word the concept comes from its LEXICAL morpheme: never an
 affix, a clitic or a zero morph (`∅`), and of the rest the first with a morph
@@ -423,19 +424,23 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         morphemes = sentence.morphemes_of(word)
         word_reads = []
         by_morpheme: Dict[str, List[Dict[str, Any]]] = {}
+        # Every read with the morpheme it glosses (None for the word), in the
+        # order of `gloss_layers`, which is the order a concept is looked for.
+        in_order: List[tuple] = []
         for layer in gloss_layers:
             of = values.get(layer.id) or {}
             if layer.scope == 'word':
                 value = of.get(word.id)
                 if value:
                     word_reads.append(read_gloss(value, table))
+                    in_order.append((None, word_reads[-1]))
             elif layer.scope == 'morpheme':
                 for m in morphemes:
                     value = of.get(m.id)
                     if value:
                         by_morpheme.setdefault(m.id, []).append(read_gloss(value, table))
+                        in_order.append((m.id, by_morpheme[m.id][-1]))
         home = lexical_morpheme(morphemes, by_morpheme, links, headwords) if morphemes else None
-        home_reads = by_morpheme.get(home.id, []) if home else []
         # The word's own link, then a compound's headword, then the lexical
         # morpheme's link, then the lexical part of a gloss.
         entry = next((e for e in links.get(word.id, []) if e in headwords), None)
@@ -443,7 +448,8 @@ def plan_sentence(sentence, gloss_layers, values, links, headwords, table, taken
         if not named and home:
             entry = next((e for e in links.get(home.id, []) if e in headwords), None)
             named = headwords[entry] if entry else None
-        lexical = next((r['lexical'] for r in home_reads + word_reads if r['lexical']), None)
+        lexical = next((r['lexical'] for mid, r in in_order
+                        if r['lexical'] and (mid is None or (home and mid == home.id))), None)
         concept = concept_from(named) if named else concept_from(lexical or '')
         if not concept:
             continue
