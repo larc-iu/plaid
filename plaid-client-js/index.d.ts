@@ -1511,6 +1511,8 @@ export function applyMetadataOps(
   metadata: object | null | undefined,
   ops: MetadataOp[],
 ): Record<string, any>;
+/** True for a top-level metadata key Plaid keeps for itself (`plaid` and the provenance keys), never a user's field. */
+export function isReservedMetadataKey(key: string): boolean;
 
 // --- Review: whose work is reviewed (a project-config norm) -------------------
 /** The config key, under the `plaid` namespace, holding the review lists. */

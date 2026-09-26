@@ -40,7 +40,7 @@ from plaid_client.provenance import (
     with_reviewed_user,
     WriterPolicy,
 )
-from plaid_client.metadata_ops import metadata_ops, apply_metadata_ops
+from plaid_client.metadata_ops import metadata_ops, apply_metadata_ops, is_reserved_metadata_key
 from plaid_client.roles import (
     PLAID_NAMESPACE,
     ROLE_KEY,
@@ -82,6 +82,7 @@ __all__ = [
     "contribute_on_edit",
     "metadata_ops",
     "apply_metadata_ops",
+    "is_reserved_metadata_key",
     "service_source",
     "user_source",
     "REVIEW_KEY",

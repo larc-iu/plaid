@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
 import { PREDEFINED_FIELDS } from '@/domain/igtConfig';
 import { Link } from 'react-router-dom';
 import { Plus, Trash2, RotateCcw, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
@@ -136,9 +136,15 @@ export const DocumentMetadataManager = ({
     }
 
     // `plaid` holds the settings every app shares (the text direction among
-    // them). A field's value written there would replace them.
-    if (trimmedName === PLAID_NAMESPACE) {
-      notifyError(`${PLAID_NAMESPACE} is reserved for document settings`, 'Invalid Field Name');
+    // them), and the provenance keys record who made the document. A field's
+    // value written to either would replace them.
+    if (isReservedMetadataKey(trimmedName)) {
+      notifyError(
+        trimmedName === PLAID_NAMESPACE
+          ? `${trimmedName} is reserved for document settings`
+          : `${trimmedName} is reserved for provenance`,
+        'Invalid Field Name',
+      );
       return;
     }
 

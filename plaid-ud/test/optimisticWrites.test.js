@@ -305,3 +305,12 @@ test('the shared plaid namespace is never written as a metadata field', async ()
   assert.equal(await doc.setSentenceMetadata(sentence.id, 'plaid', 'x'), false);
   assert.equal(calls.length, 0);
 });
+
+test('a provenance key is never written as a metadata field', async () => {
+  const { doc, release, calls } = open();
+  release();
+  assert.equal(await doc.setDocumentMetadata('prov', 'x'), false);
+  const sentence = doc.layerInfo.sentenceTokenLayer.tokens[0];
+  assert.equal(await doc.setSentenceMetadata(sentence.id, 'provSource', 'x'), false);
+  assert.equal(calls.length, 0);
+});

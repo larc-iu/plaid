@@ -8,6 +8,19 @@ into the nested metadata, the first a top-level key. See the manual,
 import copy
 import unicodedata
 
+from .provenance import PROVENANCE_KEYS
+from .roles import PLAID_NAMESPACE
+
+_RESERVED_KEYS = frozenset((PLAID_NAMESPACE, *PROVENANCE_KEYS))
+
+
+def is_reserved_metadata_key(key):
+    """True for a top-level metadata key Plaid keeps for itself: the shared
+    ``plaid`` namespace (settings every app reads, such as the text direction)
+    and the provenance keys. Neither is ever a user's metadata field, so an
+    app neither lists it as one nor writes a field's value to it."""
+    return key in _RESERVED_KEYS
+
 _ABSENT = object()
 
 # The longest top-level key the server takes, in UTF-16 code units (Java's

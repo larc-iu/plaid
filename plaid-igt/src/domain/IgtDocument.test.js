@@ -1133,6 +1133,19 @@ describe('document-level + alignment mutations (tabs now depend on these)', () =
     expect(doc._raw.metadata.plaid).toEqual({ textDirection: 'rtl' });
   });
 
+  it('saveNameAndMetadata never writes a provenance key as a field', async () => {
+    const doc = makeDoc({
+      raw: buildRawDoc({ metadata: { prov: 'inferred' } }),
+      project: metaProject,
+    });
+    expect(
+      await doc.saveNameAndMetadata('Test Doc', { prov: '', provSource: 'x', Date: 'q' }),
+    ).toBe(true);
+    const patch = doc.client.calls.find((c) => c.kind === 'documents.patchMetadata');
+    expect(patch.args[1]).toEqual([{ op: 'set', path: ['Date'], value: 'q' }]);
+    expect(doc._raw.metadata.prov).toBe('inferred');
+  });
+
   it('mergeMetadata patches the keys it names and deletes an undefined one', async () => {
     const doc = makeDoc({ raw: buildRawDoc({ metadata: { keep: 1, vad: { a: 1 } } }) });
     expect(await doc.mergeMetadata({ vad: undefined, seen: true })).toBe(true);

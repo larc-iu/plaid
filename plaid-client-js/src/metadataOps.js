@@ -5,6 +5,21 @@
  * nested metadata, the first a top-level key. See the manual, "Metadata".
  */
 
+import { PLAID_NAMESPACE } from './roles.js';
+import { PROVENANCE_KEYS } from './provenance.js';
+
+const RESERVED_KEYS = new Set([PLAID_NAMESPACE, ...PROVENANCE_KEYS]);
+
+/**
+ * True for a top-level metadata key Plaid keeps for itself: the shared `plaid`
+ * namespace (settings every app reads, such as the text direction) and the
+ * provenance keys. Neither is ever a user's metadata field, so an app neither
+ * lists it as one nor writes a field's value to it.
+ * @param {string} key
+ * @returns {boolean}
+ */
+export const isReservedMetadataKey = (key) => RESERVED_KEYS.has(key);
+
 // The longest top-level key the server takes, in UTF-16 code units (Java's
 // String length, which is what it counts).
 const MAX_KEY_LENGTH = 200;

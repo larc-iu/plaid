@@ -13,8 +13,7 @@
 // and is kept so item 8 can add a tagset or a description to a field without
 // rewriting what is stored.
 
-import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
-import { isProvKey } from './provenanceUi.js';
+import { PLAID_NAMESPACE, isReservedMetadataKey } from '@larc-iu/plaid-client';
 
 export const DOCUMENT_METADATA_KEY = 'documentMetadata';
 export const SENTENCE_METADATA_KEY = 'sentenceMetadata';
@@ -27,18 +26,13 @@ export const SENTENCE_METADATA_KEY = 'sentenceMetadata';
 export const SENT_ID = 'sent_id';
 
 /**
- * Keys a field may not claim, per level. `text` is derived from the document
- * body by the exporter, so a field that wrote it could silently desync the
- * `# text` line from the text it describes. `plaid` holds the settings every
- * app shares (the text direction among them), never a field's value.
+ * Keys a sentence field may not claim, beyond the ones Plaid keeps at every
+ * level (`isReservedMetadataKey`: `plaid`, which holds the settings every app
+ * shares, and the provenance keys). `text` is derived from the document body
+ * by the exporter, so a field that wrote it could silently desync the
+ * `# text` line from the text it describes.
  */
-const RESERVED = {
-  document: new Set([PLAID_NAMESPACE]),
-  sentence: new Set([SENT_ID, 'text', PLAID_NAMESPACE]),
-};
-
-// Keys no editor lists at any level, whether declared or stored.
-const hidden = (key) => isProvKey(key) || key === PLAID_NAMESPACE;
+const SENTENCE_RESERVED = new Set([SENT_ID, 'text']);
 
 /** The declared field names for a level, in the order the project set. */
 export function readMetadataFields(config, level) {
@@ -67,11 +61,15 @@ export function metadataFieldError(name, level, taken = []) {
   // line break comes back as a different field, or as a broken line, the next
   // time the document is exported and read again.
   if (/[=\r\n]/.test(trimmed)) return 'A field name cannot contain "=" or a line break.';
-  if (isProvKey(trimmed)) return `${trimmed} is reserved for provenance.`;
-  if (RESERVED[level]?.has(trimmed)) {
-    if (trimmed === SENT_ID) return 'Every sentence already has sent_id.';
-    if (trimmed === PLAID_NAMESPACE) return `${trimmed} is reserved for document settings.`;
-    return `${trimmed} is written from the document text.`;
+  if (isReservedMetadataKey(trimmed)) {
+    return trimmed === PLAID_NAMESPACE
+      ? `${trimmed} is reserved for document settings.`
+      : `${trimmed} is reserved for provenance.`;
+  }
+  if (level === 'sentence' && SENTENCE_RESERVED.has(trimmed)) {
+    return trimmed === SENT_ID
+      ? 'Every sentence already has sent_id.'
+      : `${trimmed} is written from the document text.`;
   }
   if (taken.some((t) => t.trim() === trimmed)) return `${trimmed} is already a field.`;
   return null;
@@ -88,9 +86,10 @@ export function metadataFieldError(name, level, taken = []) {
 export function metadataRows(declared, stored, level) {
   const names = [];
   if (level === 'sentence') names.push(SENT_ID);
-  for (const name of declared) if (!hidden(name) && !names.includes(name)) names.push(name);
+  for (const name of declared)
+    if (!isReservedMetadataKey(name) && !names.includes(name)) names.push(name);
   const extra = Object.keys(stored || {})
-    .filter((key) => !hidden(key) && !names.includes(key))
+    .filter((key) => !isReservedMetadataKey(key) && !names.includes(key))
     .filter((key) => !(level === 'sentence' && key === 'text'))
     .sort();
   return [

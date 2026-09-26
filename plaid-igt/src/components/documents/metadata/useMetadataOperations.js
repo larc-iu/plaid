@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PLAID_NAMESPACE } from '@larc-iu/plaid-client';
+import { isReservedMetadataKey } from '@larc-iu/plaid-client';
 import { useNavigate } from 'react-router-dom';
 import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
 import { useUnsavedGuard, dropUnsavedDrafts } from '@ui/hooks/useUnsavedDraft.js';
@@ -19,9 +19,9 @@ export const useMetadataOperations = () => {
 
   const document = doc.document;
   const project = doc.project;
-  // `plaid` holds the settings every app shares, never a field's value.
+  // `plaid` and the provenance keys are Plaid's own, never a field's value.
   const metadataFields = (readDocumentMetadata(project?.config) || []).filter(
-    (field) => field.name !== PLAID_NAMESPACE,
+    (field) => !isReservedMetadataKey(field.name),
   );
   // A metadata field names its tagset the same way an annotation field does.
   const tagsets = readTagsets(project?.config);

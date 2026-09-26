@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from plaid_client import apply_metadata_ops, metadata_ops
+from plaid_client import apply_metadata_ops, is_reserved_metadata_key, metadata_ops
 
 
 def test_metadata_ops_sets_each_key_and_deletes_a_none_one():
@@ -47,3 +47,13 @@ def test_shared_case(case):
             apply_metadata_ops(case['metadata'], case['ops'])
     else:
         assert apply_metadata_ops(case['metadata'], case['ops']) == case['result']
+
+
+@pytest.mark.parametrize('key', ['plaid', 'prov', 'provSource', 'provConfirmed', 'provProb', 'provDetail'])
+def test_the_plaid_namespace_and_the_provenance_keys_are_reserved(key):
+    assert is_reserved_metadata_key(key)
+
+
+@pytest.mark.parametrize('key', ['Plaid', 'plaid.x', 'author', 'review', 'provenance', ''])
+def test_any_other_key_is_not_reserved(key):
+    assert not is_reserved_metadata_key(key)

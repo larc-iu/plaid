@@ -7,6 +7,7 @@ import {
   mergeMetadata,
   metadataOps,
   PLAID_NAMESPACE,
+  isReservedMetadataKey,
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
   writerPolicy,
@@ -150,10 +151,11 @@ export class ConlluDocument extends DocumentModel {
   // A PATCH, not a replace: another app sharing this document may keep its own
   // keys here, and a full setMetadata would take them with it.
   //
-  // The shared `plaid` namespace is never a field: a string there would take
-  // the document's settings (its text direction) with it.
+  // The shared `plaid` namespace and the provenance keys are never a field: a
+  // string there would take the document's settings (its text direction), or
+  // the record of who made it, with it.
   async setDocumentMetadata(key, value) {
-    if (key === PLAID_NAMESPACE) return false;
+    if (isReservedMetadataKey(key)) return false;
     const next = value == null || value === '' ? null : String(value);
     if ((this.metadata[key] ?? null) === next) return false;
     const label = 'Failed to save document metadata';
@@ -173,7 +175,7 @@ export class ConlluDocument extends DocumentModel {
   // importFromConllu and toConllu). Same delete-on-empty rule as the document
   // level, and the same reason for a PATCH.
   async setSentenceMetadata(sentenceTokenId, key, value) {
-    if (key === PLAID_NAMESPACE) return false;
+    if (isReservedMetadataKey(key)) return false;
     const info = this.layerInfo;
     const token = (info.sentenceTokenLayer?.tokens || []).find(
       (t) => t.id === settledId(sentenceTokenId),

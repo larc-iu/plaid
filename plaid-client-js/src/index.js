@@ -3581,5 +3581,5 @@ export {
 } from "./provenance.js";
 // Metadata ops: the body of a metadata PATCH and of a bulk update entry's
 // `metadata`. See ./metadataOps.js.
-export { metadataOps, applyMetadataOps } from "./metadataOps.js";
+export { metadataOps, applyMetadataOps, isReservedMetadataKey } from "./metadataOps.js";
 export { MAX_BATCH_OPS };

@@ -6,7 +6,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { metadataOps, applyMetadataOps, mergeMetadata, contributeOnEdit } from "../src/index.js";
+import {
+  metadataOps,
+  applyMetadataOps,
+  isReservedMetadataKey,
+  mergeMetadata,
+  contributeOnEdit,
+} from "../src/index.js";
 
 test("metadataOps sets each key and deletes a null one", () => {
   assert.deepEqual(metadataOps({ a: 1, b: null, c: { d: 2 } }), [
@@ -52,4 +58,13 @@ test("mergeMetadata is applyMetadataOps over metadataOps", () => {
   const m = { prov: "inferred", provConfirmed: true, keep: 1 };
   const fragment = contributeOnEdit(m, "u@example.org");
   assert.deepEqual(mergeMetadata(m, fragment), applyMetadataOps(m, metadataOps(fragment)));
+});
+
+test("isReservedMetadataKey is true for the plaid namespace and the provenance keys only", () => {
+  for (const k of ["plaid", "prov", "provSource", "provConfirmed", "provProb", "provDetail"]) {
+    assert.equal(isReservedMetadataKey(k), true, k);
+  }
+  for (const k of ["Plaid", "plaid.x", "author", "review", "provenance", "", undefined]) {
+    assert.equal(isReservedMetadataKey(k), false, String(k));
+  }
 });
