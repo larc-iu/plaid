@@ -481,7 +481,11 @@ async function buildStory(ctx) {
   );
 
   // Document settings.
-  await must(doc, 'speech detection', doc.mergeMetadata({ speechDetection: [0.1, 0.9, 1.2, 2.4] }));
+  await must(
+    doc,
+    'speech detection',
+    doc.setMetadataKeys({ speechDetection: [0.1, 0.9, 1.2, 2.4] }),
+  );
 
   // Media and time alignment.
   doc = await reload(client, projectId, docId);
