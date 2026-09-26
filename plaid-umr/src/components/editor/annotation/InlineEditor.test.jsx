@@ -223,6 +223,56 @@ describe('InlineEditor', () => {
     await r.unmount();
   });
 
+  // The canvas answers no key while an editor is open, so a refused blur
+  // that left focus on the page left the keyboard nothing to press.
+  it('takes focus back after a refused blur to the page, and Escape closes it', async () => {
+    const onCancel = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        onCommit={() => {}}
+        onCancel={onCancel}
+        check={() => "Unknown relation ':zzqq'."}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'zzqq');
+    await r.step(() => input.blur());
+    await r.step(() => new Promise((done) => setTimeout(done, 10)));
+    expect(document.activeElement).toBe(input);
+    await r.step(() => press(input, 'Escape'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
+  it('closes on Escape after a refused blur to another field', async () => {
+    const onCancel = vi.fn();
+    const field = document.createElement('input');
+    document.body.appendChild(field);
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=""
+        onCommit={() => {}}
+        onCancel={onCancel}
+        check={() => "Unknown relation ':zzqq'."}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'zzqq');
+    await r.step(() => field.focus());
+    await r.step(() => new Promise((done) => setTimeout(done, 10)));
+    expect(document.activeElement).toBe(field);
+    expect(onCancel).not.toHaveBeenCalled();
+    await r.step(() => press(document.body, 'Escape'));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    await r.unmount();
+    field.remove();
+  });
+
   it('cancels on Escape', async () => {
     const onCancel = vi.fn();
     const r = await renderComponent(

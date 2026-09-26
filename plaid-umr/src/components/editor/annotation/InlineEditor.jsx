@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Combobox } from '@ui/components/shared/combobox';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -25,7 +25,9 @@ import { textIncludes } from '@ui/domain/collation.js';
 // `check` says why a value cannot be taken, or nothing when it can. Enter,
 // Tab, a click on an option or a blur on a refused value leaves the editor
 // open with the reason under it, so what was typed is there to correct and
-// nothing is dropped without a word.
+// nothing is dropped without a word. After a refused blur, focus comes back
+// to the input unless it went to another field, and Escape closes the editor
+// wherever focus is, so the keyboard is never left with no way out.
 export function InlineEditor({
   x,
   y,
@@ -52,6 +54,7 @@ export function InlineEditor({
   // the highlight only once the keyboard has moved it.
   const navigatedRef = useRef(false);
   const doneRef = useRef(false);
+  const rootRef = useRef(null);
   const once = (fn) => {
     if (doneRef.current) return;
     doneRef.current = true;
@@ -107,9 +110,32 @@ export function InlineEditor({
   // Every way of committing comes through here, so none takes what `check`
   // refuses, and a refusal stays on screen rather than closing the editor.
   const attempt = ({ text, option }) => {
-    if (doneRef.current || refuse(text)) return;
+    if (doneRef.current || refuse(text)) return false;
     once(() => commit(text, option));
+    return true;
   };
+  // A refused blur: the canvas ignores keys while an editor is open, so focus
+  // left on it or on the page would leave nothing that answers the keyboard.
+  const blurred = () => {
+    if (attempt(chosen(null))) return;
+    setTimeout(() => {
+      const root = rootRef.current;
+      if (!root || doneRef.current || editable(document.activeElement)) return;
+      root.querySelector('input')?.focus();
+    }, 0);
+  };
+  // Escape wherever focus is, while a refusal shows: focus may have gone to
+  // another field, which the input's own keys do not reach.
+  useEffect(() => {
+    if (!problem) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || rootRef.current?.contains(document.activeElement)) return;
+      e.preventDefault();
+      once(onCancel);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
   const filter = ({ options: all, search }) => {
     const q = String(search || '').trim();
     if (pristine || !q) return all;
@@ -121,6 +147,7 @@ export function InlineEditor({
 
   return (
     <div
+      ref={rootRef}
       className={`umr-inline-editor ${className}`}
       style={{ left: `${x}px`, top: `${y}px`, width: `${width}px` }}
       onPointerDown={(e) => e.stopPropagation()}
@@ -167,7 +194,7 @@ export function InlineEditor({
           setPristine(true);
           setTimeout(() => e.target.select?.(), 0);
         }}
-        onBlur={() => attempt(chosen(null))}
+        onBlur={blurred}
         onSubmit={(v, option) => attempt({ text: v, option })}
         onKeyDown={(e, combo) => {
           // The canvas listens for keys too: none of these are its.
@@ -204,6 +231,10 @@ export function InlineEditor({
     </div>
   );
 }
+
+// Whether focus sits where the keyboard types into something else.
+const editable = (el) =>
+  !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 
 // Every option as `{ value, label? }`, groups flattened.
 const flatOptions = (options) =>
