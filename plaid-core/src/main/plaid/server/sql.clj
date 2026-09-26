@@ -99,8 +99,9 @@
    table, without running them: `PRAGMA optimize` with 0x10000 (look at
    every table, not only those this connection has queried), 0x02 (the
    ANALYZE step) and 0x01 (debug: return the statements instead of running
-   them). Since SQLite 3.46 that test picks a table that was never analysed
-   or whose size has changed about 25-fold since it was. Planner statistics
+   them). In the bundled SQLite (3.50) that test picks a table that was
+   never analysed, or whose row count has grown or shrunk tenfold since it
+   was (`iRange = 33` in pragma.c, a LogEst of 10x). Planner statistics
    only have to be the right order of magnitude, and the prod database's
    big tables grow by less than that between deploys, so after the first
    pass a restart analyses almost nothing. Analysing every table took 225
