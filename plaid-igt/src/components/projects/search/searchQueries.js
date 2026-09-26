@@ -260,7 +260,7 @@ const ANY_TEXT = { regex: '.' };
  * references on ".", so a name containing one would silently group by nothing.
  * DocumentMetadataManager rejects periods in field names for this reason.
  */
-export const metadataFreqQuery = (projectId, field) => ({
+const metadataFreqQuery = (projectId, field) => ({
   scope: { projectIds: [projectId] },
   where: [['document', '?d', { metadata: { [field]: ANY_TEXT } }]],
   return: { group: [`?d.metadata.${field}`], aggregates: [['count']] },
