@@ -170,12 +170,14 @@ export async function importVocabulary({
     // operation row, one pass over the table, where a batch re-dispatches the
     // whole REST stack per item inside the same held write lock. `ids` come
     // back in input order.
-    const { ids } = await client.vocabItems.bulkCreate(
-      chunk.map((it) => ({
-        vocabLayerId: vocabId,
-        form: it.form,
-        metadata: { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id },
-      })),
+    const ids = createdIds(
+      await client.vocabItems.bulkCreate(
+        chunk.map((it) => ({
+          vocabLayerId: vocabId,
+          form: it.form,
+          metadata: { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id },
+        })),
+      ),
     );
     chunk.forEach((it, j) => {
       if (ids[j]) itemIdMap.set(it.id, ids[j]);

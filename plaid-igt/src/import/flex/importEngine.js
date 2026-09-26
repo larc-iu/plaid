@@ -11,7 +11,7 @@
 // half-imported ones are deleted and redone. Lexicon items are deduped by
 // their FLEx sense guid (metadata.flexSense).
 
-import { stampInferred, confirmedInferred, metadataOps } from '@larc-iu/plaid-client';
+import { stampInferred, confirmedInferred, createdIds, metadataOps } from '@larc-iu/plaid-client';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
@@ -410,8 +410,10 @@ export async function importLexicon({
   for (let i = 0; i < pending.length; i += CHUNK) {
     if (shouldStop?.()) throw new ImportCancelled();
     const chunk = pending.slice(i, i + CHUNK);
-    const { ids } = await client.vocabItems.bulkCreate(
-      chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
+    const ids = createdIds(
+      await client.vocabItems.bulkCreate(
+        chunk.map((p) => ({ vocabLayerId: vocabId, form: p.form, metadata: p.metadata })),
+      ),
     );
     chunk.forEach((p, j) => {
       if (ids[j]) {
@@ -687,7 +689,7 @@ async function importDocument({
     const wordIds =
       doc.words.length === 0
         ? []
-        : (
+        : createdIds(
             await client.tokens.bulkCreate(
               doc.words.map((w) => {
                 const metadata = {};
@@ -702,8 +704,8 @@ async function importDocument({
                   ...(Object.keys(metadata).length ? { metadata } : {}),
                 };
               }),
-            )
-          ).ids;
+            ),
+          );
 
     // Morpheme tokens: full word extent, 1-based precedence, metadata.form +
     // morphType. A word FLEx never analyzed gets NOTHING: its morpheme is the
