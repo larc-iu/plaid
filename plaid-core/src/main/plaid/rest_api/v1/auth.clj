@@ -526,6 +526,17 @@
                      (or (vocab/maintainer? db vocab-id user-id)
                          (vocab/write-accessible-through-project? db vocab-id user-id)))))))
 
+(defn vocab-layers-refusal
+  "The 403 for a bulk vocab write when `user-id` lacks write access to any of
+  `layer-ids` (checked with `vocab-writer?`), or nil when every layer is
+  writable. The single-id gate is `wrap-vocab-writer-required`, this is the
+  check a bulk handler runs on every distinct layer its entries touch."
+  [db layer-ids user-id]
+  (let [unwritable (vec (remove #(vocab-writer? db % user-id) (distinct layer-ids)))]
+    (when (seq unwritable)
+      {:status 403
+       :body {:error (str "User " user-id " lacks write access to vocab layer(s) " unwritable)}})))
+
 (defn wrap-vocab-maintainer-required
   "Requires that the user is a maintainer of the vocab layer or an admin."
   [handler get-vocab-id]

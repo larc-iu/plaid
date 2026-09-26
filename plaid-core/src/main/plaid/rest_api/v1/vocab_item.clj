@@ -75,11 +75,7 @@
                                          [:form string?]
                                          [:metadata {:optional true} [:map-of string? any?]]]]}
                     :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
-                               (let [layer-ids (->> items (map :vocab-layer-id) distinct)
-                                     unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
-                                 (if (seq unwritable)
-                                   {:status 403
-                                    :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
+                               (or (pra/vocab-layers-refusal db (map :vocab-layer-id items) user-id)
                                    (let [attrs-vec (mapv (fn [{:keys [vocab-layer-id form metadata]}]
                                                            (cond-> {:vocab-item/layer vocab-layer-id
                                                                     :vocab-item/form form}
@@ -89,7 +85,7 @@
                                      (if (:success result)
                                        {:status 201 :body {:ids (:extra result)}}
                                        {:status (or (:code result) 500)
-                                        :body {:error (:error result)}})))))}
+                                        :body {:error (:error result)}}))))}
              :patch {:summary (str "Update multiple vocab items in a single operation. Provide an array of objects whose keys are:\n"
                                    "<body>id</body>, the vocab item to update\n"
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"
@@ -107,11 +103,7 @@
                                           [:form {:optional true} string?]
                                           [:metadata {:optional true} metadata/metadata-ops-schema]]]}
                      :handler (fn [{{items :body} :parameters db :db user-id :user/id}]
-                                (let [layer-ids (vocab-item/get-layer-ids db (map :id items))
-                                      unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
-                                  (if (seq unwritable)
-                                    {:status 403
-                                     :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
+                                (or (pra/vocab-layers-refusal db (vocab-item/get-layer-ids db (map :id items)) user-id)
                                     (let [attrs-vec (mapv (fn [{:keys [id form metadata]}]
                                                             (cond-> {:id id}
                                                               (some? form) (assoc :vocab-item/form form)
@@ -123,23 +115,19 @@
                                         (prm/assoc-document-versions-in-header
                                          {:status 200 :body {:count (count extra)}} db documents)
                                         {:status (or code 500)
-                                         :body {:error (or error "Internal server error")}})))))}
+                                         :body {:error (or error "Internal server error")}}))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. "
                                     "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
                       :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id}]
-                                 (let [layer-ids (vocab-item/get-layer-ids db ids)
-                                       unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
-                                   (if (seq unwritable)
-                                     {:status 403
-                                      :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
+                                 (or (pra/vocab-layers-refusal db (vocab-item/get-layer-ids db ids) user-id)
                                      (let [{:keys [success code error documents]} (vocab-item/bulk-delete db ids user-id)]
                                        (if success
                                          (prm/assoc-document-versions-in-header
                                           {:status 204} db documents)
                                          {:status (or code 500)
-                                          :body {:error (or error "Internal server error")}})))))}}]
+                                          :body {:error (or error "Internal server error")}}))))}}]
 
    ["/:id"
     {:conflicting true
@@ -187,37 +175,15 @@
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
 
-   ;; Metadata operations
+   ;; Metadata operations. A vocab item has no document, so no
+   ;; ?document-version, and its gate is vocab write access.
    ["/:id/metadata"
-    {:parameters {:path [:map [:id :uuid]]}
-     :put {:summary "Replace all metadata for a vocab item. The entire metadata map is replaced - existing metadata keys not included in the request will be removed."
-           :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]
-                        metadata/wrap-metadata-shape-guard]
-           :parameters {:body [:map-of string? any?]}
-           :handler (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id}]
-                      (let [item-id (:id path-params)
-                            {:keys [success code error]} (vocab-item/set-metadata db item-id metadata user-id)]
-                        (if success
-                          {:status 200 :body (vocab-item/get db item-id)}
-                          {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-
-     ;; No shape guard, as on the shared PATCH: the caps apply to the metadata
-     ;; the ops build, which `patch-metadata!` checks, not to the op list.
-     :patch {:summary (str "Edit metadata for a vocab item " metadata/patch-summary)
-             :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
-             :parameters {:body metadata/metadata-ops-schema}
-             :handler (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id}]
-                        (let [item-id (:id path-params)
-                              {:keys [success code error]} (vocab-item/patch-metadata db item-id ops user-id)]
-                          (if success
-                            {:status 200 :body (vocab-item/get db item-id)}
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-
-     :delete {:summary "Remove all metadata from a vocab item."
-              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
-              :handler (fn [{{path-params :path} :parameters db :db user-id :user/id}]
-                         (let [item-id (:id path-params)
-                               {:keys [success code error]} (vocab-item/delete-metadata db item-id user-id)]
-                           (if success
-                             {:status 200 :body (vocab-item/get db item-id)}
-                             {:status (or code 500) :body {:error (or error "Internal server error")}})))}}]])
+    (assoc (metadata/metadata-route-data
+            {:entity-type "vocab item"
+             :entity-id-key :id
+             :writer-middleware [pra/wrap-vocab-writer-required get-vocab-id-from-item]
+             :get-fn vocab-item/get
+             :set-fn vocab-item/set-metadata
+             :patch-fn vocab-item/patch-metadata
+             :delete-fn vocab-item/delete-metadata})
+           :parameters {:path [:map [:id :uuid]]})]])

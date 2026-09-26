@@ -91,65 +91,68 @@
        "absent. A path that runs through a value that is not an object is refused (400). An empty list "
        "changes nothing."))
 
+(defn metadata-route-data
+  "The PUT, PATCH and DELETE route data for one entity type's metadata,
+  written once for all seven.
+
+   Options:
+     :entity-type        the noun in the summaries, e.g. \"span\", \"vocab item\"
+     :entity-id-key      the path parameter holding the entity's id
+     :writer-middleware  the write-access gate, a reitit middleware entry
+     :get-document-id-fn optional (fn [request]) -> the entity's document. When
+                         given, each route takes ?document-version, checks it,
+                         and returns the document's new version in a header.
+                         Vocab items, which have no document, leave it out.
+     :get-fn             (fn [db id]) -> the entity, returned after each write
+     :set-fn             (fn [db id m user-id]), replace all metadata
+     :patch-fn           (fn [db id ops user-id]), apply a list of ops
+     :delete-fn          (fn [db id user-id]), remove all metadata"
+  [{:keys [entity-type entity-id-key writer-middleware get-document-id-fn
+           get-fn set-fn patch-fn delete-fn]}]
+  (let [versioned? (some? get-document-id-fn)
+        middleware (fn [& more]
+                     (into (cond-> [writer-middleware]
+                             versioned? (conj [prm/wrap-document-version get-document-id-fn]))
+                           more))
+        query (when versioned?
+                {:query [:map [:document-version {:optional true} :int]]})
+        ;; The document is looked up before the write. `write` is
+        ;; (fn [db entity-id user-id]) and calls the entity's mutator.
+        handle (fn [{{path-params :path} :parameters db :db user-id :user/id :as request} write]
+                 (let [entity-id (get path-params entity-id-key)
+                       doc-id (when versioned? (get-document-id-fn request))
+                       {:keys [success code error]} (write db entity-id user-id)]
+                   (if success
+                     (cond-> {:status 200 :body (get-fn db entity-id)}
+                       versioned? (prm/assoc-document-version-in-header db doc-id))
+                     {:status (or code 500) :body {:error (or error "Internal server error")}})))]
+    {:put    {:summary    (str "Replace all metadata for a " entity-type ". The entire metadata map is replaced - existing metadata keys not included in the request will be removed.")
+              :middleware (middleware wrap-metadata-shape-guard)
+              :parameters (merge query {:body [:map-of string? any?]})
+              :handler    (fn [{{metadata :body} :parameters :as request}]
+                            (handle request #(set-fn %1 %2 metadata %3)))}
+     ;; No shape guard here: the caps apply to the metadata the ops build,
+     ;; which `patch-metadata!` checks, not to the op list itself.
+     :patch  {:summary    (str "Edit metadata for a " entity-type " " patch-summary)
+              :middleware (middleware)
+              :parameters (merge query {:body metadata-ops-schema})
+              :handler    (fn [{{ops :body} :parameters :as request}]
+                            (handle request #(patch-fn %1 %2 ops %3)))}
+     :delete (cond-> {:summary    (str "Remove all metadata from a " entity-type ".")
+                      :middleware (middleware)
+                      :handler    (fn [request] (handle request delete-fn))}
+               versioned? (assoc :parameters query))}))
+
 (defn metadata-routes
-  "Generate metadata routes for a given entity type.
-
-   Args:
-     entity-type - The entity type string (e.g. 'span', 'relation', 'token', 'text')
-     entity-id-key - The path parameter key for entity ID (e.g. :span-id, :relation-id)
-     get-project-id-fn - Function to get project ID for authorization
-     get-document-id-fn - Function to get document ID
-     entity-get-fn - Function to get the entity after metadata operations
-     entity-set-metadata-fn - Function to set (replace all) metadata on the entity
-     entity-delete-metadata-fn - Function to delete metadata from the entity
-     entity-patch-metadata-fn - Function to apply a list of metadata ops to the entity
-
-   Returns:
-     Vector of route definitions for metadata operations"
+  "The `/metadata` routes of a document-scoped entity, gated on project write
+  access and on ?document-version. See `metadata-route-data`."
   [entity-type entity-id-key get-project-id-fn get-document-id-fn entity-get-fn entity-set-metadata-fn entity-delete-metadata-fn entity-patch-metadata-fn]
-
   ["/metadata"
-   {:put    {:summary    (str "Replace all metadata for a " entity-type ". The entire metadata map is replaced - existing metadata keys not included in the request will be removed.")
-             :middleware [[pra/wrap-writer-required get-project-id-fn]
-                          [prm/wrap-document-version get-document-id-fn]
-                          wrap-metadata-shape-guard]
-             :parameters {:query [:map [:document-version {:optional true} :int]]
-                          :body [:map-of string? any?]}
-             :handler    (fn [{{path-params :path metadata :body} :parameters db :db user-id :user/id :as request}]
-                           (let [entity-id (get path-params entity-id-key)
-                                 doc-id (get-document-id-fn request)
-                                 {:keys [success code error]} (entity-set-metadata-fn db entity-id metadata user-id)]
-                             (if success
-                               (prm/assoc-document-version-in-header
-                                {:status 200 :body (entity-get-fn db entity-id)}
-                                db doc-id)
-                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-    ;; No shape guard here: the caps apply to the metadata the ops build,
-    ;; which `patch-metadata!` checks, not to the op list itself.
-    :patch  {:summary    (str "Edit metadata for a " entity-type " " patch-summary)
-             :middleware [[pra/wrap-writer-required get-project-id-fn]
-                          [prm/wrap-document-version get-document-id-fn]]
-             :parameters {:query [:map [:document-version {:optional true} :int]]
-                          :body metadata-ops-schema}
-             :handler    (fn [{{path-params :path ops :body} :parameters db :db user-id :user/id :as request}]
-                           (let [entity-id (get path-params entity-id-key)
-                                 doc-id (get-document-id-fn request)
-                                 {:keys [success code error]} (entity-patch-metadata-fn db entity-id ops user-id)]
-                             (if success
-                               (prm/assoc-document-version-in-header
-                                {:status 200 :body (entity-get-fn db entity-id)}
-                                db doc-id)
-                               {:status (or code 500) :body {:error (or error "Internal server error")}})))}
-    :delete {:summary (str "Remove all metadata from a " entity-type ".")
-             :middleware [[pra/wrap-writer-required get-project-id-fn]
-                          [prm/wrap-document-version get-document-id-fn]]
-             :parameters {:query [:map [:document-version {:optional true} :int]]}
-             :handler (fn [{{path-params :path} :parameters db :db user-id :user/id :as request}]
-                        (let [entity-id (get path-params entity-id-key)
-                              doc-id (get-document-id-fn request)
-                              {:keys [success code error]} (entity-delete-metadata-fn db entity-id user-id)]
-                          (if success
-                            (prm/assoc-document-version-in-header
-                             {:status 200 :body (entity-get-fn db entity-id)}
-                             db doc-id)
-                            {:status (or code 500) :body {:error (or error "Internal server error")}})))}}])
+   (metadata-route-data {:entity-type entity-type
+                         :entity-id-key entity-id-key
+                         :writer-middleware [pra/wrap-writer-required get-project-id-fn]
+                         :get-document-id-fn get-document-id-fn
+                         :get-fn entity-get-fn
+                         :set-fn entity-set-metadata-fn
+                         :patch-fn entity-patch-metadata-fn
+                         :delete-fn entity-delete-metadata-fn})])

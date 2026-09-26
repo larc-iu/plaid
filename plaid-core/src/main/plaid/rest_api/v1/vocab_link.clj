@@ -155,11 +155,7 @@
                       :parameters {:query [:map [:document-version {:optional true} :int]]
                                    :body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
-                                 (let [layer-ids (->> ids (keep #(vocab-link/get-vocab-layer db %)) distinct)
-                                       unwritable (remove #(pra/vocab-writer? db % user-id) layer-ids)]
-                                   (if (seq unwritable)
-                                     {:status 403
-                                      :body {:error (str "User " user-id " lacks write access to vocab layer(s) " (vec unwritable))}}
+                                 (or (pra/vocab-layers-refusal db (keep #(vocab-link/get-vocab-layer db %) ids) user-id)
                                      (let [doc-id (bulk-get-document-id req)
                                            {:keys [success code error]} (vocab-link/bulk-delete db ids user-id)]
                                        (if success
@@ -167,7 +163,7 @@
                                           {:status 204}
                                           db doc-id)
                                          {:status (or code 500)
-                                          :body {:error (or error "Internal server error")}})))))}}]
+                                          :body {:error (or error "Internal server error")}}))))}}]
 
    ["/:id"
     {:conflicting true
