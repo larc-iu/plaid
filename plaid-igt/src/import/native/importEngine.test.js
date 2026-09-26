@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { applyMetadataOps } from '@larc-iu/plaid-client';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import {
@@ -1667,14 +1670,38 @@ describe('runNativeImport, references in metadata', () => {
 });
 
 // The same list core's document copy rewrites, which core holds as
-// `plaid.sql.document/metadata-reference-kinds` in
-// plaid-core/src/main/plaid/sql/document.clj, where it reads
-// `[:document :texts :tokens :spans :relations :vocab-links]` after the tables,
-// and where `plaid.sql.document-copy-test` pins it against this one. A new
-// document-scoped table joins both lists or its references dangle on one side.
+// `plaid.sql.document/metadata-reference-kinds` under the names of its tables.
+// This test reads that vector out of the Clojure source, so a document-scoped
+// table added on either side fails here until both lists name it.
+// `plaid.sql.document-copy-test` checks core's list against the tables a
+// document read returns.
+const CORE_DOCUMENT_CLJ = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../plaid-core/src/main/plaid/sql/document.clj',
+);
+const CORE_KIND_NAMES = {
+  document: 'document',
+  texts: 'text',
+  tokens: 'token',
+  spans: 'span',
+  relations: 'relation',
+  'vocab-links': 'link',
+};
+function coreReferenceKinds() {
+  const source = readFileSync(CORE_DOCUMENT_CLJ, 'utf8');
+  const def = source.match(/\(def metadata-reference-kinds\s+"(?:[^"\\]|\\.)*"\s*\[([^\]]*)\]\)/);
+  if (!def) throw new Error(`no metadata-reference-kinds vector in ${CORE_DOCUMENT_CLJ}`);
+  return def[1]
+    .trim()
+    .split(/\s+/)
+    .map((k) => k.replace(/^:/, ''));
+}
 describe('the kinds of row a reference in metadata can name', () => {
   it('is the list core rewrites on a copy, in this import s own words', () => {
-    expect(REFERENCE_KINDS).toEqual(['document', 'text', 'token', 'span', 'relation', 'link']);
+    const core = coreReferenceKinds();
+    expect(core.length).toBeGreaterThan(0);
+    expect(core.filter((k) => !(k in CORE_KIND_NAMES))).toEqual([]);
+    expect(REFERENCE_KINDS).toEqual(core.map((k) => CORE_KIND_NAMES[k]));
   });
 });
 

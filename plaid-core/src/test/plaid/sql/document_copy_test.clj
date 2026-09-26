@@ -328,13 +328,10 @@
 (deftest the-rewrite-covers-every-kind-of-row-a-document-owns
   (let [proj (create-test-project admin-request "CopyKinds")
         doc-id (create-test-document admin-request proj "Doc")]
-    (testing "the kinds are listed once, in the var the copy reads"
-      (is (= [:document :texts :tokens :spans :relations :vocab-links]
-             doc/metadata-reference-kinds)
-          (str "plaid-igt rewrites the same list when it imports a native archive "
-               "(src/import/native/references.js) and pins it against this one, so "
-               "a change here is a change there.")))
-    (testing "and they are every kind a document read returns"
+    ;; plaid-igt's importEngine.test.js reads this var out of document.clj
+    ;; and checks its own REFERENCE_KINDS (src/import/native/references.js)
+    ;; against it, so the two lists cannot drift apart.
+    (testing "the kinds are every kind a document read returns"
       (is (= (set doc/metadata-reference-kinds)
              (set (keys (drows/read-rows db doc-id))))
           (str "a new document-scoped table has to join the rewrite too, or ids of "
