@@ -236,11 +236,11 @@ Who changed what, when, and under which operation label. The assistant's own app
 
 ### comments
 
-What people have written to each other on a document or one of its sentences. These are notes between annotators, never annotation.
+What people have written to each other: in the whole project (no document), in one document, or on one of its sentences (document + ref). These are notes between annotators, never annotation. Oldest first.
 
-- `document` (string, required): Document id or exact name (see project_overview).
+- `document` (string): Document id or exact name (see project_overview).
 - `ref` (string): One sentence, e.g. "s3".
-- `limit` (integer): Comments to show (default 30, max 200).
+- `limit` (integer): Newest entries to show (default 30, max 200).
 
 ### plan_status
 

@@ -69,10 +69,8 @@ def test_every_app_reads_the_whole_projects_comments_with_their_authors(app):
     assert 'ref needs a document' in call_tool(ws, 'comments', {'ref': 's1'})
 
 
-@pytest.mark.parametrize('app', ['igt', 'ud'])
+@pytest.mark.parametrize('app', sorted(APPS))
 def test_the_comments_schema_says_a_document_is_optional(app):
-    # umr's table (umr/toolkit.py) still declares document required and says
-    # "on a document or one of its sentences": its owner changes it.
     import importlib
     tools = importlib.import_module(f'plaid_agent.{app}.toolkit').TOOLS
     spec = next(t['function'] for t in tools if t['function']['name'] == 'comments')
