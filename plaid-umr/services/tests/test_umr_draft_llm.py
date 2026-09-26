@@ -695,15 +695,8 @@ def test_a_numbered_op_and_an_inverse_role_are_known_relations():
     assert (result['drafted'], result['failed']) == (1, 0)
 
 
-def test_the_node_roles_are_the_apps():
-    """The roles a draft may not give a value are every role the app does not
-    type as an attribute, read out of its inventory so the two cannot drift."""
-    import re
-    inventory = (SERVICES.parent / 'src' / 'domain' / 'format' / 'inventory.js').read_text()
-    body = inventory[inventory.index('export const KNOWN_RELATIONS'):]
-    named = set()
-    for names, kind in re.findall(r"add\(\s*\[([^\]]*)\],\s*'([a-z]+)'", body):
-        if kind != 'attribute':
-            named |= set(re.findall(r"'(:[^']+)'", names))
-    assert named == umr.NODE_ROLES
-    assert "add(ARG_ROLES, 'participant'" in body
+def test_the_draft_refuses_a_value_by_the_shared_inventory():
+    """The draft's node-only roles are the inventory's in plaid_client, which
+    ``test_umr_inventory_mirror.py`` holds to the app's inventory.js."""
+    from plaid_client.workflows.umr import inventory
+    assert umr.edge_only is inventory.edge_only

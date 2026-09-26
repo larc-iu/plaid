@@ -66,3 +66,11 @@ def test_the_attributes_are_the_apps(js):
 
 def test_the_closed_attribute_values_are_the_apps(js):
     assert {k: list(v) for k, v in inventory.ATTRIBUTE_VALUES.items()} == js['values']
+
+
+def test_the_node_roles_are_the_apps_roles_that_are_not_attributes(js):
+    """What the draft service and the skeleton refuse a value under."""
+    roles = set(js['known']) - set(js['attributes'])
+    assert inventory.NODE_ROLES == frozenset(r for r in roles if not inventory.ARG_ROLE.match(r))
+    assert all(inventory.edge_only(r, 'see-01') for r in roles)
+    assert not any(inventory.edge_only(r, 'see-01') for r in js['attributes'])
