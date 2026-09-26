@@ -98,7 +98,7 @@ def test_merging_or_deleting_members_removes_a_collapsed_expression():
     assert op['link_ids'] == [MWE_LINK] and 'the multi-word expression "gam akuna" goes with it' in op['label']
     c = w3.client
     execute_plan(c, [op], source='s', label='l')
-    assert [(r, m, a) for r, m, a, k in c.batches[0]] == [('vocab_links', 'delete', (MWE_LINK,)), ('tokens', 'delete', ('w-3',))]
+    assert c.batches[0] == [('vocab_links.delete', MWE_LINK), ('tokens.delete', 'w-3')]
 
 
 def test_entry_tools_move_and_delete_the_whole_expression_once():
@@ -114,9 +114,9 @@ def test_entry_tools_move_and_delete_the_whole_expression_once():
     assert w2.ops[-1]['links'] == [MWE_LINK]
     c = w.client
     execute_plan(c, [w.ops[0]], source='s', label='l')
-    first = [(r, m, a) for r, m, a, k in c.batches[0]]
-    assert first[0] == ('vocab_links', 'delete', (MWE_LINK,))
-    assert first[1][:2] == ('vocab_links', 'create') and first[1][2][:2] == ('vi-gam', ['w-2', 'w-3'])
+    first = c.batches[0]
+    assert first[0] == ('vocab_links.delete', MWE_LINK)
+    assert first[1][0] == 'vocab_links.create' and first[1][1]['args'][:2] == ('vi-gam', ['w-2', 'w-3'])
     # A phrase entry is not a stale link on its members, and each member counts as a use.
     out = call_tool(w, 'check_lexicon', {'section': 'stale'})
     assert '0 links whose form no longer contains the entry form' in out
@@ -145,11 +145,12 @@ def test_execute_link_phrase_and_pending_entries():
             'existing_link_id': None, 'label': ''}]
     counts = execute_plan(c, ops, source='s', label='l')
     assert counts == {'new lexicon entries': 1, 'multi-word expressions': 2}
-    first = [(r, m, a) for r, m, a, k in c.batches[0]]
-    assert first[1] == ('vocab_links', 'delete', (MWE_LINK,))
-    assert first[2][:2] == ('vocab_links', 'create') and first[2][2][:2] == ('vi-ali', ['w-1', 'w-2'])
-    second = [(r, m, a) for r, m, a, k in c.batches[1]]
-    assert second[0][:2] == ('vocab_links', 'create') and second[0][2][:2] == ('new-vocab_items-0', ['w-2', 'w-3'])
+    first = c.batches[0]
+    assert first[1] == ('vocab_links.delete', MWE_LINK)
+    assert first[2][0] == 'vocab_links.create' and first[2][1]['args'][:2] == ('vi-ali', ['w-1', 'w-2'])
+    # The entry the first batch made, by the id the fake answered with.
+    second = c.batches[1]
+    assert second[0][0] == 'vocab_links.create' and second[0][1]['args'][:2] == ('vocab_items-1', ['w-2', 'w-3'])
     # A member deleted elsewhere in the plan refuses the expression, as a
     # deleted entry does: the pair is refused while it is being staged, and
     # this is the backstop under that.

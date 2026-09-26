@@ -60,20 +60,21 @@ UD_RESTORE = {'kind': 'restore_document', 'document_id': 'ud1', 'as_of': '2026-0
 
 def _igt_ws():
     from fixtures import project_raw, document_raw, lexicon_raw
-    from fixtures_ext import ExtClient
+    from fixtures import FakeClient
     from plaid_agent.igt.project import load_project
     from plaid_agent.igt.workspace import Workspace
-    c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
+    c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
+                   restore_summary=None)
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = True
     return w
 
 
 def _ud_ws():
-    from ud_fixtures import PID, ExtClient, project_raw, document_raw
+    from ud_fixtures import PID, FakeClient, project_raw, document_raw
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+    c = FakeClient(project=project_raw(), documents={'ud1': document_raw()}, restore_summary=None)
     return Workspace(c, load_project(c, PID))
 
 

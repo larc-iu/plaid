@@ -174,7 +174,7 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     svc.process_request(_request(client, approve={'plan_id': 'plan1', 'as_human': True}), helper)
     assert not helper.errors, helper.errors
     assert helper.done[0]['kind'] == 'applied' and helper.done[0]['applied'] == 1
-    assert client.calls('spans', 'create'), 'the span was written'
+    assert client.payloads('spans.create'), 'the span was written'
     conv, meta = store.load('c1')
     assert conv['display'][1]['status'] == 'applied' and conv['display'][1]['as_human'] is True
     assert conv['messages'][-1]['content'].startswith('(note) The plan was approved and applied: 1 field value.')
@@ -183,7 +183,7 @@ def test_approving_applies_the_plan_from_the_record_and_settles_it():
     helper2 = Helper(request_id='r10')
     svc.process_request(_request(client, approve={'plan_id': 'plan1'}), helper2)
     assert helper2.done[0]['duplicate'] is True
-    assert len(client.calls('spans', 'create')) == 1
+    assert len(client.payloads('spans.create')) == 1
 
 
 def test_a_stale_plan_is_refused_and_left_undecided():
@@ -193,7 +193,7 @@ def test_a_stale_plan_is_refused_and_left_undecided():
     helper = Helper(request_id='r9')
     _service().process_request(_request(client, approve={'plan_id': 'plan1'}), helper)
     assert helper.errors and 'has changed since the plan was made' in helper.errors[0]
-    assert not client.calls('spans', 'create')
+    assert not client.payloads('spans.create')
     conv, meta = store.load('c1')
     assert conv['display'][1]['status'] is None and meta['pending'] is None
 
@@ -205,7 +205,7 @@ def test_a_settled_plan_is_not_applied(status, expected):
     helper = Helper(request_id='r9')
     _service().process_request(_request(client, approve={'plan_id': 'plan1'}), helper)
     assert helper.errors == [expected]
-    assert not client.calls('spans', 'create')
+    assert not client.payloads('spans.create')
 
 
 def test_the_workspace_is_released_when_the_turn_ends(monkeypatch):

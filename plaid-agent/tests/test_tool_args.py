@@ -77,10 +77,10 @@ class NoWeb:
 
 def _igt_ws():
     from fixtures import project_raw, document_raw, lexicon_raw
-    from fixtures_ext import ExtClient
+    from fixtures import FakeClient
     from plaid_agent.igt.project import load_project
     from plaid_agent.igt.workspace import Workspace
-    c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
+    c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
     w = Workspace(c, load_project(c, 'p1'))
     w.prefer_scan = True
     w.web = NoWeb()
@@ -94,10 +94,10 @@ def _ud_ws():
     # This app's own fake client. It read IGT's, whose audit log names IGT's
     # documents, so a UD tool reading one document's history read entries from
     # the other app's project.
-    from ud_fixtures import PID, ExtClient, project_raw, document_raw
+    from ud_fixtures import PID, FakeClient, project_raw, document_raw
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+    c = FakeClient(project=project_raw(), documents={'ud1': document_raw()})
     w = Workspace(c, load_project(c, PID))
     w.web = NoWeb()
     # A file on the conversation: without one read_file refuses for want of an
@@ -107,10 +107,10 @@ def _ud_ws():
 
 
 def _umr_ws():
-    from umr_fixtures import PID, ExtClient, project_raw, document_raw
+    from umr_fixtures import PID, FakeClient, project_raw, document_raw
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
+    c = FakeClient(project=project_raw(), documents={'umr1': document_raw()})
     w = Workspace(c, load_project(c, PID))
     w.web = NoWeb()
     # A file on the conversation: without one read_file refuses for want of an

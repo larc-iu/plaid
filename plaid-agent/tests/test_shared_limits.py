@@ -100,29 +100,29 @@ def _ws_and_call(app):
     from file_fixtures import WORDLIST, attached
     if app == 'igt':
         from fixtures import project_raw, document_raw, lexicon_raw
-        from fixtures_ext import ExtClient
+        from fixtures import FakeClient
         from plaid_agent.igt.project import load_project
         from plaid_agent.igt.toolkit import call_tool
         from plaid_agent.igt.workspace import Workspace
-        c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
+        c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw())
         w = Workspace(c, load_project(c, 'p1'))
         w.prefer_scan = True
         w.files = attached(('wordlist.csv', WORDLIST))
         return w, call_tool
     if app == 'ud':
-        from ud_fixtures import PID, ExtClient, project_raw, document_raw
+        from ud_fixtures import PID, FakeClient, project_raw, document_raw
         from plaid_agent.ud.project import load_project
         from plaid_agent.ud.toolkit import call_tool
         from plaid_agent.ud.tools import Workspace
-        c = ExtClient(project=project_raw(), documents={'ud1': document_raw()})
+        c = FakeClient(project=project_raw(), documents={'ud1': document_raw()})
         w = Workspace(c, load_project(c, PID))
         w.files = attached(('wordlist.csv', WORDLIST))
         return w, call_tool
-    from umr_fixtures import PID, ExtClient, project_raw, document_raw
+    from umr_fixtures import PID, FakeClient, project_raw, document_raw
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.toolkit import call_tool
     from plaid_agent.umr.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()})
+    c = FakeClient(project=project_raw(), documents={'umr1': document_raw()})
     w = Workspace(c, load_project(c, PID))
     w.files = attached(('wordlist.csv', WORDLIST))
     return w, call_tool

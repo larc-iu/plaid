@@ -1,8 +1,6 @@
 """Fixtures for the multi-word expression, review, comment, history, and
-restore tools: variants of the fixture document, and this app's fake client
-with the comments, audit window and restore dry run the newer tools call."""
+restore tools: variants of the fixture document."""
 
-from core.fake_client import ExtFakeClient
 from fixtures import FakeClient, document_raw, lexicon_raw
 
 MWE_LINK = 'l-mwe'
@@ -30,7 +28,7 @@ def mwe_client(machine_mwe: bool = False):
     if machine_mwe:
         raw['text_layers'][0]['token_layers'][1]['vocabs'][0]['vocab_links'][1]['metadata'] = \
             {'prov': 'inferred', 'provSource': 'service:mwe'}
-    return ExtClient(documents={'d1': raw}, lexicon=mwe_lexicon_raw())
+    return FakeClient(documents={'d1': raw}, lexicon=mwe_lexicon_raw())
 
 
 ANN = 'ann@x.com'
@@ -52,7 +50,3 @@ def contributed_document_raw():
     layers[2]['span_layers'][0]['spans'][1]['metadata'] = dict(machine)                   # sp-m1b
     return raw
 
-
-class ExtClient(ExtFakeClient, FakeClient):
-    """This app's fake client, with the comments resource, the audit window
-    and the restore dry run the newer tools call."""

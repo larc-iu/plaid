@@ -68,7 +68,7 @@ def test_set_morpheme_changes_form_or_type_in_place():
     c = w.client
     execute_plan(c, w.ops, source='s', label='l')
     both = [{'op': 'delete', 'path': ['morphType']}, {'op': 'set', 'path': ['form'], 'value': 'är'}]
-    assert ('tokens', 'patch_metadata', ('m-4b', both), {}) in c.log
+    assert ('m-4b', both) in c.patches('tokens')
     # A rewrite of the chain deletes every morpheme after the first, so the two
     # form changes above are writes to something that will not be there. The
     # tools refuse the pair as it is staged; this is the backstop under that.

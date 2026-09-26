@@ -2,7 +2,7 @@
 
 import pytest
 
-from core.fake_client import as_fragment
+from plaid_client.testing import as_fragment
 from plaid_agent.ud.plan import execute_plan, summarize
 from plaid_agent.ud.project import load_project
 from plaid_agent.ud.toolkit import TOOLS, WRITE_TOOLS, call_tool
@@ -104,7 +104,7 @@ def test_a_head_write_takes_the_suppressors_it_would_strand_with_it():
     run(ws, 'set_head', document='Viaje', ref='s1.w5', head=4, deprel='punct')
     assert ws.ops[0]['suppressor_ids'] == ['e-1', 'e-2']
     execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = ws.client.payloads('relations.delete')
     assert deleted == ['r-4', 'e-1', 'e-2']
     assert len(ws.client.batches) == 1, 'in the same batch as the relation itself'
 
@@ -120,7 +120,7 @@ def test_a_relabel_keeps_the_enhanced_graph_as_it_was():
     run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='nmod')
     assert ws.ops[0]['suppressor_ids'] == []
     execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = ws.client.payloads('relations.delete')
     assert 'e-1' not in deleted
 
 
@@ -129,7 +129,7 @@ def test_removing_a_head_takes_the_suppressor_over_it():
     run(ws, 'del_relation', document='Viaje', refs=['s1.w5'])
     assert ws.ops[0]['suppressor_ids'] == ['e-1']
     execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in ws.client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = ws.client.payloads('relations.delete')
     assert deleted == ['r-4', 'e-1']
 
 
@@ -249,8 +249,7 @@ def test_a_plan_never_confirms_what_it_deletes(ws):
     assert 'cleared' in run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
     assert 'confirming 1' in run(ws, 'confirm', document='Viaje')
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
-    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
-    assert calls == [('spans', 'delete', ('sp-u3',))]
+    assert ws.client.batches[0] == [('spans.delete', 'sp-u3')]
     assert 'the plan deletes what it confirms' in ' '.join(counts.get('notes') or [])
     assert counts['field values'] == 1
 
@@ -358,8 +357,8 @@ def test_confirming_a_whole_document_is_one_scope_op_resolved_at_approval(ws):
     assert payload['changes'][0]['where']['kind'] == 'document'
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'confirmations': 1}
-    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
-    assert calls == [('spans', 'patch_metadata', ('sp-u3', [{'op': 'set', 'path': ['provConfirmed'], 'value': True}]))]
+    assert ws.client.batches[0] == [
+        ('spans.bulk_update', [{'id': 'sp-u3', 'metadata': [{'op': 'set', 'path': ['provConfirmed'], 'value': True}]}])]
 
 
 def test_a_scope_needs_the_project_to_read_with(ws):
@@ -414,9 +413,8 @@ def test_a_large_group_of_like_changes_is_stored_as_one_op(ws, monkeypatch):
     assert summarize(payload['ops']) == '4 field values'
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'field values': 4}
-    calls = [(m, a) for r, m, a, k in ws.client.batches[0]]
-    assert [a[1] for m, a in calls if m == 'create'] == [['uw-1'], ['uw-2a'], ['uw-2b']]
-    assert ('update', ('sp-l3', 'punto')) in calls  # s1.w4 "mar" already had a lemma span
+    assert [p['args'][1] for kind, p in ws.client.batches[0] if kind == 'spans.create'] == [['uw-1'], ['uw-2a'], ['uw-2b']]
+    assert ('sp-l3', 'punto') in ws.client.updates('spans')  # s1.w4 "mar" already had a lemma span
 
 
 def test_confirm_says_so_when_nothing_is_waiting(ws):
@@ -438,8 +436,7 @@ def test_discarding_a_whole_document_is_one_scope_op_that_clears_at_approval(ws)
     assert summarize(ws.ops) == '1 cleared value'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'field values': 1}
-    calls = [(r, m, a) for r, m, a, k in ws.client.batches[0]]
-    assert calls == [('spans', 'delete', ('sp-u3',))]
+    assert ws.client.batches[0] == [('spans.delete', 'sp-u3')]
 
 
 # --- the plan -------------------------------------------------------------------
@@ -485,18 +482,18 @@ def test_a_head_on_an_unannotated_word_makes_its_lemma_first(ws):
     # Two batches: the lemma spans first, because a relation cannot point at an
     # id made in the same batch.
     assert len(ws.client.batches) == 2
-    made = [e for e in ws.client.batches[0] if e[0] == 'spans' and e[1] == 'create']
-    assert [e[2][2] for e in made] == ['.', 'Corre']     # valued with the FORM
-    rel = ws.client.batches[1][-1]
-    assert rel[0] == 'relations' and rel[1] == 'create' and rel[2][3] == 'punct'
+    made = [p for kind, p in ws.client.batches[0] if kind == 'spans.create']
+    assert [p['args'][2] for p in made] == ['.', 'Corre']     # valued with the FORM
+    kind, rel = ws.client.batches[1][-1]
+    assert kind == 'relations.create' and rel['args'][3] == 'punct'
 
 
 def test_replacing_a_head_deletes_the_old_relation_in_the_same_batch(ws):
     run(ws, 'set_head', document='Viaje', ref='s1.w4', head=1, deprel='obj')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     last = ws.client.batches[-1]
-    assert [(e[0], e[1]) for e in last] == [('relations', 'delete'), ('relations', 'create')]
-    assert last[0][2] == ('r-3',)
+    assert [kind for kind, _ in last] == ['relations.delete', 'relations.create']
+    assert last[0][1] == 'r-3'
 
 
 def test_applying_a_field_value_stamps_it_and_counts_it(ws):
@@ -504,17 +501,16 @@ def test_applying_a_field_value_stamps_it_and_counts_it(ws):
     counts = execute_plan(ws.client, ws.ops, source='service:ud:assist', label='l',
                           stamp_mode='verified')
     assert counts == {'field values': 1}
-    updates = ws.client.calls('spans', 'update')
-    assert updates[0][2] == ('sp-l1', 'irse')
-    patch = as_fragment(ws.client.calls('spans', 'patch_metadata')[0][2][1])
+    assert ws.client.updates('spans')[0] == ('sp-l1', 'irse')
+    patch = as_fragment(ws.client.patches('spans')[0][1])
     assert patch['prov'] == 'inferred' and patch['provConfirmed'] is True
 
 
 def test_a_human_approval_writes_no_provenance(ws):
     run(ws, 'set_field', document='Viaje', refs=['s2.w1'], field='lemma', value='correr')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='human')
-    created = ws.client.calls('spans', 'create')[0]
-    assert created[2][3] == {}
+    created = ws.client.payloads('spans.create')[0]
+    assert created['args'][3] == {}
 
 
 def test_summarize_reads_as_a_phrase():
@@ -655,10 +651,11 @@ def test_run_parse_names_documents_without_reading_them(ws, monkeypatch):
     corpus-sized parse is a full fetch each for a string the document list
     already holds. A document named twice is also parsed once."""
     monkeypatch.setattr('plaid_agent.ud.tools.parse_services', lambda w: _parsers('stanza-parser'))
+    reads = len(ws.client.reads)
     out = call_tool(ws, 'run_parse', {'documents': ['Viaje', 'ud1', 'Viaje']})
     assert 'Planned a parse of 1 document(s)' in out and '"Viaje"' in out
     assert ws.ops[0]['document_ids'] == ['ud1']
-    assert not [e for e in ws.client.log if e[:2] == ('documents', 'get')], 'no document was read'
+    assert len(ws.client.reads) == reads, 'no document was read'
 
 
 def test_run_parse_refuses_more_documents_than_one_plan_covers(ws, monkeypatch):
@@ -888,20 +885,19 @@ def test_applying_a_reshape_remakes_the_words_then_their_spans(ws):
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
     assert counts == {'reshaped tokens': 1}
     first, second = ws.client.batches
-    kinds = [(e[0], e[1]) for e in first]
-    assert kinds == [('tokens', 'bulk_delete'), ('tokens', 'bulk_create'),
-                     ('tokens', 'patch_metadata')]
+    kinds = [kind for kind, _ in first]
+    assert kinds == ['tokens.bulk_delete', 'tokens.bulk_create', 'tokens.patch_metadata']
     # The multi-word token records its own surface, the way the editor does.
-    assert first[2][2][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
+    assert first[2][1][1] == [{'op': 'set', 'path': ['form'], 'value': 'Corre'}]
     # Then a Form and a Lemma span per word, which could not be in the first
     # batch: they name ids that batch made.
-    assert [(e[0], e[1]) for e in second] == [('spans', 'bulk_create')] * 4
+    assert [kind for kind, _ in second] == ['spans.bulk_create'] * 4
 
 
 def test_collapsing_to_one_word_drops_the_tokens_form(ws):
     call_tool(ws, 'set_words', {'document': 'Viaje', 'ref': 's1.w2-3', 'forms': ['al']})
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
-    patch = ws.client.calls('tokens', 'patch_metadata')[0][2][1]
+    patch = ws.client.patches('tokens')[0][1]
     assert patch == [{'op': 'delete', 'path': ['form']}]
     # One word spelled like its token needs no Form span, only a lemma.
     assert len(ws.client.batches[1]) == 1
@@ -969,10 +965,9 @@ def test_setting_a_lemma_and_a_head_together_makes_ONE_lemma_span(ws):
     run(ws, 'set_head', document='Viaje', ref='s2.w1', head=0, deprel='root')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
 
-    made = [e for e in ws.client.log
-            if e[0] == 'spans' and e[1] == 'create' and e[2][0] == LEMMA]
+    made = [p['args'] for p in ws.client.payloads('spans.create') if p['args'][0] == LEMMA]
     assert len(made) == 1, f'{len(made)} lemma spans for one word: {made}'
-    assert made[0][2][2] == 'correr', 'the approved lemma is the one that exists'
+    assert made[0][2] == 'correr', 'the approved lemma is the one that exists'
 
 
 def test_a_failed_parse_does_not_claim_that_nothing_was_written(ws, monkeypatch):
@@ -1018,15 +1013,15 @@ def test_clearing_a_lemma_keeps_its_span_so_the_arcs_on_it_survive(ws):
     # Deleting the span cascades all three. The editor nulls it instead.
     run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='lemma', value='')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
-    assert ws.client.calls('spans', 'delete') == []
-    assert ws.client.calls('spans', 'update')[0][2] == ('sp-l3', None)
+    assert ws.client.payloads('spans.delete') == []
+    assert ws.client.updates('spans')[0] == ('sp-l3', None)
 
 
 def test_clearing_any_other_column_still_deletes_its_span(ws):
     run(ws, 'set_field', document='Viaje', refs=['s1.w4'], field='upos', value='')
     execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
-    assert ws.client.calls('spans', 'delete')[0][2] == ('sp-u3',)
-    assert ws.client.calls('spans', 'update') == []
+    assert ws.client.payloads('spans.delete')[0] == 'sp-u3'
+    assert ws.client.updates('spans') == []
 
 
 def _span(obj, span_id):
@@ -1124,8 +1119,7 @@ def test_a_field_wide_replacement_is_one_planned_change_resolved_at_approval():
     assert payload['changes'][0]['where'] is None
     counts = execute_plan(ws.client, payload['ops'], source='s', label='l', project=ws.project)
     assert counts == {'field values': 2}
-    updates = [a for r, m, a, k in ws.client.batches[0] if m == 'update']
-    assert updates == [('sp-l3', 'mare'), ('sp-x', 'mare')]
+    assert ws.client.updates('spans') == [('sp-l3', 'mare'), ('sp-x', 'mare')]
 
 
 def test_a_replacement_the_pattern_leaves_unchanged_plans_nothing(ws):
@@ -1168,8 +1162,8 @@ def test_a_deprel_replacement_relabels_the_relations(ws):
     assert summarize(ws.ops) == '1 relabeled dependency'
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'relabeled dependencies': 1}
-    calls = [(m, a[:2]) for r, m, a, k in ws.client.batches[0]]
-    assert calls[0] == ('update', ('r-3', 'obl:arg')) and calls[1][0] == 'patch_metadata'
+    [(kind, [item])] = ws.client.batches[0]
+    assert kind == 'relations.bulk_update' and (item['id'], item['value']) == ('r-3', 'obl:arg') and item['metadata']
     assert 'empty label' in run(ws, 'replace_in_field', field='deprel', pattern='obl', replacement='')
 
 
@@ -1307,12 +1301,10 @@ def test_a_comment_is_a_plan_op_on_a_sentence_or_the_document(ws):
     run(ws, 'add_comment', document='Viaje', body='Whole document note')
     assert ws.ops[1]['entity_type'] == 'document' and ws.ops[1]['ref'] is None
     assert summarize(ws.ops) == '2 comments'
-    from core.fake_client import Recorder
-    ws.client.comments = Recorder(ws.client.log, 'comments')
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', project=ws.project)
     assert counts == {'comments': 2}
-    calls = [(m, a) for r, m, a, k in ws.client.batches[0]]
-    assert calls[0][0] == 'create' and calls[0][1][:2] == ('token', 'us-1')
+    kind, first = ws.client.batches[0][0]
+    assert kind == 'comments.create' and first['args'][:2] == ('token', 'us-1')
 
 
 def test_search_matches_case_only_when_asked(ws):
@@ -1345,5 +1337,5 @@ def test_a_change_made_by_name_beats_a_scope_at_approval(ws):
     _engine_rows(ws, [('sp-l3', 'mar', 'ud1', 'uw-3'), ('sp-l1', 'ir', 'ud1', 'uw-1')])
     run(ws, 'replace_in_field', field='lemma', pattern='[a-z]+', replacement='X', regex=True)
     execute_plan(ws.client, ws.plan_payload()['ops'], source='s', label='l', project=ws.project)
-    updates = [a for r, m, a, k in ws.client.batches[0] if m == 'update']
+    updates = ws.client.updates('spans')
     assert ('sp-l3', 'océano') in updates and ('sp-l3', 'X') not in updates and ('sp-l1', 'X') in updates

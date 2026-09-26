@@ -1,7 +1,7 @@
 """A small IGT project, document and lexicon in the live API's shape, and the
-app-neutral fake client (``tests/core/fake_client.py``) carrying them."""
+fake client carrying them."""
 
-from core.fake_client import BaseFakeClient
+from project_client import AgentFakeClient
 
 PID = 'p1'
 TEXT_LAYER, SENT_LAYER, WORD_LAYER, MORPH_LAYER = 'tl', 'tk-sent', 'tk-word', 'tk-morph'
@@ -112,15 +112,16 @@ def guidelines_raw():
     ]
 
 
-class FakeClient(BaseFakeClient):
-    """The app-neutral fake client with this app's project, document, lexicon
-    and audit log."""
+class FakeClient(AgentFakeClient):
+    """The fake client with this app's project, document, lexicon and audit
+    log."""
 
-    def __init__(self, project=None, documents=None, lexicon=None, audit=None, guidelines=None):
+    def __init__(self, project=None, documents=None, lexicon=None, audit=None, guidelines=None,
+                 **kw):
         super().__init__(project or project_raw(),
                          documents if documents is not None else {'d1': document_raw()},
                          audit if audit is not None else audit_raw(),
-                         guidelines if guidelines is not None else guidelines_raw())
+                         guidelines if guidelines is not None else guidelines_raw(), **kw)
         self._lexicon = lexicon or lexicon_raw()
 
     class _VocabLayers:

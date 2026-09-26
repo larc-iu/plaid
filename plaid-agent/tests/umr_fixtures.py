@@ -7,7 +7,7 @@ exercised by every test that reads the fixture rather than by one test that
 remembers to.
 """
 
-from core.fake_client import BaseFakeClient, ExtFakeClient
+from project_client import AgentFakeClient
 
 PID = 'mp1'
 TEXT_LAYER, SENT_LAYER, WORD_LAYER = 'm-tl', 'm-sent', 'm-word'
@@ -154,20 +154,15 @@ def guidelines_raw():
     ]
 
 
-class FakeClient(BaseFakeClient):
-    """The app-neutral fake client with this app's project, document and audit
+class FakeClient(AgentFakeClient):
+    """The fake client with this app's project, document and audit
     log."""
 
-    def __init__(self, project=None, documents=None, audit=None, guidelines=None):
+    def __init__(self, project=None, documents=None, audit=None, guidelines=None, **kw):
         super().__init__(project or project_raw(),
                          documents if documents is not None else {'umr1': document_raw()},
                          audit if audit is not None else audit_raw(),
-                         guidelines if guidelines is not None else guidelines_raw())
-
-
-class ExtClient(ExtFakeClient, FakeClient):
-    """This app's fake client, with the comments resource, the audit window and
-    the restore dry run the newer tools call."""
+                         guidelines if guidelines is not None else guidelines_raw(), **kw)
 
 
 def umr_client(**kw):

@@ -192,11 +192,11 @@ def _workspace(raw):
 def _sent(client):
     """What a plan sent, in the runner's terms."""
     out = []
-    for resource, method, args, _ in client.log:
-        if resource == 'tokens' and method in ('split', 'merge'):
-            out.append([method, *args])
-        elif resource == 'relations' and method == 'delete':
-            out.append(['delete', args[0]])
+    for kind, payload in client.writes:
+        if kind in ('tokens.split', 'tokens.merge'):
+            out.append([kind.split('.')[1], *payload])
+        elif kind == 'relations.delete':
+            out.append(['delete', payload])
     return out
 
 

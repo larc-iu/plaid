@@ -260,12 +260,10 @@ def test_load_reads_one_request_with_the_bodies_on_it():
 def test_a_server_that_cannot_answer_leaves_the_project_without_a_manual():
     # An older server, or a reader who cannot see them. Not having any has to
     # look the same as not having written any yet, rather than failing the turn.
-    class Old(FakeClient):
-        @property
-        def guidelines(self):
-            raise AttributeError('no such resource')
+    old = FakeClient()
+    del old.guidelines
 
-    assert load(Old(), PID) == []
+    assert load(old, PID) == []
 
 
 # --- drafting one ------------------------------------------------------------
@@ -283,7 +281,7 @@ def test_a_draft_is_a_plan_op_and_writes_nothing(ws):
     assert 'Loanwords' in op['label'], 'the approval line names what is being added'
     assert 'not segmented' in op['label'], 'and shows what it will SAY, not a description of it'
     # Nothing reached the server.
-    assert not [c for c in ws.client.log if c[0] == 'guidelines']
+    assert not [k for k, _ in ws.client.calls if k.startswith('guidelines.')]
 
 
 def test_a_targeted_edit_changes_one_passage_and_leaves_the_rest_byte_for_byte(ws):
@@ -352,16 +350,16 @@ def _apply(ws):
 def test_a_revision_is_written_against_what_it_read(ws):
     t_revise_guideline(ws, 'Translations', find='Idiomatic', replace='Idiomatic and plain')
     _apply(ws)
-    write = next(c for c in ws.client.log if c[0] == 'guidelines' and c[1] == 'update')
-    assert write[2] == ('gl2',)
-    assert write[3]['expected_updated_at'] == '2026-09-11T09:00:00Z'
+    [write] = ws.client.payloads('guidelines.update')
+    assert write['args'] == ('gl2',)
+    assert write['kwargs']['expected_updated_at'] == '2026-09-11T09:00:00Z'
 
 
 def test_a_guideline_edited_since_the_plan_was_made_is_refused_not_overwritten(ws):
     from plaid_agent.core.plan import PlanError
     t_revise_guideline(ws, 'Translations', find='Idiomatic', replace='Idiomatic and plain')
     # Somebody saves their own edit between the plan and the approval.
-    row = next(r for r in ws.client._guidelines if r['id'] == 'gl2')
+    row = next(r for r in ws.client.guideline_rows if r['id'] == 'gl2')
     row['body'] = 'Their own words.'
     row['updated_at'] = '2026-09-20T12:00:00Z'
     with pytest.raises(PlanError) as e:

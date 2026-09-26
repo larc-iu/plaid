@@ -2,15 +2,15 @@
 listed, and confirmable next to unconfirmed machine output, and never
 discarded as if they were a machine's."""
 
-from fixtures import scan_ws
-from fixtures_ext import ExtClient, contributed_document_raw, ANN, BOB
+from fixtures import FakeClient, scan_ws
+from fixtures_ext import contributed_document_raw, ANN, BOB
 
 from plaid_agent.igt.project import render_document
 from plaid_agent.igt.toolkit import call_tool
 
 
 def ws():
-    return scan_ws(ExtClient(documents={'d1': contributed_document_raw()}))
+    return scan_ws(FakeClient(documents={'d1': contributed_document_raw()}))
 
 
 def test_reads_mark_contributions_apart_from_machine_output():
@@ -49,7 +49,7 @@ def test_confirm_covers_contributions_and_discard_does_not():
 
 def test_confirm_without_a_document_covers_the_project():
     from fixtures import document_raw
-    c = ExtClient(documents={'d1': contributed_document_raw(), 'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
+    c = FakeClient(documents={'d1': contributed_document_raw(), 'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
     w = scan_ws(c)
     out = call_tool(w, 'confirm', {'documents': ['all']})
     assert 'Planned 1 change' in out and '3 annotations will be marked verified' in out
@@ -68,7 +68,7 @@ def test_a_document_name_in_documents_is_one_document_and_not_the_project():
     anything waiting. Explicit "all" is the only thing that means the
     project."""
     from fixtures import document_raw
-    c = ExtClient(documents={'d1': contributed_document_raw(),
+    c = FakeClient(documents={'d1': contributed_document_raw(),
                              'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
     w = scan_ws(c)
     out = call_tool(w, 'confirm', {'documents': 'Text 2'})
@@ -82,7 +82,7 @@ def test_a_document_name_in_documents_is_one_document_and_not_the_project():
 
 def test_one_document_named_twice_is_reviewed_once():
     from fixtures import document_raw
-    c = ExtClient(documents={'d1': contributed_document_raw(),
+    c = FakeClient(documents={'d1': contributed_document_raw(),
                              'd2': {**document_raw(), 'id': 'd2', 'name': 'Text 2'}})
     w = scan_ws(c)
     out = call_tool(w, 'confirm', {'documents': ['Text 1', 'd1']})
@@ -134,7 +134,7 @@ def test_a_confirmation_of_a_document_leaves_out_what_the_plan_deletes():
     layers[1]['span_layers'][0]['spans'].append(
         {'id': 'sp-g2', 'value': 'fish', 'tokens': ['w-2'],
          'metadata': {'prov': 'inferred', 'provSource': 'service:x'}})
-    w = scan_ws(ExtClient(documents={'d1': raw}))
+    w = scan_ws(FakeClient(documents={'d1': raw}))
     assert 'Planned' in call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w1']})
     assert '4 annotations will be marked verified' in call_tool(w, 'confirm', {'document': 'd1'})
     counts = execute_plan(w.client, w.ops, source='s', label='l', project=w.project)

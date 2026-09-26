@@ -27,21 +27,21 @@ def _row(cid, did, etype, eid, label, body, day):
 def _ws(app, rows):
     if app == 'igt':
         from fixtures import scan_ws
-        from fixtures_ext import ExtClient
+        from fixtures import FakeClient
         from plaid_agent.igt.toolkit import call_tool, _IMPL
-        return scan_ws(ExtClient(comments=rows)), call_tool, _IMPL, 'Text 1'
+        return scan_ws(FakeClient(comments=rows)), call_tool, _IMPL, 'Text 1'
     if app == 'ud':
-        from ud_fixtures import PID, ExtClient
+        from ud_fixtures import PID, FakeClient
         from plaid_agent.ud.project import load_project
         from plaid_agent.ud.tools import Workspace
         from plaid_agent.ud.toolkit import call_tool, _IMPL
-        c = ExtClient(comments=rows)
+        c = FakeClient(comments=rows)
         return Workspace(c, load_project(c, PID)), call_tool, _IMPL, 'Viaje'
-    from umr_fixtures import PID, ExtClient
+    from umr_fixtures import PID, FakeClient
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.tools import Workspace
     from plaid_agent.umr.toolkit import call_tool, _IMPL
-    c = ExtClient(comments=rows)
+    c = FakeClient(comments=rows)
     return Workspace(c, load_project(c, PID)), call_tool, _IMPL, 'Story'
 
 
@@ -101,7 +101,7 @@ def test_a_project_wide_listing_names_the_document_and_loads_only_a_few():
     each one sits: past the budget a comment is shown by its label."""
     import copy
     from fixtures import document_raw, scan_ws
-    from fixtures_ext import ExtClient
+    from fixtures import FakeClient
     from plaid_agent.igt.toolkit import call_tool
     docs = {}
     for i in range(history.COMMENT_DOC_BUDGET + 2):
@@ -110,7 +110,7 @@ def test_a_project_wide_listing_names_the_document_and_loads_only_a_few():
         docs[d['id']] = d
     rows = [_row(f'c{i}', f'd{i}', 'token', 's-2', f'Sentence 2 of Text {i}', 'Note.', 1)
             for i in range(len(docs))]
-    c = ExtClient(documents=docs, comments=rows)
+    c = FakeClient(documents=docs, comments=rows)
     ws = scan_ws(c)
     out = call_tool(ws, 'comments', {'limit': 200})
     assert '@ "Text 0" s2: Note.' in out

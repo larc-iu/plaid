@@ -146,11 +146,11 @@ def test_a_constant_no_triple_has_used_yet_is_made_with_it(client, ws):
     assert [op['kind'] for op in ws.ops] == ['create_node', 'create_triple']
     execute_plan(client, ws.plan_payload()['ops'], source='t', label='L', project=ws.project,
                  stamp_mode='human', contributor=None)
-    span = next(e for e in client.log if e[0] == 'spans' and e[1] == 'create')
-    assert span[2][2] == 'author'
-    assert span[2][3]['umr'] == {'var': 'author', 'attrs': [], 'constant': True}
-    relation = next(e for e in client.log if e[0] == 'relations' and e[1] == 'create')
-    assert relation[2][1] == 'new-spans-0' and relation[2][2] == 'mc-b'
+    span = client.payloads('spans.create')[0]['args']
+    assert span[2] == 'author'
+    assert span[3]['umr'] == {'var': 'author', 'attrs': [], 'constant': True}
+    relation = client.payloads('relations.create')[0]['args']
+    assert relation[1] == 'spans-2' and relation[2] == 'mc-b'   # the span the node's batch made
 
 
 def test_a_triple_between_two_constants_says_whose_block_writes_it(ws):
@@ -187,7 +187,7 @@ def test_deleting_a_triple_names_the_relation_it_found(client, ws):
     assert ws.ops[0]['relation_id'] == 'md-1'
     execute_plan(client, ws.plan_payload()['ops'], source='t', label='L', project=ws.project,
                  stamp_mode='verified', contributor=None)
-    assert ('relations', 'delete', ('md-1',), {}) in client.log
+    assert 'md-1' in client.payloads('relations.delete')
 
 
 def test_removing_a_triple_the_plan_already_cascades_is_refused_either_way(ws):
@@ -259,12 +259,12 @@ def test_set_attributes_keeps_the_rest_of_the_node_when_it_is_applied(client, ws
     placed = ws.ops[0]['attrs']
     execute_plan(client, ws.plan_payload()['ops'], source='t', label='L', project=ws.project,
                  stamp_mode='verified', contributor=None)
-    patch = next(e for e in client.log if e[0] == 'spans' and e[1] == 'patch_metadata')
-    assert patch[2][0] == 'mc-b'
-    assert [o for o in patch[2][1] if o['path'][0] == 'umr'] == [
+    patched, ops = client.patches('spans')[0]
+    assert patched == 'mc-b'
+    assert [o for o in ops if o['path'][0] == 'umr'] == [
         {'op': 'set', 'path': ['umr', 'attrs'], 'value': placed}]
     before = ws.doc('Story').nodes_by_id['mc-b'].metadata
-    assert apply_metadata_ops(before, patch[2][1])['umr'] == {'var': 's1b', 'root': True, 'attrs': placed}
+    assert apply_metadata_ops(before, ops)['umr'] == {'var': 's1b', 'root': True, 'attrs': placed}
 
 
 def test_set_attributes_on_a_node_that_is_not_there_names_the_ones_that_are(ws):

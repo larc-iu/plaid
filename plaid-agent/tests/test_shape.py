@@ -106,15 +106,14 @@ def test_execute_shape_ops_in_order():
     counts = execute_plan(c, ops, source='s', label='l')
     assert counts == {'split words': 1, 'word merges': 1, 'deleted words': 1, 'split sentences': 1,
                       'sentence merges': 1}
-    calls = [(r, m, a) for r, m, a, k in c.batches[0]]
-    assert calls == [
-        ('tokens', 'bulk_delete', (['m-1a', 'm-1b'],)), ('tokens', 'split', ('w-1', 3)),
-        ('tokens', 'bulk_delete', (['m-2'],)), ('tokens', 'merge', ('w-2', 'w-3')), ('tokens', 'merge', ('w-2', 'w-x')),
-        ('spans', 'update', ('sp-a', 'a | b')), ('spans', 'delete', ('sp-b',)), ('spans', 'delete', ('sp-d',)),
-        ('vocab_links', 'delete', ('l-b',)),
-        ('tokens', 'delete', ('w-4',)),
-        ('tokens', 'split', ('s-1', 7)),
-        ('tokens', 'merge', ('s-1', 's-2')), ('spans', 'update', ('sp-t1', 'x | y')), ('spans', 'delete', ('sp-t2',))]
+    assert c.batches[0] == [
+        ('tokens.bulk_delete', ['m-1a', 'm-1b']), ('tokens.split', ('w-1', 3)),
+        ('tokens.bulk_delete', ['m-2']), ('tokens.merge', ('w-2', 'w-3')), ('tokens.merge', ('w-2', 'w-x')),
+        ('spans.update', ('sp-a', 'a | b')), ('spans.delete', 'sp-b'), ('spans.delete', 'sp-d'),
+        ('vocab_links.delete', 'l-b'),
+        ('tokens.delete', 'w-4'),
+        ('tokens.split', ('s-1', 7)),
+        ('tokens.merge', ('s-1', 's-2')), ('spans.update', ('sp-t1', 'x | y')), ('spans.delete', 'sp-t2')]
 
 
 def test_ops_on_tokens_a_shape_op_removes_refuse_the_plan_or_are_filtered():
@@ -313,7 +312,7 @@ class _TextServer:
 
     def __init__(self, c):
         self.c = c
-        c.texts.update = self.update  # replaces the recorder for this resource method
+        c.texts.update = self.update  # replaces the fake's recording for this method
 
     def update(self, text_id, body):
         raw = self.c._documents['d1']
@@ -346,7 +345,7 @@ class _TextServer:
                 a['end'] = b2['begin']
             sents[-1]['end'] = len(body)
         tl['text']['body'] = body
-        self.c.log.append(('texts', 'update', (text_id, body), {}))
+        self.c.record('texts.update', (text_id, body))
         return {'id': text_id}
 
 
@@ -362,7 +361,7 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
                 new = {'id': f'{sid}-r', 'begin': pos, 'end': t['end']}
                 t['end'] = pos
                 c._documents['d1']['text_layers'][0]['token_layers'][0]['tokens'].append(new)
-                c.log.append(('tokens', 'split', (sid, pos), {}))
+                c.record('tokens.split', (sid, pos))
                 return {'id': new['id']}
         raise AssertionError(sid)
     c.tokens.split = split
@@ -371,10 +370,10 @@ def test_execute_append_splits_the_gap_filled_sentence_and_tokenizes_words():
     counts = execute_plan(c, [op], source='s', label='l', project=project)
     assert counts == {'text edits': 1}
     body = 'Ali-di gam akuna. Gam-ar.\nGam akuna.\n\n  Ali gam.'
-    assert ('texts', 'update', ('text1', body), {}) in c.log
-    splits = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'split')]
+    assert ('texts.update', ('text1', body)) in c.writes
+    splits = c.payloads('tokens.split')
     assert splits == [('s-2', 26), ('s-2-r', 40)]   # the last sentence was gap-filled over the new text, then split per line
-    bulk = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'bulk_create')][0][0]
+    bulk = c.payloads('tokens.bulk_create')[0]
     assert [(body[t['begin']:t['end']], t['token_layer_id']) for t in bulk] == \
         [('Gam', 'tk-word'), ('akuna', 'tk-word'), ('Ali', 'tk-word'), ('gam', 'tk-word')]
     # Existing words were left alone (no re-creation over them).
@@ -392,16 +391,16 @@ def test_execute_retype_keeps_unchanged_words_and_verifies_the_region():
           'morpheme_ids': ['m-1a', 'm-1b', 'm-2'], 'label': ''}
     execute_plan(c, [op], source='s', label='l', project=project)
     body = 'Ali-di gam gam akuna. Gam-ar.'
-    assert ('texts', 'update', ('text1', body), {}) in c.log
-    assert not [1 for r, m, a, k in c.log if (r, m) == ('tokens', 'split')]  # no newline: no new sentence
-    bulk = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'bulk_create')][0][0]
+    assert ('texts.update', ('text1', body)) in c.writes
+    assert not c.payloads('tokens.split')  # no newline: no new sentence
+    bulk = c.payloads('tokens.bulk_create')[0]
     assert [(t['begin'], t['end']) for t in bulk] == [(11, 14)]  # only the inserted "gam" is new; the rest survived
     # The region no longer reads as planned: refused, nothing written.
     c2 = FakeClient()
     _TextServer(c2)
     with pytest.raises(PlanError, match='no longer reads'):
         execute_plan(c2, [{**op, 'old': 'Something else.'}], source='s', label='l', project=project)
-    assert not [1 for r, m, a, k in c2.log if r == 'texts']
+    assert not [kind for kind, _ in c2.writes if kind.startswith('texts.')]
 
 
 def test_ops_on_retyped_words_are_dropped():
@@ -462,6 +461,6 @@ def test_a_single_delete_never_repeats_what_a_bulk_already_took():
             'label': ''}]
     out, _ = normalize_ops(ops)
     execute_plan(c, out, source='s', label='l')
-    singles = [a for r, m, a, k in c.log if (r, m) == ('tokens', 'delete')]
-    assert ('m-1b',) not in singles and ('m-1a',) not in singles
-    assert [a for r, m, a, k in c.log if (r, m) == ('tokens', 'bulk_delete')] == [(['m-1a', 'm-1b'],)]
+    singles = c.payloads('tokens.delete')
+    assert 'm-1b' not in singles and 'm-1a' not in singles
+    assert c.payloads('tokens.bulk_delete') == [['m-1a', 'm-1b']]

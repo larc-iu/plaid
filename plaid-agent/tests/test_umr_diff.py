@@ -36,20 +36,20 @@ def kinds(diff):
 
 
 def applied(client, ws, plan=None):
-    """Approve what the workspace has planned and hand back the write log."""
+    """Approve what the workspace has planned and hand back the writes."""
     payload = plan or ws.plan_payload()
     execute_plan(client, payload['ops'], source='test', label='Assistant: test',
                  project=ws.project, stamp_mode='verified', contributor=None)
-    return client.log
+    return client.writes
 
 
 def landed(client, ws, span_id):
     """A span's metadata once every patch the log holds for it has landed, in
     order, over what the fixture stored."""
     meta = ws.doc('Story').nodes_by_id[span_id].metadata
-    for e in client.log:
-        if e[0] == 'spans' and e[1] == 'patch_metadata' and e[2][0] == span_id:
-            meta = apply_metadata_ops(meta, e[2][1])
+    for patched, ops in client.patches('spans'):
+        if patched == span_id:
+            meta = apply_metadata_ops(meta, ops)
     return meta
 
 
@@ -145,43 +145,43 @@ def test_a_created_node_is_written_as_a_token_then_a_span_then_its_relation(clie
                                      '    :place (s1y / yard)\n    :aspect performance)')
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
     log = applied(client, ws)
-    assert [(e[0], e[1]) for e in log] == [
-        ('tokens', 'bulk_create'), ('spans', 'create'), ('relations', 'create')]
+    assert [kind for kind, _ in log] == ['tokens.bulk_create', 'spans.create', 'relations.create']
     # Three batches, because a span cannot name a token its own batch minted.
     assert [len(b) for b in client.batches] == [1, 1, 1]
     # The anchor covers the whole sentence, not a point at its start: core
     # deletes a zero-width token a text edit spans, and the node would go
     # with it (c6313696).
     s1 = ws.doc('Story').sentences[0]
-    token = next(e for e in log if e[0] == 'tokens')
-    assert (token[2][0][0]['begin'], token[2][0][0]['end']) == (s1.begin, s1.end)
-    span = next(e for e in log if e[0] == 'spans')
-    assert span[2][0] == 'm-concept' and span[2][2] == 'yard'
-    assert span[2][1] == ['new-tokens-0-0']          # the token the first batch made
+    [[token]] = client.payloads('tokens.bulk_create')
+    assert (token['begin'], token['end']) == (s1.begin, s1.end)
+    [span] = [p['args'] for p in client.payloads('spans.create')]
+    assert span[0] == 'm-concept' and span[2] == 'yard'
+    assert span[1] == ['tokens-1']          # the token the first batch made
     # Unaligned, so it records its sentence.
-    assert span[2][3]['umr'] == {
+    assert span[3]['umr'] == {
         'var': 's1y', 'attrs': [], 'sentence': ws.doc('Story').sentences[0].id}
-    relation = next(e for e in log if e[0] == 'relations')
-    assert relation[2][:4] == ('m-rel', 'mc-b', 'new-spans-0', ':place')
+    [relation] = [p['args'] for p in client.payloads('relations.create')]
+    assert relation[:4] == ('m-rel', 'mc-b', 'spans-2', ':place')   # the span the second made
 
 
 def test_a_concept_change_is_one_span_update_carrying_the_approval_stamp(client, ws):
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
                                    'text': SENTENCE_1_PENMAN.replace('bark-01', 'bark-02')})
     log = applied(client, ws)
-    assert ('spans', 'update', ('mc-b', 'bark-02'), {}) in log
-    stamp = apply_metadata_ops({}, next(e for e in log if e[1] == 'patch_metadata')[2][1])
+    assert client.updates('spans') == [('mc-b', 'bark-02')]
+    [(_, ops)] = client.patches('spans')
+    stamp = apply_metadata_ops({}, ops)
     assert stamp['provConfirmed'] is True and stamp['provSource'] == 'test'
 
 
 def test_an_attribute_change_sets_the_attributes_alone(client, ws):
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
                                    'text': SENTENCE_1_PENMAN.replace('singular', 'plural')})
-    log = applied(client, ws)
-    patch = next(e for e in log if e[0] == 'spans' and e[1] == 'patch_metadata')
-    assert patch[2][0] == 'mc-d'
+    applied(client, ws)
+    [(patched, ops)] = client.patches('spans')
+    assert patched == 'mc-d'
     attrs = [{'rel': ':refer-number', 'value': 'plural', 'order': 0}]
-    assert [o for o in patch[2][1] if o['path'][0] == 'umr'] == [
+    assert [o for o in ops if o['path'][0] == 'umr'] == [
         {'op': 'set', 'path': ['umr', 'attrs'], 'value': attrs}]
     assert landed(client, ws, 'mc-d')['umr'] == {'var': 's1d', 'attrs': attrs}
 
@@ -190,7 +190,7 @@ def test_a_dropped_node_is_written_as_deleting_its_anchor_tokens(client, ws):
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1,
                                    'text': '(s1b / bark-01\n    :aspect performance)'})
     log = applied(client, ws)
-    assert [(e[0], e[1], e[2]) for e in log] == [('tokens', 'bulk_delete', (['mn-2'],))]
+    assert log == [('tokens.bulk_delete', ['mn-2'])]
 
 
 def test_a_node_delete_declares_its_cascade_and_the_row_counts_the_triples(ws):
@@ -208,16 +208,16 @@ def test_a_re_root_takes_the_mark_off_before_the_new_root_wears_one(client, ws):
     text = ('(s1y / yard\n    :place (s1b / bark-01\n        :ARG0 (s1d / dog\n'
             '            :refer-number singular)\n        :aspect performance))')
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
-    log = applied(client, ws)
-    off = next(e for e in log if e[0] == 'spans' and e[1] == 'patch_metadata')
-    assert off[2][0] == 'mc-b' and {'op': 'delete', 'path': ['umr', 'root']} in off[2][1]
+    applied(client, ws)
+    [(patched, ops)] = client.patches('spans')
+    assert patched == 'mc-b' and {'op': 'delete', 'path': ['umr', 'root']} in ops
     assert 'root' not in landed(client, ws, 'mc-b')['umr']
-    on = next(e for e in log if e[0] == 'spans' and e[1] == 'create')
-    assert on[2][3]['umr']['root'] is True
+    [on] = client.payloads('spans.create')
+    assert on['args'][3]['umr']['root'] is True
     # The mark comes off in an EARLIER batch than the one that puts it on, so
     # no two nodes wear it, whichever way a failure falls.
-    assert client.batches[0][-1][1] == 'patch_metadata'
-    assert client.batches[1][0][1] == 'create'
+    assert client.batches[0][-1][0] == 'spans.bulk_update'
+    assert client.batches[1][0][0] == 'spans.create'
 
 
 def test_a_node_re_rooted_and_re_attributed_at_once_keeps_both(client, ws):
@@ -230,9 +230,8 @@ def test_a_node_re_rooted_and_re_attributed_at_once_keeps_both(client, ws):
     call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
     kinds_on_d = sorted(op['kind'] for op in ws.ops if op.get('span_id') == 'mc-d')
     assert kinds_on_d == ['set_attrs', 'set_root']
-    log = applied(client, ws)
-    assert any(e[0] == 'spans' and e[1] == 'patch_metadata' and e[2][0] == 'mc-d'
-               for e in log), 'the node was never patched'
+    applied(client, ws)
+    assert 'mc-d' in [patched for patched, _ in client.patches('spans')], 'the node was never patched'
     umr = landed(client, ws, 'mc-d')['umr']
     assert umr['root'] is True and umr['var'] == 's1d'
     assert [(a['rel'], a['value']) for a in umr['attrs']] == [(':refer-number', 'plural')]

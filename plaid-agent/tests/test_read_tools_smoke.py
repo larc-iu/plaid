@@ -111,13 +111,13 @@ def _empty_engine(client):
 
 
 def _igt(scan: bool):
-    # ExtClient, not FakeClient: it serves the comments table, the audit
+    # FakeClient, not FakeClient: it serves the comments table, the audit
     # windows and the restore dry run, so those tool bodies actually run.
     from fixtures import project_raw, document_raw, lexicon_raw
-    from fixtures_ext import ExtClient
+    from fixtures import FakeClient
     from plaid_agent.igt.project import load_project
     from plaid_agent.igt.workspace import Workspace
-    c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
+    c = FakeClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
                   comments=[{'id': 'c1', 'document_id': 'd1', 'entity_type': 'document', 'entity_id': 'd1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
                              'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
@@ -133,13 +133,13 @@ def _igt(scan: bool):
 
 
 def _ud(scan: bool):
-    # This app's ExtClient, whose audit log names this project's document: the
+    # This app's FakeClient, whose audit log names this project's document: the
     # other app's named a document the UD project does not have, so the history
     # tools answered "nothing has changed" and the sweep took it for an answer.
-    from ud_fixtures import ExtClient, project_raw, document_raw
+    from ud_fixtures import FakeClient, project_raw, document_raw
     from plaid_agent.ud.project import load_project
     from plaid_agent.ud.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'ud1': document_raw()},
+    c = FakeClient(project=project_raw(), documents={'ud1': document_raw()},
                   comments=[{'id': 'c1', 'document_id': 'ud1', 'entity_type': 'document', 'entity_id': 'ud1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
                              'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
@@ -151,10 +151,10 @@ def _ud(scan: bool):
 
 
 def _umr(scan: bool):
-    from umr_fixtures import ExtClient, project_raw, document_raw
+    from umr_fixtures import FakeClient, project_raw, document_raw
     from plaid_agent.umr.project import load_project
     from plaid_agent.umr.tools import Workspace
-    c = ExtClient(project=project_raw(), documents={'umr1': document_raw()},
+    c = FakeClient(project=project_raw(), documents={'umr1': document_raw()},
                   comments=[{'id': 'c1', 'document_id': 'umr1', 'entity_type': 'document',
                              'entity_id': 'umr1', 'body': 'a note',
                              'created_at': '2026-09-01T10:00:00Z',

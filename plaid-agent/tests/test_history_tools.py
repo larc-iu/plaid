@@ -5,8 +5,8 @@ import datetime
 
 import pytest
 
-from fixtures import scan_ws
-from fixtures_ext import ExtClient
+from fixtures import FakeClient, scan_ws
+from plaid_client.http import PlaidAPIError
 
 from plaid_agent.igt.plan import execute_plan, validate_ops
 from plaid_agent.igt.toolkit import call_tool
@@ -17,7 +17,7 @@ def _ago(days):
 
 
 def _client_with_audit():
-    c = ExtClient()
+    c = FakeClient()
     c.audit = [
         {'id': 'a', 'time': _ago(2), 'end_time': _ago(2), 'user': {'id': 'a@b.com', 'display_name': 'Luke G'},
          'message': 'Assistant: 2 field values', 'documents': [{'id': 'd1', 'name': 'Text 1'}], 'ops': [{'type': 'span/create'}, {'type': 'span/update'}]},
@@ -79,7 +79,7 @@ def _comments():
 
 
 def test_comments_resolve_anchors_to_references():
-    c = ExtClient(comments=_comments())
+    c = FakeClient(comments=_comments())
     w = scan_ws(c)
     out = call_tool(w, 'comments', {})
     lines = out.split('\n')
@@ -98,7 +98,7 @@ def test_comments_resolve_anchors_to_references():
 
 
 def test_add_comment_plans_with_the_editors_captions_and_posts_on_approval():
-    c = ExtClient()
+    c = FakeClient()
     w = scan_ws(c)
     call_tool(w, 'add_comment', {'document': 'd1', 'body': 'Check with the speaker.'})
     call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1', 'body': 'Odd word order.'})
@@ -120,7 +120,7 @@ def test_add_comment_plans_with_the_editors_captions_and_posts_on_approval():
     assert [d['id'] for d in w.plan_payload()['documents']] == ['d1']
     counts = execute_plan(c, ops[:3], source='s', label='l')
     assert counts == {'comments': 3}
-    assert ('comments', 'create', ('token', 'w-2', 'fish or net?'), {'anchor_label': 'gam, sentence 1'}) in c.log
+    assert {'args': ('token', 'w-2', 'fish or net?'), 'kwargs': {'anchor_label': 'gam, sentence 1'}} in c.payloads('comments.create')
 
 
 def test_a_comment_on_something_the_plan_deletes_refuses_rather_than_failing_the_batch():
@@ -149,12 +149,12 @@ def test_a_comment_on_something_the_plan_deletes_refuses_rather_than_failing_the
 def test_a_comment_and_a_delete_of_its_anchor_refuse_each_other_at_staging():
     """The refusal above is the backstop. The tools refuse the pair while the
     model can still put the two in separate turns, whichever it stages first."""
-    w = scan_ws(ExtClient())
+    w = scan_ws(FakeClient())
     assert 'Planned' in call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w2', 'body': 'fish or net?'})
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
     assert 'writes to something this plan deletes' in out
     assert [o['kind'] for o in w.ops] == ['add_comment']
-    w2 = scan_ws(ExtClient())
+    w2 = scan_ws(FakeClient())
     assert 'Planned' in call_tool(w2, 'delete_word', {'document': 'd1', 'refs': ['s1.w2']})
     assert 'writes to something this plan deletes' in call_tool(
         w2, 'add_comment', {'document': 'd1', 'ref': 's1.w2', 'body': 'fish or net?'})
@@ -168,14 +168,14 @@ def test_a_comment_and_a_retype_over_it_are_refused_rather_than_one_being_droppe
     a comment silently missing from a plan the user had approved, in both
     orders. Every other guard over a text edit treats its word ids as
     deleted, so this pair is refused where the model can still split it."""
-    c = ExtClient()
+    c = FakeClient()
     w = scan_ws(c)
     call_tool(w, 'add_comment', {'document': 'd1', 'ref': 's1.w1', 'body': 'check this'})
     assert 'rewrites the text over a word it also comments on' in call_tool(
         w, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
     assert [o['kind'] for o in w.ops] == ['add_comment']
 
-    w2 = scan_ws(ExtClient())
+    w2 = scan_ws(FakeClient())
     call_tool(w2, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
     assert 'rewrites the text over a word it also comments on' in call_tool(
         w2, 'add_comment', {'document': 'd1', 'ref': 's1.w1', 'body': 'check this'})
@@ -185,7 +185,7 @@ def test_a_comment_and_a_retype_over_it_are_refused_rather_than_one_being_droppe
     assert [o['kind'] for o in w2.ops] == ['edit_text']
 
     # A word the retype does not name, and an append, which names none.
-    w3 = scan_ws(ExtClient())
+    w3 = scan_ws(FakeClient())
     call_tool(w3, 'retype_sentence', {'document': 'd1', 'ref': 's1', 'text': 'Ali gam akuna.'})
     call_tool(w3, 'add_comment', {'document': 'd1', 'ref': 's2.w1', 'body': 'ok'})
     call_tool(w3, 'append_text', {'document': 'd1', 'text': 'Gam ar.'})
@@ -205,31 +205,31 @@ SUMMARY = {'name': False, 'document_metadata': True, 'total': 7,
 
 
 def test_restore_document_plans_from_the_dry_run_and_stands_alone():
-    c = ExtClient(restore_summary=SUMMARY)
+    c = FakeClient(restore_summary=SUMMARY)
     w = scan_ws(c)
     assert 'ISO-8601' in call_tool(w, 'restore_document', {'document': 'd1', 'as_of': 'yesterday'})
     out = call_tool(w, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     assert 'Planned 1 change' in out and 'What changes (from the server\'s dry run): the text, 2 words, 1 morpheme, ' \
                                         '2 Morph Gloss values, the document metadata, 1 vocab-link(s) cannot come back (item-gone).' in out
-    assert c.log[-1] == ('documents', 'restore', ('d1', '2026-09-05T18:45:49Z'), {'dry_run': True})
+    assert c.writes[-1] == ('documents.restore', {'args': ('d1', '2026-09-05T18:45:49Z'), 'kwargs': {'dry_run': True}})
     op = w.ops[0]
     assert op['kind'] == 'restore_document' and op['document_id'] == 'd1' and op['doc'] == 'd1'
     assert op['label'].startswith('Text 1: restore to 2026-09-05T18:45:49Z (7 changes: the text, 2 words,')
     assert [d['id'] for d in w.plan_payload()['documents']] == ['d1']
     # Nothing else joins a restore, before or after it.
     assert 'holds a restore' in call_tool(w, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
-    w2 = scan_ws(ExtClient(restore_summary=SUMMARY))
+    w2 = scan_ws(FakeClient(restore_summary=SUMMARY))
     call_tool(w2, 'set_field', {'document': 'd1', 'refs': ['s1.w2'], 'field': 'Gloss', 'value': 'x'})
     assert 'plan of its own' in call_tool(w2, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     with pytest.raises(ValueError, match='only op'):
         validate_ops([w2.ops[0], op])
     # Nothing to do, and no access.
-    w3 = scan_ws(ExtClient(restore_summary={**SUMMARY, 'total': 0}))
+    w3 = scan_ws(FakeClient(restore_summary={**SUMMARY, 'total': 0}))
     assert call_tool(w3, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'}).startswith('Nothing to restore')
-    w4 = scan_ws(ExtClient(restore_error='HTTP 403 Forbidden'))
+    w4 = scan_ws(FakeClient(fails={'documents.restore': PlaidAPIError('HTTP 403 Forbidden', status=403)}))
     assert 'maintainer access' in call_tool(w4, 'restore_document', {'document': 'd1', 'as_of': '2026-09-05T18:45:49Z'})
     # Approval runs the server's restore once, as the plan's one write.
     counts = execute_plan(c, [op], source='s', label='l')
     assert counts == {'document restores': 1}
-    assert c.log[-1] == ('documents', 'restore', ('d1', '2026-09-05T18:45:49Z'), {'dry_run': False})
+    assert c.writes[-1] == ('documents.restore', {'args': ('d1', '2026-09-05T18:45:49Z'), 'kwargs': {'dry_run': False}})
     assert c.operations[-1] == 'l' and c.batches == []

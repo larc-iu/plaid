@@ -74,9 +74,9 @@ def test_an_igt_document_read_asks_for_those_layers_only():
     c = FakeClient()
     w = scan_ws(c)
     w.doc('d1')
-    assert c.doc_reads, 'the document was read'
-    did, layers = c.doc_reads[-1]
-    assert did == 'd1'
+    assert c.reads, 'the document was read'
+    assert c.reads[-1]['id'] == 'd1'
+    layers = c.reads[-1]['layers']
     assert layers is not None and set(layers) == set(w.project.read_layer_ids())
 
 
@@ -84,8 +84,8 @@ def test_a_ud_document_read_asks_for_those_layers_only():
     c = ud_client()
     w = UdWorkspace(c, load_ud_project(c, PID))
     w.doc(next(d['id'] for d in w.documents()))
-    assert c.doc_reads, 'the document was read'
-    _, layers = c.doc_reads[-1]
+    assert c.reads, 'the document was read'
+    layers = c.reads[-1]['layers']
     assert layers is not None and set(layers) == set(w.project.read_layer_ids())
 
 
@@ -120,7 +120,7 @@ def test_the_sandbox_reads_ahead_only_once_a_run_is_walking(fresh_document_cache
 
         load('d2')
         load('d3')
-        reads = sorted(did for did, _ in c.doc_reads)
+        reads = sorted(r['id'] for r in c.reads)
         assert reads == ['d0', 'd1', 'd2', 'd3'], 'every document read exactly once'
     finally:
         w.close()

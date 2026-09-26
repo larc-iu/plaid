@@ -171,7 +171,7 @@ def test_a_split_takes_the_suppressors_over_the_relations_it_drops():
     assert op['suppressor_ids'] == ['e-1']
     assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = client.payloads('relations.delete')
     assert deleted == ['r-4', 'e-1']
     assert len(client.batches) == 1, 'in the same batch as the split itself'
 
@@ -197,7 +197,7 @@ def test_a_split_takes_the_enhanced_extra_edges_that_would_cross_it():
     assert 'dropping 2 dependency relation(s)' in out, 'the extra counts, the suppressor does not'
     assert summarize(ws.ops) == '2 removed dependencies, 1 sentence split'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = client.payloads('relations.delete')
     assert deleted == ['r-4', 'e-x', 'e-1']
     assert len(client.batches) == 1, 'in the same batch as the split itself'
 
@@ -247,7 +247,7 @@ def test_a_split_sweeps_a_dangling_suppressor_that_crosses_it():
     assert op['relation_ids'] == ['r-4'], 'no extra edge here, so the tree alone'
     assert 'dropping 1 dependency relation(s)' in out, 'a suppressor is no arc and is not counted'
     execute_plan(client, ws.ops, source='s', label='l', project=ws.project)
-    deleted = [e[2][0] for e in client.log if e[0] == 'relations' and e[1] == 'delete']
+    deleted = client.payloads('relations.delete')
     assert deleted == ['r-4', 'e-d']
     assert len(client.batches) == 1, 'in the same batch as the split itself'
 

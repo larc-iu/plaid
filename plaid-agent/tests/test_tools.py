@@ -192,7 +192,7 @@ def test_morph_types_and_lexicon_fields_are_validated():
     assert w.ops[-1]['morphemes'][0]['morph_type'] == 'bound stem'
     # a lexicon with a configured field schema rejects unknown entry fields
     c = FakeClient()
-    c._project['vocabs'][0]['config'] = {'igt': {'fields': {'gloss': {'inline': True}, 'pos': {'inline': False}}}}
+    c.project['vocabs'][0]['config'] = {'igt': {'fields': {'gloss': {'inline': True}, 'pos': {'inline': False}}}}
     w2 = scan_ws(c)
     assert 'has no entry field "definition"' in call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'definition': 'y'}})
     call_tool(w2, 'create_entry', {'form': 'x', 'fields': {'Gloss': 'y'}})
@@ -301,7 +301,7 @@ def test_morpheme_form_ops_yield_to_a_rewrite_of_the_same_analysis():
     c = FakeClient()
     counts = execute_plan(c, ops, source='s', label='l')
     form = [{'op': 'set', 'path': ['form'], 'value': 'y'}]
-    assert counts['morpheme forms'] == 1 and ('tokens', 'patch_metadata', ('m-9', form), {}) in c.log
+    assert counts['morpheme forms'] == 1 and ('m-9', form) in c.patches('tokens')
 
 
 def test_entry_gloss_singles_out_a_homograph():
@@ -683,8 +683,7 @@ def test_a_replacement_past_the_cap_is_one_predicate_op_resolved_at_approval(mon
     assert [d['id'] for d in payload['documents']] == ['d1']
     counts = execute_plan(w.client, payload['ops'], source='s', label='l', project=w.project)
     assert counts == {'field values': 3}
-    updates = [a for r, m, a, k in w.client.batches[0] if m == 'update']
-    assert updates == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
+    assert w.client.updates('spans') == [('s1', 'Bob'), ('s2', 'Bob-x'), ('s3', 'Bob')]
     # Under the cap, the same call stages per-span ops, as the scan path does.
     monkeypatch.setattr(bulk, 'PLAN_MAX_OPS', 3000)
     w.ops.clear()
