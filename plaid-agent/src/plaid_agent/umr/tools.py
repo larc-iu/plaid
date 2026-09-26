@@ -90,13 +90,15 @@ class Workspace(BaseWorkspace):
 
     def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
         """A relation UMR does not have, as the app refuses it on every editor
-        path (``unknownRelationProblem`` in plaid-umr's ``validate.js``).
+        path (``UmrDocument.relationProblem`` in plaid-umr).
 
         Asked here, where every staged op passes, rather than in the tools, so
         a new tool that writes a relation cannot route around it. What the op
-        writes is judged, never what is already stored: a relation some node of
-        the sentence (of the document, for a scope) already carries is kept, as
-        text mode keeps one an imported file brought in.
+        writes is judged where it lands, as the canvas and text mode judge it:
+        a relation already stored among that node's attributes is kept (an
+        imported file may carry one UMR does not have), and one stored only on
+        another node or edge is not. A new edge and a new node hold nothing
+        yet, so everything they bring is judged.
         """
         kind = op.get('kind')
         if kind == 'create_triple':
@@ -104,25 +106,26 @@ class Workspace(BaseWorkspace):
             if why:
                 raise ToolError(why)
             return
+        doc = self._docs.get(op.get('document_id'))
         if kind == 'create_edge':
-            written = [op.get('role')]
-        elif kind in ('create_node', 'set_attrs'):
-            written = [a.get('rel') for a in op.get('attrs') or []]
+            written = [(op.get('role'), set())]
+        elif kind == 'create_node':
+            written = [(a.get('rel'), set()) for a in op.get('attrs') or []]
+        elif kind == 'set_attrs':
+            node = doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
+            kept = {a.get('rel') for a in node.attrs} if node is not None else set()
+            written = [(a.get('rel'), kept) for a in op.get('attrs') or []]
         elif kind == 'attrs_scope':
-            written = [op.get('rel')]
+            # Kept only when every node the scope lands on already holds it.
+            targets = list(attrs_scope_targets(doc, op)) if doc is not None else []
+            holds = bool(targets) and all(
+                any(a.get('rel') == op.get('rel') for a in node.attrs)
+                for _s, node, _placed in targets)
+            written = [(op.get('rel'), {op.get('rel')} if holds else set())]
         else:
             return
-        doc = self._docs.get(op.get('document_id'))
-        nodes = []
-        if doc is not None:
-            if kind == 'attrs_scope':
-                nodes = [n for s in doc.sentences for n in s.nodes]
-            elif op.get('sentence'):
-                nodes = doc.sentences[op['sentence'] - 1].nodes
-        stored = {a.get('rel') for n in nodes for a in n.attrs} | {e.role for n in nodes
-                                                                 for e in n.out}
-        for rel in written:
-            why = None if rel in stored else unknown_relation_problem(rel)
+        for rel, kept in written:
+            why = None if rel in kept else unknown_relation_problem(rel)
             if why:
                 var = op.get('var') or op.get('source_var')
                 where = f'{var}: ' if var else ''

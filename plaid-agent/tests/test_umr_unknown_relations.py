@@ -1,6 +1,6 @@
 """A relation UMR does not have is refused on every route a plan takes into
 the graph, as plaid-umr's editors refuse it (e4d3c7db, 556d75c2, e90d377d),
-and one the sentence already holds is kept."""
+and one already stored on that node or edge is kept."""
 
 import pytest
 
@@ -96,6 +96,51 @@ def test_a_relation_the_sentence_already_holds_is_not_refused_again():
     out = run(w, 'set_attributes', document='Story', sentence=1, var='s1d',
               line=':legacy 1 :poss 3')
     assert "Unknown relation ':poss'" in out
+
+
+def _with_stored_unknown_edge():
+    """The fixture with s1b's :ARG0 edge imported as ':legacy-arg'."""
+    raw = document_raw()
+    rel_layer = next(rl for tl in raw['text_layers'][0]['token_layers']
+                     for sl in tl.get('span_layers', [])
+                     for rl in sl.get('relation_layers', []) if rl['id'] == 'm-rel')
+    edge = next(r for r in rel_layer['relations'] if r['id'] == 'mr-1')
+    edge['value'] = ':legacy-arg'
+    return umr_ws(umr_client(documents={'umr1': raw}))
+
+
+def test_a_stored_relation_is_kept_on_its_own_node_only():
+    """Ruling 1 of round 4: the exemption is per node or edge, as on the
+    canvas. It was sentence-wide, and document-wide for a scope, so another
+    node could take on :legacy because s1d held it."""
+    w = _with_stored_unknown()
+    out = run(w, 'set_attributes', document='Story', sentence=1, var='s1b',
+              line=':aspect performance :legacy 1')
+    assert "Unknown relation ':legacy'" in out and w.ops == [], out
+    text = ('(s1b / bark-01\n    :ARG0 (s1d / dog\n        :refer-number singular\n'
+            '        :legacy 1)\n    :aspect performance\n    :legacy 2)')
+    out = run(w, 'apply_penman', document='Story', sentence=1, text=text)
+    assert "s1b: Unknown relation ':legacy'" in out and w.ops == [], out
+    out = run(w, 'set_attribute_for_concept', document='Story', concept='run-01',
+              rel=':legacy', value='1')
+    assert "Unknown relation ':legacy'" in out and w.ops == [], out
+    # Where it is stored, its value may still change, one node or a scope.
+    run(w, 'set_attribute_for_concept', document='Story', concept='dog', rel=':legacy',
+        value='2')
+    assert len(w.ops) == 1
+
+
+def test_a_stored_edge_role_is_kept_on_that_edge_only():
+    w = _with_stored_unknown_edge()
+    stored = ('(s1b / bark-01\n    :legacy-arg (s1d / dog\n        :refer-number singular)\n'
+              '    :aspect performance)')
+    out = run(w, 'apply_penman', document='Story', sentence=1,
+              text=stored.replace(':aspect performance', ':aspect state'))
+    assert w.ops, out
+    w.ops.clear()
+    out = run(w, 'apply_penman', document='Story', sentence=1, text=stored.replace(
+        ':aspect performance', ':aspect performance\n    :legacy-arg (s1x / person)'))
+    assert "Unknown relation ':legacy-arg'" in out and w.ops == [], out
 
 
 # --- document level ---------------------------------------------------------

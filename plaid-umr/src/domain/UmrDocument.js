@@ -1492,18 +1492,28 @@ export class UmrDocument extends DocumentModel {
       const why = this._newVariableProblem(v, sentenceIndex);
       if (why) errors.push({ message: why });
     });
-    // A relation already in the stored graph (an imported file may carry one
-    // UMR does not have) is not the text's to refuse.
-    const storedRels = new Set(
-      sentence.nodes.flatMap((n) => [...n.attrs.map((a) => a.rel), ...n.out.map((e) => e.role)]),
-    );
+    // A relation is judged where it is written, as the canvas judges it: one
+    // already stored on that node's attributes, or on that very edge, is
+    // kept (an imported file may carry one UMR does not have), and one stored
+    // only elsewhere in the sentence is not.
     parsed.nodes.forEach((node, v) => {
       const why = conceptProblem(node.concept);
       if (why) errors.push({ message: `${v}: ${why}` });
+      const old = oldByVar.get(v);
       node.children.forEach((child) => {
+        const edge =
+          child.kind === 'node'
+            ? old?.out.find(
+                (e) => e.role === child.rel && nameOf(this.node(e.target)) === child.value,
+              )
+            : null;
+        const at = edge
+          ? { edgeId: edge.id }
+          : child.kind !== 'node' && old
+            ? { nodeId: old.id }
+            : {};
         const bad =
-          relationFormProblem(child.rel) ||
-          (storedRels.has(child.rel) ? null : unknownRelationProblem(child.rel)) ||
+          this.relationProblem(child.rel, at) ||
           (child.kind === 'node' ? null : attrValueProblem(child.value));
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });

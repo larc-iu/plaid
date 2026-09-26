@@ -454,3 +454,41 @@ test('every write refuses an unknown relation, keeping one stored at that place'
   );
   assert.equal(refused, null);
 });
+
+// Ruling 1 of round 4: text mode keeps a stored unknown relation on the node
+// or edge that holds it, as the canvas does, and nowhere else. It once kept
+// it anywhere in the sentence, so a new :poss edge passed because another
+// node had one.
+test('text mode keeps a stored unknown relation only where it is stored', () => {
+  const file = FILE.replace(':ARG0 s1p :aspect', ':poss s1p :aspect').replace(
+    ':aspect performance\n    :purpose',
+    ':aspect performance\n    :colour red\n    :purpose',
+  );
+  const { client } = recordingClient();
+  const doc = new UmrDocument({
+    raw: rawFromPlan(planImport(parseUmrFile(file).sentences, [])),
+    client,
+  });
+  const text = doc.penmanOf(1);
+  assert.match(text, /:poss s1p/);
+  assert.match(text, /:colour red/);
+  const plan = (edited) => doc.planPenman(1, edited);
+  // Kept where stored: the edge and the attribute stay, the value may change,
+  // and a rename keeps the node's own.
+  assert.equal(plan(text.replace('leave-02', 'leave-01')).errors, undefined);
+  assert.equal(plan(text.replace(':colour red', ':colour blue')).errors, undefined);
+  assert.equal(plan(text.replaceAll('s1l', 's1l9')).errors, undefined);
+  // A new node, another node, or another edge does not share the exemption.
+  assert.match(
+    plan(text.replace(':poss s1p', ':poss s1p :ARG1 (s1x / thing :poss s1p)')).errors[0].message,
+    /s1x: Unknown relation ':poss'/,
+  );
+  assert.match(
+    plan(text.replace('"Lindsay")', '"Lindsay" :colour red)')).errors[0].message,
+    /s1n: Unknown relation ':colour'/,
+  );
+  assert.match(
+    plan(text.replace(':poss s1p', ':poss s1n')).errors[0].message,
+    /s1e: Unknown relation ':poss'/,
+  );
+});
