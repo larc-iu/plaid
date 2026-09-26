@@ -370,3 +370,48 @@ describe('SentenceBlock node menu', () => {
     await r.unmount();
   });
 });
+
+describe('SentenceBlock node menu, the last node', () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Deleting a sentence's only node leaves nothing to hand focus to, so the
+  // block itself takes it. The menu's late hand-back must not then take it
+  // away to the page, where every key is dead.
+  it('leaves focus on the block after deleting its only node from the menu', async () => {
+    const { sentence, nodesById } = fixture();
+    const lone = { ...nodesById.get('n1'), out: [], in: [] };
+    const only = new Map([['n1', lone]]);
+    const deleted = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canConfirm: () => false,
+      orphanedBy: () => [],
+      deleteNode: (id) => deleted.push(id),
+    };
+    const props = { doc, dataVersion: 1, readOnly: false };
+    const one = { ...sentence, nodes: [lone], edges: [], roots: [lone] };
+    const r = await renderComponent(<SentenceBlock {...props} sentence={one} nodesById={only} />);
+    const node = all(r.container, '.umr-node')[0];
+    await r.step(() =>
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const item = all(document, '[role="menuitem"]').find((m) =>
+      m.textContent.includes('Delete node and all below it'),
+    );
+    await r.step(() => item.click());
+    expect(deleted).toEqual(['n1']);
+    await r.rerender(
+      <SentenceBlock
+        {...props}
+        dataVersion={2}
+        nodesById={new Map()}
+        sentence={{ ...one, nodes: [], roots: [] }}
+      />,
+    );
+    await r.step(() => wait(100));
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(r.container.querySelector('section'));
+    await r.unmount();
+  });
+});

@@ -688,7 +688,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     const left = sentence.nodes.find((n) => !gone.has(n.id));
     if (next) focusNode(next);
     else if (left) focusNode(left.id);
-    else sectionRef.current?.focus();
+    else unfocus();
   };
 
   // No node focused: its lines and its lit words go. Focus stays in the
@@ -1538,7 +1538,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                   const picker = document.querySelector('.umr-attr-popover');
                   if (input) input.focus();
                   else if (picker) focusValue(picker);
-                  else focusNode(focusTargetRef.current);
+                  else if (focusTargetRef.current) focusNode(focusTargetRef.current);
+                  else sectionRef.current?.focus({ preventScroll: true });
                 })
               }
             />
