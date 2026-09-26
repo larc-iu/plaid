@@ -629,8 +629,10 @@ export const VocabularyDetail = () => {
   // Fields reference a tagset by name, so a rename repoints every field that
   // used the old name right behind it, or they quietly fall back to free.
   // Same contract as the project's TagsetsSettings. Both take their turn in
-  // the schema queue, and a refusal throws, which is how TagsetsManager
-  // learns to roll back.
+  // the schema queue. A refused tagsets write throws, which is how
+  // TagsetsManager learns to roll back. A refused repoint does not: the
+  // tagsets the manager shows are the server's, and the refusal's own
+  // re-read shows the fields as the server holds them.
   const handleSaveTagsets = async (next, meta) => {
     setDraftTagsets(next);
     const tagsetsLanded = writes.schema.push(
@@ -652,8 +654,9 @@ export const VocabularyDetail = () => {
             { quiet: true },
           )
         : true;
-    const landed = (await tagsetsLanded) && (await fieldsLanded);
-    if (!landed) throw new Error('Failed to save tagsets');
+    const tagsetsSaved = await tagsetsLanded;
+    await fieldsLanded;
+    if (!tagsetsSaved) throw new Error('Failed to save tagsets');
     await updateVocabulary();
     setDraftTagsets(null);
   };

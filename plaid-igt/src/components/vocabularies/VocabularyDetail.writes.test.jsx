@@ -18,8 +18,14 @@ vi.mock('./VocabularyItems', async () => {
 });
 vi.mock('./VocabularyMaintainers', () => ({ VocabularyMaintainers: () => null }));
 vi.mock('./VocabularyCommentsTab', () => ({ VocabularyCommentsTab: () => null }));
+// The tagsets editor stands in as its last props, so a test can save through
+// it and read what it is shown.
+const tagsetsManager = vi.hoisted(() => ({ props: null }));
 vi.mock('@/components/projects/settings/TagsetsManager.jsx', () => ({
-  TagsetsManager: () => null,
+  TagsetsManager: (props) => {
+    tagsetsManager.props = props;
+    return null;
+  },
 }));
 vi.mock('@/utils/feedback', () => ({
   notifySuccess: vi.fn(),
@@ -109,6 +115,57 @@ const firstInlineSwitch = () => document.querySelector('button[role="switch"]');
 const nameInput = () => document.querySelector('input[placeholder="Enter vocabulary name"]');
 
 describe('the vocabulary screen', () => {
+  it('keeps a tagset rename that landed when the fields that name it are refused', async () => {
+    // The server holds tagset "cases", which the field "case" names. The
+    // rename lands and the fields' repoint is refused. The editor must not
+    // roll back to "cases", which the server no longer holds, and what it is
+    // shown afterwards must be the server's.
+    const server = {
+      id: 'A',
+      name: 'Ayvale lexicon',
+      maintainers: ['u'],
+      config: {
+        igt: {
+          fields: [{ name: 'case', type: 'text', tagset: 'cases' }],
+          tagsets: { cases: { mode: 'closed', tags: [{ value: 'NOM' }] } },
+        },
+      },
+    };
+    const client = {
+      vocabLayers: {
+        get: async () => structuredClone(server),
+        setConfig: async (_id, _ns, key, value) => {
+          if (key === 'fields') throw new Error('refused');
+          server.config.igt[key] = value;
+        },
+        update: async () => {},
+      },
+      projects: { list: async () => [] },
+    };
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    const next = { case: server.config.igt.tagsets.cases };
+    let threw = false;
+    await view.step(async () => {
+      try {
+        await tagsetsManager.props.onSaveChanges(next, { renamed: { from: 'cases', to: 'case' } });
+      } catch {
+        threw = true;
+      }
+      await settle();
+    });
+    expect(threw).toBe(false);
+    expect(Object.keys(tagsetsManager.props.tagsets)).toEqual(['case']);
+
+    // A later change to the server's tagsets reaches the editor.
+    server.config.igt.tagsets = { case: next.case, moods: { mode: 'closed', tags: [] } };
+    await view.step(async () => {
+      tagsetsManager.props.onSaveChanges(server.config.igt.tagsets);
+      await settle();
+    });
+    expect(Object.keys(tagsetsManager.props.tagsets).sort()).toEqual(['case', 'moods']);
+    await view.unmount();
+  });
+
   it('asks before the tab closes while a schema write is on its way', async () => {
     const { client, holds } = stub();
     const held = deferred();
