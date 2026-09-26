@@ -38,12 +38,10 @@ from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, M
                     alignment_of, group_of, next_order, penman_nodes, penman_of,
                     place_attributes, read_document, reachable_from_root, roots_of,
                     with_attribute)
-from .inventory import (DOC_RELATIONS, KNOWN_RELATIONS,
-                        unknown_doc_relation_problem, unknown_relation_problem)
-from .layers import (CONCEPTS, GlossLayer, NODES, REQUIRED,
-                     UMR_NAMESPACE, UmrLayers, gloss_values,
-                     project_language, resolve_layers, umr_config)
-from .penman import (Child, Graph, graph_text, is_variable, next_variable,
+from .inventory import DOC_RELATIONS, unknown_doc_relation_problem, unknown_relation_problem
+from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project_language,
+                     resolve_layers, umr_config)
+from .penman import (Graph, is_variable, next_variable,
                      parse_attribute_line, parse_penman, serialize_penman, tree_edges,
                      variable_from)
 from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, finish_draft,
@@ -52,10 +50,10 @@ from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, fin
 __all__ = [
     'graph', 'inventory', 'layers', 'penman', 'write',
     # inventory
-    'KNOWN_RELATIONS', 'DOC_RELATIONS', 'unknown_relation_problem',
+    'DOC_RELATIONS', 'unknown_relation_problem',
     'unknown_doc_relation_problem',
     # layers
-    'UMR_NAMESPACE', 'NODES', 'CONCEPTS', 'REQUIRED',
+    'UMR_NAMESPACE',
     'GlossLayer', 'UmrLayers', 'resolve_layers', 'gloss_values',
     'umr_config', 'project_language',
     # graph
@@ -65,8 +63,8 @@ __all__ = [
     'penman_nodes', 'penman_of', 'reachable_from_root',
     'next_order', 'place_attributes', 'with_attribute',
     # penman
-    'Child', 'Graph', 'parse_penman', 'serialize_penman', 'tree_edges',
-    'graph_text', 'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
+    'Graph', 'parse_penman', 'serialize_penman', 'tree_edges',
+    'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
     # write
     'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
     'finish_draft',
