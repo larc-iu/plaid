@@ -48,20 +48,32 @@ const BATCH_CHUNK = 200;
  * invisible in plaid-igt, no control on the entry, nothing in Bulk Edit. One
  * that declares it, in any case, is written under that key.
  *
- * The schema is read FRESH, never from the catalog: the catalog holds what the
- * server said when this tab opened, `setConfig` replaces a namespace key
- * wholesale, and the two apps are meant to be open at once. Writing from the
- * snapshot deleted whatever field or tagset plaid-igt had added since. Read
- * raw rather than through `readTagsets`, which rebuilds each tagset and would
- * drop anything it does not know on the way back out.
+ * The schema and the entries are read FRESH, never from what the page loaded:
+ * the two apps are meant to be open at once. `setConfig` replaces a namespace
+ * key wholesale, so writing from a stale schema deleted whatever field or
+ * tagset plaid-igt had added since. Read raw rather than through
+ * `readTagsets`, which rebuilds each tagset and would drop anything it does
+ * not know on the way back out. And core refuses a whole batch when one of
+ * its entries is gone, so a stale entry list failed every chunk it touched.
+ * An entry deleted while this runs does the same to its chunk, which is then
+ * sent again without the entries that no longer exist.
  */
-export const publishAll = async (client, items, { vocabularyId, name, onProgress }) => {
-  const igt = (await client.vocabLayers.get(vocabularyId))?.config?.[IGT_NAMESPACE] ?? {};
+export const publishAll = async (client, { vocabularyId, name, onProgress }) => {
+  const layer = await client.vocabLayers.get(vocabularyId, true);
+  const igt = layer?.config?.[IGT_NAMESPACE] ?? {};
   const declared = statusFieldKey(igt.fields);
   const key = declared ?? STATUS_FIELD;
-  const pending = (items || []).filter((it) => !isPublished(it, key));
+  const pending = (layer?.items || []).filter((it) => !isPublished(it, key));
   if (!pending.length) return 0;
+  // A metadata PATCH is a list of path ops. One top-level set leaves every
+  // other key on the entry alone.
+  const ops = metadataOps({ [key]: PUBLISHED });
+  const send = (part) =>
+    client.batched(async (b) => {
+      for (const it of part) b.vocabItems.patchMetadata(it.id, ops);
+    });
   let done = 0;
+  let changed = 0;
   await client.withOperation(`Publish every entry in "${name || 'vocabulary'}"`, async () => {
     if (!declared) {
       const seed = statusFieldSeed({ fieldsConfig: igt.fields, tagsets: igt.tagsets });
@@ -69,16 +81,20 @@ export const publishAll = async (client, items, { vocabularyId, name, onProgress
       await client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'fields', seed.fieldsConfig);
     }
     for (let i = 0; i < pending.length; i += BATCH_CHUNK) {
-      const part = pending.slice(i, i + BATCH_CHUNK);
-      // A metadata PATCH is a list of path ops. One top-level set leaves every
-      // other key on the entry alone.
-      const ops = metadataOps({ [key]: PUBLISHED });
-      await client.batched(async (b) => {
-        for (const it of part) b.vocabItems.patchMetadata(it.id, ops);
-      });
-      done += part.length;
+      let part = pending.slice(i, i + BATCH_CHUNK);
+      try {
+        await send(part);
+      } catch (err) {
+        if (err?.status !== 404) throw err;
+        const { items: now = [] } = await client.vocabLayers.get(vocabularyId, true);
+        const left = new Set(now.filter((it) => !isPublished(it, key)).map((it) => it.id));
+        part = part.filter((it) => left.has(it.id));
+        if (part.length) await send(part);
+      }
+      changed += part.length;
+      done = Math.min(i + BATCH_CHUNK, pending.length);
       onProgress?.({ done, total: pending.length });
     }
   });
-  return done;
+  return changed;
 };

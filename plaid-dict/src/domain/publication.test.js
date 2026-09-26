@@ -52,7 +52,11 @@ describe('publishAll', () => {
       },
       configs: [],
       // What the SERVER holds right now, which is what publishAll must read.
-      layer: { id: 'v', config: { igt: { fields: { gloss: { inline: true } } } } },
+      layer: {
+        id: 'v',
+        config: { igt: { fields: { gloss: { inline: true } } } },
+        items: [entry('a')],
+      },
       vocabLayers: {
         get: async () => client.layer,
         setConfig(id, ns, key, value) {
@@ -69,8 +73,8 @@ describe('publishAll', () => {
       id: 'v',
       config: { igt: { fields: { gloss: {}, Status: { inline: true } } } },
     };
-    const items = [entry('a'), { id: 'b', metadata: { Status: 'published' } }];
-    const n = await publishAll(client, items, { vocabularyId: 'v' });
+    client.layer.items = [entry('a'), { id: 'b', metadata: { Status: 'published' } }];
+    const n = await publishAll(client, { vocabularyId: 'v' });
     expect(n).toBe(1);
     expect(client.configs).toEqual([]);
     expect(client.patched).toEqual([['a', { Status: 'published' }]]);
@@ -82,7 +86,8 @@ describe('publishAll', () => {
     const client = fakeClient();
     const sent = [];
     client.vocabItems.patchMetadata = (id, ops) => sent.push([id, ops]);
-    await publishAll(client, [entry('a'), entry('b', 'draft')], { vocabularyId: 'v' });
+    client.layer.items = [entry('a'), entry('b', 'draft')];
+    await publishAll(client, { vocabularyId: 'v' });
     expect(sent).toEqual([
       ['a', [{ op: 'set', path: ['status'], value: 'published' }]],
       ['b', [{ op: 'set', path: ['status'], value: 'published' }]],
@@ -93,7 +98,7 @@ describe('publishAll', () => {
     // A value under a field the schema does not name is invisible in
     // plaid-igt: no control on the entry, nothing in Bulk Edit.
     const client = fakeClient();
-    await publishAll(client, [entry('a')], { vocabularyId: 'v', name: 'Sena' });
+    await publishAll(client, { vocabularyId: 'v', name: 'Sena' });
     expect(client.configs.map(([k]) => k)).toEqual(['tagsets', 'fields']);
     expect(client.configs.find(([k]) => k === 'fields')[1].status).toEqual({
       inline: false,
@@ -117,8 +122,9 @@ describe('publishAll', () => {
           tagsets: { Register: { mode: 'closed', values: [{ value: 'formal' }] } },
         },
       },
+      items: [entry('a')],
     };
-    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
+    await publishAll(client, { vocabularyId: 'v' });
     const fields = client.configs.find(([k]) => k === 'fields')[1];
     const tagsets = client.configs.find(([k]) => k === 'tagsets')[1];
     expect(Object.keys(fields).sort()).toEqual(['etymology', 'gloss', 'status']);
@@ -133,8 +139,12 @@ describe('publishAll', () => {
     // the very pair it refuses: two fields both labelled Status, writing
     // different metadata keys, only one of which is published by.
     const client = fakeClient();
-    client.layer = { id: 'v', config: { igt: { fields: { Status: { inline: true } } } } };
-    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
+    client.layer = {
+      id: 'v',
+      config: { igt: { fields: { Status: { inline: true } } } },
+      items: [entry('a')],
+    };
+    await publishAll(client, { vocabularyId: 'v' });
     expect(client.configs).toEqual([]);
   });
 
@@ -145,15 +155,16 @@ describe('publishAll', () => {
       config: {
         igt: { fields: { status: { inline: false, tagset: 'Status' } }, tagsets: { Status: {} } },
       },
+      items: [entry('a')],
     };
-    await publishAll(client, [entry('a')], { vocabularyId: 'v' });
+    await publishAll(client, { vocabularyId: 'v' });
     expect(client.configs).toEqual([]);
   });
 
   it('patches only the entries that are not published yet', async () => {
     const client = fakeClient();
-    const items = [entry('a', 'published'), entry('b', 'draft'), entry('c')];
-    const n = await publishAll(client, items, { vocabularyId: 'v', name: 'Sena' });
+    client.layer.items = [entry('a', 'published'), entry('b', 'draft'), entry('c')];
+    const n = await publishAll(client, { vocabularyId: 'v', name: 'Sena' });
     expect(n).toBe(2);
     expect(client.patched).toEqual([
       ['b', { status: 'published' }],
@@ -164,16 +175,79 @@ describe('publishAll', () => {
 
   it('writes nothing when everything is already published', async () => {
     const client = fakeClient();
-    const n = await publishAll(client, [entry('a', 'published')], { vocabularyId: 'v' });
+    client.layer.items = [entry('a', 'published')];
+    const n = await publishAll(client, { vocabularyId: 'v' });
     expect(n).toBe(0);
     expect(client.operations).toEqual([]);
   });
 
+  // A server that holds `layer.items` and refuses a whole batch, as core does,
+  // when one of its ids is gone. `beforeSend` runs ahead of each batch.
+  const strictClient = (items, beforeSend) => {
+    const client = fakeClient();
+    client.layer = { ...client.layer, items };
+    let sends = 0;
+    client.batched = async (fn) => {
+      const queued = [];
+      await fn({ vocabItems: { patchMetadata: (id, ops) => queued.push([id, ops]) } });
+      beforeSend?.(sends++, client);
+      const gone = queued.find(([id]) => !client.layer.items.some((it) => it.id === id));
+      if (gone) {
+        const err = new Error(`Vocab item not found with id \`${gone[0]}\``);
+        err.status = 404;
+        throw err;
+      }
+      for (const [id, ops] of queued) {
+        const it = client.layer.items.find((x) => x.id === id);
+        it.metadata = applyMetadataOps(it.metadata, ops);
+        client.patched.push([id, it.metadata]);
+      }
+      client.chunks.push(queued.length);
+    };
+    return client;
+  };
+
+  it('publishes what the server holds, not an entry list that has gone stale', async () => {
+    // Setup loads the entries once. An entry deleted in plaid-igt since then
+    // made core refuse the whole batch, and every retry resent the same id.
+    const server = ['a', 'b', 'c'].map((id) => entry(id));
+    const client = strictClient(server);
+    const n = await publishAll(client, { vocabularyId: 'v' });
+    expect(n).toBe(3);
+    client.layer.items = client.layer.items.filter((it) => it.id !== 'b');
+    client.layer.items.push(entry('d'));
+    const again = await publishAll(client, { vocabularyId: 'v' });
+    expect(again).toBe(1);
+    expect(client.layer.items.every((it) => isPublished(it))).toBe(true);
+  });
+
+  it('publishes the rest when an entry is deleted while it runs', async () => {
+    const server = Array.from({ length: 450 }, (_, i) => entry(`e${i}`));
+    const client = strictClient(server, (send, c) => {
+      // Before the second batch goes out, someone deletes one of its entries.
+      if (send === 1) c.layer.items = c.layer.items.filter((it) => it.id !== 'e250');
+    });
+    const n = await publishAll(client, { vocabularyId: 'v' });
+    expect(n).toBe(449);
+    expect(client.layer.items).toHaveLength(449);
+    expect(client.layer.items.every((it) => isPublished(it))).toBe(true);
+  });
+
+  it('still fails on an error that is not a deleted entry', async () => {
+    const client = strictClient([entry('a')]);
+    client.batched = async () => {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    };
+    await expect(publishAll(client, { vocabularyId: 'v' })).rejects.toThrow('Forbidden');
+  });
+
   it('splits the writes into batches and reports progress per batch', async () => {
     const client = fakeClient();
-    const items = Array.from({ length: 450 }, (_, i) => entry(`e${i}`));
+    client.layer.items = Array.from({ length: 450 }, (_, i) => entry(`e${i}`));
     const progress = [];
-    const n = await publishAll(client, items, {
+    const n = await publishAll(client, {
       vocabularyId: 'v',
       onProgress: (p) => progress.push(p.done),
     });

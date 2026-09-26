@@ -14,7 +14,7 @@ import {
   slugify,
   validateSetup,
 } from '@/domain/dictConfig';
-import { publicationCounts, publishAll, statusKeyOfConfig } from '@/domain/publication';
+import { PUBLISHED, publicationCounts, publishAll, statusKeyOfConfig } from '@/domain/publication';
 import { discoverExampleLayers } from '@/domain/exampleLayers';
 import {
   formatAlphabet,
@@ -277,20 +277,30 @@ export const Setup = () => {
 
   const runPublishAll = async () => {
     if (!items || publishing) return;
+    const key = statusKeyOfConfig(vocab?.config);
     setPublishing({ done: 0, total: counts.total - counts.published });
+    // Shown at once. The server's own list replaces it when the run ends,
+    // whether or not every write landed.
+    setItems((list) =>
+      (list || []).map((it) => ({ ...it, metadata: { ...it.metadata, [key]: PUBLISHED } })),
+    );
     try {
-      const n = await publishAll(client, items, {
+      const n = await publishAll(client, {
         vocabularyId,
         name: draft.title || vocab.name,
         onProgress: setPublishing,
       });
-      const { items: refreshed = [] } = await client.vocabLayers.get(vocabularyId, true);
-      setItems(refreshed);
       notifySuccess(`${n.toLocaleString()} ${n === 1 ? 'entry' : 'entries'} published.`);
     } catch (err) {
       console.error('Publishing every entry failed:', err);
-      notifyError(err?.message || 'Publishing failed.');
+      notifyError('Not every entry was published. Try again.', 'Publishing stopped');
     } finally {
+      try {
+        const { items: refreshed = [] } = await client.vocabLayers.get(vocabularyId, true);
+        setItems(refreshed);
+      } catch (err) {
+        console.error('Failed to reload entries:', err);
+      }
       setPublishing(null);
     }
   };
@@ -478,7 +488,7 @@ export const Setup = () => {
               <p className="mt-1 text-sm text-muted-foreground">
                 {counts.published.toLocaleString()} of {counts.total.toLocaleString()}.
               </p>
-              {counts.published < counts.total && (
+              {(counts.published < counts.total || publishing) && (
                 <Button
                   className="mt-3"
                   variant="secondary"
