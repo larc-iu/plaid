@@ -175,10 +175,43 @@
 (deftest deleting-the-project-closes-its-channels
   (events/reset-state!)
   (let [pid (create-project!)
-        closed (open! (writer! pid "svc-a@example.com") pid "svc")]
+        closed (open! (writer! pid "svc-a@example.com") pid "svc")
+        ;; An admin holds a channel on any project, so admin standing must
+        ;; not outlive the project it was held on.
+        _ (create-user! "svc-admin@example.com" true)
+        {admin-token :token} (mint! "svc-admin@example.com")
+        by-admin-session (open! (session-of "svc-admin@example.com") pid "admin-session")
+        by-admin-token (open! admin-token pid "admin-token")]
     (api-call admin-request {:method :delete :path (str "/api/v1/projects/" pid)})
     (is @closed)
-    (is (not (live? pid "svc")))))
+    (is (not (live? pid "svc")))
+    (testing "channels an admin opened close too"
+      (is @by-admin-session)
+      (is @by-admin-token)
+      (is (empty? (events/list-live-services pid))))))
+
+(deftest a-channel-whose-opener-lapses-before-it-registers-ends-closed
+  ;; The route admits the credential in middleware, and the channel registers
+  ;; later, when it opens. A write that lands in between finds no channel to
+  ;; close, so the channel has to ask again once it is registered.
+  (events/reset-state!)
+  (let [pid (create-project!)
+        _ (writer! pid "svc-a@example.com")
+        {token :token tid :id} (mint! "svc-a@example.com")
+        closed (atom false)
+        ch (stub-channel closed)]
+    (with-redefs [http-kit/as-channel
+                  (fn [_ {:keys [on-open]}]
+                    (is (= 204 (:status (api-call admin-request
+                                                  {:method :delete
+                                                   :path (str "/api/v1/users/svc-a@example.com/tokens/" tid)}))))
+                    (on-open ch)
+                    {:status 200 :body ""})]
+      (fix/rest-handler ((token-req-fn token) :get
+                                              (str "/api/v1/projects/" pid "/services/svc/requests?service-name=svc"))))
+    (is @closed)
+    (is (not (live? pid "svc")))
+    (is (not (some #(= "svc" (:service-id %)) (events/list-live-services pid))))))
 
 (deftest a-submit-never-reaches-a-channel-whose-opener-lost-the-right
   ;; The writes above close the channel at once. A submit asks again, since

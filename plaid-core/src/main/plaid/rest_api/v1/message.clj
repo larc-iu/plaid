@@ -3,6 +3,7 @@
             [taoensso.timbre :as log]
             [plaid.server.events :as events]
             [plaid.sql.api-token :as api-token]
+            [plaid.sql.project :as prj]
             [plaid.sql.service-registry :as service-registry]
             [plaid.sql.user :as user]
             [clojure.core.async :as async]
@@ -159,11 +160,15 @@
   open it now? The same questions `wrap-read-jwt` and the route's
   writer-required middleware ask: the user exists and is active, an API
   token is not revoked, a session token's password_changes claim still
-  matches, and the user is a writer on the project or an admin."
+  matches, and the user is a writer on the project or an admin. The project
+  must also still exist, since the privilege check lets an admin in on any
+  project id, and an admin's channel has to close when its project is
+  deleted."
   [{:keys [db project-id user-id token-id token-version]}]
   (let [account (user/get-internal db user-id)]
     (boolean
      (and account
+          (prj/get db project-id)
           (nil? (:user/deactivated-at account))
           (if token-id
             (api-token/active? db token-id)
@@ -189,19 +194,24 @@
   (log/info "Closed service channel" service-id "on project" project-id
             "because its credential no longer admits it"))
 
+(defn- standing-holds?
+  "`still-entitled?` for one registry entry, where a check that cannot be
+  answered (a busy database) keeps the channel open rather than failing the
+  caller."
+  [entry]
+  (try (still-entitled? entry)
+       (catch Exception e
+         (log/warn e "Could not check service channel" (:service-id entry)
+                   "on project" (:project-id entry))
+         true)))
+
 (defn close-lapsed-service-channels!
   "Close every live service channel whose opener would no longer be let in.
   Runs after each write that can take that right away (see
   `events/standing-op-types`), before the write's response goes out."
   []
   (doseq [entry (events/live-service-entries)]
-    ;; One channel whose check fails (a busy database) stays open and does
-    ;; not keep the rest from being checked.
-    (when-not (try (still-entitled? entry)
-                   (catch Exception e
-                     (log/warn e "Could not check service channel" (:service-id entry)
-                               "on project" (:project-id entry))
-                     true))
+    (when-not (standing-holds? entry)
       (drop-service-channel! entry))))
 
 (events/on-standing-change! close-lapsed-service-channels!)
@@ -243,20 +253,30 @@
                                 (sse-event "error" {:error (str "Service '" service-id "' is already connected to this project")})
                                 false)
                 (http-kit/close channel))
-            (do
-              (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
+            (if
+              ;; The credential was admitted by the middleware, before this
+              ;; channel registered. A write that took it away in between
+              ;; found no channel to close, so ask again now that there is
+              ;; one. Either order of the write and the registration then
+              ;; ends closed.
+             (not (standing-holds? (assoc info :project-id id :service-id service-id
+                                          :user-id user-id)))
+              (drop-service-channel! (assoc info :project-id id :service-id service-id
+                                            :channel channel))
+              (do
+                (http-kit/send! channel (sse-event "connected" {:status "connected" :service-id service-id}) false)
               ;; Persist to the seen-services registry. Best-effort: a busy DB
               ;; must never kill a service channel. Store the RAW extras JSON
               ;; so the snapshot parses to exactly the live wire shape.
-              (try
-                (service-registry/record-seen! db id service-id
-                                               {:service-name service-name
-                                                :description description
-                                                :extras-json extras})
-                (catch Exception e
-                  (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
-              (log/debug "Service channel opened for" service-id "on project" id)
-              (start-keepalive! channel))))
+                (try
+                  (service-registry/record-seen! db id service-id
+                                                 {:service-name service-name
+                                                  :description description
+                                                  :extras-json extras})
+                  (catch Exception e
+                    (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
+                (log/debug "Service channel opened for" service-id "on project" id)
+                (start-keepalive! channel)))))
         :on-close
         (fn [channel _]
           (events/unregister-service-channel! id service-id channel)
