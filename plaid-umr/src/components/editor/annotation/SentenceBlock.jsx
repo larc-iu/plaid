@@ -33,6 +33,7 @@ import {
 } from './pickers.js';
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { followIds, stableKey } from '@ui/domain/pendingIds.js';
+import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -136,8 +137,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   useEffect(() => {
     if (readOnly) setTextMode(false);
   }, [readOnly]);
-  const [focusedId, setFocusedId] = useState(null);
-  const [hoveredId, setHoveredId] = useState(null);
+  const [focusedId, setFocusedId] = useFollowedState(null);
+  const [hoveredId, setHoveredId] = useFollowedState(null);
   // Whether focus is in this block. `focusedId` outlives it, because the
   // block hands focus back to that node when an editor closes, but a node
   // shows as focused, with its lines, only while focus is here: otherwise
@@ -159,7 +160,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   }, [focusWithin]);
   // The node menu: which node it is about and where it was asked for, in
   // graph coordinates.
-  const [menu, setMenu] = useState(null);
+  const [menu, setMenu] = useFollowedState(null);
   // The node the open menu is about, readable once `menu` itself has been
   // cleared (the menu closes before it hands focus on).
   const menuNodeRef = useRef(null);
@@ -170,9 +171,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const [scrollLeft, setScrollLeft] = useState(0);
   // A mode waits for a click: `{ kind: 'anchor' | 'move' | 'reentrancy' |
   // 'child', nodeId }`.
-  const [mode, setMode] = useState(null);
+  const [mode, setMode] = useFollowedState(null);
   // An open editor: `{ kind, x, y, ... }`, see askRole and askNewNode.
-  const [editor, setEditor] = useState(null);
+  const [editor, setEditor] = useFollowedState(null);
   // A mode waits for a click in THIS sentence: focus arriving in another
   // block ends it, or a later click here carried out a move asked for before
   // the annotator went elsewhere.
@@ -194,24 +195,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('pointerdown', onPointerDown, true);
     };
-  }, [mode]);
+  }, [mode, setMode]);
   // A drag in progress: `{ kind: 'edge' | 'move', sourceId, edgeId, x, y, over }`.
-  const [drag, setDrag] = useState(null);
+  const [drag, setDrag] = useFollowedState(null);
   const dragRef = useRef(null);
-  // A node, edge or relation made a moment ago is on the canvas under a
-  // pending id until the server answers with its own (plaid-ui's
-  // domain/pendingIds.js). What this block holds by id follows the swap here,
-  // during render, so an open editor stays open and focus stays put.
-  const follow = (value, set) => {
-    const f = followIds(value);
-    if (f !== value) set(f);
-  };
-  follow(focusedId, setFocusedId);
-  follow(hoveredId, setHoveredId);
-  follow(menu, setMenu);
-  follow(mode, setMode);
-  follow(editor, setEditor);
-  follow(drag, setDrag);
   // Whether the last press on the graph began on empty space.
   const pressedEmptyRef = useRef(false);
   // Whether that press came with an editor or the menu open.
@@ -254,7 +241,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A focused node that the last edit removed is no longer focused.
   useEffect(() => {
     if (focusedId && !nodesById.has(focusedId)) setFocusedId(null);
-  }, [focusedId, nodesById]);
+  }, [focusedId, nodesById, setFocusedId]);
 
   const shownFocusId = focusWithin ? focusedId : null;
   const active = hoveredId || shownFocusId;
@@ -420,7 +407,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       setFocusedId(id);
       nodeRefs.current.get(followIds(id))?.focus();
     },
-    [nodeRefs],
+    [nodeRefs, setFocusedId],
   );
 
   // A node just made is in the document before React has drawn it, so its

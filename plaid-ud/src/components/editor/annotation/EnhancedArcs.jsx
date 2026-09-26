@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { provMark } from '../../../utils/provenanceUi.js';
 import { ArcLabel } from './ArcLabel.jsx';
 import { afterDeleting, arcColor, commitsLabel, stepThrough, trimLabel } from './arcLabelRules.js';
 import { useEditorSession } from './editorSession.js';
 import { ARC_BASE, arcHeight, bandArc, sortByLabelX } from '../../../utils/arcLayout.js';
 import { positionMatchesSpanId } from './treePositions.js';
-import { settledId, stableKey } from '@ui/domain/pendingIds.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
+import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import './DependencyTree.css';
 
 // The enhanced graph's extra edges, hung BELOW the words: the tree is drawn
@@ -30,14 +31,10 @@ export const EnhancedArcs = forwardRef(
     // All three handlers are null on a document that cannot be written.
     const isReadOnly = !onRelationUpdate;
 
-    const [editingId, setEditingId] = useState(null);
-    const [focusedId, setFocusedId] = useState(null);
-    const [hoveredId, setHoveredId] = useState(null);
+    const [editingId, setEditingId] = useFollowedState(null);
+    const [focusedId, setFocusedId] = useFollowedState(null);
+    const [hoveredId, setHoveredId] = useFollowedState(null);
     const labelRefs = useRef(new Map());
-    // An edge's pending id gives way to the server's, as in DependencyTree.
-    if (settledId(editingId) !== editingId) setEditingId(settledId(editingId));
-    if (settledId(focusedId) !== focusedId) setFocusedId(settledId(focusedId));
-    if (settledId(hoveredId) !== hoveredId) setHoveredId(settledId(hoveredId));
 
     const positionOf = (spanId) => tokenPositions.find((p) => positionMatchesSpanId(p, spanId));
     const isRoot = (relation) => relation.source === relation.target;

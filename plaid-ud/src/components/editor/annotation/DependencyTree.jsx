@@ -27,7 +27,8 @@ import {
   wordInColumn,
 } from '../../../utils/arcLayout.js';
 import { suppressedBasicIds } from '../../../domain/enhancedGraph.js';
-import { settledId, stableKey } from '@ui/domain/pendingIds.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
+import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import { getEffectiveSpanId, positionMatchesSpanId } from './treePositions.js';
 import './DependencyTree.css';
 
@@ -90,20 +91,20 @@ export const DependencyTree = forwardRef(
       () => suppressedBasicIds(relations, enhancedRelations),
       [relations, enhancedRelations],
     );
-    const [selectedSource, setSelectedSource] = useState(null);
-    const [hoveredToken, setHoveredToken] = useState(null);
-    const [editingRelation, setEditingRelation] = useState(null);
-    const [hoveredRelation, setHoveredRelation] = useState(null);
-    const [focusedRelation, setFocusedRelation] = useState(null);
+    const [selectedSource, setSelectedSource] = useFollowedState(null);
+    const [hoveredToken, setHoveredToken] = useFollowedState(null);
+    const [editingRelation, setEditingRelation] = useFollowedState(null);
+    const [hoveredRelation, setHoveredRelation] = useFollowedState(null);
+    const [focusedRelation, setFocusedRelation] = useFollowedState(null);
     const [dragOrigin, setDragOrigin] = useState(null);
     const [dragCurrent, setDragCurrent] = useState(null);
-    const [dragSourceId, setDragSourceId] = useState(null);
+    const [dragSourceId, setDragSourceId] = useFollowedState(null);
     // Whether the arc in the hand belongs to the enhanced graph: the modifier
     // as the drag BEGAN, fixed for the whole of it (see isEnhancedGesture).
     const [dragEnhanced, setDragEnhanced] = useState(false);
     // A basic relation whose label editor is open to RELABEL it in the enhanced
     // graph. Nothing is written until a different label is committed.
-    const [relabeling, setRelabeling] = useState(null);
+    const [relabeling, setRelabeling] = useFollowedState(null);
     // The ONLY two ways the label editor opens or closes. Relabel mode is a
     // property of one opening of the editor, so it is set and cleared with it:
     // were any path to open or close the editor on its own, a relabel
@@ -117,25 +118,6 @@ export const DependencyTree = forwardRef(
       setRelabeling(null);
       setEditingRelation(null);
     };
-    // A relation or word drawn a moment ago is shown under a pending id until
-    // the server answers with its own (plaid-ui's domain/pendingIds.js). What this tree
-    // holds by id follows the swap here, during render, so an open label
-    // editor stays open and a selected label stays selected.
-    if (editingRelation && settledId(editingRelation.id) !== editingRelation.id) {
-      const id = settledId(editingRelation.id);
-      setEditingRelation(relations.find((r) => r.id === id) || null);
-    }
-    if (settledId(focusedRelation) !== focusedRelation) {
-      setFocusedRelation(settledId(focusedRelation));
-    }
-    if (settledId(hoveredRelation) !== hoveredRelation) {
-      setHoveredRelation(settledId(hoveredRelation));
-    }
-    if (settledId(relabeling) !== relabeling) setRelabeling(settledId(relabeling));
-    if (settledId(dragSourceId) !== dragSourceId) setDragSourceId(settledId(dragSourceId));
-    if (selectedSource && settledId(selectedSource.spanId) !== selectedSource.spanId) {
-      setSelectedSource({ ...selectedSource, spanId: settledId(selectedSource.spanId) });
-    }
     const [positionsInitialized, setPositionsInitialized] = useState(false);
     const svgRef = useRef(null);
     // True from the mousedown that starts a drag until something ends it, so a

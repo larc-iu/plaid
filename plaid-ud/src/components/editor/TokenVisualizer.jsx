@@ -8,7 +8,8 @@ import { Label } from '@ui/components/ui/label';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
-import { settledId, stableKey } from '@ui/domain/pendingIds.js';
+import { stableKey } from '@ui/domain/pendingIds.js';
+import { useFollowedState } from '@ui/hooks/useFollowedState.js';
 import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
@@ -49,10 +50,7 @@ export const TokenVisualizer = ({
     else notifyError(msg);
   };
   // `openId` = the token whose panel is open (hover or pinned-while-editing).
-  const [openId, setOpenId] = useState(null);
-  // A word made a moment ago has a pending id until the server answers
-  // (plaid-ui's domain/pendingIds.js). Its open panel follows it to the server's.
-  if (settledId(openId) !== openId) setOpenId(settledId(openId));
+  const [openId, setOpenId] = useFollowedState(null);
   const [draftForms, setDraftForms] = useState([]);
   const textContainerRef = useRef(null);
   const openTimer = useRef(null);
