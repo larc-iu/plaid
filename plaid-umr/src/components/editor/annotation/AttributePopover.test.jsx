@@ -84,4 +84,64 @@ describe('AttributePopover', () => {
     expect(onClose).toHaveBeenCalled();
     await r.unmount();
   });
+
+  // The line is written on the way out, however the picker is left: a click
+  // on the canvas or another node closed it and wrote nothing, since the
+  // picker was gone before the line could blur.
+  it('writes the typed line when a pointer down outside closes it', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    const attrs = [{ rel: ':aspect', value: 'state' }];
+    const r = await renderComponent(
+      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />,
+    );
+    const other = document.body.querySelector('.umr-attr-other');
+    await r.step(() => other.focus());
+    await typeLine(r, other, ':mod x');
+    await r.step(() => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith([
+      { rel: ':aspect', value: 'state' },
+      { rel: ':mod', value: 'x' },
+    ]);
+    expect(onClose).toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  // A line the file cannot hold is not dropped on the way out either: the
+  // picker stays with the reason, by a click outside or by focus leaving,
+  // and Escape is what gives the line up.
+  it('stays open with the reason when a refused line is left', async () => {
+    const onChange = vi.fn();
+    const onClose = vi.fn();
+    const attrs = [{ rel: ':aspect', value: 'state' }];
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    const r = await renderComponent(
+      <AttributePopover attrs={attrs} onChange={onChange} onClose={onClose} />,
+    );
+    const other = document.body.querySelector('.umr-attr-other');
+    await r.step(() => other.focus());
+    await typeLine(r, other, 'quant 4');
+    await r.step(() => document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.umr-attr-problem')).not.toBe(null);
+    await r.step(() => outside.focus());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(other.value).toBe('quant 4');
+    await r.step(() =>
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+    );
+    expect(onClose).toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    await r.unmount();
+    outside.remove();
+  });
 });
+
+const typeLine = (r, input, text) =>
+  r.step(() => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, text);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });

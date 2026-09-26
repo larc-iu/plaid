@@ -26,7 +26,9 @@ const PICKED = [
 //
 // Keys: arrows move between values and lines, Enter or Space picks the
 // focused one, Backspace clears the focused row, Escape closes. Focus leaving
-// the picker closes it too.
+// the picker closes it too, and so does a click outside it. Both write the
+// text line first, and a line the file cannot hold keeps the picker open with
+// the reason. Escape gives the line up.
 export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, onClose }) {
   const rootRef = useRef(null);
   const place = usePlacement(nodeId, width);
@@ -48,7 +50,18 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   const others = useMemo(() => attrs.filter((a) => !PICKED.includes(a.rel)), [attrs]);
   const [otherLine, setOtherLine] = useState(() => attrsToLine(others));
   const [problem, setProblem] = useState(null);
-  useEffect(() => setOtherLine(attrsToLine(others)), [others]);
+  // The line as typed, for a listener on the document, which would otherwise
+  // read it as it was when the listener was added.
+  const lineRef = useRef(otherLine);
+  // The line last written, so the leaving that follows an Enter or a blur
+  // does not write it again before `attrs` comes back with it.
+  const writtenRef = useRef(null);
+  useEffect(() => {
+    const line = attrsToLine(others);
+    setOtherLine(line);
+    lineRef.current = line;
+    writtenRef.current = null;
+  }, [others]);
 
   // Focus lands on the first row's chosen value, or its first value: never
   // on a row's clear button, where Enter would clear the value.
@@ -62,7 +75,11 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // and a click on another node left it open, writing to the first.
   useEffect(() => {
     const onPointerDown = (e) => {
-      if (!rootRef.current?.contains(e.target)) onClose();
+      if (rootRef.current?.contains(e.target) || leave()) return;
+      // Refused: the picker stays with the reason, and the canvas does not
+      // act on the pointer down, so no drag starts there.
+      e.preventDefault();
+      e.stopPropagation();
     };
     const onKey = (e) => {
       if (e.key === 'Escape' && !rootRef.current?.contains(document.activeElement)) onClose();
@@ -85,17 +102,30 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
   // could pick out of it dropped half of `:wiki Barack Obama`, and read
   // `quant 4`, a forgotten colon, as no attributes at all, which deleted the
   // one it was typed over.
+  // Whether the line is written or needs no writing: false when it is refused.
   const commitOthers = () => {
-    const line = otherLine.trim();
+    const line = lineRef.current.trim();
     const { attrs: next, problem: why } = readAttrLine(
       line,
       others.map((a) => a.rel),
     );
     setProblem(why || null);
-    if (why) return;
-    if (attrsToLine(next) === attrsToLine(others)) return;
+    if (why) return false;
+    if (attrsToLine(next) === attrsToLine(others) || line === writtenRef.current) return true;
+    writtenRef.current = line;
     onChange([...attrs.filter((a) => PICKED.includes(a.rel)), ...next]);
+    return true;
   };
+  // Leaving by a click outside or by focus going elsewhere: the line is
+  // written first, and a refused one keeps the picker open. Read through a
+  // ref, since the document's listener is added once.
+  const leaveRef = useRef(null);
+  leaveRef.current = () => {
+    if (!commitOthers()) return false;
+    onClose();
+    return true;
+  };
+  const leave = () => leaveRef.current();
 
   // Roving focus over the value buttons, by the line they sit on.
   const move = (from, dLine, dCol) => {
@@ -154,7 +184,7 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
       onClick={(e) => e.stopPropagation()}
       onKeyDown={onKeyDown}
       onBlur={(e) => {
-        if (!rootRef.current?.contains(e.relatedTarget)) onClose();
+        if (!rootRef.current?.contains(e.relatedTarget)) leave();
       }}
     >
       {rows.map((row) => (
@@ -210,6 +240,7 @@ export function AttributePopover({ nodeId, width = 470, attrs, sets, onChange, o
           aria-invalid={problem ? true : undefined}
           onChange={(e) => {
             setOtherLine(e.target.value);
+            lineRef.current = e.target.value;
             setProblem(null);
           }}
           onBlur={commitOthers}
