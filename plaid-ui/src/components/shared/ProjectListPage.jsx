@@ -15,10 +15,12 @@ import { textIncludes } from '../../domain/collation.js';
  *
  * `wordLayerId(project)` is the app's: which token layer a word count means
  * differs (plaid-ud counts its morpheme layer, where the CoNLL-U rows live).
+ * `seedLayerId(project)` is plaid-ud's token layer, counted for a document
+ * with no words yet, as its document list does (see wordCountsByProject).
  * `newProject` is the label on the button and in the empty state, and `form` is
  * the app's new-project dialog.
  */
-export const ProjectListPage = ({ wordLayerId, newProject, form: NewProject }) => {
+export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: NewProject }) => {
   useDocumentTitle('Projects');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export const ProjectListPage = ({ wordLayerId, newProject, form: NewProject }) =
     (async () => {
       setWordsLoading(true);
       try {
-        const counts = await wordCountsByProject(client, projects, wordLayerId);
+        const counts = await wordCountsByProject(client, projects, wordLayerId, seedLayerId);
         if (!cancelled) setWordCounts(counts);
       } catch (err) {
         console.error('Word-count query failed:', err);
@@ -86,7 +88,7 @@ export const ProjectListPage = ({ wordLayerId, newProject, form: NewProject }) =
     return () => {
       cancelled = true;
     };
-  }, [projects, getClient, wordLayerId]);
+  }, [projects, getClient, wordLayerId, seedLayerId]);
 
   const handleProjectCreated = (project) => {
     setShowCreateForm(false);

@@ -6,7 +6,15 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 // morpheme layer holds the syntactic words (the CoNLL-U token rows where
 // annotations live), which is what a word count should mean.
 const wordLayerId = (project) => getUdLayerInfo(project).morphemeTokenLayer?.id;
+// A document with no words yet counts its tokens, as the document list does:
+// opening it gives each token a word.
+const seedLayerId = (project) => getUdLayerInfo(project).wordTokenLayer?.id;
 
 export const ProjectList = () => (
-  <ProjectListPage wordLayerId={wordLayerId} newProject="New UD project" form={ProjectForm} />
+  <ProjectListPage
+    wordLayerId={wordLayerId}
+    seedLayerId={seedLayerId}
+    newProject="New UD project"
+    form={ProjectForm}
+  />
 );
