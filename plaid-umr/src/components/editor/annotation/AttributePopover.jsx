@@ -35,6 +35,7 @@ export function AttributePopover({
   attrs,
   sets,
   relationProblem,
+  valueProblem,
   onChange,
   onClose,
 }) {
@@ -120,7 +121,7 @@ export function AttributePopover({
   // Whether the line is written or needs no writing: false when it is refused.
   const commitOthers = () => {
     const line = lineRef.current.trim();
-    const { attrs: next, problem: why } = readAttrLine(line, relationProblem);
+    const { attrs: next, problem: why } = readAttrLine(line, relationProblem, valueProblem);
     setProblem(why || null);
     if (why) return false;
     dirtyRef.current = false;

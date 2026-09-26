@@ -1539,6 +1539,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 nodeId={editor.nodeId}
                 attrs={nodesById.get(editor.nodeId).attrs}
                 relationProblem={(rel) => doc.relationProblem(rel, { nodeId: editor.nodeId })}
+                valueProblem={(rel, value) =>
+                  doc.attrValueProblem(rel, value, { nodeId: editor.nodeId })
+                }
                 onChange={(attrs) => doc.setAttrs(editor.nodeId, attrs)}
                 onClose={closeEditor}
               />

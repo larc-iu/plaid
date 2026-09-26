@@ -171,11 +171,16 @@ export const attrsToLine = (attrs) => attrs.map((a) => `${a.rel} ${a.value}`).jo
  * scanner could pick out of it: `:wiki Barack Obama` dropped Obama, and
  * `quant 4`, a forgotten colon, read as nothing and deleted the attribute it
  * was typed over. `relationProblem` says why a relation cannot be written on
- * the node (the document's, which keeps one the node already stores).
+ * the node (the document's, which keeps one the node already stores), and
+ * `valueProblem` the same of a value under its relation.
  *
  * @returns {{ attrs: {rel: string, value: string}[], problem: string|null }}
  */
-export const readAttrLine = (line, relationProblem) => {
+export const readAttrLine = (
+  line,
+  relationProblem,
+  valueProblem = (_rel, value) => attrValueProblem(value),
+) => {
   const attrs = [];
   let rest = String(line ?? '').trim();
   const fail = (problem) => ({ attrs, problem });
@@ -187,8 +192,8 @@ export const readAttrLine = (line, relationProblem) => {
     rest = rest.slice(rel[0].length);
     const value = /^("(?:[^"\\]|\\.)*"|[^\s]+)(\s+|$)/.exec(rest);
     if (!value) return fail(`${rel[1]} has no value.`);
-    const valueProblem = attrValueProblem(value[1]);
-    if (valueProblem) return fail(valueProblem);
+    const valueWhy = valueProblem(rel[1], value[1]);
+    if (valueWhy) return fail(valueWhy);
     attrs.push({ rel: rel[1], value: value[1] });
     rest = rest.slice(value[0].length);
   }

@@ -34,7 +34,7 @@ import { serializeUmrFile, readAlignment } from './format/umrFile.js';
 import {
   conceptProblem,
   relationProblem as relationFormProblem,
-  attrValueProblem,
+  attrValueProblem as valueFormProblem,
   parsePenman,
 } from './format/penman.js';
 import {
@@ -453,7 +453,7 @@ export class UmrDocument extends DocumentModel {
     const refused = this._refused(
       conceptProblem(concept),
       parentId ? this.relationProblem(role) : null,
-      ...attrs.map((a) => this.relationProblem(a.rel) || attrValueProblem(a.value)),
+      ...attrs.map((a) => this.relationProblem(a.rel) || this.attrValueProblem(a.rel, a.value)),
     );
     if (refused) return false;
     const parent = parentId ? this.node(parentId) : null;
@@ -613,6 +613,22 @@ export class UmrDocument extends DocumentModel {
     return g ? unknownDocRelationProblem(g, r) : unknownRelationProblem(r);
   }
 
+  /**
+   * Why `value` cannot be written as the value of `rel`, or null when it can.
+   * With `{ nodeId }`, a value already stored under that very relation on
+   * that node is kept, as `relationProblem` keeps a relation: an imported
+   * file may carry a value no editor would take, and an edit of the node's
+   * other attributes sends it back unchanged.
+   */
+  attrValueProblem(rel, value, { nodeId = null } = {}) {
+    const why = valueFormProblem(value);
+    if (!why || !nodeId) return why;
+    const text = String(rel ?? '').trim();
+    const r = text.startsWith(':') ? text : `:${text}`;
+    const stored = (this.node(nodeId)?.attrs ?? []).some((a) => a.rel === r && a.value === value);
+    return stored ? null : why;
+  }
+
   // The first of `problems` that is not null, shown, and whether there was
   // one: a write method refuses with it.
   _refused(...problems) {
@@ -658,7 +674,11 @@ export class UmrDocument extends DocumentModel {
     const node = this.node(nodeId);
     if (!node) return false;
     const refused = this._refused(
-      ...attrs.map((a) => this.relationProblem(a.rel, { nodeId }) || attrValueProblem(a.value)),
+      ...attrs.map(
+        (a) =>
+          this.relationProblem(a.rel, { nodeId }) ||
+          this.attrValueProblem(a.rel, a.value, { nodeId }),
+      ),
     );
     if (refused) return false;
     // An attribute keeps its place among the node's children when one with
@@ -1508,7 +1528,7 @@ export class UmrDocument extends DocumentModel {
             : {};
         const bad =
           this.relationProblem(child.rel, at) ||
-          (child.kind === 'node' ? null : attrValueProblem(child.value));
+          (child.kind === 'node' ? null : this.attrValueProblem(child.rel, child.value, at));
         if (bad) errors.push({ message: `${v}: ${bad}` });
       });
     });

@@ -118,6 +118,20 @@ test('a relation UMR does not have is refused', () => {
   ]);
 });
 
+// The line asks the document about each value too, which keeps one the node
+// already stores under that relation though no editor would take it typed.
+test('the attribute line keeps a stored value its check keeps', () => {
+  assert.match(readAttrLine(':mod re"d', () => null).problem, /quote/);
+  const kept = (rel, value) =>
+    rel === ':mod' && value === 're"d' ? null : value.includes('"') ? 'quote' : null;
+  assert.equal(readAttrLine(':mod re"d :quant 2', () => null, kept).problem, null);
+  assert.deepEqual(readAttrLine(':mod re"d :quant 2', () => null, kept).attrs, [
+    { rel: ':mod', value: 're"d' },
+    { rel: ':quant', value: '2' },
+  ]);
+  assert.equal(readAttrLine(':quant re"d', () => null, kept).problem, 'quote');
+});
+
 // A document-level relation is a closed set too, per group: the relation
 // editor refuses what `unknown-document-relation` reports, `:FullAff` as the
 // guidelines' examples write it among them.

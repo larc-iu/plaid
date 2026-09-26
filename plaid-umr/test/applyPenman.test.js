@@ -492,3 +492,49 @@ test('text mode keeps a stored unknown relation only where it is stored', () => 
     /s1e: Unknown relation ':poss'/,
   );
 });
+
+// A value the file stores that the editors would not let anyone type (a quote
+// inside a bare atom) is kept where it is stored, as a stored unknown relation
+// is. It once refused every row pick on that node, on any row.
+test('a stored value no editor would take is kept on its node, and nowhere else', async () => {
+  const file = FILE.replace(
+    ':aspect performance\n    :purpose',
+    ':aspect performance\n    :mod re"d\n    :purpose',
+  );
+  const { client, calls } = recordingClient();
+  const doc = new UmrDocument({
+    raw: rawFromPlan(planImport(parseUmrFile(file).sentences, [])),
+    client,
+  });
+  doc._reload = async () => {};
+  let refused = null;
+  doc.onError = (msg) => {
+    refused = msg;
+  };
+  const leave = doc.node(nodeId(doc, 's1l'));
+  const eat = doc.node(nodeId(doc, 's1e'));
+  assert.ok(leave.attrs.some((a) => a.rel === ':mod' && a.value === 're"d'));
+
+  assert.equal(doc.attrValueProblem(':mod', 're"d', { nodeId: leave.id }), null);
+  assert.match(doc.attrValueProblem(':mod', 're"d', { nodeId: eat.id }), /quote/);
+  assert.match(doc.attrValueProblem(':mod', 're"d'), /quote/);
+  assert.match(doc.attrValueProblem(':quant', 're"d', { nodeId: leave.id }), /quote/);
+  assert.match(doc.attrValueProblem(':mod', 'b"c', { nodeId: leave.id }), /quote/);
+
+  // A pick on another row sends the stored value back, and is written.
+  assert.ok(await doc.setAttrs(leave.id, [...leave.attrs, { rel: ':polarity', value: '-' }]));
+  assert.equal(refused, null);
+  const before = calls.length;
+  assert.equal(await doc.setAttrs(eat.id, [...eat.attrs, { rel: ':mod', value: 're"d' }]), false);
+  assert.match(refused, /quote/);
+  assert.equal(calls.length, before);
+
+  // Text mode keeps it where it is stored too.
+  const text = doc.penmanOf(1);
+  assert.match(text, /:mod re"d/);
+  assert.equal(doc.planPenman(1, text.replace('leave-02', 'leave-01')).errors, undefined);
+  assert.match(
+    doc.planPenman(1, text.replace('eat-01', 'eat-01 :mod re"d')).errors[0].message,
+    /s1e: .*quote/,
+  );
+});
