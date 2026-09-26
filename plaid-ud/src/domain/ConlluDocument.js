@@ -1,6 +1,8 @@
 import {
   applyMetadataOps,
   cpLength,
+  createdId,
+  createdIds,
   cpSlice,
   isMachine,
   isReviewed,
@@ -24,12 +26,7 @@ import {
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
-import {
-  pendingId,
-  recordSettled,
-  settledId,
-  settleIds,
-} from '../../../plaid-ui/src/domain/pendingIds.js';
+import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
   interSententialRelationIds,
   relationsCrossing,
@@ -308,10 +305,10 @@ export class ConlluDocument extends DocumentModel {
           b.tokens.bulkCreate(bulk(morphemeTokenLayer, morphemes));
         }
       });
-      record(sentences, results[0]?.body?.ids);
+      record(sentences, createdIds(results[0]));
       if (words.length > 0) {
-        record(words, results[1]?.body?.ids);
-        record(morphemes, results[2]?.body?.ids);
+        record(words, createdIds(results[1]));
+        record(morphemes, createdIds(results[2]));
       }
 
       // Default lemma spans (a follow-up call: they reference the morpheme
@@ -325,9 +322,9 @@ export class ConlluDocument extends DocumentModel {
             value: span.value,
           })),
         );
-        record(lemmas, created?.ids);
+        record(lemmas, createdIds(created));
       }
-      this._settlePendingIds(ids);
+      this._settle(ids);
     });
   }
 
@@ -437,7 +434,7 @@ export class ConlluDocument extends DocumentModel {
         b.tokens.split(settledId(containing.id), charPos);
         crossing.forEach((id) => b.relations.delete(settledId(id)));
       });
-      this._settlePendingIds(new Map([[rightId, res[0]?.body?.id]]));
+      this._settle(new Map([[rightId, createdId(res[0])]]));
     });
   }
 
@@ -732,7 +729,7 @@ export class ConlluDocument extends DocumentModel {
       });
       // bulkCreate sits at index 1 when we issued a bulkDelete, else index 0;
       // patchMetadata (if any) is the final op and we don't need its result.
-      const created = setResults[existing.length ? 1 : 0]?.body?.ids || [];
+      const created = createdIds(setResults[existing.length ? 1 : 0]);
       morphemes.forEach((m, i) => created[i] && ids.set(m.id, created[i]));
 
       // Batch 2: atomic Form + Lemma spans for the new morphemes. (Separate
@@ -749,12 +746,12 @@ export class ConlluDocument extends DocumentModel {
           if (lemmaSpans.length) b.spans.bulkCreate(ops(lemmaLayer, lemmaSpans));
         });
         const [formIds, lemmaIds] = formSpans.length
-          ? [spanResults[0]?.body?.ids, spanResults[1]?.body?.ids]
-          : [null, spanResults[0]?.body?.ids];
+          ? [createdIds(spanResults[0]), createdIds(spanResults[1])]
+          : [null, createdIds(spanResults[0])];
         formSpans.forEach((s, i) => formIds?.[i] && ids.set(s.id, formIds[i]));
         lemmaSpans.forEach((s, i) => lemmaIds?.[i] && ids.set(s.id, lemmaIds[i]));
       }
-      this._settlePendingIds(ids);
+      this._settle(ids);
     });
   }
 
@@ -866,9 +863,9 @@ export class ConlluDocument extends DocumentModel {
         b.tokens.bulkCreate([{ tokenLayerId: wordTokenLayer.id, text: text.id, begin, end }]);
         b.tokens.bulkCreate([{ tokenLayerId: morphemeTokenLayer.id, text: text.id, begin, end }]);
       });
-      if (sentence) ids.set(sentence.id, res[0]?.body?.ids?.[0]);
-      ids.set(wordRow.id, res[res.length - 2]?.body?.ids?.[0]);
-      const morphemeId = res[res.length - 1]?.body?.ids?.[0];
+      if (sentence) ids.set(sentence.id, createdIds(res[0])[0]);
+      ids.set(wordRow.id, createdIds(res[res.length - 2])[0]);
+      const morphemeId = createdIds(res[res.length - 1])[0];
       ids.set(morpheme.id, morphemeId);
 
       // Default lemma span (follow-up call: it needs the morpheme id). A
@@ -878,9 +875,9 @@ export class ConlluDocument extends DocumentModel {
         const lr = await this._client.spans.bulkCreate([
           { spanLayerId: lemmaLayer.id, tokens: [morphemeId], value: lemma.value },
         ]);
-        ids.set(lemma.id, lr?.ids?.[0]);
+        ids.set(lemma.id, createdIds(lr)[0]);
       }
-      this._settlePendingIds(ids);
+      this._settle(ids);
     });
   }
 
@@ -1000,7 +997,7 @@ export class ConlluDocument extends DocumentModel {
           pair,
           stamp || undefined,
         );
-        this._settlePendingIds(new Map([[newSpanId, spanResult?.id || spanResult]]));
+        this._settle(new Map([[newSpanId, createdId(spanResult)]]));
       });
     }
 
@@ -1089,7 +1086,7 @@ export class ConlluDocument extends DocumentModel {
         value,
         stamp || undefined,
       );
-      this._settlePendingIds(new Map([[newSpanId, spanResult?.id || spanResult]]));
+      this._settle(new Map([[newSpanId, createdId(spanResult)]]));
     });
   }
 
@@ -1163,15 +1160,8 @@ export class ConlluDocument extends DocumentModel {
         span.value,
         span.metadata || undefined,
       );
-      ids.set(span.id, created?.id || created);
+      ids.set(span.id, createdId(created));
     }
-  }
-
-  // Put the server's ids in place of the pending ones a write showed.
-  _settlePendingIds(ids) {
-    if (ids.size === 0) return;
-    recordSettled(ids);
-    this._applyRawPatch((next) => settleIds(next, ids));
   }
 
   // Suppressors lying over these pairs, each given as a basic relation or as a
@@ -1284,8 +1274,8 @@ export class ConlluDocument extends DocumentModel {
           relStamp || undefined,
         );
       });
-      ids.set(relationId, batchResults[batchResults.length - 1]?.body?.id);
-      this._settlePendingIds(ids);
+      ids.set(relationId, createdId(batchResults[batchResults.length - 1]));
+      this._settle(ids);
     });
   }
 
@@ -1356,7 +1346,6 @@ export class ConlluDocument extends DocumentModel {
       });
     });
 
-    let createdId = null;
     const ok = await this._queueWrite(label, async () => {
       const ids = new Map();
       await this._createPendingSpans(info, pending, ids);
@@ -1379,12 +1368,11 @@ export class ConlluDocument extends DocumentModel {
           stamp || undefined,
         );
       });
-      createdId = results[results.length - 1]?.body?.id || null;
-      if (suppressorId) ids.set(suppressorId, results[0]?.body?.id);
-      ids.set(edgeId, createdId);
-      this._settlePendingIds(ids);
+      if (suppressorId) ids.set(suppressorId, createdId(results[0]));
+      ids.set(edgeId, createdId(results[results.length - 1]));
+      this._settle(ids);
     });
-    return ok ? createdId : false;
+    return ok ? settledId(edgeId) : false;
   }
 
   // Say whether the enhanced graph has this BASIC relation. It does unless a
@@ -1434,7 +1422,7 @@ export class ConlluDocument extends DocumentModel {
         null,
         { [SUPPRESS_KEY]: true },
       );
-      this._settlePendingIds(new Map([[id, created?.id || created]]));
+      this._settle(new Map([[id, createdId(created)]]));
     });
   }
 

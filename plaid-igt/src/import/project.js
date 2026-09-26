@@ -16,6 +16,7 @@
 // — have one home. The format-shaped work (reading the file, naming fields,
 // glosses, lexicons, media) stays in each importer.
 
+import { createdIds } from '@larc-iu/plaid-client';
 import {
   defaultIgnoredTokensSetup,
   findAlignmentTokenLayer,
@@ -193,6 +194,6 @@ export async function createDocumentShell({
     ? []
     : createTokens
       ? await createTokens(specs)
-      : ((await client.tokens.bulkCreate(specs))?.ids ?? []);
+      : createdIds(await client.tokens.bulkCreate(specs));
   return { documentId, textId, sentenceIds };
 }

@@ -11,7 +11,7 @@
 // Archive ids are correlation keys here as everywhere: each layer, token, span
 // and relation is made fresh and found again through an old-to-new map.
 
-import { PLAID_NAMESPACE, ROLES } from '@larc-iu/plaid-client';
+import { PLAID_NAMESPACE, ROLES, createdIds } from '@larc-iu/plaid-client';
 import { bulkInChunks } from '../../domain/bulk.js';
 import { IGT_NAMESPACE, findBaselineTextLayer, readScope } from '../../domain/igtConfig.js';
 import { otherTokenLayers, ownTokenLayers, parentsFirst } from '../../domain/otherLayers.js';
@@ -303,7 +303,7 @@ export async function importOtherLayerData({
     const send = (chunk) => client.tokens.bulkCreate(chunk);
     const ids = await refs.create('token', specs, async (sent) =>
       layer.overlapMode === 'partitioning'
-        ? (await send(sent))?.ids
+        ? createdIds(await send(sent))
         : bulkInChunks(sent, check, send),
     );
     rows.forEach((t, i) => {

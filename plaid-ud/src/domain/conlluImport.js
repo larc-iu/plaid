@@ -1,4 +1,4 @@
-import { cpSlice } from '@larc-iu/plaid-client';
+import { cpSlice, createdIds } from '@larc-iu/plaid-client';
 // By its real path rather than through `@ui`, for the same reason
 // ConlluDocument.js gives: the `node --test` suite has no alias.
 import { normalizeFeature } from '../utils/feats.js';
@@ -225,7 +225,7 @@ export async function importConlluDocument(
       }
     });
     const morphemeIds =
-      morphemeResultIndex >= 0 ? tokenResults[morphemeResultIndex]?.body?.ids || [] : [];
+      morphemeResultIndex >= 0 ? createdIds(tokenResults[morphemeResultIndex]) : [];
     // Every annotation is addressed by its morpheme's position in this list,
     // so a short one would attach some and drop the rest while the import
     // still reported success. Fail instead: the catch below rolls the
@@ -314,7 +314,7 @@ export async function importConlluDocument(
     });
     const lemmaResultIdx = spanOpsInOrder.indexOf('lemma');
     if (lemmaResultIdx >= 0) {
-      const ids = spanResults[lemmaResultIdx]?.body?.ids || [];
+      const ids = createdIds(spanResults[lemmaResultIdx]);
       if (ids.length !== lemmaOps.length) {
         throw new Error(
           `Import failed: the server returned ${ids.length} Lemma span ids for ` +

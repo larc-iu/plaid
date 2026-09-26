@@ -4,14 +4,16 @@
 // mutations section).
 //
 // By their real paths rather than through `@ui`: the node suite has no alias.
-import { applyMetadataOps, isReviewed, metadataOps, writerPolicy } from '@larc-iu/plaid-client';
-import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
 import {
-  pendingId,
-  recordSettled,
-  settledId,
-  settleIds,
-} from '../../../plaid-ui/src/domain/pendingIds.js';
+  applyMetadataOps,
+  createdId,
+  createdIds,
+  isReviewed,
+  metadataOps,
+  writerPolicy,
+} from '@larc-iu/plaid-client';
+import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
+import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import { vocabLinksByToken } from './vocabLexicon.js';
 import { getUmrLayerInfo, UMR_NAMESPACE, readIlgConfig } from '../utils/umrLayerUtils.js';
 import { resolveIlg, ilgLinesFor } from './ilg.js';
@@ -396,13 +398,6 @@ export class UmrDocument extends DocumentModel {
   // hold that one's pending ids. Ids handed in by the canvas are settled on
   // the way in for the same reason.
 
-  // Put the server's ids in place of the pending ones an edit showed.
-  _settle(ids) {
-    if (ids.size === 0) return;
-    recordSettled(ids);
-    this._applyRawPatch((next) => settleIds(next, ids));
-  }
-
   // New anchor tokens for `pieces`, under pending ids.
   _pendingPieces(pieces) {
     return pieces.map((p) => ({ id: pendingId(), begin: p.begin, end: p.end }));
@@ -421,7 +416,7 @@ export class UmrDocument extends DocumentModel {
         end: t.end,
       })),
     );
-    tokens.forEach((t, i) => ids.set(t.id, created.ids[i]));
+    tokens.forEach((t, i) => ids.set(t.id, createdIds(created)[i]));
   }
 
   /**
@@ -503,7 +498,7 @@ export class UmrDocument extends DocumentModel {
           concept,
           { ...stamp, [UMR_NAMESPACE]: meta },
         );
-        ids.set(spanId, span?.id || span);
+        ids.set(spanId, createdId(span));
         if (parent) {
           const rel = await this._client.relations.create(
             info.relationLayer.id,
@@ -512,13 +507,13 @@ export class UmrDocument extends DocumentModel {
             role,
             { ...stamp, [UMR_NAMESPACE]: { order } },
           );
-          ids.set(edgeId, rel?.id || rel);
+          ids.set(edgeId, createdId(rel));
         }
         this._settle(ids);
       },
       parent ? `Add ${role} ${concept} under ${parent.concept}` : `Add ${concept}`,
     );
-    return ok ? { nodeId: ids.get(spanId), edgeId: edgeId ? ids.get(edgeId) : null } : false;
+    return ok ? { nodeId: settledId(spanId), edgeId: edgeId ? settledId(edgeId) : null } : false;
   }
 
   /**
@@ -783,7 +778,6 @@ export class UmrDocument extends DocumentModel {
         metadata: { ...stamp, [UMR_NAMESPACE]: { order } },
       });
     });
-    let serverId = null;
     const ok = await this._queueWrite(
       label,
       async () => {
@@ -794,12 +788,11 @@ export class UmrDocument extends DocumentModel {
           role,
           { ...stamp, [UMR_NAMESPACE]: { order } },
         );
-        serverId = rel?.id || rel;
-        this._settle(new Map([[edgeId, serverId]]));
+        this._settle(new Map([[edgeId, createdId(rel)]]));
       },
       `Add ${role} from ${source.var} to ${target.var}`,
     );
-    return ok ? serverId : false;
+    return ok ? settledId(edgeId) : false;
   }
 
   async setRole(edgeId, role) {
@@ -971,7 +964,7 @@ export class UmrDocument extends DocumentModel {
             { ...stamp, [UMR_NAMESPACE]: { order } },
           );
         });
-        this._settle(new Map([[newId, results.at(-1)?.body?.id]]));
+        this._settle(new Map([[newId, createdId(results.at(-1))]]));
       },
       `Move ${edge.role} ${target.var} under ${source.var}`,
     );
@@ -1177,7 +1170,7 @@ export class UmrDocument extends DocumentModel {
       c.name,
       c.span.metadata,
     );
-    ids.set(c.span.id, span?.id || span);
+    ids.set(c.span.id, createdId(span));
   }
 
   /**
@@ -1247,12 +1240,12 @@ export class UmrDocument extends DocumentModel {
           rel,
           { ...stamp, [UMR_NAMESPACE]: meta },
         );
-        ids.set(tripleId, created?.id || created);
+        ids.set(tripleId, createdId(created));
         this._settle(ids);
       },
       `Add ${rel} from ${s?.var || source} to ${t?.var || target}`,
     );
-    return ok ? ids.get(tripleId) : false;
+    return ok ? settledId(tripleId) : false;
   }
 
   async setTripleRelation(id, rel) {
@@ -1781,7 +1774,7 @@ export class UmrDocument extends DocumentModel {
             );
           }
         });
-        const pieceIds = pieces.length ? firstPass.at(-1)?.body?.ids || [] : [];
+        const pieceIds = pieces.length ? createdIds(firstPass.at(-1)) : [];
         if (pieceIds.length !== pieces.length) {
           throw new Error(
             `The server returned ${pieceIds.length} anchor ids for ${pieces.length} anchors.`,
@@ -1801,7 +1794,7 @@ export class UmrDocument extends DocumentModel {
               })),
             );
           });
-          const spanIds = secondPass.at(-1)?.body?.ids || [];
+          const spanIds = createdIds(secondPass.at(-1));
           if (spanIds.length !== newNodes.length) {
             throw new Error(
               `The server returned ${spanIds.length} node ids for ${newNodes.length} nodes.`,
@@ -1823,7 +1816,7 @@ export class UmrDocument extends DocumentModel {
               })),
             );
           });
-          const edgeIds = thirdPass.at(-1)?.body?.ids || [];
+          const edgeIds = createdIds(thirdPass.at(-1));
           newEdges.forEach((e, i) => edgeIds[i] && ids.set(e.id, edgeIds[i]));
         }
         this._settle(ids);

@@ -209,3 +209,14 @@ test('a refused write reloads, and the edits queued behind it are not sent', asy
   assert.ok(!byVar('s1e').out.some((e) => e.target === name.id));
   assert.equal(doc.isSaving, false);
 });
+
+test('a create the server answers with no id keeps its pending id', async () => {
+  const { doc, release, byVar } = open();
+  doc._client.relations.create = async () => ({});
+  const eat = byVar('s1e');
+  const name = byVar('s1n');
+  release();
+  assert.ok(await doc.createEdge(eat.id, name.id, ':ARG1'));
+  const edge = doc.node(eat.id).out.find((e) => e.target === name.id);
+  assert.ok(isPendingId(edge?.id), `the edge's id became ${JSON.stringify(edge?.id)}`);
+});

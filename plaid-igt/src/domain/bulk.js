@@ -17,6 +17,8 @@
 // 1000-op cap as well, and says so where it picks its own number.
 export const CHUNK = 500;
 
+import { createdIds } from '@larc-iu/plaid-client';
+
 /** `arr` in CHUNK-sized slices (or `size`-sized), as an array of arrays. */
 export function chunk(arr, size = CHUNK) {
   const out = [];
@@ -34,7 +36,7 @@ export async function bulkInChunks(items, check, send) {
   for (const slice of chunk(items)) {
     check?.();
     const res = await send(slice);
-    if (res?.ids) ids.push(...res.ids);
+    ids.push(...createdIds(res));
   }
   return ids;
 }

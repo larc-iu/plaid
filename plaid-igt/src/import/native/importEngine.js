@@ -24,6 +24,7 @@
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
 // at creation — it doubles as provenance back to the source archive).
 
+import { createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
@@ -361,10 +362,8 @@ async function importNativeDocument({
   const bulkTokens = async (specs, oldIds) => {
     if (!specs.length) return [];
     const ids =
-      (await refs.create(
-        'token',
-        specs,
-        async (sent) => (await client.tokens.bulkCreate(sent))?.ids,
+      (await refs.create('token', specs, async (sent) =>
+        createdIds(await client.tokens.bulkCreate(sent)),
       )) ?? [];
     oldIds.forEach((oldId, i) => {
       if (oldId != null && ids[i]) tokenIdMap.set(oldId, ids[i]);
@@ -612,7 +611,7 @@ async function importNativeDocument({
         const ids = await refs.create(
           'span',
           chunk.map(({ archiveId: _archiveId, ...spec }) => spec),
-          async (sent) => (await client.spans.bulkCreate(sent))?.ids,
+          async (sent) => createdIds(await client.spans.bulkCreate(sent)),
         );
         chunk.forEach((spec, j) => {
           if (spec.archiveId != null && ids?.[j]) spanIdMap.set(spec.archiveId, ids[j]);
@@ -682,7 +681,7 @@ async function importNativeDocument({
       const ids = await refs.create(
         'link',
         chunk.map((l) => ({ vocabItem: l.itemId, tokens: l.tokenIds, metadata: l.metadata })),
-        async (sent) => (await client.vocabLinks.bulkCreate(sent))?.ids,
+        async (sent) => createdIds(await client.vocabLinks.bulkCreate(sent)),
       );
       chunk.forEach((l, j) => {
         if (l.archiveId != null && ids?.[j]) linkIdMap.set(l.archiveId, ids[j]);

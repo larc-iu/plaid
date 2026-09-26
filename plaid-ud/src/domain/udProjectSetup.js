@@ -31,6 +31,7 @@ import {
   ROLES,
   findByRole,
   readRole,
+  createdId,
 } from '@larc-iu/plaid-client';
 
 // Provenance survives a split, including one made by another app sharing this
@@ -85,14 +86,14 @@ const bootstrap = async (client, projectName) => {
     const b2 = await client.batched(async (b) => {
       b.textLayers.create(projectId, 'Text');
     });
-    const textLayerId = b2.at(-1).body.id;
+    const textLayerId = createdId(b2.at(-1));
 
     // B3: textLayer.setConfig + sentenceLayer.create
     const b3 = await client.batched(async (b) => {
       b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       b.tokenLayers.create(textLayerId, 'Sentences', 'partitioning');
     });
-    const sentenceLayerId = b3.at(-1).body.id;
+    const sentenceLayerId = createdId(b3.at(-1));
 
     // B4: sentenceLayer.setConfig + wordLayer.create
     const b4 = await client.batched(async (b) => {
@@ -100,7 +101,7 @@ const bootstrap = async (client, projectName) => {
       declarePreserveOnSplit(b, sentenceLayerId);
       b.tokenLayers.create(textLayerId, 'Tokens', 'non-overlapping', sentenceLayerId);
     });
-    const wordLayerId = b4.at(-1).body.id;
+    const wordLayerId = createdId(b4.at(-1));
 
     // B5: wordLayer.setConfig + morphemeLayer.create
     const b5 = await client.batched(async (b) => {
@@ -108,7 +109,7 @@ const bootstrap = async (client, projectName) => {
       declarePreserveOnSplit(b, wordLayerId);
       b.tokenLayers.create(textLayerId, 'Words', 'any', wordLayerId);
     });
-    const morphemeLayerId = b5.at(-1).body.id;
+    const morphemeLayerId = createdId(b5.at(-1));
 
     // B6: morphemeLayer.setConfig + all 5 span layer creates
     const b6 = await client.batched(async (b) => {
@@ -124,7 +125,7 @@ const bootstrap = async (client, projectName) => {
     });
     // The five span creates are the LAST five results, whatever config ops run
     // before them (see the note on B2 above).
-    const spanLayerIds = b6.slice(-SPAN_LAYER_SPECS.length).map((r) => r.body.id);
+    const spanLayerIds = b6.slice(-SPAN_LAYER_SPECS.length).map(createdId);
     const lemmaIdx = SPAN_LAYER_SPECS.findIndex(([, key]) => key === UD_SPAN_CONFIG_KEYS.lemma);
     const lemmaLayerId = spanLayerIds[lemmaIdx];
 
@@ -137,7 +138,7 @@ const bootstrap = async (client, projectName) => {
       b.relationLayers.create(lemmaLayerId, 'Enhanced Dependencies');
     });
     // The two creates are the LAST two results (see the note on B2 above).
-    const [relationLayerId, enhancedLayerId] = b7.slice(-2).map((r) => r.body.id);
+    const [relationLayerId, enhancedLayerId] = b7.slice(-2).map(createdId);
 
     // B8: both relationLayer.setConfig
     await client.batched(async (b) => {
@@ -218,7 +219,7 @@ export const adoptSubstrate = (client, project) =>
     let textLayerId = existingTextLayer?.id;
     if (!textLayerId) {
       const created = await client.textLayers.create(project.id, 'Text');
-      textLayerId = created?.id || created;
+      textLayerId = createdId(created);
     }
     if (readRole(existingTextLayer?.config) !== ROLES.BASELINE) {
       await client.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
@@ -232,7 +233,7 @@ export const adoptSubstrate = (client, project) =>
       const existing = findByRole(existingTextLayer?.tokenLayers, role);
       if (existing) return existing.id;
       const created = await client.tokenLayers.create(textLayerId, name, overlapMode, parentId);
-      const id = created?.id || created;
+      const id = createdId(created);
       await client.tokenLayers.setConfig(id, PLAID_NAMESPACE, ROLE_KEY, role);
       await declarePreserveOnSplit(client, id);
       return id;
@@ -265,7 +266,7 @@ export const adoptSubstrate = (client, project) =>
       let id = existing?.id;
       if (!id) {
         const created = await client.spanLayers.create(morphemeLayerId, name);
-        id = created?.id || created;
+        id = createdId(created);
         await client.spanLayers.setConfig(id, UD_NAMESPACE, configKey, true);
       }
       if (configKey === UD_SPAN_CONFIG_KEYS.lemma) {
@@ -280,7 +281,7 @@ export const adoptSubstrate = (client, project) =>
     if (!findFlagged(lemmaLayer?.relationLayers, UD_RELATION_CONFIG_KEY)) {
       const created = await client.relationLayers.create(lemmaLayerId, 'Dependency Relations');
       await client.relationLayers.setConfig(
-        created?.id || created,
+        createdId(created),
         UD_NAMESPACE,
         UD_RELATION_CONFIG_KEY,
         true,
@@ -314,7 +315,7 @@ export const ensureEnhancedRelationLayer = async (client, lemmaLayer) => {
   if (existing) return null;
   return client.withOperation('Add the enhanced dependency layer', async () => {
     const created = await client.relationLayers.create(lemmaLayer.id, 'Enhanced Dependencies');
-    const layerId = created?.id || created;
+    const layerId = createdId(created);
     await client.relationLayers.setConfig(
       layerId,
       UD_NAMESPACE,

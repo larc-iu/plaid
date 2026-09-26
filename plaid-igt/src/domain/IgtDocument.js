@@ -7,6 +7,7 @@ import {
   PRESERVE_ON_SPLIT_KEY,
   PROVENANCE_KEYS,
   writerPolicy,
+  createdId,
 } from '@larc-iu/plaid-client';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { DocumentModel } from '@ui/domain/DocumentModel.js';
@@ -619,7 +620,7 @@ export class IgtDocument extends DocumentModel {
         b.tokens.split(id, leftEnd);
       });
       // `tokens.split` is the last queued op; its body is `{ id: <new right id> }`.
-      const newRightTokenId = results[results.length - 1]?.body?.id;
+      const newRightTokenId = createdId(results[results.length - 1]);
       if (leftPatch || (newRightTokenId && rightMetadata)) {
         await this._client.batched(async (b) => {
           if (leftPatch) b.tokens.patchMetadata(id, metadataOps(leftPatch));

@@ -314,3 +314,12 @@ test('a provenance key is never written as a metadata field', async () => {
   assert.equal(await doc.setSentenceMetadata(sentence.id, 'provSource', 'x'), false);
   assert.equal(calls.length, 0);
 });
+
+test('a create the server answers with no id keeps its pending id', async () => {
+  const { doc, release, lemma, headOf } = open();
+  doc._client.relations.create = async () => ({});
+  release();
+  assert.equal(await doc.createRelation(lemma('come'), lemma('home'), 'obj'), true);
+  const [rel] = headOf(lemma('home'));
+  assert.ok(isPendingId(rel?.id), `the relation's id became ${JSON.stringify(rel?.id)}`);
+});

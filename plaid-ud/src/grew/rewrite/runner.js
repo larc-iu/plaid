@@ -9,7 +9,7 @@
 // sentence matches after every application, and a rule whose pattern the
 // query language cannot express visits every document instead.
 
-import { metadataOps } from '@larc-iu/plaid-client';
+import { metadataOps, createdId } from '@larc-iu/plaid-client';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { compileGrew } from '../compile.js';
 import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
@@ -285,7 +285,7 @@ async function applyToDocument(client, doc, rows) {
     const results = await client.batched(async (b) => {
       part.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
     });
-    part.forEach((w, i) => lemmaOf.set(w.node, results[i]?.body?.id));
+    part.forEach((w, i) => lemmaOf.set(w.node, createdId(results[i])));
   }
 
   // 3. Everything else. A person's edit of a machine or contributed value

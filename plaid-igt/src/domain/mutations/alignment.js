@@ -16,7 +16,14 @@
 // so measurement and slicing use cpLength/cpSlice, not the UTF-16
 // `.length`/`.substring`/`.indexOf` (which mis-place tokens around astral text).
 
-import { cpLength, cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import {
+  cpLength,
+  cpSlice,
+  mergeMetadata,
+  metadataOps,
+  createdId,
+  createdIds,
+} from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
@@ -599,8 +606,8 @@ export const alignmentMutations = {
         }
       });
       const at = textOps.length ? 1 : 0;
-      const ids = new Map([[segment.id, results?.[at]?.body?.id]]);
-      if (seeded) ids.set(seeded.id, results?.[at + 1]?.body?.ids?.[0]);
+      const ids = new Map([[segment.id, createdId(results?.[at])]]);
+      if (seeded) ids.set(seeded.id, createdIds(results?.[at + 1])[0]);
       if ([...ids.values()].some((id) => !id)) {
         await this._reloadInSend(); // the batch answered without the ids the patch needs
       } else {

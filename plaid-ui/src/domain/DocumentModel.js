@@ -6,7 +6,7 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports two siblings with no imports of their own, and nothing else:
+// Imports three siblings with no imports of their own, and nothing else:
 // plaid-ud's node suite reaches this file by relative path, where no alias and
 // no package resolves. Errors leave through `onError`.
 
@@ -20,6 +20,7 @@ import {
   withTextDirection,
 } from './textDirection.js';
 import { WriteQueue } from './WriteQueue.js';
+import { recordSettled, settleIds } from './pendingIds.js';
 
 const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
@@ -350,6 +351,29 @@ export class DocumentModel {
     this._raw = next;
     this._dataVersion++;
     this._emit();
+  }
+
+  // Put the server's ids in place of the pending ones an edit showed
+  // (pendingIds.js), given as a map of pending id to server id. A pending id
+  // the server gave no id for keeps its row as shown: a later reload puts the
+  // server's state on screen, where an undefined id would break every lookup
+  // until then.
+  _settle(ids) {
+    const known = new Map([...ids].filter(([, server]) => server));
+    if (known.size === 0) return;
+    recordSettled(known);
+    this._applyRawPatch((next, ...context) => {
+      settleIds(next, known);
+      this._settleBeside(context, known);
+    });
+  }
+
+  // What the subclass keeps beside the document and has to settle with it,
+  // handed the context `_patchContext` made for this patch (plaid-igt's
+  // vocabularies, whose links name tokens).
+  _settleBeside(context, ids) {
+    void context;
+    void ids;
   }
 
   // Re-read this document IN PLACE, keeping its identity. `atAsOf` returns a

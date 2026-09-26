@@ -218,6 +218,17 @@ describe('a Media, Tokenize or document edit shows before the server answers', (
     expect(ids.some(isPendingId)).toBe(false);
   });
 
+  it('a word made by hand that the server answers with no id keeps its pending id', async () => {
+    const { doc, client, release } = makeDoc({
+      raw: buildRawDoc({ words: [{ id: 'w-1', begin: 0, end: 3 }] }),
+    });
+    client.tokens.create = async () => ({});
+    release();
+    expect(await doc.createToken(4, 7)).toBe(true);
+    const made = doc.layerInfo.primaryTokenLayer.tokens.find((t) => t.begin === 4);
+    expect(isPendingId(made?.id)).toBe(true);
+  });
+
   it('an analysis spread to other words, and the metadata of the document', async () => {
     const raw = buildRawDoc({
       body: 'cat cat',

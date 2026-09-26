@@ -3,9 +3,10 @@
 //
 // Every edit shows before the server answers, creates included. A row an edit
 // creates goes into the local document under a PENDING id (plaid-ui's
-// pendingIds.js), and `_settle` puts the server's ids in its place once it
-// answers. A send names every id through `settledId`, since an edit made
-// while an earlier one was still queued can hold that one's pending ids.
+// pendingIds.js), and DocumentModel's `_settle` puts the server's ids in its
+// place once it answers. A send names every id through `settledId`, since an
+// edit made while an earlier one was still queued can hold that one's pending
+// ids.
 //
 // The morpheme `derive` synthesizes for an unanalyzed word (virtualMorpheme.js)
 // is the common create here: glossing, linking or retyping such a word writes
@@ -13,20 +14,15 @@
 // morphemes that show at once, and `_sendMorphemes` makes them on the server
 // in one request, inside the send.
 
-import { pendingId, recordSettled, settledId, settleIds } from '@ui/domain/pendingIds.js';
+import { createdId, createdIds } from '@larc-iu/plaid-client';
+import { pendingId, settledId, settleIds } from '@ui/domain/pendingIds.js';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '../virtualMorpheme.js';
 
 export const pendingMutations = {
-  // Put the server's ids in place of the pending ones an edit showed, in the
-  // document and in the vocabularies (a link names its tokens and its entry).
-  _settle(ids) {
-    const known = new Map([...ids].filter(([, server]) => server));
-    if (known.size === 0) return;
-    recordSettled(known);
-    this._applyRawPatch((next, info, vocabs) => {
-      settleIds(next, known);
-      settleIds(vocabs, known);
-    });
+  // A link names its tokens and its entry, so the vocabularies settle with
+  // the document (DocumentModel's `_settle`).
+  _settleBeside([, vocabs], ids) {
+    settleIds(vocabs, ids);
   },
 
   // The token a morpheme id names now: a real id passes through (settled), and
@@ -107,7 +103,7 @@ export const pendingMutations = {
         c.precedence,
         metadataOf(c),
       );
-      ids.set(c.id, result?.id || result);
+      ids.set(c.id, createdId(result));
       return;
     }
     const result = await this._client.tokens.bulkCreate(
@@ -120,7 +116,7 @@ export const pendingMutations = {
         ...(metadataOf(c) ? { metadata: c.metadata } : {}),
       })),
     );
-    const newIds = result?.body?.ids ?? result?.ids ?? [];
+    const newIds = createdIds(result);
     creates.forEach((c, i) => ids.set(c.id, newIds[i]));
   },
 };

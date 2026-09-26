@@ -1497,6 +1497,12 @@ export function mergeMetadata(
   fragment: object | null | undefined,
 ): Record<string, any>;
 
+// --- Create responses ---------------------------------------------------------
+/** The id a single create answered with, read off the call's response or its batch result (`{status, body}`). Undefined when it gave none. */
+export function createdId(result: any): string | undefined;
+/** The ids a bulk create answered with, in input order, read off the call's response or its batch result. Empty when it gave none. */
+export function createdIds(result: any): string[];
+
 // --- Metadata ops -------------------------------------------------------------
 /** One metadata edit: the body of a metadata PATCH is a list of these. */
 export type MetadataOp =

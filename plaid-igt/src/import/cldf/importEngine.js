@@ -11,6 +11,7 @@
 // Lexicon items are deduped by the CLDF entry id stamped at creation, which
 // doubles as provenance back to the source dataset.
 
+import { createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import { ImportCancelled, importStamp, priorImports, settlePrior } from '../resume.js';
 import { CHUNK, bulkInChunks } from '../../domain/bulk.js';
@@ -167,7 +168,7 @@ export async function importLexicon({ client, vocabId, lexicon, onProgress, shou
         metadata: { ...p.metadata, [ITEM_SOURCE_KEY]: p.key },
       })),
     );
-    (res?.ids || []).forEach((id, n) => byEntry.set(slice[n].key, id));
+    createdIds(res).forEach((id, n) => byEntry.set(slice[n].key, id));
     done += slice.length;
     onProgress?.({ phase: 'lexicon', done, total: pending.length });
   }

@@ -22,6 +22,7 @@ import {
   PROVENANCE_KEYS,
   ROLE_KEY,
   ROLES,
+  createdId,
 } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, UMR_LAYER_FLAGS } from '../utils/umrLayerUtils.js';
 
@@ -54,20 +55,20 @@ const bootstrap = async (client, projectName) => {
     const b2 = await client.batched(async (b) => {
       b.textLayers.create(projectId, LAYER_NAMES.text);
     });
-    const textLayerId = b2.at(-1).body.id;
+    const textLayerId = createdId(b2.at(-1));
 
     const b3 = await client.batched(async (b) => {
       b.textLayers.setConfig(textLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.BASELINE);
       b.tokenLayers.create(textLayerId, LAYER_NAMES.sentences, 'partitioning');
     });
-    const sentenceLayerId = b3.at(-1).body.id;
+    const sentenceLayerId = createdId(b3.at(-1));
 
     const b4 = await client.batched(async (b) => {
       b.tokenLayers.setConfig(sentenceLayerId, PLAID_NAMESPACE, ROLE_KEY, ROLES.SENTENCE);
       declarePreserveOnSplit(b, sentenceLayerId);
       b.tokenLayers.create(textLayerId, LAYER_NAMES.words, 'non-overlapping', sentenceLayerId);
     });
-    const wordLayerId = b4.at(-1).body.id;
+    const wordLayerId = createdId(b4.at(-1));
 
     // The node layer is a ROOT layer (no parent): see umrLayerUtils.js.
     const b5 = await client.batched(async (b) => {
@@ -75,20 +76,20 @@ const bootstrap = async (client, projectName) => {
       declarePreserveOnSplit(b, wordLayerId);
       b.tokenLayers.create(textLayerId, LAYER_NAMES.nodes, 'any');
     });
-    const nodeLayerId = b5.at(-1).body.id;
+    const nodeLayerId = createdId(b5.at(-1));
 
     const b6 = await client.batched(async (b) => {
       b.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
       b.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts);
     });
-    const conceptLayerId = b6.at(-1).body.id;
+    const conceptLayerId = createdId(b6.at(-1));
 
     const b7 = await client.batched(async (b) => {
       b.spanLayers.setConfig(conceptLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.concepts, true);
       b.relationLayers.create(conceptLayerId, LAYER_NAMES.relations);
       b.relationLayers.create(conceptLayerId, LAYER_NAMES.documentGraph);
     });
-    const [relationLayerId, documentGraphLayerId] = b7.slice(-2).map((r) => r.body.id);
+    const [relationLayerId, documentGraphLayerId] = b7.slice(-2).map(createdId);
 
     await client.batched(async (b) => {
       b.relationLayers.setConfig(relationLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.relations, true);
@@ -145,14 +146,14 @@ export const adoptSubstrate = async (client, layerInfo) => {
     let nodeLayerId = layerInfo.nodeTokenLayer?.id;
     if (!nodeLayerId) {
       const layer = await client.tokenLayers.create(textLayer.id, LAYER_NAMES.nodes, 'any');
-      nodeLayerId = layer?.id || layer;
+      nodeLayerId = createdId(layer);
       await client.tokenLayers.setConfig(nodeLayerId, UMR_NAMESPACE, UMR_LAYER_FLAGS.nodes, true);
       created = true;
     }
     let conceptLayerId = layerInfo.conceptLayer?.id;
     if (!conceptLayerId) {
       const layer = await client.spanLayers.create(nodeLayerId, LAYER_NAMES.concepts);
-      conceptLayerId = layer?.id || layer;
+      conceptLayerId = createdId(layer);
       await client.spanLayers.setConfig(
         conceptLayerId,
         UMR_NAMESPACE,
@@ -164,7 +165,7 @@ export const adoptSubstrate = async (client, layerInfo) => {
     if (!layerInfo.relationLayer) {
       const layer = await client.relationLayers.create(conceptLayerId, LAYER_NAMES.relations);
       await client.relationLayers.setConfig(
-        layer?.id || layer,
+        createdId(layer),
         UMR_NAMESPACE,
         UMR_LAYER_FLAGS.relations,
         true,
@@ -174,7 +175,7 @@ export const adoptSubstrate = async (client, layerInfo) => {
     if (!layerInfo.documentGraphLayer) {
       const layer = await client.relationLayers.create(conceptLayerId, LAYER_NAMES.documentGraph);
       await client.relationLayers.setConfig(
-        layer?.id || layer,
+        createdId(layer),
         UMR_NAMESPACE,
         UMR_LAYER_FLAGS.documentGraph,
         true,

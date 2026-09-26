@@ -3582,4 +3582,7 @@ export {
 // Metadata ops: the body of a metadata PATCH and of a bulk update entry's
 // `metadata`. See ./metadataOps.js.
 export { metadataOps, applyMetadataOps, isReservedMetadataKey } from "./metadataOps.js";
+// The ids a create or bulk create answered with, off the call or its batch
+// result. See ./created.js.
+export { createdId, createdIds } from "./created.js";
 export { MAX_BATCH_OPS };

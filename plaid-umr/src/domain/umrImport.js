@@ -3,7 +3,7 @@
 // The text is the sentences' words joined by spaces, one sentence per line,
 // since a .umr file carries tokens and not a text. Sentences tile the text
 // (the sentence layer is partitioning), each taking the newline after it.
-import { cpLength } from '@larc-iu/plaid-client';
+import { cpLength, createdIds } from '@larc-iu/plaid-client';
 import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/umrLayerUtils.js';
 import { parseUmrFile } from './format/umrFile.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
@@ -123,7 +123,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     // The anchors' ids: after the sentence and word creates, before any
     // sentence metadata patches.
     const pieceIndex = (sentenceOps.length ? 1 : 0) + (wordOps.length ? 1 : 0);
-    const pieceIds = pieceOps.length ? tokenResults[pieceIndex]?.body?.ids || [] : [];
+    const pieceIds = pieceOps.length ? createdIds(tokenResults[pieceIndex]) : [];
     createdTokenIds = pieceIds;
     if (pieceIds.length !== pieceOps.length) {
       throw new Error(
@@ -136,7 +136,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     // The sentence tokens by number, for the unaligned nodes to record.
     const sentenceIds = existing
       ? existing.graph.sentences.map((s) => s.tokenId)
-      : tokenResults[0]?.body?.ids || [];
+      : createdIds(tokenResults[0]);
     const toCreate = plan.nodes.filter((n) => !n.existingId);
     const spanOps = toCreate.map((n) => ({
       spanLayerId: layerInfo.conceptLayer.id,
@@ -151,7 +151,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       const spanResults = await client.batched(async (b) => {
         b.spans.bulkCreate(spanOps);
       });
-      spanIds = spanResults.at(-1)?.body?.ids || [];
+      spanIds = createdIds(spanResults.at(-1));
     }
     if (spanIds.length !== spanOps.length) {
       throw new Error(

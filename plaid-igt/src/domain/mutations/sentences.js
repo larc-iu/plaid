@@ -8,7 +8,7 @@
 // `split` are partition- and nesting-preserving and are the only boundary
 // edits used here; `clearSentences` is a merge of everything into the first.
 
-import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -84,7 +84,7 @@ export const sentenceMutations = {
       // One request a split: each needs the id the one before it made.
       for (const s of splits) {
         const result = await this._client.tokens.split(serverId(s.leftId), s.charPos);
-        ids.set(s.rightId, result?.id || result);
+        ids.set(s.rightId, createdId(result));
       }
       const patches = splits.flatMap((s) => [
         ...(s.leftPatch ? [[serverId(s.leftId), s.leftPatch]] : []),

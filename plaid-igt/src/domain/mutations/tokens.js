@@ -8,7 +8,7 @@ import {
   getIgnoredTokensConfig,
   validateTokenization,
 } from '../../utils/tokenizationUtils.js';
-import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps, createdId, createdIds } from '@larc-iu/plaid-client';
 import { survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
@@ -200,7 +200,7 @@ export const tokenMutations = {
     this._applyRawPatch((next, infoNext) => pushWords(infoNext, text.id, [{ id, begin, end }]));
     return this._queueWrite(label, async () => {
       const result = await this._client.tokens.create(primaryTokenLayer.id, text.id, begin, end);
-      this._settle(new Map([[id, result?.id || result]]));
+      this._settle(new Map([[id, createdId(result)]]));
     });
   },
 
@@ -243,7 +243,7 @@ export const tokenMutations = {
           end: w.end,
         })),
       );
-      const newIds = result?.body?.ids ?? result?.ids ?? [];
+      const newIds = createdIds(result);
       this._settle(new Map(words.map((w, i) => [w.id, newIds[i]])));
     });
     return ok ? words.length : null;

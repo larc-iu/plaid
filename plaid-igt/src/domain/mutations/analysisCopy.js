@@ -23,6 +23,8 @@ import {
   mergeMetadata,
   metadataOps,
   PROV,
+  createdId,
+  createdIds,
 } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '../bulk.js';
@@ -494,11 +496,11 @@ export const analysisCopyMutations = {
       });
       let at = 0;
       if (links.length) {
-        const linkIds = out[at++]?.body?.ids || [];
+        const linkIds = createdIds(out[at++]);
         links.forEach((l, i) => ids.set(l.id, linkIds[i]));
       }
       for (const specs of byLayer.values()) {
-        const spanIds = out[at++]?.body?.ids || [];
+        const spanIds = createdIds(out[at++]);
         specs.forEach((s, i) => ids.set(s.id, spanIds[i]));
       }
     };
@@ -532,7 +534,7 @@ export const analysisCopyMutations = {
         }
       });
       if (extra.length) {
-        const newIds = results[0]?.body?.ids || [];
+        const newIds = createdIds(results[0]);
         extra.forEach((m, i) => ids.set(m.id, newIds[i]));
       }
       // ---- batch 2: every link and field, now that each token has an id.
@@ -818,7 +820,7 @@ export const analysisCopyMutations = {
       });
       // The creates are the batch's last ops, in the order they were queued.
       const offset = results.length - live.length;
-      live.forEach((w, i) => ids.set(w.id, results[offset + i]?.body?.id));
+      live.forEach((w, i) => ids.set(w.id, createdId(results[offset + i])));
       this._settle(ids);
     });
   },

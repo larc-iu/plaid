@@ -12,7 +12,7 @@
 // invalid input. `throw` inside `_queueWrite` is reserved for unexpected
 // failure paths the server is reporting.
 
-import { cpSlice, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { cpSlice, mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { isValidMorphType, cliticTypesForChain } from '../affixMarkers.js';
 import { isZeroMorph } from '../zeroMorph.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
@@ -135,7 +135,7 @@ export const morphemeMutations = {
           ),
         );
       });
-      rows.forEach((r, i) => ids.set(r.id, results[i]?.body?.id));
+      rows.forEach((r, i) => ids.set(r.id, createdId(results[i])));
       this._settle(ids);
     });
   },
@@ -274,7 +274,7 @@ export const morphemeMutations = {
       });
       // The target's patch (a real one only), the shifts, then the creates.
       const offset = (resolved.virtual ? 0 : 1) + shifted.length;
-      rest.forEach((r, i) => ids.set(r.id, results[offset + i]?.body?.id));
+      rest.forEach((r, i) => ids.set(r.id, createdId(results[offset + i])));
       this._settle(ids);
     });
   },

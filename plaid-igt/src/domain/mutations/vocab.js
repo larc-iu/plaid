@@ -6,7 +6,14 @@
 // `_vocabularies`). A token id here may be a word OR morpheme token; the
 // link/create operation is identical either way.
 
-import { stampInferred, isMachine, mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import {
+  stampInferred,
+  isMachine,
+  mergeMetadata,
+  metadataOps,
+  createdId,
+  createdIds,
+} from '@larc-iu/plaid-client';
 import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { lexiconView } from '../vocabDictionary.js';
@@ -277,14 +284,14 @@ export const vocabMutations = {
             b.tokens.patchMetadata(token, [{ op: 'set', path: ['morphType'], value: cachedType }]);
           }
         });
-        ids.set(linkId, results[createAt]?.body?.id);
+        ids.set(linkId, createdId(results[createAt]));
       } else {
         const result = await this._client.vocabLinks.create(
           settledId(vocabItemId),
           [token],
           stamp || undefined,
         );
-        ids.set(linkId, result?.id || result);
+        ids.set(linkId, createdId(result));
       }
       this._settle(ids);
     });
@@ -398,7 +405,7 @@ export const vocabMutations = {
         );
       }
     });
-    const newIds = results[0]?.body?.ids ?? [];
+    const newIds = createdIds(results[0]);
     plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
   },
 
@@ -534,7 +541,7 @@ export const vocabMutations = {
         tokens.map(settledId),
         stamp || undefined,
       );
-      this._settle(new Map([[linkId, result?.id || result]]));
+      this._settle(new Map([[linkId, createdId(result)]]));
     });
   },
 
@@ -578,7 +585,7 @@ export const vocabMutations = {
     return this._queueWrite(label, async () => {
       const ids = new Map();
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
-      const itemId = createResult?.id || createResult;
+      const itemId = createdId(createResult);
       ids.set(newItem.id, itemId);
       const members = tokens.map(settledId);
       if (replaceLinkId) {
@@ -586,10 +593,10 @@ export const vocabMutations = {
           b.vocabLinks.delete(settledId(replaceLinkId));
           b.vocabLinks.create(itemId, members, stamp);
         });
-        ids.set(linkId, results[results.length - 1]?.body?.id);
+        ids.set(linkId, createdId(results[results.length - 1]));
       } else {
         const linkResult = await this._client.vocabLinks.create(itemId, members, stamp);
-        ids.set(linkId, linkResult?.id || linkResult);
+        ids.set(linkId, createdId(linkResult));
       }
       this._settle(ids);
     });
@@ -635,7 +642,7 @@ export const vocabMutations = {
         b.vocabLinks.delete(settledId(prior.id));
         b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp);
       });
-      this._settle(new Map([[newLinkId, results[results.length - 1]?.body?.id]]));
+      this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
   },
 
@@ -676,7 +683,7 @@ export const vocabMutations = {
         b.vocabLinks.delete(settledId(prior.id));
         b.vocabLinks.create(settledId(itemId), tokens.map(settledId), metadata || undefined);
       });
-      this._settle(new Map([[newLinkId, results[results.length - 1]?.body?.id]]));
+      this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
   },
 
@@ -825,7 +832,7 @@ export const vocabMutations = {
       const serverId = (id) => ids.get(id) || settledId(id);
       await this._sendMorphemes([...creates, ...others.creates], ids);
       const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
-      const newItemId = createResult?.id || createResult;
+      const newItemId = createdId(createResult);
       ids.set(newItem.id, newItemId);
       // An entry is made before anything can point at it, so a failure in the
       // writes below used to leave it behind: the person tried again and the
@@ -844,10 +851,10 @@ export const vocabMutations = {
               ]);
             }
           });
-          ids.set(linkId, results[createAt]?.body?.id);
+          ids.set(linkId, createdId(results[createAt]));
         } else {
           const linkResult = await this._client.vocabLinks.create(newItemId, [token], stamp);
-          ids.set(linkId, linkResult?.id || linkResult);
+          ids.set(linkId, createdId(linkResult));
         }
         await this._sendLinkMany(others, ids);
       } catch (err) {

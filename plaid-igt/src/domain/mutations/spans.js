@@ -5,7 +5,7 @@
 // (setError + return false) so a misconfigured-field edit reports failure
 // rather than silently "succeeding".
 
-import { mergeMetadata, metadataOps } from '@larc-iu/plaid-client';
+import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 
 const findSpanLayer = (doc, scope, fieldName) => {
@@ -94,7 +94,7 @@ const sendSpan = async (doc, layerId, plan, ids) => {
       plan.value,
       plan.stamp || undefined,
     );
-    ids.set(plan.id, result?.id || result);
+    ids.set(plan.id, createdId(result));
   }
 };
 

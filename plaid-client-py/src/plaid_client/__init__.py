@@ -40,6 +40,7 @@ from plaid_client.provenance import (
     with_reviewed_user,
     WriterPolicy,
 )
+from plaid_client.created import created_id, created_ids
 from plaid_client.metadata_ops import metadata_ops, apply_metadata_ops, is_reserved_metadata_key
 from plaid_client.roles import (
     PLAID_NAMESPACE,
@@ -51,6 +52,8 @@ from plaid_client.roles import (
 )
 
 __all__ = [
+    "created_id",
+    "created_ids",
     "PlaidClient",
     "PlaidAPIError",
     "DOCUMENT_LOCK_TTL_S",

@@ -8,7 +8,7 @@ import {
   useReducer,
 } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { isReviewed } from '@larc-iu/plaid-client';
+import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { AlertTriangle } from 'lucide-react';
@@ -684,7 +684,7 @@ export const VocabularyItems = ({
             form,
             Object.keys(meta).length ? meta : undefined,
           );
-          settleEntries(new Map([[id, created?.id]]));
+          settleEntries(new Map([[id, createdId(created)]]));
         },
         'Failed to save the entry',
       );
@@ -826,7 +826,7 @@ export const VocabularyItems = ({
           it.form,
           Object.keys(meta).length ? meta : undefined,
         );
-        settleEntries(new Map([[headId, created?.id]]));
+        settleEntries(new Map([[headId, createdId(created)]]));
         await bulkRepoint([{ id, metadata: senseMeta }], new Map([[id, it.metadata]]));
       },
       'Failed to add the headword',
