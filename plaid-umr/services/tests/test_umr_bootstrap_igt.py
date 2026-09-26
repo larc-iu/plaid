@@ -6,6 +6,7 @@ Run: pytest -q services/tests, from plaid-umr. Runs from the base env.
 """
 
 import json
+import re
 import pathlib
 
 import pytest
@@ -488,3 +489,27 @@ def test_a_possessed_noun_keeps_its_own_plural():
     assert [(c, [(a['rel'], a['value']) for a in attrs])
             for c, attrs in _segmented_run(document, _compound_vocab())] == [
         ('house', [(':refer-number', 'plural')])]
+
+
+@pytest.mark.parametrize('value, why', [
+    ([':definite', '+'], 'UMR has no such relation'),
+    ([':polarityy', '-'], 'Did you mean :polarity?'),
+    (['refer-number', 'plural'], 'must start with a colon'),
+    ([':refer-number'], 'a relation and a value'),
+    ([':aspect', 'state', 'extra'], 'a relation and a value'),
+    (['possesive'], 'a relation and a value'),
+])
+def test_a_language_table_is_refused_when_it_names_no_umr_relation(tmp_path, value, why):
+    """A table is a writer too: what it maps to is written as an attribute, so
+    a relation UMR does not have is refused as the app and the assistant do."""
+    path = tmp_path / 'table.json'
+    path.write_text(json.dumps({'DEF': value}))
+    with pytest.raises(ValueError, match=re.escape(why)):
+        boot.load_abbreviations(str(path))
+
+
+def test_every_default_abbreviation_is_a_umr_relation_or_a_marker():
+    from plaid_client.workflows.umr import unknown_relation_problem
+    for key, what in boot.ABBREVIATIONS.items():
+        assert what in (('root',), ('possessive',)) or (
+            len(what) == 2 and unknown_relation_problem(what[0]) is None), key
