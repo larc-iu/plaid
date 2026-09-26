@@ -8,7 +8,8 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 // recommended set (display-name, prop-types, no-unescaped-entities) — noise for
 // this app, not correctness.
 export default [
-  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report'] },
+  // out/ is gitignored scratch (agent bug hunts put their probes there).
+  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report', 'out'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {

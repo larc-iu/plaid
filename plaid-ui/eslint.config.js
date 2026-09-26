@@ -13,7 +13,8 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 // way round, since they run under plaid-igt's vitest, which has the React and the
 // happy-dom. See README.md.
 export default [
-  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report'] },
+  // out/ is gitignored scratch (agent bug hunts put their probes there).
+  { ignores: ['dist', 'node_modules', 'test-results', 'playwright-report', 'out'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {

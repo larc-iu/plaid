@@ -6,7 +6,8 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 // Mirrors plaid-igt's flat config: js.recommended + react-hooks + react-refresh,
 // no stylistic rules (Prettier owns formatting).
 export default [
-  { ignores: ['dist', 'node_modules'] },
+  // out/ is gitignored scratch (agent bug hunts put their probes there).
+  { ignores: ['dist', 'node_modules', 'out'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
