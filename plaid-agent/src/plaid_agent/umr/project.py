@@ -25,6 +25,7 @@ from plaid_client.workflows.umr import (
 # A GRAPH node, kept apart from a PENMAN node by name because both appear in
 # the same modules here.
 from plaid_client.workflows.umr import Node as GNode, Sentence, UmrDocument as UmrDoc
+from plaid_client.workflows.umr import layers as umr_layers
 
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer  # noqa: F401  (re-exported for the tools)
@@ -135,42 +136,18 @@ HEADERS = {
     'sentence': ('Sentence', 'sentence', False),
 }
 
-_NAMED = {'gloss': 'gloss|meaning', 'category': 'cat|pos|part|type|class'}
-
 
 def propose_ilg(project: UmrProject) -> List[dict]:
     """A mapping proposed from the project's layers, the way the app proposes
-    one: the morpheme layer as Morphemes, a morpheme-scoped field named like a
-    gloss as Morpheme Gloss, and so on down, then whatever an import stored."""
-    out: List[dict] = []
-    if project.morpheme_layer_id:
-        out.append({'header': 'morphemes', 'lang': None, 'source': 'morphemes'})
-    for g in project.gloss_layers:
-        header = None
-        name = g.name or ''
-        if g.scope == 'morpheme':
-            if re.search(_NAMED['gloss'], name, re.I):
-                header = 'morpheme-gloss'
-            elif re.search(_NAMED['category'], name, re.I):
-                header = 'morpheme-category'
-        elif g.scope == 'word':
-            if re.search(_NAMED['gloss'], name, re.I):
-                header = 'word-gloss'
-            elif re.search(r'pos|part|tag|class', name, re.I):
-                header = 'pos'
-        elif g.scope == 'sentence' and re.search(r'trans|gloss|free|meaning', name, re.I):
-            header = 'sentence-gloss'
-        if not header:
-            continue
-        out.append({'header': header, 'lang': (g.lang or 'und') if HEADERS[header][2] else None,
-                    'source': f'layer:{g.id}'})
-    out.append({'header': None, 'lang': None, 'source': 'stored'})
-    return out
+    one (``plaid_client.workflows.umr.layers.propose_ilg``)."""
+    return umr_layers.propose_ilg(project.layers)
 
 
 def resolve_ilg(project: UmrProject) -> List[dict]:
-    """The project's mapping when it has one, else the proposal."""
-    return project.ilg if project.ilg else propose_ilg(project)
+    """The project's mapping when it has one, else the proposal, with a layer
+    gone from the mapping replaced as the app replaces it
+    (``plaid_client.workflows.umr.layers.resolve_ilg``)."""
+    return umr_layers.resolve_ilg(project.ilg, project.layers)
 
 
 def gloss_headers(project: UmrProject) -> List[str]:
