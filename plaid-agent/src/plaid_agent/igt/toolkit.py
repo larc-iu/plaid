@@ -27,7 +27,7 @@ from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_ren
 from .lexicon import (t_add_sense, t_create_entry, t_free_sense, t_make_sense_of, t_move_sense,
                       t_order_homographs, t_promote_example, t_remove_example, t_set_entry_field)
 from .query import t_query, t_query_help
-from ..core.history import recent_changes as t_recent_changes
+from ..core.history import comments_on_values as t_comments, recent_changes as t_recent_changes
 from .reads import (t_analyses_of, t_check_consistency, t_concordance, t_lexicon_entry,
                     t_list_documents, t_plan_status, t_project_overview,
                     t_read_lexicon, t_search)
@@ -36,7 +36,7 @@ from .shape import (t_append_text, t_delete_word, t_merge_sentences, t_merge_wor
                     t_retype_sentence, t_split_sentence, t_split_word)
 from .stats import (t_check_integrity, t_check_lexicon, t_corpus_stats, t_frequency_list,
                     t_sequence_search, t_worklist)
-from .tools import (t_add_comment, t_comments, t_confirm, t_create_document, t_discard_analysis,
+from .tools import (t_add_comment, t_confirm, t_create_document, t_discard_analysis,
                     t_discard_plan, t_drop_planned, t_link_entry, t_link_phrase, t_respell,
                     t_restore_document, t_set_analysis, t_set_document_metadata, t_set_field,
                     t_set_morpheme, t_set_orthography, t_unlink_entry, t_unlink_phrase)
@@ -225,10 +225,12 @@ TOOLS = [
          'since': {'type': 'string', 'description': 'Only changes at or after this date (YYYY-MM-DD) or timestamp.'},
          'user': {'type': 'string', 'description': 'Only changes by this person (name or email substring).'}}, []),
     _fn('comments',
-        'The comments people have left (not annotation data: notes to each other). Whole project, one document, '
-        'or one item (document + ref, plus field for a comment on one of its values). Oldest first.',
+        'The comments people have left (not annotation data: notes to each other). Whole project (no document), '
+        'one document, or one thing in it (document + ref, plus field for a comment on one of its values). '
+        'Oldest first.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'sN, sN.wN, or sN.wN.mN.'},
-         'field': {'type': 'string'}, 'limit': limit_arg('comments', 'Newest entries to show')},
+         'field': {'type': 'string', 'description': 'A field of the thing ref names, for the comments on its value.'},
+         'limit': limit_arg('comments', 'Newest entries to show')},
         []),
     _fn('add_comment',
         'PLAN: post a comment under the user\'s name on a document (no ref), a sentence, a word, a morpheme, or, '

@@ -16,11 +16,12 @@ each app's tools address a document by name, which
 """
 
 import re
+from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from .args import clamp_limit
 from .limits import AUDIT_MAX_PAGES, AUDIT_PAGE, READ_LIMITS
-from .tools import server_refused, truncate
+from .tools import ToolError, server_refused, truncate
 
 
 def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = None,
@@ -89,33 +90,101 @@ def recent_changes(ws, document: Optional[str] = None, limit: Optional[int] = No
     return truncate('\n'.join(out))
 
 
-def comments(ws, document: str = None, ref: str = None, limit: int = None) -> str:
-    """What people have written to each other on a document, or on one thing in
-    it. These are notes between annotators, never annotation.
+# The most documents one comments read fetches to say where each comment sits.
+# A comment in a document past it is shown by the label it was posted with.
+COMMENT_DOC_BUDGET = 8
 
-    What ``ref`` names is the app's (:meth:`BaseWorkspace.comment_anchor`);
-    everything else about reading a thread is not.
+
+def comments(ws, document: Optional[str] = None, ref: Optional[str] = None,
+             limit: Optional[int] = None) -> str:
+    """What people have written to each other: in the whole project, in one
+    document, or on one thing in it. These are notes between annotators, never
+    annotation. Oldest first, the newest ``limit`` shown."""
+    return read_comments(ws, document, ref, None, limit)
+
+
+def comments_on_values(ws, document: Optional[str] = None, ref: Optional[str] = None,
+                       field: Optional[str] = None, limit: Optional[int] = None) -> str:
+    """:func:`comments`, for an app whose comments can also sit on one value
+    of a thing (``field``)."""
+    return read_comments(ws, document, ref, field, limit)
+
+
+def read_comments(ws, document: Optional[str], ref: Optional[str], field: Optional[str],
+                  limit: Optional[int]) -> str:
+    """The one reading of a project's comments.
+
+    What ``ref`` and ``field`` name is the app's
+    (:meth:`BaseWorkspace.comment_target`), and so is where a listed comment's
+    anchor sits (:meth:`BaseWorkspace.comment_ref`). Everything else about
+    reading a thread is not.
     """
     limit = clamp_limit(limit, *READ_LIMITS['comments'])
-    doc = ws.doc(document)
-    kw: Dict[str, Any] = {'document_id': doc.id}
-    if ref:
-        kw = {'entity_type': 'token', 'entity_id': ws.comment_anchor(doc, ref)}
+    if ref and not document:
+        raise ToolError('ref needs a document')
+    if field and not ref:
+        raise ToolError('field needs a ref: the thing whose value the comment is on')
+    ws.on_progress('Reading the comments…')
+    doc = ws.doc(document) if document else None
+    if doc is not None and ref:
+        etype, eid = ws.comment_target(doc, ref, field)
+        kw: Dict[str, Any] = {'entity_type': etype, 'entity_id': eid}
+        scope = f'on {_doc_label(ws, doc.id)} {ref}' + (f' {field}' if field else '')
+    elif doc is not None:
+        kw = {'document_id': doc.id}
+        scope = f'in {_doc_label(ws, doc.id)}'
+    else:
+        kw = {}
+        scope = 'in the project'
     try:
-        got = ws.client.comments.list(ws.project.id, **kw) or []
+        rows = ws.client.comments.list(ws.project.id, **kw) or []
     except Exception as e:  # noqa: BLE001 - the model reads the server's reason
         raise server_refused('The comments', e) from None
-    if not got:
-        return f'No comments on {ref}.' if ref else f'No comments in "{doc.name}".'
-    # A comment names the entity it is anchored to. Turn that back into the
-    # positional reference the rest of the tools speak.
-    where = {s.id: f's{s.index}' for s in doc.sentences}
-    out = []
-    for cm in got[:limit]:
-        who = (cm.get('user') or {}).get('display_name') or (cm.get('user') or {}).get('id') or '?'
-        at = where.get(cm.get('entity_id'), doc.name)
-        out.append(f'  {at}  {who} ({(cm.get("time") or "")[:10]}): {cm.get("body") or ""}')
-    line = f'{len(got)} comment(s) in "{doc.name}"' + (f' on {ref}' if ref else '')
-    if len(got) > limit:
-        line += f', showing {limit}'
-    return truncate(line + ':\n' + '\n'.join(out))
+    rows = sorted(rows, key=lambda c: c.get('created_at') or '')
+    total = len(rows)
+    rows = rows[-limit:]
+    if not rows:
+        return f'No comments {scope}.'
+    lines = [f'{total} comment{"s" if total != 1 else ""} {scope}'
+             + (f' (newest {limit} shown)' if total > limit else '') + ', oldest first:']
+    names = _ref_names(ws)
+    listed = set(names)
+    # A listing of more than one document says which one each comment is in.
+    tagged = doc is None and len(listed) > 1
+    loaded: set = set()
+    for c in rows:
+        when = (c.get('created_at') or '')[:16].replace('T', ' ')
+        label = c.get('anchor_label') or c.get('entity_type') or '?'
+        did = c.get('document_id')
+        tag = f'"{names[did]}" ' if tagged and did in listed else ''
+        if did not in listed:
+            anchor = label + (' [outdated]' if did else '')
+        elif did in ws._docs or len(loaded) < COMMENT_DOC_BUDGET:
+            if did not in ws._docs:
+                loaded.add(did)
+            at = ws.comment_ref(ws.doc(did), c)
+            anchor = tag + (at if at is not None else label + ' [outdated]')
+        else:
+            anchor = tag + label
+        body = (c.get('body') or '').strip().replace('\n', ' ')
+        lines.append(f'  {when}  {c.get("author_id") or "?"}  @ {anchor}: {body}'
+                     + (' (edited)' if c.get('edited') else ''))
+    return truncate('\n'.join(lines))
+
+
+def _ref_names(ws) -> Dict[str, str]:
+    """How a reference names each document: its name, or its id where another
+    document shares that name (nothing forbids it, and imports produce it)."""
+    names = {d['id']: d.get('name') or d['id'] for d in ws.documents()}
+    taken = Counter(n.casefold() for n in names.values())
+    return {i: (i if taken[n.casefold()] > 1 else n) for i, n in names.items()}
+
+
+def _doc_label(ws, doc_id: str) -> str:
+    """A document as a sentence names it: its name, with its id beside it
+    where another document shares that name."""
+    ref = _ref_names(ws).get(doc_id, doc_id)
+    if ref != doc_id:
+        return ref
+    name = next((d.get('name') for d in ws.documents() if d['id'] == doc_id), None)
+    return f'{name} ({doc_id})' if name else doc_id

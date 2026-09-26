@@ -120,7 +120,7 @@ def _igt(scan: bool):
     c = ExtClient(project=project_raw(), documents={'d1': document_raw()}, lexicon=lexicon_raw(),
                   comments=[{'id': 'c1', 'document_id': 'd1', 'entity_type': 'document', 'entity_id': 'd1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
-                             'updated_at': '2026-09-01T10:00:00Z', 'user': {'id': 'a@b.com'}}])
+                             'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
     if not scan:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'p1'))
@@ -142,7 +142,7 @@ def _ud(scan: bool):
     c = ExtClient(project=project_raw(), documents={'ud1': document_raw()},
                   comments=[{'id': 'c1', 'document_id': 'ud1', 'entity_type': 'document', 'entity_id': 'ud1',
                              'body': 'a note', 'created_at': '2026-09-01T10:00:00Z',
-                             'updated_at': '2026-09-01T10:00:00Z', 'user': {'id': 'a@b.com'}}])
+                             'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
     if not scan:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'p1'))
@@ -158,7 +158,7 @@ def _umr(scan: bool):
                   comments=[{'id': 'c1', 'document_id': 'umr1', 'entity_type': 'document',
                              'entity_id': 'umr1', 'body': 'a note',
                              'created_at': '2026-09-01T10:00:00Z',
-                             'updated_at': '2026-09-01T10:00:00Z', 'user': {'id': 'a@b.com'}}])
+                             'updated_at': '2026-09-01T10:00:00Z', 'author_id': 'a@b.com'}])
     if not scan:
         _empty_engine(c)
     w = Workspace(c, load_project(c, 'mp1'))

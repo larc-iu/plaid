@@ -200,9 +200,26 @@ class BaseWorkspace:
         raise NotImplementedError
 
     def comment_anchor(self, doc, ref: str) -> str:
-        """The id a comment on ``ref`` hangs off, or a refusal saying what a
-        comment may sit on. A comment is anchored on a TOKEN in every app."""
+        """The id of the token a comment on ``ref`` hangs off, or a refusal
+        saying what a comment may sit on."""
         raise NotImplementedError
+
+    def comment_target(self, doc, ref: str, field: Optional[str] = None) -> tuple:
+        """(entity_type, entity_id) of the thread on ``ref``, or on its
+        ``field`` value. Here a comment sits on a token (:meth:`comment_anchor`)
+        and never on a value. An app whose comments can sit on a value
+        overrides this."""
+        if field:
+            raise ToolError('A comment here sits on a sentence or on the document, never on one value.')
+        return 'token', self.comment_anchor(doc, ref)
+
+    def comment_ref(self, doc, comment: Dict[str, Any]) -> Optional[str]:
+        """Where in ``doc`` a comment's anchor sits, as the reference the tools
+        speak, or None when that anchor is gone."""
+        eid = comment.get('entity_id')
+        if comment.get('entity_type') == 'document':
+            return '(the document)' if eid == doc.id else None
+        return next((f's{s.index}' for s in doc.sentences if s.id == eid), None)
 
     def touched_documents(self) -> List[Dict[str, Any]]:
         """The documents the plan refers to, with the version each was read at,

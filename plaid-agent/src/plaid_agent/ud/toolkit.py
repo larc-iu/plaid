@@ -253,10 +253,11 @@ TOOLS += [
          'since': {'type': 'string', 'description': 'A date (YYYY-MM-DD) or timestamp.'},
          'user': {'type': 'string', 'description': 'Match the actor\'s name or email.'}}, []),
     _fn('comments',
-        'What people have written to each other on a document or one of its sentences. These are '
-        'notes between annotators, never annotation.',
+        'What people have written to each other: in the whole project (no document), in one document, '
+        'or on one of its sentences (document + ref). These are notes between annotators, never '
+        'annotation. Oldest first.',
         {'document': _DOC, 'ref': {'type': 'string', 'description': 'One sentence, e.g. "s3".'},
-         'limit': limit_arg('comments', 'Newest entries to show')}, ['document']),
+         'limit': limit_arg('comments', 'Newest entries to show')}, []),
     _fn('add_comment',
         'PLAN: leave a note for the annotators on a sentence or on the document, under the user\'s '
         'name. A note, never annotation: use it for a question or an observation the data cannot '

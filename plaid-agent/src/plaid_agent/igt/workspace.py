@@ -88,6 +88,56 @@ class Workspace(BaseWorkspace):
         """Scan (one document, or everything when asked) rather than query."""
         return bool(document) or self.prefer_scan
 
+    # --- what a comment sits on ------------------------------------------
+
+    def comment_caption(self, doc: IgtDoc, ref: Optional[str], field: Optional[str]) -> tuple:
+        """(entity_type, entity_id, caption, what) for a comment on the
+        document, a sentence, a word, a morpheme, or one of their field values.
+        The caption is the editor's own (commentAnchors.js), so a thread reads
+        the same in the Comments tab whoever posted it."""
+        if not ref:
+            if field:
+                raise ToolError('field needs a ref (the annotated sentence, word, or morpheme)')
+            return 'document', doc.id, doc.name or 'This document', doc.name
+        obj = resolve(doc, ref)
+        if isinstance(obj, Sentence):
+            s, w, m = obj, None, None
+        else:
+            s = resolve(doc, ref.split('.')[0])
+            w = obj if isinstance(obj, Word) else resolve(doc, ref.rsplit('.', 1)[0])
+            m = obj if isinstance(obj, Morpheme) else None
+        where = f'sentence {s.index}'
+        if field:
+            f = self.project.field(field)
+            sp = obj.fields.get(f.name)
+            if not sp:
+                raise ToolError(f'{ref} has no {f.name} value to comment on')
+            if isinstance(obj, Sentence):
+                return 'span', sp.id, f'{f.name} of sentence {s.index}', s.text
+            head = f'{f.name} of {m.form}' if m else f'{f.name} of {w.surface}'
+            detail = f'in {w.surface}, {where}' if m else where
+            return 'span', sp.id, f'{head}, {detail}', m.form if m else w.surface
+        if isinstance(obj, Sentence):
+            return 'token', s.id, f'Sentence {s.index}', s.text
+        if m:
+            return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
+        return 'token', w.id, f'{w.surface}, {where}', w.surface
+
+    def comment_target(self, doc: IgtDoc, ref: str, field: Optional[str] = None) -> tuple:
+        return self.comment_caption(doc, ref, field)[:2]
+
+    def comment_ref(self, doc: IgtDoc, comment: Dict[str, Any]) -> Optional[str]:
+        """A sentence, word or morpheme by its reference, and a value by its
+        thing's reference and the caption it was posted with."""
+        hit = doc.find(comment.get('entity_id'))
+        if not hit:
+            return super().comment_ref(doc, comment)
+        s, w, m = hit
+        ref = f's{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
+        if comment.get('entity_type') == 'span':
+            ref += ' ' + (comment.get('anchor_label') or 'value')
+        return ref
+
     # --- loading ---------------------------------------------------------
 
     def load_doc(self, doc_id: str) -> IgtDoc:

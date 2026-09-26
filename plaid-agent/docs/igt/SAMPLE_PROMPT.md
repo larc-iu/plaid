@@ -285,11 +285,11 @@ The newest entries of the change history: who changed what and when, including p
 
 ### comments
 
-The comments people have left (not annotation data: notes to each other). Whole project, one document, or one item (document + ref, plus field for a comment on one of its values). Oldest first.
+The comments people have left (not annotation data: notes to each other). Whole project (no document), one document, or one thing in it (document + ref, plus field for a comment on one of its values). Oldest first.
 
 - `document` (string): Document id or exact name (see project_overview).
 - `ref` (string): sN, sN.wN, or sN.wN.mN.
-- `field` (string)
+- `field` (string): A field of the thing ref names, for the comments on its value.
 - `limit` (integer): Newest entries to show (default 30, max 200).
 
 ### add_comment

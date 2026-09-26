@@ -15,10 +15,9 @@ from typing import Any, Dict, List, Optional
 from plaid_client.provenance import prov_state, MACHINE
 
 from ..core import opkind
-from ..core.args import clamp_limit, whole
+from ..core.args import whole
 from ..core.limits import MAX_SCOPE_DOCS
-from ..core.limits import READ_LIMITS
-from ..core.tools import ToolError, server_refused, truncate
+from ..core.tools import ToolError
 
 from .plan import ANALYSIS, KIND, TEXT_SHAPE, WORD_SHAPE, reshaped_subjects
 from .project import (IgtDoc, Sentence, Word, Morpheme, Link, resolve, mwe_ref, REVIEWABLE,
@@ -715,95 +714,6 @@ def t_set_morpheme(ws: Workspace, document: str, ref: str, form: Optional[str] =
 
 # --- comments -------------------------------------------------------------------
 
-def _anchor(ws: Workspace, doc: IgtDoc, ref: Optional[str], field: Optional[str]) -> tuple:
-    """(entity_type, entity_id, caption, what) for a comment on the document,
-    a sentence, a word, a morpheme, or one of their field values. The caption
-    is the editor's own (commentAnchors.js), so a thread reads the same in
-    the Comments tab whoever posted it."""
-    if not ref:
-        if field:
-            raise ToolError('field needs a ref (the annotated sentence, word, or morpheme)')
-        return 'document', doc.id, doc.name or 'This document', doc.name
-    obj = resolve(doc, ref)
-    if isinstance(obj, Sentence):
-        s, w, m = obj, None, None
-    else:
-        s = resolve(doc, ref.split('.')[0])
-        w = obj if isinstance(obj, Word) else resolve(doc, ref.rsplit('.', 1)[0])
-        m = obj if isinstance(obj, Morpheme) else None
-    where = f'sentence {s.index}'
-    if field:
-        f = ws.project.field(field)
-        sp = obj.fields.get(f.name)
-        if not sp:
-            raise ToolError(f'{ref} has no {f.name} value to comment on')
-        if isinstance(obj, Sentence):
-            return 'span', sp.id, f'{f.name} of sentence {s.index}', s.text
-        head = f'{f.name} of {m.form}' if m else f'{f.name} of {w.surface}'
-        detail = f'in {w.surface}, {where}' if m else where
-        return 'span', sp.id, f'{head}, {detail}', m.form if m else w.surface
-    if isinstance(obj, Sentence):
-        return 'token', s.id, f'Sentence {s.index}', s.text
-    if m:
-        return 'token', m.id, f'{m.form}, in {w.surface}, {where}', m.form
-    return 'token', w.id, f'{w.surface}, {where}', w.surface
-
-
-def t_comments(ws: Workspace, document: Optional[str] = None, ref: Optional[str] = None,
-               field: Optional[str] = None, limit: Optional[int] = None) -> str:
-    """The comments people have left: on one thing (document + ref, and
-    field for one of its values), in one document, or in the whole project;
-    oldest first, the newest `limit` shown."""
-    limit = clamp_limit(limit, *READ_LIMITS['comments'])
-    ws.on_progress('Reading the comments…')
-    doc = ws.doc(document) if document else None
-    if ref and doc is None:
-        raise ToolError('ref needs a document')
-    if doc is not None and ref:
-        etype, eid, caption, _ = _anchor(ws, doc, ref, field)
-        kw = {'entity_type': etype, 'entity_id': eid}
-        head = f'on {ws.doc_label(doc.id)} {ref}' + (f' {field}' if field else '')
-    elif doc is not None:
-        kw = {'document_id': doc.id}
-        head = f'in {ws.doc_label(doc.id)}'
-    else:
-        kw = {}
-        head = 'in the project'
-    try:
-        rows = ws.client.comments.list(ws.project.id, **kw)
-    except Exception as e:  # noqa: BLE001 - the model reads the server's reason
-        raise server_refused('The comments', e) from None
-    rows = sorted(rows or [], key=lambda c: c.get('created_at') or '')
-    total = len(rows)
-    rows = rows[-limit:]
-    if not rows:
-        return f'No comments {head}.'
-    lines = [f'{total} comment{"s" if total != 1 else ""} {head}' + (f' (newest {limit} shown)' if total > limit else '')
-             + ', oldest first:']
-    loaded = set()
-    for c in rows:
-        when = (c.get('created_at') or '')[:16].replace('T', ' ')
-        who = c.get('author_id') or '?'
-        anchor = ''
-        did = c.get('document_id')
-        if did and (did in ws._docs or ws.corpus.may_load(did, loaded)):
-            d = ws.doc(did)
-            hit = d.find(c.get('entity_id'))
-            tag = ws.corpus.tag(d.id)
-            if hit:
-                s, w, m = hit
-                anchor = f'{tag}s{s.index}' + (f'.w{w.index}' if w else '') + (f'.m{m.index}' if m else '')
-                if c.get('entity_type') == 'span':
-                    anchor += ' ' + (c.get('anchor_label') or 'value')
-            elif c.get('entity_type') == 'document' and c.get('entity_id') == did:
-                anchor = f'{tag}(the document)'
-        if not anchor:
-            anchor = (c.get('anchor_label') or c.get('entity_type') or '?') + (' [outdated]' if did else '')
-        body = (c.get('body') or '').strip().replace('\n', ' ')
-        lines.append(f'  {when}  {who}  @ {anchor}: {body}' + (' (edited)' if c.get('edited') else ''))
-    return truncate('\n'.join(lines))
-
-
 def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = None,
                   field: Optional[str] = None) -> str:
     """PLAN: post a comment, under the user's name, on a document, a
@@ -825,7 +735,7 @@ def t_add_comment(ws: Workspace, document: str, body: str, ref: Optional[str] = 
     # comment with a note, whichever order the two were planned in. A text
     # edit is the one case where the drop is not right: what it deletes is a
     # guess, so the two are refused here instead.
-    etype, eid, caption, what = _anchor(ws, doc, ref, field)
+    etype, eid, caption, what = ws.comment_caption(doc, ref, field)
     where = f'{ws.doc_label(doc.id)} {ref} "{(what or "")[:40]}"' if ref else f'"{ws.doc_label(doc.id)}"'
     refuse_comment_and_text_edit(ws, eid, where, commenting=True)
     ws.add_op({'kind': 'add_comment', 'entity_type': etype, 'entity_id': eid, 'body': body, 'anchor_label': caption,
