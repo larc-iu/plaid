@@ -71,9 +71,7 @@ export const vocabPopover = {
   // project would otherwise wait for the cache to age out (see the
   // visibilitychange listener in the constructor).
   _ensurePrecedent(force = false) {
-    const doc = this.doc;
-    if (this._precedentOpenedAt == null || force) this._precedentOpenedAt = doc?.dataVersion;
-    const pending = openPrecedent(doc, { force });
+    const pending = openPrecedent(this.doc, { force });
     // Asked on every render, and answered with the same promise until it
     // settles: one repaint per read, not one per render.
     if (!pending || pending === this._precedentPending) return;
@@ -86,10 +84,13 @@ export const vocabPopover = {
 
   // Called from destroy(): what this document now holds stands in for its
   // project rows in the next document opened, if it changed while open.
+  // Read-only or not: an editor taken read-only by a look at the history or
+  // by a run still closes the live document, with the edits made in it.
+  // Whether it changed is the cache's to say (a history snapshot never did).
   _leavePrecedent() {
-    if (this.readOnly || this._precedentOpenedAt == null) return;
-    const info = this.doc?.layerInfo;
-    leavePrecedent(this.doc, this._precedentOpenedAt, {
+    if (!this.doc) return;
+    const info = this.doc.layerInfo;
+    leavePrecedent(this.doc, {
       wordFields: (info?.spanLayers?.word || []).map((l) => l.name),
       morphFields: (info?.spanLayers?.morpheme || []).map((l) => l.name),
       ignoredCfg: this._ignoredCfg,

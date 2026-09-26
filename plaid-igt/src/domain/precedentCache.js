@@ -18,6 +18,15 @@
 // sends nothing, and subtracting them undoes what the project's rows hold for
 // it. A project read (the refresh on returning to the tab, or an old one on
 // opening a document) holds every saved edit, so it drops them all.
+//
+// Subtracting a document's rows is only right when they are the rows the
+// project read holds for it. The project read lists every document's version
+// first, and a document opened later whose version differs, or that the list
+// did not name, reads the project again. A failed project read has no base
+// at all, so the editor ranks on the document alone.
+//
+// A history snapshot takes no part: it is a past state, not the document
+// whose rows the project holds.
 
 import {
   createTally,
@@ -43,8 +52,6 @@ const RETRY_AFTER_FAIL_MS = 60_000;
 const byLogin = new Map();
 const loginOf = (client) => `${client.baseUrl}\u0000${client.token}`;
 
-const EMPTY = Object.freeze({ links: [], values: [] });
-
 function vocabIdsOf(doc) {
   return Object.keys(doc?.vocabularies || {}).sort();
 }
@@ -67,8 +74,9 @@ function entryFor(doc, create = true) {
   let entry = entries.get(key);
   if (!entry && create) {
     entry = {
-      project: null, // { results, fetchedAt, promise, failed }
-      docs: new Map(), // docId -> { results, promise, overlay, failedAt }
+      project: null, // { results, versions, fetchedAt, promise, failed }
+      // docId -> { results, promise, overlay, failedAt, version, alongside, opened }
+      docs: new Map(),
       generation: 0,
       memo: null,
     };
@@ -91,8 +99,27 @@ async function fetchRows(doc, docId = null) {
   return { links, values };
 }
 
-function fetchDoc(entry, doc) {
-  const rec = { results: null, promise: null, overlay: null, failedAt: 0 };
+// The version this model of the document holds: the last one a write of its
+// own reported, else the one it was read at.
+function versionOf(doc) {
+  return doc.client?.documentVersions?.[doc.id] ?? doc.raw?.version ?? null;
+}
+
+// `alongside`: read in the same breath as the project, so it is not held to
+// the project's list of versions (it could only differ by an edit landing
+// between the two, and holding it to that could read the project forever).
+function fetchDoc(entry, doc, { alongside = false } = {}) {
+  const rec = {
+    results: null,
+    promise: null,
+    overlay: null,
+    failedAt: 0,
+    version: versionOf(doc),
+    alongside,
+    // Whether the document changed while open is asked of this model and
+    // this dataVersion, whichever editor instance shows it.
+    opened: { doc, dataVersion: doc.dataVersion },
+  };
   entry.docs.set(doc.id, rec);
   rec.promise = fetchRows(doc, doc.id)
     .then((results) => {
@@ -111,6 +138,24 @@ function fetchDoc(entry, doc) {
   return rec.promise;
 }
 
+// The project and every document's version in it, the versions first: an
+// edit landing between the two then shows as a version the rows already
+// hold, which costs a needless read and never a wrong one.
+async function fetchProject(doc) {
+  const listed = await doc.client.projects.listDocuments(doc.projectId);
+  const versions = new Map((listed || []).map((d) => [d.id, d.version]));
+  return { versions, results: await fetchRows(doc) };
+}
+
+// A document's rows were read after the project's, and it was at another
+// version then than the project read listed (or not listed at all): the
+// rows subtracted would not be the rows the project holds for it.
+function outOfStep(project, rec, docId) {
+  if (!project?.versions || !rec?.results || rec.alongside) return false;
+  const listed = project.versions.get(docId);
+  return listed == null || rec.version == null || listed !== rec.version;
+}
+
 /**
  * Make sure `doc`'s precedent is read. Returns a promise that settles when
  * something new has landed, or null when everything is already here (or
@@ -118,38 +163,53 @@ function fetchDoc(entry, doc) {
  * rows are fresh.
  */
 export function openPrecedent(doc, { force = false } = {}) {
+  if (doc?.asOf) return null;
   const entry = entryFor(doc);
   if (!entry) return null;
   if (!vocabIdsOf(doc).length && !valuePrecedentQueries(doc.layerInfo).length) return null;
   const project = entry.project;
   const maxAge = project?.failed ? RETRY_AFTER_FAIL_MS : PRECEDENT_MAX_AGE_MS;
-  const stale = force || !project || (!project.promise && Date.now() - project.fetchedAt > maxAge);
+  const rec = entry.docs.get(doc.id);
+  const stale =
+    force ||
+    !project ||
+    (!project.promise && Date.now() - project.fetchedAt > maxAge) ||
+    outOfStep(project, rec, doc.id);
   if (stale) {
     // The project and this document are read side by side, so the rows
     // subtracted are as close as they can be to the rows they come out of.
     // Every other document's rows and state belong to the old read.
     entry.docs.clear();
-    const next = { results: null, fetchedAt: Date.now(), promise: null, failed: false };
+    const next = {
+      results: null,
+      versions: null,
+      fetchedAt: Date.now(),
+      promise: null,
+      failed: false,
+    };
     entry.project = next;
-    next.promise = fetchRows(doc)
-      .then((results) => {
+    next.promise = fetchProject(doc)
+      .then(({ versions, results }) => {
+        next.versions = versions;
         next.results = results;
       })
       .catch((err) => {
         console.warn('Project precedent unavailable; using this document only:', err);
-        next.results = EMPTY;
         next.failed = true;
       })
       .finally(() => {
         next.promise = null;
         entry.generation++;
       });
-    return Promise.all([next.promise, fetchDoc(entry, doc)]);
+    return Promise.all([next.promise, fetchDoc(entry, doc, { alongside: true })]);
   }
-  const rec = entry.docs.get(doc.id);
   if (!rec || (rec.failedAt && Date.now() - rec.failedAt > RETRY_AFTER_FAIL_MS)) {
-    return Promise.all([project.promise, fetchDoc(entry, doc)]);
+    // Checked against the project's versions once both have landed.
+    return Promise.all([project.promise, fetchDoc(entry, doc)]).then(() => openPrecedent(doc));
   }
+  // Another model of the same document (opened again): changes are counted
+  // from here.
+  if (rec.opened.doc !== doc) rec.opened = { doc, dataVersion: doc.dataVersion };
   return project.promise || rec.promise || null;
 }
 
@@ -165,10 +225,11 @@ export function precedentFetchedAt(doc) {
  * before adding to it.
  */
 export function precedentBase(doc, ignoredCfg = null) {
+  if (doc?.asOf) return null;
   const entry = entryFor(doc, false);
-  if (!entry?.project?.results) return null;
+  if (!entry?.project?.results || entry.project.failed) return null;
   const own = entry.docs.get(doc.id);
-  if (!own?.results) return null;
+  if (!own?.results || outOfStep(entry.project, own, doc.id)) return null;
   const cfgKey = JSON.stringify(ignoredCfg ?? null);
   const m = entry.memo;
   if (m && m.generation === entry.generation && m.docId === doc.id && m.cfgKey === cfgKey) {
@@ -186,13 +247,28 @@ export function precedentBase(doc, ignoredCfg = null) {
 }
 
 /**
- * The editor is closing `doc`. When it changed while open (`openedAt` is the
- * dataVersion it opened at), what it now holds stands in for its rows in
- * the project's, until the project is read again.
+ * The editor is closing `doc`. When it changed while open, what it now holds
+ * stands in for its rows in the project's, until the project is read again.
+ * "While open" is since this model of the document was first shown with this
+ * project read, not since the editor instance closing it was made: an editor
+ * rebuilt around the same document (after a look at its history, or when a
+ * run makes it read-only) has not seen the edits made before it.
  */
-export function leavePrecedent(doc, openedAt, opts = {}) {
-  const rec = entryFor(doc, false)?.docs.get(doc.id);
-  if (!rec?.results || doc.dataVersion === openedAt) return;
+export function leavePrecedent(doc, opts = {}) {
+  if (doc?.asOf) return;
+  const entry = entryFor(doc, false);
+  const rec = entry?.docs.get(doc.id);
+  if (!rec?.results || rec.opened.doc !== doc) return;
+  if (doc.dataVersion === rec.opened.dataVersion) return;
   rec.overlay = foldDocument(createTally(), doc.sentences, opts);
-  entryFor(doc, false).generation++;
+  entry.generation++;
+}
+
+/**
+ * Forget every project read. For a write that reaches documents other than
+ * the one open (Bulk Edit, deleting or merging an entry), whose rows the
+ * reads held.
+ */
+export function dropPrecedent() {
+  byLogin.clear();
 }
