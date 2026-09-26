@@ -242,6 +242,11 @@ describe('alignWords', () => {
     expect(warnings.join(' ')).toMatch(/2 analyzed words for 3 words of text/);
   });
 
+  it('counts one analyzed word in the singular', () => {
+    const { warnings } = align('uno dos', ['uno']);
+    expect(warnings.join(' ')).toMatch(/^1 analyzed word for 2 words of text/);
+  });
+
   it('never runs past the end of its sentence', () => {
     const body = 'uno dos\ntres';
     const { spans } = alignWords(body, 0, 7, ['uno', 'tres']);

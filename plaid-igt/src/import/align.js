@@ -6,6 +6,8 @@
 // Matching is case-folded because a stored form routinely differs in case from
 // the surface it came from (the text says "За", the analysis stores "за").
 
+import { plural } from '../utils/plural.js';
+
 /**
  * A reusable UTF-16 index → code-point index converter for one string.
  *
@@ -270,7 +272,7 @@ export function alignWords(body, begin, end, forms) {
   );
   if (forms.length && runs.length !== forms.length && (guessed || leftOver.length)) {
     warnings.push(
-      `${forms.length} analyzed words for ${runs.length} words of text; aligned by position`,
+      `${plural(forms.length, 'analyzed word')} for ${plural(runs.length, 'word of text', 'words of text')}; aligned by position`,
     );
   }
   return { spans, warnings };
