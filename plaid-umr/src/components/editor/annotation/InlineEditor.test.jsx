@@ -166,6 +166,63 @@ describe('InlineEditor', () => {
     await r.unmount();
   });
 
+  // Leaving the editor writes what Enter writes. `arg2` and a click away left
+  // the role as it was, because the blur checked the raw text, which the
+  // check refuses, while Enter finished it as :ARG2 first.
+  it('commits on blur what Enter commits: a relation finished from its value', async () => {
+    const roles = [{ group: 'Core', items: [':ARG0', ':ARG1', ':ARG2'] }];
+    const onCommit = vi.fn();
+    const onCancel = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value=":ARG1"
+        options={roles}
+        complete
+        onCommit={onCommit}
+        onCancel={onCancel}
+        check={(text) => (/^:[A-Za-z]/.test(text) && text !== ':arg2' ? null : 'Unknown relation.')}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 'arg2');
+    await r.step(() => input.blur());
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledWith(':ARG2', expect.objectContaining({ value: ':ARG2' }));
+    await r.unmount();
+  });
+
+  // A blur on a value Enter would refuse drops nothing silently: the editor
+  // stays with the reason, and what was typed is there to correct.
+  it('stays open with the reason when a blur leaves a refused value', async () => {
+    const onCommit = vi.fn();
+    const onCancel = vi.fn();
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value="s1l2"
+        onCommit={onCommit}
+        onCancel={onCancel}
+        check={(text) => (text === 's1p' ? 's1p is already in use.' : null)}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    await type(r, input, 's1p');
+    await r.step(() => input.blur());
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(r.container.querySelector('[role="alert"]').textContent).toBe('s1p is already in use.');
+    expect(input.value).toBe('s1p');
+    await r.step(() => input.focus());
+    await type(r, input, 's1lu');
+    await r.step(() => press(input, 'Enter'));
+    expect(onCommit).toHaveBeenCalledWith('s1lu', null);
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
   it('cancels on Escape', async () => {
     const onCancel = vi.fn();
     const r = await renderComponent(

@@ -13,18 +13,19 @@ import { textIncludes } from '@ui/domain/collation.js';
 // Enter never takes one of those unarrowed: typing `place` under escape-01
 // wrote `:ARG1`, whose label reads "place or thing escaped", and `thing`
 // kept `chase-01` ("thing followed"). A click on an option commits it. Blur
-// commits too, since the editor is the one thing with focus and leaving it is
-// leaving the edit. Escape cancels. A `done` ref keeps the blur that follows
-// an explicit Enter or Escape from firing a second time.
+// commits too, and what Enter would, since the editor is the one thing with
+// focus and leaving it is leaving the edit: `arg2` and a click away is :ARG2.
+// Escape cancels. A `done` ref keeps the blur that follows an explicit Enter
+// or Escape from firing a second time.
 //
 // `complete` is for a closed list, relations: `ARG` finishes as `:ARG0`. A
 // concept is any word, so `rat` stays `rat` and is not finished as
 // `ratio-of`.
 //
-// `check` says why a value cannot be taken, or nothing when it can. Enter or
-// Tab on a refused value leaves the editor open with the reason under it, so
-// what was typed is there to correct. A blur still commits, and the caller
-// refuses it.
+// `check` says why a value cannot be taken, or nothing when it can. Enter,
+// Tab, a click on an option or a blur on a refused value leaves the editor
+// open with the reason under it, so what was typed is there to correct and
+// nothing is dropped without a word.
 export function InlineEditor({
   x,
   y,
@@ -68,11 +69,6 @@ export function InlineEditor({
       onCancel();
       return;
     }
-    // A blur commits too, and must not take what Enter refuses.
-    if (check?.(text)) {
-      onCancel();
-      return;
-    }
     onCommit(text, option);
   };
   // The option Enter takes for typed text when the arrows chose none. A
@@ -99,13 +95,20 @@ export function InlineEditor({
     setProblem(why || null);
     return !!why;
   };
-  // What Enter or Tab commits: see the header.
+  // What Enter or Tab commits: see the header. A blur has no highlight to
+  // trust, so it takes what Enter takes when the arrows chose nothing.
   const chosen = (combo) => {
-    if (navigatedRef.current && combo.activeValue != null) {
+    if (combo && navigatedRef.current && combo.activeValue != null) {
       return { text: combo.activeValue, option: combo.activeOption };
     }
     const match = pristine ? null : matchFor(value);
     return match ? { text: match.value, option: match } : { text: value, option: null };
+  };
+  // Every way of committing comes through here, so none takes what `check`
+  // refuses, and a refusal stays on screen rather than closing the editor.
+  const attempt = ({ text, option }) => {
+    if (doneRef.current || refuse(text)) return;
+    once(() => commit(text, option));
   };
   const filter = ({ options: all, search }) => {
     const q = String(search || '').trim();
@@ -164,8 +167,8 @@ export function InlineEditor({
           setPristine(true);
           setTimeout(() => e.target.select?.(), 0);
         }}
-        onBlur={() => once(() => commit(value))}
-        onSubmit={(v, option) => once(() => commit(v, option))}
+        onBlur={() => attempt(chosen(null))}
+        onSubmit={(v, option) => attempt({ text: v, option })}
         onKeyDown={(e, combo) => {
           // The canvas listens for keys too: none of these are its.
           e.stopPropagation();
@@ -173,9 +176,7 @@ export function InlineEditor({
             navigatedRef.current = true;
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            const { text, option } = chosen(combo);
-            if (refuse(text)) return;
-            once(() => commit(text, option));
+            attempt(chosen(combo));
           } else if (e.key === 'Escape') {
             e.preventDefault();
             once(onCancel);
@@ -186,9 +187,7 @@ export function InlineEditor({
             once(onDelete);
           } else if (e.key === 'Tab') {
             e.preventDefault();
-            const { text, option } = chosen(combo);
-            if (refuse(text)) return;
-            once(() => commit(text, option));
+            attempt(chosen(combo));
           }
         }}
         filter={filter}
