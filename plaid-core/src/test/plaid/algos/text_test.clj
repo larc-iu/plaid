@@ -7,7 +7,8 @@
     - :delete with a range whose endpoint equals p (either side) does NOT
       delete a zero-width token at p — only a range that *strictly* contains
       p does."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [plaid.algos.text :as ta]
             [plaid.util.codepoint :as cp]))
 
@@ -519,3 +520,78 @@
     (let [tokens [(tok :t 0 (cp/cp-count old))]]
       (is (= new (get-in (body-edit old new tokens) [:text :text/body]))
           (str (pr-str old) " -> " (pr-str new))))))
+
+;; ---------------------------------------------------------------------------
+;; A whole-body update changes only the words it changes. Editscript picks any
+;; one of the cheapest edit scripts, and some of them scatter one edit into the
+;; text the two bodies share, which moved the tokens of untouched words onto
+;; their neighbours (PROP finding 1, 2026-09-26).
+
+(def ^:private fuzz-words
+  ["the" "cat" "sat" "on" "a" "mat" "at" "as" "tat" "ta" "kai" "kaki" "𐌰𐌱" "𐌰" "é"])
+
+(defn- word-tokens
+  "One token per word of `words` joined by single spaces, in code points."
+  [words]
+  (loop [ws words p 0 i 0 out []]
+    (if-let [w (first ws)]
+      (let [n (cp/cp-count w)]
+        (recur (rest ws) (+ p n 1) (inc i) (conj out (tok i p (+ p n)))))
+      out)))
+
+(deftest deleting-or-inserting-a-word-leaves-the-others-in-place
+  ;; Tokens are named by their old begin, so each triple reads old begin,
+  ;; new begin, new end.
+  (doseq [[old new expected deleted-n]
+          [["kai tat mat at a" "kai tat at a" #{[0 0 3] [4 4 7] [12 8 10] [15 11 12]} 1]
+           ["mat a at on cat kaki" "mat kai a at on cat kaki"
+            #{[0 0 3] [4 8 9] [6 10 12] [9 13 15] [12 16 19] [16 20 24]} 0]
+           ["at tat sat tat kaki" "cat at tat sat tat kaki"
+            #{[0 4 6] [3 7 10] [7 11 14] [11 15 18] [15 19 23]} 0]]]
+    (let [tokens (map #(assoc % :token/id (:token/begin %))
+                      (word-tokens (str/split old #" ")))
+          {:keys [text tokens deleted]} (body-edit old new tokens)]
+      (is (= new (:text/body text)))
+      (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new)))
+      (is (= deleted-n (count deleted))))))
+
+(defn- window-errors
+  "Tokens wholly outside every window equivalent to `old` -> `new` (the
+  shared start and end, taken as far as either goes) must keep their id, and
+  shift by the length change when they come after it."
+  [old new before after]
+  (let [o (vec (.toArray (.codePoints ^String old)))
+        n (vec (.toArray (.codePoints ^String new)))
+        n0 (count o) n1 (count n)
+        l (count (take-while true? (map = o n)))
+        r (count (take-while true? (map = (rseq o) (rseq n))))
+        lo (min l (- n0 r) (- n1 r))
+        hi (- n0 (min r (- n0 l) (- n1 l)))
+        delta (- n1 n0)
+        now (into {} (map (juxt :token/id (juxt :token/begin :token/end))) after)]
+    (keep (fn [{:token/keys [id begin end]}]
+            (let [want (cond (< end lo) [begin end]
+                             (> begin hi) [(+ begin delta) (+ end delta)])]
+              (when (and want (not= want (now id)))
+                [id [begin end] :want want :got (now id)])))
+          before)))
+
+(deftest a-one-word-edit-moves-no-other-word
+  ;; Seeded, so a failure names the seed that reproduces it.
+  (doseq [seed (range 1 7)]
+    (let [rng (java.util.Random. seed)
+          pick #(nth % (.nextInt rng (count %)))]
+      (dotimes [case-n 150]
+        (let [words (vec (repeatedly (+ 3 (.nextInt rng 5)) #(pick fuzz-words)))
+              k (.nextInt rng (count words))
+              words' (case (pick [:replace :delete :insert])
+                       :replace (assoc words k (pick (remove #{(words k)} fuzz-words)))
+                       :delete (into (subvec words 0 k) (subvec words (inc k)))
+                       :insert (into (conj (subvec words 0 k) (pick fuzz-words)) (subvec words k)))
+              old (str/join " " words)
+              new (str/join " " words')
+              before (word-tokens words)
+              {:keys [text tokens]} (body-edit old new before)]
+          (is (= new (:text/body text)))
+          (is (empty? (window-errors old new before tokens))
+              (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new))))))))

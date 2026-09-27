@@ -100,15 +100,55 @@
                      (apply str (map #(String. (Character/toChars (int (px->cp %)))) s)))]
         {:old* (->px ocps) :new* (->px ncps) :decode decode}))))
 
+(defn- cps->str [cps]
+  (let [sb (StringBuilder.)]
+    (doseq [c cps] (.appendCodePoint sb (int c)))
+    (.toString sb)))
+
+(declare middle-diff)
+
 (defn diff
   "Diff `old` -> `new` into a vector of insert/delete edit-ops. Op `:index` and
   the `:delete` `:value` count are **Unicode code-point** positions, matching the
   canonical token-offset unit; insert `:value` is the literal inserted string.
   Applying the ops to `old` reconstructs `new` exactly, including astral text.
 
+  The text the two share at the start and at the end is set aside first, and
+  only what lies between is diffed. Editscript's search picks any one of the
+  edit scripts of least cost, and among them some scatter one edit into the
+  shared text around it: deleting `mat` from `kai tat mat at a` came out as a
+  delete inside `mat` and another inside `at`, which moved `at`'s tokens onto
+  `a` and deleted the tokens of `a`. Trimming is by code point, so it never
+  cuts a surrogate pair. It can end between a letter and a combining mark on
+  it, as any diff by code point can, and a token boundary there is one the
+  offsets already allow.
+
   The diff is computed at code-point granularity (via `codepoint-proxy`) so an
   edit boundary never splits a surrogate pair — otherwise a char-level diff of
   e.g. an interior emoji deletion would mis-shift the surrounding tokens."
+  [^String old ^String new]
+  (let [o (.toArray (.codePoints old))
+        n (.toArray (.codePoints new))
+        no (alength o)
+        nn (alength n)
+        shorter (min no nn)
+        prefix (loop [i 0]
+                 (if (and (< i shorter) (= (aget o i) (aget n i))) (recur (inc i)) i))
+        suffix (loop [i 0]
+                 (if (and (< i (- shorter prefix))
+                          (= (aget o (- no 1 i)) (aget n (- nn 1 i))))
+                   (recur (inc i))
+                   i))
+        old-mid (cps->str (java.util.Arrays/copyOfRange o (int prefix) (int (- no suffix))))
+        new-mid (cps->str (java.util.Arrays/copyOfRange n (int prefix) (int (- nn suffix))))]
+    (cond
+      (and (= "" old-mid) (= "" new-mid)) []
+      (= "" old-mid) [(insert-op prefix new-mid)]
+      (= "" new-mid) [(delete-op prefix (- no prefix suffix))]
+      :else (mapv #(update % :index + prefix) (middle-diff old-mid new-mid)))))
+
+(defn- middle-diff
+  "`diff` of two strings that share no first and no last code point."
   [old new]
   (if-let [{:keys [old* new* decode]} (codepoint-proxy old new)]
     (let [results (editscript-diff old* new*)]

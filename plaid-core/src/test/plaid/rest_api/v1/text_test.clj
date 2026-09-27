@@ -268,7 +268,9 @@
           (assert-ok tok1-get)
           (assert-ok tok2-get)
           (is (= 4 (-> tok1-get :body :token/begin)))
-          (is (= 9 (-> tok1-get :body :token/end))) ; shrunk to "overp"
+          ;; Shrunk to "over". The diff deletes the one stretch "lap", where
+          ;; it once kept the first "p" and deleted the second.
+          (is (= 8 (-> tok1-get :body :token/end)))
           (is (= 8 (-> tok2-get :body :token/begin))) ; starts where deletion happened
           (is (= 12 (-> tok2-get :body :token/end)))) ; adjusted for deletion: "ping"
 
