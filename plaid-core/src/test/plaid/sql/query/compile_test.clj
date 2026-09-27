@@ -1,7 +1,6 @@
 (ns plaid.sql.query.compile-test
   "Unit tests for the AST -> HoneySQL compiler. Pure: resolved ASTs are
-  hand-constructed (with ::qr/scope, ::qr/layer-universe and ::qr/layer-ids
-  attached) so no DB is
+  hand-constructed (with ::qr/scope and ::qr/layer-ids attached) so no DB is
   needed. Assertions are structural (aliases are generated, so we search the
   compiled tree rather than compare exact maps)."
   (:require [clojure.test :refer [deftest is testing]]
@@ -17,13 +16,8 @@
 
 (defn- sql-of [hq] (first (hsql/format hq)))
 
-(def ^:private universe
-  "Every in-scope layer id per layer table, as resolve attaches it."
-  {:text_layers ["UX"] :token_layers ["UT1" "UT2"] :span_layers ["US"]
-   :relation_layers ["UR"] :vocab_layers ["UV"]})
-
 (defn- resolved
-  "Build a resolved AST: validate, then attach scope, the layer universe, and
+  "Build a resolved AST: validate, then attach scope and
   layer-ids onto each :span/:token/:relation clause that names a :layer."
   [raw scope layer-ids]
   (let [checked (ast/parse+validate raw)
@@ -32,7 +26,7 @@
                          [head v (assoc cmap ::qr/layer-ids layer-ids)]
                          clause))
                      (:where checked))]
-    (-> checked (assoc :where where') (assoc ::qr/scope scope) (assoc ::qr/layer-universe universe))))
+    (-> checked (assoc :where where') (assoc ::qr/scope scope))))
 
 (deftest compiles-value-and-layer-filters
   (let [hq (qc/compile-query
@@ -49,16 +43,23 @@
       (is (= [[:s_1.id :s]] (:select-distinct hq))))
     (is (string? sql))))
 
-(deftest acl-invariant-layerless-var-scoped-by-the-universe
+(deftest acl-invariant-layerless-var-scoped-by-the-in-scope-layers
   (testing "a token introduced only by :covers (no :layer) is scoped to the in-scope token layers"
     (let [hq (qc/compile-query
               (resolved {"find" ["?t"]
                          "where" [["span" "?s" {"layer" "pos" "value" "NOUN"}]
                                   ["covers" "?s" "?t"]]}
-                        #{"PA" "PB"} ["L1"]))]
-      (is (some #(= % [:in :t_2.token_layer_id ["UT1" "UT2"]]) (nodes hq)))
-      (testing "as a list on its own layer column, never a join to the layer table"
-        (is (not-any? #(and (vector? %) (= :token_layers (first %))) (:from hq))))))
+                        #{"PA" "PB"} ["L1"]))
+          [sql & params] (hsql/format hq)]
+      (is (re-find #"t_2\.token_layer_id IN \(SELECT id FROM token_layers WHERE project_id IN \(\?, \?\)\)" sql))
+      (testing "as an IN on its own layer column, never a join to the layer table"
+        (is (not-any? #(and (vector? %) (= :token_layers (first %))) (:from hq))))
+      (testing "with parameters for the scope only, however many layers the instance has"
+        ;; SQLite refuses a statement of more than 250,000 parameters, and an
+        ;; admin query of many variables and branches over a big instance
+        ;; would reach it with one parameter per layer
+        (is (= #{"L1" "\"NOUN\"" "PA" "PB"} (set params)))
+        (is (= 4 (count params))))))
   (testing "an entity whose layer is a variable is scoped through its join to the variable"
     (let [hq (qc/compile-query
               (resolved {"find" ["?s"]
@@ -67,10 +68,10 @@
                         #{"P1"} nil))
           sql (sql-of hq)]
       ;; not the list again on the entity: it would be tested on every one of its rows
-      (is (not-any? #(= % [:in :s_2.span_layer_id ["US"]]) (nodes hq)))
+      (is (not (re-find #"s_2\.span_layer_id IN" sql)))
       (is (re-find #"s_2\.span_layer_id = slv_1\.id" sql))
       (testing "the layer variable itself is scoped by id"
-        (is (some #(= % [:in :slv_1.id ["US"]]) (nodes hq))))))
+        (is (re-find #"slv_1\.id IN \(SELECT id FROM span_layers WHERE project_id IN \(\?\)\)" sql)))))
   (testing "a text is scoped through the in-scope documents, without a join"
     (let [hq (qc/compile-query
               (resolved {"find" ["?x"] "where" [["text" "?x" {}]]} #{"P1"} nil))]
@@ -177,12 +178,12 @@
       (is (= :select-distinct (agg-select-key hq))))))
 
 (deftest aggregate-drops-distinct-for-a-vocab-var
-  (testing "a vocab entry is scoped by the granted layers as a list, not a join to
-  the grants, so one granted to two in-scope projects is one row and the DISTINCT goes"
+  (testing "a vocab entry is scoped by an IN over the grants, not a join to
+  them, so one granted to two in-scope projects is one row and the DISTINCT goes"
     (let [hq (qc/compile-query
               (resolved {"where" [["vocab" "?i" {}]]
                          "return" {"group" [] "aggregates" [["count"]]}}
                         #{"P1" "P2"} nil))]
-      (is (some #(= % [:in :v_1.vocab_layer_id ["UV"]]) (nodes hq)))
+      (is (re-find #"v_1\.vocab_layer_id IN \(SELECT vocab_layer_id FROM project_vocabs WHERE project_id IN \(\?, \?\)\)" (sql-of hq)))
       (is (not-any? #(and (vector? %) (= :project_vocabs (first %))) (:from hq)))
       (is (= :select (agg-select-key hq))))))

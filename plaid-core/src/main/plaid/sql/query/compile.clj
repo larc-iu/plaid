@@ -9,9 +9,9 @@
     A. scan entity clauses -> per-var constraints (layer-ids, value, doc, begin/end)
     B. for every var (incl. ones introduced only by relationships): allocate a table
        alias, emit its base table, and emit its SCOPE predicate: an `IN <layer-ids>`
-       filter on its layer column, with the ids the clause names or else every
-       in-scope layer of its kind (resolve's `::layer-universe`), and for a
-       document or text a project filter. THE ACL INVARIANT: no entity alias is
+       filter on its layer column, with the ids the clause names or else a
+       subquery for every in-scope layer of its kind, and for a document or
+       text a project filter. THE ACL INVARIANT: no entity alias is
        emitted without a scope predicate (asserted at the end; a miss is a 500).
     C. relationship clauses + inline relation source/target -> join predicates.
 
@@ -69,10 +69,9 @@
 ;; Mutable-ish compile state (a local atom; contained within compile-query)
 ;; ---------------------------------------------------------------------------
 
-(defn- new-state [scope universe kinds]
+(defn- new-state [scope kinds]
   (atom {:n 0
          :scope (vec scope)
-         :universe universe   ; layer table -> every in-scope layer id of it
          :kinds kinds
          :var->alias {}
          :scalar-col {}   ; scalar var -> {:sql <col-ref> :enc <fn>}: its bound column
@@ -299,11 +298,18 @@
 
 (declare ensure-var!)
 
-(defn- universe-ids
-  "Every in-scope layer id of layer `table` (resolve's `::layer-universe`)."
+(defn- in-scope-layers
+  "A subquery for the id of every in-scope layer of layer `table`: a layer of
+  an in-scope project, or for a vocabulary, one granted to an in-scope project.
+
+  A subquery rather than the ids as a list: SQLite plans the two alike (it
+  reads the subquery once and probes the layer index with it), but a list
+  costs one bound parameter per layer, once per variable and per `:or`
+  branch, and an admin query over a big instance could pass SQLite's cap."
   [st table]
-  (or (get-in @st [:universe table])
-      (err-500! (str "No in-scope layer ids were resolved for " (name table)) {:table table})))
+  (if (= table :vocab_layers)
+    {:select [:vocab_layer_id] :from [:project_vocabs] :where [:in :project_id (:scope @st)]}
+    {:select [:id] :from [table] :where [:in :project_id (:scope @st)]}))
 
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind` and emit its
@@ -321,7 +327,7 @@
         table (layer-entity-table kind)]
     (swap! st assoc-in [:var->alias v] a)
     (add-from! st [table a])
-    (add-where! st [:in (col a :id) (universe-ids st table)])
+    (add-where! st [:in (col a :id) (in-scope-layers st table)])
     (swap! st update :scoped conj v)))
 
 (defn- ensure-var!
@@ -356,18 +362,18 @@
             (doseq [ids layer-id-sets]
               (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
             ;; No layer id of its own: the entity's layer is one of the in-scope
-            ;; layers of its kind. The ids go in as a list rather than as a join
+            ;; layers of its kind. That goes in as an IN rather than as a join
             ;; to the layer table filtered by project, which SQLite planned by
             ;; walking every row of the kind on the instance (a 408 on a project
             ;; of three spans) or by putting the tiny layer table outermost and
             ;; repeating the whole walk per layer. A layer variable scopes the
-            ;; entity through its join instead (the variable's own id is in the
-            ;; list): the list again on the entity would be tested against every
+            ;; entity through its join instead (the variable's own id is in
+            ;; scope): the IN again on the entity would be tested against every
             ;; one of its rows, and made the project list's per-layer token
             ;; count three times slower.
             (when (and (empty? layer-id-sets) (empty? layer-vars) (layer-fk kind))
               (add-where! st [:in (col a (layer-fk kind))
-                              (universe-ids st (if (= kind :vocab) :vocab_layers (layer-tbl kind)))]))
+                              (in-scope-layers st (if (= kind :vocab) :vocab_layers (layer-tbl kind)))]))
             ;; :layer is a VARIABLE -> also join to the (scoped) layer node it names
             (doseq [lv layer-vars]
               (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st lv constraints) :id)]))
@@ -570,7 +576,7 @@
                                           [:exists {:select [1]
                                                     :from [[:spans s]]
                                                     :where [:and [:= (col s :id) (col r :target_span_id)]
-                                                            [:in (col s :span_layer_id) (universe-ids st :span_layers)]]}]]
+                                                            [:in (col s :span_layer_id) (in-scope-layers st :span_layers)]]}]]
                                    (contains? cmap :value)
                                    (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))]
                      ;; transitive reachability over source_span_id -> target_span_id,
@@ -1074,7 +1080,7 @@
         ;; validate already inferred + attached the var-kinds; reuse it (fall back
         ;; to re-inferring if a caller hands us an AST that skipped validate).
         kinds (or (::ast/var-kinds resolved) (clauses/infer-kinds resolved))
-        st (new-state scope (::qr/layer-universe resolved) kinds)
+        st (new-state scope kinds)
         constraints (collect-entity-constraints (:where resolved))]
     ;; Pass B: every POSITIVELY-bound var (entity + relationship-introduced) gets
     ;; a table + scope. Vars that appear only inside a :not are existential to the
