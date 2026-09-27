@@ -1,207 +1,29 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Trash2, AlertTriangle } from 'lucide-react';
-import { Label } from '@ui/components/ui/label';
-import { Button } from '@ui/components/ui/button';
-import { Input } from '@ui/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@ui/components/ui/dialog';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
+import { Card, CardContent } from '@ui/components/ui/card';
 import { LanguagesSettings } from './LanguagesSettings.jsx';
 
-// What the project IS: its name and the languages it documents. Document
-// Metadata used to sit here, on the argument that Date and Speakers describe a
-// text rather than its structure. It moved to Annotation once its fields could
-// be governed by tagsets: they are now configured exactly like annotation
-// fields, and configuration is what this screen is for.
-export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => {
-  const navigate = useNavigate();
-  const [name, setName] = useState(project?.name ?? '');
-  const [savingName, setSavingName] = useState(false);
-
-  // Re-sync when the project reloads (including after our own rename), so the
-  // field shows what the server has rather than a stale local edit.
-  useEffect(() => {
-    setName(project?.name ?? '');
-  }, [project?.name]);
-
-  const trimmedName = name.trim();
-  const nameChanged = trimmedName !== (project?.name ?? '');
-  const nameValid = trimmedName.length > 0;
-
-  const handleRenameProject = async (event) => {
-    event.preventDefault();
-    if (!nameChanged || !nameValid || savingName) return;
-    try {
-      setSavingName(true);
-      if (!client) throw new Error('Not authenticated');
-      await client.projects.update(projectId, trimmedName);
-      notifySuccess(`Project renamed to "${trimmedName}".`, 'Project updated');
-      // The name shows in the breadcrumb, the project list and the delete
-      // confirmation, so refresh the parent rather than only this field.
-      onProjectUpdate?.();
-    } catch (err) {
-      console.error('Error renaming project:', err);
-      notifyError('Failed to rename the project. Please try again.', 'Error');
-      setName(project?.name ?? '');
-    } finally {
-      setSavingName(false);
-    }
-  };
-  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
-  const [confirmationText, setConfirmationText] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleDeleteProject = async () => {
-    if (confirmationText.toLowerCase() !== project.name.toLowerCase()) {
-      notifyError(
-        'Project name does not match. Please type the exact project name.',
-        'Invalid confirmation',
-      );
-      return;
-    }
-
-    try {
-      setIsDeleting(true);
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-      await client.projects.delete(projectId);
-
-      notifySuccess(`Project "${project.name}" has been successfully deleted.`, 'Project deleted');
-
-      // Navigate back to projects list
-      navigate('/projects');
-    } catch (err) {
-      console.error('Error deleting project:', err);
-      notifyError('Failed to delete project. Please try again.', 'Error');
-    } finally {
-      setIsDeleting(false);
-      setDeleteModalOpened(false);
-    }
-  };
-
-  const handleDeleteClick = () => {
-    setConfirmationText('');
-    setDeleteModalOpened(true);
-  };
-
-  const isConfirmationValid = confirmationText.toLowerCase() === project.name.toLowerCase();
-
-  return (
-    <div className="flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
-      {/* Project name */}
-      <div>
-        <h2 className="text-lg font-semibold">Project Name</h2>
-        <p className="mb-4 mt-1 text-sm text-muted-foreground">
-          Shown in the project list, the breadcrumb, and exports.
-        </p>
-        <form className="flex max-w-md flex-col gap-2" onSubmit={handleRenameProject}>
-          <Label htmlFor="project-name" className="sr-only">
-            Project name
-          </Label>
-          <div className="flex items-start gap-2">
-            <div className="flex flex-1 flex-col gap-1">
-              <Input
-                id="project-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                disabled={savingName}
-                placeholder="Project name"
-              />
-              {nameChanged && !nameValid && (
-                <p className="text-xs text-destructive">Project name cannot be empty</p>
-              )}
-            </div>
-            <Button type="submit" disabled={!nameChanged || !nameValid || savingName}>
-              {savingName ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Language identity */}
-      <LanguagesSettings
-        project={project}
-        projectId={projectId}
-        client={client}
-        onProjectUpdate={onProjectUpdate}
-      />
-
-      <div>
-        {/* The heading, the item and the button all read "Delete Project"
-            once, three times over. The heading names the section, the line
-            says what happens, and the button is the verb. */}
-        <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
-        <p className="mb-4 mt-1 text-sm text-muted-foreground">Nothing here can be undone.</p>
-
-        <div className="flex flex-col gap-1">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Deleting this project takes its documents, annotations and configuration with it.
-          </p>
-          <Button variant="destructive" className="self-start" onClick={handleDeleteClick}>
-            <Trash2 className="h-4 w-4" /> Delete
-          </Button>
-        </div>
-      </div>
-
-      <Dialog open={deleteModalOpened} onOpenChange={setDeleteModalOpened}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete “{project.name}”?</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-4">
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                <div className="text-sm">
-                  <p className="font-medium text-destructive">This cannot be undone</p>
-                  <p className="mt-1 text-muted-foreground">
-                    Every document, annotation and setting in this project goes with it.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <p className="text-sm">
-                Type the project's name to confirm: <strong>{project.name}</strong>
-              </p>
-              <Input
-                value={confirmationText}
-                onChange={(event) => setConfirmationText(event.target.value)}
-                placeholder="Enter project name"
-              />
-              {confirmationText && !isConfirmationValid && (
-                <p className="text-xs text-destructive">Project name does not match</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteModalOpened(false)}
-              disabled={isDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteProject}
-              disabled={!isConfirmationValid || isDeleting}
-            >
-              <Trash2 className="h-4 w-4" /> {isDeleting ? 'Deleting…' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-};
+// What the project IS: its name and the languages it documents, on the page
+// every app shares (name, the app's sections, delete). Document Metadata used
+// to sit here, on the argument that Date and Speakers describe a text rather
+// than its structure. It moved to Annotation once its fields could be governed
+// by tagsets: they are now configured exactly like annotation fields, and
+// configuration is what this screen is for.
+//
+// IGT keeps two languages (object and meta), so it passes its own section
+// instead of the shared single-tag Language card.
+export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => (
+  <div className="pt-4">
+    <ProjectGeneralPage project={project} onSaved={onProjectUpdate}>
+      <Card>
+        <CardContent className="pt-6">
+          <LanguagesSettings
+            project={project}
+            projectId={projectId}
+            client={client}
+            onProjectUpdate={onProjectUpdate}
+          />
+        </CardContent>
+      </Card>
+    </ProjectGeneralPage>
+  </div>
+);
