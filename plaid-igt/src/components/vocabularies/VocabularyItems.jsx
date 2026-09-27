@@ -180,8 +180,37 @@ export const VocabularyItems = ({
     // ever rescued it.
   }, [loading]);
 
+  // The projects this user can read, one call per vocabulary, shared by the
+  // lookups below, the usage counts and the concordance, which have no project
+  // to look in when nothing links the vocabulary.
+  const projectsRef = useRef(null);
+  const readableProjects = () => {
+    if (projectsRef.current?.key !== vocabularyId) {
+      const promise = client.projects.list();
+      // A failed read is asked again next time rather than remembered.
+      promise.catch(() => {
+        if (projectsRef.current?.promise === promise) projectsRef.current = null;
+      });
+      projectsRef.current = { key: vocabularyId, promise };
+    }
+    return projectsRef.current.promise;
+  };
+  // Whether a readable project links this vocabulary. The usage queries are
+  // refused when none does. A failed read says yes, so the queries still run.
+  const vocabLinked = () =>
+    readableProjects().then(
+      (projects) => projects.some((p) => (p?.vocabs || []).some((v) => v?.id === vocabularyId)),
+      () => true,
+    );
+
   // The open entry's concordance, loaded a batch at a time.
-  const conc = useItemConcordance({ client, vocabularyId, selectedId, skipId: NEW_ID });
+  const conc = useItemConcordance({
+    client,
+    vocabularyId,
+    selectedId,
+    skipId: NEW_ID,
+    linked: vocabLinked,
+  });
 
   // ---- derived from the entries ----
   const fieldNames = useMemo(() => fields.map((f) => f.name), [fields]);
@@ -266,21 +295,6 @@ export const VocabularyItems = ({
   // linking project counts, unlike the assistant above, because a roleset
   // belongs to the entry rather than to one project's thread.
   const [umrLinked, setUmrLinked] = useState(false);
-  // The projects this user can read, one call per vocabulary, shared by the
-  // lookups above and the usage counts, which have no project to count in
-  // when nothing links the vocabulary.
-  const projectsRef = useRef(null);
-  const readableProjects = () => {
-    if (projectsRef.current?.key !== vocabularyId) {
-      const promise = client.projects.list();
-      // A failed read is asked again next time rather than remembered.
-      promise.catch(() => {
-        if (projectsRef.current?.promise === promise) projectsRef.current = null;
-      });
-      projectsRef.current = { key: vocabularyId, promise };
-    }
-    return projectsRef.current.promise;
-  };
   useEffect(() => {
     if (!client || !vocabularyId) return undefined;
     let alive = true;
@@ -400,11 +414,7 @@ export const VocabularyItems = ({
   const fetchUsageCounts = async () => {
     try {
       // A vocabulary no project links has no uses, and the query refuses it.
-      const projects = await readableProjects().catch(() => null);
-      if (
-        projects &&
-        !projects.some((p) => (p?.vocabs || []).some((v) => v?.id === vocabularyId))
-      ) {
+      if (!(await vocabLinked())) {
         setUsageCounts(null);
         setUsageKinds(null);
         return;

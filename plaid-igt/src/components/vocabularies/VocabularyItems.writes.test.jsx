@@ -500,4 +500,29 @@ describe('usage counts', () => {
     expect(usageQueries(client)).toHaveLength(1);
     await view.unmount();
   });
+
+  // The open entry's usage examples ask the same kind of query, refused alike.
+  const concordanceQueries = (client) =>
+    client.query.mock.calls.filter(
+      ([q]) =>
+        q.where?.some((c) => c[0] === 'vocab-link') &&
+        !q.return?.group?.includes('?tl.config.plaid.role'),
+    );
+  it('usage examples are not asked for a vocabulary no project links', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    client.query = vi.fn(async () => ({ results: [] }));
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    expect(concordanceQueries(client)).toHaveLength(0);
+    expect(document.body.textContent).not.toContain('Could not load usage examples.');
+    await view.unmount();
+  });
+
+  it('usage examples are asked when a project links it', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    client.projects.list = async () => [{ id: 'p1', vocabs: [{ id: 'v1' }] }];
+    client.query = vi.fn(async () => ({ results: [] }));
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    expect(concordanceQueries(client).length).toBeGreaterThan(0);
+    await view.unmount();
+  });
 });

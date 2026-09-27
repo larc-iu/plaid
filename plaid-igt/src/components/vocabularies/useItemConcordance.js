@@ -8,7 +8,9 @@ const CONC_BATCH = 8;
 // document groups loaded a batch at a time, more arriving as the sentinel at
 // the bottom scrolls into view or its Load-more button is pressed. `skipId`
 // is the id of an entry that is not saved yet, which has no concordance.
-export function useItemConcordance({ client, vocabularyId, selectedId, skipId }) {
+// `linked` resolves to whether any project links the vocabulary: with none the
+// server refuses the queries, and the entry has no uses to show.
+export function useItemConcordance({ client, vocabularyId, selectedId, skipId, linked }) {
   const [concPlan, setConcPlan] = useState(null);
   const [concGroups, setConcGroups] = useState([]);
   const [concLoaded, setConcLoaded] = useState(0); // # of docs loaded so far
@@ -36,7 +38,20 @@ export function useItemConcordance({ client, vocabularyId, selectedId, skipId })
     setConcLoaded(0);
     setConcError('');
     setConcLoading(true);
-    planItemConcordance(client, vocabularyId, selectedId)
+    Promise.resolve(linked ? linked() : true)
+      .then((isLinked) =>
+        isLinked
+          ? planItemConcordance(client, vocabularyId, selectedId)
+          : {
+              totalHits: 0,
+              totalDocs: 0,
+              docs: [],
+              idsFor: null,
+              truncated: false,
+              hitIds: new Set(),
+              hitIdsCapped: false,
+            },
+      )
       .then(async (plan) => {
         if (concReq.current !== my) return;
         setConcPlan(plan);
