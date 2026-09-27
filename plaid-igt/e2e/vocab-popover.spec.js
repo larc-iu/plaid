@@ -38,7 +38,11 @@ test.beforeAll(async () => {
   SENT_LAYER_ID = layer(ROLES.SENTENCE).id;
 
   const stamp = Date.now();
-  lexB = await client.vocabLayers.create(`LEX-B ${stamp}`);
+  // The create answers only the id, so the name the tabs are found by is kept here.
+  // Without it every `open(..., lexB.name)` picked no tab and the test ran in
+  // whichever vocabulary sorted first, which on a fresh database is LEX-A.
+  const lexBName = `LEX-B ${stamp}`;
+  lexB = { ...(await client.vocabLayers.create(lexBName)), name: lexBName };
   lexB.items = {};
   for (const form of ['ser', 'ser', 'human', 'humble', 'the']) {
     const it = await client.vocabItems.create(lexB.id, form);
@@ -277,10 +281,10 @@ test('B4-03/04 + B6-05: unlink mini-action, relink in one batch, cross-vocab rep
   const form = (await first.locator('.igt-vocab-pop__form').innerText()).trim();
   await first.click();
   await expect(chip(page, ids.w[W.the])).toHaveText(form);
-  await page.waitForLoadState('networkidle');
-  const links = await linksTo(ids.w[W.the]);
-  expect(links.length).toBe(1);
-  expect(links[0].vocabId).toBe(lexA.id);
+  // The chip changes before the replacing batch lands, so read the server until it has.
+  await expect
+    .poll(async () => (await linksTo(ids.w[W.the])).map((l) => l.vocabId))
+    .toEqual([lexA.id]);
   // B6-02: reopening on a token linked in LEX-A shows LEX-A active.
   await open(page, ids.w[W.the]);
   await expect(page.locator('.igt-vocab-pop__vocabtab.is-active')).toContainText(lexA.name);
