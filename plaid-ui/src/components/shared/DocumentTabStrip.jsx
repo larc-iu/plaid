@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { cn } from '../../lib/utils.js';
@@ -37,6 +38,11 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
  * screen: the parent should be the whole page, not a wrapper around the strip.
  * `inset` is the horizontal padding each part takes in that box, for a page
  * whose body runs to the window's edge (plaid-ud's and plaid-umr's grids).
+ *
+ * While pinned, the row's height is measured into `--plaid-tab-row-height` on
+ * the root, where index.css adds it to the page's scroll padding, so a row
+ * scrolled to the top of the window lands below the tabs. Measured, because on
+ * a phone the tabs and History wrap to a second line.
  */
 export const DocumentTabStrip = ({
   projectId,
@@ -56,6 +62,22 @@ export const DocumentTabStrip = ({
   // strip leaves it.
   const guard = useUnsavedGuard();
   const routes = appRoutes();
+  const rowRef = useRef(null);
+
+  // `document` here is the Plaid document, so the page is `window.document`.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!sticky || !row || typeof ResizeObserver === 'undefined') return undefined;
+    const root = window.document.documentElement;
+    const measure = () => root.style.setProperty('--plaid-tab-row-height', `${row.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--plaid-tab-row-height');
+    };
+  }, [sticky]);
 
   const p = location.pathname;
   const active = activeProp ?? tabs.find((t) => p.includes(`/${t.value}`))?.value ?? tabs[0].value;
@@ -90,6 +112,7 @@ export const DocumentTabStrip = ({
       </h1>
 
       <div
+        ref={rowRef}
         data-testid="document-tab-row"
         data-pinned={sticky || undefined}
         className={cn(

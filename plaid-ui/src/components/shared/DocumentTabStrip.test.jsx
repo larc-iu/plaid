@@ -128,6 +128,48 @@ describe('DocumentTabStrip', () => {
     for (const part of parts) expect(part.className.split(' ')).toContain('px-6');
   });
 
+  // On a phone the tabs and History wrap to a second line, so the scroll
+  // padding that keeps a deep-linked row out from under the pinned row takes
+  // the row's measured height, not a one-line guess.
+  it("hands the pinned row's measured height to the page, and takes it back", async () => {
+    const observers = [];
+    const Real = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb) {
+        this.cb = cb;
+        this.targets = [];
+        observers.push(this);
+      }
+      observe(el) {
+        this.targets.push(el);
+      }
+      disconnect() {
+        this.targets = [];
+      }
+    };
+    const root = window.document.documentElement;
+    try {
+      await mount({ document: { name: 'One' }, sticky: true });
+      const row = view.container.querySelector('[data-testid="document-tab-row"]');
+      const watcher = observers.find((o) => o.targets.includes(row));
+      expect(watcher).toBeTruthy();
+      Object.defineProperty(row, 'offsetHeight', { configurable: true, value: 93 });
+      watcher.cb([]);
+      expect(root.style.getPropertyValue('--plaid-tab-row-height')).toBe('93px');
+      await view.unmount();
+      view = null;
+      expect(root.style.getPropertyValue('--plaid-tab-row-height')).toBe('');
+
+      // A strip that is not pinned measures nothing.
+      await mount({ document: { name: 'One' } });
+      const flat = view.container.querySelector('[data-testid="document-tab-row"]');
+      expect(observers.some((o) => o.targets.includes(flat))).toBe(false);
+      expect(root.style.getPropertyValue('--plaid-tab-row-height')).toBe('');
+    } finally {
+      globalThis.ResizeObserver = Real;
+    }
+  });
+
   it('turns every tab into a disabled button while the body is busy', async () => {
     await mount({ document: { name: 'One' }, disabled: true });
     const tabs = all(view.container, '[role="tab"]');

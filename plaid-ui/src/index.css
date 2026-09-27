@@ -134,7 +134,9 @@ html [data-sonner-toaster][data-x-position='right'] {
    tall: `--plaid-sticky-top`, where a document's pinned tab row stops.
    Anything scrolled to the top of the window (a pager at the bottom of a list
    taking the reader back to its first row, a deep link) stops below it
-   instead of under it, and below the pinned tab row too while there is one. */
+   instead of under it, and below the pinned tab row too while there is one.
+   DocumentTabStrip measures that row into `--plaid-tab-row-height` on the
+   root (two lines on a phone), and 3.5rem is only the first frame's guess. */
 :root {
   --plaid-sticky-top: calc(3.5rem + 1px);
   --plaid-tab-row-height: 3.5rem;
@@ -143,5 +145,5 @@ html {
   scroll-padding-top: var(--plaid-sticky-top);
 }
 html:has([data-pinned]) {
-  scroll-padding-top: calc(var(--plaid-sticky-top) + var(--plaid-tab-row-height));
+  scroll-padding-top: calc(var(--plaid-sticky-top) + var(--plaid-tab-row-height) + 0.25rem);
 }
