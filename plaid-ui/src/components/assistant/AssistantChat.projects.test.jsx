@@ -145,6 +145,9 @@ const sentProjectIds = (client) => client.messages.requestService.mock.calls.at(
 
 const chip = (m, name) => m.container.querySelector(`[aria-label="Remove ${name}"]`);
 
+// The line in the Add project list that says why a pick was refused.
+const refusal = () => document.body.querySelector('[role="dialog"] [role="status"]');
+
 const pick = async (m, name) => {
   await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
   await flush(m);
@@ -230,13 +233,16 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
-  it('refuses a project where that assistant is offline, and says so', async () => {
+  it('refuses a project where that assistant is offline, and says so in the list', async () => {
     const client = fakeClient({ where: { pC: [{ ...SERVICE, online: false }] } });
     const m = await mount(client);
     await flush(m);
     await pick(m, 'Lamkang C');
-    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    expect(refusal()?.textContent).toBe('Assistant one is not running in Lamkang C.');
+    expect(notifyError).not.toHaveBeenCalled();
     expect(chip(m, 'Lamkang C')).toBeNull();
+    // The list stays open for another pick.
+    expect(document.body.querySelector('[role="combobox"][aria-label="Project"]')).not.toBeNull();
     await m.unmount();
   });
 
@@ -246,8 +252,51 @@ describe('AssistantChat and other projects', () => {
     const m = await mount(client);
     await flush(m);
     await pick(m, 'Lamkang C');
-    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    expect(refusal()?.textContent).toBe('Assistant one is not running in Lamkang C.');
+    expect(notifyError).not.toHaveBeenCalled();
     expect(chip(m, 'Lamkang C')).toBeNull();
+    await m.unmount();
+  });
+
+  it('refuses a project that cannot be opened, and says so in the list', async () => {
+    const client = fakeClient();
+    client.messages.discoverServices.mockImplementation(async (pid) => {
+      if (pid === 'pC') throw Object.assign(new Error('Forbidden'), { status: 403 });
+      return pid === 'p1' ? [SERVICE] : [];
+    });
+    const m = await mount(client);
+    await flush(m);
+    await pick(m, 'Lamkang C');
+    expect(refusal()?.textContent).toBe('Lamkang C could not be opened.');
+    expect(notifyError).not.toHaveBeenCalled();
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    await m.unmount();
+  });
+
+  it('takes a second pick after a refusal from the same list', async () => {
+    const client = fakeClient({
+      conv: { messages: [], display: [] },
+      where: { pB: [SERVICE], pC: [] },
+    });
+    const m = await mount(client);
+    await flush(m);
+    await pick(m, 'Lamkang C');
+    expect(refusal()?.textContent).toBe('Assistant one is not running in Lamkang C.');
+    // Typing opens the list again, as it does for a first pick.
+    await m.step(() => {
+      const box = document.body.querySelector('[role="combobox"][aria-label="Project"]');
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(
+        box,
+        'Lamkang B',
+      );
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await flush(m);
+    const option = all(document.body, '[role="option"]').find((n) => n.textContent === 'Lamkang B');
+    await m.step(() => option.click());
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    expect(refusal()).toBeNull();
     await m.unmount();
   });
 
@@ -397,7 +446,7 @@ describe('AssistantChat when another assistant takes over', () => {
     expect(chip(m, 'Lamkang B')).not.toBeNull();
     expect(chip(m, 'Lamkang C')).toBeNull();
     expect(notifyError).toHaveBeenCalledTimes(1);
-    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    expect(notifyError).toHaveBeenCalledWith('Assistant two is not running in Lamkang C.');
     await m.unmount();
   });
 
@@ -438,7 +487,10 @@ describe('AssistantChat when another assistant takes over', () => {
     await m.step(() => release());
     await flush(m, 8);
     expect(chip(m, 'Lamkang C')).toBeNull();
-    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    // Refused by the assistant answering now, in the list if it is still
+    // open and as a toast if it is not.
+    const said = refusal()?.textContent ?? notifyError.mock.calls.at(-1)?.[0];
+    expect(said).toBe('Assistant two is not running in Lamkang C.');
     await m.unmount();
   });
 });

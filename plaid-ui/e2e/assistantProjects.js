@@ -129,18 +129,19 @@ export const assistantProjectsTests = ({
     await add.click();
     await page.getByRole('combobox', { name: 'Project' }).fill(C.name);
     await page.getByRole('option', { name: C.name, exact: true }).click();
-    await expect(page.getByText(`The assistant is not available in ${C.name}.`)).toBeVisible();
+    // Refused in the list itself, and no toast.
+    const said = page.getByRole('status').filter({
+      hasText: `${service.serviceName} is not running in ${C.name}.`,
+    });
+    await expect(said).toBeVisible();
+    await expect(
+      page.locator('[data-sonner-toast]').filter({ hasText: 'is not running' }),
+    ).toHaveCount(0);
     await expect(page.getByRole('button', { name: `Remove ${C.name}` })).toHaveCount(0);
 
-    // The list stays open after a refusal, for another pick. (Closing it and
-    // pressing the button again would click through the refusal's toast, which
-    // sits over the button at this width.) The second pick is by keyboard: the
-    // toast sits over the right half of the list too when the list opens below
-    // the box, and a click on the option's middle then lands on the toast.
-    const picker = page.getByRole('combobox', { name: 'Project' });
-    await picker.fill(B.name);
-    await expect(page.getByRole('option', { name: B.name, exact: true })).toBeVisible();
-    await picker.press('Enter');
+    // The list stays open after a refusal, for another pick.
+    await page.getByRole('combobox', { name: 'Project' }).fill(B.name);
+    await page.getByRole('option', { name: B.name, exact: true }).click();
     await expect(page.getByRole('button', { name: `Remove ${B.name}` })).toBeVisible();
 
     // Sent, the set is on the message, where the service reads it.

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, FolderPlus, X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import { Combobox } from '../shared/combobox.jsx';
 import { Loading } from '../shared/Loading.jsx';
 import { humanizeError } from '../../lib/errors.js';
+import { notifyError } from '../../lib/notify.js';
 import { atProjectCap, projectCandidates } from './projectReach.js';
 
 // The other projects a conversation reads (see projectReach.js): one chip each
@@ -32,15 +33,21 @@ export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}
 );
 
 // The button, and the list of projects it opens. `onPick({id, name})` checks
-// the project and answers whether it joined, so the list closes only on a join
-// and stays open on a refusal for another pick. `max` counts the home project,
-// as the assistant advertises it.
+// the project and answers `true` when it joined, or the line that says why it
+// did not. The list closes only on a join. A refusal is written in the list,
+// above the field, and the list stays open for another pick. `max` counts the
+// home project, as the assistant advertises it.
 export const AddProject = ({ client, homeId, joined, max, disabled = false, onPick }) => {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [checking, setChecking] = useState(false);
+  const [refused, setRefused] = useState('');
+  // Whether the list is still open when a check comes back: one closed in the
+  // meantime has nowhere to show the refusal, which is then a toast.
+  const openRef = useRef(false);
+  openRef.current = open;
   const full = atProjectCap(joined, max);
 
   // Read each time the list opens: a project created or shared since the last
@@ -70,10 +77,15 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
   const pick = async (id, option) => {
     if (checking) return;
     setChecking(true);
+    setRefused('');
     try {
-      if (await onPick({ id, name: option.label })) {
+      const answer = await onPick({ id, name: option.label });
+      if (answer === true) {
         setOpen(false);
         setQuery('');
+      } else if (typeof answer === 'string' && answer) {
+        if (openRef.current) setRefused(answer);
+        else notifyError(answer);
       }
     } finally {
       setChecking(false);
@@ -85,7 +97,10 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setQuery('');
+        if (!next) {
+          setQuery('');
+          setRefused('');
+        }
       }}
     >
       <PopoverTrigger asChild>
@@ -108,22 +123,35 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
         ) : options.length === 0 ? (
           <p className="px-1 py-1 text-xs text-muted-foreground">No other projects.</p>
         ) : (
-          <div className="flex items-center gap-2">
-            <Combobox
-              value={query}
-              onChange={setQuery}
-              options={options}
-              onSubmit={pick}
-              autoHighlight
-              autoFocus
-              placeholder="Project"
-              aria-label="Project"
-              className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              listClassName="max-w-[18rem]"
-              optionClassName="truncate"
-            />
-            {checking && <span className="shrink-0 text-xs text-muted-foreground">Checking…</span>}
-          </div>
+          <>
+            {/* Above the field, where the list that opens below it never
+                covers it. Always in the page, so a screen reader hears each
+                refusal as it is written. */}
+            <p
+              role="status"
+              className={refused ? 'px-1 pb-1.5 text-xs text-destructive' : 'sr-only'}
+            >
+              {refused}
+            </p>
+            <div className="flex items-center gap-2">
+              <Combobox
+                value={query}
+                onChange={setQuery}
+                options={options}
+                onSubmit={pick}
+                autoHighlight
+                autoFocus
+                placeholder="Project"
+                aria-label="Project"
+                className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                listClassName="max-w-[18rem]"
+                optionClassName="truncate"
+              />
+              {checking && (
+                <span className="shrink-0 text-xs text-muted-foreground">Checking…</span>
+              )}
+            </div>
+          </>
         )}
       </PopoverContent>
     </Popover>

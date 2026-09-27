@@ -10,6 +10,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry, stoppedIn } from './resume.js';
 import {
   atProjectCap,
+  couldNotOpen,
   lastProjects,
   notServedThere,
   projectNamesAt,
@@ -271,6 +272,8 @@ export const AssistantChat = ({
   // answer that arrives after the reader chose another one.
   const serviceIdRef = useRef(null);
   serviceIdRef.current = service?.serviceId ?? null;
+  const serviceNameRef = useRef(null);
+  serviceNameRef.current = service?.serviceName ?? null;
   const maxProjectsRef = useRef(maxProjects);
   maxProjectsRef.current = maxProjects;
   // Chips the reader added were checked against the assistant answering at
@@ -301,7 +304,7 @@ export const AssistantChat = ({
       if (activeRef.current?.id !== convId || serviceIdRef.current !== answeringId) return;
       const gone = toCheck.filter((_p, k) => !served[k]);
       if (!gone.length) return;
-      for (const p of gone) notifyError(notServedThere(p.name));
+      for (const p of gone) notifyError(notServedThere(serviceNameRef.current, p.name));
       const ids = new Set(gone.map((p) => p.id));
       setReachEdit((prev) => {
         const now =
@@ -632,21 +635,20 @@ export const AssistantChat = ({
 
   // A project joins only where the assistant answering this conversation runs
   // too. That is asked here, before the chip appears: a read, and no write, so
-  // there is nothing to show before the answer. Answers whether it joined.
+  // there is nothing to show before the answer. Answers true when it joined,
+  // and otherwise the line that says why not, which the list shows.
   const addProject = async (p) => {
     const at = activeRef.current?.id;
     let found;
     try {
       found = await client.messages.discoverServices(p.id);
-    } catch (e) {
-      notifyError(humanizeError(e, notServedThere(p.name)));
-      return false;
+    } catch {
+      return couldNotOpen([p]);
     }
     // Asked of the assistant answering NOW: the reader may have chosen
     // another one while this was being looked up.
     if (!servedThere(found, serviceIdRef.current)) {
-      notifyError(notServedThere(p.name));
-      return false;
+      return notServedThere(serviceNameRef.current, p.name);
     }
     // The reader moved to another conversation while this was asked.
     if (activeRef.current?.id !== at) return false;

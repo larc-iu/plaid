@@ -79,8 +79,9 @@ export const reachChanged = (display, i) => {
 export const withProjects = (projects) => `With ${projects.map((p) => p.name || p.id).join(', ')}`;
 export const homeOnly = (homeName) => `${homeName || 'This project'} only`;
 
-// Why a pick was refused.
-export const notServedThere = (name) => `The assistant is not available in ${name}.`;
+// Why a project was refused: the assistant answering does not run there.
+export const notServedThere = (serviceName, name) =>
+  `${serviceName || 'The assistant'} is not running in ${name}.`;
 
 // The line under a reply for projects the assistant could not read.
 export const couldNotOpen = (projects) =>
