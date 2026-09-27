@@ -1,4 +1,8 @@
 import PlaidClient from '@larc-iu/plaid-client';
+import { toast } from 'sonner';
+import { notifySuccess, notifyWithAction } from '../lib/notify.js';
+import { hasUnsavedDraft } from '../hooks/useUnsavedDraft.js';
+import { anyDocumentSaving } from '../hooks/useSavingGuard.js';
 
 // The session every app in this repo holds: one backend, one JWT, one set of
 // localStorage keys. The keys are deliberately NOT prefixed with `appPrefix`,
@@ -59,6 +63,75 @@ function getUserIdFromToken(token) {
   return payload?.['user/id'] || null; // Note: Clojure namespaced keyword becomes "user/id"
 }
 
+// ---- a sign-in that stops working ----------------------------------------
+//
+// Tokens do not expire, so a 401 means the token was revoked or the account
+// deactivated. With nothing unsent it signs out as before. With a write
+// refused, a draft typed, or a document still sending, the page stays: a
+// notice offers sign-in in a new tab, and when that tab signs the same user
+// in, every client this tab made takes the new token and carries on.
+
+// Every client this session made, held weakly: an editor makes one per
+// document it opens.
+const sessionClients = new Set();
+const track = (c) => {
+  sessionClients.add(new WeakRef(c));
+  return c;
+};
+const liveClients = () => {
+  const out = [];
+  for (const ref of sessionClients) {
+    const c = ref.deref();
+    if (c) out.push(c);
+    else sessionClients.delete(ref);
+  }
+  return out;
+};
+
+// { user, toastId } while this tab's sign-in is lost, else null.
+let signInLost = null;
+
+const signInUrl = () =>
+  `${window.location.origin}${window.location.pathname}${window.location.search}#${signInRoute().replace(/^#/, '')}`;
+
+const onAuthError = (error) => {
+  if (signInLost) return;
+  const unsent =
+    (error?.method && error.method !== 'GET') || !!hasUnsavedDraft() || anyDocumentSaving();
+  if (!unsent) {
+    authService.logout('expired');
+    return;
+  }
+  const toastId = notifyWithAction('Your sign-in is no longer valid.', 'Signed out', {
+    kind: 'error',
+    duration: Infinity,
+    label: 'Sign in',
+    onClick: (event) => {
+      // The notice stays until the new tab has signed in.
+      event?.preventDefault?.();
+      window.open(signInUrl(), '_blank', 'noopener');
+    },
+  });
+  signInLost = { user: getUserIdFromToken(localStorage.getItem('token') || ''), toastId };
+};
+
+// Another tab signing the same user in hands this one its token.
+const adoptToken = (token) => {
+  if (!signInLost || !token || getUserIdFromToken(token) !== signInLost.user) return;
+  for (const c of liveClients()) {
+    c.token = token;
+    c._authErrorFired = false;
+  }
+  toast.dismiss(signInLost.toastId);
+  signInLost = null;
+  notifySuccess('Signed in');
+};
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'token') adoptToken(e.newValue);
+  });
+}
+
 // Persist a freshly-authenticated client as the current session. Shared by
 // login and invite redemption, which differ only in how they obtained the
 // token. Everything after that (identify the user, fetch their profile, write
@@ -102,9 +175,7 @@ export const authService = {
     try {
       // Use PlaidClient's static login method
       return await establishSession(
-        await PlaidClient.login(BASE_URL, email, password, {
-          onAuthError: () => authService.logout('expired'),
-        }),
+        track(await PlaidClient.login(BASE_URL, email, password, { onAuthError })),
       );
     } catch (error) {
       console.error('Login failed:', error);
@@ -141,9 +212,9 @@ export const authService = {
       BASE_URL,
       code,
       { email, password, displayName },
-      { onAuthError: () => authService.logout('expired') },
+      { onAuthError },
     );
-    return establishSession(authed);
+    return establishSession(track(authed));
   },
 
   logout(reason = null) {
@@ -200,10 +271,14 @@ export const authService = {
     const token = localStorage.getItem('token');
     if (!client && token) {
       // Recreate client from stored token
-      client = new PlaidClient(BASE_URL, token, {
-        onAuthError: () => authService.logout('expired'),
-      });
+      client = authService.newClient(token);
     }
     return client;
+  },
+
+  // A client of its own on the session's token, for a screen that needs one
+  // (an editor's strict-mode client). It answers a 401 as every other does.
+  newClient(token = localStorage.getItem('token')) {
+    return track(new PlaidClient(BASE_URL, token, { onAuthError }));
   },
 };

@@ -29,6 +29,16 @@ vi.mock('@larc-iu/plaid-client', () => {
   return { default: PlaidClient };
 });
 
+const notify = vi.hoisted(() => ({ withAction: vi.fn(() => 'toast-1'), success: vi.fn() }));
+vi.mock('../lib/notify.js', () => ({
+  notifyWithAction: notify.withAction,
+  notifySuccess: notify.success,
+}));
+const dismiss = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { dismiss } }));
+const unsaved = vi.hoisted(() => ({ draft: null }));
+vi.mock('../hooks/useUnsavedDraft.js', () => ({ hasUnsavedDraft: () => unsaved.draft }));
+
 const { authService, configureAuth } = await import('./auth.js');
 configureAuth({ loginRoute: '#/login' });
 
@@ -146,5 +156,76 @@ describe('authService', () => {
     lookupInvite.mockResolvedValue({ email: 'ada@example.com' });
     await authService.lookupInvite('CODE');
     expect(lookupInvite).toHaveBeenCalledWith(expect.any(String), 'CODE');
+  });
+});
+
+// Tokens do not expire, so a 401 is a revoked token or a deactivated account.
+// With something unsent the page stays and says so, and a sign-in in another
+// tab hands this one its token. Without, it signs out as it always did.
+describe('a 401', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    window.location.hash = '#/projects/p1';
+    vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+  });
+  const signedIn = (userId = 'ada@example.com') => {
+    localStorage.setItem('token', tokenFor(userId));
+    localStorage.setItem('userId', userId);
+    localStorage.setItem('displayName', 'Ada');
+    return authService.newClient();
+  };
+  const refuse = (c, method) =>
+    c.options.onAuthError(Object.assign(new Error('HTTP 401'), { status: 401, method }));
+  const otherTabSignsIn = (token) =>
+    window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: token }));
+
+  it('on a read with nothing unsent signs out to the sign-in page', () => {
+    const c = signedIn();
+    refuse(c, 'GET');
+    expect(window.location.hash).toBe('#/login');
+    expect(localStorage.getItem('token')).toBe(null);
+    expect(notify.withAction).not.toHaveBeenCalled();
+  });
+
+  it('on a write keeps the page, and a sign-in in another tab carries on with its token', () => {
+    const c = signedIn();
+    const other = authService.newClient();
+    c._authErrorFired = true;
+    refuse(c, 'PATCH');
+    expect(window.location.hash).toBe('#/projects/p1');
+    expect(localStorage.getItem('token')).toBe(tokenFor('ada@example.com'));
+    expect(notify.withAction).toHaveBeenCalledTimes(1);
+    expect(notify.withAction.mock.calls[0][0]).toBe('Your sign-in is no longer valid.');
+    // A second refusal says nothing more.
+    refuse(other, 'PATCH');
+    expect(notify.withAction).toHaveBeenCalledTimes(1);
+
+    // Another user signing in elsewhere is not this tab's sign-in.
+    otherTabSignsIn(tokenFor('bob@example.com'));
+    expect(c.token).toBe(tokenFor('ada@example.com'));
+    expect(dismiss).not.toHaveBeenCalled();
+
+    const fresh = `${tokenFor('ada@example.com')}2`;
+    otherTabSignsIn(fresh);
+    expect(c.token).toBe(fresh);
+    expect(other.token).toBe(fresh);
+    expect(c._authErrorFired).toBe(false);
+    expect(dismiss).toHaveBeenCalledWith('toast-1');
+  });
+
+  it('on a read keeps the page while something typed is unsaved', () => {
+    const c = signedIn();
+    unsaved.draft = 'The gloss you have typed';
+    try {
+      refuse(c, 'GET');
+    } finally {
+      unsaved.draft = null;
+    }
+    expect(window.location.hash).toBe('#/projects/p1');
+    expect(notify.withAction).toHaveBeenCalledTimes(1);
+    otherTabSignsIn(`${tokenFor('ada@example.com')}3`);
+    expect(c.token).toBe(`${tokenFor('ada@example.com')}3`);
   });
 });

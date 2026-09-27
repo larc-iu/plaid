@@ -1,8 +1,6 @@
 import { createContext, useContext, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 
-import PlaidClient from '@larc-iu/plaid-client';
-
 import { authService } from '@ui/services/auth.js';
 
 const StrictModeContext = createContext(null);
@@ -28,18 +26,17 @@ const StrictModeContext = createContext(null);
 export const StrictModeProvider = ({ children }) => {
   const { documentId } = useParams();
 
-  const baseUrl = import.meta.env.VITE_API_URL || window.location.origin;
   const token = localStorage.getItem('token');
 
-  // Per-document client, in strict mode (document-version OCC) — see the note above.
+  // Per-document client, in strict mode (document-version OCC) — see the note
+  // above. The session makes it, so a 401 on it is answered the way every
+  // other client's is (a refused write keeps the page, see services/auth.js).
   const documentClient = useMemo(() => {
     if (!token || !documentId) return null;
-    const c = new PlaidClient(baseUrl, token, {
-      onAuthError: () => authService.logout(),
-    });
+    const c = authService.newClient(token);
     c.enterStrictMode(documentId);
     return c;
-  }, [baseUrl, token, documentId]);
+  }, [token, documentId]);
 
   return <StrictModeContext.Provider value={documentClient}>{children}</StrictModeContext.Provider>;
 };

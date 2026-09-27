@@ -38,7 +38,7 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
   switch (statusOf(error)) {
     case 401:
-      return 'Your session has expired. Please sign in again.';
+      return 'Your sign-in is no longer valid.';
     case 403:
       return "You don't have permission to do that.";
     case 404:
@@ -63,7 +63,7 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
 };
 
 // A sign-in that fails says one thing to the person typing, so the general
-// wording for 401 ("your session has expired") does not belong on that screen.
+// wording for 401 ("your sign-in is no longer valid") does not belong on that screen.
 // Everything else reads as it does everywhere: a server that is down, a 500.
 export const signInError = (error) =>
   statusOf(error) === 401
