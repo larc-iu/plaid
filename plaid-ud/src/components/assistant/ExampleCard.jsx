@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
-import { citationTitle, sentenceHref } from './adapter.js';
+import { citationTitle, sentenceHref } from './cite.js';
 import { layout } from './depTree.js';
 
 // A cited sentence as UD draws it, as a tree or as its CoNLL-U rows. The model

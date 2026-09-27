@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
-import { citationTitle, sentenceHref } from './adapter.js';
+import { citationTitle, sentenceHref } from './cite.js';
 
 // A cited sentence as UMR draws it: its graph in PENMAN, or the words with the
 // gloss lines under them. The model says which one with view= on its cite tag,

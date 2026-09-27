@@ -13,6 +13,7 @@ import {
   tableCell,
 } from '@ui/components/assistant/citations.js';
 import { ExampleCard } from './ExampleCard.jsx';
+import { citationTitle, deepLink, sentenceHref } from './cite.js';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.s3e" references
 // (the service resolves those only when the turn read a single document). A
@@ -21,23 +22,8 @@ import { ExampleCard } from './ExampleCard.jsx';
 const CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.[A-Za-z][\w-]*)?(?:\s*,\s*[A-Za-z][\w-]*)*\s*\}\}?|(?<![\w{.])s\d+\.[A-Za-z][\w-]*\b/g;
 
-// The sentence in the annotation editor, which scrolls to it and focuses the
-// first cited node. A real anchor, so middle-click and cmd-click open it in a
-// browser tab.
-const deepLink = (sentence, variable) =>
-  sentence ? `?sent=${sentence}${variable ? `&var=${encodeURIComponent(variable)}` : ''}` : '';
-
-export const sentenceHref = (origin, projectId, c) =>
-  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
-  deepLink(c.sentence, citationFocus(c)[0]);
-
-export const citationTitle = (c) => {
-  const focus = citationFocus(c);
-  const head = `${c.documentName}, sentence ${c.sentence}`;
-  if (focus.length === 0) return head;
-  if (focus.length === 1) return `${head}, node ${focus[0]}`;
-  return `${head}, nodes ${focus.join(', ')}`;
-};
+// Where a citation opens and what it is called (cite.js, shared with the card).
+export { citationTitle, sentenceHref };
 
 // --- where a planned change lands ---------------------------------------------
 // The service locates every change (plaid-agent's umr/changes.py): `where`

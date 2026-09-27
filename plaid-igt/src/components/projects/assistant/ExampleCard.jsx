@@ -3,7 +3,7 @@ import { ExternalLink } from 'lucide-react';
 import { cn } from '@ui/lib/utils';
 import { detectDirection } from '@ui/domain/textDirection.js';
 import { centeredScrollLeft } from '@ui/components/assistant/citations.js';
-import { citationHighlights, citationRows, citationTitle, sentenceHref } from './adapter.js';
+import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 
 // A cited sentence as IGT draws it: the interlinear table, with the words the
 // model named filled in and a word cited for its morphemes tinted around them.

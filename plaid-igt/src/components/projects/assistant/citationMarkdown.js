@@ -2,7 +2,7 @@
 // Markdown table. The rest of the export is shared
 // (plaid-ui/src/components/assistant/exportMarkdown.js).
 import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
-import { citationHighlights, citationRows, citationTitle, sentenceHref } from './adapter.js';
+import { citationHighlights, citationRows, citationTitle, sentenceHref } from './cite.js';
 
 // One cited sentence as a Markdown table: a column per word, a row per tier
 // (words, morphemes, each field), then the sentence fields. What the citation

@@ -5,8 +5,9 @@
 //
 // This is the whole of UD's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-igt has an adapter of its own.
-import { citationFocus, linkLabel, tableCell } from '@ui/components/assistant/citations.js';
+import { linkLabel, tableCell } from '@ui/components/assistant/citations.js';
 import { ExampleCard } from './ExampleCard.jsx';
+import { citationTitle, sentenceHref } from './cite.js';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.w2" references
 // (the service resolves those only when the turn read a single document).
@@ -15,23 +16,8 @@ import { ExampleCard } from './ExampleCard.jsx';
 const CITE_RE =
   /<\s*cite\b[^<>]*?\/?\s*>(?:[ \t]*<\s*\/\s*cite\s*>)?|\{\{?\s*[^{}\n]+?\s+s\d+(?:\.w\d+(?:-\d+)?)?\s*\}\}?|(?<![\w{.])s\d+(?:\.w\d+(?:-\d+)?)?\b/g;
 
-// The sentence in the annotation editor. The route is `annotate`, and the
-// sentence rides in the URL so the link is shareable and a middle-click opens
-// it in a new tab.
-//
-// `?sent=` takes the sentence's TOKEN ID. The editor reads a number too, but a
-// number moves when a sentence is split or merged, and an id does not.
-export const sentenceHref = (origin, projectId, c) =>
-  `${origin || ''}#/projects/${projectId}/documents/${c.documentId}/annotate` +
-  (c.sentenceId ? `?sent=${encodeURIComponent(c.sentenceId)}` : '');
-
-export const citationTitle = (c) => {
-  const focus = citationFocus(c);
-  const head = `${c.documentName}, sentence ${c.sentence}`;
-  if (focus.length === 0) return head;
-  if (focus.length === 1) return `${head}, word ${focus[0]}`;
-  return `${head}, words ${focus.join(', ')}`;
-};
+// Where a citation opens and what it is called (cite.js, shared with the card).
+export { citationTitle, sentenceHref };
 
 // --- where a planned change lands ---------------------------------------------
 // The service locates every change (plaid-agent's ud/changes.py): `where` names
