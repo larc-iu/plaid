@@ -666,3 +666,28 @@
             (is (= new (:text/body text)))
             (is (empty? (word-edit-errors kind words words' new before tokens))
                 (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))))))))
+
+(deftest two-edits-sliding-towards-each-other-do-not-meet
+  ;; Each delete cuts a token where it stands and could slide into the run of
+  ;; `a` between them, and both would have taken the same letter.
+  (let [old "xaaaaay"
+        tokens [(tok :t 1 3) (tok :u 4 6)]
+        ops (ta/slide-to-tokens [(ta/delete-op 1 1) (ta/delete-op 4 1)] old tokens)
+        edits (#'ta/ops->edits ops)]
+    (is (every? (fn [[a b]] (< (:end a) (:start b))) (partition 2 1 edits)) (pr-str ops))
+    (is (= "xaaay" (:text/body (:text (apply-all ops old tokens)))))))
+
+(deftest many-edits-over-a-long-text-slide-quickly
+  ;; One edit per 50 words over 50,000 word tokens. Scanning every token for
+  ;; every edit took about 4.5 s here, holding the write lock.
+  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
+        old (str/join " " words)
+        new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
+        tokens (word-tokens words)
+        ops (ta/diff old new)
+        t0 (System/nanoTime)
+        slid (ta/slide-to-tokens ops old tokens)
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= 1000 (count ops)))
+    (is (= new (:text/body (:text (apply-all slid old [])))))
+    (is (< ms 1000) (str ms " ms"))))

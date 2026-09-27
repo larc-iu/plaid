@@ -516,6 +516,35 @@
                                    (map (fn [[a v]] (assoc edit :at a :value (cps->s v))))))]
         (concat [edit] (places step-left) (places step-right))))))
 
+(defn- tokens-near
+  "A function of `lo` and `hi` giving the tokens that begin or end within
+  [lo, hi]. The others do not change which of an edit's places in that
+  stretch is best: one wholly outside is disturbed by none of them, and one
+  reaching past both ends is cut by every one of them alike. For more than
+  a few `lookups` the tokens are indexed by position first, so a body update
+  with many edits over a long text does not scan every token once per edit."
+  [tokens lookups]
+  (if (< lookups 16)
+    (fn [lo hi]
+      (filterv (fn [{:token/keys [begin end]}] (or (<= lo begin hi) (<= lo end hi)))
+               tokens))
+    (let [by-begin (vec (sort-by :token/begin tokens))
+          by-end (vec (sort-by :token/end tokens))
+          begins (long-array (map :token/begin by-begin))
+          ends (long-array (map :token/end by-end))
+          ;; the first index whose value is at least x
+          lower (fn [^longs xs x]
+                  (loop [a 0 b (alength xs)]
+                    (if (< a b)
+                      (let [m (quot (+ a b) 2)]
+                        (if (< (aget xs m) (long x)) (recur (inc m) b) (recur a m)))
+                      a)))]
+      (fn [lo hi]
+        (-> []
+            (into (subvec by-begin (lower begins lo) (lower begins (inc hi))))
+            (into (filter #(< (:token/begin %) lo))
+                  (subvec by-end (lower ends lo) (lower ends (inc hi)))))))))
+
 (defn slide-to-tokens
   "Rewrite `ops` (as produced by `diff` for `old`) so that each delete or
   insert that stands apart from the others, and could stand elsewhere for the
@@ -531,32 +560,35 @@
         n (alength o)
         reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
         start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
-        moved (map-indexed
-               (fn [i e]
-                 (let [prev (when (pos? i) (edits (dec i)))
+        near (tokens-near tokens (count edits))
+        moved (reduce
+               (fn [moved e]
+                 (let [i (count moved)
+                       prev (get edits (dec i))
                        nxt (get edits (inc i))
                        ;; A neighbour this edit touches makes the two one
                        ;; stretch, and a place that touches one would too.
-                       lo (if prev (inc (reach-of prev)) 0)
+                       ;; The edit before may already have moved towards
+                       ;; this one, and the two must not meet.
+                       lo (if prev (inc (max (reach-of prev) (reach-of (peek moved)))) 0)
                        hi (if nxt (dec (start-of nxt)) n)]
-                   (if (or (< (start-of e) lo) (> (reach-of e) hi))
-                     e
-                     (let [places (slide-places o e lo hi)
-                           span-lo (reduce min (map start-of places))
-                           span-hi (reduce max (map reach-of places))
-                           near (filterv (fn [{:token/keys [begin end]}]
-                                           (and (<= begin span-hi) (>= end span-lo)))
-                                         tokens)
-                           here (slide-cost o near e)]
-                       (if (zero? here)
-                         e
-                         ;; The fewest cuts, then the nearest place. The sort
-                         ;; is stable and `places` starts with the edit itself.
-                         (first (sort-by (juxt #(slide-cost o near %)
-                                               #(Math/abs (long (- (start-of %) (start-of e)))))
-                                         places)))))))
+                   (conj moved
+                         (if (or (< (start-of e) lo) (> (reach-of e) hi))
+                           e
+                           (let [places (slide-places o e lo hi)
+                                 near (near (reduce min (map start-of places))
+                                            (reduce max (map reach-of places)))
+                                 here (slide-cost o near e)]
+                             (if (zero? here)
+                               e
+                               ;; The fewest cuts, then the nearest place. The sort
+                               ;; is stable and `places` starts with the edit itself.
+                               (first (sort-by (juxt #(slide-cost o near %)
+                                                     #(Math/abs (long (- (start-of %) (start-of e)))))
+                                               places))))))))
+               []
                edits)]
-    (if (= edits (vec moved)) ops (edits->ops moved))))
+    (if (= edits moved) ops (edits->ops moved))))
 
 (defn- cut-count
   "How many (non-empty) tokens the delete ranges overlap only PARTIALLY."
