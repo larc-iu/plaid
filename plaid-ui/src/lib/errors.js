@@ -80,6 +80,11 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (isUnreachable(error)) return UNREACHABLE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
+  // An edit that names a row by the id it was shown under before the server
+  // made it (pendingIds.js): the create it waited on was refused.
+  if (statusOf(error) === 400 && /\bshould be a uuid\b/i.test(String(error?.message ?? error))) {
+    return 'Depends on an edit that was not saved.';
+  }
   switch (statusOf(error)) {
     case 401:
       return 'Your sign-in is no longer valid.';

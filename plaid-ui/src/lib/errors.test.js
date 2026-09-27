@@ -163,6 +163,25 @@ describe('a write whose answer was lost', () => {
     expect(humanizeError(lost('get'))).toMatch(/Could not reach the server/);
   });
 
+  // An edit made on a row whose create was refused names it by the id it was
+  // shown under, which the server takes for a malformed request.
+  it('says an edit depended on one that was not saved', () => {
+    const e = Object.assign(
+      new Error(
+        'HTTP 400 Request validation failed. span-id: should be a uuid at http://x/api/v1/spans/pending:1',
+      ),
+      { status: 400, method: 'PATCH' },
+    );
+    expect(humanizeError(e)).toBe('Depends on an edit that was not saved.');
+    expect(
+      humanizeError(
+        Object.assign(new Error('HTTP 400 Request validation failed. tokens: should be a uuid'), {
+          status: 400,
+        }),
+      ),
+    ).toBe('Depends on an edit that was not saved.');
+  });
+
   // A few reads are POSTs: a query, signing in, looking an invite up. Nothing
   // can have been saved by them.
   it('is not a read sent as a POST', () => {
