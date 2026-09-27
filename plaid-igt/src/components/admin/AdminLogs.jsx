@@ -143,7 +143,7 @@ export const AdminLogs = ({ client }) => {
         });
       } catch (err) {
         if (ticket !== generation.current) return;
-        if (!quiet) notifyError(humanizeError(err), 'Could not read the log');
+        if (!quiet) notifyError(humanizeError(err), 'Failed to read the log');
       } finally {
         inFlight.current -= 1;
         if (ticket === generation.current) setLoading(false);
@@ -166,7 +166,7 @@ export const AdminLogs = ({ client }) => {
     try {
       setFile(await client.admin.logFile({ lines: 500 }));
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not read the log file');
+      notifyError(humanizeError(err), 'Failed to read the log file');
     }
   }, [client]);
 

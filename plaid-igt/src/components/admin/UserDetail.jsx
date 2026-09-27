@@ -55,7 +55,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading user:', err);
-      notifyError(humanizeError(err), 'Could not load the account');
+      notifyError(humanizeError(err), 'Failed to load the account');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -76,9 +76,9 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
     try {
       await client.apiTokens.revoke(userId, token.id);
       setTokens((ts) => ts.filter((t) => t.id !== token.id));
-      notifySuccess('Token revoked', 'Revoked');
+      notifySuccess('Token revoked');
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not revoke the token');
+      notifyError(humanizeError(err), 'Failed to revoke the token');
     }
   };
 

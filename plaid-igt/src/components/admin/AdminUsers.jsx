@@ -36,7 +36,7 @@ export const AdminUsers = ({ client, currentUser }) => {
       setUsers((await client.users.list()) || []);
     } catch (err) {
       console.error('Error loading users:', err);
-      notifyError(humanizeError(err), 'Could not load the accounts');
+      notifyError(humanizeError(err), 'Failed to load the accounts');
     } finally {
       setLoading(false);
     }
@@ -123,12 +123,12 @@ export const AdminUsers = ({ client, currentUser }) => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onSelect={() => setSelected(u.id)}>Open</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => userAdmin.startEdit(u)}>Edit user</DropdownMenuItem>
             <DropdownMenuItem
               disabled={userAdmin.resetting}
               onSelect={() => userAdmin.createResetLink(u)}
             >
-              Create password reset link…
+              Create password reset link
             </DropdownMenuItem>
             {u.deactivatedAt && (
               <DropdownMenuItem onSelect={() => userAdmin.activateUser(u)}>
@@ -158,7 +158,7 @@ export const AdminUsers = ({ client, currentUser }) => {
         loading={loading}
         actions={
           <Button size="sm" onClick={userAdmin.openCreate}>
-            <UserPlus className="h-4 w-4" /> Create User
+            <UserPlus className="h-4 w-4" /> Create user
           </Button>
         }
       />

@@ -154,7 +154,7 @@ export const AdminAssistant = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading conversations:', err);
-      notifyError(humanizeError(err, 'Failed to load conversations'), 'Error');
+      notifyError(humanizeError(err), 'Failed to load the conversations');
     } finally {
       setLoading(false);
     }

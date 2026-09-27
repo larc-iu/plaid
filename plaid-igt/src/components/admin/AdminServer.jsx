@@ -67,7 +67,7 @@ export const AdminServer = ({ client }) => {
       setRateLimits(rl);
     } catch (err) {
       console.error('Error loading server report:', err);
-      notifyError(humanizeError(err), 'Could not load the server report');
+      notifyError(humanizeError(err), 'Failed to load the server report');
     } finally {
       setLoading(false);
     }
@@ -85,10 +85,10 @@ export const AdminServer = ({ client }) => {
         notifySuccess(result.backups?.[0]?.name || 'Backup written', 'Backup complete');
         setReport((r) => (r ? { ...r, backup: result } : r));
       } else {
-        notifyError('The server could not write the backup. Check the log.', 'Backup failed');
+        notifyError('The server could not write the backup. Check the log.', 'Failed to back up');
       }
     } catch (err) {
-      notifyError(humanizeError(err), 'Backup failed');
+      notifyError(humanizeError(err), 'Failed to back up');
     } finally {
       setBackingUp(false);
     }
@@ -105,9 +105,9 @@ export const AdminServer = ({ client }) => {
     try {
       await client.admin.releaseLock(lock.documentId);
       setLocks((ls) => ls.filter((l) => l.documentId !== lock.documentId));
-      notifySuccess('Lock released', 'Released');
+      notifySuccess('Lock released');
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not release the lock');
+      notifyError(humanizeError(err), 'Failed to release the lock');
     }
   };
 
@@ -115,9 +115,9 @@ export const AdminServer = ({ client }) => {
     try {
       await client.admin.clearRateLimits({ ip, userId });
       setRateLimits(await client.admin.rateLimits());
-      notifySuccess(userId ? `${userId} at ${ip} cleared` : `${ip} cleared`, 'Cleared');
+      notifySuccess(userId ? `${userId} at ${ip} cleared` : `${ip} cleared`);
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not clear');
+      notifyError(humanizeError(err), 'Failed to clear');
     }
   };
 

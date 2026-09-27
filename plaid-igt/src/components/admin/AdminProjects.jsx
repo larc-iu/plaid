@@ -48,7 +48,7 @@ export const AdminProjects = ({ client, currentUser }) => {
       setProjects((await client.projects.list()) || []);
     } catch (err) {
       console.error('Error loading projects:', err);
-      notifyError(humanizeError(err), 'Could not load the projects');
+      notifyError(humanizeError(err), 'Failed to load the projects');
     } finally {
       setLoading(false);
     }
@@ -61,10 +61,10 @@ export const AdminProjects = ({ client, currentUser }) => {
   const joinAsMaintainer = async (project) => {
     try {
       await client.projects.addMaintainer(project.id, currentUser.id);
-      notifySuccess(`You are a maintainer of ${project.name}`, 'Added');
+      notifySuccess(`You are a maintainer of ${project.name}`);
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not add you to the project');
+      notifyError(humanizeError(err), 'Failed to add you to the project');
     }
   };
 

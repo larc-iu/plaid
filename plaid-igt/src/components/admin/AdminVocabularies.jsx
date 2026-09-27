@@ -25,7 +25,7 @@ export const AdminVocabularies = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading vocabularies:', err);
-      notifyError(humanizeError(err), 'Could not load the vocabularies');
+      notifyError(humanizeError(err), 'Failed to load the vocabularies');
     } finally {
       setLoading(false);
     }

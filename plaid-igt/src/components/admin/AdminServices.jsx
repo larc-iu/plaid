@@ -68,7 +68,7 @@ export const AdminServices = ({ client }) => {
       setRegistrations(found.flat());
     } catch (err) {
       console.error('Error loading services:', err);
-      notifyError(humanizeError(err), 'Could not load the services');
+      notifyError(humanizeError(err), 'Failed to load the services');
     } finally {
       setLoading(false);
     }
@@ -90,10 +90,10 @@ export const AdminServices = ({ client }) => {
     if (!ok) return;
     try {
       await client.messages.discardService(entry.project.id, entry.serviceId);
-      notifySuccess('Registration forgotten', 'Removed');
+      notifySuccess('Registration forgotten');
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not forget the registration');
+      notifyError(humanizeError(err), 'Failed to forget the registration');
     }
   };
 
@@ -117,7 +117,7 @@ export const AdminServices = ({ client }) => {
     if (failed.length) {
       notifyError(`${failed.length} could not be removed: ${failed.join(', ')}`, 'Partly done');
     } else {
-      notifySuccess(`${plural(offline.length, 'registration')} forgotten`, 'Removed');
+      notifySuccess(`${plural(offline.length, 'registration')} forgotten`);
     }
     await load();
   };

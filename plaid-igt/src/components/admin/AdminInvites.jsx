@@ -48,7 +48,7 @@ const BatchResult = ({ links, onClose }) => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      notifyError('Could not copy. Select the links and copy them manually.', 'Copy failed');
+      notifyError('Select the links and copy them by hand.', 'Failed to copy');
     }
   };
 
@@ -100,7 +100,7 @@ export const AdminInvites = ({ client }) => {
       setProjects(projectList || []);
     } catch (err) {
       console.error('Error loading invites:', err);
-      notifyError(humanizeError(err), 'Could not load the invitations');
+      notifyError(humanizeError(err), 'Failed to load the invitations');
     } finally {
       setLoading(false);
     }
@@ -155,7 +155,7 @@ export const AdminInvites = ({ client }) => {
       console.error('Error minting invites:', err);
       notifyError(
         `${links.length} of ${count} created before it failed. ${humanizeError(err, '')}`.trim(),
-        'Error',
+        'Failed to create the links',
       );
       if (links.length) setMinted(links);
     } finally {
@@ -173,10 +173,10 @@ export const AdminInvites = ({ client }) => {
     if (!ok) return;
     try {
       await client.invites.revoke(invite.id);
-      notifySuccess('Link revoked', 'Revoked');
+      notifySuccess('Link revoked');
       await load();
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not revoke the invitation');
+      notifyError(humanizeError(err), 'Failed to revoke the invitation');
     }
   };
 
