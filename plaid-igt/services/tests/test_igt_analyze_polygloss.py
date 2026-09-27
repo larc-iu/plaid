@@ -333,12 +333,12 @@ def test_the_model_and_the_writing_both_say_how_far_in_they_are():
 
     analyzing = [(pct, msg) for pct, msg in helper.beats if msg.startswith('Analyzing')]
     assert [msg for _, msg in analyzing] == [
-        f'Analyzing sentences ({n}/4 batches)...' for n in (1, 2, 3, 4)]
+        f'Analyzing sentences ({n}/4 batches)…' for n in (1, 2, 3, 4)]
     assert [pct for pct, _ in analyzing] == [31, 47, 63, 80]
 
     writing = [(pct, msg) for pct, msg in helper.beats if msg.startswith('Writing analyses (')]
-    assert writing == [(88, 'Writing analyses (0/1 batches)...'),
-                       (99, 'Writing analyses (1/1 batches)...')]
+    assert writing == [(88, 'Writing analyses (0/1 batches)…'),
+                       (99, 'Writing analyses (1/1 batches)…')]
     assert helper.beats[-1] == (100, 'Done')
 
 
@@ -347,7 +347,7 @@ def test_the_model_and_the_writing_both_say_how_far_in_they_are():
 def test_a_stop_while_the_model_runs_ends_the_run_with_one_report():
     service = _service(batches=4)
     helper = servicetest.Helper(
-        stop_when=lambda pct, msg: msg == 'Analyzing sentences (1/4 batches)...')
+        stop_when=lambda pct, msg: msg == 'Analyzing sentences (1/4 batches)…')
     servicetest.run(service, REQUEST, helper)
 
     assert helper.reports == [('completed', {'stopped': True})]
@@ -357,7 +357,7 @@ def test_a_stop_while_the_model_runs_ends_the_run_with_one_report():
 
 def test_a_stop_before_the_writes_ends_the_run_with_one_report():
     service = _service()
-    helper = servicetest.Helper(stop_when=lambda pct, msg: msg == 'Fetching document...')
+    helper = servicetest.Helper(stop_when=lambda pct, msg: msg == 'Fetching document…')
     servicetest.run(service, REQUEST, helper)
 
     assert helper.reports == [('completed', {'stopped': True})]
@@ -370,7 +370,7 @@ def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes():
     critical block, so stopping half-way through a word's morpheme chain
     finishes it rather than leaving the document worse than either outcome."""
     service = _service()
-    helper = servicetest.Helper(stop_when=lambda pct, msg: msg == 'Writing analyses...')
+    helper = servicetest.Helper(stop_when=lambda pct, msg: msg == 'Writing analyses…')
     servicetest.run(service, REQUEST, helper)
 
     assert helper.cancelled, 'the stop never landed, so this proves nothing'

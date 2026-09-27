@@ -610,7 +610,7 @@ async function importNativeDocument({
         );
       } else {
         warnings.push(
-          `"${docData.name}": ${alignment.length} time alignment(s) skipped because there is no alignment layer`,
+          `"${docData.name}": ${alignment.length} time alignment(s) skipped. This project is not set up for time alignment.`,
         );
       }
     }
@@ -701,7 +701,7 @@ async function importNativeDocument({
         const key = `${scope}:${name}`;
         if (!targets.skippedSpanLayers.has(key)) {
           targets.skippedSpanLayers.add(key);
-          warnings.push(`Annotation layer "${name}" skipped (the archive does not describe it)`);
+          warnings.push(`Field "${name}" skipped (the archive does not describe it)`);
         }
         return;
       }

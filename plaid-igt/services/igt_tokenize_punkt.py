@@ -138,7 +138,7 @@ class NLTKTokenizerService(BaseService):
             return
         
         # Get document text
-        response_helper.progress(5, "Fetching document...")
+        response_helper.progress(5, "Fetching document…")
         full_document = self.client.documents.get(document_id, include_body=True)
 
         # Find the specified text layer
@@ -164,14 +164,14 @@ class NLTKTokenizerService(BaseService):
             return
         
         # Tokenize with our model
-        response_helper.progress(25, f"Tokenizing text ({language})...")
+        response_helper.progress(25, f"Tokenizing text ({language})…")
         sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
         
         if not words:
             response_helper.error("No tokens generated from text")
             return
         
-        response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words...")
+        response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words…")
         
         # Process tokens using the token processor. Created tokens are
         # stamped machine-made (provenance convention); the processor

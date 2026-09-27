@@ -261,7 +261,7 @@ describe('importDocument', () => {
       doc: BUILD.documents[0],
       warnings,
     });
-    expect(warnings[0]).toMatch(/no time-alignment layer/);
+    expect(warnings[0]).toMatch(/not set up for time alignment/);
     expect(tokenCalls(client)).toHaveLength(3); // sentences, words, morphemes
   });
   it('writes no form for a morpheme that has none, so it reads as its word', async () => {

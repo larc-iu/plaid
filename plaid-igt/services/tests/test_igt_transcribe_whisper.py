@@ -376,11 +376,11 @@ def test_the_download_says_how_far_in_it_is(monkeypatch):
     helper = servicetest.run(service, REQUEST)
 
     downloads = [(pct, msg) for pct, msg in helper.beats if msg.startswith('Downloading')]
-    assert downloads[0] == (10, 'Downloading media file...')
+    assert downloads[0] == (10, 'Downloading media file…')
     assert [msg for _, msg in downloads[1:]] == [
-        'Downloading media file (10 MB of 30 MB)...',
-        'Downloading media file (20 MB of 30 MB)...',
-        'Downloading media file (30 MB of 30 MB)...',
+        'Downloading media file (10 MB of 30 MB)…',
+        'Downloading media file (20 MB of 30 MB)…',
+        'Downloading media file (30 MB of 30 MB)…',
     ]
     assert [pct for pct, _ in downloads[1:]] == [16, 23, 30]
     # The token rides in a header, never in the URL: a media URL already
@@ -406,24 +406,24 @@ def test_the_transcription_keeps_talking_while_it_runs(monkeypatch):
     class _Counting(servicetest.Helper):
         def progress(self, percent, msg='', **extra):
             super().progress(percent, msg, **extra)
-            if self.messages.count('Transcribing audio...') >= 3:
+            if self.messages.count('Transcribing audio…') >= 3:
                 beaten.set()
 
     service = _service(module)
     helper = servicetest.run(service, REQUEST, _Counting())
 
     assert beaten.is_set(), 'the blocking call went quiet'
-    assert helper.messages.count('Transcribing audio...') >= 3
+    assert helper.messages.count('Transcribing audio…') >= 3
     assert helper.errors == [] and len(helper.results) == 1
     # …and the beat stops with the block rather than running on into the writes.
     after_writing = helper.messages[helper.messages.index('ASR processing completed successfully'):]
-    assert 'Transcribing audio...' not in after_writing
+    assert 'Transcribing audio…' not in after_writing
 
 
 # --- stopping ----------------------------------------------------------------
 
-@pytest.mark.parametrize('stop_at', ['Fetching document...', 'Downloading media file...',
-                                     'Transcribing audio...'])
+@pytest.mark.parametrize('stop_at', ['Fetching document…', 'Downloading media file…',
+                                     'Transcribing audio…'])
 def test_a_stop_before_the_writes_ends_the_run_with_one_report(monkeypatch, stop_at):
     _media(monkeypatch)
     module, _ = load_whisper()

@@ -215,7 +215,7 @@ class PolyGlossService(BaseService):
         translation_field = (request_data.get('translation_field') or '').strip() or 'Translation'
         overwrite = bool(request_data.get('overwrite', False))
 
-        response_helper.progress(3, 'Fetching document...')
+        response_helper.progress(3, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)
         read_version = doc.get('version')
         try:
@@ -261,7 +261,7 @@ class PolyGlossService(BaseService):
 
             def on_batch(done, total):
                 response_helper.progress(lo + int((hi - lo) * done / total),
-                                         f'Analyzing sentences ({done}/{total} batches)...')
+                                         f'Analyzing sentences ({done}/{total} batches)…')
             results = self.model.predict(prompts, on_batch=on_batch)
             next_pending = []
             for (s, start), (text, truncated) in zip(pending, results):
@@ -282,7 +282,7 @@ class PolyGlossService(BaseService):
             passes += 1
 
         # Plan writes.
-        response_helper.progress(88, 'Writing analyses...')
+        response_helper.progress(88, 'Writing analyses…')
         source = service_source(self.service_id)
         plans = []
         replaced = 0
@@ -313,7 +313,7 @@ class PolyGlossService(BaseService):
                     def wrote(done, total):
                         response_helper.progress(
                             88 + int(11 * done / max(total, 1)),
-                            f'Writing analyses ({done}/{total} batches)...')
+                            f'Writing analyses ({done}/{total} batches)…')
 
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)

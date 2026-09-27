@@ -223,7 +223,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
           <span>
             <span>Speaker column</span>
             <span className="block text-xs text-muted-foreground">
-              From the time-alignment layer, where a sentence has one.
+              From the time-aligned segments, where a sentence has one.
             </span>
           </span>
           <Switch checked={o.speakers !== false} onCheckedChange={(v) => set({ speakers: v })} />

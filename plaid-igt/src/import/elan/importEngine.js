@@ -122,7 +122,7 @@ export async function importDocument({
       );
     } else if (doc.alignments.length) {
       warnings?.push(
-        `"${doc.name}": the project has no time-alignment layer, so ${doc.alignments.length} aligned segments were skipped.`,
+        `"${doc.name}": ${doc.alignments.length} aligned segments were skipped. This project is not set up for time alignment.`,
       );
     }
 

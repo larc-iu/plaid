@@ -220,7 +220,7 @@ class LLMTranslateService(BaseService):
         except (TypeError, ValueError):
             n_context = DEFAULT_CONTEXT
 
-        response_helper.progress(3, 'Fetching document...')
+        response_helper.progress(3, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)
         read_version = doc.get('version')
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
@@ -278,7 +278,7 @@ class LLMTranslateService(BaseService):
         plans = []  # (sentence, existing span or None, text)
         failed = []
         for n, (i, s, span) in enumerate(targets):
-            response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})...')
+            response_helper.progress(5 + int(80 * n / len(targets)), f'Translating sentences ({n + 1}/{len(targets)})…')
             words = [w['text'] for w in s['words']]
             context = []
             for c in sentences[max(0, i - n_context):i]:
@@ -311,7 +311,7 @@ class LLMTranslateService(BaseService):
             plans.append((s, span, text))
 
         print(self.model.usage_line())
-        response_helper.progress(88, 'Writing translations...')
+        response_helper.progress(88, 'Writing translations…')
         replaced = 0
         # The report of the work is inside `critical()` with the work itself: a
         # stop that arrives once the writing is done has nothing left to prevent,

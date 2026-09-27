@@ -419,7 +419,7 @@ class LLMAnalyzeService(BaseService):
         except (TypeError, ValueError):
             n_examples = DEFAULT_EXAMPLES
 
-        response_helper.progress(2, 'Fetching document...')
+        response_helper.progress(2, 'Fetching document…')
         doc = self.client.documents.get(document_id, include_body=True)
         read_version = doc.get('version')
         layers = (word_layer_id, morph_layer_id, sent_layer_id)
@@ -446,19 +446,19 @@ class LLMAnalyzeService(BaseService):
             return
 
         # Retrieval, once per run.
-        response_helper.progress(5, 'Reading the lexicon...')
+        response_helper.progress(5, 'Reading the lexicon…')
         project = self.client.projects.get(project_id)
         tagset = tagset_for(project, gloss_layer_id)
         system = SYSTEM_PROMPT + ('\n\n' + tagset_paragraph(tagset) if tagset else '')
         lexicon = load_lexicon(
             self.client, project,
             on_progress=lambda n, total: response_helper.progress(
-                5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})...'))
+                5 + int(3 * n / max(total, 1)), f'Reading the lexicon ({n + 1}/{total})…'))
         pool = load_examples(
             self.client, project_id, layers, gloss_field, translation_field, orthography,
             exclude_doc_id=document_id,
             on_progress=lambda n, total: response_helper.progress(
-                8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)...'),
+                8 + int(12 * n / max(total, 1)), f'Collecting analyzed sentences ({n}/{total} documents)…'),
         ) if n_examples else []
 
         # One model call per sentence.
@@ -468,7 +468,7 @@ class LLMAnalyzeService(BaseService):
         replaced = 0
         total = len(targets)
         for n, (s, idxs) in enumerate(targets):
-            response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})...')
+            response_helper.progress(20 + int(65 * n / total), f'Glossing sentences ({n + 1}/{total})…')
             words = [w['text'] for w in s['words']]
             entries = matching_entries(lexicon, words)
             examples = rank_examples(pool, words, n_examples) if n_examples else []
@@ -506,7 +506,7 @@ class LLMAnalyzeService(BaseService):
                     replaced += 1
 
         print(self.model.usage_line())
-        response_helper.progress(88, 'Writing analyses...')
+        response_helper.progress(88, 'Writing analyses…')
         source = service_source(self.service_id)
         # The report of the work is inside `critical()` with the work itself: a
         # stop that arrives once the writing is done has nothing left to prevent,
@@ -524,7 +524,7 @@ class LLMAnalyzeService(BaseService):
                     def wrote(done, total):
                         response_helper.progress(
                             88 + int(11 * done / max(total, 1)),
-                            f'Writing analyses ({done}/{total} batches)...')
+                            f'Writing analyses ({done}/{total} batches)…')
 
                     written = write_analyses(self.client, plans, gloss_layer_id, morph_layer_id,
                                              source, stamp_detail, on_progress=wrote)

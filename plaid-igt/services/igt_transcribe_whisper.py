@@ -137,7 +137,7 @@ class WhisperASRService(BaseService):
         super().__init__(
             service_id='asr:whisper-asr',
             service_name='Whisper ASR',
-            description='Automatic Speech Recognition using OpenAI\'s Whisper',
+            description='Automatic speech recognition using OpenAI\'s Whisper',
             tasks=[TASKS.TRANSCRIBE],
             summary=SUMMARY,
             parameters=[
@@ -174,7 +174,7 @@ class WhisperASRService(BaseService):
         
         # Update service description with model info
         model_info = self.asr_model.get_model_info()
-        self.description = f"Automatic Speech Recognition using {model_info['name']} {model_info['model_size']} model"
+        self.description = f"Automatic speech recognition using {model_info['name']} {model_info['model_size']} model"
     
     def process_request(self, request_data: dict, response_helper) -> None:
         """Process ASR request"""
@@ -206,7 +206,7 @@ class WhisperASRService(BaseService):
         
         try:
             # Get document to fetch media URL
-            response_helper.progress(5, "Fetching document...")
+            response_helper.progress(5, "Fetching document…")
             full_document = self.client.documents.get(document_id, include_body=True)
             
             # Get media URL from document
@@ -222,13 +222,13 @@ class WhisperASRService(BaseService):
             
             # Download media file. A recording is often hundreds of megabytes,
             # so say how far in it is rather than going quiet until it lands.
-            response_helper.progress(10, "Downloading media file...")
+            response_helper.progress(10, "Downloading media file…")
 
             def downloaded(read, total):
                 share = (read / total) if total else 0
                 response_helper.progress(10 + int(20 * share),
                                          f"Downloading media file ({read >> 20} MB"
-                                         + (f" of {total >> 20} MB)..." if total else ")..."))
+                                         + (f" of {total >> 20} MB)…" if total else ")…"))
 
             audio_file = self.alignment_processor.download_media_file(
                 self.client, full_media_url, temp_dir, on_progress=downloaded)
@@ -239,9 +239,9 @@ class WhisperASRService(BaseService):
             # requester cannot tell from a wedged service, and which outlasts
             # any deadline it is willing to wait through. The heartbeat keeps
             # the request alive by saying the same thing at intervals.
-            response_helper.progress(30, f"Loading ASR model ({model_size or self.asr_model.model_name})...")
-            response_helper.progress(40, "Transcribing audio...")
-            with progress_heartbeat(response_helper, 40, "Transcribing audio..."):
+            response_helper.progress(30, f"Loading ASR model ({model_size or self.asr_model.model_name})…")
+            response_helper.progress(40, "Transcribing audio…")
+            with progress_heartbeat(response_helper, 40, "Transcribing audio…"):
                 alignments = self.asr_model.transcribe_with_alignments(
                     audio_file, model_size=model_size, language=language)
             
@@ -251,7 +251,7 @@ class WhisperASRService(BaseService):
             # The last point a stop costs nothing: the transcription itself is
             # one blocking call with nothing to poll inside it, so a request
             # stopped mid-transcription lands here, and stops before writing.
-            response_helper.progress(70, f"Generated {len(alignments)} segment alignments...")
+            response_helper.progress(70, f"Generated {len(alignments)} segment alignments…")
 
             # Process alignments using the alignment processor. Created tokens
             # are stamped machine-made (provenance convention); the processor

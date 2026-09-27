@@ -41,7 +41,7 @@ export const ProjectBulkEdit = ({ project, projectId, client }) => {
   if (!layerInfo.primaryTokenLayer) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
-        This project has no word layer to edit.
+        This project is not set up for words.
       </p>
     );
   }

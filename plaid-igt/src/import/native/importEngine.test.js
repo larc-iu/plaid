@@ -1820,9 +1820,7 @@ describe("runNativeImport, other apps' layers", () => {
     expect(argsOf(client, 'spanLayers.create').map((c) => c[1])).toEqual(['Concepts']);
     // Said once for the layer, not once per annotation on it.
     expect(result.warnings).toEqual(
-      expect.arrayContaining([
-        'Annotation layer "Lemma" skipped (the archive does not describe it)',
-      ]),
+      expect.arrayContaining(['Field "Lemma" skipped (the archive does not describe it)']),
     );
     expect(
       result.warnings.filter((w) => w.includes('"Lemma" skipped (the archive does not describe')),
