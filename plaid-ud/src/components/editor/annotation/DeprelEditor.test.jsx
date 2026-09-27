@@ -137,4 +137,27 @@ describe('DeprelEditor', () => {
     expect(onDelete).not.toHaveBeenCalled();
     await unmount();
   });
+
+  // Chromium's select() focuses the input, so a deferred select-on-arrival that
+  // fires after the caret has left pulls it back (see EditableCell.arrival).
+  it('never selects the label once the caret has left it', async () => {
+    const { container, step, unmount } = await mount();
+    const input = all(container, 'input')[0];
+    const elsewhere = document.createElement('input');
+    document.body.appendChild(elsewhere);
+    // The editor takes the caret when it opens, so leave it first and come back.
+    elsewhere.focus();
+    const select = vi.spyOn(input, 'select');
+
+    await step(async () => {
+      input.focus();
+      elsewhere.focus();
+    });
+    await step(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(document.activeElement).toBe(elsewhere);
+    expect(select).not.toHaveBeenCalled();
+    elsewhere.remove();
+    await unmount();
+  });
 });

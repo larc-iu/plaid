@@ -75,7 +75,10 @@ export const EditableCell = React.memo(
     // after focus and would undo a selection made during it: and, being
     // deferred, it has to check that nothing has been typed in the meantime, or
     // a fast typist (or a test driving the keyboard) loses their first
-    // character to it.
+    // character to it. It also has to check that the caret is still HERE:
+    // Chromium's `select()` focuses the input, so a select that fires after
+    // the caret has moved on (the review sweep moves it twice in a tick) pulls
+    // it back, and two cells doing that take it from each other in a loop.
     const selectPendingRef = useRef(false);
     // Did the annotator actually put something into this cell, by typing or by
     // picking? `pristine` cannot answer that: it also drives the dropdown's
@@ -95,7 +98,8 @@ export const EditableCell = React.memo(
     const selectOnArrival = () => {
       selectPendingRef.current = true;
       setTimeout(() => {
-        if (selectPendingRef.current) inputRef.current?.select();
+        const el = inputRef.current;
+        if (selectPendingRef.current && el && document.activeElement === el) el.select();
       }, 0);
     };
     // Mirror `isEditing` into a ref so the value-sync effect can read the latest

@@ -206,7 +206,13 @@ export function DeprelEditor({ relation, onCommit, onCancel, onDelete, onTab }) 
         }}
         onFocus={(e) => {
           setPristine(true);
-          setTimeout(() => e.target.select?.(), 0);
+          // Deferred, and only while the caret is still here: Chromium's select()
+          // focuses the input, so a late one pulls the caret back from wherever
+          // it went in the meantime.
+          const el = e.target;
+          setTimeout(() => {
+            if (document.activeElement === el) el.select?.();
+          }, 0);
         }}
         // The second argument tells the caller whether the human actually typed /
         // picked (vs. just opened and left): re-entering the machine's own label
