@@ -298,6 +298,30 @@ literal, so a real value like `"?x"` is never mistaken for a variable. Value
 variables are join / comparison helpers only; they bind a value, not an entity, so
 they cannot appear in `find`.
 
+=== How JSON types compare
+
+A `value` and a metadata value are stored as JSON, so each has a type: string,
+number, boolean, null, array or object. Matching keeps to the type, with these
+consequences:
+
+* A literal in a constraint map matches the stored JSON exactly, type and
+  spelling included. `{"value": 3}` matches the number `3`, not the string
+  `"3"`. It also does not match a number stored as `3.0`, and whether a number
+  is stored as `3` or `3.0` depends on the client that wrote it (JavaScript
+  always writes `3`, Python writes `3.0` for a float).
+* A predicate compares the decoded value, so numbers compare as numbers:
+  `["=", "?s.value", 3]` matches both `3` and `3.0`. A string never equals a
+  number.
+* A boolean decodes to the number `1` or `0`. `["=", "?s.value", true]` and
+  `["=", "?s.value", 1]` both match a stored `true` and a stored `1`, while
+  `["=", "?s.value", "true"]` matches nothing. A regex, in a constraint map or
+  in `~`, sees the text `1` or `0`, so `{"regex": "true"}` never matches a
+  boolean.
+* A value variable joins values of one type. A string never joins a number,
+  wherever either is stored (a span's `value`, a token's `begin`, a vocab
+  entry's `form`, a token's surface), numbers join as numbers (`3` joins
+  `3.0`), and a boolean joins `1` or `0`.
+
 === Metadata
 
 Any entity can carry metadata, an arbitrary JSON object. It is therefore common

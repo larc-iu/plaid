@@ -227,3 +227,36 @@
       (is (= #{[(str t3) (str s-str)]}
              (run [["token" "?a" {"layer" tokl "value" {"var" "?v"}}]
                    ["span" "?b" {"layer" sl "value" {"var" "?v"}}]]))))))
+
+(deftest json-types-behave-as-the-manual-says
+  ;; Pins the "How JSON types compare" section of docs/query.adoc.
+  (let [pid  (h/create-test-project admin-request "Types")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "abcd"))
+        [t0 t1 t2 t3] (mapv #(id (h/create-token admin-request tokl text % (inc %))) (range 4))
+        s-true (id (h/create-span admin-request sl [t0] true))
+        s-one  (id (h/create-span admin-request sl [t1] 1))
+        s-two  (id (h/create-span admin-request sl [t2] 2))
+        s-real  (id (h/create-span admin-request sl [t3] 2.0))
+        run (fn [& where] (set (map (comp str first)
+                                    (:results (qe/run db "admin@example.com"
+                                                      {"find" ["?s"]
+                                                       "where" (into [["span" "?s" {"layer" sl}]] where)})))))
+        in-map (fn [v] (set (map (comp str first)
+                                 (:results (qe/run db "admin@example.com"
+                                                   {"find" ["?s"] "where" [["span" "?s" {"layer" sl "value" v}]]})))))]
+    (testing "a constraint-map literal matches the stored JSON exactly"
+      (is (= #{(str s-two)} (in-map 2)))
+      (is (= #{(str s-real)} (in-map 2.0)))
+      (is (= #{(str s-true)} (in-map true))))
+    (testing "a predicate compares decoded numbers as numbers"
+      (is (= #{(str s-two) (str s-real)} (run ["=" "?s.value" 2]))))
+    (testing "a boolean decodes to 1 or 0"
+      (is (= #{(str s-true) (str s-one)} (run ["=" "?s.value" true])))
+      (is (= #{(str s-true) (str s-one)} (run ["=" "?s.value" 1])))
+      (is (empty? (run ["=" "?s.value" "true"])))
+      (is (= #{(str s-true) (str s-one)} (run ["~" "?s.value" "^1$"])))
+      (is (empty? (run ["~" "?s.value" "true"]))))))
