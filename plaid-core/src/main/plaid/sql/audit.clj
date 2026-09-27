@@ -60,6 +60,29 @@
 (defn- row-unit [row]
   (or (:group_id row) (:batch_id row) (:id row)))
 
+(defn- batch-ends
+  "`{batch-id -> ts of the batch's last op}` for `batch-ids`, over the WHOLE
+  batch rather than the members a read kept.
+
+  An entry's members are scoped (to a document, a time window, op types), so
+  its last member can sit in the middle of a batch that went on to write
+  something else, such as another document or a vocabulary entry. An as-of
+  read at a time strictly inside a batch goes back to before the batch
+  (`plaid.history.read` never serves a state no reader could have seen), so
+  the last member's own ts reads as the state BEFORE the entry, and a restore
+  there undoes it. The batch's last op is the first time at which the batch
+  reads as done. Served by `idx_operations_batch`."
+  [db batch-ids]
+  (let [ids (->> batch-ids (filter some?) distinct vec)]
+    (if (empty? ids)
+      {}
+      (into {}
+            (map (juxt :batch_id :ts))
+            (psc/q db {:select [:batch_id [[:max :ts] :ts]]
+                       :from [:operations]
+                       :where [:in :batch_id ids]
+                       :group-by [:batch_id]})))))
+
 (defn- enrich-units
   "Project the paged units (`{:unit :head_ts}`, in page order) plus their
   member operations rows into audit entries. The referenced user / project /
@@ -68,8 +91,11 @@
   Entry shape:
     :audit/id        the unit key (group id, batch id, or the op id)
     :audit/time      head ts (first member)
-    :audit/end-time  ts of the last member — the state AFTER the whole
-                     operation, which is what a UI wants to time-travel to
+    :audit/end-time  the time to read the document at to see the state AFTER
+                     the whole operation, which is what a UI time-travels to
+                     and a restore restores to. The ts of the last member,
+                     or, when that member ran in an atomic batch, the ts of
+                     the batch's own last op (see `batch-ends`)
     :audit/user      the head op's user (per-op users are on each op)
     :audit/projects / :audit/documents  distinct across members
     :audit/ops       every member, oldest first
@@ -85,6 +111,7 @@
         documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows))
         tokens    (batch-fetch-by-ids db :api_tokens (mapv :token_id member-rows))
         groups    (batch-fetch-by-ids db :operation_groups (mapv :group_id member-rows))
+        batch-end (batch-ends db (keep #(:batch_id (peek (vec (by-unit (:unit %))))) units))
         op-summary (fn [row]
                      (let [proj (some-> (:project_id row) projects select-proj)
                            doc  (some-> (:document_id row) documents select-doc)]
@@ -103,7 +130,8 @@
                   token (some-> (:token_id head) tokens select-token)]
               (cond-> {:audit/id unit
                        :audit/time head_ts
-                       :audit/end-time (:ts (peek ops))
+                       :audit/end-time (let [lst (peek ops)]
+                                         (or (some-> (:batch_id lst) batch-end) (:ts lst)))
                        :audit/user (some-> (:user_id head) users select-user)
                        ;; `keep`, not `mapv`: an op can reference a project or
                        ;; document that has since been DELETED, and its row is
