@@ -27,7 +27,7 @@ export const LoginForm = ({ tagline, homePath }) => {
   const [notice] = useState(() => {
     try {
       const r = sessionStorage.getItem('plaid:logout-reason');
-      return r === 'expired' ? 'Your session has expired. Please sign in again.' : '';
+      return r === 'expired' ? 'Your session has expired. Sign in again.' : '';
     } catch {
       return '';
     }
@@ -65,7 +65,7 @@ export const LoginForm = ({ tagline, homePath }) => {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <PlaidMark className="mb-1 h-10 w-10" />
-          <CardTitle className="text-2xl">{appName()} Login</CardTitle>
+          <CardTitle className="text-2xl">Sign in to {appName()}</CardTitle>
           <CardDescription>{tagline}</CardDescription>
         </CardHeader>
         <CardContent>

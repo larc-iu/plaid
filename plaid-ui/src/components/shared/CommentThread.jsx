@@ -72,7 +72,7 @@ const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
   const askThenRemove = async () => {
     const ok = await confirm({
       title: mine ? 'Delete your comment?' : `Delete ${name}'s comment?`,
-      description: 'Comments are not kept in the history, so this cannot be undone.',
+      description: 'This cannot be undone.',
       confirmLabel: 'Delete',
       destructive: true,
     });

@@ -170,8 +170,7 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              The copy lands in this project with the same text, tokens and annotations. Comments do
-              not travel.
+              Copies the text and annotations into this project. Comments are not copied.
             </p>
             <Button variant="outline" className="self-start" onClick={openCopy}>
               <Copy className="h-4 w-4" /> Copy document
@@ -187,7 +186,7 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
-              The document, its tokens and every annotation on it go. This cannot be undone.
+              Deletes the document and its annotations. This cannot be undone.
             </p>
             <Button
               variant="outline"

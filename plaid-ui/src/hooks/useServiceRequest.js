@@ -124,9 +124,9 @@ export const useServiceRequest = (client) => {
 
       const {
         successTitle = 'Service Complete',
-        successMessage = 'Service request completed successfully',
+        successMessage = 'Finished.',
         errorTitle = 'Service Failed',
-        errorMessage = 'An error occurred during service request',
+        errorMessage = 'The service reported an error.',
         // The run's plain name, for the one message that is neither a success
         // nor a failure. Whatever a stopped run had already written is kept, so
         // a run that writes nothing (speech detection) says something else.

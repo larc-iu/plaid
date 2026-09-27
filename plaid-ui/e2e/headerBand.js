@@ -2,7 +2,7 @@
 // band in two apps.
 //
 // It had drifted once already, plaid-ud carrying the account as three bare text
-// buttons at a smaller size than plaid-igt's with Logout a stray click away
+// buttons at a smaller size than plaid-igt's with Sign out a stray click away
 // from Profile, and the two specs that caught that were written apart: each
 // asserted half of the arrangement, so neither app was covered by what the
 // other knew. The shared look is `headerItem` and `UserButton` in this package,
@@ -21,7 +21,7 @@ export const headerBandTests = ({
   seedAuth,
   // A screen every signed-in reader can reach, where the band is drawn.
   landing = '/#/projects',
-  // What the reader is left with after picking Logout. plaid-igt cannot say:
+  // What the reader is left with after picking Sign out. plaid-igt cannot say:
   // its logout reloads the page, and `seedAuth` primes the session again on
   // every load, so the app comes straight back signed in.
   signOut,
@@ -38,12 +38,12 @@ export const headerBandTests = ({
       await seedAuth(page);
       await page.goto(landing);
       await expect(account(page)).toBeVisible({ timeout: 15000 });
-      await expect(band(page).getByRole('button', { name: 'Logout' })).toHaveCount(0);
+      await expect(band(page).getByRole('button', { name: 'Sign out' })).toHaveCount(0);
 
       await account(page).click();
       const menu = page.getByRole('menu');
       await expect(menu.getByRole('menuitem', { name: /Profile/ })).toBeVisible();
-      await expect(menu.getByRole('menuitem', { name: /Logout/ })).toBeVisible();
+      await expect(menu.getByRole('menuitem', { name: /Sign out/ })).toBeVisible();
       await signOut(page, menu);
     });
 

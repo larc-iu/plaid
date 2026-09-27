@@ -42,7 +42,7 @@ describe('LoginForm', () => {
   it('names the app from the package config, and the tagline from the app', async () => {
     const { container } = await mount();
     // The setup file configures the package as plaid-igt for the whole run.
-    expect(container.textContent).toContain('Plaid IGT Login');
+    expect(container.textContent).toContain('Sign in to Plaid IGT');
     expect(container.textContent).toContain('A tagline');
   });
 

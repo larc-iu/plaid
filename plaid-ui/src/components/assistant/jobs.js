@@ -423,11 +423,7 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
   if (j.error?.pending) {
     notifyWarning(LOST_CONTACT, 'Assistant');
   } else if (j.error && j.error.status !== 404) {
-    notifyError(
-      humanizeError(j.error, 'The changes could not be applied.') +
-        ' Approving again is safe: a plan that was already applied is not written twice.',
-      'Not applied',
-    );
+    notifyError(humanizeError(j.error, 'The changes could not be applied.'), 'Not applied');
   } else if (j.outcome && !j.outcome.duplicate && !docked) {
     notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
   }

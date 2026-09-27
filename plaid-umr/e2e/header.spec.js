@@ -11,7 +11,7 @@ headerBandTests({
   expect,
   seedAuth,
   signOut: async (page, menu) => {
-    await menu.getByRole('menuitem', { name: /Logout/ }).click();
+    await menu.getByRole('menuitem', { name: /Sign out/ }).click();
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     await expect(headerAccount(page)).toHaveCount(0);
   },

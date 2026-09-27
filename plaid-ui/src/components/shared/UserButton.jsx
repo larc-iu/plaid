@@ -48,7 +48,7 @@ export function UserButton({ user, client, onLogout, profileHref }) {
           className="text-destructive focus:text-destructive"
           onClick={() => onLogout()}
         >
-          <LogOut className="h-4 w-4" /> Logout
+          <LogOut className="h-4 w-4" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

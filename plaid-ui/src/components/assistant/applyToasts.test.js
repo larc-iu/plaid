@@ -36,7 +36,7 @@ describe('applyToasts', () => {
   it('still reports a failure in the docked panel', () => {
     applyToasts({ error: { status: 500, message: 'boom' } }, 'x', { docked: true });
     expect(notifyError).toHaveBeenCalledTimes(1);
-    expect(notifyError.mock.calls[0][0]).toMatch(/Approving again is safe/);
+    expect(notifyError.mock.calls[0][1]).toBe('Not applied');
   });
 
   it('still reports lost contact in the docked panel', () => {

@@ -98,9 +98,9 @@ export const ProjectAccessScreen = ({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user…</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => startEdit(m)}>Edit user</DropdownMenuItem>
                     <DropdownMenuItem disabled={resetting} onSelect={() => createResetLink(m)}>
-                      Create password reset link…
+                      Create password reset link
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

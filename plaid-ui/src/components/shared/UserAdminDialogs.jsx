@@ -134,7 +134,7 @@ export const UserAdminDialogs = ({ controller }) => {
                   <Label htmlFor="user-admin-edit-email">Email address</Label>
                   <Input id="user-admin-edit-email" value={editingUser.id} disabled readOnly />
                   <p className="text-xs text-muted-foreground">
-                    Fixed for the life of the account — it is what they sign in with.
+                    What they sign in with. It cannot be changed.
                   </p>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -219,8 +219,8 @@ export const UserAdminDialogs = ({ controller }) => {
             <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
             <AlertDialogDescription>
               <strong>{deactivateTarget?.displayName}</strong> ({deactivateTarget?.id}) will be
-              signed out, lose every project role and API token, and be refused at login. Their
-              annotations and their name on them are untouched. Reactivating restores login only.
+              signed out, lose every project role and API token, and be refused at sign-in.
+              Reactivating restores sign-in only.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

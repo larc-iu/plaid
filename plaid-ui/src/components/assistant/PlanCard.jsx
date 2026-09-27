@@ -82,12 +82,7 @@ export const PlanCard = ({
           </Badge>
         )}
       </div>
-      {lost && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Applying did not finish. Applying again is safe: a plan that was already applied is not
-          written twice.
-        </p>
-      )}
+      {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
       {rewrites > 0 && (
         <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
           <PenLine className="h-3.5 w-3.5 shrink-0" />

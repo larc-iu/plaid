@@ -115,7 +115,7 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
     },
     {
       key: 'documents',
-      label: 'Docs',
+      label: 'Documents',
       sort: (p) => p.documentCount ?? 0,
       align: 'right',
       nowrap: true,

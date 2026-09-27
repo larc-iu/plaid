@@ -48,7 +48,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
 
   const createUser = async () => {
     if (!newUser.email || !newUser.password) {
-      notifyError('Please provide both an email address and a password', 'Missing information');
+      notifyError('Enter an email address and a password.', 'Missing information');
       return;
     }
     if (!isEmail(newUser.email)) {

@@ -24,7 +24,7 @@ const open = async (props = {}) => {
 const profileLink = () =>
   [...document.querySelectorAll('a')].find((a) => /Profile/.test(a.textContent));
 const logoutItem = () =>
-  [...document.querySelectorAll('[role="menuitem"]')].find((n) => /Logout/.test(n.textContent));
+  [...document.querySelectorAll('[role="menuitem"]')].find((n) => /Sign out/.test(n.textContent));
 
 describe('UserButton', () => {
   it('points Profile where the app says, since a route is not the package\u2019s', async () => {

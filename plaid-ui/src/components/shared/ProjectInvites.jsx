@@ -176,9 +176,9 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
         <div>
           <h2 className="text-lg font-semibold">Invitation links</h2>
           <p className="text-sm text-muted-foreground">
-            Send someone a link instead of a password. They choose their own credentials and join{' '}
-            {projectName ? <strong>{projectName}</strong> : 'this project'} automatically. A link is
-            not addressed to anyone: whoever opens it joins, including whoever it was forwarded to.
+            Links that let someone create an account and join{' '}
+            {projectName ? <strong>{projectName}</strong> : 'this project'}. Anyone with a link can
+            use it.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -232,10 +232,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
                   value={form.maxUses}
                   onChange={(e) => setForm({ ...form, maxUses: e.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Raise this to share one link with a whole class. Every use is a different person
-                  choosing their own account.
-                </p>
+                <p className="text-xs text-muted-foreground">Each use creates one account.</p>
               </div>
               <div className="flex flex-1 flex-col gap-1.5">
                 <Label htmlFor="invite-ttl">Expires in (days)</Label>
@@ -256,9 +253,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
               />
-              <p className="text-xs text-muted-foreground">
-                Only you see this. It is the only place to record who the link was meant for.
-              </p>
+              <p className="text-xs text-muted-foreground">Seen only by maintainers.</p>
             </div>
           </div>
           <DialogFooter>
