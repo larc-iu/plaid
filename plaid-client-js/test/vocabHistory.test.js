@@ -117,6 +117,24 @@ test("the vocabulary log pages as the document log does", async () => {
   assert.equal(p.get("op-types"), "vocab-item/delete");
 });
 
+test("one entry's log names the entry", async () => {
+  const client = new PlaidClient("http://x", "tok");
+  const { sent, restore } = stub(() => ({
+    body: { entries: [{ "audit/id": "a1" }], "next-cursor": null },
+  }));
+  try {
+    await client.vocabLayers.audit("v1", undefined, undefined, undefined, "i1");
+    await client.vocabLayers.auditPage("v1", { order: "desc", itemId: "i1" });
+    await client.vocabLayers.audit("v1");
+  } finally {
+    restore();
+  }
+  assert.equal(sent[0].url.searchParams.get("item-id"), "i1");
+  assert.equal(sent[1].url.searchParams.get("item-id"), "i1");
+  assert.equal(sent[1].url.searchParams.get("order"), "desc");
+  assert.equal(sent[2].url.searchParams.get("item-id"), null);
+});
+
 test("an entry restore posts the time, a dry run says so, and the message rides along", () => {
   const client = new PlaidClient("http://localhost:0", "tok");
   const b = client.batch();

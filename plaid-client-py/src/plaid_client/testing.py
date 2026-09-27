@@ -678,7 +678,8 @@ class FakeClient:
 
     ``vocabularies`` is ``{vid: vocabulary}``, each as the server's
     ``vocab_layers.get(..., include_items=True)`` answers (``items`` included),
-    and ``vocab_audit`` is ``{vid: [audit entries]}``. ``vocab_layers.get``,
+    and ``vocab_audit`` is ``{vid: [audit entries]}``, with a key ``(vid,
+    item_id)`` for what an ``item_id=`` read answers. ``vocab_layers.get``,
     ``get_item_at``, ``audit`` and ``audit_page`` answer from them, and an
     entry restore answers, done or dry, with ``vocab_restore_summary``. An
     ``as_of`` is accepted and answered with the fixture as it is: the fake
@@ -1004,14 +1005,16 @@ class FakeClient:
                     return copy.deepcopy(item)
             raise _refusal(self._root, 404, 'The entry did not exist at that time.', 'GET', path)
 
-        def audit(self, id, *, start_time=None, end_time=None, op_types=None):
+        def audit(self, id, *, start_time=None, end_time=None, op_types=None, item_id=None):
             self._vocabulary(id, f'/api/v1/vocab-layers/{id}/audit')
-            return _audit_filter(self._root.vocab_audit.get(id, []), start_time, end_time,
+            key = (id, item_id) if item_id else id
+            return _audit_filter(self._root.vocab_audit.get(key, []), start_time, end_time,
                                  op_types)
 
         def audit_page(self, id, *, start_time=None, end_time=None,
-                       op_types=None, order=None, limit=None, cursor=None):
-            entries = self.audit(id, start_time=start_time, end_time=end_time, op_types=op_types)
+                       op_types=None, order=None, limit=None, cursor=None, item_id=None):
+            entries = self.audit(id, start_time=start_time, end_time=end_time, op_types=op_types,
+                                 item_id=item_id)
             return self._root._audit_page(entries, order, limit, cursor, start_time)
 
         def restore_item(self, id, item_id, as_of, *, dry_run=False, audit_message=None):

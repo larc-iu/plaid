@@ -157,13 +157,15 @@ interface VocabLayersBundle {
   get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
   /** One entry as it was at `asOf`, also when it has been deleted since. */
   getItemAt(id: string, itemId: string, asOf: string): Promise<any>;
+  /** `itemId` keeps only the changes that wrote that one entry. */
   audit(
     id: string,
     startTime?: string,
     endTime?: string,
     opTypes?: string[] | string,
+    itemId?: string,
   ): Promise<any[]>;
-  auditPage(id: string, opts?: AuditPageOptions): Promise<Page>;
+  auditPage(id: string, opts?: AuditPageOptions & { itemId?: string }): Promise<Page>;
   /** Put one entry back as it was at `asOf`. Maintainers of the vocabulary only. */
   restoreItem(
     id: string,

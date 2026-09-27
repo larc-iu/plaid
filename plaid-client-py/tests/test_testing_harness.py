@@ -235,7 +235,7 @@ def test_a_vocabularys_reads_log_and_entry_restore():
             'ops': [{'type': 'vocab-item/delete', 'time': '2026-01-01T00:00:00Z'}]},
            {'id': 'a2', 'time': '2026-02-01T00:00:00Z',
             'ops': [{'type': 'vocab-item/restore', 'time': '2026-02-01T00:00:00Z'}]}]
-    c = _project_client(vocabularies={'v1': lex}, vocab_audit={'v1': log},
+    c = _project_client(vocabularies={'v1': lex}, vocab_audit={'v1': log, ('v1', 'i1'): log[:1]},
                         vocab_restore_summary={'inserted': True, 'form': False,
                                                'metadata': False, 'total': 1})
     assert 'items' not in c.vocab_layers.get('v1', as_of='T')
@@ -248,6 +248,8 @@ def test_a_vocabularys_reads_log_and_entry_restore():
         c.vocab_layers.get('v2')
     assert e.value.status == 404
     assert [x['id'] for x in c.vocab_layers.audit('v1', op_types=['vocab-item/restore'])] == ['a2']
+    assert [x['id'] for x in c.vocab_layers.audit('v1', item_id='i1')] == ['a1']
+    assert c.vocab_layers.audit('v1', item_id='i9') == []
     page = c.vocab_layers.audit_page('v1', order='desc', limit=1)
     assert [x['id'] for x in page['entries']] == ['a2'] and page['next_cursor'] == '1'
     assert c.vocab_layers.restore_item('v1', 'i1', 'T', dry_run=True)['total'] == 1

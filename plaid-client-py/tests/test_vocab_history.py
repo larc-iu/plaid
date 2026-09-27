@@ -91,6 +91,17 @@ def test_the_vocabulary_log_pages_as_the_document_log_does():
     assert q['order'] == 'desc' and q['limit'] == '1' and q['op-types'] == 'vocab-item/delete'
 
 
+def test_one_entrys_log_names_the_entry():
+    c = PlaidClient('http://x', 'tok')
+    sent = _stub(c, lambda path, q: _Resp({'entries': [{'audit/id': 'a1'}], 'next-cursor': None}))
+    c.vocab_layers.audit('v1', item_id='i1')
+    c.vocab_layers.audit_page('v1', order='desc', item_id='i1')
+    c.vocab_layers.audit('v1')
+    assert sent[0][2]['item-id'] == 'i1'
+    assert sent[1][2]['item-id'] == 'i1' and sent[1][2]['order'] == 'desc'
+    assert 'item-id' not in sent[2][2]
+
+
 def test_an_entry_restore_posts_the_time_a_dry_run_says_so_and_the_message_rides_along():
     c = PlaidClient('http://localhost:0', 'tok')
     b = c.batch()

@@ -370,13 +370,16 @@ class PlaidClient {
        * @param {string[]|string} [opTypes] - Only return operations of these
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['vocab-item/delete', 'vocab-item/restore']`)
+       * @param {string} [itemId] - Only the changes that wrote this one entry,
+       *   each with only its operations that did
        */
-      audit: (id, startTime, endTime, opTypes) =>
+      audit: (id, startTime, endTime, opTypes, itemId) =>
         listAll(this, `/api/v1/vocab-layers/${id}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
+            "item-id": itemId,
           },
         }),
       /**
@@ -388,11 +391,13 @@ class PlaidClient {
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @param {string} [opts.itemId] - Only the changes that wrote this one
+       *   entry, each with only its operations that did
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
       auditPage: (
         id,
-        { startTime, endTime, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, order, limit, cursor, itemId } = {},
       ) =>
         listPage(this, `/api/v1/vocab-layers/${id}/audit`, {
           limit,
@@ -402,6 +407,7 @@ class PlaidClient {
             "end-time": endTime,
             "op-types": opTypesParam(opTypes),
             order,
+            "item-id": itemId,
           },
         }),
       /**

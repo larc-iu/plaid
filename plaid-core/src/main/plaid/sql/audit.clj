@@ -392,35 +392,51 @@
                                                [:= :target_id document-id]]}]]}
                [start-time end-time] opts)))
 
+(defn- vocab-writes-where
+  "The audit_writes rows that wrote vocabulary `vocab-id`, or with `item-id`
+  only those that wrote that one entry of it. An entry's rows are found by
+  target (`idx_audit_writes_target`), and the vocabulary term keeps an entry
+  of another vocabulary out."
+  [vocab-id item-id]
+  (if item-id
+    [:and
+     [:= :target_table "vocab_items"]
+     [:= :target_id item-id]
+     [:= :vocab_layer_id vocab-id]]
+    [:= :vocab_layer_id vocab-id]))
+
 (defn- vocab-ops-source
   "A subquery yielding every operations row that wrote a row of vocabulary
   `vocab-id`: the vocabulary itself (name, configuration, maintainers) or
-  one of its entries. Found through `audit_writes.vocab_layer_id`, so an op
-  that ran with no project and no document, as every vocabulary write does,
-  is still found. Links are not rows of the vocabulary: linking a word is
-  annotation, and shows in the document's history."
-  [vocab-id]
+  one of its entries, or with `item-id` that one entry. Found through
+  `audit_writes.vocab_layer_id`, so an op that ran with no project and no
+  document, as every vocabulary write does, is still found. Links are not
+  rows of the vocabulary: linking a word is annotation, and shows in the
+  document's history."
+  [vocab-id item-id]
   [[{:select [:o.*]
      :from [[:operations :o]]
      :where [:in :o.id {:select [:op_id]
                         :from [:audit_writes]
-                        :where [:= :vocab_layer_id vocab-id]}]}
+                        :where (vocab-writes-where vocab-id item-id)}]}
     :ops]])
 
 (defn get-vocab-audit-log
   "Audit entries that changed vocabulary `vocab-id` or its entries, with the
   same fold, window, `:op-types` filter and paging as the document read. A
   unit that also wrote elsewhere (a batch that renamed an entry and edited a
-  document) shows here with only its members that wrote the vocabulary."
+  document) shows here with only its members that wrote the vocabulary.
+  `:item-id` in `opts` narrows it to the changes that wrote that one entry,
+  each unit with only its members that did."
   ([db vocab-id]
    (get-vocab-audit-log db vocab-id nil nil nil))
-  ([db vocab-id start-time end-time opts]
-   (audit-page db {:source (vocab-ops-source vocab-id)
+  ([db vocab-id start-time end-time {:keys [item-id] :as opts}]
+   (audit-page db {:source (vocab-ops-source vocab-id item-id)
                    :member? [:exists {:select [1]
                                       :from [:audit_writes]
                                       :where [:and
                                               [:= :audit_writes.op_id :operations.id]
-                                              [:= :vocab_layer_id vocab-id]]}]}
+                                              (vocab-writes-where vocab-id item-id)]}]}
                [start-time end-time] opts)))
 
 (defn get-user-audit-log

@@ -222,7 +222,7 @@ class VocabLayersResource(_Resource):
 
     def audit(self, id: str, *, start_time: str | None = None,
               end_time: str | None = None,
-              op_types=None) -> Any:
+              op_types=None, item_id: str | None = None) -> Any:
         """Get the audit log of a vocabulary.
 
         Every change to the vocabulary or to its entries, folded into entries
@@ -237,15 +237,19 @@ class VocabLayersResource(_Resource):
             op_types: Only return operations of these types, spelled as in an
                 entry's ``op/type`` (e.g.
                 ``['vocab-item/delete', 'vocab-item/restore']``)
+            item_id: Only the changes that wrote this one entry, each with
+                only its operations that did
         """
         return list_all(self._client, f'/api/v1/vocab-layers/{id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types),
+                               'item-id': item_id})
 
     def audit_page(self, id: str, *, start_time: str | None = None,
                    end_time: str | None = None,
                    op_types: Any = None, order: str | None = None,
-                   limit: int | None = None, cursor: str | None = None) -> Any:
+                   limit: int | None = None, cursor: str | None = None,
+                   item_id: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
 
         Use this rather than audit() wherever the caller wants the recent end
@@ -256,11 +260,12 @@ class VocabLayersResource(_Resource):
                 direction that produced it
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
+            item_id: Only the changes that wrote this one entry
         """
         return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
                                 'op-types': _op_types_param(op_types),
-                                'order': order})
+                                'order': order, 'item-id': item_id})
 
     def restore_item(self, id: str, item_id: str, as_of: str, *, dry_run: bool = False,
                      audit_message: str | None = None) -> Any:

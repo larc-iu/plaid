@@ -272,3 +272,42 @@
             before (stamp)]
         (assert-created (create-vocab-link admin-request other [token]))
         (is (= before (stamp)))))))
+
+(deftest one-entrys-log
+  (let [vocab (-> (create-vocab-layer admin-request "Lexicon") :body :id)
+        other-vocab (-> (create-vocab-layer admin-request "Other") :body :id)
+        {:keys [token]} (linked-doc! vocab)
+        kai (-> (create-vocab-item admin-request vocab "kai" {"gloss" "eat"}) :body :id)
+        mata (-> (create-vocab-item admin-request vocab "mata") :body :id)
+        _ (create-vocab-link admin-request kai [token])
+        t (latest-op-ts)
+        _ (assert-ok (update-vocab-item admin-request kai "kay"))
+        _ (assert-ok (update-vocab-item admin-request mata "mata2"))
+        _ (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/vocab-layers/" vocab)
+                                              :body {:name "Lexicon 2"}}))
+        _ (assert-ok (bulk-update-vocab-items admin-request [{:id kai :form "kaa"} {:id mata :form "mata3"}]))
+        _ (assert-ok (patch-vocab-item-metadata admin-request kai [{:op "set" :path ["gloss"] :value "consume"}]))
+        _ (assert-no-content (delete-vocab-item admin-request kai))
+        _ (assert-ok (restore-item! admin-request vocab kai t))
+        types-of (fn [r] (mapv #(-> % :audit/ops first :op/type) (get-in r [:body :entries])))]
+    (testing "only the changes that wrote the entry, the link and the other entry left out"
+      (let [r (vocab-audit admin-request vocab (str "item-id=" kai))]
+        (assert-ok r)
+        (is (= [:vocab-item/create :vocab-item/merge :vocab-item/bulk-merge :vocab-item/patch-metadata
+                :vocab-item/delete :vocab-item/restore]
+               (types-of r)))))
+    (testing "a change that wrote both entries shows under each"
+      (let [bulk (->> (get-in (vocab-audit admin-request vocab (str "item-id=" mata)) [:body :entries])
+                      (filter #(= :vocab-item/bulk-merge (-> % :audit/ops first :op/type)))
+                      first)]
+        (is (some? bulk))
+        (is (= 1 (count (:audit/ops bulk))))))
+    (testing "newest first too"
+      (is (= :vocab-item/restore
+             (first (types-of (vocab-audit admin-request vocab (str "order=desc&item-id=" kai)))))))
+    (testing "an entry of another vocabulary has no changes here"
+      (let [r (vocab-audit admin-request other-vocab (str "item-id=" kai))]
+        (assert-ok r)
+        (is (empty? (get-in r [:body :entries])))))
+    (testing "a malformed id, 400"
+      (assert-status 400 (vocab-audit admin-request vocab "item-id=nope")))))

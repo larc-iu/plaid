@@ -150,14 +150,16 @@
     {:parameters {:path [:map [:id :uuid]]}
      :get {:summary (str "Get the audit log of a vocabulary: every change to it or to its entries, "
                          "folded into entries the way the document log is. Links are not listed here, "
-                         "they are part of the document they annotate. "
+                         "they are part of the document they annotate. With <query>item-id</query>, only "
+                         "the changes that wrote that one entry, each with only its operations that did. "
                          audit-routes/op-types-doc audit-routes/order-doc)
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
-           :parameters {:query audit-routes/pagination-query}
-           :handler (fn [{{{:keys [id]} :path query :query} :parameters db :db}]
+           :parameters {:query (conj audit-routes/pagination-query [:item-id {:optional true} :uuid])}
+           :handler (fn [{{{:keys [id]} :path {:keys [item-id] :as query} :query} :parameters db :db}]
                       (audit-routes/audit-response
                        query
-                       (fn [opts start end] (audit/get-vocab-audit-log db id start end opts))))}}]
+                       (fn [opts start end]
+                         (audit/get-vocab-audit-log db id start end (assoc opts :item-id item-id)))))}}]
 
    ["/:id/items/:item-id"
     {:parameters {:path [:map [:id :uuid] [:item-id :uuid]]}
