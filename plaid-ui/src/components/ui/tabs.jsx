@@ -53,14 +53,57 @@ const Tabs = React.forwardRef(({ value, onValueChange, guard, ...props }, ref) =
 });
 Tabs.displayName = TabsPrimitive.Root.displayName;
 
+const NO_EDGES = { start: false, end: false, rtl: false };
+const FADE = '2rem';
+
+// Whether tabs lie past the start and the end of the strip, in its own
+// direction. In a right-to-left box `scrollLeft` runs from 0 down to minus
+// the overflow, so its size is what counts.
+const hiddenEdges = (list) => {
+  const overflow = list.scrollWidth - list.clientWidth;
+  if (overflow <= 1) return NO_EDGES;
+  const scrolled = Math.abs(list.scrollLeft);
+  const rtl = getComputedStyle(list).direction === 'rtl';
+  return { start: scrolled > 1, end: scrolled < overflow - 1, rtl };
+};
+
+// Kept when nothing changed, so a scroll does not re-render the strip.
+const sameEdges = (a, b) => a.start === b.start && a.end === b.end && a.rtl === b.rtl;
+
+const fadeMask = ({ start, end, rtl }) => {
+  if (!start && !end) return null;
+  const toward = rtl ? 'to left' : 'to right';
+  const from = start ? `transparent, black ${FADE}` : 'black';
+  const to = end ? `black calc(100% - ${FADE}), transparent` : 'black';
+  return `linear-gradient(${toward}, ${from}, ${to})`;
+};
+
 // A tab strip that does not fit SCROLLS, and keeps the tab you are on in
 // sight. It used to be an inline-flex row of nowrap triggers with nowhere to
 // go: below about 950px the eight project tabs were simply clipped, and the
 // one you were standing on could be off the right-hand edge, so the screen
 // gave no clue which of them you were looking at.
-const TabsList = React.forwardRef(({ className, ...props }, ref) => {
+const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref) => {
   const inner = React.useRef(null);
   React.useImperativeHandle(ref, () => inner.current);
+  // Which edges have tabs past them. Those edges fade out, which is the only
+  // sign of more tabs where the scrollbar is an overlay that shows only while
+  // scrolling (macOS, most trackpads).
+  const [edges, setEdges] = React.useState(NO_EDGES);
+  const measure = React.useCallback(() => {
+    const list = inner.current;
+    if (!list) return;
+    const next = hiddenEdges(list);
+    setEdges((prev) => (sameEdges(prev, next) ? prev : next));
+  }, []);
+
+  React.useEffect(() => {
+    const list = inner.current;
+    if (!list || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [measure]);
 
   // Radix flips `data-state` on the triggers rather than re-rendering this, so
   // watch the attribute instead of reacting to a prop. `block: 'nearest'` keeps
@@ -76,6 +119,7 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => {
       // moving on first paint. (Chrome does not run smooth scrolls in a
       // background tab either, so the default is the honest choice.)
       active.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+      measure();
     };
     // After a frame as well as now: on the first mount the triggers are often
     // not in the DOM yet, and the tab that is already active is BORN with
@@ -94,18 +138,25 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [measure]);
 
   // Start-aligned, never centred: a centred row that overflows spills past its
   // START edge too, where no scroll position reaches, and the first tab was
-  // cut to "cuments".
+  // cut to "cuments". The height is a minimum so that a classic scrollbar
+  // (Windows, Linux) sits under the tabs instead of over their underline.
+  const mask = fadeMask(edges);
   return (
     <TabsPrimitive.List
       ref={inner}
       className={cn(
-        'inline-flex h-9 max-w-full items-center justify-start gap-1 overflow-x-auto border-b text-muted-foreground',
+        'inline-flex min-h-9 max-w-full items-center justify-start gap-1 overflow-x-auto overflow-y-hidden border-b text-muted-foreground [scrollbar-width:thin]',
         className,
       )}
+      style={mask ? { maskImage: mask, WebkitMaskImage: mask, ...style } : style}
+      onScroll={(e) => {
+        measure();
+        onScroll?.(e);
+      }}
       {...props}
     />
   );
