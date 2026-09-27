@@ -41,8 +41,10 @@
 // `isSaving` and `subscribe` are the shape `useSavingGuard` watches, so
 // closing the tab asks while anything is still on its way.
 //
-// No imports: plaid-ud's node suite reaches DocumentModel, and through it this
-// file, by relative path.
+// One import, lib/errors.js, which imports nothing: plaid-ud's node suite
+// reaches DocumentModel, and through it this file, by relative path.
+
+import { isUnreachable, statusOf } from '../lib/errors.js';
 
 // Refetch failures that no retry can mend: signed out, no access, or gone.
 const FINAL_STATUSES = new Set([401, 403, 404]);
@@ -53,17 +55,6 @@ const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
 // How many tries a refetch gets when it fails for a reason other than the
 // network.
 const TRIES = 4;
-
-// A failure that is the network's, and passes once it is back: the client's
-// status 0, a gateway that cannot reach the server, fetch's own TypeError.
-// The same test as `isUnreachable` in lib/errors.js, which this file cannot
-// import.
-const isUnreachable = (err) => {
-  const status = err?.status;
-  if (status === 0 || status === 502 || status === 503 || status === 504) return true;
-  const msg = String(err?.message || err || '');
-  return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
-};
 
 export class WriteQueue {
   /**
@@ -228,7 +219,9 @@ export class WriteQueue {
         return;
       } catch (err) {
         console.error(`${what} failed:`, err);
-        if (FINAL_STATUSES.has(err?.status)) return;
+        if (FINAL_STATUSES.has(statusOf(err))) return;
+        // The network's failures (`isUnreachable`, the same test that words
+        // them "Could not reach the server") are waited out.
         if (!isUnreachable(err) && attempt + 1 >= TRIES) {
           if (this._onOutOfStep) this._onOutOfStep(err);
           return;

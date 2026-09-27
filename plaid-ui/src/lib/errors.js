@@ -25,7 +25,11 @@ export const isPermissionError = (error) => {
 
 const UNREACHABLE = 'Could not reach the server. Check your connection and try again.';
 
-const isUnreachable = (error) => {
+// A failure that is the network's and passes once it is back. The write queue
+// (domain/WriteQueue.js) waits out exactly these, so what a toast calls "Could
+// not reach the server" is what the queue keeps retrying. This file imports
+// nothing, which is what lets the queue share it.
+export const isUnreachable = (error) => {
   const s = statusOf(error);
   if (s === 0 || s === 502 || s === 503 || s === 504) return true;
   const msg = String((error && error.message) || error || '');

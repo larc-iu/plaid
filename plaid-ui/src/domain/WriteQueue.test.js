@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { WriteQueue } from './WriteQueue.js';
+import { humanizeError } from '../lib/errors.js';
 
 // The one queue behind DocumentModel and the igt vocabulary screens. Each case
 // is one of the rules the document queue learned on 2026-09-23 (863cb8e9,
@@ -278,6 +279,56 @@ describe('WriteQueue', () => {
     expect(outOfStep).toHaveBeenCalledWith(boom);
     expect(notSent).toHaveBeenCalledWith(1);
     expect(q.isSaving).toBe(false);
+  });
+
+  // The queue waits out exactly what every error toast calls "Could not reach
+  // the server" (lib/errors.js), so the two can never disagree about which
+  // failure is the network's. A status the client left only in the message is
+  // read the same way in both places.
+  it.each([
+    [
+      'a status only in the message',
+      () => new Error('HTTP 503 Service Unavailable at http://x/api'),
+    ],
+    ['a gateway timeout', () => Object.assign(new Error('HTTP 504'), { status: 504 })],
+    ['a request that timed out', () => new Error('Request timed out at http://x/api')],
+  ])('keeps retrying %s, which a toast calls the network', async (_, fail) => {
+    expect(humanizeError(fail())).toMatch(/Could not reach the server/);
+    const outOfStep = vi.fn();
+    const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+    let fails = 6;
+    const resync = vi.fn(async () => {
+      if (fails-- > 0) throw fail();
+    });
+    await q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    expect(resync).toHaveBeenCalledTimes(7);
+    expect(outOfStep).not.toHaveBeenCalled();
+  });
+
+  it('stops at once on a refusal no retry can mend, whether its status is a field or only in the message', async () => {
+    for (const fail of [
+      () => Object.assign(new Error('HTTP 404 gone'), { status: 404 }),
+      () => new Error('HTTP 403 Forbidden at http://x/api'),
+    ]) {
+      const outOfStep = vi.fn();
+      const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+      const resync = vi.fn(async () => {
+        throw fail();
+      });
+      await q.push(
+        async () => {
+          throw new Error('refused');
+        },
+        { resync },
+      );
+      expect(resync).toHaveBeenCalledTimes(1);
+      expect(outOfStep).not.toHaveBeenCalled();
+    }
   });
 
   it('gives up on a resync that fails with a bug of its own', async () => {
