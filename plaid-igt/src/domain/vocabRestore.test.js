@@ -63,6 +63,18 @@ describe('entryRestoreLines', () => {
       ),
     ).toEqual(['Its place among the senses', 'Other values']);
   });
+
+  it('says other values change when the server sees a difference the copy on screen does not', () => {
+    const entry = { id: 'a', form: 'kai', metadata: { gloss: 'eat' } };
+    expect(
+      entryRestoreLines(
+        { inserted: false, form: true, metadata: true, total: 2 },
+        { ...entry, form: 'kay' },
+        entry,
+        fields,
+      ),
+    ).toEqual(['Form: “kai” → “kay”', 'Other values']);
+  });
 });
 
 describe('entryRestoreMessage', () => {
@@ -87,6 +99,20 @@ describe('latestVocabState', () => {
     };
     expect(await latestVocabState(client, 'v1')).toEqual({ time: 't2', id: 'op9' });
     expect(asked).toEqual([['v1', { order: 'desc', limit: 1 }]]);
+  });
+
+  it("reads one entry's newest change when given the entry", async () => {
+    const asked = [];
+    const client = {
+      vocabLayers: {
+        auditPage: async (id, opts) => {
+          asked.push([id, opts]);
+          return { entries: [{ id: 'op3', time: 't3' }] };
+        },
+      },
+    };
+    expect(await latestVocabState(client, 'v1', 'i1')).toEqual({ time: 't3', id: 'op3' });
+    expect(asked).toEqual([['v1', { order: 'desc', limit: 1, itemId: 'i1' }]]);
   });
 
   it('is null for a vocabulary with no history', async () => {

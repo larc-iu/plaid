@@ -39,6 +39,7 @@ export function entryRestoreLines(summary, past, live, fields = []) {
   const lines = [];
   if (summary.form) lines.push(`Form: ${show(live?.form)} → ${show(past?.form)}`);
   if (summary.metadata) {
+    const fieldsFrom = lines.length;
     const then = past?.metadata || {};
     const now = live?.metadata || {};
     const told = new Set();
@@ -56,7 +57,13 @@ export function entryRestoreLines(summary, past, live, fields = []) {
       if (keys.some((k) => !same(then[k], now[k]))) lines.push(label);
     }
     const others = new Set([...Object.keys(then), ...Object.keys(now)]);
-    if ([...others].some((k) => !told.has(k) && !same(then[k], now[k]))) {
+    // The server says the fields differ even where the copy on screen does
+    // not (another person's edit since it was read): say so rather than
+    // offer nothing to restore.
+    if (
+      lines.length === fieldsFrom ||
+      [...others].some((k) => !told.has(k) && !same(then[k], now[k]))
+    ) {
       lines.push('Other values');
     }
   }
@@ -68,12 +75,17 @@ export const entryRestoreMessage = (label, asOf) =>
   `Restore entry “${label}” to ${fullTimestamp(asOf)}`;
 
 /**
- * The vocabulary's newest history entry: the moment its live state belongs
- * to, or null for a vocabulary with no history. Read BEFORE a restore so the
- * state from just before it can be brought back.
+ * The newest history entry of the vocabulary, or with `itemId` of that one
+ * entry: the moment its live state belongs to, or null with no history. Read
+ * BEFORE a restore so the state from just before it can be brought back, and
+ * after, to tell whether the entry was edited since.
  */
-export async function latestVocabState(client, vocabularyId) {
-  const page = await client.vocabLayers.auditPage(vocabularyId, { order: 'desc', limit: 1 });
+export async function latestVocabState(client, vocabularyId, itemId = null) {
+  const page = await client.vocabLayers.auditPage(vocabularyId, {
+    order: 'desc',
+    limit: 1,
+    ...(itemId ? { itemId } : {}),
+  });
   const last = page?.entries?.[0];
   if (!last) return null;
   return { time: last.endTime || last.time, id: last.id };

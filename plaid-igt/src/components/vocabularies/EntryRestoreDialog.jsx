@@ -90,7 +90,7 @@ export const EntryRestoreDialog = ({
   };
 
   const undo = async (before, after, inserted) => {
-    const now = await latestVocabState(client, vocabularyId).catch(() => null);
+    const now = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
     const edited = !!(now && after && now.id !== after.id);
     if (inserted) {
       const links = await linkCount();
@@ -99,7 +99,7 @@ export const EntryRestoreDialog = ({
           title: `Delete “${label}” again?`,
           description: links
             ? `${links} ${links === 1 ? 'word or morpheme is' : 'words and morphemes are'} linked to it now. Their links are deleted too.`
-            : 'The vocabulary has been edited since the restore.',
+            : 'It has been edited since the restore.',
           confirmLabel: 'Delete entry',
           destructive: true,
         });
@@ -108,8 +108,7 @@ export const EntryRestoreDialog = ({
     } else if (edited) {
       const ok = await confirm({
         title: 'Undo the restore?',
-        description:
-          'The vocabulary has been edited since the restore. Going back to the state before it takes those edits to this entry too.',
+        description: `“${label}” has been edited since the restore. Those edits are undone too.`,
         confirmLabel: 'Undo the restore',
         destructive: true,
       });
@@ -137,7 +136,7 @@ export const EntryRestoreDialog = ({
   const restore = async () => {
     setBusy(true);
     try {
-      const before = await latestVocabState(client, vocabularyId).catch(() => null);
+      const before = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
       const res = await client.vocabLayers.restoreItem(
         vocabularyId,
         itemId,
@@ -148,7 +147,7 @@ export const EntryRestoreDialog = ({
       const message = res?.inserted
         ? `“${label}” is back, without its links.`
         : `“${label}” is as it was at ${fullTimestamp(asOf)}.`;
-      const after = await latestVocabState(client, vocabularyId).catch(() => null);
+      const after = await latestVocabState(client, vocabularyId, itemId).catch(() => null);
       if (res?.inserted || before) {
         notifyWithAction(message, 'Restored', {
           label: 'Undo',
