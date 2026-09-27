@@ -79,7 +79,7 @@ function createParser(src) {
     const blocks = [];
     while (!at(TT.EOF)) {
       if (at(TT.IDENT) && GRS_KEYWORDS.has(peek().value)) {
-        fail(`\`${peek().value}\` is a rewriting keyword; a search takes only pattern blocks`);
+        fail(`\`${peek().value}\` is a rewriting keyword. A search takes only pattern blocks.`);
       }
       blocks.push(parseBlock());
     }
@@ -113,7 +113,7 @@ function createParser(src) {
       } else if (atKw('package') || atKw('include') || atKw('import')) {
         throw new GrewUnsupportedError(
           peek().value,
-          `\`${peek().value}\` is not supported; put every rule in this one box.`,
+          `\`${peek().value}\` is not supported. Put every rule in this one box.`,
           peek().line,
         );
       } else if (at(TT.IDENT) && BLOCK_TYPES.has(peek().value)) {
@@ -221,7 +221,7 @@ function createParser(src) {
       // `rule r (lex from "file.lex")`: lexicon files.
       throw new GrewUnsupportedError(
         'lexicon-file',
-        'Lexicon files are not supported; put the lexicon in the rule between #BEGIN name and #END.',
+        'Lexicon files are not supported. Put the lexicon in the rule between #BEGIN name and #END.',
         peek().line,
       );
     }

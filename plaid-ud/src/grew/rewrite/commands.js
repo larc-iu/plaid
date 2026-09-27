@@ -107,7 +107,7 @@ function applyCommand(ctx, cmd) {
       if (cmd.label) label = literalLabel(ctx, cmd, cmd.label);
       else {
         const e = edgeOf(ctx, cmd, cmd.id);
-        if (!e) fail(ctx, cmd, `Edge '${cmd.id}' was deleted; its label is gone.`);
+        if (!e) fail(ctx, cmd, `Edge '${cmd.id}' was already deleted.`);
         label = e.label;
       }
       if (sameEdge(g, src.id, tgt.id, label)) return; // ineffective
@@ -118,7 +118,7 @@ function applyCommand(ctx, cmd) {
     }
     case 'del_node': {
       const n = nodeOf(ctx, cmd, cmd.node);
-      if (n.anchor) fail(ctx, cmd, `'${cmd.node}' is the root anchor; it cannot be deleted.`);
+      if (n.anchor) fail(ctx, cmd, `'${cmd.node}' is the root anchor and cannot be deleted.`);
       n.deleted = true;
       for (const e of [...g.edges.values()])
         if (e.src === n.id || e.tgt === n.id) g.edges.delete(e.id);
