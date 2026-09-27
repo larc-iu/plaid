@@ -231,6 +231,7 @@ const TABLES = {
     id: notData('identity, replaced on import'),
     name: notData('named by whoever runs the import'),
     config: notData('checked key by key against the setConfig call sites below'),
+    deleted_at: notData('bookkeeping, set only while a deleted project is removed'),
   },
   documents: {
     id: notData('identity'),
