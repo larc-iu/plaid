@@ -301,3 +301,49 @@
       (as-after-a-restart! ds)
       (is (= #{"probe_3"} (analysed-by (#'server-sql/analyze-tables! ds)))
           "a table that grew by an order of magnitude is analysed, and only it"))))
+
+(defn- analysed-rows
+  "The row count `sqlite_stat1` records for `tbl`'s first index, as a
+  reader outside the refresh sees it."
+  [ds tbl]
+  (some-> (jdbc/execute-one! ds ["SELECT stat FROM sqlite_stat1 WHERE tbl = ? LIMIT 1" tbl])
+          :sqlite_stat1/stat
+          (str/split #" ")
+          first
+          parse-long))
+
+;; The startup pass alone left a database that grew while the server ran
+;; planned as it was at boot until the next restart: a fresh install that then
+;; imported a corpus read a document's history in 1.2 s instead of 10 ms. The
+;; same selective pass now repeats on a schedule.
+(deftest the-refresh-repeats-while-the-server-runs
+  (with-fixture
+    (fn [ds _]
+      (statement! ds "DELETE FROM sqlite_stat1;")
+      (as-after-a-restart! ds)
+      (refresh-and-join! ds)
+      (is (= rows-per-table (analysed-rows ds "probe_3")) "the startup pass saw the table as it was")
+      (with-open [conn (jdbc/get-connection ds)]
+        (.setAutoCommit conn false)
+        (with-open [ps (.prepareStatement conn "INSERT INTO probe_3 (a, b) VALUES (?, ?)")]
+          (dotimes [r (* 30 rows-per-table)]
+            (.setString ps 1 (str "grown-" r))
+            (.setInt ps 2 (mod r 89))
+            (.addBatch ps))
+          (.executeBatch ps))
+        (.commit conn))
+      (try
+        (#'server-sql/schedule-planner-stats! ds 50)
+        (let [deadline (+ (System/currentTimeMillis) deadline-ms)]
+          (loop []
+            (when (and (= rows-per-table (analysed-rows ds "probe_3"))
+                       (< (System/currentTimeMillis) deadline))
+              (Thread/sleep 20)
+              (recur))))
+        (is (= (* 31 rows-per-table) (analysed-rows ds "probe_3"))
+            "a scheduled pass analysed the table that grew, with no restart")
+        (is (= rows-per-table (analysed-rows ds "probe_4"))
+            "and left the tables that did not grow as they were")
+        (finally
+          (#'server-sql/await-planner-stats!)))
+      (is (nil? @@#'server-sql/planner-stats-schedule) "stopping the server stops the schedule"))))

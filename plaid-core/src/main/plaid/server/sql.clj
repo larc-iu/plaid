@@ -188,6 +188,20 @@
           (.execute stmt orphan-statistics-statement)))
       statements)))
 
+(defn- refresh-stale-statistics!
+  "One pass of the refresh: ANALYZE what went stale (`analyze-tables!`), and
+   when anything was, drop the pool's open connections so every later one
+   loads the fresh statistics. `occasion` names the pass in the log line.
+   Returns how many tables were analysed."
+  [datasource occasion]
+  (let [t0 (System/nanoTime)
+        n (count (analyze-tables! datasource))]
+    (when (pos? n)
+      (.softEvictConnections (.getHikariPoolMXBean datasource)))
+    (log/info (format "Planner statistics refreshed %s across %d stale tables in %dms"
+                      occasion n (quot (- (System/nanoTime) t0) 1000000)))
+    n))
+
 (defn- refresh-planner-stats!
   "Run a sampled ANALYZE over the tables whose statistics went stale
    (`analyze-statements`) so SQLite plans against the database as it is
@@ -217,23 +231,64 @@
           (doto (Thread.
                  (fn []
                    (try
-                     (let [t0 (System/nanoTime)
-                           n (count (analyze-tables! datasource))]
-                       (when (pos? n)
-                         (.softEvictConnections (.getHikariPoolMXBean datasource)))
-                       (log/info (format "Planner statistics refreshed in the background across %d stale tables in %dms"
-                                         n (quot (- (System/nanoTime) t0) 1000000))))
+                     (refresh-stale-statistics! datasource "at startup")
                      (catch Exception e
                        (log/warn e "ANALYZE failed at startup; SQLite plans with the statistics it has"))))
                  "plaid-planner-stats")
             (.setDaemon true)
             (.start))))
 
+(def ^:private planner-stats-interval-ms
+  "How often the running server repeats the startup refresh. Hourly, because
+   a database can grow tenfold while the server runs (a fresh install that
+   then imports a corpus planned as if its tables were empty until the next
+   restart: a document's history page took 1.2 s instead of 10 ms). The
+   staleness test is the same one startup uses, so on a database whose size
+   has not changed by an order of magnitude a pass analyses nothing and costs
+   one PRAGMA."
+  (* 60 60 1000))
+
+(defonce ^{:private true
+           :doc "The scheduler that repeats the refresh while the server runs."}
+  planner-stats-schedule
+  (atom nil))
+
+(defn- schedule-planner-stats!
+  "Repeat `refresh-stale-statistics!` every `interval-ms`, first after one
+   interval (startup already ran its own pass). Each pass waits for the
+   startup pass to finish, so two never overlap, and a pass that fails is
+   logged and the next one runs as scheduled."
+  [datasource interval-ms]
+  (let [exec (java.util.concurrent.Executors/newSingleThreadScheduledExecutor
+              (reify java.util.concurrent.ThreadFactory
+                (newThread [_ r]
+                  (doto (Thread. ^Runnable r "plaid-planner-stats-hourly")
+                    (.setDaemon true)))))]
+    (.scheduleWithFixedDelay
+     exec
+     ^Runnable (fn []
+                 (try
+                   (when-let [^Thread t @planner-stats-thread]
+                     (.join t))
+                   (refresh-stale-statistics! datasource "on schedule")
+                   (catch InterruptedException _
+                     (.interrupt (Thread/currentThread)))
+                   (catch Exception e
+                     (log/warn e "Scheduled ANALYZE failed; SQLite plans with the statistics it has"))))
+     (long interval-ms) (long interval-ms) java.util.concurrent.TimeUnit/MILLISECONDS)
+    (reset! planner-stats-schedule exec)))
+
 (defn- await-planner-stats!
-  "Join the background ANALYZE before the pool closes. Bounded: a shutdown
-   waits on this, and a refusal to finish is not a reason to hang. Missing
-   the join costs a logged warning from the thread, nothing more."
+  "Stop the schedule and join the background ANALYZE before the pool
+   closes. Bounded: a shutdown waits on this, and a refusal to finish is not
+   a reason to hang. Missing the join costs a logged warning from the
+   thread, nothing more."
   []
+  (when-let [^java.util.concurrent.ScheduledExecutorService exec @planner-stats-schedule]
+    (.shutdownNow exec)
+    (try (.awaitTermination exec 5 java.util.concurrent.TimeUnit/SECONDS)
+         (catch InterruptedException _ (.interrupt (Thread/currentThread))))
+    (reset! planner-stats-schedule nil))
   (when-let [^Thread t @planner-stats-thread]
     (try (.join t 5000) (catch InterruptedException _ (.interrupt (Thread/currentThread))))
     (reset! planner-stats-thread nil)))
@@ -364,6 +419,7 @@
            ;; Last, so the one write-lock holder on the startup path (the
            ;; migration above) is done before ANALYZE wants it.
            (refresh-planner-stats! ds)
+           (schedule-planner-stats! ds planner-stats-interval-ms)
            ds)
   :stop (do
           (await-planner-stats!)
