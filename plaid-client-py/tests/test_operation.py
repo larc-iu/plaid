@@ -331,3 +331,33 @@ def test_a_broadcast_message_never_joins_the_operation():
     # The label parameter is gone.
     assert list(inspect.signature(client.messages.send_message).parameters) == \
         ['project_id', 'data']
+
+
+def test_an_operation_that_only_sends_messages_asks_for_no_relabel():
+    # The ruling's example: an assistant wraps "the parse finished" in an
+    # operation and writes nothing else. Sent directly, queued on a submitted
+    # batch, or from a nested operation, the message leaves the operation
+    # unwritten, so the refined label is never PATCHed to a group that does
+    # not exist.
+    client = _client()
+    calls = _stub_session(client)
+    batches = []
+
+    def post(url, headers=None, data=None, timeout=None):
+        batches.append([op['path'] for op in json.loads(data)])
+        return _Resp(200, [{'status': 200, 'headers': {}, 'body': {}}])
+
+    client.session.post = post
+    with client.operation('Parse') as op:
+        with client.batched() as b:
+            b.messages.send_message('P1', {'purpose': 'parsed'})
+        client.messages.send_message('P1', {'purpose': 'parsed'})
+        with client.operation('Inner') as inner:
+            client.messages.send_message('P1', {'purpose': 'parsed'})
+            inner.set_message('Inner done')
+        op.set_message('Parsed')
+    assert batches == [['/api/v1/projects/P1/message']]
+    assert [(c['method'], urlparse(c['url']).path) for c in calls] == [
+        ('POST', '/api/v1/projects/P1/message'),
+        ('POST', '/api/v1/projects/P1/message'),
+    ]

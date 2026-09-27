@@ -290,3 +290,40 @@ test('a broadcast message never joins the operation, sent or queued', async () =
   // History label.
   assert.strictEqual(client.messages.sendMessage.length, 2);
 });
+
+// The ruling's example: an assistant wraps "the parse finished" in an
+// operation and writes nothing else. Sent directly, queued on a submitted
+// batch, or from a nested operation, the message leaves the operation
+// unwritten, so the refined label is never PATCHed to a group that does not
+// exist.
+test('an operation that only sends messages asks for no relabel', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    const u = new URL(String(url));
+    const batch = u.pathname === '/api/v1/batch' ? JSON.parse(opts.body).map(op => op.path) : null;
+    calls.push({ method: opts.method, path: u.pathname, batch });
+    const body = batch ? batch.map(() => ({ status: 200, headers: {}, body: {} })) : {};
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => body, text: async () => '',
+    };
+  };
+  await client.withOperation('Parse', async (setMessage) => {
+    await client.batched(async (b) => {
+      b.messages.sendMessage('P1', { purpose: 'parsed' });
+    });
+    await client.messages.sendMessage('P1', { purpose: 'parsed' });
+    await client.withOperation('Inner', async (setInner) => {
+      await client.messages.sendMessage('P1', { purpose: 'parsed' });
+      setInner('Inner done');
+    });
+    setMessage('Parsed');
+  });
+  assert.deepStrictEqual(calls, [
+    { method: 'POST', path: '/api/v1/batch', batch: ['/api/v1/projects/P1/message'] },
+    { method: 'POST', path: '/api/v1/projects/P1/message', batch: null },
+    { method: 'POST', path: '/api/v1/projects/P1/message', batch: null },
+  ]);
+});

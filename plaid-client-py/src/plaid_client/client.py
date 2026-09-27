@@ -3270,8 +3270,9 @@ class PlaidClient:
         "Every write" is the writes of project data. Reads never join, and
         neither do the out-of-band signals shaped like a write (a document lock
         taken or renewed, a stopped service request, a service reporting
-        itself, an admin control): none of them is audited, so there would be
-        nothing under the label.
+        itself, an admin control), and neither does a broadcast message
+        (``messages.send_message``): none of them is audited, so there would
+        be nothing under the label.
 
         Prefer the ``operation()`` context manager; this is the manual form.
 
