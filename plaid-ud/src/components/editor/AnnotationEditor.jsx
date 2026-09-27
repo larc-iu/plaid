@@ -6,6 +6,8 @@ import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
+import { UnsentValues } from './annotation/unsentValues.js';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { useHistoryView } from '@ui/hooks/useHistoryView.js';
 import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
@@ -312,6 +314,28 @@ export const AnnotationEditor = () => {
     [project?.config],
   );
 
+  // Values put back after they were not saved, for the whole grid, so one on a
+  // page the reader has turned away from waits for its cell and still counts
+  // as typed and not saved. Let go of with the grid, and each one once the
+  // stored value is no longer the one it was typed over or its token is gone.
+  // One per document: another document is another grid.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const unsent = useMemo(() => new UnsentValues(), [doc]);
+  useEffect(() => () => unsent.clear(), [unsent]);
+  // The question they ask before leaving is the app's confirm.
+  useUnsavedGuard();
+  useEffect(() => {
+    if (!unsent.size || !doc) return;
+    const stored = new Map();
+    for (const sentence of doc.sentences || []) {
+      for (const data of sentence.tokens || []) stored.set(String(data.token?.id), data);
+    }
+    unsent.prune((tokenId, field) => {
+      const data = stored.get(String(tokenId));
+      return data ? data[field]?.value || '' : undefined;
+    });
+  }, [unsent, doc, dataVersion]);
+
   // Everything the grid reads that is the same for every sentence in it. One
   // object, so a row's own props are the sentence and where it sits, and a cell
   // four levels down asks for what it needs rather than being handed it. Its
@@ -341,6 +365,7 @@ export const AnnotationEditor = () => {
       onAskAssistant:
         isViewingHistorical || !assistantAvailable || !roomToDock ? undefined : askAssistant,
       onToggleField: handleToggleField,
+      unsent,
       comments: isViewingHistorical ? null : comments,
       canComment,
       canDeleteAnyComment,
@@ -377,6 +402,7 @@ export const AnnotationEditor = () => {
       roomToDock,
       askAssistant,
       handleToggleField,
+      unsent,
       comments,
       canComment,
       canDeleteAnyComment,

@@ -12,7 +12,10 @@ import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { textIncludes } from '@ui/domain/collation.js';
-import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { UnsentValues } from './unsentValues.js';
+
+// For a cell drawn outside an editor that holds its own (a test, a preview).
+const LOOSE_UNSENT = new UnsentValues();
 
 // Editable cell component for annotation fields
 export const EditableCell = React.memo(
@@ -36,12 +39,20 @@ export const EditableCell = React.memo(
     // stays a plain input whatever the config says.
     const session = useEditorSession();
     const { isReadOnly, onAnnotationUpdate: onUpdate } = session;
+    // Values put back after they were not saved, held for the whole grid so
+    // one survives its cell being paged away (see unsentValues.js).
+    const unsent = session.unsent ?? LOOSE_UNSENT;
     const { suggestions, validate, descriptions } = controlledField(session, field);
     // How this cell's value came to be there, from the same metadata the
     // tooltip below reads.
     const mark = provMark(provMeta);
 
-    const [localValue, setLocalValue] = useState(value || '');
+    // A cell drawn again shows the value put back for it while it was away,
+    // as long as the stored value is still the one it was typed over.
+    const [localValue, setLocalValue] = useState(() => {
+      const waiting = unsent.get(tokenId, field);
+      return waiting && (value || '') === waiting.saved ? waiting.typed : value || '';
+    });
     // Alt+Down replaces the cell's list with what the project has said before
     // about a word like this one, counts and all. Null means the ordinary list.
     const [precedent, setPrecedent] = useState(null);
@@ -91,23 +102,50 @@ export const EditableCell = React.memo(
     // value without listing `isEditing` in its deps (see below).
     const isEditingRef = useRef(false);
     isEditingRef.current = isEditing;
-    // A value put back after it was not saved, `{ typed, saved }` (`putBack`).
+    const storedRef = useRef(value);
+    storedRef.current = value;
+    // A value put back after it was not saved, `{ typed, saved }`, once the
+    // cell has taken it up (focused). Until then it waits in `unsent`, where it
+    // counts as typed and not saved, so leaving the document asks first.
+    // Focusing the cell takes it up, and leaving the cell then sends it.
     const unsentRef = useRef(null);
-    // While one sits in the cell unfocused, leaving the document asks first.
-    // Focusing the cell takes it up again, and leaving the cell then sends it.
-    const [unsentShown, setUnsentShown] = useState(false);
-    useUnsavedDraft(
-      unsentShown ? 'An annotation you have typed' : null,
-      'annotations you have typed',
+    // A value put back for this cell while it is drawn. Focused, the cell takes
+    // it up (unless something has been typed since, which is newer and wins),
+    // and answers true so it does not wait in `unsent` as well.
+    useEffect(
+      () =>
+        unsent.listen(tokenId, field, (put) => {
+          if (isEditingRef.current) {
+            if (!typedRef.current) {
+              unsentRef.current = {
+                typed: put.typed,
+                saved: unsentRef.current?.saved ?? put.saved,
+              };
+              setValue(put.typed);
+            }
+            return true;
+          }
+          setValue(put.typed);
+          return false;
+        }),
+      [unsent, tokenId, field],
     );
-    // Taken up again, an in-app way out blurs the cell first, which sends it.
-    // Closing the tab does not, so while the cell still shows something other
-    // than the value it was typed over, closing asks.
+    // Taken up and left while focused (a page turned from the keyboard), the
+    // value goes back to wait for the cell to be drawn again.
+    useEffect(
+      () => () => {
+        const taken = unsentRef.current;
+        if (taken && isEditingRef.current) unsent.put(tokenId, field, taken.typed, taken.saved);
+      },
+      [unsent, tokenId, field],
+    );
+    // An in-app way out blurs the cell first, which sends what is typed.
+    // Closing the tab does not, so while the focused cell shows something
+    // other than the stored value, closing asks.
     useEffect(() => {
       if (!isEditing) return undefined;
       const onBeforeUnload = (e) => {
-        const unsent = unsentRef.current;
-        if (!unsent || valueRef.current.trim() === unsent.saved) return;
+        if (valueRef.current.trim() === (storedRef.current || '')) return;
         e.preventDefault();
         e.returnValue = '';
       };
@@ -122,34 +160,24 @@ export const EditableCell = React.memo(
     // trip, flashing the previous value before the new one lands. handleBlur
     // already commits-or-reverts explicitly, so no blur-time reset is needed.
     //
-    // A value put back after it was not saved (`putBack`) is not synced over
-    // while the stored value is still the one it was typed over.
+    // A value put back after it was not saved is not synced over while the
+    // stored value is still the one it was typed over. Once it moves on, the
+    // put-back value is let go.
     useEffect(() => {
-      const unsent = unsentRef.current;
-      if (unsent) {
-        if ((value || '') === unsent.saved) return;
+      const waiting = unsentRef.current ?? unsent.get(tokenId, field);
+      if (waiting) {
+        if ((value || '') === waiting.saved) return;
         unsentRef.current = null;
-        setUnsentShown(false);
+        unsent.take(tokenId, field);
       }
       if (!isEditingRef.current) {
         valueRef.current = value || '';
         setLocalValue(value || '');
       }
+      // Keyed on `value` alone, as said above. `unsent`, `tokenId` and `field`
+      // are the same for as long as the cell is drawn.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
-
-    // An edit that was not saved: refused, or queued behind a refused edit and
-    // never sent. The refetch after the refusal takes it off the screen, so it
-    // is put back here, measured against `saved`, the value it was typed over,
-    // so leaving the cell sends it again and Escape takes it back. For a cell
-    // edited twice behind the refusal the first edit's `saved` stands, since
-    // the second was typed over a value the server never had. Text typed into
-    // the cell since is newer and is left alone.
-    const putBack = (typed, saved) => {
-      if (isEditingRef.current && typedRef.current) return;
-      unsentRef.current = { typed, saved: unsentRef.current?.saved ?? saved };
-      setValue(typed);
-      setUnsentShown(!isEditingRef.current);
-    };
 
     const handleChange = (e) => {
       selectPendingRef.current = false;
@@ -187,7 +215,6 @@ export const EditableCell = React.memo(
       setIsEditing(false);
       setPrecedent(null);
       unsentRef.current = null;
-      setUnsentShown(false);
       if (cancelledRef.current) {
         cancelledRef.current = false;
         setValue(value || '');
@@ -223,10 +250,16 @@ export const EditableCell = React.memo(
           setValue(value || '');
           return;
         }
+        // An edit that was not saved: refused, or queued behind a refused
+        // edit and never sent. The refetch after the refusal takes it off the
+        // screen, so it is put back, measured against `saved`, the value it
+        // was typed over, so leaving the cell sends it again and Escape takes
+        // it back. The cell may be paged away by then, so it goes to the
+        // grid's `unsent`, which hands it to the cell if one is drawn.
         const saved = value || '';
         onUpdate(tokenId, field, newValue || null).then(
           (ok) => {
-            if (ok === false) putBack(newValue, saved);
+            if (ok === false) unsent.put(tokenId, field, newValue, saved);
           },
           (error) => {
             console.error(`Failed to update ${field}:`, error);
@@ -342,7 +375,8 @@ export const EditableCell = React.memo(
       swappingRef.current = false;
       reentryRef.current = false;
       setIsEditing(true);
-      setUnsentShown(false);
+      const waiting = unsent.take(tokenId, field);
+      if (waiting) unsentRef.current = waiting;
       setPristine(true);
       if (arriving) typedRef.current = false;
       selectOnArrival();
