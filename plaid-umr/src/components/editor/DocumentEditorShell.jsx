@@ -183,6 +183,8 @@ export const DocumentEditorShell = () => {
   // has left for another screen (the write queue outlives this one). A graph
   // typed in text mode and not applied asks through its own unsaved draft.
   useSavingGuard(doc);
+  // A comment post, edit or delete on its way asks the same way.
+  useSavingGuard(comments);
 
   // What the shell's assistant panel is about while this screen is open. The
   // document is the subject on EVERY tab, not just Annotate: it is what the

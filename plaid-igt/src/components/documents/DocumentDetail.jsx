@@ -259,6 +259,9 @@ const DocumentEditor = () => {
   // another screen (the queue outlives this one). The Analyze grid asks as
   // well, for a cell typed in and not yet left.
   useSavingGuard(liveDoc);
+  // A comment post, edit or delete on its way, from any thread (the grid's
+  // popover among them), asks the same way.
+  useSavingGuard(comments);
   // The gate is up from the first render, but a document with nothing to heal
   // plans entirely locally and lowers it again in a microtask, so the spinner
   // is on screen for one paint on every open. Hold the tabs back on the raw

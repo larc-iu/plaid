@@ -194,6 +194,8 @@ export const DocumentEditorShell = () => {
   // close asks first while one is still on its way, here and after the reader
   // has left for another screen (the write queue outlives this one).
   useSavingGuard(doc);
+  // A comment post, edit or delete on its way asks the same way.
+  useSavingGuard(comments);
 
   const wide = isWideRoute(pathname);
   // "Ask" under a sentence is only worth drawing where there is an assistant to
