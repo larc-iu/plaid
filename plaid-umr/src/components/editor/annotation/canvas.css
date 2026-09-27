@@ -65,7 +65,8 @@
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 16px;
+  --umr-canvas-pad: 16px;
+  padding: 0 var(--umr-canvas-pad);
 }
 
 /* The stage's own axis is PHYSICAL, deliberately: every node sits at a
@@ -138,8 +139,12 @@
   border-color: var(--umr-edge-lit);
 }
 
+/* Its own width, never the room left in the graph box: the box is only as
+   wide as the word row, so a node placed near its right edge was squeezed
+   and its values broke mid-word. The layout places nodes by this width. */
 .umr-node {
   position: absolute;
+  width: max-content;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -631,6 +636,25 @@
   margin-left: calc(-1 * var(--umr-margin) - var(--umr-pad, 0px));
   overflow: visible;
   z-index: 3;
+}
+/* Once the canvas is scrolled the lane stands over the graph, so it is a
+   frozen column: opaque down the graph's height, ending where the constants
+   end so a line to one still shows whole, with an edge only while something
+   is under it. The reserved column at the stage's left means every node can
+   still be scrolled clear of it. It sticks inside the canvas's padding, so
+   the backdrop reaches back over that too. */
+.umr-margin::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--umr-canvas-pad, 0px));
+  top: 0;
+  width: calc(var(--umr-lane-width, 0px) + var(--umr-canvas-pad, 0px));
+  height: var(--umr-lane-height, 0px);
+  background: hsl(var(--background));
+}
+.umr-margin--over::before {
+  border-right: 1px solid hsl(var(--border));
+  box-shadow: 4px 0 6px -4px hsl(215 25% 27% / 0.25);
 }
 .umr-const {
   border: 1px dashed var(--umr-node-border);

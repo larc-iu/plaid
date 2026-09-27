@@ -218,12 +218,17 @@ export const SentenceBlock = React.memo(function SentenceBlock({
 
   const layout = useMemo(() => {
     const first = sentence.words[0];
-    return layoutSentence(sentence, nodesById, {
-      columns,
-      sizes,
-      sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40,
-    });
-  }, [sentence, nodesById, columns, sizes]);
+    return layoutSentence(
+      sentence,
+      nodesById,
+      {
+        columns,
+        sizes,
+        sentenceX: first ? (columns.get(first.id)?.x ?? 40) : 40,
+      },
+      { direction },
+    );
+  }, [sentence, nodesById, columns, sizes, direction]);
 
   const measured = columns.size >= sentence.words.length && sentence.words.length > 0;
   // A node wider than its word overhangs the first or last column, and a
@@ -744,9 +749,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else if (e.key === 'Enter') await runAction('node.concept', id);
       return;
     }
-    const action = keys.which(CANVAS_ACTIONS, e);
+    let action = keys.which(CANVAS_ACTIONS, e);
     if (!action) return;
     e.preventDefault();
+    // Earlier and later are READING order. Bound to a sideways arrow they
+    // mirror in an RTL sentence as the plain arrows do (`arrowStep`), so the
+    // node moves the way the key points: there the earlier sibling is the one
+    // to the right.
+    const sideways = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+    if (sideways && direction === 'rtl') {
+      if (action === 'node.earlier') action = 'node.later';
+      else if (action === 'node.later') action = 'node.earlier';
+    }
     await runAction(action, id);
   };
 
@@ -1286,9 +1300,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             paddingRight: `${padRight}px`,
             '--umr-margin': `${MARGIN}px`,
             '--umr-pad': `${pad}px`,
+            '--umr-lane-width': `${MARGIN - CONST_GAP}px`,
+            '--umr-lane-height': `${stageHeight}px`,
           }}
         >
-          <div className="umr-margin" aria-label="Document constants">
+          <div
+            className={['umr-margin', scrollLeft > 0 ? 'umr-margin--over' : '']
+              .filter(Boolean)
+              .join(' ')}
+            aria-label="Document constants"
+          >
             {lane.constants.map((c) => (
               <span
                 key={c.name}

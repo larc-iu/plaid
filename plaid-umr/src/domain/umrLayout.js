@@ -144,7 +144,8 @@ export function placeRow(items, gap) {
  * @param {object} measures `{ columns: Map<wordId, {x, left, right}>, sizes: Map<nodeId, {width, height}>, sentenceX }`
  *   `columns` are the word columns' centers, `sizes` the measured node boxes
  *   (missing ones are estimated), `sentenceX` where an unanchored root goes.
- * @param {object} [options]
+ * @param {object} [options] the DEFAULT_OPTIONS to override, and `direction`
+ *   ('rtl' or 'ltr'): which way the sentence reads.
  * @returns {{ nodes: Map<nodeId, {x, y, width, height, row}>, edges: Array, height: number, left: number, right: number, rows: number, tree: object }}
  *   `left` and `right` are the extent of what is drawn: `left` is 0 or less.
  */
@@ -212,12 +213,16 @@ export function layoutSentence(sentence, nodesById, measures, options = {}) {
     top += tallest.get(depth) + opt.edgeRoom;
   });
 
+  // Nodes that want one x (unaligned siblings under their parent) go in
+  // their file order along the READING direction: left to right in an LTR
+  // sentence, right to left in an RTL one, where the words run that way too.
+  const tieSign = opt.direction === 'rtl' ? -1 : 1;
   const nodes = new Map();
   rows.forEach((ids, depth) => {
     const items = ids.map((id, i) => ({
       id,
       pref: pref.get(id),
-      tie: i,
+      tie: tieSign * i,
       width: sizeOf(nodesById.get(id)).width,
     }));
     const xs = placeRow(items, opt.gap);

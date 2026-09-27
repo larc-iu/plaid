@@ -415,3 +415,49 @@ describe('SentenceBlock node menu, the last node', () => {
     await r.unmount();
   });
 });
+
+// Move earlier and later are reading order, and in an RTL sentence siblings
+// read right to left: Alt+ArrowLeft moves a node on to the LEFT, which there
+// is later. Unmirrored, the key moved the node against the way it points.
+describe('SentenceBlock moving a node among its siblings', () => {
+  const press = async (direction, key) => {
+    const { sentence, nodesById } = fixture();
+    const shifted = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canConfirm: () => false,
+      shiftEdge: (edgeId, step) => shifted.push([edgeId, step]),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        direction={direction}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === 'person',
+    );
+    await r.step(() => node.focus());
+    await r.step(() =>
+      node.dispatchEvent(
+        new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true }),
+      ),
+    );
+    await r.unmount();
+    return shifted;
+  };
+
+  it.each([
+    ['ltr', 'ArrowLeft', -1],
+    ['ltr', 'ArrowRight', 1],
+    ['rtl', 'ArrowLeft', 1],
+    ['rtl', 'ArrowRight', -1],
+  ])('in %s, Alt+%s moves the node %i in the file', async (direction, key, step) => {
+    expect(await press(direction, key)).toEqual([['e1', step]]);
+  });
+});

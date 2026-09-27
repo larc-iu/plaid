@@ -310,3 +310,69 @@ test('a re-entrant edge in one row shows past its label', () => {
   assert.ok(dips > 20, `${dips} same-row re-entrant edges`);
   assert.deepEqual(short, []);
 });
+
+// Unaligned siblings all want their parent's x, so the file order decides
+// theirs. It runs the way the sentence reads: in an RTL sentence the first of
+// them is the RIGHTMOST, as the first word is.
+const siblingsFixture = () => {
+  const words = [
+    { id: 'w1', index: 1, begin: 0, end: 3 },
+    { id: 'w2', index: 2, begin: 4, end: 7 },
+  ];
+  const mk = (id, v, concept, wordIds) => ({
+    id,
+    var: v,
+    concept,
+    wordIds,
+    pieces: [{ begin: 0, end: 1 }],
+    sentence: 1,
+    out: [],
+    in: [],
+    attrs: [],
+  });
+  const and = mk('a', 's1a', 'and', ['w1']);
+  const ops = ['x', 'y', 'z'].map((k) => mk(k, `s1${k}`, 'thing', []));
+  const edges = ops.map((op, i) => ({
+    id: `e${i}`,
+    source: 'a',
+    target: op.id,
+    role: `:op${i + 1}`,
+    order: i,
+  }));
+  and.out.push(...edges);
+  ops.forEach((op, i) => op.in.push(edges[i]));
+  const nodesById = new Map([and, ...ops].map((n) => [n.id, n]));
+  const sentence = { index: 1, words, nodes: [and, ...ops], edges, roots: [and] };
+  return { sentence, nodesById };
+};
+
+test('unaligned siblings run in file order along the reading direction', () => {
+  const { sentence, nodesById } = siblingsFixture();
+  const columns = new Map([
+    ['w1', { x: 300 }],
+    ['w2', { x: 100 }],
+  ]);
+  const order = (direction) => {
+    const layout = layoutSentence(
+      sentence,
+      nodesById,
+      { columns, sizes: new Map(), sentenceX: 300 },
+      direction ? { direction } : {},
+    );
+    return ['x', 'y', 'z'].sort((p, q) => layout.nodes.get(p).x - layout.nodes.get(q).x);
+  };
+  // Left to right, by default and when said.
+  assert.deepEqual(order(), ['x', 'y', 'z']);
+  assert.deepEqual(order('ltr'), ['x', 'y', 'z']);
+  // Right to left: op1 on the right, where reading starts.
+  assert.deepEqual(order('rtl'), ['z', 'y', 'x']);
+});
+
+test('the reading direction reorders only ties, never nodes over their own words', () => {
+  const items = [
+    { id: 'a', pref: 100, tie: 0, width: 40 },
+    { id: 'b', pref: 300, tie: 1, width: 40 },
+  ];
+  const flipped = items.map((it) => ({ ...it, tie: -it.tie }));
+  assert.deepEqual([...placeRow(items, 10)], [...placeRow(flipped, 10)]);
+});
