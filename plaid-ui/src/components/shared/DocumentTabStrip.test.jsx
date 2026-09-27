@@ -62,7 +62,8 @@ describe('DocumentTabStrip', () => {
     const h1 = view.container.querySelector('h1');
     expect(h1.textContent).toBe('قصة');
     // A name is data in any script. The chrome around it stays left to right.
-    expect(h1.getAttribute('dir')).toBe('auto');
+    expect(h1.hasAttribute('dir')).toBe(false);
+    expect(h1.querySelector('[dir="auto"]').textContent).toBe('قصة');
     const order = [...view.container.querySelectorAll('nav, h1, [role="tablist"]')].map((e) =>
       e.tagName.toLowerCase(),
     );

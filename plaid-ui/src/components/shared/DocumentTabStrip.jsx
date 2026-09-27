@@ -72,14 +72,16 @@ export const DocumentTabStrip = ({
         {status && <span className="ms-auto shrink-0">{status}</span>}
       </div>
 
+      {/* The name takes its own direction inside a heading that stays with the
+          chrome, so an Arabic name reads right to left and still starts at the
+          left edge under the breadcrumb. */}
       <h1
-        dir="auto"
         className={cn(
           'mb-3 break-words text-3xl font-bold tracking-tight',
           !name && 'text-muted-foreground',
         )}
       >
-        {name || 'Loading…'}
+        <span dir="auto">{name || 'Loading…'}</span>
       </h1>
 
       <div

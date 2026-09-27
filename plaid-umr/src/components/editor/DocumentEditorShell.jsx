@@ -285,7 +285,7 @@ const DocumentEditor = () => {
     // The drawer pushes the whole page right rather than overlaying it, the
     // chrome and the tab under it together.
     <div
-      className="w-full transition-[margin-left] duration-300 ease-out"
+      className="transition-[margin-left] duration-300 ease-out"
       style={{ marginLeft: history.drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
     >
       <DocumentHistoryPanel
