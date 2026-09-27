@@ -203,6 +203,44 @@ describe('a cell typed in again while its earlier edit waits behind a refusal', 
   });
 });
 
+// The second edit of a cell depends on the first (it names the Gloss the first
+// was making), so when the first is refused the second is refused too. The
+// value put back by the first refusal is not newer typing: the second one's
+// refusal puts ITS value back, the last one typed.
+describe('a cell edited twice, both edits refused, with focus nowhere', () => {
+  it('shows the last value typed', async () => {
+    const { doc, client } = mount();
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
+    const spans = { ...client.spans };
+    let hold;
+    let first = true;
+    for (const method of Object.keys(spans)) {
+      client.spans[method] = async () => {
+        if (first) {
+          first = false;
+          await new Promise((r) => (hold = r));
+        }
+        throw new Error('refused');
+      };
+    }
+    const a = cell('ma:m-1:Gloss');
+    const b = cell('ma:m-2:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    focus(b);
+    focus(a);
+    type(a, 'AAA2');
+    focus(b);
+    b.blur();
+    await settle();
+    hold();
+    await settle(30);
+    Object.assign(client.spans, spans);
+    expect(cell('ma:m-1:Gloss').value).toBe('AAA2');
+  });
+});
+
 // One sentence a page, so the two words are on two pages.
 describe('a value put back unsaved, on a page the reader leaves', () => {
   let pageSize;

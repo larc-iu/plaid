@@ -465,8 +465,14 @@ export const cells = {
       }
       const active = document.activeElement;
       // Typed into again since this edit was committed: that text is newer,
-      // and leaving the cell sends it.
-      if (active === cell && cell.value !== typed && cell.value !== (cell.dataset.orig ?? '')) {
+      // and leaving the cell sends it. A value an earlier refusal put back
+      // here (`igtPutBack`) is older than this one.
+      if (
+        active === cell &&
+        cell.value !== typed &&
+        cell.value !== (cell.dataset.orig ?? '') &&
+        cell.value !== cell.igtPutBack
+      ) {
         return;
       }
       // What the server holds under the cell now. The refetch has drawn it
@@ -488,6 +494,7 @@ export const cells = {
       // reload put in the cell), then restore what was typed over it.
       cell.focus();
       cell.value = typed;
+      cell.igtPutBack = typed;
       cell.dataset.orig = stored;
       this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
     });
