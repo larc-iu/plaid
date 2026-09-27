@@ -82,12 +82,17 @@
                 (when @background? (Thread/sleep pause-ms))
                 (recur (inc n)))
               n))]
-    (with-retries "the project row" datasource #(prj/remove-hidden-project! datasource pid))
-    (log/info (format "Removed deleted project %s: %d documents in %dms"
-                      pid n (quot (- (System/nanoTime) t0) 1000000)))
-    (when @purge-history?
-      (log/info "Purged history for deleted project" pid
-                (prj/purge-deleted-project-history! datasource pid)))
+    (if (with-retries "the project row" datasource #(prj/remove-hidden-project! datasource pid))
+      (do
+        (log/info (format "Removed deleted project %s: %d documents in %dms"
+                          pid n (quot (- (System/nanoTime) t0) 1000000)))
+        (when @purge-history?
+          (log/info "Purged history for deleted project" pid
+                    (prj/purge-deleted-project-history! datasource pid))))
+      ;; Already removed (a second run of the same removal), or a document
+      ;; still under it, which the next startup takes up again.
+      (when (prj/hidden? datasource pid)
+        (log/warn "Deleted project" pid "still holds documents; the next startup resumes its removal")))
     n))
 
 (defonce ^:private ^ExecutorService executor

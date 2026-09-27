@@ -299,10 +299,13 @@
   whose deletion the log never recorded. Gating every as-of read on the
   document's (immutable) project still existing makes deleted projects
   uniformly unreadable, while deleted documents in a LIVE project remain
-  time-travelable. A nil project-id reads as not-live."
+  time-travelable. A nil project-id reads as not-live, and so does a project
+  being deleted (`deleted_at` set, its rows not all removed yet)."
   [db project-id]
   (and (some? project-id)
-       (some? (psc/fetch-by-id db :projects project-id))))
+       (some? (psc/q1 db {:select [:id]
+                          :from [:projects]
+                          :where [:and [:= :id project-id] [:= :deleted_at nil]]}))))
 
 (defn get-at
   "Shape of `plaid.sql.document/get` at time `ts`. Returns nil if the

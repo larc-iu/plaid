@@ -11,7 +11,12 @@
                                           with-admin with-test-users with-clean-db]]
             [plaid.server.project-removal :as removal]
             [plaid.sql.datasource :as psd]
+            [plaid.history.read :as hread]
+            [plaid.sql.common :as psc]
+            [plaid.sql.document :as doc]
             [plaid.sql.project :as prj]
+            [plaid.sql.span :as span]
+            [plaid.sql.text-layer :as txl]
             [plaid.test-helpers :refer :all]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -173,3 +178,38 @@
         (reset! removal/background? false)
         (jdbc/execute! f/db ["DROP TABLE IF EXISTS removal_probe"])
         (.close writer)))))
+
+;; A write checks its route gate BEFORE it opens its transaction. One that
+;; passed the gate while the project was live, and got the write lock only
+;; after the delete's short step committed, would land in a hidden project:
+;; a document created after the removal has passed its last document keeps
+;; the project row from ever being removed. The transaction itself refuses it.
+(deftest a-write-that-passed-the-gate-before-the-hide-is-refused-in-its-transaction
+  (let [{:keys [proj tl docs]} (setup 1)
+        {:keys [span]} (first docs)]
+    (hide! proj)
+    (testing "a new document"
+      (let [r (doc/create f/db {:document/name "Late" :document/project proj} "user1@example.com")]
+        (is (= 404 (:code r)) (pr-str r))))
+    (testing "an edit of a span"
+      (let [r (span/merge f/db span {:span/value "Z"} "user1@example.com")]
+        (is (= 404 (:code r)) (pr-str r))))
+    (testing "a new layer"
+      (let [r (txl/create f/db {:text-layer/name "Late"} proj "user1@example.com")]
+        (is (= 404 (:code r)) (pr-str r))))
+    (is (= 1 (:documents (left-of proj))) "nothing was written")
+    (is (= 1 (rows "FROM spans WHERE id = ? AND value = '\"A\"'" span)))
+    (is (= 1 (rows "FROM text_layers WHERE project_id = ?" proj)))
+    (is (some? tl))))
+
+;; An as-of read goes through the route gate first, which refuses a hidden
+;; project. The history reader refuses it on its own as well, as it refuses a
+;; removed one, so a caller that skips the gate cannot time-travel into it.
+(deftest a-hidden-project-is-not-time-travelable
+  (let [{:keys [proj docs]} (setup 1)
+        {:keys [doc]} (first docs)
+        now (psc/now-iso)]
+    (is (some? (hread/get-at f/db doc now)) "readable while the project is live")
+    (hide! proj)
+    (is (nil? (hread/get-at f/db doc now)))
+    (is (false? (hread/exists-at? f/db doc now)))))

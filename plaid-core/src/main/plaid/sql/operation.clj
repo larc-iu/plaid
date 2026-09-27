@@ -393,6 +393,17 @@
                                          ;; See *custom-description* / wrap-audit-message.
                                          :description (or *custom-description* (:description op-attrs)))]
                     (vreset! op-record* op-record)
+                    ;; A project being deleted takes no more writes. The route
+                    ;; gate refuses it too, but checks before this transaction,
+                    ;; so a write that passed it while the project was live
+                    ;; could otherwise land after the delete's short step
+                    ;; committed (see `plaid.sql.project/delete`).
+                    (when-let [pid (:project op-attrs)]
+                      (when (and (not= :project/delete (:type op-attrs))
+                                 (psc/q1 tx {:select [:id]
+                                             :from [:projects]
+                                             :where [:and [:= :id pid] [:<> :deleted_at nil]]}))
+                        (throw (ex-info (psc/err-msg-not-found "Project" pid) {:code 404 :id pid}))))
                     (ensure-group-row! tx op-record)
                     (insert-operation-row! tx op-record)
                     ;; In-tx OCC check (task #108). Before the body runs,
