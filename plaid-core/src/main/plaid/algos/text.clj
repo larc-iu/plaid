@@ -121,7 +121,8 @@
   `a` and deleted the tokens of `a`. Trimming is by code point, so it never
   cuts a surrogate pair. It can end between a letter and a combining mark on
   it, as any diff by code point can, and a token boundary there is one the
-  offsets already allow.
+  offsets already allow. Which of several equal places an edit takes is
+  `slide-to-tokens`' business, since only the tokens can tell.
 
   The diff is computed at code-point granularity (via `codepoint-proxy`) so an
   edit boundary never splits a surrogate pair — otherwise a char-level diff of
@@ -428,6 +429,134 @@
           :insert (recur (rest edits) dels (+ ins (cp/cp-count (:value e)))
                          (conj out (insert-op running (:value e))))))
       out)))
+
+;; ---------------------------------------------------------------------------
+;; Sliding an edit to the tokens
+;;
+;; A delete or an insert that has the same letters on one side as at its far
+;; end can stand in several places for the same resulting string. The trim in
+;; `diff` takes the shared start as far as it goes, so it always picks the
+;; last of them, and that cuts words: deleting `cat` from `the cat cow` shares
+;; `the c` at the start, the delete falls on `at c`, and `cat`'s tokens are
+;; left on `c` and `cow`'s on `ow`. Deleting `cat ` instead gives the same
+;; body and leaves `cow` whole. Editscript's own choices inside a changed
+;; stretch have the same freedom.
+
+(def ^:private slide-reach
+  "How far an edit is moved at most, in code points each way. A word edit's
+  equivalent places lie within about a word of each other, and the bound
+  keeps a long run of one repeated letter from costing a scan per place."
+  64)
+
+(defn- slide-cost
+  "How many of `tokens` an edit at this place would disturb. It cuts a token
+  a delete takes part of, one a delete swallows while it stands at a single
+  point, and one an insert falls strictly inside of. It also disturbs a token
+  whose neighbouring letter it changes: inserting `t ta` after the `ta` of
+  `cat ta bad` leaves that token on the start of the new `tat`, where
+  inserting `tat ` before it leaves it between the same two spaces."
+  [^ints o tokens edit]
+  (let [n (alength o)
+        ;; The edge of the text and a space both only separate, so a word
+        ;; that comes to stand at the start of the text keeps its place.
+        at (fn [i] (if (< -1 i n)
+                     (let [c (aget o i)] (if (Character/isWhitespace (int c)) :apart c))
+                     :apart))
+        apart (fn [c] (if (Character/isWhitespace (int c)) :apart c))]
+    (if (= :delete (:kind edit))
+      (let [{s :start e :end} edit]
+        (count (filter (fn [{:token/keys [begin end]}]
+                         (cond
+                           (= begin end) (< s begin e)
+                           (and (< s end) (> e begin)) (not (and (<= s begin) (<= end e)))
+                           (= end s) (not= (at s) (at e))
+                           (= begin e) (not= (at (dec e)) (at (dec s)))
+                           :else false))
+                       tokens)))
+      (let [a (:at edit)
+            v (.toArray (.codePoints ^String (:value edit)))]
+        (count (filter (fn [{:token/keys [begin end]}]
+                         (cond
+                           (= begin end) false
+                           (< begin a end) true
+                           (= end a) (not= (at a) (apart (aget v 0)))
+                           (= begin a) (not= (at (dec a)) (apart (aget v (dec (alength v)))))
+                           :else false))
+                       tokens))))))
+
+(defn- slide-places
+  "Every place `edit` (old-body coordinates, over the code points `o`) could
+  stand for the same resulting string without reaching `lo` or `hi`, the
+  nearest first on each side, with the edit itself at the head."
+  [^ints o edit lo hi]
+  (let [cps->s (fn [xs] (let [sb (StringBuilder.)]
+                          (doseq [c xs] (.appendCodePoint sb (int c)))
+                          (.toString sb)))]
+    (if (= :delete (:kind edit))
+      (let [left (->> edit
+                      (iterate (fn [{s :start e :end :as d}]
+                                 (when (and d (> s lo) (= (aget o (dec s)) (aget o (dec e))))
+                                   (assoc d :start (dec s) :end (dec e)))))
+                      (drop 1) (take-while some?) (take slide-reach))
+            right (->> edit
+                       (iterate (fn [{s :start e :end :as d}]
+                                  (when (and d (< e hi) (= (aget o s) (aget o e)))
+                                    (assoc d :start (inc s) :end (inc e)))))
+                       (drop 1) (take-while some?) (take slide-reach))]
+        (concat [edit] left right))
+      (let [v (vec (.toArray (.codePoints ^String (:value edit))))
+            step-left (fn [[a v]]
+                        (when (and v (> a lo) (= (aget o (dec a)) (peek v)))
+                          [(dec a) (into [(aget o (dec a))] (pop v))]))
+            step-right (fn [[a v]]
+                         (when (and v (< a hi) (= (aget o a) (first v)))
+                           [(inc a) (conj (subvec v 1) (aget o a))]))
+            places (fn [step] (->> [(:at edit) v] (iterate step) (drop 1)
+                                   (take-while some?) (take slide-reach)
+                                   (map (fn [[a v]] (assoc edit :at a :value (cps->s v))))))]
+        (concat [edit] (places step-left) (places step-right))))))
+
+(defn slide-to-tokens
+  "Rewrite `ops` (as produced by `diff` for `old`) so that each delete or
+  insert that stands apart from the others, and could stand elsewhere for the
+  same resulting string, stands where it disturbs the fewest of `tokens`
+  (old-body code-point offsets, see `slide-cost`), the nearest such place
+  when there are several. An edit that disturbs no more than any other place
+  stays where it is. Edits that touch stay together, since
+  `pair-replacements` reads them as one respelling. The reconstructed string
+  is unchanged."
+  [ops old tokens]
+  (let [edits (vec (ops->edits ops))
+        ^ints o (.toArray (.codePoints ^String old))
+        n (alength o)
+        reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
+        start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
+        moved (map-indexed
+               (fn [i e]
+                 (let [prev (when (pos? i) (edits (dec i)))
+                       nxt (get edits (inc i))
+                       ;; A neighbour this edit touches makes the two one
+                       ;; stretch, and a place that touches one would too.
+                       lo (if prev (inc (reach-of prev)) 0)
+                       hi (if nxt (dec (start-of nxt)) n)]
+                   (if (or (< (start-of e) lo) (> (reach-of e) hi))
+                     e
+                     (let [places (slide-places o e lo hi)
+                           span-lo (reduce min (map start-of places))
+                           span-hi (reduce max (map reach-of places))
+                           near (filterv (fn [{:token/keys [begin end]}]
+                                           (and (<= begin span-hi) (>= end span-lo)))
+                                         tokens)
+                           here (slide-cost o near e)]
+                       (if (zero? here)
+                         e
+                         ;; The fewest cuts, then the nearest place. The sort
+                         ;; is stable and `places` starts with the edit itself.
+                         (first (sort-by (juxt #(slide-cost o near %)
+                                               #(Math/abs (long (- (start-of %) (start-of e)))))
+                                         places)))))))
+               edits)]
+    (if (= edits (vec moved)) ops (edits->ops moved))))
 
 (defn- cut-count
   "How many (non-empty) tokens the delete ranges overlap only PARTIALLY."

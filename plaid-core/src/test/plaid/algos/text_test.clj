@@ -364,6 +364,7 @@
   pair them with their inserts."
   [old new tokens]
   (-> (ta/diff old new)
+      (ta/slide-to-tokens old tokens)
       (ta/normalize-deletes old tokens)
       (ta/pair-replacements old tokens)
       (apply-all old tokens)))
@@ -595,3 +596,73 @@
           (is (= new (:text/body text)))
           (is (empty? (window-errors old new before tokens))
               (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new))))))))
+
+;; The window check above spares every token inside the stretch the two bodies
+;; could share, and that stretch is exactly where a greedy trim puts a word
+;; edit wrong: deleting `cat` from `the cat cow` shares `the c` at the start,
+;; so a delete placed after it leaves `cat`'s tokens on `c` and `cow`'s on
+;; `ow`. These say where each word's token must end up.
+
+(deftest a-word-edit-beside-a-word-that-repeats-its-letters
+  ;; old, new, and the new extent of each old word token by its index (nil
+  ;; for a deleted one).
+  (doseq [[old new expected]
+          [["the cat cow" "the cow" [[0 3] nil [4 7]]]
+           ["mat a at" "mat at" [[0 3] nil [4 6]]]
+           ["x ab abc" "x abc" [[0 1] nil [2 5]]]
+           ["a big bad dog" "a bad dog" [[0 1] nil [2 5] [6 9]]]
+           ["the cow" "the cat cow" [[0 3] [8 11]]]
+           ["cat dog" "cat cat dog" [[0 3] [8 11]]]
+           ["a b" "a ab b" [[0 1] [5 6]]]]]
+    (let [before (word-tokens (str/split old #" "))
+          {:keys [text tokens]} (body-edit old new before)
+          got (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
+      (is (= new (:text/body text)))
+      (is (= expected (mapv got (range (count before))))
+          (str (pr-str old) " -> " (pr-str new))))))
+
+(defn- word-edit-errors
+  "After a whole-body edit that deletes or inserts one word, every surviving
+  word token must sit exactly on one word of the new body, no two on the same
+  word, and each still read as the word it was made for. A delete leaves one
+  token fewer, an insert leaves every token."
+  [kind old-words new-words new-body before after]
+  (let [extents (set (map (juxt :token/begin :token/end) (word-tokens new-words)))
+        surface (fn [{:token/keys [begin end]}] (cp/cp-subs new-body begin end))
+        old-surface (into {} (map (fn [t] [(:token/id t) (nth old-words (:token/id t))])) before)
+        spots (map (juxt :token/begin :token/end) after)]
+    (cond-> []
+      (not= (count spots) (count (distinct spots)))
+      (conj [:two-tokens-on-one-word spots])
+
+      (not-every? extents spots)
+      (conj [:token-off-a-word (remove extents spots)])
+
+      (not-every? #(= (old-surface (:token/id %)) (surface %)) after)
+      (conj [:token-reads-another-word
+             (keep #(when (not= (old-surface (:token/id %)) (surface %))
+                      [(old-surface (:token/id %)) (surface %)])
+                   after)])
+
+      (not= (count after) (case kind :delete (dec (count old-words)) :insert (count old-words)))
+      (conj [:token-count (count after)]))))
+
+(deftest a-word-deleted-or-inserted-leaves-every-other-word-token-on-its-word
+  (let [vocab ["the" "cat" "cow" "a" "at" "ab" "abc" "tat" "ta" "big" "bad" "𐌰𐌱" "𐌰" "é"]]
+    (doseq [seed (range 1 7)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [case-n 150]
+          (let [words (vec (repeatedly (+ 3 (.nextInt rng 5)) #(pick vocab)))
+                kind (pick [:delete :insert])
+                k (.nextInt rng (count words))
+                words' (case kind
+                         :delete (into (subvec words 0 k) (subvec words (inc k)))
+                         :insert (into (conj (subvec words 0 k) (pick vocab)) (subvec words k)))
+                old (str/join " " words)
+                new (str/join " " words')
+                before (word-tokens words)
+                {:keys [text tokens]} (body-edit old new before)]
+            (is (= new (:text/body text)))
+            (is (empty? (word-edit-errors kind words words' new before tokens))
+                (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))))))))

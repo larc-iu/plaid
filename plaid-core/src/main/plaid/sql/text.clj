@@ -238,9 +238,11 @@
                                    :from [:tokens]
                                    :where [:= :text_id eid]})
              tokens (mapv row->token token-rows)            ; code-point offsets
-             ;; A diffed body gets its deletes snapped to token boundaries
-             ;; where the edit script left an equivalent choice open (see
-             ;; ta/normalize-deletes), and then each delete with an insert
+             ;; A diffed body gets each edit moved to where it cuts the
+             ;; fewest tokens when it could stand in several places for the
+             ;; same result (see ta/slide-to-tokens), its deletes snapped to
+             ;; token boundaries where the edit script left an equivalent
+             ;; choice open (see ta/normalize-deletes), and then each delete with an insert
              ;; beside it becomes one replace op, so a token covering the
              ;; changed letters keeps the new ones (see ta/pair-replacements).
              ;; The pairing comes second because normalize-deletes reads only
@@ -248,6 +250,7 @@
              ;; Explicit client ops are applied as sent.
              ops (if (string? new-body-or-ops)
                    (-> (ta/diff old-body new-body-or-ops)
+                       (ta/slide-to-tokens old-body tokens)
                        (ta/normalize-deletes old-body tokens)
                        (ta/pair-replacements old-body tokens))
                    (vec new-body-or-ops))
