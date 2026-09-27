@@ -82,12 +82,26 @@ describe('readVocabulary', () => {
     expect(() => items.push({ id: 'x' })).toThrow();
   });
 
-  it('keeps one copy per client, so a second login never reads the first one', async () => {
+  it('keeps one copy per login, so a second login never reads the first one', async () => {
     const one = server();
     const two = server();
+    Object.assign(one.client, { baseUrl: 'http://x', token: 'ann' });
+    Object.assign(two.client, { baseUrl: 'http://x', token: 'bob' });
     await readVocabulary(one.client, 'v1');
     await readVocabulary(two.client, 'v1');
     expect(two.reads).toEqual([['time'], ['items']]);
+  });
+
+  it("shares the copy between a document's own client and the session's, on one login", async () => {
+    // A document is read through a client of its own (strict mode), made on
+    // the session's token, and the Entries screen through the session's.
+    const { client, reads } = server();
+    const session = { ...client, baseUrl: 'http://x', token: 'ann-shared' };
+    const perDocument = { ...client, baseUrl: 'http://x', token: 'ann-shared' };
+    const first = await readVocabulary(session, 'v1');
+    const second = await readVocabulary(perDocument, 'v1');
+    expect(reads).toEqual([['time'], ['items'], ['time']]);
+    expect(second.items).toBe(first.items);
   });
 });
 

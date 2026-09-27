@@ -20,13 +20,24 @@
 // replaces it rather than editing it (see cloneVocabs in IgtDocument.js), and
 // the freeze makes one that did not fail loudly.
 
-// client -> Map(vocabId -> { time, vocab })
-const copies = new WeakMap();
+// The copies are the login's, not one client's: a document is read through a
+// client of its own (strict mode, StrictModeContext.jsx) made on the session's
+// token, the Entries screen and Bulk Edit through the session's client, and
+// all of them are to share one copy. Only the latest login's shelf is kept, so
+// a second login in the tab never reads the first one's. A client with no
+// token (a test's stand-in) has a shelf of its own.
+let login = null; // { key, shelf }
+const ownShelves = new WeakMap();
 
 const shelfOf = (client) => {
-  let shelf = copies.get(client);
-  if (!shelf) copies.set(client, (shelf = new Map()));
-  return shelf;
+  if (typeof client.token !== 'string') {
+    let shelf = ownShelves.get(client);
+    if (!shelf) ownShelves.set(client, (shelf = new Map()));
+    return shelf;
+  }
+  const key = `${client.baseUrl ?? ''} ${client.token}`;
+  if (login?.key !== key) login = { key, shelf: new Map() };
+  return login.shelf;
 };
 
 const handOut = (vocab) => ({ ...vocab });
