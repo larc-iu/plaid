@@ -49,7 +49,7 @@ test.describe('canvas', () => {
     await page.mouse.click(box.x + box.width - 4, box.y + 4);
     await expect(page.locator('.umr-node--focused')).toHaveCount(0);
 
-    // A writer sees the drafting service's button beside History.
+    // A writer sees the drafting service's button over the canvas.
     await expect(page.getByRole('button', { name: 'Draft' })).toBeVisible();
 
     const blocks = await page.locator('.umr-block').count();

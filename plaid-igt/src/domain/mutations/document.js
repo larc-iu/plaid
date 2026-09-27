@@ -1,6 +1,7 @@
-// Mutation mixin: document-level operations (baseline text, metadata, delete,
-// media upload/delete). See IgtDocument.js for the `this` API (_queueWrite,
-// _applyRawPatch, _reload, layerInfo, body, etc.).
+// Mutation mixin: document-level operations (baseline text, metadata, media
+// upload/delete). See IgtDocument.js for the `this` API (_queueWrite,
+// _applyRawPatch, _reload, layerInfo, body, etc.). Deleting a document is the
+// shared Details page's.
 //
 // Renaming a document and copying it are NOT here: they are `rename` and
 // `copyTo` on the shared DocumentModel, which every app's document inherits.
@@ -139,13 +140,6 @@ export const documentMutations = {
     return this._queueWrite(label, async () => {
       if (nextName) await this._client.documents.update(this.id, nextName);
       if (ops.length) await this._client.documents.patchMetadata(this.id, ops);
-    });
-  },
-
-  async deleteDocument() {
-    return this._queueWrite('Failed to delete document', async () => {
-      await this._client.documents.delete(this.id);
-      // Don't _reload — the document is gone and a fetch would 404.
     });
   },
 
