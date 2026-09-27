@@ -42,15 +42,11 @@ export const EditorLegend = ({ project, annotatesEnhanced = false }) => {
 
       <div className="mt-2 max-w-3xl rounded-md border border-border bg-muted/30 px-3 py-2">
         <Row title="Marks">
-          <span className="italic text-[var(--plaid-machine)] underline decoration-dotted underline-offset-2">
-            machine-made
-          </span>
+          <span className="plaid-prov--machine">machine-made</span>
           {' · '}
           {reviewsSomeone && (
             <>
-              <span className="italic text-[var(--plaid-contributed)] underline decoration-dotted underline-offset-2">
-                contributed
-              </span>
+              <span className="plaid-prov--contributed">contributed</span>
               {' · '}
             </>
           )}

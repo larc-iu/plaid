@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { autoColor } from '../src/utils/udVocab.js';
 
 const read = (rel) => readFile(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const rowCss = await read('../src/components/editor/annotation/SentenceRow.css');
@@ -43,4 +44,52 @@ test('Accept and Discard wear the shared review pair', () => {
   const accept = uiCss.match(/\.plaid-review\.plaid-review--accept \{([^}]*)\}/)[1];
   assert.match(accept, /color:\s*var\(--plaid-machine\)/);
   assert.doesNotMatch(rowCss, /accept-predictions-btn|discard-predictions-btn/);
+});
+
+// The legend's samples ARE the marks, so they take plaid-ui's classes rather
+// than a hand-written look that drifts from the grid's.
+test('the legend draws its samples with the shared mark classes', async () => {
+  const legend = await read('../src/components/editor/annotation/EditorLegend.jsx');
+  assert.match(legend, /className="plaid-prov--machine"/);
+  assert.match(legend, /className="plaid-prov--contributed"/);
+  assert.doesNotMatch(legend, /decoration-dotted/);
+});
+
+// Violet and amber mean provenance on every annotation surface, so the Grew
+// query box's syntax colours keep clear of both (violet and magenta from 250
+// to 330 degrees, amber and orange from 15 to 50).
+const hue = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return null;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+};
+// Brown counts with amber here: beside an amber value it reads as one.
+const provenanceHue = (h) => h !== null && ((h >= 250 && h <= 330) || (h >= 5 && h <= 50));
+
+test('the Grew syntax colours use no violet and no amber', async () => {
+  const appCss = await read('../src/index.css');
+  const colours = [...appCss.matchAll(/--grew-([a-z]+):\s*(#[0-9a-f]{6})/gi)];
+  assert.ok(colours.length >= 5, 'the Grew palette is found');
+  for (const [, name, hex] of colours) {
+    const h = hue(hex);
+    if (h === null) continue;
+    assert.ok(
+      !(h >= 250 && h <= 330),
+      `--grew-${name} ${hex} (hue ${Math.round(h)}) is not violet`,
+    );
+    assert.ok(!(h >= 15 && h <= 50), `--grew-${name} ${hex} (hue ${Math.round(h)}) is not amber`);
+  }
+});
+
+// A UPOS value or a DEPREL with no configured colour takes one from the auto
+// palette. A settled value drawn in violet or amber reads as a machine's or a
+// contributor's, so the palette leaves both hues to provenance.
+test('the auto colours for labels use no violet and no amber', () => {
+  const seen = new Set();
+  for (let i = 0; i < 2000; i++) seen.add(autoColor(`label-${i}`));
+  assert.ok(seen.size >= 8, 'every slot of the palette is reached');
+  for (const c of seen) assert.ok(!provenanceHue(hue(c)), `${c} (hue ${Math.round(hue(c))})`);
 });

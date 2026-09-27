@@ -35,13 +35,14 @@
 
     /* The Grew query box paints its own syntax colors (see grewSyntax.js),
        which emits an HTML string rather than utility classes, so the palette
-       is named here instead. Tailwind's 600/700 steps, to sit alongside the
-       rest of the app. */
+       is named here instead. Tailwind's 700 and 900 steps, to sit alongside
+       the rest of the app, and never violet or amber, which mean a machine's
+       and a contributor's values on every annotation surface. */
     --grew-keyword: #1d4ed8;
-    --grew-global: #9333ea;
+    --grew-global: #4d7c0f;
     --grew-string: #0f766e;
-    --grew-number: #c2410c;
-    --grew-operator: #7c3aed;
+    --grew-number: #be185d;
+    --grew-operator: #0f172a;
     --grew-punct: #4b5563;
     --grew-comment: #6b7280;
   }

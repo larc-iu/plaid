@@ -152,26 +152,23 @@ export const baseRel = (deprel) => (deprel || '').split(':')[0];
 // Categorical palette — distinguishable hues, each dark/saturated enough to
 // read as TEXT on a white background (labels render as colored text in both the
 // SVG tree and the grid). Deliberately distinct from the selection/hover blue
-// (#2563eb) so the highlight state stays unambiguous.
+// (#2563eb) so the highlight state stays unambiguous, and free of violet and
+// amber, which mean a machine's and a contributor's unreviewed values in every
+// app: a settled ADV drawn violet read as a machine's.
 const AUTO_PALETTE = Object.freeze([
   '#1f77b4',
   '#d62728',
   '#2ca02c',
-  '#9467bd',
-  '#e6750e',
   '#17a2b8',
-  '#8c564b',
-  '#c52aa0',
   '#5b6f1f',
   '#1a7f7f',
-  '#7048e8',
-  '#b8860b',
   '#2f6f9e',
   '#a01b4a',
   '#3a7d34',
-  '#6d4c41',
   '#0b7285',
-  '#9c36b5',
+  '#475569',
+  '#9f1239',
+  '#166534',
 ]);
 
 // FNV-1a — stable across sessions/users so a given label always maps to the
