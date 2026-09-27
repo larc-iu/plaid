@@ -379,12 +379,15 @@
    (get-document-audit-log db document-id start-time end-time nil))
   ([db document-id start-time end-time opts]
    (audit-page db {:source (document-ops-source document-id)
+                   ;; The second arm is a list built once per query, not a
+                   ;; probe per row: the documents row of a long-edited
+                   ;; document has a row for every op on it, and a probe
+                   ;; walked all of them for each candidate.
                    :member? [:or
                              [:= (no-index :document_id) document-id]
-                             [:exists {:select [1]
+                             [:in :id {:select [:op_id]
                                        :from [:audit_writes]
                                        :where [:and
-                                               [:= :audit_writes.op_id :operations.id]
                                                [:= :target_table "documents"]
                                                [:= :target_id document-id]]}]]}
                [start-time end-time] opts)))
