@@ -169,7 +169,26 @@ async function submitBatch(batch) {
   // claims the version the requests before it left (learned from their
   // results), not the one the document had when the op was queued, which the
   // first request has already moved on.
+  //
+  // Each request is atomic, the whole is not: a failure leaves the requests
+  // before it saved. The error says so, as `committed` (how many operations
+  // were saved) and `committedResults` (their results, in queue order), so a
+  // caller can tell a partial write from a batch that saved nothing. The
+  // failed request itself counts as unsaved, even when its answer was lost.
   const results = [];
+  try {
+    await sendChunks(client, url, ops, stamps, results);
+  } catch (error) {
+    if (error && typeof error === "object") {
+      error.committed = results.length;
+      error.committedResults = results;
+    }
+    throw error;
+  }
+  return results;
+}
+
+async function sendChunks(client, url, ops, stamps, results) {
   for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
     let chunk = ops.slice(i, i + MAX_BATCH_OPS);
     if (i > 0) {
@@ -185,7 +204,6 @@ async function submitBatch(batch) {
     }
     results.push(...(await client._postBatch(url, chunk)));
   }
-  return results;
 }
 
 class PlaidClient {
@@ -3217,7 +3235,8 @@ class PlaidClient {
    * queued operations as ONE atomic request (larger than the server's cap,
    * as consecutive requests with the results concatenated in queue order,
    * each atomic on its own, so a failure in a later one leaves the earlier
-   * ones committed) and
+   * ones committed, and the error it throws carries `committed`, the count
+   * saved, and `committedResults`, their results) and
    * resolves to one result per operation; `abort()` drops them. A call made
    * on the client itself is never touched by an open batch, and a read or an
    * out-of-band signal made on the batch goes over the wire now (see the note

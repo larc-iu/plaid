@@ -1231,7 +1231,9 @@ export interface PlaidBatch extends PlaidClient {
    * Send the queued operations and resolve to one result per operation, in
    * order. Up to MAX_BATCH_OPS operations go as one atomic request. A larger
    * batch goes as consecutive requests, each atomic on its own, so a failure
-   * in a later one leaves the earlier ones committed.
+   * in a later one leaves the earlier ones committed. The error then carries
+   * `committed`, how many operations were saved (0 when none were), and
+   * `committedResults`, their results in queue order.
    */
   submit(): Promise<any[]>;
   /** Drop the queued operations without sending them. */

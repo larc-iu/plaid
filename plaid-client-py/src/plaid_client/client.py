@@ -3342,7 +3342,9 @@ class PlaidClient:
         ``submit()`` sends the queued operations as ONE atomic request (larger
         than the server's cap, as consecutive requests with the results
         concatenated in queue order, each atomic on its own, so a failure in a
-        later one leaves the earlier ones committed) and returns one result
+        later one leaves the earlier ones committed, and the error it raises
+        carries ``committed``, the count saved, and ``committed_results``,
+        their results) and returns one result
         per operation;
         ``abort()`` drops them. A call made on the client itself is never
         touched by an open batch, and a read or an out-of-band signal made on
@@ -3369,6 +3371,13 @@ class PlaidClient:
         ``stamped_documents`` names, index for index, the document each op's
         strict-mode stamp is for (None for none)."""
         url = f'{self.base_url}/api/v1/batch'
+        # Each request is atomic, the whole is not: a failure leaves the
+        # requests before it saved. The error says so, as ``committed`` (how
+        # many operations were saved) and ``committed_results`` (their
+        # results, in queue order), so a caller can tell a partial write from
+        # a batch that saved nothing. The failed request itself counts as
+        # unsaved, even when its answer was lost.
+        results_out: list[Any] = []
         try:
             headers = {
                 'Authorization': f'Bearer {self.token}',
@@ -3385,7 +3394,6 @@ class PlaidClient:
             # the one the document had when the op was queued, which the first
             # request has already moved on.
             stamps = stamped_documents or [None] * len(ops)
-            results_out: list[Any] = []
             for start in range(0, len(ops), MAX_BATCH_OPS):
                 body = ops[start:start + MAX_BATCH_OPS]
                 if start > 0:
@@ -3425,12 +3433,17 @@ class PlaidClient:
                                    if isinstance(r, dict) else r
                                    for r in results)
             return results_out
-        except PlaidAPIError:
+        except PlaidAPIError as e:
+            e.committed = len(results_out)
+            e.committed_results = results_out
             raise
         except Exception as e:
-            raise PlaidAPIError(f'Network error: {e} at {self.base_url}/api/v1/batch',
-                                url=f'{self.base_url}/api/v1/batch', method='POST',
-                                original_error=e)
+            error = PlaidAPIError(f'Network error: {e} at {self.base_url}/api/v1/batch',
+                                  url=f'{self.base_url}/api/v1/batch', method='POST',
+                                  original_error=e)
+            error.committed = len(results_out)
+            error.committed_results = results_out
+            raise error
 
     @contextmanager
     def batched(self):
@@ -3680,7 +3693,9 @@ class PlaidBatch:
         order (also kept on ``.results``). Up to MAX_BATCH_OPS operations go
         as one atomic request. A larger batch goes as consecutive requests,
         each atomic on its own, so a failure in a later one leaves the earlier
-        ones committed."""
+        ones committed. The error then carries ``committed``, how many
+        operations were saved (0 when none were), and ``committed_results``,
+        their results in queue order."""
         if not self.open:
             raise PlaidAPIError('This batch was already submitted or aborted')
         self.open = False

@@ -89,3 +89,71 @@ def test_a_batch_result_keeps_its_status_and_headers_and_only_its_body_is_recase
     assert sorted(result['headers']) == ['Content-Type', 'X-Document-Versions']
     assert result['body'] == {'id': 't1', 'begin': 0, 'version': 2}
     assert result['status'] == 200
+
+
+class _FailResp:
+    ok = False
+    reason = 'Not Found'
+    headers = {'content-type': 'application/json'}
+
+    def __init__(self, status):
+        self.status_code = status
+        self.text = json.dumps({'error': 'Token t2400 not found'})
+
+    def json(self):
+        return {'error': 'Token t2400 not found'}
+
+
+def _submit_failing(op_count, ok_requests, status):
+    """Submit ``op_count`` deletes to a server that answers the first
+    ``ok_requests`` batch POSTs and fails the next, with ``status`` or, when it
+    is 0, with a dropped connection. Returns the error raised."""
+    import pytest
+    import requests as requests_lib
+
+    client = PlaidClient('http://x', 'tok')
+    sent = []
+
+    class _Session:
+        def post(self, url, headers=None, data=None, timeout=None):
+            ops = json.loads(data)
+            sent.append(ops)
+            if len(sent) > ok_requests:
+                if status == 0:
+                    raise requests_lib.ConnectionError('Connection refused')
+                return _FailResp(status)
+            return _Resp([{'status': 204, 'headers': {}, 'body': {'token/id': 't'}}
+                          for _ in ops])
+
+        def close(self):
+            pass
+
+    client.session = _Session()
+    b = client.batch()
+    for i in range(op_count):
+        b.tokens.delete(f't{i}')
+    with pytest.raises(Exception) as info:
+        b.submit()
+    return info.value
+
+
+def test_a_split_batch_that_fails_part_way_says_how_many_operations_were_saved():
+    error = _submit_failing(2500, 2, 404)
+    assert error.status == 404
+    assert error.committed == 2000
+    assert len(error.committed_results) == 2000
+    assert error.committed_results[0]['body'] == {'id': 't'}
+
+
+def test_a_batch_refused_at_its_first_request_saved_nothing_and_says_so():
+    error = _submit_failing(3, 0, 404)
+    assert error.status == 404
+    assert error.committed == 0
+    assert error.committed_results == []
+
+
+def test_a_connection_lost_on_a_later_request_still_reports_the_requests_before_it():
+    error = _submit_failing(1500, 1, 0)
+    assert error.status == 0
+    assert error.committed == 1000
+    assert len(error.committed_results) == 1000

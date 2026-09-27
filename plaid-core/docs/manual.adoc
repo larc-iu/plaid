@@ -1222,6 +1222,7 @@ Batches are **atomic** meaning that we guarantee that either they will all succe
 This is a very useful guarantee whenever you have sophisticated data integrity requirements that must be orchestrated using more than one request.
 The guarantee holds up to 1,000 operations, the server's cap on one batch request (`limits.batch-operations` in `GET /api/v1/info`, `MAX_BATCH_OPS` in both clients).
 Both clients send a larger batch as consecutive requests, each atomic on its own, so a failure in a later one leaves the earlier ones committed.
+The error then says how much was saved: `committed` is the number of operations saved (0 when none were) and `committedResults` (`committed_results` in Python) holds their results in queue order.
 
 A batch is an object rather than a mode of the client.
 `batched` hands your block a batch carrying the same resources as the client (`b.documents`, `b.tokens`, and the rest), and a write made on that batch is queued instead of sent.

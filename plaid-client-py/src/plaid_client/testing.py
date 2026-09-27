@@ -353,7 +353,10 @@ class _Batch:
         self.queued, self._effects, self.results = [], [], []
         if not queued:
             return self.results  # nothing is sent
+        # The fake never splits a batch, so a refusal saved nothing, which
+        # the real error says as ``committed`` and ``committed_results``.
         if self._refused is not None:
+            self._refused.committed, self._refused.committed_results = 0, []
             raise self._refused
         # One transaction: an effect that refuses rolls back the ones before it.
         tables = self.client._guideline_tables()
@@ -361,9 +364,11 @@ class _Batch:
         try:
             for effect in effects:
                 effect()
-        except BaseException:
+        except BaseException as error:
             for rows, saved in zip(tables, before):
                 rows[:] = saved
+            if isinstance(error, PlaidAPIError):
+                error.committed, error.committed_results = 0, []
             raise
         self.client.batches.append(list(queued))
         self.client.calls.extend(queued)

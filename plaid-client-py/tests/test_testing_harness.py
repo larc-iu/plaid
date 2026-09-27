@@ -733,3 +733,19 @@ def test_a_guideline_write_lands_in_the_project_it_names_and_a_refused_batch_und
             b.guidelines.update('g', title='X', expected_updated_at='stale')
     assert [g['title'] for g in c.guidelines.list('q')] == ['New']
     assert [g['title'] for g in c.guidelines.list('p')] == ['Ours']
+
+
+def test_a_refused_batch_says_it_saved_nothing_as_the_real_one_does():
+    # The real client's batch error carries what a split batch saved before
+    # it failed. The fake never splits, so a refusal saved nothing.
+    c = _project_client(guidelines=[{'id': 'g1', 'title': 'T', 'body': 'abc',
+                                     'pinned': False, 'updated_at': 'then'}])
+    with pytest.raises(PlaidAPIError) as e:
+        with c.batched() as b:
+            b.spans.delete('s1')
+            b.spans.delete('s1')
+    assert (e.value.committed, e.value.committed_results) == (0, [])
+    with pytest.raises(PlaidAPIError) as e:
+        with c.batched() as b:
+            b.guidelines.update('g1', title='X', expected_updated_at='stale')
+    assert (e.value.committed, e.value.committed_results) == (0, [])

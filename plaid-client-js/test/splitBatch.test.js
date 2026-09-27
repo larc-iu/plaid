@@ -111,3 +111,70 @@ test("a batch refused 401 calls onAuthError, as every other request does", async
   }
   assert.deepEqual(seen, [401], "fired once per client, like makeRequest");
 });
+
+// Answers the first `okRequests` batch POSTs with one result per op and fails
+// the next one, with `status` or, when it is 0, with a dropped connection.
+function stubFailingBatchServer(okRequests, status) {
+  const requests = [];
+  globalThis.fetch = async (url, opts = {}) => {
+    const ops = JSON.parse(opts.body);
+    requests.push(ops);
+    if (requests.length > okRequests) {
+      if (status === 0) throw new TypeError("fetch failed");
+      return {
+        ok: false,
+        status,
+        statusText: "Not Found",
+        headers: { get: () => "application/json" },
+        json: async () => ({ error: "Token t2400 not found" }),
+        text: async () => JSON.stringify({ error: "Token t2400 not found" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "application/json" },
+      json: async () =>
+        ops.map(() => ({ status: 204, headers: {}, body: { "token/id": "t" } })),
+    };
+  };
+  return requests;
+}
+
+async function submitFailing(opCount, okRequests, status) {
+  const client = new PlaidClient("http://x", "tok");
+  const realFetch = globalThis.fetch;
+  stubFailingBatchServer(okRequests, status);
+  try {
+    const b = client.batch();
+    for (let i = 0; i < opCount; i += 1) b.tokens.delete(`t${i}`);
+    await b.submit();
+  } catch (error) {
+    return error;
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.fail("the batch should have failed");
+}
+
+test("a split batch that fails part way says how many operations were saved, with their results", async () => {
+  const error = await submitFailing(2500, 2, 404);
+  assert.equal(error.status, 404);
+  assert.equal(error.committed, 2000);
+  assert.equal(error.committedResults.length, 2000);
+  assert.deepEqual(error.committedResults[0].body, { id: "t" });
+});
+
+test("a batch refused at its first request saved nothing, and says so", async () => {
+  const error = await submitFailing(3, 0, 404);
+  assert.equal(error.status, 404);
+  assert.equal(error.committed, 0);
+  assert.deepEqual(error.committedResults, []);
+});
+
+test("a connection lost on a later request still reports the requests before it", async () => {
+  const error = await submitFailing(1500, 1, 0);
+  assert.equal(error.status, 0);
+  assert.equal(error.committed, 1000);
+  assert.equal(error.committedResults.length, 1000);
+});

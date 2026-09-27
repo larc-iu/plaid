@@ -95,6 +95,11 @@ class PlaidAPIError(Exception):
         method: The HTTP method used.
         response_data: Parsed error body returned by the server, if any.
         original_error: The underlying exception for network errors, if any.
+        committed: For a failed batch submit, how many of its operations were
+            saved (a batch past MAX_BATCH_OPS goes as several requests, and
+            the ones before the failure stay saved). None for anything else.
+        committed_results: For a failed batch submit, the saved operations'
+            results in queue order. None for anything else.
     """
 
     def __init__(self, message, status=0, url='', method='', response_data=None,
@@ -106,6 +111,8 @@ class PlaidAPIError(Exception):
         self.method = method
         self.response_data = response_data
         self.original_error = original_error
+        self.committed = None
+        self.committed_results = None
 
 
 def retry_while_busy(attempt, retries=BUSY_RETRIES, base_delay=BUSY_BACKOFF_S):
