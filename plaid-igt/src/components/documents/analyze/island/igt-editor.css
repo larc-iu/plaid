@@ -425,17 +425,21 @@
 }
 
 /* ---- One sentence's tools (hover-revealed, at the end of the line the text
-   reads towards): Ask, then Copy ---- */
+   reads towards): Ask, then Copy. The box takes the sentence's direction for
+   its place, and the row inside is chrome with dir="ltr", so the group reads
+   link | Copy | caret in an Arabic sentence too. ---- */
 .igt-sentence__tools {
   position: absolute;
   top: 8px;
   inset-inline-end: 10px;
   z-index: 6;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.igt-sentence__toolrow {
   display: flex;
   align-items: stretch;
   gap: 6px;
-  opacity: 0;
-  transition: opacity 0.12s;
 }
 .igt-sentence:hover .igt-sentence__tools,
 .igt-sentence__tools:focus-within {
@@ -482,11 +486,17 @@
   cursor: pointer;
 }
 .igt-copy__btn {
-  border-radius: 6px 0 0 6px;
+  border-start-start-radius: 6px;
+  border-end-start-radius: 6px;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }
 .igt-copy__caret {
-  border-radius: 0 6px 6px 0;
-  border-left: none;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+  border-inline-start: none;
   padding: 2px 5px;
 }
 .igt-copy__btn:hover,
@@ -503,7 +513,7 @@
 .igt-copy__menu {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  inset-inline-end: 0;
   width: 190px;
   padding: 4px;
   background: #fff;
@@ -521,7 +531,7 @@
   gap: 6px;
   font: inherit;
   font-size: 12px;
-  text-align: left;
+  text-align: start;
   padding: 4px 6px;
   background: var(--igt-gray-50);
   border: 1px solid transparent;
@@ -537,6 +547,12 @@
 .igt-copy__fav {
   color: var(--igt-amber);
   font-size: 11px;
+}
+/* An Arabic sentence puts the tools at its left edge, so the menu opens
+   rightwards, into the page. The tool row is LTR, so its inline start is left. */
+.igt-sentence[dir='rtl'] .igt-copy__menu {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
 }
 .igt-copy__hint {
   padding: 3px 6px 1px;
@@ -1111,7 +1127,7 @@
    line-height matters in the grid: a subscript must not grow the row. */
 .igt-vocab__num,
 .igt-vocab-pop__num {
-  margin-left: 0.15em;
+  margin-inline-start: 0.15em;
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
   text-decoration: none;
@@ -1626,8 +1642,11 @@
   width: 22px;
   padding: 0;
   border: 1px solid var(--igt-line);
-  border-right: 0;
-  border-radius: 5px 0 0 5px;
+  border-inline-end: 0;
+  border-start-start-radius: 5px;
+  border-end-start-radius: 5px;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
   background: #fff;
   color: var(--igt-gray-500);
   cursor: pointer;
@@ -1646,8 +1665,8 @@
 }
 /* The Copy button is no longer the leftmost element in the group. */
 .igt-copy__link + .igt-copy__btn {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
 }
 
 /* ---- alternatives list (Alt+↓ on an annotation cell) ----

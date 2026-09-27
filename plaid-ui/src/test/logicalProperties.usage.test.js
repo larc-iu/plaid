@@ -41,6 +41,12 @@ const MIRRORED = [
       '.igt-morph',
       '.igt-mwe',
       '.igt-cmt-badge',
+      // The sentence's tools and the chip under each word sit inside the
+      // mirrored block. The tool row carries dir="ltr", and its insets are
+      // logical all the same, so the rule reads the same in either.
+      '.igt-copy',
+      '.igt-ask',
+      '.igt-vocab__',
     ],
   },
   {
@@ -73,6 +79,18 @@ const MIRRORED = [
 // has none, and the one rule that needs it says itself twice under `:dir()`.
 const PHYSICAL =
   /(^|[\s;{])((margin|padding|border)-(left|right)\b|border-(top|bottom)-(left|right)-radius\b|(left|right)\s*:|text-align\s*:\s*(left|right)\b)/;
+
+// A shorthand is physical too when its left and right differ: four-value
+// `margin: 0 4px 0 2px`, or `border-radius: 6px 0 0 6px`, whose corners are
+// named top-left first whatever the direction.
+const lopsidedShorthand = (decl) => {
+  const m = /^(margin|padding|border-width|border-radius)\s*:\s*(.+)$/.exec(decl);
+  if (!m) return false;
+  const values = m[2].split('/')[0].trim().split(/\s+/);
+  if (m[1] === 'border-radius') return new Set(values).size > 1;
+  return values.length === 4 && values[1] !== values[3];
+};
+const physical = (decl) => PHYSICAL.test(`;${decl};`) || lopsidedShorthand(decl);
 
 // Rules as (selector, body) pairs. Crude, and enough: these two files are
 // plain CSS with no nesting and no at-rule bodies holding declarations
@@ -119,7 +137,7 @@ describe('the mirrored blocks use logical properties', () => {
           r.body
             .split(';')
             .map((d) => d.trim())
-            .filter((d) => d && PHYSICAL.test(`;${d};`))
+            .filter((d) => d && physical(d))
             .map((d) => `${r.selector} { ${d} }`),
         )
         .sort();
