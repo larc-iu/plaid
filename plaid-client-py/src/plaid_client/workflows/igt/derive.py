@@ -11,6 +11,7 @@ import unicodedata
 from typing import Dict, List, Tuple
 
 from plaid_client.provenance import prov_state, MACHINE
+from plaid_client.workflows.messages import setup_incomplete
 
 
 # --- ignored tokens (mirrors plaid-igt domain/igtConfig.js) -----------------
@@ -101,16 +102,16 @@ def derive(doc, word_layer_id, morpheme_layer_id, sentence_layer_id, *,
     asks for no gloss layer (the second item is then None)."""
     tl, word_layer = _find_layer(doc['text_layers'], word_layer_id)
     if not word_layer:
-        raise ValueError(f'Word token layer {word_layer_id} not found in document')
+        raise setup_incomplete(f'word token layer {word_layer_id} not found in document')
     _, morph_layer = _find_layer(doc['text_layers'], morpheme_layer_id)
     if not morph_layer:
-        raise ValueError(f'Morpheme token layer {morpheme_layer_id} not found in document')
+        raise setup_incomplete(f'morpheme token layer {morpheme_layer_id} not found in document')
     _, sent_layer = _find_layer(doc['text_layers'], sentence_layer_id)
     if not sent_layer:
-        raise ValueError(f'Sentence token layer {sentence_layer_id} not found in document')
+        raise setup_incomplete(f'sentence token layer {sentence_layer_id} not found in document')
     gloss_layer = _span_layer(morph_layer, gloss_field, 'Morpheme') if gloss_field else None
     if gloss_field and not gloss_layer:
-        raise ValueError(f'No morpheme-scope field named "{gloss_field}" — set the Gloss field parameter '
+        raise ValueError(f'No morpheme-scope field named "{gloss_field}". Set the Gloss field parameter '
                          f'to one of: {", ".join(sl["name"] for sl in morph_layer.get("span_layers", [])) or "(none)"}')
     trans_layer = _span_layer(sent_layer, translation_field) if translation_field else None
     translations = {}

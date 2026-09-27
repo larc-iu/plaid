@@ -109,7 +109,7 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0,
     if linked:
         tail.append(f'Kept {linked} sentence{s(linked)} that another sentence links to.')
     if failed:
-        tail.append(f'Failed {failed} sentence{s(failed)}'
+        tail.append(f'Failed to draft {failed} sentence{s(failed)}'
                     + (f': {first_error}' if first_error else '.'))
     if drafted:
         return {'level': 'success', 'title': f'Drafted {drafted} sentence{s(drafted)}',
@@ -119,13 +119,13 @@ def build_draft_notice(drafted, skipped, failed, first_error=None, kept=0,
                    else f'All {skipped} sentences already have graphs')
         return {'level': 'warning', 'title': 'Document not modified',
                 'message': (f"{subject}. Enable 'Overwrite existing graphs' to draft over them."
-                            + (f' Failed {failed} sentence{s(failed)}.' if failed else ''))}
+                            + (f' Failed to draft {failed} sentence{s(failed)}.' if failed else ''))}
     if kept or linked:
         return {'level': 'warning', 'title': 'Document not modified',
                 'message': ' '.join(tail)}
     if failed:
         return {'level': 'warning', 'title': 'Nothing drafted',
-                'message': f'Failed {failed} sentence{s(failed)}'
+                'message': f'Failed to draft {failed} sentence{s(failed)}'
                            + (f': {first_error}' if first_error else '.')}
     return {'level': 'warning', 'title': 'Nothing to draft',
             'message': 'The document has no sentences in scope.'}

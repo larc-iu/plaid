@@ -11,6 +11,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
 from plaid_client.service import check_unchanged
+from plaid_client.workflows.messages import setup_incomplete
 
 from .tokenizer_model import TokenSpan
 
@@ -124,7 +125,7 @@ class TokenProcessor:
                 sentence_layer = tl
         
         if not primary_layer:
-            raise ValueError("This document has no word layer to tokenize into.")
+            raise setup_incomplete(f"word token layer {primary_token_layer_id} not found in document {document_id}")
         
         existing_tokens = primary_layer.get("tokens", [])
         existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
@@ -164,9 +165,9 @@ class TokenProcessor:
             )
             # Pre-check: complete cover of [0, text_length), no gaps/overlaps/zero-widths
             if not self._is_complete_partition(sentences_to_create, text_length):
-                raise ValueError(
-                    f"Sentence tokenization did not produce a valid partition of [0, {text_length})."
-                )
+                logger.warning("Sentence tokenization did not produce a valid partition of [0, %d)",
+                               text_length)
+                raise ValueError("Could not split the text into sentences.")
 
             # Provenance write contract: the sentence reset cascade-deletes
             # every sentence-level annotation. Machine-made UNVERIFIED ones
@@ -176,7 +177,7 @@ class TokenProcessor:
             if protected and not overwrite:
                 raise ValueError(
                     f"Re-tokenizing would delete {protected} human-made or human-verified "
-                    f"sentence-level annotation(s); re-run with overwrite enabled to replace them."
+                    f"sentence-level annotation(s). Re-run with overwrite enabled to replace them."
                 )
         elif sentence_layer and len(existing_sentences) != 1:
             response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")

@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+from plaid_client.workflows.messages import SETUP_INCOMPLETE  # noqa: E402
 from plaid_client.workflows.umr import (  # noqa: E402
     DOC_CONSTANTS, group_of, is_variable, next_variable, parse_attribute_line, parse_penman,
     read_document, resolve_layers, serialize_penman, tree_edges, variable_from, write_graphs,
@@ -171,23 +172,27 @@ def test_the_resolver_finds_every_layer_by_its_tag():
     ('word', 'Word layer'),
     ('node', 'UMR node layer'),
 ])
-def test_a_project_missing_a_layer_is_refused_by_name(drop, named):
+def test_a_project_missing_a_layer_is_refused_by_name(drop, named, caplog):
     """One resolver for every reader, so a layer one of them forgot to ask for
     cannot be missing from its own copy: the draft service used to resolve no
-    document graph layer and the adjudication service no morphemes."""
+    document graph layer and the adjudication service no morphemes. The
+    requester reads the one setup line, the operator's log names the layer."""
     raw = _document()
     token_layers = raw['text_layers'][0]['token_layers']
     raw['text_layers'][0]['token_layers'] = [t for t in token_layers if t['id'] != drop]
-    with pytest.raises(ValueError, match=named):
+    with pytest.raises(ValueError) as refused:
         resolve_layers(raw)
+    assert str(refused.value) == SETUP_INCOMPLETE
+    assert named in caplog.text
 
 
-def test_the_document_graph_layer_is_required_of_every_reader():
+def test_the_document_graph_layer_is_required_of_every_reader(caplog):
     raw = _document()
     relation_layers = raw['text_layers'][0]['token_layers'][2]['span_layers'][0]['relation_layers']
     del relation_layers[1]
-    with pytest.raises(ValueError, match='UMR document graph layer'):
+    with pytest.raises(ValueError, match=SETUP_INCOMPLETE):
         resolve_layers(raw)
+    assert 'UMR document graph layer' in caplog.text
 
 
 def test_a_document_reads_back_as_sentences_with_their_graphs():

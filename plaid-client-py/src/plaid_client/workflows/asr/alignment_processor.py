@@ -12,6 +12,7 @@ from typing import List, Dict, Optional
 
 from plaid_client.provenance import stamp_inferred, is_protected
 from plaid_client.service import requester_message
+from plaid_client.workflows.messages import setup_incomplete
 
 from .asr_model import Alignment
 
@@ -180,7 +181,7 @@ class AlignmentProcessor:
                 break
         
         if not text_layer:
-            raise ValueError("Text layer not found")
+            raise setup_incomplete(f"text layer {text_layer_id} not found in document {document_id}")
         
         # Get existing alignment tokens
         existing_alignment_tokens = sorted(
@@ -553,8 +554,8 @@ class AlignmentProcessor:
                         protected += 1
             if protected:
                 raise ValueError(
-                    f"Transcribing would reset the sentence partition and delete {protected} "
-                    f"human-made or human-verified sentence-level annotation(s); re-run with "
+                    f"Transcribing would redo the sentences and delete {protected} "
+                    f"human-made or human-verified sentence-level annotation(s). Re-run with "
                     f"overwrite enabled to replace them."
                 )
 
@@ -596,10 +597,11 @@ class AlignmentProcessor:
             # bulk_create that the server will reject anyway (rolling back the
             # whole ASR batch — text update included). Raising here aborts
             # this batch BEFORE submit, so no destructive state changes.
-            raise ValueError(
-                f"Computed sentence partition does not cleanly cover "
-                f"[0, {text_length}); aborting sentence partition update"
-            )
+            # The specifics go to the operator's log, the requester is told
+            # what failed.
+            print(f"Computed sentence partition does not cleanly cover [0, {text_length}); "
+                  f"aborting sentence partition update")
+            raise ValueError("Could not split the text into sentences.")
 
         # TODO(annotation-preservation): ASR runs incrementally, and this full-reset
         # bulk_delete + bulk_create wipes every sentence-level annotation (spans,

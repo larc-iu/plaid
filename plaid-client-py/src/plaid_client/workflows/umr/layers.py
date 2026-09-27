@@ -31,6 +31,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional
 
 from plaid_client.roles import ROLES, find_by_role
+from plaid_client.workflows.messages import setup_incomplete
 
 #: The app's private config namespace.
 UMR_NAMESPACE = 'umr'
@@ -147,8 +148,8 @@ def gloss_layers_of(sentence_layer, word_layer, morpheme_layer) -> List[GlossLay
 def resolve_layers(raw) -> UmrLayers:
     """The UMR layers of a project or document response.
 
-    Raises ``ValueError`` naming every layer that is missing, so a half-made
-    project says which piece a maintainer has left to finish rather than failing
+    Raises the setup-incomplete ``ValueError`` when a layer is missing, with
+    every missing one named in the operator's log, rather than failing
     somewhere deeper with an id of None.
     """
     text_layers = (raw or {}).get('text_layers') or []
@@ -168,9 +169,7 @@ def resolve_layers(raw) -> UmrLayers:
     }
     missing = [_LABELS[key] for key in REQUIRED if not found[key]]
     if missing:
-        raise ValueError('This project is not set up for UMR: it is missing the '
-                         + ', '.join(missing) + '. A maintainer can finish setting it up on '
-                         'the project page.')
+        raise setup_incomplete('not set up for UMR, missing the ' + ', '.join(missing))
     morpheme_layer = find_by_role(token_layers, ROLES.MORPHEME)
     return UmrLayers(morpheme_layer=morpheme_layer,
                      gloss_layers=gloss_layers_of(found['sentence_layer'], found['word_layer'],
