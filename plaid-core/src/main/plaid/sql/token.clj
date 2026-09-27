@@ -935,9 +935,11 @@
   position and inserts a new right-half token with begin = position.
   The left half is the original row and keeps everything it had; the
   right half is new and inherits only what the layer declared under
-  `config.plaid.preserveOnSplit`. Returns the new (right-half) token id."
+  `config.plaid.preserveOnSplit`, besides its place: the text, the layer,
+  the document and the precedence, which orders it among the tokens that
+  share its begin. Returns the new (right-half) token id."
   [tx t position]
-  (let [{:keys [id text_id token_layer_id document_id begin end_]} t]
+  (let [{:keys [id text_id token_layer_id document_id begin end_ precedence]} t]
     (when-not (and (int? position) (> position begin) (< position end_))
       (throw (ex-info "Split position must be strictly between token begin and end"
                       {:code 400 :position position :begin begin :end end_})))
@@ -952,7 +954,8 @@
                      :token_layer_id token_layer_id
                      :document_id document_id
                      :begin position
-                     :end_ end_})
+                     :end_ end_
+                     :precedence precedence})
       (when (seq inherited)
         (metadata/insert-metadata! tx "token" new-id inherited {:skip-parent-audit? true}))
       new-id)))

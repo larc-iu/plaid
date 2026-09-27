@@ -83,3 +83,35 @@
         _ (assert-no-content (set-layer-config layer "plaid" "preserveOnSplit" "prov"))
         right (right-half-of token 5)]
     (is (empty? (token-metadata right)))))
+
+(deftest the-new-half-keeps-the-precedence
+  ;; Precedence places a token among those sharing its begin, the way its
+  ;; layer and text place it, so the new half is not born without it. A
+  ;; sentence split inside a segmented word once left the right half's
+  ;; morphemes with no precedence at all (RT finding 7, 2026-09-26).
+  (let [proj (create-test-project admin-request "SplitPrecProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        txt (-> (create-text admin-request tl doc "alphabeta") :body :id)
+        sentences (-> (create-token-layer admin-request tl "Sentences" "non-overlapping") :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping" :parent-token-layer-id sentences}) :body :id)
+        morphs (-> (create-token-layer-opts admin-request tl "Morphemes" {:overlap-mode "non-overlapping" :parent-token-layer-id words}) :body :id)
+        created (mapv (fn [[layer b e p]] (create-token admin-request layer txt b e p))
+                      [[sentences 0 9 4] [words 0 9 3] [morphs 0 5 1] [morphs 5 9 2]])
+        _ (run! assert-created created)
+        [sentence _ alpha beta] (map (comp :id :body) created)
+        precedence-at (fn [layer]
+                        (->> (api-call admin-request {:method :get :path (str "/api/v1/documents/" doc
+                                                                              "?include-body=true")})
+                             :body :document/text-layers
+                             (mapcat :text-layer/token-layers)
+                             (filter #(= layer (:token-layer/id %)))
+                             first :token-layer/tokens
+                             (map (juxt :token/begin :token/end :token/precedence))
+                             set))]
+    (assert-created (split-token admin-request sentence 2))
+    (is (= #{[0 2 4] [2 9 4]} (precedence-at sentences)) "the split token")
+    (is (= #{[0 2 3] [2 9 3]} (precedence-at words)) "a straddling child, split in the cascade")
+    (is (= #{[0 2 1] [2 5 1] [5 9 2]} (precedence-at morphs)) "a grandchild")
+    (assert-ok (get-token admin-request alpha))
+    (assert-ok (get-token admin-request beta))))
