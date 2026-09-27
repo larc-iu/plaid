@@ -204,29 +204,25 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
   expect(wordUnder('DET'), 'gloss on the replaced word rides onto its replacement').toBe('a');
 });
 
-test('C2-02: rename and delete from the Metadata tab', async ({ page }) => {
+test('C2-02: rename and delete from the Details tab', async ({ page }) => {
+  // The old slug still opens the page it named.
   await openTab(page, 'metadata');
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  // By its placeholder, not the first textbox on the tab: the metadata tab also
-  // draws a box per configured field, and which one comes first in the DOM is
-  // the project's configuration rather than this test's business.
-  const name = page.getByPlaceholder('Enter document name');
+  await expect(page).toHaveURL(/tab=details/);
+  // By its label, not the first textbox on the tab: the page also draws a box
+  // per configured field, and which one comes first in the DOM is the
+  // project's configuration rather than this test's business.
+  const name = page.getByLabel('Name', { exact: true });
   await name.fill('Renamed workflow doc');
-  await page.getByRole('button', { name: /^Save/ }).click();
+  await name.press('Enter');
   await page.waitForLoadState('networkidle');
   await expect
     .poll(async () => (await client.documents.get(documentId)).name)
     .toBe('Renamed workflow doc');
   await expect(page.getByText('Renamed workflow doc').first()).toBeVisible();
-  // Delete lives in the edit toolbar.
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
-  await page
-    .getByRole('button', { name: /Delete/ })
-    .first()
-    .click();
+  await page.getByRole('button', { name: 'Delete document' }).click();
   const dialog = page.getByRole('dialog').or(page.getByRole('alertdialog'));
-  await expect(dialog).toContainText('Delete Document');
-  await dialog.getByRole('button', { name: 'Delete Document' }).click();
+  await expect(dialog).toContainText('Renamed workflow doc');
+  await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.waitForURL(/#\/projects\/[^/]+$/);
   const docs = await client.projects.listDocuments(projectId);
   expect(docs.some((d) => d.id === documentId)).toBe(false);

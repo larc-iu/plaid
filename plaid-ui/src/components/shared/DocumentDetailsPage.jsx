@@ -4,6 +4,7 @@ import { Copy, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentEditor } from '../../hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
+import { useDocumentModel } from '../../domain/useDocumentModel.js';
 import {
   useUnsavedDraft,
   useUnsavedGuard,
@@ -30,10 +31,21 @@ import { TextDirectionField } from './TextDirectionField.jsx';
  * put an irreversible action at the bottom of a screen people scroll daily.
  *
  * `metadata` is an app's own card for what its projects record about a
- * document, drawn under Details where it has one.
+ * document, drawn under Details where it has one. It is handed
+ * `{ doc, project, readOnly }` and saves its own section.
+ *
+ * What the page shows comes from the app's document shell: plaid-ud and
+ * plaid-umr hand it down their outlet (`useDocumentEditor`), and plaid-igt,
+ * whose tabs are not routes, passes the same shape as `context`. `doc` is
+ * what is on screen, a past state while a history entry is open, and the page
+ * is read-only then, as it is for a reader and while a service run writes.
  */
-export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
-  const { projectId, documentId, doc, project } = useDocumentEditor();
+export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null }) => {
+  const outlet = useDocumentEditor();
+  const { projectId, documentId, doc, project, pastEntry, writeLockHeld } = context ?? outlet;
+  // Follows the document itself (a rename landing, a save starting), whoever
+  // mounted the page.
+  useDocumentModel(doc);
   const { user, getClient } = useAuth();
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -41,7 +53,7 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
 
   useDocumentTitle('Details', doc?.name, project?.name);
 
-  const readOnly = !canEditProject(project, user);
+  const readOnly = !canEditProject(project, user) || !!pastEntry || !!writeLockHeld;
   const [name, setName] = useState(doc.name || '');
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyName, setCopyName] = useState('');
@@ -161,7 +173,11 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null }) => {
         </CardContent>
       </Card>
 
-      {Metadata && <Metadata doc={doc} project={project} readOnly={readOnly} />}
+      {/* Keyed on the state shown, so what was typed over the live document
+          is not drawn over a past one. */}
+      {Metadata && (
+        <Metadata key={doc.asOf ?? 'live'} doc={doc} project={project} readOnly={readOnly} />
+      )}
 
       {!readOnly && (
         <Card>

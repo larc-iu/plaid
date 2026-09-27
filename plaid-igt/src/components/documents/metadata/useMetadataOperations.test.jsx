@@ -1,90 +1,81 @@
-// The metadata tab's two ways off this screen. Copying a document is the
-// shared document model's `copyTo`, not an igt spelling of its own, so what is
-// pinned here is the tab's half of that contract: the copy's own name in the
-// toast, and the copy's id in the route it pushes.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+// The project's document fields on the Details tab. The name, the copy and the
+// delete are the shared Details page's and are tested there. What is pinned
+// here is this section's half: Save writes only what changed, waits for a
+// change, refuses a value its tagset refuses, and never offers Plaid's own
+// keys as fields.
+import { describe, it, expect, vi } from 'vitest';
 import { mountDocumentHook, fakeDocument } from '@/test/mountDocumentHook.jsx';
 import { useMetadataOperations } from './useMetadataOperations.js';
 
-const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }));
-vi.mock('react-router-dom', async (importOriginal) => ({
-  ...(await importOriginal()),
-  useNavigate: () => navigate,
-}));
+const FIELDS = [{ name: 'Date' }, { name: 'Speakers' }];
 
-const { notifySuccess } = vi.hoisted(() => ({ notifySuccess: vi.fn() }));
-vi.mock('@/utils/feedback', () => ({
-  notifySuccess,
-  notifyError: vi.fn(),
-  notifyWarning: vi.fn(),
-}));
-
-// A document that copies the way DocumentModel.copyTo does: the name trimmed,
-// a blank one falling back, and `{id, name}` for the copy.
 const doc = (over = {}) =>
   fakeDocument({
     projectId: 'proj-1',
-    document: { id: 'doc-1', name: 'Test Doc', metadata: {} },
-    copyTo: vi.fn(async (name) => {
-      const next = (name || '').trim() || 'Test Doc (copy)';
-      return { id: 'doc-2', name: next };
-    }),
-    deleteDocument: vi.fn(async () => true),
+    document: { id: 'doc-1', name: 'Test Doc', metadata: { Date: '2020', Speakers: 'Ana' } },
+    project: { config: { igt: { documentMetadata: FIELDS } } },
     saveNameAndMetadata: vi.fn(async () => true),
     ...over,
   });
 
-const mount = (d) => mountDocumentHook(useMetadataOperations, { doc: d });
+const mount = (d) => mountDocumentHook(useMetadataOperations, { doc: d, args: [d] });
 
-beforeEach(() => {
-  navigate.mockClear();
-  notifySuccess.mockClear();
-});
+describe('the document fields on the Details tab', () => {
+  it('shows what is stored and has nothing to save until a field changes', async () => {
+    const h = await mount(doc());
+    expect(h.api.values).toEqual({ Date: '2020', Speakers: 'Ana' });
+    expect(h.api.dirty).toBe(false);
+    await h.step(() => h.api.updateValue('Date', '2021'));
+    expect(h.api.dirty).toBe(true);
+    // Typed back to what is stored: nothing to save again.
+    await h.step(() => h.api.updateValue('Date', '2020'));
+    expect(h.api.dirty).toBe(false);
+    await h.unmount();
+  });
 
-describe('the metadata tab copying its document', () => {
-  it('copies under the typed name and opens the copy', async () => {
+  it('saves the fields and no name, and is clean once the save lands', async () => {
     const d = doc();
     const h = await mount(d);
-    await h.step(() => h.api.handleCopyClick());
-    await h.step(() => h.api.updateCopyName('  Second look  '));
-    await h.step(() => h.api.handleCopy());
-
-    expect(d.copyTo).toHaveBeenCalledWith('  Second look  ');
-    expect(notifySuccess).toHaveBeenCalledWith('"Second look" is ready.', 'Document copied');
-    expect(navigate).toHaveBeenCalledWith('/projects/proj-1/documents/doc-2');
-    expect(h.api.copyModalOpen).toBe(false);
-    expect(h.api.copying).toBe(false);
+    await h.step(() => h.api.updateValue('Speakers', 'Ana, Ben'));
+    await h.step(() => h.api.handleSave());
+    expect(d.saveNameAndMetadata).toHaveBeenCalledWith(null, {
+      Date: '2020',
+      Speakers: 'Ana, Ben',
+    });
+    expect(h.api.saving).toBe(false);
     await h.unmount();
   });
 
-  it('names the copy the model gave it when the field was emptied', async () => {
-    const d = doc();
+  it('keeps what was typed when the save is refused', async () => {
+    const d = doc({ saveNameAndMetadata: vi.fn(async () => false) });
     const h = await mount(d);
-    await h.step(() => h.api.handleCopyClick());
-    await h.step(() => h.api.updateCopyName(''));
-    await h.step(() => h.api.handleCopy());
-
-    expect(notifySuccess).toHaveBeenCalledWith('"Test Doc (copy)" is ready.', 'Document copied');
-    expect(navigate).toHaveBeenCalledWith('/projects/proj-1/documents/doc-2');
+    await h.step(() => h.api.updateValue('Date', '2021'));
+    await h.step(() => h.api.handleSave());
+    expect(h.api.values.Date).toBe('2021');
+    expect(h.api.dirty).toBe(true);
     await h.unmount();
   });
 
-  it('stays put when the copy failed', async () => {
-    const d = doc({ copyTo: vi.fn(async () => null) });
+  it('holds Save back while a field has a value its tagset refuses', async () => {
+    const d = doc({
+      project: {
+        config: {
+          igt: {
+            documentMetadata: [{ name: 'Genre', tagset: 'genres' }],
+            tagsets: { genres: { mode: 'closed', values: [{ value: 'narrative' }] } },
+          },
+        },
+      },
+      document: { id: 'doc-1', name: 'Test Doc', metadata: {} },
+    });
     const h = await mount(d);
-    await h.step(() => h.api.handleCopyClick());
-    await h.step(() => h.api.handleCopy());
-
-    expect(navigate).not.toHaveBeenCalled();
-    expect(notifySuccess).not.toHaveBeenCalled();
-    // The dialog is still standing, so the reader can try again.
-    expect(h.api.copyModalOpen).toBe(true);
-    expect(h.api.copying).toBe(false);
+    await h.step(() => h.api.updateValue('Genre', 'poem'));
+    expect(h.api.metadataValid).toBe(false);
+    await h.step(() => h.api.updateValue('Genre', 'narrative'));
+    expect(h.api.metadataValid).toBe(true);
     await h.unmount();
   });
-});
 
-describe('the metadata tab and the shared plaid settings', () => {
   it('never offers plaid as a field, even when the project declares one', async () => {
     const d = doc({
       project: { config: { igt: { documentMetadata: [{ name: 'plaid' }, { name: 'Date' }] } } },
@@ -92,13 +83,10 @@ describe('the metadata tab and the shared plaid settings', () => {
     });
     const h = await mount(d);
     expect(h.api.metadataFields.map((f) => f.name)).toEqual(['Date']);
-    await h.step(() => h.api.handleEdit());
-    expect(Object.keys(h.api.editedMetadata)).toEqual(['Date']);
+    expect(Object.keys(h.api.values)).toEqual(['Date']);
     await h.unmount();
   });
-});
 
-describe('the metadata tab and the provenance keys', () => {
   it('never offers a provenance key as a field, even when the project declares one', async () => {
     const d = doc({
       project: {
@@ -108,8 +96,6 @@ describe('the metadata tab and the provenance keys', () => {
     });
     const h = await mount(d);
     expect(h.api.metadataFields.map((f) => f.name)).toEqual(['Date']);
-    await h.step(() => h.api.handleEdit());
-    expect(Object.keys(h.api.editedMetadata)).toEqual(['Date']);
     await h.unmount();
   });
 });

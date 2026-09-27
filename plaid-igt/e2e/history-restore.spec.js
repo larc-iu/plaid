@@ -210,3 +210,30 @@ test('the snapshot the reader clicked past is never shown', async ({ page }) => 
   await expect(glossCell(page)).toHaveValue('MIDDLE');
   expect(await page.evaluate(() => window.__glossSeq)).toEqual(['LATEST', 'MIDDLE']);
 });
+
+// History is about the document, not about one tab: the button is in the tab
+// strip on every tab, and the Details page shows the past read-only.
+test('the Details tab opens History and shows the past read-only', async ({ page }) => {
+  const c = client();
+  const before = (await c.documents.get(documentId)).name;
+  await c.withOperation('Rename for the history test', async () => {
+    await c.documents.update(documentId, `${before} renamed`);
+  });
+
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=details`);
+  const name = page.getByLabel('Name', { exact: true });
+  await expect(name).toHaveValue(`${before} renamed`, { timeout: 20_000 });
+  await expect(name).toBeEnabled();
+
+  await openHistory(page);
+  await entryRow(page, 'Seed the original gloss').click();
+  await expect(page.getByText(/This is the document as of/)).toBeVisible();
+  await expect(name).toHaveValue(before, { timeout: 15_000 });
+  await expect(name).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Delete document' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Return to current' }).click();
+  await expect(name).toHaveValue(`${before} renamed`, { timeout: 15_000 });
+  await expect(name).toBeEnabled();
+});

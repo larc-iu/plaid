@@ -1,23 +1,19 @@
 import { useState } from 'react';
 import { isReservedMetadataKey } from '@larc-iu/plaid-client';
-import { useNavigate } from 'react-router-dom';
-import { useDocumentCtx, useUnsavedDraft } from '../contexts/DocumentContext.jsx';
-import { useUnsavedGuard, dropUnsavedDrafts } from '@ui/hooks/useUnsavedDraft.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { notifySuccess } from '@/utils/feedback';
 import { readDocumentMetadata } from '@/domain/igtConfig';
-import { readTagsets } from '@/domain/tagsets';
-import { changedValuesAllowed } from '@/domain/tagsets';
+import { readTagsets, changedValuesAllowed } from '@/domain/tagsets';
 
-// Metadata tab operations, backed by the shared IgtDocument. All transient
-// editing state (isEditing / drafts / modal / spinners) is component-local;
-// the domain model handles the save/delete + optimistic patch + error toast.
-export const useMetadataOperations = () => {
-  const navigate = useNavigate();
-  const { doc } = useDocumentCtx();
+// The project's document fields on the Details tab (Date, Speakers, and
+// whatever else a maintainer declared), backed by the shared IgtDocument. The
+// name, the copy and the delete are the shared Details page's. What is typed
+// here and not saved is this hook's, and Save writes only the fields it
+// changed, so a value someone else saved to another field meanwhile stays.
+export const useMetadataOperations = (doc) => {
   useDocumentModel(doc);
 
-  const document = doc.document;
+  const stored = doc.document?.metadata || {};
   const project = doc.project;
   // `plaid` and the provenance keys are Plaid's own, never a field's value.
   const metadataFields = (readDocumentMetadata(project?.config) || []).filter(
@@ -27,134 +23,38 @@ export const useMetadataOperations = () => {
   const tagsets = readTagsets(project?.config);
   const tagsetFor = (field) => (field?.tagset ? (tagsets[field.tagset] ?? null) : null);
 
-  const [isEditing, setIsEditing] = useState(false);
+  // Only the fields typed in. The rest show what is stored, so a value saved
+  // from elsewhere shows as soon as it lands.
+  const [edited, setEdited] = useState({});
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [copyModalOpen, setCopyModalOpen] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [copyName, setCopyName] = useState('');
-  const [editedName, setEditedName] = useState('');
-  const [editedMetadata, setEditedMetadata] = useState({});
 
-  const handleEdit = () => {
-    setEditedName(document.name || '');
-    const initialMetadata = {};
-    metadataFields.forEach((field) => {
-      initialMetadata[field.name] = document.metadata[field.name] || '';
-    });
-    setEditedMetadata(initialMetadata);
-    setIsEditing(true);
-  };
+  const values = Object.fromEntries(
+    metadataFields.map((field) => [field.name, edited[field.name] ?? stored[field.name] ?? '']),
+  );
+  const dirty = metadataFields.some((field) => values[field.name] !== (stored[field.name] ?? ''));
+  useUnsavedDraft(dirty ? 'What you have typed here' : null);
 
-  const handleCancel = () => {
-    setEditedName('');
-    setEditedMetadata({});
-    setIsEditing(false);
-  };
+  const updateValue = (name, value) => setEdited((prev) => ({ ...prev, [name]: value }));
 
   const handleSave = async () => {
     setSaving(true);
-    // saveNameAndMetadata merges the partial over existing raw metadata (so
-    // deactivated fields aren't dropped) and handles errors + optimistic patch.
-    const ok = await doc.saveNameAndMetadata(editedName, editedMetadata);
+    // The name is the shared page's, so none is passed. The fields left as
+    // they were are not written.
+    const ok = await doc.saveNameAndMetadata(null, values);
     setSaving(false);
-    if (ok) setIsEditing(false);
+    if (ok) setEdited({});
   };
-
-  // The same for this tab's own drafts: the name and the fields being edited.
-  const nameChanged = isEditing && editedName !== (document.name || '');
-  const fieldsChanged =
-    isEditing &&
-    metadataFields.some(
-      (field) => (editedMetadata[field.name] ?? '') !== (document.metadata[field.name] || ''),
-    );
-  useUnsavedDraft(nameChanged || fieldsChanged ? 'What you have typed here' : null);
-  // The two ways this tab leaves itself. A router push is none of the ways out
-  // the hook watches, so it asks here.
-  const guardLeaving = useUnsavedGuard();
-
-  const handleCopyClick = () => {
-    setCopyName(`${document.name || ''} (copy)`);
-    setCopyModalOpen(true);
-  };
-  const handleCloseCopyModal = () => setCopyModalOpen(false);
-
-  const handleCopy = async () => {
-    setCopying(true);
-    // `copyTo` is the shared document model's: it trims the name, falls back
-    // to "<name> (copy)" for a blank one, and answers with the copy's id and
-    // the name it was given.
-    const created = await doc.copyTo(copyName);
-    setCopying(false);
-    if (created) {
-      setCopyModalOpen(false);
-      notifySuccess(`"${created.name}" is ready.`, 'Document copied');
-      // The copy is made either way; what is asked about is LEAVING this
-      // screen for it, because what is typed here goes with the screen.
-      if (!(await guardLeaving())) return;
-      navigate(`/projects/${doc.projectId}/documents/${created.id}`);
-    }
-  };
-
-  const handleDeleteClick = () => setDeleteModalOpen(true);
-  const handleCloseDeleteModal = () => setDeleteModalOpen(false);
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    const name = document.name;
-    const ok = await doc.deleteDocument();
-    setDeleting(false);
-    setDeleteModalOpen(false);
-    if (ok) {
-      notifySuccess(`Deleted “${name}”`);
-      // Nothing to ask: the document what was typed belonged to is gone. The
-      // extra history entry still comes out before the route changes.
-      await dropUnsavedDrafts();
-      navigate(`/projects/${doc.projectId}`);
-    }
-  };
-
-  const updateEditedName = (name) => setEditedName(name);
-  const updateEditedMetadata = (fieldName, value) =>
-    setEditedMetadata((prev) => ({ ...prev, [fieldName]: value }));
 
   return {
-    // State
-    document,
-    project,
     metadataFields,
     tagsetFor,
+    values,
+    dirty,
     // Save is blocked while a governed field holds a value its tagset refuses.
-    // The form has no per-field commit, so this is where the rule can bite.
-    metadataValid: changedValuesAllowed(
-      metadataFields,
-      editedMetadata,
-      tagsetFor,
-      document.metadata,
-    ),
-    isEditing,
+    // The fields have no commit of their own, so this is where the rule bites.
+    metadataValid: changedValuesAllowed(metadataFields, values, tagsetFor, stored),
     saving,
-    deleting,
-    deleteModalOpen,
-    copying,
-    copyModalOpen,
-    copyName,
-    editedName,
-    editedMetadata,
-
-    // Actions
-    handleEdit,
-    handleCancel,
+    updateValue,
     handleSave,
-    handleDeleteClick,
-    handleCloseDeleteModal,
-    handleDelete,
-    handleCopyClick,
-    handleCloseCopyModal,
-    handleCopy,
-    updateCopyName: setCopyName,
-    updateEditedName,
-    updateEditedMetadata,
   };
 };

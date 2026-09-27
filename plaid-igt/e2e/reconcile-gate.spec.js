@@ -46,15 +46,16 @@ test('the initial repair holds the document behind a spinner', async ({ page }) 
     await seedAuth(page);
     await page.goto(`/#/projects/${projectId}/documents/${documentId}`);
 
-    // The gate is up: spinner shown, and no tab is reachable to edit through.
+    // The gate is up: the line shown, the tab bodies held back, and every tab
+    // a disabled button, so none is reachable to edit through.
     await expect(page.getByText('Checking this document…')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('tab', { name: /Analyze/ })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /Analyze/ })).toBeDisabled();
     // The chrome above it stays put, so the page never blanks.
     await expect(page.getByRole('heading', { name: 'Sample IGT Document' })).toBeVisible();
 
     // ...and comes down once the repair lands.
     await expect(page.getByText('Checking this document…')).toHaveCount(0, { timeout: 20_000 });
-    await expect(page.getByRole('tab', { name: /Analyze/ })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Analyze/ })).toBeEnabled();
 
     // The repair the gate was covering for actually happened.
     const after = await client.documents.get(documentId, true);

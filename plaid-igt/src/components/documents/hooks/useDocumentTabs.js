@@ -3,8 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // The tab bar's inventory, in display order, and the tab a document opens on.
-const TABS = ['metadata', 'baseline', 'media', 'tokenize', 'analyze', 'comments', 'export'];
-const DEFAULT_TAB = 'metadata';
+// The order is every app's: the work tabs, then Comments, Export, Details.
+const TABS = ['baseline', 'media', 'tokenize', 'analyze', 'comments', 'export', 'details'];
+const DEFAULT_TAB = 'details';
+// Details was called Metadata, and a link saved then still opens it.
+const ALIASES = { metadata: 'details' };
 
 // Which tab of a document is showing, and the two things that change it on
 // nobody's click.
@@ -12,13 +15,14 @@ const DEFAULT_TAB = 'metadata';
 // The selection lives in `?tab=`, so a reload, a bookmark, and the back button
 // all keep the tab the reader was on, and a search or concordance
 // click-through can open the document straight onto Analyze. Every tab writes
-// itself, Metadata included: here a bare URL means "no tab chosen", which is
-// what the landing below reads, so Metadata cannot also be the bare URL
+// itself, Details included: here a bare URL means "no tab chosen", which is
+// what the landing below reads, so Details cannot also be the bare URL
 // without becoming unshareable.
 export function useDocumentTabs({ doc, asOf }) {
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab, tabHref] = useTabParam(TABS, DEFAULT_TAB, {
     writeFallback: true,
+    aliases: ALIASES,
   });
 
   // The interlinear island is framework-agnostic; its empty-state CTA asks to
@@ -36,7 +40,7 @@ export function useDocumentTabs({ doc, asOf }) {
   }, [setActiveTab]);
 
   // Land on Analyze when the document is already tokenized — the work surface
-  // shouldn't be buried behind Metadata. Once, on the first live load only (not
+  // shouldn't be buried behind Details. Once, on the first live load only (not
   // on time-travel reloads or after the user has navigated tabs themselves).
   // An explicit tab request in the URL wins over the landing.
   const didAutoTabRef = useRef(!!searchParams.get('tab'));

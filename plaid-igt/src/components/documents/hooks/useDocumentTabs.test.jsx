@@ -5,7 +5,7 @@ import { useDocumentTabs } from './useDocumentTabs.js';
 
 // The tab a document opens on is a URL decision made partly by the app, and the
 // ways it goes wrong are quiet. A landing that fires twice sends a reader who
-// walked back to Metadata straight to Analyze again. A landing that pushes
+// walked back to Details straight to Analyze again. A landing that pushes
 // instead of replacing makes Back undo the landing rather than leave the
 // document. And a landing on a snapshot moves the reader off the tab their
 // history click was about.
@@ -50,9 +50,9 @@ describe('the document tab', () => {
     await view.unmount();
   });
 
-  it('leaves an untokenized document on Metadata', async () => {
+  it('leaves an untokenized document on Details', async () => {
     const view = await mount(['/d'], { doc: untokenized });
-    expect(last().activeTab).toBe('metadata');
+    expect(last().activeTab).toBe('details');
     await view.unmount();
   });
 
@@ -62,19 +62,26 @@ describe('the document tab', () => {
     await view.unmount();
   });
 
-  it('honours Metadata asked for by name, which is why the fallback writes itself', async () => {
+  it('honours Details asked for by name, which is why the fallback writes itself', async () => {
     // A bare URL means "no tab chosen" here, so `?tab=metadata` is the only way
-    // to say Metadata and have it stay.
+    // to say Details and have it stay.
     const view = await mount(['/d?tab=metadata'], { doc: tokenized });
-    expect(last().activeTab).toBe('metadata');
+    expect(last().activeTab).toBe('details');
     await view.unmount();
   });
 
-  it('lands once, so walking back to Metadata sticks', async () => {
+  it('opens Details for a link saved when it was called Metadata, and says details', async () => {
+    const view = await mount(['/d?tab=metadata'], { doc: tokenized });
+    expect(last().activeTab).toBe('details');
+    expect(last().search).toBe('?tab=details');
+    await view.unmount();
+  });
+
+  it('lands once, so walking back to Details sticks', async () => {
     const view = await mount(['/d'], { doc: tokenized });
     expect(last().activeTab).toBe('analyze');
-    await view.step(() => last().setActiveTab('metadata'));
-    expect(last().activeTab).toBe('metadata');
+    await view.step(() => last().setActiveTab('details'));
+    expect(last().activeTab).toBe('details');
     // The document is re-read (a save, an applied plan). A fresh object must
     // not send the reader back to Analyze.
     await view.rerender(
@@ -82,19 +89,19 @@ describe('the document tab', () => {
         <Probe doc={{ sentences: [{ tokens: [{ id: 't1' }] }] }} />
       </MemoryRouter>,
     );
-    expect(last().activeTab).toBe('metadata');
+    expect(last().activeTab).toBe('details');
     await view.unmount();
   });
 
   it('does not land while a snapshot is being viewed', async () => {
     const view = await mount(['/d'], { doc: tokenized, asOf: '2026-09-01T00:00:00Z' });
-    expect(last().activeTab).toBe('metadata');
+    expect(last().activeTab).toBe('details');
     await view.unmount();
   });
 
   it('waits for the document', async () => {
     const view = await mount(['/d'], { doc: null });
-    expect(last().activeTab).toBe('metadata');
+    expect(last().activeTab).toBe('details');
     await view.unmount();
   });
 

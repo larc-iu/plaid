@@ -6,13 +6,16 @@ import { DocumentProvider } from './contexts/DocumentContext.jsx';
 import { IgtDocument } from '../../domain/IgtDocument.js';
 import { readInitialized, readImportState, importRouteFor } from '@/domain/igtConfig';
 import { notifyError, humanizeError } from '@/utils/feedback';
-import { History, FileText, Type, Mic, Play, Table, Download, MessageSquare } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
+import { History } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { DocumentTabStrip } from '@ui/components/shared/DocumentTabStrip.jsx';
+import { DocumentDetailsPage } from '@ui/components/shared/DocumentDetailsPage.jsx';
+import { DocumentHistoryPanel } from '@ui/components/shared/DocumentHistoryPanel.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ExportRunner } from '@/components/export/ExportRunner.jsx';
 import { DocumentTokenize } from './tokenize/DocumentTokenize.jsx';
-import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
-import { RestoreDialog } from '@ui/components/shared/RestoreDialog.jsx';
+import { HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { TOKEN_ROLE_WORDS } from '@/domain/restoreSummary.js';
 import { DocumentMetadata } from './metadata/DocumentMetadata.jsx';
 import { DocumentBaseline } from './baseline/DocumentBaseline.jsx';
@@ -47,20 +50,17 @@ import { useAssistantSubject } from '@ui/components/assistant/subject.js';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 
-// Renders only the active tab's panel (others stay unmounted).
-const Panel = ({ active, children }) => (active ? children : null);
-
-// The one "this document is busy" spinner.
-const Spinner = ({ label, className = 'py-24' }) => (
-  <div
-    role="status"
-    aria-live="polite"
-    className={`flex flex-col items-center justify-center gap-3 ${className} text-muted-foreground`}
-  >
-    <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-    {label && <p className="text-sm">{label}</p>}
-  </div>
-);
+// The tabs, in the order every app keeps: the work tabs, then Comments,
+// Export, Details. Each is a link to its `?tab=`.
+const TABS = [
+  { value: 'baseline', label: 'Baseline' },
+  { value: 'media', label: 'Media' },
+  { value: 'tokenize', label: 'Tokenize' },
+  { value: 'analyze', label: 'Analyze' },
+  { value: 'comments', label: 'Comments' },
+  { value: 'export', label: 'Export' },
+  { value: 'details', label: 'Details' },
+];
 
 // Tabs that get the wide column instead of the form-width one. Both are
 // horizontally scrolling views -- the interlinear editor and the media
@@ -87,6 +87,13 @@ const DocumentEditor = () => {
   // snapshot beside it (useHistoryView), and `doc` is whichever is on screen.
   const [liveDoc, setLiveDoc] = useState(null);
   const [loadError, setLoadError] = useState('');
+  const history = useHistoryView({
+    documentId,
+    client,
+    doc: liveDoc,
+    reload: () => liveDoc.reload(),
+    onExpired: () => logout('expired'),
+  });
   const {
     asOf,
     isViewingHistorical,
@@ -94,22 +101,8 @@ const DocumentEditor = () => {
     snapshot,
     drawerOpen,
     openHistory,
-    closeHistory,
     selectedEntry,
-    selectEntry,
-    auditEntries,
-    loadingAudit,
-    historyError,
-    restoreEntry,
-    setRestoreEntry,
-    handleRestored,
-  } = useHistoryView({
-    documentId,
-    client,
-    doc: liveDoc,
-    reload: () => liveDoc.reload(),
-    onExpired: () => logout('expired'),
-  });
+  } = history;
   const doc = snapshot ?? liveDoc;
 
   // Base path the tab links hang their `?tab=` off.
@@ -129,6 +122,12 @@ const DocumentEditor = () => {
   // The same question meets an in-app link and the browser's Back, from the
   // shared hook.
   const guardLeavingTab = useUnsavedGuard();
+  // Opening a history entry puts the past on screen in place of what was typed
+  // here and not saved, so it asks first, as leaving would.
+  const selectEntry = async (entry) => {
+    if (entry && !selectedEntry && !(await guardLeavingTab())) return;
+    await history.selectEntry(entry);
+  };
   // Landing on a sentence: the ?focusSentence= handoff, and a citation asking
   // for one of this document's sentences while the reader is here.
   const focusHere = useSentenceFocus({ documentId, focusParam, focusWordParam, activeTab });
@@ -275,48 +274,18 @@ const DocumentEditor = () => {
   // The built-in analysis helpers (copy prior analyses + auto-link) no longer
   // run automatically — they were disruptive mid-editing. They run on demand
   // from the interlinear Auto-analyze dialog (see AutoAnalyzeDialog + autoPass.js).
-
-  // The breadcrumb: pinned beside the tabs once the document is open, on its
-  // own above the title while it is still being checked. One line: a long
-  // project or document name is cut short, with the whole of it as its title.
-  const projectName = doc?.project?.name || 'Project';
-  const documentName = doc?.document?.name || 'Document';
-  const crumbs = (
-    <nav className="flex min-w-0 max-w-full items-center gap-1.5 text-sm text-muted-foreground">
-      <Link to="/projects" className="shrink-0 hover:text-foreground">
-        Projects
-      </Link>
-      <span className="shrink-0">/</span>
-      <Link
-        to={`/projects/${projectId}`}
-        dir="auto"
-        title={projectName}
-        className="min-w-0 truncate hover:text-foreground"
-      >
-        {projectName}
-      </Link>
-      <span className="shrink-0">/</span>
-      <span dir="auto" title={documentName} className="min-w-0 truncate text-foreground">
-        {documentName}
-      </span>
-    </nav>
-  );
-
   if (loadError) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <div
-          role="alert"
-          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        >
+        <Notice tone="error" icon={null} role="alert">
           {loadError}
-        </div>
+        </Notice>
       </div>
     );
   }
 
   if (!doc) {
-    return <Spinner />;
+    return <Loading className="mx-auto max-w-5xl px-4 py-8" />;
   }
 
   // Same door, same reason: a project whose import never finished sends its
@@ -381,28 +350,13 @@ const DocumentEditor = () => {
     <>
       {/* canRestore also waits on a run in flight: a restore rewrites the
           whole document, which is exactly what a running service is doing. */}
-      <HistoryDrawer
-        isOpen={drawerOpen}
-        onClose={closeHistory}
-        auditEntries={auditEntries}
-        loading={loadingAudit}
-        error={historyError}
-        onSelectEntry={selectEntry}
-        selectedEntry={selectedEntry}
-        canRestore={permissions.canManage && !writeLock.held}
-        onRestore={setRestoreEntry}
-      />
-      <RestoreDialog
-        open={!!restoreEntry}
-        onOpenChange={(o) => {
-          if (!o) setRestoreEntry(null);
-        }}
+      <DocumentHistoryPanel
+        history={{ ...history, selectEntry }}
         client={client}
         documentId={documentId}
-        raw={doc?.raw}
+        raw={liveDoc?.raw}
+        canRestore={permissions.canManage && !writeLock.held}
         roleWords={TOKEN_ROLE_WORDS}
-        entry={restoreEntry}
-        onRestored={handleRestored}
       />
 
       {/* History rail trigger (left edge). The assistant's rail is the same
@@ -422,34 +376,67 @@ const DocumentEditor = () => {
       {/* The PAGE scrolls, whether or not the assistant is open. The panel is
           fixed in the shell and takes a gutter on the right, so this layout no
           longer changes when it opens: no measured height, no scrollport of its
-          own, and no sticky offset that depends on which element that is. */}
+          own, and no sticky offset that depends on which element that is.
+
+          The tab row is pinned under the app header (57px, the header being
+          pinned itself): the way across the document stays in reach however
+          far down a long text you are. Asked for by the first real user. */}
       <div
         className="transition-[margin] duration-200"
-        style={{ marginLeft: drawerOpen ? HISTORY_DRAWER_WIDTH : 0, minHeight: '100vh' }}
+        style={{
+          marginLeft: drawerOpen ? HISTORY_DRAWER_WIDTH : 0,
+          minHeight: '100vh',
+          '--plaid-sticky-top': '57px',
+        }}
       >
         <div
           className={`mx-auto px-4 py-8 ${WIDE_TABS.has(activeTab) ? 'max-w-[1700px]' : 'max-w-5xl'}`}
         >
-          <div>
-            <h1 dir="auto" className="text-3xl font-bold tracking-tight">
-              {doc.document.name}
-            </h1>
-            {reconciling && crumbs}
+          {/* While the initial repair runs the tabs are inert and the body
+              waits: reconcile writes, so no tab may be opened and edited while
+              it is still healing. The strip stays put, so the page doesn't
+              blank. */}
+          <DocumentTabStrip
+            projectId={projectId}
+            project={doc.project}
+            document={doc.document}
+            tabs={TABS.map((t) => ({
+              ...t,
+              to: tabHref(docPath, t.value),
+              count: t.value === 'comments' ? commentCount : 0,
+            }))}
+            active={activeTab}
+            disabled={reconciling}
+            sticky
+            actions={
+              // Not a tab: history is a drawer, and it keeps whatever tab you
+              // are on. The rail at the window edge is an unlabelled grey strip
+              // whose icon appears on hover, so this is the named way in.
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={openHistory}
+                disabled={drawerOpen || reconciling}
+              >
+                <History className="h-4 w-4" /> History
+              </Button>
+            }
+          />
 
-            <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
+          <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mb-4" />
 
-            {!isViewingHistorical && permissions.isReadOnly && (
-              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <p className="font-medium">Read-only</p>
-                <p className="text-xs">You have reader access to this project.</p>
-              </div>
-            )}
+          {!isViewingHistorical && permissions.isReadOnly && (
+            <Notice tone="info" className="mb-4">
+              <p className="font-medium">Read-only</p>
+              <p className="text-xs">You have reader access to this project.</p>
+            </Notice>
+          )}
 
-            {/* A run the linguist may well have closed the dialog on, or that
-                a previous page started. Without this the document just stops
-                accepting edits. */}
-            {writeLock.held && <RunBanner {...writeLock.held} />}
-          </div>
+          {/* A run the linguist may well have closed the dialog on, or that
+              a previous page started. Without this the document just stops
+              accepting edits. */}
+          {writeLock.held && <RunBanner {...writeLock.held} />}
 
           <DocumentProvider
             value={{
@@ -472,129 +459,58 @@ const DocumentEditor = () => {
               goToTab: setActiveTab,
             }}
           >
-            {/* The initial repair takes the tab strip's place rather than
-                running underneath it: reconcile writes, so no tab may be
-                opened and edited while it is still healing. The breadcrumbs
-                and the title stay put above, so the page doesn't blank. */}
-            {showReconcileSpinner && <Spinner label="Checking this document…" />}
+            {showReconcileSpinner && <Loading label="Checking this document…" className="px-0" />}
 
+            {/* Only the active tab's body is mounted. */}
             {!reconciling && (
-              <Tabs value={activeTab} onValueChange={setActiveTab} guard={guardLeavingTab}>
-                {/* Pinned under the app header: the way back to the project
-                    and the way across the document stay in reach however far
-                    down a long text you are. Asked for by the first real user
-                    after scrolling back up for both, many times a day.
-
-                    57px clears the app header. One offset now, because the page
-                    is always what scrolls: the assistant used to bound this
-                    container and become the scrollport, and the offset had to
-                    flip negative for that, which is a whole class of bug that
-                    the fixed dock removes. */}
-                <div className="sticky top-[57px] z-30 -mx-4 mb-4 border-b bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-                    {crumbs}
-                    <TabsList>
-                      <TabsTrigger value="metadata" to={tabHref(docPath, 'metadata')}>
-                        <FileText className="h-4 w-4" /> Metadata
-                      </TabsTrigger>
-                      <TabsTrigger value="baseline" to={tabHref(docPath, 'baseline')}>
-                        <Type className="h-4 w-4" /> Baseline
-                      </TabsTrigger>
-                      <TabsTrigger value="media" to={tabHref(docPath, 'media')}>
-                        <Mic className="h-4 w-4" /> Media
-                      </TabsTrigger>
-                      <TabsTrigger value="tokenize" to={tabHref(docPath, 'tokenize')}>
-                        <Play className="h-4 w-4" /> Tokenize
-                      </TabsTrigger>
-                      <TabsTrigger value="analyze" to={tabHref(docPath, 'analyze')}>
-                        <Table className="h-4 w-4" /> Analyze
-                      </TabsTrigger>
-                      <TabsTrigger value="comments" to={tabHref(docPath, 'comments')}>
-                        <MessageSquare className="h-4 w-4" /> Comments
-                        {commentCount > 0 && (
-                          <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
-                            {commentCount}
-                          </span>
-                        )}
-                      </TabsTrigger>
-                      <TabsTrigger value="export" to={tabHref(docPath, 'export')}>
-                        <Download className="h-4 w-4" /> Export
-                      </TabsTrigger>
-                    </TabsList>
-                    {/* Not a tab: history is a drawer, and it keeps whatever
-                        tab you are on. But the rail at the window edge is an
-                        unlabelled grey strip whose icon appears on hover, and
-                        the tab bar is where a person looks for a document's
-                        views, so there is a named way in here too. The
-                        assistant has both in the same way. */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={openHistory}
-                      disabled={drawerOpen}
-                    >
-                      <History className="h-4 w-4" /> History
-                    </Button>
-                  </div>
-                </div>
-
-                <TabsContent value="metadata">
-                  <Panel active={activeTab === 'metadata'}>
-                    <DocumentMetadata />
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="baseline">
-                  <Panel active={activeTab === 'baseline'}>
-                    <DocumentBaseline />
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="media">
-                  <Panel active={activeTab === 'media'}>
+              <div className="pt-2">
+                {activeTab === 'baseline' && <DocumentBaseline />}
+                {activeTab === 'media' && (
+                  <Suspended>
+                    <DocumentMedia />
+                  </Suspended>
+                )}
+                {activeTab === 'tokenize' && <DocumentTokenize />}
+                {activeTab === 'analyze' && <AnalyzeIsland />}
+                {activeTab === 'comments' &&
+                  (isViewingHistorical ? (
+                    <p className="pt-6 text-sm text-muted-foreground">
+                      Comments are not shown at a past state.
+                    </p>
+                  ) : (
                     <Suspended>
-                      <DocumentMedia />
+                      <CommentsTab />
                     </Suspended>
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="tokenize">
-                  <Panel active={activeTab === 'tokenize'}>
-                    <DocumentTokenize />
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="analyze">
-                  <Panel active={activeTab === 'analyze'}>
-                    <AnalyzeIsland />
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="comments">
-                  <Panel active={activeTab === 'comments'}>
-                    {isViewingHistorical ? (
-                      <p className="pt-6 text-sm text-muted-foreground">
-                        Comments are not shown at a past state.
-                      </p>
-                    ) : (
-                      <Suspended>
-                        <CommentsTab />
-                      </Suspended>
-                    )}
-                  </Panel>
-                </TabsContent>
-                <TabsContent value="export">
-                  <Panel active={activeTab === 'export'}>
-                    <div className="flex flex-col gap-6 pt-4">
-                      <div className="rounded-lg border bg-card p-4">
-                        <ExportRunner
-                          client={client}
-                          project={doc.project}
-                          defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
-                          canManage={permissions.canManage}
-                          asOf={asOf}
-                        />
-                      </div>
+                  ))}
+                {activeTab === 'export' && (
+                  <div className="flex flex-col gap-6 pt-4">
+                    <div className="rounded-lg border bg-card p-4">
+                      <ExportRunner
+                        client={client}
+                        project={doc.project}
+                        defaultScope={{ type: 'document', id: doc.id, name: doc.document.name }}
+                        canManage={permissions.canManage}
+                        asOf={asOf}
+                      />
                     </div>
-                  </Panel>
-                </TabsContent>
-              </Tabs>
+                  </div>
+                )}
+                {activeTab === 'details' && (
+                  <div className="pt-4">
+                    <DocumentDetailsPage
+                      metadata={DocumentMetadata}
+                      context={{
+                        projectId,
+                        documentId,
+                        doc,
+                        project: doc.project,
+                        pastEntry: selectedEntry,
+                        writeLockHeld: writeLock.held,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </DocumentProvider>
         </div>
