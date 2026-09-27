@@ -46,9 +46,6 @@ import { byOrder, coveredBy } from './strips.js';
 // ---- reading ---------------------------------------------------------------------
 
 const WHITESPACE = /\s/u;
-// What a whitespace run's edges are trimmed of. The catalog's word-edge
-// punctuation (token.wordEdgePunctuation) counts symbols as punctuation too.
-const PUNCTUATION = /[\p{P}\p{S}]/u;
 const CLITIC_TYPES = new Set(['clitic', 'enclitic', 'proclitic']);
 // Item metadata a sense row does not carry: the tree itself and the examples.
 const NOT_IN_A_ROW = new Set(['parent', 'senseOrder', 'homograph', 'examples']);
@@ -208,37 +205,11 @@ function oneValuePerToken(s, d, tokens) {
 
 /**
  * Where each word of one sentence comes back, as [begin, end) in the source
- * text: over its whitespace run less the edge punctuation it did not cover
- * when it is alone in that run, over its own characters when it shares it.
+ * text: over its own characters, since the export writes each word's text
+ * (Surface_Word) and the import places it by that.
  */
-function placeWords(body, a, b, words) {
-  const runs = [];
-  for (let i = a; i < b; ) {
-    if (WHITESPACE.test(body[i])) {
-      i++;
-      continue;
-    }
-    let j = i;
-    while (j < b && !WHITESPACE.test(body[j])) j++;
-    runs.push([i, j]);
-    i = j;
-  }
-  const placed = new Map();
-  for (const [r0, r1] of runs) {
-    const inRun = words.filter((w) => r0 <= w.begin && w.begin < r1);
-    if (inRun.length !== 1) {
-      for (const w of inRun) placed.set(w, [w.begin, w.end]);
-      continue;
-    }
-    const [w] = inRun;
-    let begin = r0;
-    while (begin < w.begin && PUNCTUATION.test(body[begin])) begin++;
-    let end = r1;
-    while (end > w.end && PUNCTUATION.test(body[end - 1])) end--;
-    placed.set(w, [begin, end]);
-  }
-  for (const w of words) if (!placed.has(w)) placed.set(w, [w.begin, w.end]);
-  return placed;
+function placeWords(words) {
+  return new Map(words.map((w) => [w, [w.begin, w.end]]));
 }
 
 function rebuildText(s, d) {
@@ -267,7 +238,7 @@ function rebuildText(s, d) {
     if (i < kept.length - 1) next.push('\n');
     const delta = begin - a;
     const inside = words.filter((w) => sn.begin <= w.begin && w.end <= sn.end);
-    for (const [w, [wb, we]] of placeWords(body, a, b, inside)) {
+    for (const [w, [wb, we]] of placeWords(inside)) {
       extentMoves.set(`${w.begin}-${w.end}`, [wb + delta, we + delta]);
     }
     sn.begin = begin;

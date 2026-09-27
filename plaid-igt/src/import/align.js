@@ -277,3 +277,27 @@ export function alignWords(body, begin, end, forms) {
   }
   return { spans, warnings };
 }
+
+/**
+ * Place words whose exact text is known, in order, in body[begin, end).
+ *
+ * Our own CLDF export writes each word as it stands in the text beside its
+ * analysis (Surface_Word), because the analysis alone cannot say where two
+ * words that share a whitespace run divide when a form is not the surface
+ * ("medio" segmented mid-o). Each word takes the first occurrence of its text
+ * after the previous word. Returns {spans, warnings} like alignWords, or null
+ * when a word is empty or not there in order, so the caller aligns by
+ * position instead.
+ */
+export function alignSurfaces(body, begin, end, surfaces) {
+  const spans = [];
+  let at = begin;
+  for (const surface of surfaces) {
+    if (surface === '') return null;
+    const found = body.indexOf(surface, at);
+    if (found < 0 || found + surface.length > end) return null;
+    spans.push({ beginU16: found, endU16: found + surface.length });
+    at = found + surface.length;
+  }
+  return { spans, warnings: [] };
+}

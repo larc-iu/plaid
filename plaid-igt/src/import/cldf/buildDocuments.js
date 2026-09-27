@@ -23,7 +23,7 @@
 // "=" does mean clitic, and inferring just that inverts the exporter's joiner
 // rule exactly, so a round trip reproduces the same joints.
 
-import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords } from '../align.js';
+import { makeCpIndexer, splitAnalyzed, surfaceOf, alignWords, alignSurfaces } from '../align.js';
 import { cell, list, customColumnsOf } from './readDataset.js';
 import { isReservedFieldName } from '../../domain/vocabFields.js';
 import { DEFAULT_IGNORED_TOKENS, isTokenIgnored } from '../../domain/igtConfig.js';
@@ -63,6 +63,10 @@ const morphTypeOf = (pieces, i) => (pieces[i].before === '=' ? 'enclitic' : null
 
 // Columns our own exporter writes that are bookkeeping, not annotation.
 const SKIP_COLUMNS = new Set(['Plaid_ID', 'Speaker']);
+// Where our own export says each word stands in the text (see alignSurfaces).
+// It places words and is not a field, in our own datasets only.
+const SURFACE_COLUMN = 'Surface_Word';
+const skipColumn = (name, own) => SKIP_COLUMNS.has(name) || (own && name === SURFACE_COLUMN);
 // Our exporter's custom-column prefixes, so a round trip lands back where it
 // started rather than flattening everything to sentence scope.
 const PREFIXES = [
@@ -187,7 +191,7 @@ export function deriveImportOptions(dataset) {
   const own = isOwnExport(examples);
   const customColumns = {};
   for (const name of customColumnsOf(examples)) {
-    if (SKIP_COLUMNS.has(name) || name === groupBy) continue;
+    if (skipColumn(name, own) || name === groupBy) continue;
     const known = recognizePrefix(name, own);
     if (known) {
       customColumns[name] = known;
@@ -236,8 +240,9 @@ export function groupingChoices(dataset) {
   // at 0.79 is not), so everything that does repeat stays on offer and the
   // choice is the user's.
   const rows = examples.rows || [];
+  const own = isOwnExport(examples);
   for (const name of customColumnsOf(examples)) {
-    if (SKIP_COLUMNS.has(name)) continue;
+    if (skipColumn(name, own)) continue;
     // A column that counts out per word is a word tier, and a list of tags is
     // not a document id however many times it repeats.
     if (isPerWordColumn(examples, name)) continue;
@@ -254,13 +259,14 @@ export function groupingChoices(dataset) {
 /** The columns a dataset offers for mapping, with whether they can be per-word. */
 export function customColumnChoices(dataset) {
   const examples = dataset.components?.ExampleTable;
+  const own = isOwnExport(examples);
   return customColumnsOf(examples)
-    .filter((n) => !SKIP_COLUMNS.has(n))
+    .filter((n) => !skipColumn(n, own))
     .map((name) => ({
       name,
       // Only a list column can align with Analyzed_Word.
       canBePerWord: !!examples.columns.find((c) => c.name === name)?.separator,
-      suggested: recognizePrefix(name, isOwnExport(examples)),
+      suggested: recognizePrefix(name, own),
     }));
 }
 
@@ -352,6 +358,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   const o = { ...deriveImportOptions(dataset), ...options };
   const examples = dataset.components?.ExampleTable;
   const contributions = dataset.components?.ContributionTable;
+  const ownExamples = isOwnExport(examples);
   const warnings = [];
   // Custom columns whose field name is already taken by one bound to a CLDF
   // term. One entry per column, reported once.
@@ -406,6 +413,7 @@ export function buildCldfDocuments(dataset, options = {}) {
 
   // --- contributions (document identity) ---
   const contributionById = new Map();
+  const ownContributions = isOwnExport(contributions);
   for (const row of contributions?.rows || []) {
     const meta = {};
     for (const [term, label] of [
@@ -424,7 +432,7 @@ export function buildCldfDocuments(dataset, options = {}) {
     for (const name of customColumnsOf(contributions)) {
       if (name === 'Plaid_ID') continue;
       const v = row[name] ?? '';
-      if (v) meta[name] = v;
+      if (v) meta[decodeColumnName(name, ownContributions)] = v;
     }
     contributionById.set(cell(contributions, row, 'id'), {
       name: cell(contributions, row, 'name'),
@@ -615,12 +623,13 @@ export function buildCldfDocuments(dataset, options = {}) {
       });
 
       const glosses = list(examples, row, 'gloss');
-      const { spans, warnings: alignWarnings } = alignWords(
-        body,
-        beginU16,
-        beginU16 + text.length,
-        analyzed,
-      );
+      const surfaces = ownExamples ? String(row[SURFACE_COLUMN] ?? '') : '';
+      const exact =
+        surfaces && surfaces.split('\t').length === analyzed.length
+          ? alignSurfaces(body, beginU16, beginU16 + text.length, surfaces.split('\t'))
+          : null;
+      const { spans, warnings: alignWarnings } =
+        exact ?? alignWords(body, beginU16, beginU16 + text.length, analyzed);
       for (const w of alignWarnings) {
         docWarnings.push(`Example ${cell(examples, row, 'id') || si + 1}: ${w}`);
       }

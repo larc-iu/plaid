@@ -3,8 +3,8 @@
 // the zip is read back through the CLDF import with the options it derives on its own, and the new
 // project is compared with the old one. "Carried" means the feature comes back as it was, apart
 // from the import's bookkeeping under `stamps`. CLDF stores no character offsets, so the import
-// rebuilds the text from each example's Primary_Text and places words by position against its
-// whitespace, and it reads the fields bound to CLDF terms back under its own names (Gloss,
+// rebuilds the text from each example's Primary_Text and places each word by the text the export
+// wrote for it (Surface_Word), and it reads the fields bound to CLDF terms back under its own names (Gloss,
 // Translation, Note). The 'changed' entries say exactly how.
 
 const COMMENTS_RULED = {
@@ -392,7 +392,7 @@ export default {
     },
     'token.word': {
       carried: 'changed',
-      how: 'Each word comes back, in order, over the whitespace-delimited run of its sentence it corresponds to, less the punctuation at the edges of that run that the word itself did not cover. A word that was such a run keeps its characters, with offsets shifted as token.sentence describes. A word alone in its run that covered only part of it comes back widened to the whole run less that edge punctuation. Several words in one run each come back over their own characters (token.wordsInOneRun).',
+      how: 'Each word comes back, in order, over its own characters, with offsets shifted as token.sentence describes. The export writes the text of each word beside its analysis (Surface_Word), and the import places the word there. Several words in one run each come back over their own characters (token.wordsInOneRun).',
     },
     'token.ignoredWord': {
       carried: 'changed',
@@ -402,7 +402,7 @@ export default {
     },
     'token.untokenizedText': {
       carried: 'changed',
-      how: 'Punctuation at the edge of a whitespace run, and a whole run no word covers, stay outside every word. Untokenized text inside a run that a word also covers joins that word, as token.word describes.',
+      how: 'Text no word covers stays outside every word, with offsets shifted as token.sentence describes.',
     },
     'token.orthographyValue': carried,
     'token.orthographyUnconfigured': {

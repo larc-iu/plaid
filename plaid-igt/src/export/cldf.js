@@ -457,7 +457,9 @@ export function buildCldfDataset({
       if (!metadataNames.has(key)) {
         metadataNames.set(key, metadataColumnName(key, usedMetadataColumns));
       }
-      contribution[metadataNames.get(key)] = String(value);
+      // Keyed by the column's encoded name, which is what `col` declares and
+      // what buildTable looks up. The raw name dropped "Recording date".
+      contribution[columnName(metadataNames.get(key))] = String(value);
     }
     contributionRows.push(contribution);
 
@@ -475,6 +477,7 @@ export function buildCldfDataset({
     }
 
     const alignmentTokens = igtDoc.alignmentTokens || [];
+    const surfaceWords = !o.primaryText || o.primaryText === BASELINE;
     (igtDoc.sortedSentences || []).forEach((sentence, i) => {
       const tokens = sentence.tokens || [];
       const analyzed = tokens.map(analyzedWordOf);
@@ -495,6 +498,10 @@ export function buildCldfDataset({
         Contribution_ID: contributionId,
         Position: String(i + 1),
         Plaid_ID: sentence.id ?? '',
+        // Each word as it stands in Primary_Text, so our own import can place
+        // words that share a whitespace run. Only when Primary_Text is the
+        // baseline, since an orthography's text holds other words.
+        Surface_Word: surfaceWords ? tokens.map((t) => listItem(t.content ?? '')).join('\t') : '',
       };
       if (o.speakers) row.Speaker = phraseSpeakerFor(sentence, alignmentTokens) || '';
       for (const name of o.extras.sentence) {
@@ -725,6 +732,10 @@ export function buildCldfDataset({
       col('Contribution_ID', { propertyUrl: 'contributionReference' }),
       col('Position', { propertyUrl: 'position', datatype: 'integer' }),
       col('Plaid_ID', { description: 'The sentence token id in the originating Plaid project.' }),
+      col('Surface_Word', {
+        description: 'Each word as it stands in Primary_Text, aligned with Analyzed_Word.',
+        separator: '\t',
+      }),
       col('Speaker', { description: 'Speaker of this sentence, from the time-alignment layer.' }),
       ...o.extras.sentence.map((n) =>
         col(`Sentence_${n}`, { description: `Sentence-scoped "${n}" annotation.` }),
