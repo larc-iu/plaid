@@ -60,18 +60,3 @@ export function groupResults(results, sentenceLayerId, nodeLayerId) {
         String(a.docId).localeCompare(String(b.docId)) || a.sentenceId.localeCompare(b.sentenceId),
     );
 }
-
-// Split `text` into alternating plain/highlighted segments for rendering.
-export function segmentize(text, highlights) {
-  const chars = cp(text);
-  if (!highlights.length) return [{ text, hl: false }];
-  const segs = [];
-  let i = 0;
-  for (const h of highlights) {
-    if (h.start > i) segs.push({ text: chars.slice(i, h.start).join(''), hl: false });
-    segs.push({ text: chars.slice(h.start, h.end).join(''), hl: true });
-    i = h.end;
-  }
-  if (i < chars.length) segs.push({ text: chars.slice(i).join(''), hl: false });
-  return segs;
-}
