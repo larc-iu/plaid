@@ -85,6 +85,7 @@ const MIRRORED = [
       '.features-cell',
       '.feature-',
       '.editable-field',
+      '.mwt-',
     ],
   },
 ];
