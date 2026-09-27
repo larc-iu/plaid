@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { applyField, applyMerge, applyReanalyze, applyRespell } from './bulkRunner.js';
 import { openPrecedent } from '@/domain/precedentCache.js';
+import { makeFakeClient } from '@/domain/test-helpers.js';
 
 // A Bulk Edit writes to documents other than any one open, so a project
 // precedent read taken before it (precedentCache.js) holds rows it changed.
@@ -20,7 +21,13 @@ function precedentClient() {
     projects: { listDocuments: async () => [{ id: 'a', version: 1 }] },
     query: vi.fn(async () => ({ results: [] })),
     withOperation: async (_label, fn) => fn(),
-    batched: async (fn) => fn({ texts: { update: () => {} }, tokens: { bulkUpdate: () => {} } }),
+    batched: async (fn) =>
+      fn({
+        texts: { update: () => {} },
+        tokens: { bulkUpdate: () => {} },
+        vocabItems: { bulkUpdate: () => {}, bulkDelete: () => {} },
+        vocabLinks: { bulkCreate: () => {} },
+      }),
     spans: { bulkUpdate: async () => ({}) },
     tokens: { bulkUpdate: async () => ({}) },
     vocabItems: { bulkUpdate: async () => ({}), bulkDelete: async () => ({}) },
@@ -75,4 +82,33 @@ describe('Bulk Edit and the project precedent read', () => {
       expect(projectReads(client)).toBe(2);
     });
   }
+});
+
+// A merge is link creates, reference updates and the losers' delete. Sent as
+// separate requests, a refused delete left each word linked to both entries,
+// and a retry of the plan still on screen linked it to the survivor twice.
+describe('applyMerge', () => {
+  it('sends every write of the merge as one batch', async () => {
+    const client = makeFakeClient();
+    await applyMerge(
+      client,
+      {
+        links: [
+          { docId: 'a', tokens: ['w1'] },
+          { docId: 'b', tokens: ['w2'], metadata: { note: 'x' } },
+        ],
+        refUpdates: [{ id: 'k3', metadata: [{ op: 'set', path: ['parent'], value: 'k2' }] }],
+      },
+      { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' },
+    );
+    const kinds = client.calls.map((c) => c.kind).filter((k) => k !== 'beginOperation');
+    expect(kinds).toEqual([
+      'vocabLinks.bulkCreate',
+      'vocabLinks.bulkCreate',
+      'vocabItems.bulkUpdate',
+      'vocabItems.bulkDelete',
+      'batch.submit',
+    ]);
+    expect(client.calls[1].args[0]).toEqual([{ vocabItem: 'k2', tokens: ['w1'] }]);
+  });
 });

@@ -253,9 +253,12 @@ export async function planMerge(client, project, vocabId, loserIds, onProgress) 
 // Recreate each link on the survivor, repoint every entry that referred to a
 // loser (a dictionary's senses and reference fields, see planMergeRefs),
 // then delete the losing entries (their old links cascade away server-side).
-// Under one operation. `refUpdates` is `[{id, metadata}]` where the metadata
-// is a list of metadata ops, as `metadataUpdates` builds it from planMergeRefs'
-// whole maps.
+// Under one operation, and as ONE batch: a refusal anywhere leaves the words
+// linked to the losers alone, so the plan on screen is still what a retry
+// needs. Written as separate requests, a refused delete left each word linked
+// to both entries and a retry linked it to the survivor twice. `refUpdates`
+// is `[{id, metadata}]` where the metadata is a list of metadata ops, as
+// `metadataUpdates` builds it from planMergeRefs' whole maps.
 //
 // Link creates go per document: a bulk vocab-link create takes tokens from
 // one document, and a merge harvests links from every document that used the
@@ -270,23 +273,23 @@ export async function applyMerge(
     if (!byDoc.has(l.docId)) byDoc.set(l.docId, []);
     byDoc.get(l.docId).push(l);
   }
-  await writeAcrossDocuments(client, label, async () => {
-    for (const docLinks of byDoc.values()) {
-      for (const part of chunk(docLinks)) {
-        await client.vocabLinks.bulkCreate(
-          part.map((l) => ({
-            vocabItem: survivorId,
-            tokens: l.tokens,
-            ...(l.metadata ? { metadata: l.metadata } : {}),
-          })),
-        );
+  await writeAcrossDocuments(client, label, () =>
+    client.batched((b) => {
+      for (const docLinks of byDoc.values()) {
+        for (const part of chunk(docLinks)) {
+          b.vocabLinks.bulkCreate(
+            part.map((l) => ({
+              vocabItem: survivorId,
+              tokens: l.tokens,
+              ...(l.metadata ? { metadata: l.metadata } : {}),
+            })),
+          );
+        }
       }
-    }
-    for (const part of chunk(refUpdates)) {
-      await client.vocabItems.bulkUpdate(part);
-    }
-    await client.vocabItems.bulkDelete(loserIds);
-  });
+      for (const part of chunk(refUpdates)) b.vocabItems.bulkUpdate(part);
+      b.vocabItems.bulkDelete(loserIds);
+    }),
+  );
   return {
     linksMoved: links.length,
     entriesRemoved: loserIds.length,
