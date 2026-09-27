@@ -73,7 +73,7 @@ Each also carries a human ``label`` for the approval UI.
 """
 
 from collections import Counter
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from ..core import guidelines as _guidelines
 from ..core import opkind as ok
@@ -437,11 +437,12 @@ class Resolution:
     """What the scopes of one plan resolve with: a workspace over the project
     the plan is being applied to, built once however many scopes it holds."""
 
-    def __init__(self, client, project):
+    def __init__(self, client, project, requester=None):
         from .workspace import Workspace
         self.client = client
         self.project = project
         self.ws = Workspace(client, project)
+        self.ws.requester_id = requester
 
 
 def _resolve_bulk_scope(res: Resolution, op):
@@ -822,19 +823,22 @@ def normalize_ops(ops: List[Dict[str, Any]]) -> tuple:
 
 
 def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, project=None,
-                 stamp_mode: str = 'verified', contributor: str = None) -> Dict[str, int]:
+                 stamp_mode: str = 'verified', contributor: str = None,
+                 requester: Optional[str] = None) -> Dict[str, int]:
     """Apply ``ops`` with ``client`` under one operation labelled ``label``.
     Returns per-kind counts of what was applied (plus ``notes`` for anything
     dropped). ``project`` (an IgtProject) is needed only by document-creating
     ops. ``stamp_mode`` is ``'verified'`` (machine-made, human-confirmed: the
     default), ``'human'`` (no provenance keys at all) or ``'contributed'``
     (the approver's own unreviewed work; needs ``contributor``, their user
-    id). Raises :class:`PlanError` with the applied count if a later batch
-    fails: batches are atomic individually, the plan as a whole is not."""
+    id). ``requester`` is the user the plan acts for: a corpus-wide change
+    worked out again here leaves out what that user may not change, as its
+    preview did. Raises :class:`PlanError` with the applied count if a later
+    batch fails: batches are atomic individually, the plan as a whole is not."""
     stamps = Stamps(stamp_mode, source, contributor)
     ops = expand_ops(ops)
     validate_ops(ops)
-    ops = resolve_scopes(client, project, ops)
+    ops = resolve_scopes(client, project, ops, requester)
     ops, notes = normalize_ops(ops)
     counts: Counter = Counter()
     return applying(ops, lambda tracker: _execute(client, ops, label=label, project=project,
@@ -842,7 +846,8 @@ def execute_plan(client, ops: List[Dict[str, Any]], *, source: str, label: str, 
                                                   tracker=tracker))
 
 
-def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def resolve_scopes(client, project, ops: List[Dict[str, Any]],
+                   requester: Optional[str] = None) -> List[Dict[str, Any]]:
     """The per-span ops a stored corpus-wide change stands for, computed
     again NOW by the same function that previewed it. Approval has already
     refused the plan if a matched document moved since, so what is found
@@ -858,7 +863,7 @@ def resolve_scopes(client, project, ops: List[Dict[str, Any]]) -> List[Dict[str,
     # A change the model made by name beats one a scope finds at approval,
     # whichever came first (the scope previewed stored values, not planned).
     explicit = {op_target(op) for op in ops if not ok.resolver(KIND, op)} - {None}
-    return ok.resolve_ops(KIND, Resolution(client, project), ops,
+    return ok.resolve_ops(KIND, Resolution(client, project, requester), ops,
                           lambda o: op_target(o) not in explicit)
 
 

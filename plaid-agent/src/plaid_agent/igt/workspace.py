@@ -23,6 +23,13 @@ from ..core.tools import ToolError
 from ..core.workspace import BaseWorkspace
 
 from .plan import KIND, removed_entries
+
+# What only a maintainer of the lexicon may do to its entries (a merge deletes
+# the entry it folds away), and what a tool says to anyone else.
+ENTRY_REMOVALS = ('rename_entry', 'delete_entry')
+MAINTAINERS_ONLY = ('Only a maintainer of the lexicon "{lexicon}" can rename, delete or merge its entries, '
+                    'and the person you are acting for does not maintain it. Nothing was planned. '
+                    'Tell them a maintainer of that lexicon has to make this change.')
 from .project import IgtProject, IgtDoc, Morpheme, Sentence, Word, load_document, render_document, resolve
 from .lexview import LexView, _dict_hits, entry_line
 from .vocab import RESERVED_ITEM_KEYS, fields_for_item
@@ -334,6 +341,23 @@ class Workspace(BaseWorkspace):
             if any(it['id'] == item_id for it in self.lexicon(v)):
                 return v
         return None
+
+    def can_manage_vocab(self, v: dict) -> bool:
+        """Whether the user the turn acts for may rename, delete or merge
+        entries of lexicon ``v``: a maintainer of it or an administrator. The
+        server refuses anyone else (a writer of a project that links it adds
+        entries and edits their fields, and no more)."""
+        if self.requester_id is None:
+            return True
+        return self.requester_id in (v.get('maintainers') or []) or self.requester_is_admin()
+
+    def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
+        super().guard_op(op, replacing=replacing)
+        item = op.get('remove_id') if op.get('kind') == 'merge_entries' else (
+            op.get('item_id') if op.get('kind') in ENTRY_REMOVALS else None)
+        v = self.vocab_of_item(item) if item else None
+        if v is not None and not self.can_manage_vocab(v):
+            raise ToolError(MAINTAINERS_ONLY.format(lexicon=v['name']))
 
     # --- plan --------------------------------------------------------------
 

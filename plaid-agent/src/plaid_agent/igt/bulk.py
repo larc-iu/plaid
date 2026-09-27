@@ -128,9 +128,12 @@ def _scoped_replace(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str
 def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
     """The headwords a respelling carries into, from the plan's own view so a
     respelling does not rename an entry a merge or a delete earlier in the
-    same plan takes away."""
+    same plan takes away. A lexicon the user does not maintain is left as it
+    is (`_kept_lexicons` says so), since only a maintainer may rename."""
     out = []
     for v in ws.project.vocabs:
+        if not ws.can_manage_vocab(v):
+            continue
         for it in ws.view(v).items:
             old = it.get('form') or ''
             new = rep(old)
@@ -139,6 +142,23 @@ def _lexicon_renames(ws: Workspace, rep) -> List[Dict[str, Any]]:
             out.append({'kind': 'rename_entry', 'item_id': it['id'], 'form': new,
                         'label': f'{v["name"]}: rename entry "{old}" → "{new}"'})
     return out
+
+
+def _kept_lexicons(ws: Workspace, rep) -> str:
+    """The note on a respelling that leaves the headwords of a lexicon the
+    user does not maintain as they are, or ''."""
+    kept = []
+    for v in ws.project.vocabs:
+        if ws.can_manage_vocab(v):
+            continue
+        n = sum(1 for it in ws.view(v).items
+                if (it.get('form') or '') != rep(it.get('form') or '') and rep(it.get('form') or '').strip())
+        if n:
+            kept.append(f'{n} in "{v["name"]}"')
+    if not kept:
+        return ''
+    return ('\nHeadwords left as they are, since only a maintainer of their lexicon can rename them: '
+            + ', '.join(kept) + '. Tell the user.')
 
 
 def _scoped_respell(ws: Workspace, a: Dict[str, Any], cap: int) -> List[Dict[str, Any]]:
@@ -248,7 +268,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
         if staged:
             out += (f'\n({kinds.count("respell")} words, {kinds.count("set_morpheme_form")} morpheme forms, '
                     f'{kinds.count("rename_entry")} lexicon headwords.)')
-        return out
+        return out + (_kept_lexicons(ws, rep) if lexicon else '')
     for doc in _docs(ws, document):
         for s in doc.sentences:
             for w in s.words:
@@ -286,7 +306,7 @@ def t_respell_all(ws: Workspace, pattern: str, replacement: str, regex: bool = F
     out = _bulk_note(ws, len(labels), labels, 'words')
     if labels:
         out += (f'\n({n_words} words, {n_morphs} morpheme forms, {n_entries} lexicon headwords.)')
-    return out
+    return out + (_kept_lexicons(ws, rep) if lexicon else '')
 
 
 def t_copy_to_orthography(ws: Workspace, orthography: str, source: str = 'baseline',

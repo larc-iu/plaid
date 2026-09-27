@@ -67,6 +67,10 @@ class BaseWorkspace:
         self.client = client
         self.project = project
         self.on_progress = on_progress or (lambda msg: None)
+        # The user the turn acts for, set by the service. None (a script, a
+        # test) asks no question of who may do what: the server still does.
+        self.requester_id: Optional[str] = None
+        self._requester_admin: Optional[bool] = None
         self._doc_list: Optional[List[dict]] = None
         self._docs: Dict[str, Any] = {}
         self.ops: List[Dict[str, Any]] = []
@@ -269,6 +273,19 @@ class BaseWorkspace:
         if key is None:
             return None
         return next((i for i, prev in enumerate(self.ops) if self.op_target(prev) == key), None)
+
+    def requester_is_admin(self) -> bool:
+        """Whether the user the turn acts for is an administrator, asked of
+        the server once. A read that fails answers no, so a tool refuses
+        rather than plan what the server would refuse."""
+        if self.requester_id is None:
+            return False
+        if self._requester_admin is None:
+            try:
+                self._requester_admin = bool((self.client.users.get(self.requester_id) or {}).get('is_admin'))
+            except Exception:
+                self._requester_admin = False
+        return self._requester_admin
 
     def add_op(self, op: Dict[str, Any]) -> None:
         """Append a plan op. An op on a target the plan already touches

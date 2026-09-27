@@ -61,7 +61,8 @@ class AssistantService(BaseAssistantService):
         return resolve_citations(ws, text)
 
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
-                     stamp_mode: str, contributor: Optional[str]) -> Dict[str, int]:
+                     stamp_mode: str, contributor: Optional[str],
+                     requester: Optional[str] = None) -> Dict[str, int]:
         return execute_plan(client, ops, source=source, label=label, project=project,
                             stamp_mode=stamp_mode, contributor=contributor)
 

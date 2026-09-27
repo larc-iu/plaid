@@ -307,7 +307,8 @@ def _vocab_entry(v: dict) -> dict:
         t = vocab_tagset_for(v, f['name'])
         if t:
             tagsets[f['name']] = t
-    return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets}
+    return {'id': v['id'], 'name': v['name'], 'fields': fields, 'tagsets': tagsets,
+            'maintainers': list(v.get('maintainers') or [])}
 
 
 # --- document ---------------------------------------------------------------

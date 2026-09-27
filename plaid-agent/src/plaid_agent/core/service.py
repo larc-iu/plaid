@@ -179,9 +179,11 @@ class BaseAssistantService(BaseService):
         return []
 
     def execute_plan(self, client, ops: List[Dict[str, Any]], *, source: str, label: str, project,
-                     stamp_mode: str, contributor: Optional[str]) -> Dict[str, int]:
+                     stamp_mode: str, contributor: Optional[str],
+                     requester: Optional[str] = None) -> Dict[str, int]:
         """Apply an approved plan. Per-kind counts of what was applied, plus
-        ``notes`` for anything dropped. Raises
+        ``notes`` for anything dropped. ``requester`` is the user the plan
+        acts for, for a change the plan works out again at approval. Raises
         :class:`plaid_agent.core.plan.PlanError` if a batch fails part-way."""
         raise NotImplementedError
 
@@ -387,6 +389,7 @@ class BaseAssistantService(BaseService):
             return bool(getattr(response_helper, 'cancelled', False))
 
         ws = self.make_workspace(client, project, send)
+        ws.requester_id = store.user_id
         # What the user attached to this conversation, and the note in front of
         # the message it came on. The note is written BEFORE the place stamp,
         # because that one has to stay at the very start of the message: it is
@@ -522,7 +525,8 @@ class BaseAssistantService(BaseService):
         try:
             counts = self.execute_plan(client, ops, source=service_source(self.service_id),
                                        label=f'Assistant: {summary}', project=project,
-                                       stamp_mode=stamp_mode, contributor=contributor)
+                                       stamp_mode=stamp_mode, contributor=contributor,
+                                       requester=store.user_id)
         except PlanError as e:
             if e.applied:
                 self._remember_applied(plan_id)
