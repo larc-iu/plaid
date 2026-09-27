@@ -244,6 +244,9 @@ async function configureMain(client, projectId, contributorId) {
   await client.projects.setConfig(projectId, 'ud', 'serviceDefaults', {
     parse: { service: { serviceId: 'stanza' }, params: {} },
   });
+  // The project language plaid-ud and plaid-umr each write from General settings.
+  await client.projects.setConfig(projectId, 'ud', 'language', 'es');
+  await client.projects.setConfig(projectId, 'umr', 'language', 'es');
 }
 
 // plaid-ud's substrate, as udProjectSetup.js lays it out, beside plaid-igt's.
