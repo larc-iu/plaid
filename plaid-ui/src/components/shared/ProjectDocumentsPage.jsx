@@ -77,7 +77,7 @@ export const ProjectDocumentsPage = ({
         logout();
         return;
       }
-      setError('Failed to load project and documents');
+      setError('Failed to load the documents');
       console.error('Error fetching project:', err);
     } finally {
       setLoading(false);
@@ -132,9 +132,7 @@ export const ProjectDocumentsPage = ({
                 {blocked ? blocked.title : `Not set up for ${setup.app}`}
               </p>
               {!canManage && (
-                <p className="text-muted-foreground">
-                  Ask a project maintainer to add {setup.app} support.
-                </p>
+                <p className="text-muted-foreground">A project maintainer can set it up.</p>
               )}
               {canManage && !blocked && (
                 <>

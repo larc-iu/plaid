@@ -123,7 +123,7 @@ export const ProjectDetail = () => {
         logout('expired');
         return;
       }
-      setError('Failed to load data');
+      setError('Failed to load the project');
       console.error('Error fetching data:', err);
     } finally {
       if (!token.cancelled) setLoading(false);
@@ -252,17 +252,13 @@ export const ProjectDetail = () => {
       <>
         The {unfinishedImport.kind} import
         {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
-        {canManage ? ' Continuing it…' : ' Ask a project maintainer to finish it.'}
+        {canManage ? ' Continuing it…' : ' A project maintainer can finish it.'}
       </>,
     );
   }
 
   if (needsSetupNotice) {
-    return notice(
-      <>
-        This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT support.
-      </>,
-    );
+    return notice(<>This project is not set up for IGT. A project maintainer can set it up.</>);
   }
 
   const at = `/projects/${projectId}`;

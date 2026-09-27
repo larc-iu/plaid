@@ -40,7 +40,7 @@ test.beforeEach(async ({ page }) => {
 
 test('clicking into an unconfigured project offers setup where it stands', async ({ page }) => {
   await page.goto(`/#/projects/${projectId}/documents`);
-  await expect(page.getByText('Not set up for UD')).toBeVisible();
+  await expect(page.getByText('Not set up for UD', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Set up for UD' })).toBeVisible();
   // Looking is not writing: no redirect, and no layers made by arriving.
   await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/documents$`));
@@ -131,7 +131,7 @@ test('a document opened directly says so and offers the way, without redirecting
   page,
 }) => {
   await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
-  await expect(page.getByText('Not set up for UD')).toBeVisible();
+  await expect(page.getByText('Not set up for UD', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Set it up' })).toBeVisible();
   // The point of the change: it stays put instead of bouncing the reader out.
   await expect(page).toHaveURL(new RegExp(`/documents/${documentId}/annotate$`));

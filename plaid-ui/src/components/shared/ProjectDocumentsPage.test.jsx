@@ -158,7 +158,7 @@ describe('a project the app has no layers in', () => {
 
   it('tells anyone else to ask a maintainer, with no button', async () => {
     const view = await mount(project('writer', false));
-    expect(view.container.textContent).toContain('Ask a project maintainer to add XY support.');
+    expect(view.container.textContent).toContain('A project maintainer can set it up.');
     expect(all(view.container, 'button').some((b) => b.textContent.startsWith('Set up'))).toBe(
       false,
     );

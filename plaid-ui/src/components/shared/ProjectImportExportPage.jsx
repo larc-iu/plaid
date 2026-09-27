@@ -351,7 +351,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
             <CardContent>
               {!configured ? (
                 <Notice tone="warning" icon={TriangleAlert}>
-                  <p className="font-medium">Not available</p>
+                  <p className="font-medium">Not set up for {format.app}</p>
                   {/* Only a maintainer can make a layer, so only a maintainer
                       is offered the way to. */}
                   {canManage ? (
@@ -363,6 +363,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                       >
                         Set it up
                       </Link>
+                      .
                     </p>
                   ) : (
                     <p>

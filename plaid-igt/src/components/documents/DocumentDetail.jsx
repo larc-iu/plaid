@@ -319,7 +319,7 @@ const DocumentEditor = () => {
               Finish it
             </Link>
           ) : (
-            'Ask a project maintainer to finish it.'
+            'A project maintainer can finish it.'
           )}
         </div>
       </div>
@@ -337,17 +337,14 @@ const DocumentEditor = () => {
         <div role="status" className="rounded-md border bg-muted px-4 py-3 text-sm">
           {permissions.canManage ? (
             <>
-              This project hasn’t been set up for IGT yet.{' '}
+              This project is not set up for IGT.{' '}
               <Link className="underline" to={`/projects/${projectId}/setup`}>
                 Set it up
-              </Link>{' '}
-              to annotate it.
+              </Link>
+              .
             </>
           ) : (
-            <>
-              This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT
-              support.
-            </>
+            <>This project is not set up for IGT. A project maintainer can set it up.</>
           )}
         </div>
       </div>

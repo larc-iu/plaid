@@ -7,6 +7,7 @@ import { bracketPieces } from '@/domain/mwe';
 import { humanizeError } from '@/utils/feedback';
 import { provTitle } from './shared.js';
 import { keys } from '@/lib/keymap.js';
+import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 
 // The grid's frame: the page template, the pager and toolbar, the legend,
 // the tooltips' wording, and one sentence's block.
@@ -28,7 +29,7 @@ export const chrome = {
     if (!info.primaryTokenLayer) {
       return html` <div class="igt-island__empty igt-island__empty--warn">
         <div class="igt-empty__title">Not set up for analysis</div>
-        <p class="igt-empty__body">A project maintainer needs to finish setting up this project.</p>
+        <p class="igt-empty__body">${NOT_SET_UP}</p>
       </div>`;
     }
     const sentences = doc.sentences;

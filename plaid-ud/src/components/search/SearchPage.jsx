@@ -262,12 +262,12 @@ export const SearchPage = () => {
         {!layerInfo.isConfigured ? (
           <Notice tone="warning">
             <div>
-              <p className="font-medium">Not available</p>
+              <p className="font-medium">Not set up for UD</p>
               {/* Only a maintainer can make a layer, so only a maintainer is
                   offered the way to. Everyone else is told who can. */}
               {canManage ? (
                 <p>
-                  This project is not set up for UD annotation.{' '}
+                  This project is not set up for UD.{' '}
                   <Link
                     className="text-primary underline underline-offset-4"
                     to={`/projects/${projectId}/configuration`}
@@ -277,9 +277,7 @@ export const SearchPage = () => {
                   .
                 </p>
               ) : (
-                <p>
-                  This project is not set up for UD annotation. A project maintainer can set it up.
-                </p>
+                <p>This project is not set up for UD. A project maintainer can set it up.</p>
               )}
             </div>
           </Notice>

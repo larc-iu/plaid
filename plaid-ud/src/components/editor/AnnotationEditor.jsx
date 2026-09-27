@@ -438,7 +438,7 @@ export const AnnotationEditor = () => {
             <p className="font-medium">Not set up for UD</p>
             {canManageProject(project, user) ? (
               <p className="mt-1">
-                This project is not set up for Universal Dependencies.{' '}
+                This project is not set up for UD.{' '}
                 <Link
                   className="font-medium underline underline-offset-2"
                   to={`/projects/${projectId}/configuration`}
@@ -449,8 +449,7 @@ export const AnnotationEditor = () => {
               </p>
             ) : (
               <p className="mt-1">
-                This project is not set up for Universal Dependencies. A project maintainer can set
-                it up.
+                This project is not set up for UD. A project maintainer can set it up.
               </p>
             )}
           </Notice>
