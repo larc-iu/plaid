@@ -40,3 +40,21 @@ def test_a_tag_naming_another_project_must_name_its_document():
     ws.doc('Text 1')
     assert svc.citations(ws, f'<cite project="{OTHER_NAME}" ref="s1"/>') == []
     assert len(svc.citations(ws, '<cite ref="s1"/>')) == 1
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_a_reference_naming_no_document_is_not_pinned_home_once_another_project_was_read(app):
+    # The turn read one document here and one in the other project. A
+    # reference naming no document (bare, or a tag without doc) could mean
+    # either, so it names neither, rather than a sentence here the model may
+    # not have meant.
+    svc, c, ws, r = reached(app)
+    ws.doc(DOC[app])
+    assert len(svc.citations(ws, '<cite ref="s1"/>')) == 1
+    r.workspace(OTHER_NAME).doc(DOC[app])
+    assert svc.citations(ws, '<cite ref="s1"/>') == []
+    assert svc.citations(ws, 'as s1 shows') == []
+    # Naming the document still works, in either project.
+    assert len(svc.citations(ws, f'<cite doc="{DOC[app]}" ref="s1"/>')) == 1
+    there = svc.citations(ws, f'<cite project="{OTHER_NAME}" doc="{DOC[app]}" ref="s1"/>')
+    assert [x['project_id'] for x in there] == [OTHER_ID]

@@ -99,7 +99,11 @@ def resolve_citations(ws, text: str, *, parse_refs: Callable[[str], List[str]],
     from .reach import target
     out: List[Dict[str, Any]] = []
     seen = set()
-    loaded = list(ws._docs.values())
+    # A reference naming no document is read against the one document the
+    # turn read, and only when it read one in ANY project: a turn that read a
+    # document here and another elsewhere has no one document to mean.
+    reach = getattr(ws, 'reach', None)
+    loaded = [d for w in (reach.workspaces() if reach is not None else [ws]) for d in w._docs.values()]
     # Citing a document the turn never read costs a fetch each, and the user is
     # waiting on the reply: read a few, and drop citations past that. Counted
     # over every project's workspace, since each fetch costs the same.

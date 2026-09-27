@@ -164,6 +164,10 @@ class Reach:
             self._workspaces[p.id] = ws
         return ws
 
+    def workspaces(self) -> List[Any]:
+        """The home workspace and every other one made so far this turn."""
+        return [self.home, *self._workspaces.values()]
+
     def close(self) -> None:
         """Release what the other workspaces held (a read pool). The home
         workspace is the service's to close. The workspaces themselves stay,
