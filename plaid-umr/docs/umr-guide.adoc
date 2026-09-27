@@ -131,7 +131,7 @@ To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter
 An accepted node is kept when a draft overwrites the sentence.
 **Discard graph** beside it deletes the drafted nodes and relations of the sentence that nobody has accepted, after asking.
 It keeps what a person made, what a member whose work the project reviews made, and what was accepted, and a drafted node that one of those relations hangs from or points to.
-A drafted relation between two nodes that stay is deleted, and so is one another sentence has onto a deleted node.
+A drafted relation between two nodes that stay is deleted, and so is one another sentence has onto a deleted node. The question says how many of those other sentences lose.
 History lists it as one change.
 The root's concept is underlined.
 

@@ -740,17 +740,26 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // question. What stays takes focus, since the button goes with the draft.
   const discardRef = useRef(null);
   const discardDraft = async () => {
-    const { nodes, relations } = doc.discardPlan(sentence.index);
+    const { nodes, relations, otherRelations } = doc.discardPlan(sentence.index);
     if (!nodes.length && !relations.length) return;
     const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    // The sentence's own relations first, then what other sentences lose
+    // with the nodes that go (their drafted coreference onto them).
+    const ownRelations = relations.length - otherRelations;
+    const others =
+      otherRelations > 0
+        ? ` Also removes ${count(otherRelations, 'drafted relation')} from ${
+            otherRelations === 1 ? 'another sentence' : 'other sentences'
+          }.`
+        : '';
     const ok = await confirm({
       title: 'Discard the drafted graph?',
       description: `${[
         nodes.length ? count(nodes.length, 'node') : null,
-        relations.length ? count(relations.length, 'relation') : null,
+        ownRelations ? count(ownRelations, 'relation') : null,
       ]
         .filter(Boolean)
-        .join(' and ')}. Restorable from History.`,
+        .join(' and ')}.${others} Restorable from History.`,
       confirmLabel: 'Discard',
       destructive: true,
     });

@@ -1172,18 +1172,24 @@ export class UmrDocument extends DocumentModel {
     const explicit = [...relations.values()].filter(
       (r) => !doomed.has(r.source) && !doomed.has(r.target),
     );
-    return { nodes, relations: [...relations.values()], explicit };
+    // The relations that go and are not this sentence's own: another
+    // sentence's edge or triple onto a node that goes.
+    const own = new Set([...sentence.edges, ...ownTriples].map((r) => r.id));
+    const otherRelations = [...relations.keys()].filter((id) => !own.has(id)).length;
+    return { nodes, relations: [...relations.values()], explicit, otherRelations };
   }
 
   /**
-   * What Discard graph would remove from a sentence: `{ nodes, relations }`,
-   * both empty when there is nothing drafted to discard.
+   * What Discard graph would remove from a sentence: `{ nodes, relations,
+   * otherRelations }`, where `otherRelations` counts the relations in
+   * `relations` that belong to other sentences. All empty when there is
+   * nothing drafted to discard.
    */
   discardPlan(sentenceIndex) {
     const sentence = this.sentence(sentenceIndex);
-    if (!sentence) return { nodes: [], relations: [] };
-    const { nodes, relations } = this._discardPlan(sentence);
-    return { nodes, relations };
+    if (!sentence) return { nodes: [], relations: [], otherRelations: 0 };
+    const { nodes, relations, otherRelations } = this._discardPlan(sentence);
+    return { nodes, relations, otherRelations };
   }
 
   /** Whether discarding this sentence's draft would remove anything. */

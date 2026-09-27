@@ -317,7 +317,7 @@ describe('SentenceBlock discard', () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const dialog = () => document.querySelector('[role="alertdialog"]');
 
-  const setup = async ({ readOnly = false, open = true } = {}) => {
+  const setup = async ({ readOnly = false, open = true, otherRelations = 0 } = {}) => {
     const { sentence, nodesById } = fixture();
     const discarded = [];
     const doc = {
@@ -325,7 +325,11 @@ describe('SentenceBlock discard', () => {
       canConfirmSentence: () => open,
       confirmSentence: async () => true,
       canDiscardSentence: () => open,
-      discardPlan: () => ({ nodes: sentence.nodes.slice(0, 2), relations: sentence.edges }),
+      discardPlan: () => ({
+        nodes: sentence.nodes.slice(0, 2),
+        relations: sentence.edges,
+        otherRelations,
+      }),
       discardSentence: async (i) => discarded.push(i),
     };
     const r = await renderComponent(
@@ -356,6 +360,38 @@ describe('SentenceBlock discard', () => {
     await r.step(() => button(dialog(), 'Discard').click());
     await r.step(() => wait(50));
     expect(discarded).toEqual([1]);
+    await r.unmount();
+  });
+
+  it('says how many drafted relations other sentences lose, only when some do', async () => {
+    for (const [other, line] of [
+      [
+        2,
+        '2 nodes and 1 relation. Also removes 2 drafted relations from other sentences. Restorable from History.',
+      ],
+      [
+        1,
+        '2 nodes and 2 relations. Also removes 1 drafted relation from another sentence. Restorable from History.',
+      ],
+      [
+        3,
+        '2 nodes. Also removes 3 drafted relations from other sentences. Restorable from History.',
+      ],
+    ]) {
+      const { r } = await setup({ otherRelations: other });
+      await r.step(() => button(r.container, 'Discard graph').click());
+      await r.step(() => wait(50));
+      expect(dialog().textContent).toContain(line);
+      await r.step(() => button(dialog(), 'Cancel').click());
+      await r.step(() => wait(50));
+      await r.unmount();
+    }
+    const { r } = await setup();
+    await r.step(() => button(r.container, 'Discard graph').click());
+    await r.step(() => wait(50));
+    expect(dialog().textContent).not.toContain('Also removes');
+    await r.step(() => button(dialog(), 'Cancel').click());
+    await r.step(() => wait(50));
     await r.unmount();
   });
 
