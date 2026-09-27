@@ -5,7 +5,7 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 // audit log, says nothing for a document they have never touched, and costs
 // the column rather than the list when the read fails.
 
-const CORE = 'http://localhost:8085';
+const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const ROUTE = '**/audit/last-edits';
 
 let projectId;
@@ -26,11 +26,12 @@ const open = async (page) => {
   await expect(page.locator('tbody tr').first()).toBeVisible();
 };
 
-// The column's cells, in row order, once the read has settled (no spinners).
+// The column's cells, in row order, once the read has settled (no cell still
+// showing its pending mark).
 const cells = async (page) => {
   const col = page.locator('tbody tr td:nth-child(4)');
   await expect(col.first()).not.toBeEmpty();
-  await expect(page.locator('tbody tr td:nth-child(4) .animate-spin')).toHaveCount(0);
+  await expect(page.locator('tbody tr td:nth-child(4) [data-loading]')).toHaveCount(0);
   return (await col.allTextContents()).map((t) => t.trim());
 };
 

@@ -20,4 +20,22 @@ describe('RunBanner', () => {
     expect(view.container.innerHTML).not.toMatch(/amber-/);
     await view.unmount();
   });
+
+  it('keeps its Stop button while it wears the notice, and only when the run can stop', async () => {
+    let stopped = 0;
+    const view = await renderComponent(
+      <RunBanner label="Parse" startedAt={Date.now()} cancel={() => (stopped += 1)} />,
+    );
+    const stop = [...view.container.querySelectorAll('button')].find(
+      (b) => b.textContent === 'Stop',
+    );
+    expect(stop).toBeTruthy();
+    await view.step(() => stop.click());
+    expect(stopped).toBe(1);
+    await view.rerender(<RunBanner label="Parse" startedAt={Date.now()} />);
+    expect(view.container.querySelector('button')).toBe(null);
+    // The status line is never blank, even before the run has said anything.
+    expect(view.container.querySelector('[role="status"]').textContent).toBe('Parse is running.');
+    await view.unmount();
+  });
 });
