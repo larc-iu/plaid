@@ -25,6 +25,7 @@ import {
   planVocabRelink,
   runNativeImport,
   rebuildTokenMap,
+  restoreLayerNamesAndOrder,
 } from './importEngine.js';
 
 // ---- the archive under test: built by the REAL exporter --------------------
@@ -145,8 +146,11 @@ function stubClient({
     },
     textLayers: {
       setConfig: async (...a) => record('textLayers.setConfig', a),
+      update: async (...a) => record('textLayers.update', a),
     },
     tokenLayers: {
+      update: async (...a) => record('tokenLayers.update', a),
+      shift: async (...a) => record('tokenLayers.shift', a),
       create: async (...a) => record('tokenLayers.create', a, { id: fresh('tl') }),
       setConfig: async (...a) => record('tokenLayers.setConfig', a),
       get: async (id) => record('tokenLayers.get', [id], { id, ...tokenLayerShapes[id] }),
@@ -921,6 +925,105 @@ describe('runNativeImport, what the archive holds comes back as it was', () => {
       importDone: true,
     });
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe('restoreLayerNamesAndOrder', () => {
+  // A project another app set up first: setup has named this app's layers
+  // its own way, and the other app's layer was made after them.
+  const project = () => ({
+    textLayers: [
+      {
+        id: 't',
+        name: 'Main Text',
+        config: { plaid: { role: 'baseline' } },
+        tokenLayers: [
+          { id: 'w', name: 'Main Tokens', config: { plaid: { role: 'word' } } },
+          { id: 's', name: 'Sentences', config: { plaid: { role: 'sentence' } } },
+          { id: 'm', name: 'Morphemes', config: { plaid: { role: 'morpheme' } } },
+          { id: 'x', name: 'Nodes', config: {} },
+        ],
+      },
+    ],
+  });
+  const fakeClient = () => {
+    const state = project();
+    const calls = [];
+    const layers = state.textLayers[0].tokenLayers;
+    return {
+      calls,
+      order: () => layers.map((l) => l.id),
+      projects: { get: async () => JSON.parse(JSON.stringify(state)) },
+      textLayers: { update: async (...a) => calls.push(['textLayers.update', ...a]) },
+      tokenLayers: {
+        update: async (...a) => calls.push(['tokenLayers.update', ...a]),
+        shift: async (id, direction) => {
+          calls.push(['tokenLayers.shift', id, direction]);
+          const i = layers.findIndex((l) => l.id === id);
+          if (direction === 'up' && i > 0) [layers[i - 1], layers[i]] = [layers[i], layers[i - 1]];
+        },
+      },
+    };
+  };
+  const targets = {
+    sentenceLayerId: 's',
+    wordLayerId: 'w',
+    morphemeLayerId: 'm',
+    alignmentLayerId: null,
+    otherLayers: { ...noOtherLayers(), tokenLayers: new Map([['arch-x', { id: 'x' }]]) },
+  };
+  const manifest = {
+    layers: {
+      names: { baselineText: 'Text', sentence: 'Sentences', word: 'Tokens', morpheme: null },
+      tokenLayerOrder: [
+        { role: 'sentence' },
+        { role: 'word' },
+        { id: 'arch-x' },
+        { role: 'morpheme' },
+      ],
+    },
+  };
+
+  it("names this app's layers as the archive does and puts the layers in its order", async () => {
+    const client = fakeClient();
+    await restoreLayerNamesAndOrder({
+      client,
+      projectId: 'p',
+      project: project(),
+      manifest,
+      targets,
+    });
+    expect(client.calls.filter(([n]) => n.endsWith('update'))).toEqual([
+      ['textLayers.update', 't', 'Text'],
+      ['tokenLayers.update', 'w', 'Tokens'],
+    ]);
+    expect(client.order()).toEqual(['s', 'w', 'x', 'm']);
+  });
+
+  it('changes nothing that is already right', async () => {
+    const client = fakeClient();
+    const named = project();
+    named.textLayers[0].name = 'Text';
+    named.textLayers[0].tokenLayers[0].name = 'Tokens';
+    const inOrder = {
+      layers: {
+        ...manifest.layers,
+        tokenLayerOrder: [
+          { role: 'word' },
+          { role: 'sentence' },
+          { role: 'morpheme' },
+          { id: 'arch-x' },
+        ],
+      },
+    };
+    await restoreLayerNamesAndOrder({
+      client,
+      projectId: 'p',
+      project: named,
+      manifest: inOrder,
+      targets,
+    });
+    expect(client.calls).toEqual([]);
   });
 });
 

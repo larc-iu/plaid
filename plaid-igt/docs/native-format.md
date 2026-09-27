@@ -80,6 +80,8 @@ the upload's media type is validated from its filename.
 | `schema.compose` | the project's own backslash compose codes, `{codes: [{code, char, description?}]}`, `null` when unset. These layer over the built-in codes, so only the project's own are carried |
 | `schema.exportPresets` | the project's saved export presets (stored under config key `export`), `null` when unset |
 | `layers` | substrate layer ids (`baselineText`, `sentence`, `word`, `morpheme`, `timeAlignment`, `spanLayers: [{id, name, scope}]`) — **informative only**, for debugging and correlation |
+| `layers.names` | what this app's layers are called, by the same keys, `null` for a layer the project lacks. A re-importer renames the layers setup made to these, since a project another app set up first names them its own way |
+| `layers.tokenLayerOrder` | every token layer on the baseline text in the project's order, `{role}` for this app's and `{id}` (an `otherLayers.tokenLayers` id) for another app's. A re-importer shifts the layers into this order once they all exist |
 | `otherConfig` | every project config namespace other than `igt` and `plaid`, verbatim, `{}` when there is none. See Other apps' layers |
 | `otherLayers` | `{config, spanLayers, tokenLayers}`: other apps' layers and settings on the baseline text layer. See Other apps' layers |
 | `documents` | manifest: `[{id, name, file, mediaFile}]` (`mediaFile` null when no media was embedded) |

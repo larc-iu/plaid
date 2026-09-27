@@ -24,7 +24,7 @@
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
 // at creation — it doubles as provenance back to the source archive).
 
-import { createdIds } from '@larc-iu/plaid-client';
+import { ROLES, createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
 import { IMPORT_STAMP_KEYS, ImportCancelled, importStamp, priorImports } from '../resume.js';
 import { CHUNK } from '../../domain/bulk.js';
@@ -921,6 +921,14 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     },
   });
 
+  await restoreLayerNamesAndOrder({
+    client,
+    projectId,
+    project,
+    manifest: archive.manifest,
+    targets,
+  });
+
   // Vocabularies: archive vocab → the same-named project vocab created by
   // setup. Item maps merge (item ids are unique across vocabularies).
   const projectVocabs = project.vocabs || [];
@@ -1044,6 +1052,62 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   }
   onProgress?.({ phase: 'done', ...results });
   return { ...results, warnings };
+}
+
+/**
+ * Name this app's layers as the archive does and put the baseline's token
+ * layers in the archive's order. Setup names the layers it makes itself and
+ * other apps' layers are made after them, so a project another app set up
+ * first would otherwise come back with its layers renamed and reordered.
+ * Asks the project each time, so a resume changes nothing that is already
+ * right.
+ */
+export async function restoreLayerNamesAndOrder({ client, projectId, project, manifest, targets }) {
+  const names = manifest.layers?.names || {};
+  const textLayer = findBaselineTextLayer(project.textLayers || []);
+  const tokenLayers = textLayer?.tokenLayers || [];
+  const byId = new Map(tokenLayers.map((tl) => [tl.id, tl]));
+  const idOfRole = {
+    [ROLES.SENTENCE]: targets.sentenceLayerId,
+    [ROLES.WORD]: targets.wordLayerId,
+    [ROLES.MORPHEME]: targets.morphemeLayerId,
+    [ROLES.TIME_ALIGNMENT]: targets.alignmentLayerId,
+  };
+  if (textLayer && names.baselineText && textLayer.name !== names.baselineText) {
+    await client.textLayers.update(textLayer.id, names.baselineText);
+  }
+  for (const [key, role] of [
+    ['sentence', ROLES.SENTENCE],
+    ['word', ROLES.WORD],
+    ['morpheme', ROLES.MORPHEME],
+    ['timeAlignment', ROLES.TIME_ALIGNMENT],
+  ]) {
+    const layer = byId.get(idOfRole[role]);
+    if (layer && names[key] && layer.name !== names[key]) {
+      await client.tokenLayers.update(layer.id, names[key]);
+    }
+  }
+
+  const wanted = (manifest.layers?.tokenLayerOrder || [])
+    .map((row) =>
+      row.role != null ? idOfRole[row.role] : targets.otherLayers.tokenLayers.get(row.id)?.id,
+    )
+    .filter((id) => id != null);
+  if (wanted.length < 2) return;
+  // Other apps' layers were made after `project` was read.
+  const fresh = await client.projects.get(projectId);
+  const current = (findBaselineTextLayer(fresh.textLayers || [])?.tokenLayers || []).map(
+    (tl) => tl.id,
+  );
+  const order = [...new Set(wanted)].filter((id) => current.includes(id));
+  order.push(...current.filter((id) => !order.includes(id)));
+  // Each layer is moved up past the ones the archive puts after it.
+  for (let i = 0; i < order.length; i += 1) {
+    for (let j = current.indexOf(order[i]); j > i; j -= 1) {
+      await client.tokenLayers.shift(order[i], 'up');
+      [current[j - 1], current[j]] = [current[j], current[j - 1]];
+    }
+  }
 }
 
 /**

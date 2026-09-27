@@ -646,6 +646,24 @@ describe('the archive records what is stored, exactly', () => {
     expect(o.alignment).toEqual([{ id: 'a1', begin: 0, end: 14, metadata: { speaker: 'Ada' } }]);
   });
 
+  it("records what this app's layers are called, and every token layer's place", () => {
+    const project = makeOtherAppProject();
+    const text = project.textLayers[0];
+    text.name = 'Text';
+    text.tokenLayers.find((tl) => tl.id === 'wl').name = 'Tokens';
+    // Another app's layer between this app's word and sentence layers.
+    const nodes = text.tokenLayers.findIndex((tl) => tl.id === 'olNodes');
+    text.tokenLayers.splice(1, 0, ...text.tokenLayers.splice(nodes, 1));
+    const { layers } = buildProjectFile({ project, documents: [], vocabularies: [] });
+    expect(layers.names).toMatchObject({ baselineText: 'Text', word: 'Tokens' });
+    expect(layers.tokenLayerOrder.slice(0, 3)).toEqual([
+      { role: 'word' },
+      { id: 'olNodes' },
+      { role: 'sentence' },
+    ]);
+    expect(layers.tokenLayerOrder).toHaveLength(text.tokenLayers.length);
+  });
+
   it("leaves an import's marks out of the document's metadata", () => {
     const raw = buildRaw();
     raw.metadata = { Source: 'notes', importSource: 'flex-guid', importDone: true };

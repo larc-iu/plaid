@@ -162,6 +162,18 @@ export function buildProjectFile({
       morpheme: morphemeLayer?.id ?? null,
       timeAlignment: alignmentLayer?.id ?? null,
       spanLayers,
+      // What this app's layers are called. Setup names the layers it makes
+      // itself, but a project another app set up first named them its own way.
+      names: {
+        baselineText: textLayer?.name ?? null,
+        sentence: sentenceLayer?.name ?? null,
+        word: wordLayer?.name ?? null,
+        morpheme: morphemeLayer?.name ?? null,
+        timeAlignment: alignmentLayer?.name ?? null,
+      },
+      // Every token layer on the baseline text, in the project's order: this
+      // app's by role, another app's by its id in `otherLayers.tokenLayers`.
+      tokenLayerOrder: tokenLayerOrder(textLayer),
     },
     // What other apps keep in the project, carried without being understood:
     // their project settings, and their layers with the settings on them.
@@ -180,6 +192,12 @@ export function buildProjectFile({
       pinned: !!g.pinned,
     })),
   };
+}
+
+function tokenLayerOrder(textLayer) {
+  const tokenLayers = textLayer?.tokenLayers || [];
+  const roleOf = new Map(ownTokenLayers(tokenLayers).map(([role, layer]) => [layer.id, role]));
+  return tokenLayers.map((tl) => (roleOf.has(tl.id) ? { role: roleOf.get(tl.id) } : { id: tl.id }));
 }
 
 const relationLayerRows = (spanLayer) =>
