@@ -75,6 +75,27 @@ def test_a_brief_is_cut_at_its_budget_and_says_where_the_rest_is():
     assert shared.project_brief('B', '- Field: Gloss', []).endswith('- Guidelines: none written')
 
 
+def test_a_cut_brief_keeps_the_guideline_titles_which_the_overview_does_not_show():
+    # The cut's tail sends the model to project_overview, and the overview
+    # lists no guidelines, so the titles are kept and the shape is cut first.
+    shape = '\n'.join(f'- Field {i}: ' + 'x' * 80 for i in range(200))
+    brief = shared.project_brief('B', shape, ['Loanwords', 'Tense'])
+    assert len(brief) <= OTHER_PROJECT_CHARS
+    assert '- Guidelines: "Loanwords", "Tense" (read_guideline with project="B")' in brief
+    assert brief.endswith('project_overview with project="B" shows the rest.')
+    # A manual whose titles alone overrun the budget names as many as fit, and says how many more.
+    many = [f'Guideline number {i}' for i in range(400)]
+    brief = shared.project_brief('B', shape, many)
+    assert len(brief) <= OTHER_PROJECT_CHARS
+    assert '"Guideline number 0"' in brief and '"Guideline number 399"' not in brief
+    shown = brief.count('"Guideline number ')
+    assert f'and {400 - shown} more' in brief
+    # Cut in its titles alone, the shape is whole and the tail is not said.
+    short = shared.project_brief('B', '- Field: Gloss', many)
+    assert len(short) <= OTHER_PROJECT_CHARS and '- Field: Gloss' in short
+    assert 'shows the rest' not in short and short.endswith('(read_guideline with project="B")')
+
+
 @pytest.mark.parametrize('app', APPS)
 def test_another_projects_guidelines_are_titles_only(app):
     svc, c, ws, r = reached(app)
@@ -222,5 +243,30 @@ def test_a_turn_with_no_other_projects_is_todays_turn(app, monkeypatch):
     assert seen['reach'] is None and seen['transcript'][-1]['content'] == 'Compare.'
     project = svc.load_project(c, pid)
     assert seen['system'] == svc.system_prompt(project, web=False)
+    conv, _ = store.load('c1')
+    assert 'unavailable_projects' not in conv['display'][-1]
+
+
+@pytest.mark.parametrize('app', APPS)
+@pytest.mark.parametrize('projects', [[], 'home', [{'name': 'No id'}, 'junk']])
+def test_a_projects_list_that_names_no_other_project_is_todays_turn(app, projects, monkeypatch):
+    # A list naming only the conversation's own project, or nothing usable,
+    # adds no project: the turn is exactly a one-project turn, with no
+    # paragraph saying other projects failed to open.
+    c = client(app)
+    pid = c.home.project['id']
+    store = _seed(c, app, [{'id': pid, 'name': 'Home'}] if projects == 'home' else projects, pid)
+    seen = {}
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen['system'], seen['transcript'], seen['reach'] = system, transcript, ws.reach
+        return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    svc = _svc(app)
+    svc.process_request({'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
+                         'conversation_id': 'c1'}, _Helper())
+    assert seen['reach'] is None and seen['transcript'][-1]['content'] == 'Compare.'
+    assert seen['system'] == svc.system_prompt(svc.load_project(c, pid), web=False)
     conv, _ = store.load('c1')
     assert 'unavailable_projects' not in conv['display'][-1]

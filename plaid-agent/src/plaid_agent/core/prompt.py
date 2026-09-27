@@ -223,23 +223,36 @@ def project_brief(label: str, shape: str, titles: Sequence[str],
     one read_guideline call away.
 
     Cut at ``budget`` characters on a line boundary, and a cut paragraph says
-    where the rest is, because a budgeted render states what it showed."""
-    quoted = ', '.join(f'"{t}"' for t in titles)
-    lines = [f'PROJECT: "{label}"', *[line for line in shape.split('\n') if line],
-             (f'- Guidelines: {quoted} (read_guideline with project="{label}")' if titles
-              else '- Guidelines: none written')]
-    full = '\n'.join(lines)
+    where the rest is, because a budgeted render states what it showed. The
+    shape is cut first, since project_overview shows it and nothing lists the
+    titles. Titles that would take more than half the budget are cut too, and
+    the line says how many more there are."""
+    heading = f'PROJECT: "{label}"'
+    shape_lines = [line for line in shape.split('\n') if line]
+    where = f' (read_guideline with project="{label}")'
+    quoted = ['"' + t + '"' for t in titles]
+    guidelines = ('- Guidelines: ' + ', '.join(quoted) + where) if titles else '- Guidelines: none written'
+    full = '\n'.join([heading, *shape_lines, guidelines])
     if len(full) <= budget:
         return full
     tail = f'project_overview with project="{label}" shows the rest.'
-    kept = [lines[0]]
-    used = len(lines[0]) + 1 + len(tail)
-    for line in lines[1:]:
+    if titles and len(guidelines) > budget // 2:
+        shown: list = []
+        for q in quoted:
+            more = f' and {len(titles) - len(shown) - 1} more'
+            if len('- Guidelines: ' + ', '.join([*shown, q]) + more + where) > budget // 2:
+                break
+            shown.append(q)
+        guidelines = '- Guidelines: ' + ', '.join(shown) + f' and {len(titles) - len(shown)} more' + where
+    kept = [heading]
+    used = len(heading) + 1 + len(guidelines) + 1 + len(tail)
+    for line in shape_lines:
         if used + len(line) + 1 > budget:
             break
         kept.append(line)
         used += len(line) + 1
-    return '\n'.join([*kept, tail])
+    # The tail speaks for the shape: a paragraph cut only in its titles says so on their line.
+    return '\n'.join([*kept, guidelines, *([tail] if len(kept) - 1 < len(shape_lines) else [])])
 
 
 def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str]) -> str:

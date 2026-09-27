@@ -332,8 +332,14 @@ class BaseAssistantService(BaseService):
         none. ``joined`` is what their message carries."""
         if not joined:
             return None
-        return Reach(ws, joined, lambda pid: self.open_project(client, pid),
-                     lambda project: self.make_workspace(client, project, ws.on_progress))
+        reach = Reach(ws, joined, lambda pid: self.open_project(client, pid),
+                      lambda project: self.make_workspace(client, project, ws.on_progress))
+        # A list naming only this project, or nothing usable, adds no project
+        # and refuses none: the turn is a one-project turn, as if it were empty.
+        if not reach.others and not reach.unavailable:
+            ws.reach = None
+            return None
+        return reach
 
     def other_projects_note(self, reach: Reach) -> str:
         """The paragraph of the system prompt about the other projects."""
