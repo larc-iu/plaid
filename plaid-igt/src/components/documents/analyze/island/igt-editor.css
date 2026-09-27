@@ -124,8 +124,8 @@
   transition: opacity 0.15s;
 }
 .igt-status[data-state='saving'] {
-  color: var(--igt-amber);
-  background: #fffbeb;
+  color: var(--igt-blue);
+  background: var(--igt-blue-50);
 }
 .igt-status[data-state='offline'] {
   color: var(--igt-gray-600);
@@ -306,19 +306,20 @@
   color: var(--igt-green);
   border-left-color: var(--igt-green);
 }
-/* Provenance swatches in the legend, echoing the cell styles. */
+/* Provenance swatches in the legend, echoing the cell styles: dashed for a
+   machine's and a contributor's value, solid for a confirmed one. */
 .igt-legend__prov--machine {
   color: var(--igt-violet);
   font-style: italic;
-  border-bottom: 1px dotted var(--igt-violet-soft);
+  border-bottom: 1px dashed var(--igt-violet-soft);
 }
 .igt-legend__prov--contributed {
   color: var(--igt-amber);
   font-style: italic;
-  border-bottom: 1px dotted var(--igt-amber-soft);
+  border-bottom: 1px dashed var(--igt-amber-soft);
 }
 .igt-legend__prov--verified {
-  border-bottom: 1px dotted var(--igt-violet-soft);
+  border-bottom: 1px solid var(--igt-violet-soft);
 }
 /* Suggestion swatches, echoing the placeholder styles. */
 .igt-legend__guess {
