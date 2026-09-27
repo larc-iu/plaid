@@ -97,3 +97,39 @@
             m (into {} (map (fn [row] [(first row) (second row)]) (:results r)))]
         (is (= ["s_value" "count"] (:columns r)))
         (is (= {"NOUN" 2 "VERB" 1} m))))))   ; A,C are NOUN; B is VERB
+
+(deftest metadata-path-keys-are-literal
+  ;; Every segment after the metadata key is a key, byte for byte, whatever
+  ;; characters it holds. A bracketed index is refused rather than read as a
+  ;; key that can never match.
+  (let [{:keys [pos tokl t3]} (build!)
+        s (id (h/create-span admin-request pos [t3] "ADV"
+                             {"m" {"x" ["p"] "x[0]" "lit" "a b" 1 "q\"k" 2 "b\\s" 3
+                                   "é/z" 4 "n\nl" 5 "$" 6}
+                              "arr" ["x"]}))
+        hit (fn [path v]
+              (ids (run {"find" ["?s"] "where" [["span" "?s" {"layer" pos}] ["=" (str "?s.metadata.m." path) v]]})))]
+    (testing "a key holding brackets is a key, not an index"
+      (is (= #{(str s)} (hit "x[0]" "lit")))
+      (is (empty? (hit "x[0]" "p"))))
+    (testing "spaces, quotes, backslashes, non-ASCII, a slash, a newline and $ are part of the key"
+      (is (= #{(str s)} (hit "a b" 1)))
+      (is (= #{(str s)} (hit "q\"k" 2)))
+      (is (= #{(str s)} (hit "b\\s" 3)))
+      (is (= #{(str s)} (hit "é/z" 4)))
+      (is (= #{(str s)} (hit "n\nl" 5)))
+      (is (= #{(str s)} (hit "$" 6))))
+    (testing "indexing into an array is a 400 that says so"
+      (doseq [q [{"find" ["?s"] "where" [["span" "?s" {"layer" pos}] ["=" "?s.metadata.arr.[0]" "x"]]}
+                 {"find" ["?s"] "where" [["span" "?s" {"layer" pos}] ["~" "?s.metadata.arr.[0]" "x"]]}
+                 {"find" ["?s"] "where" [["span" "?s" {"layer" pos}]] "order-by" [["?s.metadata.arr.[0]" "asc"]]}
+                 {"where" [["span" "?s" {"layer" pos}]] "return" {"group" ["?s.metadata.arr.[0]"] "aggregates" [["count"]]}}]]
+        (let [e (try (run q) nil (catch clojure.lang.ExceptionInfo e e))]
+          (is (= 400 (:code (ex-data e))) (pr-str q))
+          (is (re-find #"array" (str (ex-message e)))))))
+    (testing "a layer config path quotes its keys the same way"
+      (prj/assoc-editor-config-pair db :span_layers pos "plaid" "a b" "yes" nil)
+      (is (seq (ids (run {"find" ["?s"]
+                          "where" [["span" "?s" {"layer" "?sl"}] ["span-layer" "?sl" {"name" "pos"}]
+                                   ["=" "?sl.config.plaid.a b" "yes"]]})))))
+    (is (some? tokl))))

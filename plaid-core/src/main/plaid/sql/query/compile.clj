@@ -185,6 +185,23 @@
                       (value-pred (col em :value) spec psc/write-json
                                   [:json_extract (col em :value) [:inline "$"]])]}]))
 
+(def ^:private numeric-columns #{"begin" "end_" "precedence"})
+
+(defn- scalar-class
+  "How SQLite treats a bound scalar's column in a comparison: `:json` for a
+  decoded JSON value (no affinity, its own type), `:numeric` for an integer
+  column, `:text` for a text column or a token's surface expression."
+  [col-ref json?]
+  (cond
+    json? :json
+    (and (keyword? col-ref) (numeric-columns (peek (str/split (name col-ref) #"\.")))) :numeric
+    :else :text))
+
+(defn- storage-class
+  "`typeof(x)` with integer and real folded into one class."
+  [x]
+  [:case [:= [:typeof x] [:inline "real"]] [:inline "integer"] :else [:typeof x]])
+
 (defn- bind-scalar!
   "Bind scalar var `v` to column `col-ref` (with literal-encoder `enc`; `json?`
   marks a JSON-encoded column so aggregation can decode it). The first binding
@@ -199,8 +216,19 @@
     ;; begin/end) stores cat. Decode whichever side is JSON-encoded before comparing —
     ;; mirroring resolve-term — else a value<->form join is `"cat" = cat` and silently
     ;; never matches. (value<->value: both decode, still equal.)
-    (let [decode (fn [sql j?] (if j? [:json_extract sql [:inline "$"]] sql))]
-      (add-where! st [:= (decode (:sql bound) (:json? bound)) (decode col-ref json?)]))
+    (let [decode (fn [sql j?] (if j? [:json_extract sql [:inline "$"]] sql))
+          a (decode (:sql bound) (:json? bound))
+          b (decode col-ref json?)]
+      (add-where! st [:= a b])
+      ;; SQLite's column affinity converts one side before comparing when the
+      ;; other side is a column: a decoded "3" equals an integer `begin` of 3,
+      ;; a decoded number 3 equals a text column holding "3". Two decoded
+      ;; values or two columns of one kind are never converted. So across
+      ;; kinds the join also asks for one storage class, numbers counted as
+      ;; one (3 still joins 3.0). The `=` above stays as it was, so an index
+      ;; on either column still serves the join.
+      (when (not= (scalar-class (:sql bound) (:json? bound)) (scalar-class col-ref json?))
+        (add-where! st [:= (storage-class a) (storage-class b)])))
     (swap! st assoc-in [:scalar-col v] {:sql col-ref :enc enc :json? json?})))
 
 (defn- emit-field!
@@ -769,11 +797,31 @@
    :doc        {:column :document_id :enc str      :json? false}
    :id         {:column :id          :enc str      :json? false}})
 
+(defn- json-path-key
+  "One key segment as a quoted SQLite JSON-path label, so every character in it
+  is part of the key: `x[0]` names the key `x[0]` rather than indexing an array
+  named `x`, and a space, `$`, `\"` or `\\` no longer makes SQLite refuse the
+  path. The quoting is a JSON string's, which SQLite unescapes before it
+  compares the label with the stored keys.
+
+  A segment that is only a bracketed index (`[0]`, what `.x.[0]` asks for) is a
+  400: a dot path reads object keys, and indexing into an array is not part of
+  the language. Read as a key it would match nothing, silently."
+  [seg]
+  (when (re-matches #"\[.*\]" seg)
+    (clauses/err! :compile
+                  (str "Field path segment " (pr-str seg) " indexes into an array. A dot path "
+                       "reads object keys only. To match an array's contents, regex-match the "
+                       "whole value (its serialized JSON), e.g. [\"~\", \"?d.metadata.genre\", \"\\\"news\\\"\"].")
+                  {:segment seg}))
+  (str "\"" (-> seg (str/replace "\\" "\\\\") (str/replace "\"" "\\\"")) "\""))
+
 (defn- json-path
-  "A SQLite `$`-path string from verbatim (case-sensitive) key segments. Used as a
-  BOUND parameter to json_extract (never inlined), so user keys can't inject SQL."
+  "A SQLite `$`-path string from verbatim (case-sensitive) key segments, each
+  quoted (`json-path-key`). Used as a BOUND parameter to json_extract (never
+  inlined), so user keys can't inject SQL."
   [segs]
-  (str "$" (apply str (map #(str "." %) segs))))
+  (str "$" (apply str (map #(str "." (json-path-key %)) segs))))
 
 (defn- field-expr
   "Resolve a field-ref term to {:sql expr :enc enc}. `clauses/field-resolve` interprets

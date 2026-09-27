@@ -185,3 +185,45 @@
                                {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" {"regex" "."}}]] "return" "count"}))))
       (is (= 2 (:count (qe/run db "admin@example.com"
                                {"find" ["?t"] "where" [["token" "?t" {"layer" tokl "value" ["aa" "bb"]}]] "return" "count"})))))))
+
+(deftest value-variable-joins-keep-json-types-apart
+  ;; A value variable joins values of one JSON type. A string never joins a
+  ;; number, whichever column holds either (a JSON-encoded value, an integer
+  ;; offset, a plain text column, a token's surface), and numbers compare as
+  ;; numbers (3 joins 3.0).
+  (let [pid  (h/create-test-project admin-request "3")
+        txtl (id (h/create-text-layer admin-request pid "text"))
+        tokl (id (h/create-token-layer admin-request txtl "words"))
+        sl   (id (h/create-span-layer admin-request tokl "pos"))
+        doc  (h/create-test-document admin-request pid "d")
+        text (id (h/create-text admin-request txtl doc "abc3"))
+        [t0 t1 t2 t3] (mapv #(id (h/create-token admin-request tokl text % (inc %))) (range 4))
+        s-str  (id (h/create-span admin-request sl [t0] "3"))
+        s-num  (id (h/create-span admin-request sl [t1] 3))
+        s-real (id (h/create-span admin-request sl [t2] 3.0))
+        run (fn [where] (set (map #(mapv str %)
+                                  (:results (qe/run db "admin@example.com"
+                                                    {"find" ["?a" "?b"] "where" where})))))]
+    (testing "span value = token begin: the numbers join begin 3, the string does not"
+      (is (= #{[(str s-num) (str t3)] [(str s-real) (str t3)]}
+             (run [["span" "?a" {"layer" sl "value" {"var" "?v"}}]
+                   ["token" "?b" {"layer" tokl "begin" {"var" "?v"}}]]))))
+    (testing "span value = span value: 3 joins 3.0, neither joins \"3\""
+      (is (= #{[(str s-num) (str s-real)] [(str s-real) (str s-num)]}
+             (run [["span" "?a" {"layer" sl "value" {"var" "?v"}}]
+                   ["span" "?b" {"layer" sl "value" {"var" "?v"}}]
+                   ["!=" "?a" "?b"]]))))
+    (testing "span value = vocab form: only the string joins the form \"3\""
+      (let [vl (id (h/create-vocab-layer admin-request "Lex"))
+            _ (h/link-vocab-to-project admin-request pid vl)
+            v (id (h/create-vocab-item admin-request vl "3"))]
+        (is (= #{[(str s-str) (str v)]}
+               (run [["span" "?a" {"layer" sl "value" {"var" "?v"}}]
+                     ["vocab" "?b" {"form" {"var" "?v"}}]])))))
+    (testing "token surface = token begin: the surface \"3\" does not join begin 3"
+      (is (empty? (run [["token" "?a" {"layer" tokl "value" {"var" "?v"}}]
+                        ["token" "?b" {"layer" tokl "begin" {"var" "?v"}}]]))))
+    (testing "token surface = span value: the surface \"3\" joins the string only"
+      (is (= #{[(str t3) (str s-str)]}
+             (run [["token" "?a" {"layer" tokl "value" {"var" "?v"}}]
+                   ["span" "?b" {"layer" sl "value" {"var" "?v"}}]]))))))

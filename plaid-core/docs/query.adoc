@@ -232,7 +232,12 @@ and you may spell it in whatever idiom your client uses (`?t.begin` and
 data: they are matched exactly, case-sensitive and byte for byte
 (`?s.metadata.caseMarker` is not `?s.metadata.casemarker`), mirroring how
 metadata and config are stored. A key containing a literal `.` can't be reached
-with a dot path. Use the <<Metadata,`metadata` constraint>> for those.
+with a dot path. Use the <<Metadata,`metadata` constraint>> for those. Every
+other character belongs to the key, brackets included: `?s.metadata.m.x[0]`
+reads the key `x[0]`, not the first element of an array `x`. A dot path reads
+object keys only, and a segment that is nothing but an index
+(`?d.metadata.genre.[0]`) is a 400. To match inside an array, see
+<<Metadata>>.
 
 == Constraints
 
