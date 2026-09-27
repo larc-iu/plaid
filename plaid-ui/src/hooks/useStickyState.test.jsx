@@ -54,6 +54,26 @@ describe('useStickyState', () => {
     await unmount();
   });
 
+  // Only a value somebody set is remembered. A stored default would outlive a
+  // change of default: the ud and umr document lists moved from name to last
+  // updated, and every project a reader had merely opened kept sorting by name.
+  it('stores nothing for a value nobody set', async () => {
+    const { container, unmount } = await renderComponent(<Sticky storageKey="k" />);
+    expect(text(container)).toBe('default');
+    expect(localStorage.getItem('k')).toBeNull();
+    await unmount();
+  });
+
+  it('stores nothing for the next key either, after a value was set under the first', async () => {
+    const { container, step, rerender, unmount } = await renderComponent(<Sticky storageKey="a" />);
+    await step(() => click(container));
+    await rerender(<Sticky storageKey="b" />);
+    expect(text(container)).toBe('default');
+    expect(JSON.parse(localStorage.getItem('a'))).toBe('typed');
+    expect(localStorage.getItem('b')).toBeNull();
+    await unmount();
+  });
+
   it('seeds from what was stored', async () => {
     localStorage.setItem('k', JSON.stringify('stored'));
     const { container, unmount } = await renderComponent(<Sticky storageKey="k" />);
@@ -117,6 +137,12 @@ describe('useStickySort', () => {
     const second = await renderComponent(<Sorted storageKey="s" />);
     expect(text(second.container)).toBe('name/asc');
     await second.unmount();
+  });
+
+  it('stores no order for a list nobody sorted', async () => {
+    const first = await renderComponent(<Sorted storageKey="s" />);
+    await first.unmount();
+    expect(localStorage.getItem('s')).toBeNull();
   });
 
   it('ignores a stored sort on a column the list no longer has', async () => {

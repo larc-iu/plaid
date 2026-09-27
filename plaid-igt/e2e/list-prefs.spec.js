@@ -79,7 +79,9 @@ test('the sort is remembered per project, not for every list at once', async ({ 
     [sortKey(projectId), sortKey(otherProjectId)],
   );
   expect(JSON.parse(stored[0])).toEqual({ key: 'name', dir: 'asc' });
-  expect(JSON.parse(stored[1])).toEqual({ key: 'updated', dir: 'desc' });
+  // Nobody sorted the other list, so nothing is kept for it and it opens at
+  // the default, whatever the default is on the next visit.
+  expect(stored[1]).toBeNull();
 
   await openDocuments(page, projectId);
   expect(ascending(await names(page))).toBe(true);

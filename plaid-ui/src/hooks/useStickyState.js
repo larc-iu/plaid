@@ -44,9 +44,15 @@ const read = (key, initial, accept) => {
 /**
  * `useState`, remembered under `key`. A null key opts out and leaves plain
  * state behind, which is what an unscoped caller passes.
+ *
+ * Only a value the caller SET is stored. The default a list opened on is not,
+ * so a later change of default reaches every reader who never chose: a stored
+ * default is indistinguishable from a choice and would win over it for good.
  */
 export const useStickyState = (key, initial, accept) => {
   const [value, setValue] = useState(() => read(key, initial, accept));
+  // Whether the value on screen under this key was set rather than read.
+  const chosen = useRef(false);
 
   // The key changes when the reader moves to another project or vocabulary
   // without the list unmounting. Re-seed during the render that brings the new
@@ -54,11 +60,12 @@ export const useStickyState = (key, initial, accept) => {
   const seeded = useRef(key);
   if (seeded.current !== key) {
     seeded.current = key;
+    chosen.current = false;
     setValue(read(key, initial, accept));
   }
 
   useEffect(() => {
-    if (!key) return;
+    if (!key || !chosen.current) return;
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch {
@@ -66,7 +73,12 @@ export const useStickyState = (key, initial, accept) => {
     }
   }, [key, value]);
 
-  return [value, setValue];
+  const set = useCallback((next) => {
+    chosen.current = true;
+    setValue(next);
+  }, []);
+
+  return [value, set];
 };
 
 const isSort = (columns) => (v) =>
