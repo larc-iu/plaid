@@ -24,20 +24,39 @@ APPS = ('igt', 'ud', 'umr')
 
 def test_reachable_keeps_what_the_user_added_in_order_and_caps_it():
     joined = [{'id': f'x{i}', 'name': f'X{i}'} for i in range(MAX_PROJECTS + 2)]
-    allowed, refused = reachable('home', [{'id': 'home'}, *joined, joined[0], {'name': 'no id'}, 'junk'])
+    everything = ['home', *(j['id'] for j in joined)]
+    allowed, refused = reachable('home', [{'id': 'home'}, *joined, joined[0], {'name': 'no id'}, 'junk'],
+                                 everything)
     assert [a['id'] for a in allowed] == [f'x{i}' for i in range(MAX_PROJECTS - 1)]
     assert [r['id'] for r in refused] == [f'x{i}' for i in range(MAX_PROJECTS - 1, MAX_PROJECTS + 2)]
 
 
 def test_reachable_names_a_project_without_a_name_by_its_id():
-    allowed, _ = reachable('home', [{'id': 'x1'}])
+    allowed, _ = reachable('home', [{'id': 'x1'}], ['home', 'x1'])
     assert allowed == [{'id': 'x1', 'name': 'x1'}]
+
+
+def test_reachable_refuses_a_project_the_token_does_not_reach():
+    # The server scopes the requester's token to the home project and those
+    # of the joined ones the user can read. One it left out is refused here,
+    # in the order the reader added it, and does not count against the cap.
+    joined = [{'id': 'a', 'name': 'A'}, {'id': 'B', 'name': 'B'}, {'id': 'c', 'name': 'C'}]
+    allowed, refused = reachable('home', joined, ['home', 'a', 'b'])
+    assert allowed == [{'id': 'a', 'name': 'A'}, {'id': 'B', 'name': 'B'}], 'ids compare without case'
+    assert refused == [{'id': 'c', 'name': 'C'}]
+    assert reachable('home', joined, ()) == ([], joined)
+
+
+def test_a_project_the_token_does_not_reach_is_never_opened():
+    svc, c, ws, r = reached('igt', token_reaches=[])
+    assert r.others == [] and r.unavailable == [{'id': OTHER_ID, 'name': OTHER_NAME}]
+    assert not reads_in(c, OTHER_ID)
 
 
 def test_nothing_joined_is_no_reach():
     c = client('igt')
     svc, ws = home_workspace('igt', c)
-    assert svc.open_reach(c, ws, None) is None and svc.open_reach(c, ws, []) is None
+    assert svc.open_reach(c, ws, None, ()) is None and svc.open_reach(c, ws, [], ()) is None
     assert ws.reach is None
 
 

@@ -10,12 +10,14 @@ that decides which.
 
 Three rules hold the whole of it.
 
-- Only what the reader added. The set comes from the user's own message
-  (``projects`` on its display item) and nothing else, capped at
-  :data:`MAX_PROJECTS` with the home project counted. The model cannot name a
-  project into reach. :func:`reachable` is the ONE place the set is computed,
-  so a later narrowing (a delegated token scoped to the projects a turn may
-  reach, say) is a change to that function and to nothing else.
+- Only what the reader added, and only what the token reaches. The set comes
+  from the user's own message (``projects`` on its display item) and nothing
+  else, capped at :data:`MAX_PROJECTS` with the home project counted, and
+  narrowed to the projects the requester's delegated token is scoped to
+  (``delegated_projects``: the browser names the joined projects with the
+  request, and the server scopes the token to those the user can read). The
+  model cannot name a project into reach. :func:`reachable` is the ONE place
+  the set is computed.
 - Only with the user's own rights. Every other project is read through the
   requester's client, the same one the home project is read through, so the
   server checks each read against the user's own role in that project.
@@ -29,7 +31,7 @@ Other projects are read-only here. Their workspaces refuse to stage anything
 """
 
 import traceback
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Tuple
 
 from plaid_client.http import PlaidAPIError
 
@@ -47,7 +49,8 @@ PLAN_TOOLS = ('plan_status', 'discard_plan', 'drop_planned')
 LOCAL_TOOLS = frozenset(webtools.NAMES) | frozenset(filetools.NAMES) | frozenset(sandbox.NAMES)
 
 
-def reachable(home_id: str, joined: Any) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+def reachable(home_id: str, joined: Any, token_reaches: Iterable[str]
+              ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
     """``(allowed, refused)``: the other projects a turn may open, as
     ``{id, name}`` in the order the reader added them, and those it may not.
 
@@ -55,9 +58,12 @@ def reachable(home_id: str, joined: Any) -> Tuple[List[Dict[str, str]], List[Dic
     opens a project for a turn is handed this answer and opens nothing else.
 
     ``joined`` is what the user's message carries. Entries without an id and
-    repeats are dropped, the home project is not counted twice, and past the
-    cap the rest are refused rather than silently left out.
+    repeats are dropped, the home project is not counted twice. A project the
+    requester's token does not reach (``token_reaches``, the ids the server
+    scoped it to) is refused, and so is every one past the cap, rather than
+    silently left out.
     """
+    reaches = {str(pid).lower() for pid in token_reaches or ()}
     allowed: List[Dict[str, str]] = []
     refused: List[Dict[str, str]] = []
     seen = {home_id}
@@ -68,7 +74,8 @@ def reachable(home_id: str, joined: Any) -> Tuple[List[Dict[str, str]], List[Dic
         seen.add(pid)
         name = entry.get('name')
         item = {'id': pid, 'name': name if isinstance(name, str) and name else pid}
-        (allowed if len(allowed) < MAX_PROJECTS - 1 else refused).append(item)
+        ok = pid.lower() in reaches and len(allowed) < MAX_PROJECTS - 1
+        (allowed if ok else refused).append(item)
     return allowed, refused
 
 
@@ -76,21 +83,22 @@ class Reach:
     """The projects one turn may read: its home workspace and the others the
     reader joined, each a workspace of its own, built on first use.
 
+    ``token_reaches`` is the ids the requester's token is scoped to.
     ``open_project(id)`` loads a project for reading or raises: the service's
     check that the project is readable, served by this assistant, and one the
     app can read. ``make_workspace(project)`` is the app's own workspace
     constructor with the requester's client already bound.
     """
 
-    def __init__(self, home_ws, joined: Any, open_project: Callable[[str], Any],
-                 make_workspace: Callable[[Any], Any]):
+    def __init__(self, home_ws, joined: Any, token_reaches: Iterable[str],
+                 open_project: Callable[[str], Any], make_workspace: Callable[[Any], Any]):
         self.home = home_ws
         self._make_workspace = make_workspace
         self._projects: Dict[str, Any] = {}
         self._workspaces: Dict[str, Any] = {}
         #: [{'id', 'name'}] of the projects that could not be opened this turn.
         self.unavailable: List[Dict[str, str]] = []
-        allowed, refused = reachable(home_ws.project.id, joined)
+        allowed, refused = reachable(home_ws.project.id, joined, token_reaches)
         self.unavailable.extend(refused)
         for entry in allowed:
             try:

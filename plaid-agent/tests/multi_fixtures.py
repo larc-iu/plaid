@@ -85,9 +85,13 @@ def home_workspace(app, c):
     return svc, svc.make_workspace(c, project, lambda msg: None)
 
 
-def reached(app, joined=None, **kw):
-    """``(service, client, home workspace, reach)`` with ``Second`` joined."""
+def reached(app, joined=None, token_reaches=None, **kw):
+    """``(service, client, home workspace, reach)`` with ``Second`` joined.
+    The requester's token reaches every joined project unless
+    ``token_reaches`` says which."""
     c = client(app, **kw)
     svc, ws = home_workspace(app, c)
     joined = joined if joined is not None else [{'id': OTHER_ID, 'name': OTHER_NAME}]
-    return svc, c, ws, svc.open_reach(c, ws, joined)
+    if token_reaches is None:
+        token_reaches = [c.project['id'], *(j['id'] for j in joined if isinstance(j, dict) and 'id' in j)]
+    return svc, c, ws, svc.open_reach(c, ws, joined, token_reaches)

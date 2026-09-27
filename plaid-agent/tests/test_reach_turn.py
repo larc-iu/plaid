@@ -213,7 +213,8 @@ def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypa
     monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
     helper = _Helper()
     _svc(app).process_request({'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
-                               'conversation_id': 'c1'}, helper)
+                               'conversation_id': 'c1', 'delegated_projects': [pid, OTHER_ID, 'gone']},
+                              helper)
     assert not helper.errors, helper.errors
     home_name = c.project['name']
     assert seen['transcript'][-1]['content'] == (
@@ -224,6 +225,31 @@ def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypa
     item = conv['display'][-1]
     assert item['unavailable_projects'] == [{'id': 'gone', 'name': 'Gone'}]
     assert reads_in(c, OTHER_ID), 'the other project was read with the requester client'
+
+
+@pytest.mark.parametrize('app', APPS)
+def test_a_turn_reads_no_project_its_token_does_not_reach(app, monkeypatch):
+    # The server scoped the requester's token to the home project only (the
+    # browser did not name Second, or the user cannot read it): Second is
+    # reported as not opened and never read, whatever the message carries.
+    c = client(app)
+    pid = c.project['id']
+    store = _seed(c, app, [{'id': OTHER_ID, 'name': OTHER_NAME}], pid)
+    seen = {}
+
+    def fake_run_turn(cfg, kit, ws, system, transcript, on_progress, cancelled, on_text=None):
+        seen['system'] = system
+        return TurnResult('ok', [{'role': 'assistant', 'content': 'ok'}], [])
+
+    monkeypatch.setattr(service_mod, 'run_turn', fake_run_turn)
+    helper = _Helper()
+    _svc(app).process_request({'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
+                               'conversation_id': 'c1', 'delegated_projects': [pid]}, helper)
+    assert not helper.errors, helper.errors
+    assert f'"{OTHER_NAME}" could not be opened.' in seen['system']
+    conv, _ = store.load('c1')
+    assert conv['display'][-1]['unavailable_projects'] == [{'id': OTHER_ID, 'name': OTHER_NAME}]
+    assert not reads_in(c, OTHER_ID)
 
 
 @pytest.mark.parametrize('app', APPS)

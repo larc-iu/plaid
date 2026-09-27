@@ -327,12 +327,13 @@ class BaseAssistantService(BaseService):
             raise LookupError(f'{self.service_id} is not online in project {project_id}')
         return self.load_project(client, project_id)
 
-    def open_reach(self, client, ws, joined) -> Optional[Reach]:
+    def open_reach(self, client, ws, joined, token_reaches) -> Optional[Reach]:
         """The other projects this turn may read, or None when the user added
-        none. ``joined`` is what their message carries."""
+        none. ``joined`` is what their message carries, ``token_reaches`` the
+        projects the requester's token is scoped to (``delegated_projects``)."""
         if not joined:
             return None
-        reach = Reach(ws, joined, lambda pid: self.open_project(client, pid),
+        reach = Reach(ws, joined, token_reaches, lambda pid: self.open_project(client, pid),
                       lambda project: self.make_workspace(client, project, ws.on_progress))
         # A list naming only this project, or nothing usable, adds no project
         # and refuses none: the turn is a one-project turn, as if it were empty.
@@ -394,10 +395,12 @@ class BaseAssistantService(BaseService):
         last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
         transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
         # The other projects the user added to the conversation, read from their
-        # own message and nowhere else. Stamped onto the question when the set
+        # own message and nowhere else, and only those the requester's token
+        # reaches (the server scoped it to them). Stamped onto the question when the set
         # changed, after the files note and before the place stamp, which has to
         # stay first on the line.
-        reach = self.open_reach(client, ws, (last_user or {}).get('projects'))
+        reach = self.open_reach(client, ws, (last_user or {}).get('projects'),
+                                (request_data or {}).get('delegated_projects') or ())
         transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
         # Where this question was asked from, stamped onto the question itself.
         # The panel outlives the screen it was opened from, so one thread can
