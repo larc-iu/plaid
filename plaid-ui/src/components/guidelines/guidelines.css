@@ -41,8 +41,11 @@
 }
 
 /* A table is editable here, so its cells need visible edges and a grip target.
- * The rendered side gets its table styling from markdown.css. */
+ * The rendered side gets its table styling from markdown.css, whose
+ * `display: block` (a wide table scrolls when read) would shrink an editable
+ * table to its content, so here it is a table again and spans the editor. */
 .guideline-editor__doc table {
+  display: table;
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
@@ -55,6 +58,9 @@
   padding: 0.25rem 0.5rem;
   vertical-align: top;
   position: relative;
+  /* The columns share the editor's width, so a word longer than its column
+     breaks rather than running under the next cell. */
+  overflow-wrap: anywhere;
 }
 
 .guideline-editor__doc th {
