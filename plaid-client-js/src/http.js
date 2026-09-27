@@ -79,6 +79,13 @@ export function extractDocumentVersions(
   responseBody = null,
   { historical = false } = {},
 ) {
+  // Past fifty documents the server leaves the list out and says how many it
+  // left out. Any version held may be one of them, so all are forgotten, and
+  // makeRequest reads the strict-mode document's again (learnOmittedVersion).
+  if (responseHeaders.get("X-Document-Versions-Omitted")) {
+    client.documentVersions = {};
+    client.documentVersionsOmitted = true;
+  }
   const docVersionsHeader = responseHeaders.get("X-Document-Versions");
   if (docVersionsHeader) {
     try {
@@ -430,6 +437,46 @@ export function restampDocumentVersion(path, version) {
 }
 
 /**
+ * The strict-mode document whose version a response left out
+ * (X-Document-Versions-Omitted) and the client has not learned since, or
+ * null. Such a write would go out unstamped, which is no check at all.
+ */
+function omittedStrictDocument(client) {
+  const docId = client.strictModeDocumentId;
+  return docId &&
+    client.documentVersionsOmitted &&
+    client.documentVersions[docId] === undefined
+    ? docId
+    : null;
+}
+
+/**
+ * Read the strict-mode document once to learn the version a response left
+ * out. Done right after that response, so the client's own large write is
+ * not mistaken for somebody else's edit at the next save, and again before a
+ * strict write when that read failed.
+ */
+async function learnOmittedVersion(client) {
+  const docId = omittedStrictDocument(client);
+  // The read below is itself a response this hook runs after.
+  if (!docId || client._learningOmittedVersion) return;
+  client._learningOmittedVersion = true;
+  try {
+    await makeRequest(client, "GET", `/api/v1/documents/${docId}`);
+  } finally {
+    client._learningOmittedVersion = false;
+  }
+}
+
+async function learnOmittedVersionQuietly(client) {
+  try {
+    await learnOmittedVersion(client);
+  } catch (_) {
+    /* the write went through; the next strict write asks again */
+  }
+}
+
+/**
  * A call made on a batch (see `PlaidClient#batch`). A write of project data is
  * queued as one operation of the batch and answers `{ batched: true }`; its
  * result is the matching entry of what `submit()` resolves to. A read, and a
@@ -503,6 +550,9 @@ export async function makeRequest(client, method, path, options = {}) {
     timeout,
     onUploadProgress,
   } = options;
+  if (method !== "GET" && omittedStrictDocument(client)) {
+    await learnOmittedVersion(client);
+  }
   const { url, requestBody } = prepareRequest(client, method, path, options);
 
   // Build fetch options
@@ -572,6 +622,7 @@ export async function makeRequest(client, method, path, options = {}) {
     // Binary response (getMedia)
     if (binaryResponse) {
       extractDocumentVersions(client, response.headers);
+      await learnOmittedVersionQuietly(client);
       return await response.arrayBuffer();
     }
 
@@ -582,12 +633,14 @@ export async function makeRequest(client, method, path, options = {}) {
       extractDocumentVersions(client, response.headers, data, {
         historical: /[?&]as-of=/.test(url),
       });
+      await learnOmittedVersionQuietly(client);
       if (skipResponseTransform) {
         return data;
       }
       return transformResponse(data);
     } else {
       extractDocumentVersions(client, response.headers);
+      await learnOmittedVersionQuietly(client);
       return await response.text();
     }
   } catch (error) {

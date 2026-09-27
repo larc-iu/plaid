@@ -32,7 +32,7 @@
             [plaid.rest-api.v1.audit :refer [audit-routes]]
             [plaid.rest-api.v1.operation-group :refer [operation-group-routes]]
             [plaid.rest-api.v1.batch :refer [batch-routes]]
-            [plaid.rest-api.v1.vocab-layer :refer [vocab-layer-routes]]
+            [plaid.rest-api.v1.vocab-layer :as vocab-layer :refer [vocab-layer-routes]]
             [plaid.rest-api.v1.vocab-item :refer [vocab-item-routes]]
             [plaid.rest-api.v1.vocab-link :refer [vocab-link-routes]]
             [plaid.rest-api.v1.comment :refer [comment-routes]]
@@ -146,7 +146,6 @@
              admin-routes
              operation-group-routes
              ["" {:plaid/token-scope pra/each-operation-token-scope} batch-routes]
-             vocab-layer-routes
              vocab-item-routes
              vocab-link-routes
              comment-routes
@@ -155,7 +154,14 @@
 
             [""
              {:middleware [prm/wrap-route-as-of]}
-             document-routes]]]
+             document-routes]
+
+            ;; A vocabulary's history is read at a time too, on the three
+            ;; routes that parse `?as-of=` themselves. The rest of the group
+            ;; refuses it as above.
+            [""
+             {:middleware [vocab-layer/wrap-reject-as-of-elsewhere]}
+             vocab-layer-routes]]]
 
           (when expose-openapi?
             [;; swagger documentation
@@ -255,7 +261,10 @@
                  ;; by the default handler, which route middleware never
                  ;; reaches. Everything else it sits outside of is in its
                  ;; docstring.
-                 {:middleware [prm/wrap-access-log]})]
+                 {:middleware [prm/wrap-access-log
+                               ;; Around the router too, so it sees the batch
+                               ;; handler's merged header. See its docstring.
+                               prm/wrap-document-versions-cap]})]
     ;; Wrap handler to inject itself into requests for bulk operations
     (fn [request]
       (handler (assoc request :rest-handler handler)))))

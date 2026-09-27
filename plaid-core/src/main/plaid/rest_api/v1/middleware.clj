@@ -128,6 +128,42 @@
         response))
     response))
 
+(def document-versions-cap
+  "The most documents a response names in X-Document-Versions. Past it the
+  header is left out and `X-Document-Versions-Omitted` says so
+  (`wrap-document-versions-cap`)."
+  50)
+
+(defn wrap-document-versions-cap
+  "Leave X-Document-Versions out of a response that would name more than
+  `document-versions-cap` documents, and send `X-Document-Versions-Omitted`
+  with the number of documents it would have named instead.
+
+  The header grows by about 43 bytes a document with no limit, and every
+  consumer refuses a response whose header is too large, although the write
+  is already committed: a reverse proxy at 4 to 8 KB (a 502 at about 100 to
+  190 documents), Node's fetch at 16 KB, Python's http.client at 64 KB.
+  Respelling one common entry restated 1,997 documents and sent 85 KB. A
+  client that sees the marker forgets the versions it held and reads a
+  document's version again before its next strict write there.
+
+  The top-level response only. A batch's sub-responses travel in its BODY,
+  where size is no problem and both clients read each sub-response's map,
+  so they keep the whole list and only the batch's merged header is capped."
+  [handler]
+  (fn [request]
+    (let [response (handler request)
+          header (get-in response [:headers "X-Document-Versions"])]
+      (if (or (nil? header) (get request log-buffer/sub-request-key))
+        response
+        (let [n (count (json/read-str header))]
+          (if (> n document-versions-cap)
+            (update response :headers
+                    #(-> %
+                         (dissoc "X-Document-Versions")
+                         (assoc "X-Document-Versions-Omitted" (str n))))
+            response))))))
+
 (defn assoc-document-version-in-header
   "Set X-Document-Versions on the response to one document's version."
   [response db doc-id]

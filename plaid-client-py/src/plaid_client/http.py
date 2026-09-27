@@ -196,6 +196,13 @@ def extract_document_versions(client, response_headers, response_body=None, hist
     claim next, so the body is ignored and only the header (always the live
     version) is learned from.
     """
+    # Past fifty documents the server leaves the list out and says how many
+    # it left out. Any version held may be one of them, so all are
+    # forgotten, and make_request reads the strict-mode document's again
+    # (``_learn_omitted_version``).
+    if response_headers.get('X-Document-Versions-Omitted'):
+        client.document_versions.clear()
+        client.document_versions_omitted = True
     header = response_headers.get('X-Document-Versions')
     if header:
         try:
@@ -210,6 +217,40 @@ def extract_document_versions(client, response_headers, response_body=None, hist
         doc_version = response_body.get('document/version')
         if doc_id and doc_version:
             client.document_versions[doc_id] = doc_version
+
+
+def _omitted_strict_document(client):
+    """The strict-mode document whose version a response left out
+    (X-Document-Versions-Omitted) and the client has not learned since, or
+    None. Such a write would go out unstamped, which is no check at all."""
+    doc_id = getattr(client, 'strict_mode_document_id', None)
+    if (doc_id and getattr(client, 'document_versions_omitted', False)
+            and doc_id not in client.document_versions):
+        return doc_id
+    return None
+
+
+def _learn_omitted_version(client):
+    """Read the strict-mode document once to learn the version a response
+    left out. Done right after that response, so the client's own large
+    write is not mistaken for somebody else's edit at the next save, and
+    again before a strict write when that read failed."""
+    doc_id = _omitted_strict_document(client)
+    # The read below is itself a response this hook runs after.
+    if not doc_id or getattr(client, '_learning_omitted_version', False):
+        return
+    client._learning_omitted_version = True
+    try:
+        make_request(client, 'GET', f'/api/v1/documents/{doc_id}')
+    finally:
+        client._learning_omitted_version = False
+
+
+def _learn_omitted_version_quietly(client):
+    try:
+        _learn_omitted_version(client)
+    except Exception:  # the write went through; the next strict write asks again
+        pass
 
 
 def _merge_query(query, **extra):
@@ -523,6 +564,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             encoded up front and streamed from memory, which is what
             ``requests`` does for ``files=`` anyway.
     """
+    if method != 'GET' and _omitted_strict_document(client):
+        _learn_omitted_version(client)
     url, request_body, _ = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
@@ -580,6 +623,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     # Binary response
     if binary_response:
         extract_document_versions(client, response.headers)
+        _learn_omitted_version_quietly(client)
         return response.content
 
     # JSON or text response
@@ -588,9 +632,11 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         data = response.json()
         extract_document_versions(client, response.headers, data,
                                   historical=bool(query_params and query_params.get('as-of')))
+        _learn_omitted_version_quietly(client)
         if skip_response_transform:
             return data
         return transform_response(data)
     else:
         extract_document_versions(client, response.headers)
+        _learn_omitted_version_quietly(client)
         return response.text
