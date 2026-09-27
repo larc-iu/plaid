@@ -780,6 +780,24 @@ class PlaidClient {
       health: () => PlaidClient.health(this.baseUrl, { timeout: this.timeout }),
     };
 
+    // The signed-in user's sign-ins. Signing in is `PlaidClient.login`, which
+    // makes the client.
+    this.auth = {
+      /**
+       * End every sign-in of this user on every device: each browser tab,
+       * script and service holding one of the user's sign-in tokens is
+       * refused from now on, this client included. Named API tokens are not
+       * affected (revoke one with `apiTokens.revoke`). To sign out of one tab
+       * only, discard its token instead. A signal rather than project data:
+       * made on a batch it still goes out at once, and it never joins an
+       * operation.
+       * @returns {Promise<void>}
+       */
+      logoutEverywhere: async () => {
+        await this._request("POST", "/api/v1/logout", { outOfBand: true });
+      },
+    };
+
     this.texts = {
       /**
        * Replace all metadata for a text.

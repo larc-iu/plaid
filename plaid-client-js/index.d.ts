@@ -630,6 +630,15 @@ interface ServerReport {
   settings: Record<string, any>;
 }
 
+/** The signed-in user's sign-ins. Signing in is `PlaidClient.login`. */
+interface AuthBundle {
+  /**
+   * End every sign-in of this user on every device, this client's included.
+   * Named API tokens are not affected. Goes out at once even on a batch.
+   */
+  logoutEverywhere(): Promise<void>;
+}
+
 /** Server-level facts. `info` is fetched at most once per client. */
 interface ServerBundle {
   info(): Promise<{ limits: ServerLimits }>;
@@ -1333,6 +1342,7 @@ export declare class PlaidClient {
   userData: UserDataBundle;
   invites: InvitesBundle;
   server: ServerBundle;
+  auth: AuthBundle;
   admin: AdminBundle;
   audit: AuditBundle;
   comments: CommentsBundle;

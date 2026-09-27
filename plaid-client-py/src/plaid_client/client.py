@@ -2847,6 +2847,21 @@ class ServerResource(_Resource):
         return self._request('GET', '/health')
 
 
+class AuthResource(_Resource):
+    """The signed-in user's sign-ins. Signing in is :meth:`PlaidClient.login`,
+    which makes the client."""
+
+    def logout_everywhere(self) -> None:
+        """End every sign-in of this user on every device: each browser tab,
+        script and service holding one of the user's sign-in tokens is refused
+        from now on, this client included. Named API tokens are not affected
+        (revoke one with ``api_tokens.revoke``). To sign out of one tab only,
+        discard its token instead. A signal rather than project data: made on
+        a batch it still goes out at once, and it never joins an operation.
+        """
+        self._request('POST', '/api/v1/logout', out_of_band=True)
+
+
 class AdminResource(_Resource):
     """Instance-wide operations, for whoever runs the server. Admin only.
 
@@ -3122,6 +3137,7 @@ def _install_resources(target):
     target.relation_layers = RelationLayersResource(target)
     target.tokens = TokensResource(target)
     target.server = ServerResource(target)
+    target.auth = AuthResource(target)
     target.admin = AdminResource(target)
     target.audit = AuditResource(target)
     target.operation_groups = OperationGroupsResource(target)
