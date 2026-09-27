@@ -212,7 +212,7 @@ class WhisperASRService(BaseService):
             # Get media URL from document
             media_url = full_document.get("media_url")
             if not media_url:
-                raise ValueError("No media file attached to document")
+                raise ValueError("The document has no media file.")
             
             # Construct full media URL if it's a relative path
             if media_url.startswith('/'):
@@ -239,19 +239,19 @@ class WhisperASRService(BaseService):
             # requester cannot tell from a wedged service, and which outlasts
             # any deadline it is willing to wait through. The heartbeat keeps
             # the request alive by saying the same thing at intervals.
-            response_helper.progress(30, f"Loading ASR model ({model_size or self.asr_model.model_name})…")
+            response_helper.progress(30, f"Loading the Whisper model ({model_size or self.asr_model.model_name})…")
             response_helper.progress(40, "Transcribing audio…")
             with progress_heartbeat(response_helper, 40, "Transcribing audio…"):
                 alignments = self.asr_model.transcribe_with_alignments(
                     audio_file, model_size=model_size, language=language)
             
             if not alignments:
-                raise ValueError("No transcription results generated")
+                raise ValueError("No speech found in the recording.")
             
             # The last point a stop costs nothing: the transcription itself is
             # one blocking call with nothing to poll inside it, so a request
             # stopped mid-transcription lands here, and stops before writing.
-            response_helper.progress(70, f"Generated {len(alignments)} segment alignments…")
+            response_helper.progress(70, f"Found {len(alignments)} segments…")
 
             # Process alignments using the alignment processor. Created tokens
             # are stamped machine-made (provenance convention); the processor
@@ -275,7 +275,7 @@ class WhisperASRService(BaseService):
                         overwrite=overwrite,
                         lock_percent=72,
                     )
-                response_helper.progress(100, "ASR processing completed successfully")
+                response_helper.progress(100, "Done")
                 response_helper.complete({
                     "document_id": document_id,
                     "status": "success",

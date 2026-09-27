@@ -97,7 +97,7 @@ class TokenProcessor:
             ValueError: the run is refused, with the reason for the requester
         """
         # Get document with layers
-        response_helper.progress(10, "Fetching document...")
+        response_helper.progress(10, "Fetching document…")
         full_document = client.documents.get(document_id, include_body=True)
         check_unchanged(client, document_id, expect_version,
                         current=full_document.get("version"))
@@ -114,7 +114,7 @@ class TokenProcessor:
             raise ValueError("This document has no text to tokenize.")
         
         # Get existing tokens
-        response_helper.progress(20, "Analyzing existing tokens...")
+        response_helper.progress(20, "Reading existing tokens…")
         primary_layer = None
         sentence_layer = None
         
@@ -131,7 +131,7 @@ class TokenProcessor:
         existing_sentences = sentence_layer.get("tokens", []) if sentence_layer else []
         
         # Convert TokenSpan objects to the format expected by existing functions
-        response_helper.progress(30, "Processing tokenization results...")
+        response_helper.progress(30, "Placing sentences and tokens…")
         new_sentences_dict = [{'begin': s.start, 'end': s.end, 'text': s.text} for s in sentences]
         new_words_dict = [{'begin': w.start, 'end': w.end, 'text': w.text} for w in words]
         
@@ -154,7 +154,7 @@ class TokenProcessor:
         text_length = len(text_content)
 
         if should_do_sentences:
-            response_helper.progress(33, "Processing sentence tokenization...")
+            response_helper.progress(33, "Splitting into sentences…")
             # Sentence layer is :partitioning — must replace via bulk_delete + bulk_create
             # in one batch. Build a complete partition covering [0, text_length) exactly,
             # filling any gaps left by the tokenizer so the server accepts it.
@@ -180,7 +180,7 @@ class TokenProcessor:
                     f"sentence-level annotation(s). Re-run with overwrite enabled to replace them."
                 )
         elif sentence_layer and len(existing_sentences) != 1:
-            response_helper.progress(33, "Skipping sentence tokenization (not exactly one existing sentence)...")
+            response_helper.progress(33, "Leaving the sentences as they are…")
 
         # Boundaries to split against for word-level processing. When the
         # sentence partition is being reset, words must respect the NEW
@@ -194,7 +194,7 @@ class TokenProcessor:
             split_boundaries = existing_sentence_boundaries
 
         # Split both existing and new tokens that cross sentence boundaries
-        response_helper.progress(35, "Splitting cross-sentence tokens...")
+        response_helper.progress(35, "Splitting tokens at sentence breaks…")
 
         # Find which existing tokens need to be deleted (those that will be split)
         tokens_to_delete = []
@@ -228,7 +228,7 @@ class TokenProcessor:
             split_boundaries
         )
 
-        response_helper.progress(40, "Merging tokens...")
+        response_helper.progress(40, "Merging tokens…")
         words_to_create = self._merge_with_existing_tokens(new_words_split, split_existing_tokens)
         
         # Filter out tokens that already exist — but only when we're NOT resetting
@@ -241,7 +241,7 @@ class TokenProcessor:
             words_to_create = [w for w in words_to_create if (w['begin'], w['end']) not in existing_ranges]
         
         # Apply changes
-        response_helper.progress(50, "Applying changes...")
+        response_helper.progress(50, "Saving…")
 
         sentences_created = 0
         tokens_deleted = len(tokens_to_delete)
@@ -328,9 +328,9 @@ class TokenProcessor:
                         token_operations.append(op)
 
                     b.tokens.bulk_create(token_operations)
-                    response_helper.progress(90, f"Created {len(token_operations)} tokens...")
+                    response_helper.progress(90, f"Created {len(token_operations)} tokens…")
             
-                response_helper.progress(95, "Committing changes...")
+                response_helper.progress(95, "Saving…")
         
         return {
             "tokens_created": len(words_to_create) if words_to_create else 0,

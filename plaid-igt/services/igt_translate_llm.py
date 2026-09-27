@@ -244,7 +244,7 @@ class LLMTranslateService(BaseService):
             return
         tr_layer_id, existing = translation_spans(doc, sent_layer_id, translation_field)
         if not tr_layer_id:
-            response_helper.error(f'No sentence-scope field named "{translation_field}" — set the Translation '
+            response_helper.error(f'No sentence-scope field named "{translation_field}". Set the Translation '
                                   'field parameter to one of the project\'s sentence fields.')
             return
 

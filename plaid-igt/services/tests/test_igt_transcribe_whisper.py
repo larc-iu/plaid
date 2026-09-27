@@ -281,7 +281,7 @@ def test_a_document_with_no_media_is_refused_once_in_its_own_words(monkeypatch):
     service = _service(module, documents=[_document(media_url=None)])
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.reports == [('error', 'No media file attached to document')]
+    assert helper.reports == [('error', 'The document has no media file.')]
     assert service.client.writes == []
 
 
@@ -348,7 +348,7 @@ def test_a_recording_with_no_speech_in_it_is_refused_once(monkeypatch):
     service = _service(module)
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.reports == [('error', 'No transcription results generated')]
+    assert helper.reports == [('error', 'No speech found in the recording.')]
     assert service.client.writes == []
 
 
@@ -366,7 +366,7 @@ def test_the_bar_only_ever_goes_forward(monkeypatch):
     percents = [pct for pct, _ in helper.beats]
     assert percents == sorted(percents), helper.beats
     assert percents[-1] == 100
-    assert (72, 'Acquiring document lock...') in helper.beats
+    assert (72, 'Writing the transcription…') in helper.beats
 
 
 def test_the_download_says_how_far_in_it_is(monkeypatch):
@@ -416,7 +416,7 @@ def test_the_transcription_keeps_talking_while_it_runs(monkeypatch):
     assert helper.messages.count('Transcribing audio…') >= 3
     assert helper.errors == [] and len(helper.results) == 1
     # …and the beat stops with the block rather than running on into the writes.
-    after_writing = helper.messages[helper.messages.index('ASR processing completed successfully'):]
+    after_writing = helper.messages[helper.messages.index('Done'):]
     assert 'Transcribing audio…' not in after_writing
 
 
@@ -445,7 +445,7 @@ def test_a_stop_that_lands_in_the_writes_is_ignored_and_the_run_finishes(monkeyp
     service = _service(module)
     helper = servicetest.run(
         service, REQUEST,
-        servicetest.Helper(stop_when=lambda pct, msg: msg.startswith('Committing')))
+        servicetest.Helper(stop_when=lambda pct, msg: msg == 'Saving…'))
 
     assert helper.cancelled, 'the stop never landed, so this proves nothing'
     [result] = helper.results

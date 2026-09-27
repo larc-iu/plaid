@@ -162,10 +162,10 @@ class NLTKTokenizerService(BaseService):
         sentences, words = self.tokenizer_model.tokenize_text(text_content, language)
         
         if not words:
-            response_helper.error("No tokens generated from text")
+            response_helper.error("No words found in the text.")
             return
         
-        response_helper.progress(30, f"Generated {len(sentences)} sentences and {len(words)} words…")
+        response_helper.progress(30, f"Found {len(sentences)} sentences and {len(words)} words…")
         
         # Process tokens using the token processor. Created tokens are
         # stamped machine-made (provenance convention); the processor
@@ -186,7 +186,7 @@ class NLTKTokenizerService(BaseService):
                     prov_source=service_source(self.service_id),
                     overwrite=overwrite,
                 )
-            response_helper.progress(100, "Tokenization completed successfully")
+            response_helper.progress(100, "Done")
             response_helper.complete({
                 "document_id": document_id,
                 "status": "success",

@@ -81,7 +81,7 @@ class AlignmentProcessor:
         # context manager acquires it (refusing with a clear error if another
         # user holds it) and always releases on exit. See
         # PlaidClient.documents.locked.
-        response_helper.progress(lock_percent, "Acquiring document lock...")
+        response_helper.progress(lock_percent, "Writing the transcription…")
         with client.documents.locked(document_id):
             # Convert alignments to transcription format
             transcriptions = [
@@ -163,7 +163,7 @@ class AlignmentProcessor:
                                      prov_source: Optional[str] = None, overwrite: bool = False) -> int:
         """Create time alignment tokens from transcription results, preserving existing work"""
         # Get document with full token information
-        response_helper.progress(75, "Analyzing existing tokens and text...")
+        response_helper.progress(75, "Reading the document…")
         document = client.documents.get(document_id, include_body=True)
         
         # Find text layer and existing tokens
@@ -199,7 +199,7 @@ class AlignmentProcessor:
             text_id = text_result["id"]
             current_text = ""
         
-        response_helper.progress(78, "Filtering transcriptions to avoid time collisions...")
+        response_helper.progress(78, "Skipping segments that overlap existing ones…")
         
         # Step 1: Filter out transcriptions that have time collisions
         non_colliding_transcriptions = []
@@ -221,7 +221,7 @@ class AlignmentProcessor:
             if not has_collision:
                 non_colliding_transcriptions.append(trans)
         
-        response_helper.progress(82, f"Processing {len(non_colliding_transcriptions)} non-colliding transcriptions...")
+        response_helper.progress(82, f"Adding {len(non_colliding_transcriptions)} segment{'' if len(non_colliding_transcriptions) == 1 else 's'}…")
         
         # Step 2 & 3: For each non-colliding transcription, update text and create tokens
         new_alignment_tokens = []
@@ -258,7 +258,7 @@ class AlignmentProcessor:
         
         # Apply text modifications and create tokens
         if text_modifications:
-            response_helper.progress(85, "Applying text changes and creating tokens...")
+            response_helper.progress(85, "Adding the text…")
             
             # Sort modifications by position (forward order for sequential application)
             text_modifications.sort(key=lambda m: m['position'])
@@ -300,7 +300,7 @@ class AlignmentProcessor:
                 cumulative_offset += len(mod['new_text'])
             
             # Begin atomic batch operation
-            response_helper.progress(88, "Committing changes...")
+            response_helper.progress(88, "Saving…")
             with client.batched() as b:
 
                 # Build explicit insert ops rather than passing the full new_text
@@ -333,7 +333,7 @@ class AlignmentProcessor:
             
                 # Create alignment tokens
                 if new_alignment_tokens:
-                    response_helper.progress(90, f"Creating {len(new_alignment_tokens)} alignment tokens...")
+                    response_helper.progress(90, f"Aligning {len(new_alignment_tokens)} segment{'' if len(new_alignment_tokens) == 1 else 's'}…")
                     b.tokens.bulk_create(new_alignment_tokens)
 
                 # NOTE: Do NOT update existing alignment-token positions here. The
@@ -344,7 +344,7 @@ class AlignmentProcessor:
 
                 # Update sentence partitioning
                 if sentence_token_layer_id:
-                    response_helper.progress(92, "Updating sentence partitioning...")
+                    response_helper.progress(92, "Updating the sentences…")
                     self._update_sentence_partitioning(
                         b, document, text_id, sentence_token_layer_id,
                         existing_alignment_tokens, new_alignment_tokens, current_text, new_text, text_modifications,
@@ -353,7 +353,7 @@ class AlignmentProcessor:
             
                 # All queued ops are submitted atomically when this
                 # `with client.batched()` block exits.
-                response_helper.progress(95, "Submitting batch...")
+                response_helper.progress(95, "Saving…")
 
             # Both invariants are about the document the writes LEFT, so both
             # read it back. The sentence check used to be handed the document
@@ -362,7 +362,7 @@ class AlignmentProcessor:
             # itself broke. Only the two token layers are read back, not the
             # whole body: a transcribed recording's body is large and none of
             # it is being checked.
-            response_helper.progress(98, "Validating temporal ordering...")
+            response_helper.progress(98, "Checking segment order…")
             layers = [layer_id for layer_id in (alignment_token_layer_id, sentence_token_layer_id)
                       if layer_id]
             written_document = client.documents.get(document_id, include_body=True, layers=layers)
