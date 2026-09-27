@@ -85,12 +85,16 @@ const Shell = () => {
       {({ chip }) => (
         <>
           <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-              <Link to="/projects" className="flex items-center gap-2 font-bold">
+            {/* One row at every width, since the document screen's sticky
+                bar sits right under it. On a phone the name leaves only the
+                mark, and the nav scrolls sideways in the room left beside the
+                account. */}
+            <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-4">
+              <Link to="/projects" className="flex shrink-0 items-center gap-2 font-bold">
                 <PlaidMark className="h-[18px] w-[18px] shrink-0" />
-                Plaid IGT
+                <span className="sr-only sm:not-sr-only">Plaid IGT</span>
               </Link>
-              <nav className="flex items-center gap-1">
+              <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
                 {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
                 {navItem(
                   '/vocabularies',
@@ -107,7 +111,7 @@ const Shell = () => {
                   Guide
                 </a>
               </nav>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 {chip}
                 {/* Administration is the server's, not this project's or this
                     screen's, so it sits with the account rather than in the nav

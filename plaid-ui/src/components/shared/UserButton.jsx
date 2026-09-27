@@ -21,7 +21,7 @@ import {
 export function UserButton({ user, client, onLogout, profileHref }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      <DropdownMenuTrigger className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
         <UserAvatar
           client={client}
           userId={user.id}
@@ -29,7 +29,11 @@ export function UserButton({ user, client, onLogout, profileHref }) {
           avatarHash={user.avatarHash}
           className="h-7 w-7"
         />
-        <span className="text-sm font-medium">{user.displayName}</span>
+        {/* On a phone the avatar alone, so the band fits one row. A long
+            name is cut on a wider screen. */}
+        <span className="sr-only text-sm font-medium sm:not-sr-only sm:max-w-64 sm:truncate">
+          {user.displayName}
+        </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuLabel>Account</DropdownMenuLabel>
