@@ -276,8 +276,10 @@ The arrows order the lines of one scope against each other, so a line cannot be 
 
 = History
 
-**History** on the Annotate tab opens the document's history: every operation, who made it and when.
-Selecting an entry shows the document as it was then, read-only; **Restore** returns the document to that state as a new operation, so nothing is lost.
+**History** at the end of a document's tab row, on any tab, opens the document's history: every operation, who made it and when.
+Selecting an entry shows the document as it was then, read-only, on Annotate, Export and Details.
+Compare and Comments are not shown at a past state.
+**Restore** returns the document to that state as a new operation, so nothing is lost.
 
 = Validation
 

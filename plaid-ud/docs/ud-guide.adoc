@@ -358,7 +358,7 @@ The heading of each example opens that sentence in the annotation editor.
 The **Assistant** button in the header opens the same assistant in a panel beside whatever you are looking at.
 It is there wherever there is a project for it to be about, and on the general screens, where it asks which project to use.
 The screens for making a project and for importing one have neither, so it is not offered there.
-A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark, and it is the same gesture as the history rail on the left edge of a document.
+A handle on the right edge of the window, halfway down, opens it too: it widens under the pointer to show the assistant's mark.
 The panel stays where it is as you move around, so a question can be asked without leaving what you are reading and an answer can be read while you get on with something else.
 The page narrows to make room for it.
 The panel can be dragged wider or narrower and hidden again, and its width and whether it is open are remembered.
@@ -480,10 +480,12 @@ After an apply the preview runs again by itself. **No sentences to change** mean
 == History
 
 Every change is recorded.
-From a document's Annotate tab, you can open its **history** and select an earlier point to view the document exactly as it was then.
+**History** at the end of a document's tab row, on any tab, opens its **history**, where you can select an earlier point to view the document exactly as it was then.
 Each entry is one action as you performed it (for example "Update upos", "Create relation", or a parser run), even when it was made up of several underlying changes.
 Selecting an entry shows the document as it was right after that action. Entries made of several changes have an arrow you can expand to see, and select, each individual change.
-Historical views are **read-only**. **Return to current** goes back to the live document.
+Historical views are **read-only**, on every tab that can show them: Annotate, Export and Details.
+The Text Editor and Comments are not shown at a past state.
+**Return to current** goes back to the live document.
 
 === Restoring an earlier state
 

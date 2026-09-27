@@ -63,7 +63,7 @@ The editor has a few levels you move between:
 
 * **Projects**: the list of all projects you can access. This is your home screen after login.
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
-* **A document's tabs**: **Metadata**, **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, and **Export**, switched at the top of an open document.
+* **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
 The **Vocabularies** link in the header leads to the shared lexicons (see <<_vocabularies>>), and **Guide** opens this document.
 Your name in the header opens your profile, where you set a display name and a profile picture, change your password, and mint API tokens.
@@ -112,14 +112,15 @@ Sorting by **Your last edit** is the quickest way back to what you were working 
 Once there are many, the list can be searched and paged.
 How a list is sorted is remembered for next time, and for the document list so is the page you were on, both per project.
 **New Document** creates an empty document and opens it on its Baseline tab.
-A document is renamed, copied, and deleted from its own Metadata tab.
+A document is renamed, copied, and deleted from its own Details tab.
 
 Each document is built up through a handful of activities, one per tab.
 The rest of this chapter walks through them in the order you would normally use them.
 
-== Metadata
+== Details
 
-The **Metadata** tab holds document-level fields such as the title, speaker, date, and notes.
+The **Details** tab holds the document's name and its document-level fields, such as speaker, date, and notes.
+Each part has its own **Save**.
 Which fields appear is configured per project (see <<_annotation>>), so a project records exactly the information its corpus needs.
 A metadata field can be held to a tagset, for example so that a genre is always one of a fixed set (see <<_tagsets>>).
 
@@ -615,7 +616,7 @@ Alongside the fields sits the **ignored tokens** rule, usually punctuation, so t
 Its exceptions are the **characters that behave as letters**: one character each, and each one joins the word around it instead of splitting it, stays on the word's form in the lexicon, and can be annotated.
 An orthography that writes a glottal stop or an ejective with an apostrophe needs that character listed here.
 
-This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Metadata tab.
+This section also holds the project's **tagsets** (see <<_tagsets>>) and the **document metadata** fields shown on every document's Details tab.
 
 == Access
 
@@ -955,7 +956,7 @@ Every change in Plaid IGT is recorded in an **audit log**, with a meaningful mes
 Past states of any document can be viewed, read-only.
 Comments are the exception: they are kept beside the data rather than in it, so they neither appear in the log nor change what a past state shows.
 
-Open a document's **history** from the rail at the left edge of the editor.
+Open a document's **history** with **History** at the end of its tab row, on any tab, or from the rail at the left edge of the editor.
 Each entry is one action as you performed it, such as "Merge morphemes" or "Tokenize", even when it was made up of several underlying changes.
 Selecting an entry shows the document as it was right after that action.
 An entry made of several changes has an arrow you can expand to see, and select, each individual change.
@@ -1105,7 +1106,7 @@ A shortcut is also refused when the browser already uses it, when it would type 
 
 | **Enter** | Move to the next cell in the row, accepting the faint guess if the cell shows one. Enter is the only key that accepts a guess.
 | **Tab** / **Shift+Tab** | Move to the next or previous cell in the row, leaving a guess as it is. **Shift+Enter** moves back the same way.
-| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_metadata>>.
+| **↑** / **↓** | Move between rows. **←** / **→** move along the row from the ends of a value, following the words: in a right-to-left sentence **←** moves forward. See <<_details>>.
 | **Esc** | Cancel the edit and leave the cell. With a value list open, close the list first.
 | **Alt+↓** | List every value the project has given this form, with counts. **↑** / **↓** move through the list, **Enter** takes the highlighted value, **Esc** closes the list. A field held to a tagset opens its list on its own.
 | **Enter** (sentence field) | Save the value and stay. **Shift+Enter** starts a new line, and **Tab** moves to the same field of the next sentence.
