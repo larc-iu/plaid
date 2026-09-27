@@ -98,7 +98,10 @@ export default {
     'vocab.fieldItemRefMany': carried,
     'vocab.fieldEntryScope': carried,
     'vocab.customTagset': carried,
-    'vocab.foreignConfig': carried,
+    'vocab.foreignConfig': {
+      carried: 'changed',
+      how: 'Every other namespace comes back verbatim, except that plaid-dict’s dictionary address (config.dict.slug) is left out when another dictionary the importer can read already has it, with a warning. In a round trip the source still has it, so the copy always comes back with no slug and the rest of its dict record.',
+    },
     // The importer finds each vocabulary's target by name, so the second of two same-named
     // vocabularies is written into the first. Suspected bug.
     'vocab.duplicateName': {

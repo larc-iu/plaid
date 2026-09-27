@@ -133,6 +133,25 @@ function unmarkedLedger({ client, projectId, project }) {
   };
 }
 
+// plaid-dict's namespace, and its address as plaid-dict reads it (trimmed).
+const DICT_NAMESPACE = 'dict';
+const dictSlug = (config) => {
+  const slug = config?.[DICT_NAMESPACE]?.slug;
+  return typeof slug === 'string' ? slug.trim() : '';
+};
+
+/**
+ * The dictionary address `config` brings when another vocabulary the importer
+ * can read already has it, or null. The vocabulary being written is not
+ * "another": a resumed import finds its own address there.
+ */
+async function slugTakenElsewhere(client, vocabId, config) {
+  const slug = dictSlug(config);
+  if (!slug) return null;
+  const all = await client.vocabLayers.list();
+  return (all || []).some((v) => v.id !== vocabId && dictSlug(v.config) === slug) ? slug : null;
+}
+
 /**
  * Import one vocabulary's items IN ARRAY ORDER (the entry-numbering
  * contract). Returns Map<archiveItemId, newItemId>. Resume-safe: items
@@ -184,10 +203,21 @@ export async function importVocabulary({
   } else if (vocabData.fields?.length) {
     await client.vocabLayers.deleteConfig(vocabId, IGT_NAMESPACE, 'tagsets');
   }
-  // Other apps' namespaces, verbatim (plaid-dict's publication record).
+  // Other apps' namespaces, verbatim (plaid-dict's publication record),
+  // except a dictionary address another dictionary already has: two at one
+  // address would show whichever the server lists first. The copy keeps the
+  // rest of its record and has no address until one is picked on the
+  // dictionary's setup screen, which checks (ruled 2026-09-27).
+  const takenSlug = await slugTakenElsewhere(client, vocabId, vocabData.config);
+  if (takenSlug) {
+    warnings.push(
+      `"${vocabData.name}": dictionary address /${takenSlug} is already in use. Imported with no address.`,
+    );
+  }
   for (const [ns, keys] of Object.entries(vocabData.config || {})) {
     if (ns === IGT_NAMESPACE || !keys || typeof keys !== 'object') continue;
     for (const [key, value] of Object.entries(keys)) {
+      if (takenSlug && ns === DICT_NAMESPACE && key === 'slug') continue;
       await client.vocabLayers.setConfig(vocabId, ns, key, value);
     }
   }

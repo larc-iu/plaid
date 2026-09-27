@@ -448,6 +448,63 @@ describe('importVocabulary', () => {
   });
 });
 
+describe('importVocabulary — a dictionary address already in use', () => {
+  const withDict = (dict) =>
+    serializeVocabularyNative({ ...VOCAB, config: { ...VOCAB.config, dict } });
+  const listing = (vocabs) => (client) => {
+    client.vocabLayers.list = async () => vocabs;
+    return client;
+  };
+  const dictWrites = (client) =>
+    callsOf(client, 'vocabLayers.setConfig')
+      .map((c) => c.slice(1))
+      .filter(([, ns]) => ns === 'dict');
+
+  it('keeps the rest of the record, drops the address, and says so', async () => {
+    const client = listing([{ id: 'sena', config: { dict: { slug: 'sena', title: 'Sena' } } }])(
+      stubClient(),
+    );
+    const warnings = [];
+    await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: withDict({ title: 'Sena copy', slug: ' sena ', credits: 'C' }),
+      warnings,
+    });
+    expect(dictWrites(client)).toEqual([
+      ['newvocab', 'dict', 'title', 'Sena copy'],
+      ['newvocab', 'dict', 'credits', 'C'],
+    ]);
+    expect(warnings).toEqual([
+      '"Lex": dictionary address /sena is already in use. Imported with no address.',
+    ]);
+  });
+
+  it('writes an address nobody else has, and one only this vocabulary has (a resume)', async () => {
+    for (const vocabs of [
+      [
+        { id: 'other', config: { dict: { slug: 'kaje' } } },
+        { id: 'plain', config: {} },
+      ],
+      [{ id: 'newvocab', config: { dict: { slug: 'sena' } } }],
+    ]) {
+      const client = listing(vocabs)(stubClient());
+      const warnings = [];
+      await importVocabulary({
+        client,
+        vocabId: 'newvocab',
+        vocabData: withDict({ title: 'Sena', slug: 'sena' }),
+        warnings,
+      });
+      expect(dictWrites(client)).toEqual([
+        ['newvocab', 'dict', 'title', 'Sena'],
+        ['newvocab', 'dict', 'slug', 'sena'],
+      ]);
+      expect(warnings).toEqual([]);
+    }
+  });
+});
+
 describe('importVocabulary — entry comments', () => {
   const comment = (over = {}) => ({
     id: 'c1',

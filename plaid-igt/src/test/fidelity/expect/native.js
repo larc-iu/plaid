@@ -48,6 +48,20 @@ export default {
       },
     },
     {
+      keys: ['vocab.foreignConfig'],
+      // The source still holds its dictionary address, so the copy has none.
+      apply(expected) {
+        for (const v of expected.vocabularies || []) {
+          const dict = v.config?.dict;
+          if (!dict || !('slug' in dict)) continue;
+          const { slug: _slug, ...rest } = dict;
+          const config = { ...v.config, dict: rest };
+          if (!Object.keys(rest).length) delete config.dict;
+          v.config = config;
+        }
+      },
+    },
+    {
       keys: [
         'comment.document',
         'comment.text',
