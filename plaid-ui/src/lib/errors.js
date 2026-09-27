@@ -41,14 +41,21 @@ export const isUnreachable = (error) => {
 // A message that names a record by its id was written for a developer. A
 // sentence with the id swapped for a stand-in word reads broken ("Vocab item
 // this item not found"), so such a message is replaced whole: a missing
-// record is "Not found.", anything else is the caller's fallback. The toast's
-// title already names the action that failed.
+// record is "Not found.", anything else is the caller's fallback (itself
+// passed over when it too names an id). The toast's title already names the
+// action that failed.
 const namesAnId = (msg) => msg.search(UUID_RE) !== -1;
+
+// plaid-client's DocumentLockLost, whose message names the document by id. A
+// document model folds it into a string ("Failed to …: The lock on document
+// … lapsed"), so the message is read as well as the name.
+const isLockLost = (error) =>
+  (error && error.name === 'DocumentLockLost') ||
+  /\block on document \S+ lapsed\b/i.test(String((error && error.message) || error || ''));
 
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
-  // plaid-client's DocumentLockLost, whose message names the document by id.
-  if (error && error.name === 'DocumentLockLost') return 'The lock on this document lapsed.';
+  if (isLockLost(error)) return 'The lock on this document lapsed.';
   switch (statusOf(error)) {
     case 401:
       return 'Your sign-in is no longer valid.';
@@ -71,8 +78,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
     .replace(/\s*at\s+https?:\/\/\S+/gi, '') // " at http://…/api/v1/…"
     .replace(/^HTTP \d+\s*/i, '')
     .trim();
-  if (namesAnId(msg)) return /\bnot found\b/i.test(msg) ? 'Not found.' : fallback;
-  return msg || fallback;
+  const fallbackSaid = namesAnId(String(fallback)) ? 'Something went wrong.' : fallback;
+  if (namesAnId(msg)) return /\bnot found\b/i.test(msg) ? 'Not found.' : fallbackSaid;
+  return msg || fallbackSaid;
 };
 
 // A sign-in that fails says one thing to the person typing, so the general

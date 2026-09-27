@@ -68,6 +68,16 @@ describe('what a person is told', () => {
     );
     lost.name = 'DocumentLockLost';
     expect(humanizeError(lost)).toBe('The lock on this document lapsed.');
+    // What a document model's error channel carries: the label and the message, as one string.
+    expect(humanizeError(`Failed to split morpheme: ${lost.message}`)).toBe(
+      'The lock on this document lapsed.',
+    );
+  });
+
+  it('passes over a fallback that itself names an id', () => {
+    const raw =
+      'Failed to split morpheme: Token 01a04095-38c4-74d1-8450-a7d6a0267af7 out of bounds';
+    expect(humanizeError(raw, raw)).toBe('Something went wrong.');
   });
 
   it('never says "item"', () => {
