@@ -979,10 +979,12 @@
       (assert-ok (get-vocab-item user1-request item-id))
       (assert-ok (update-vocab-item user1-request item-id "updated-by-user1"))
 
-      ;; user2 can read AND write vocab through project1 (as a project writer)
+      ;; user2 can read AND write vocab through project1 (as a project writer),
+      ;; but renaming an entry is for the vocabulary's maintainers
+      ;; (acl-shared-vocab-writers).
       (assert-ok (get-vocab-layer user2-request vocab-id))
       (assert-ok (get-vocab-item user2-request item-id))
-      (assert-ok (update-vocab-item user2-request item-id "updated-by-user2"))
+      (assert-status 403 (update-vocab-item user2-request item-id "updated-by-user2"))
       (let [new-item-res (create-vocab-item user2-request vocab-id "created-by-user2")
             new-item-id (-> new-item-res :body :id)]
         (assert-created new-item-res)

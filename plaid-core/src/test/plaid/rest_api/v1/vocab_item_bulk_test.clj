@@ -103,6 +103,8 @@
   (testing "a writer whose list starts with a stale id still deletes the rest"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
+          ;; Deleting entries is for the vocabulary's maintainers.
+          _ (add-vocab-maintainer admin-request v1 user1)
           [i1 i2] (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}
                                                               {:vocab-layer-id v1 :form "run"}])
                       :body :ids)
@@ -123,7 +125,7 @@
       (assert-forbidden (bulk-delete-vocab-items user1-request ids)))))
 
 (deftest writer-can-bulk
-  (testing "a non-admin project writer (with the vocab granted) can bulk create + delete"
+  (testing "a non-admin project writer (with the vocab granted) can bulk create, and only a vocab maintainer can bulk delete"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
           res (bulk-create-vocab-items user1-request [{:vocab-layer-id v1 :form "dogs"}
@@ -131,6 +133,9 @@
           ids (-> res :body :ids)]
       (assert-created res)
       (is (= 2 (count ids)))
+      (assert-forbidden (bulk-delete-vocab-items user1-request ids))
+      (assert-ok (get-vocab-item admin-request (first ids)))
+      (add-vocab-maintainer admin-request v1 user1)
       (assert-no-content (bulk-delete-vocab-items user1-request ids))
       (is (= 404 (:status (get-vocab-item admin-request (first ids))))))))
 
@@ -198,6 +203,8 @@
   (testing "a writer whose list starts with a stale id gets the 404 naming it"
     (let [{:keys [proj v1]} (setup)
           _ (add-project-writer admin-request proj user1)
+          ;; Renaming entries is for the vocabulary's maintainers.
+          _ (add-vocab-maintainer admin-request v1 user1)
           id (-> (bulk-create-vocab-items admin-request [{:vocab-layer-id v1 :form "dogs"}])
                  :body :ids first)
           stale (random-uuid)
@@ -220,5 +227,10 @@
                  :body :ids first)]
       (assert-forbidden (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
       (add-project-writer admin-request proj user1)
-      (assert-ok (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
-      (is (= "dog" (-> (get-vocab-item admin-request id) :body :vocab-item/form))))))
+      (testing "a writer edits fields, but a rename needs a maintainer of the vocabulary"
+        (assert-ok (bulk-update-vocab-items user1-request [{:id id :metadata [{:op "set" :path ["gloss"] :value "dog"}]}]))
+        (assert-forbidden (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
+        (is (= "dogs" (-> (get-vocab-item admin-request id) :body :vocab-item/form)))
+        (add-vocab-maintainer admin-request v1 user1)
+        (assert-ok (bulk-update-vocab-items user1-request [{:id id :form "dog"}]))
+        (is (= "dog" (-> (get-vocab-item admin-request id) :body :vocab-item/form)))))))

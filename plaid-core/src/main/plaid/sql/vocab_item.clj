@@ -225,6 +225,22 @@
        distinct
        vec))
 
+(defn renamed-layer-ids
+  "Distinct vocab-layer ids of the entries in `items` whose form would
+  change: each item is a map with `:id` and, when it sets one,
+  `:vocab-item/form`. Unknown ids contribute nothing. Used by the REST gate
+  that keeps renames to the vocabulary's maintainers."
+  [db items]
+  (let [setting (filterv #(contains? % :vocab-item/form) items)
+        by-id (psc/fetch-ids-as-map db :vocab_items (vec (distinct (map :id setting))))]
+    (->> setting
+         (keep (fn [{:keys [id] :as it}]
+                 (when-let [row (clojure.core/get by-id id)]
+                   (when (not= (:vocab-item/form it) (:form row))
+                     (:vocab_layer_id row)))))
+         distinct
+         vec)))
+
 (defn bulk-create
   "Bulk-create vocab items in a single operation. Each entry in `attrs-vec`
   requires :vocab-item/layer and :vocab-item/form and optionally :metadata.
