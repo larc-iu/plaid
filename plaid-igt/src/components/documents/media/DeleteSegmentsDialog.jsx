@@ -5,7 +5,7 @@ import { notifySuccess } from '@/utils/feedback';
 import { segmentsWithText } from '@/domain/segments.js';
 
 // Deleting segments in bulk: all of them, the ones with no text, or the ones
-// whose text is a given value. The text stays in the baseline whichever is
+// whose text is a given value. The baseline text is left alone whichever is
 // chosen. The count is shown as the choice changes, so what the button will
 // do is never a surprise. Placeholders a person makes and never types into
 // were the first request, from transcribing by ear.
@@ -45,7 +45,7 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
       confirmDisabled={count === 0}
       onConfirm={confirm}
     >
-      <div role="radiogroup" className="flex flex-col gap-2">
+      <div role="radiogroup" className="flex flex-col gap-2 text-foreground">
         {SCOPES.map(([key, label]) => (
           <label key={key} className="flex cursor-pointer items-center gap-2">
             <input
@@ -68,10 +68,10 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
           </label>
         ))}
       </div>
-      <p className="mt-2 text-muted-foreground">
+      <p>
         {count === 0
           ? 'No segments match.'
-          : `${count} ${noun}. Times and speakers are removed. The text stays in the baseline.`}
+          : `${count} ${noun}. Times and speakers are removed. The baseline text is unchanged.`}
       </p>
     </ConfirmDeleteDialog>
   );

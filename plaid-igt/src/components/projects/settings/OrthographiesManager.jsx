@@ -5,6 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 
 // Predefined orthography setup
 const DEFAULT_ORTHOGRAPHIES = [
@@ -220,11 +221,7 @@ export const OrthographiesManager = ({
 
   // Don't render until initialized
   if (!isInitialized) {
-    return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Loading orthographies configuration...
-      </div>
-    );
+    return <Loading />;
   }
 
   return (
@@ -315,17 +312,12 @@ export const OrthographiesManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title="Remove Orthography"
-        confirmLabel="Remove Orthography"
+        title={`Remove orthography “${pendingDelete?.name ?? ''}”`}
+        confirmLabel="Remove"
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
-          You are about to remove the orthography <strong>"{pendingDelete?.name}"</strong> from this
-          project.
-        </p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           {pendingDelete?.count === undefined && 'Counting existing transcriptions…'}
           {pendingDelete?.count === null &&
             'The number of existing transcriptions could not be determined.'}
@@ -342,7 +334,7 @@ export const OrthographiesManager = ({
               </>
             ))}
         </p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           Existing values are hidden, not deleted. Re-adding an orthography with the same name
           restores them.
         </p>

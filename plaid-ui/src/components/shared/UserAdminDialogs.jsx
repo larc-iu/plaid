@@ -3,16 +3,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle } from '../ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '../ui/alert-dialog';
+import { DELETE_BUTTON_CLASS } from '../../lib/destructive.js';
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog.jsx';
 import { MintedLinkDialog } from './MintedLinkDialog.jsx';
 
 // The dialogs behind useUserAdmin (its own module): one copy of the create,
@@ -178,7 +170,8 @@ export const UserAdminDialogs = ({ controller }) => {
               </div>
               <DialogFooter className="sm:justify-between">
                 <Button
-                  variant="destructive"
+                  variant="outline"
+                  className={DELETE_BUTTON_CLASS}
                   onClick={() => setDeactivateTarget(editingUser)}
                   disabled={editingUser.id === currentUser?.id || savingEdit}
                 >
@@ -208,36 +201,25 @@ export const UserAdminDialogs = ({ controller }) => {
         title="Password reset link created"
       />
 
-      <AlertDialog
+      <ConfirmDeleteDialog
         open={!!deactivateTarget}
         onOpenChange={(o) => {
-          if (!o) setDeactivateTarget(null);
+          if (!o && !deactivating) setDeactivateTarget(null);
+        }}
+        title="Deactivate user"
+        confirmLabel={deactivating ? 'Deactivating…' : 'Deactivate'}
+        busy={deactivating}
+        onConfirm={(e) => {
+          e.preventDefault();
+          deactivateUser();
         }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate user?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{deactivateTarget?.displayName}</strong> ({deactivateTarget?.id}) will be
-              signed out, lose every project role and API token, and be refused at sign-in.
-              Reactivating restores sign-in only.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deactivating}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                deactivateUser();
-              }}
-              disabled={deactivating}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deactivating ? 'Deactivating…' : 'Deactivate'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <p>
+          <strong>{deactivateTarget?.displayName}</strong> ({deactivateTarget?.id}) will be signed
+          out, lose every project role and API token, and be refused at sign-in. Reactivating
+          restores sign-in only.
+        </p>
+      </ConfirmDeleteDialog>
     </>
   );
 };

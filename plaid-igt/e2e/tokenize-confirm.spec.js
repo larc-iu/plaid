@@ -113,7 +113,7 @@ test('A8-02 + B10-02: splitting a word counts its machine morpheme gloss and lin
   await expect(dialog).toContainText('Split');
   await expect(dialog).toContainText('1 annotation');
   await expect(dialog).toContainText('1 vocabulary link');
-  await dialog.getByRole('button', { name: /Split anyway/ }).click();
+  await dialog.getByRole('button', { name: 'Split', exact: true }).click();
   await expect(page.locator('.token', { hasText: /^be$/ })).toHaveCount(1);
   await expect(page.locator('.token', { hasText: /^ta$/ })).toHaveCount(1);
   await page.waitForLoadState('networkidle');

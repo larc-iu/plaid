@@ -1,16 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, ChevronUp, ChevronDown, Unlink, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown, Unlink } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
 import { usePagedList } from '@ui/hooks/usePagedList';
 import { Button } from '@ui/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@ui/components/ui/dialog';
+import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
@@ -250,26 +247,11 @@ export const VocabularyManager = ({
 
   // Don't render until initialized
   if (!isInitialized || loading) {
-    return (
-      <div className="flex flex-col items-center gap-6">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-        <p className="text-sm">Loading vocabularies...</p>
-      </div>
-    );
+    return <Loading />;
   }
 
   if (error) {
-    return (
-      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-          <div>
-            <p className="text-sm font-medium text-destructive">Error</p>
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <Notice tone="error">{error}</Notice>;
   }
 
   return (
@@ -386,9 +368,10 @@ export const VocabularyManager = ({
                         {isSettings && record.enabled && (
                           <Button
                             size="icon"
-                            variant="outline"
+                            variant="ghost"
                             className={cn(
-                              'h-7 w-7 text-orange-600 transition-opacity hover:text-orange-600',
+                              'h-7 w-7 transition-opacity',
+                              ROW_DELETE_CLASS,
                               hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                             )}
                             onClick={(event) => {
@@ -404,9 +387,11 @@ export const VocabularyManager = ({
                         {!isSettings && record.isCustom && (
                           <Button
                             size="icon"
-                            variant="outline"
+                            variant="ghost"
+                            aria-label={`Remove ${record.name}`}
                             className={cn(
-                              'h-7 w-7 text-destructive transition-opacity hover:text-destructive',
+                              'h-7 w-7 transition-opacity',
+                              ROW_DELETE_CLASS,
                               hoveredVocab === record.id ? 'opacity-100' : 'opacity-0',
                             )}
                             onClick={(event) => {
@@ -451,47 +436,20 @@ export const VocabularyManager = ({
       </div>
 
       {/* Unlink Confirmation Modal */}
-      <Dialog
+      <ConfirmDeleteDialog
         open={unlinkModalOpened}
         onOpenChange={(o) => {
           if (!o) closeUnlinkModal();
         }}
+        title={`Unlink vocabulary “${vocabToUnlink?.name ?? ''}”`}
+        confirmLabel="Unlink"
+        onConfirm={handleConfirmUnlink}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Unlink Vocabulary</DialogTitle>
-          </DialogHeader>
-
-          <div className="rounded-md border border-orange-500/50 bg-orange-500/5 p-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 text-orange-600" />
-              <div>
-                <p className="text-sm font-medium text-orange-600">Warning</p>
-                <p className="text-sm text-muted-foreground">
-                  You are about to unlink the vocabulary <strong>"{vocabToUnlink?.name}"</strong>{' '}
-                  from this project.
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  This will remove every link from this project to the vocabulary's entries. The
-                  vocabulary itself will remain available for other projects.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="secondary" onClick={closeUnlinkModal}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-orange-600 text-white hover:bg-orange-700"
-              onClick={handleConfirmUnlink}
-            >
-              <Unlink className="h-4 w-4" /> Unlink Vocabulary
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <p>
+          Every link from this project to the vocabulary's entries is removed. The vocabulary
+          remains available to other projects.
+        </p>
+      </ConfirmDeleteDialog>
     </div>
   );
 };

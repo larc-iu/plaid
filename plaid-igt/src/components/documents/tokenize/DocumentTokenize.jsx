@@ -9,6 +9,8 @@ import {
 } from '@ui/components/ui/tooltip';
 import { useTokenOperations } from './useTokenOperations.js';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { notifySuccess } from '@/utils/feedback';
 import { splitPointsFromSegments } from '@/domain/segments.js';
@@ -183,6 +185,7 @@ export function DocumentTokenize() {
                   <TokenizeDialog ops={ops} blockedHint={tokenizeBlockedHint} />
                   <Button
                     variant="outline"
+                    className={DELETE_BUTTON_CLASS}
                     onClick={() => setConfirmClear('tokens')}
                     disabled={busy || !existingTokens.length}
                   >
@@ -190,6 +193,7 @@ export function DocumentTokenize() {
                   </Button>
                   <Button
                     variant="outline"
+                    className={DELETE_BUTTON_CLASS}
                     onClick={() => setConfirmClear('sentences')}
                     disabled={
                       busy || !existingSentenceTokens.length || existingSentenceTokens.length === 1
@@ -250,21 +254,14 @@ export function DocumentTokenize() {
           {/* Sentence rendering */}
           <div className="sentence-container">
             {!hasSentencePartition && !readOnly && (
-              <div className="m-4 rounded-md border border-yellow-500/50 bg-yellow-500/5 p-3 font-sans">
-                <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {text?.body ? 'No sentences yet' : 'No text yet'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {text?.body
-                        ? 'The text has no sentences. Save it again on the Baseline tab.'
-                        : 'Add the text on the Baseline tab first.'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <Notice tone="warning" icon={Info} className="m-4 font-sans">
+                <p className="font-medium">{text?.body ? 'No sentences yet' : 'No text yet'}</p>
+                <p>
+                  {text?.body
+                    ? 'The text has no sentences. Save it again on the Baseline tab.'
+                    : 'Add the text on the Baseline tab first.'}
+                </p>
+              </Notice>
             )}
             {sentences.map((sentence, index) => (
               <SentenceComponent
@@ -283,14 +280,9 @@ export function DocumentTokenize() {
         </div>
 
         {!layers?.primaryTokenLayer && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
-              <p className="text-sm text-destructive">
-                This project is not set up for words. A project maintainer can finish setup.
-              </p>
-            </div>
-          </div>
+          <Notice tone="error" icon={Info}>
+            This project is not set up for words. A project maintainer can finish setup.
+          </Notice>
         )}
       </div>
 
@@ -300,26 +292,22 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Clear All Tokens"
-        confirmLabel="Clear Tokens"
+        title="Clear all tokens"
+        confirmLabel="Clear"
         onConfirm={() => {
           setConfirmClear(null);
           ops.handleClearTokens();
         }}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
-          This deletes all{' '}
+        <p>
+          Deletes all{' '}
           <strong>
             {existingTokens.length.toLocaleString()} word token
             {existingTokens.length === 1 ? '' : 's'}
           </strong>{' '}
-          in this document, along with their morphemes and every annotation and vocabulary link on
-          them.
+          in this document, with their morphemes and every annotation and vocabulary link on them.
         </p>
-        <p className="mt-1 text-muted-foreground">
-          Sentence boundaries and sentence-level annotations are kept.
-        </p>
+        <p>Sentence boundaries and sentence-level annotations are unchanged.</p>
       </ConfirmDeleteDialog>
 
       <ConfirmDeleteDialog
@@ -327,23 +315,19 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Reset Sentences"
-        confirmLabel="Reset Sentences"
+        title="Reset sentences"
+        confirmLabel="Reset"
         onConfirm={() => {
           setConfirmClear(null);
           ops.handleClearSentences();
         }}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
-          This replaces all{' '}
-          <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong> with a single
-          sentence spanning the whole text. Sentence-level annotations (e.g. translations) are
-          deleted with their sentences.
+        <p>
+          Replaces all <strong>{existingSentenceTokens.length.toLocaleString()} sentences</strong>{' '}
+          with a single sentence spanning the whole text. Sentence-level annotations (e.g.
+          translations) are deleted with their sentences.
         </p>
-        <p className="mt-1 text-muted-foreground">
-          Words, morphemes, and their annotations are kept.
-        </p>
+        <p>Words, morphemes, and their annotations are unchanged.</p>
       </ConfirmDeleteDialog>
 
       {/* Single-token delete confirm: only opens when the token carries
@@ -353,12 +337,11 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingDelete();
         }}
-        title="Delete Token"
+        title="Delete token"
         confirmLabel="Delete"
         onConfirm={() => ops.confirmPendingDelete()}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           Deleting <strong>“{ops.pendingDelete?.content}”</strong> also deletes{' '}
           <strong>
             {ops.pendingDelete?.annotations || 0} annotation
@@ -380,12 +363,11 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingStructural();
         }}
-        title={ops.pendingStructural?.kind === 'merge' ? 'Merge Words' : 'Split Word'}
-        confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge anyway' : 'Split anyway'}
+        title={ops.pendingStructural?.kind === 'merge' ? 'Merge words' : 'Split word'}
+        confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge' : 'Split'}
         onConfirm={() => ops.confirmPendingStructural()}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           {ops.pendingStructural?.kind === 'merge' ? 'Merging' : 'Splitting'}{' '}
           <strong>“{ops.pendingStructural?.label}”</strong> discards the morpheme analysis, deleting{' '}
           <strong>
@@ -396,7 +378,7 @@ export function DocumentTokenize() {
               : ''}
           </strong>{' '}
           at the morpheme level, including any from other apps on this project that aren’t visible
-          here. Word-level annotations are kept.
+          here. Word-level annotations are unchanged.
         </p>
       </ConfirmDeleteDialog>
 
@@ -409,11 +391,10 @@ export function DocumentTokenize() {
           if (!o) ops.cancelPendingTokenize();
         }}
         title="Re-tokenize document"
-        confirmLabel="Re-tokenize anyway"
+        confirmLabel="Re-tokenize"
         onConfirm={() => ops.confirmPendingTokenize()}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           Re-tokenizing re-segments this document, discarding{' '}
           <strong>
             {ops.pendingTokenize?.annotations || 0} existing annotation

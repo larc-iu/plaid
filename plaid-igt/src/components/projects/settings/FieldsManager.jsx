@@ -17,6 +17,7 @@ import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { fieldNameLang } from '@/domain/fieldNames';
 import { IGNORED_TOKEN_MODES, defaultIgnoredTokensSetup } from '@/domain/igtConfig';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 
 // A field's identity is its (scope, name) pair: the same name can exist at
@@ -378,11 +379,7 @@ export const FieldsManager = ({
 
   // Don't render until initialized
   if (!isInitialized) {
-    return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Loading fields configuration...
-      </div>
-    );
+    return <Loading />;
   }
 
   // Prepare data for the table
@@ -683,17 +680,13 @@ export const FieldsManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title="Delete Annotation Field"
-        confirmLabel="Delete Field"
+        title={`Delete field “${pendingDelete?.name ?? ''}”`}
+        confirmLabel="Delete"
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
-          You are about to permanently delete the field <strong>"{pendingDelete?.name}"</strong> and
-          all of its annotations across every document in this project.
-        </p>
-        <p className="mt-1 text-muted-foreground">
+        <p>All of its annotations, in every document in this project, are deleted.</p>
+        <p>
           {pendingDelete?.count === undefined && 'Counting existing annotations…'}
           {pendingDelete?.count === null &&
             'The number of existing annotations could not be determined. The field may still contain data.'}

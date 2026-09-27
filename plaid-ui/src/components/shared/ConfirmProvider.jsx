@@ -10,6 +10,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '../ui/alert-dialog.jsx';
+import { CONFIRM_DELETE_CLASS } from '../../lib/destructive.js';
 
 // App-wide imperative confirmation modal. Replaces native window.confirm()
 // so every "are you sure?" in the app uses one consistent shadcn AlertDialog
@@ -75,7 +76,10 @@ export function ConfirmProvider({ children }) {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {opts.destructive && (
-                <AlertTriangle className="mr-2 inline h-4 w-4 align-[-2px] text-destructive" />
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="mr-2 inline h-4 w-4 align-[-2px] text-destructive"
+                />
               )}
               {opts.title}
             </AlertDialogTitle>
@@ -106,11 +110,7 @@ export function ConfirmProvider({ children }) {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => settle(false)}>{opts.cancelLabel}</AlertDialogCancel>
             <AlertDialogAction
-              className={
-                opts.destructive
-                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                  : undefined
-              }
+              className={opts.destructive ? CONFIRM_DELETE_CLASS : undefined}
               onClick={() => settle(opts.checkbox ? { checked } : true)}
             >
               {(checked && opts.checkbox?.confirmLabel) || opts.confirmLabel}

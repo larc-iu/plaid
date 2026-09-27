@@ -146,10 +146,10 @@ describe('Project settings, Vocabularies, before the server answers', () => {
     client.projects.unlinkVocab = vi.fn(() => answer.promise);
     const view = await mount(client);
     await view.step(() => rowOf(view.container, 'Delta').click());
-    const confirm = byText(document.body, 'button', 'Unlink Vocabulary');
+    const confirm = byText(document.body, '[role=alertdialog] button', 'Unlink');
     await view.step(() => confirm.click());
     expect(boxOf(view.container, 'Delta').checked).toBe(false);
-    expect(byText(document.body, 'button', 'Unlink Vocabulary')).toBeNull();
+    expect(byText(document.body, '[role=alertdialog] button', 'Unlink')).toBeNull();
     await view.step(async () => answer.settle.resolve());
     expect(client.projects.unlinkVocab).toHaveBeenCalledWith('p1', 'v4');
     await view.unmount();
@@ -177,7 +177,7 @@ describe('Project settings, Vocabularies, before the server answers', () => {
   it('can link a vocabulary again after unlinking one it may link', async () => {
     const view = await mount(twoOfMine(async () => {}));
     await view.step(() => rowOf(view.container, 'Delta').click());
-    await view.step(() => byText(document.body, 'button', 'Unlink Vocabulary').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
     expect(boxOf(view.container, 'Delta').disabled).toBe(false);
     await view.unmount();
   });
@@ -187,7 +187,7 @@ describe('Project settings, Vocabularies, a row the user may not link', () => {
   it('locks again once a vocabulary they do not maintain is unlinked', async () => {
     const view = await mount(makeClient({ linked: ['v2'] }));
     await view.step(() => rowOf(view.container, 'Theirs').click());
-    await view.step(() => byText(document.body, 'button', 'Unlink Vocabulary').click());
+    await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
     expect(boxOf(view.container, 'Theirs').checked).toBe(false);
     expect(boxOf(view.container, 'Theirs').disabled).toBe(true);
     await view.unmount();

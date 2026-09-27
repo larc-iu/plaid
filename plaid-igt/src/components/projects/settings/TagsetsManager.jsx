@@ -1,5 +1,5 @@
 import { useDeferredValue, useState } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
@@ -8,6 +8,7 @@ import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { Textarea } from '@ui/components/ui/textarea';
 import { notifySuccess, notifyError, notifyInfo } from '@/utils/feedback';
 import { ConfirmDeleteDialog } from '@ui/components/shared/ConfirmDeleteDialog';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import {
   MODES,
   RESERVED_VALUE_KEYS,
@@ -380,8 +381,7 @@ export const TagsetsManager = ({
                     }}
                   />
                   {missingAffix.length > 0 && (
-                    <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <Notice tone="warning" className="mt-1 text-xs">
                       <div>
                         A Word field uses this tagset. Word glosses join tags with{' '}
                         {missingAffix.map((d) => (
@@ -403,7 +403,7 @@ export const TagsetsManager = ({
                           Add {missingAffix.join(' and ')}
                         </Button>
                       </div>
-                    </div>
+                    </Notice>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     <span className="font-mono">{SAMPLE}</span> is checked as{' '}
@@ -422,8 +422,7 @@ export const TagsetsManager = ({
                 <div className="flex flex-col gap-2">
                   <p className="text-sm font-medium">Values</p>
                   {unreachable.length > 0 && (
-                    <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <Notice tone="warning" className="text-xs">
                       <div>
                         {unreachable.map((v) => (
                           <span key={v.value} className="font-mono">
@@ -434,7 +433,7 @@ export const TagsetsManager = ({
                         {unreachable.length === 1 ? 'it' : 'they'} can never match. Remove it from
                         the value or from the delimiters.
                       </div>
-                    </div>
+                    </Notice>
                   )}
                   {t.values.length > 0 &&
                     (() => {
@@ -656,19 +655,15 @@ export const TagsetsManager = ({
       <ConfirmDeleteDialog
         open={pendingDelete !== null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
-        title="Delete Tagset"
-        confirmLabel="Delete Tagset"
+        title={`Delete tagset “${pendingDelete ?? ''}”`}
+        confirmLabel="Delete"
         onConfirm={() => {
           const name = pendingDelete;
           setPendingDelete(null);
           if (name) handleDeleteTagset(name);
         }}
       >
-        <p className="font-medium text-destructive">Warning</p>
-        <p className="mt-1 text-muted-foreground">
-          You are about to delete the tagset <strong>"{pendingDelete}"</strong>.
-        </p>
-        <p className="mt-1 text-muted-foreground">
+        <p>
           {(usage?.[pendingDelete] || []).length === 0
             ? 'No field uses it.'
             : `${usage[pendingDelete].map((f) => `${f.field} (${f.scope})`).join(', ')} ${usage[pendingDelete].length === 1 ? 'uses' : 'use'} it and will accept any value again. No ${valuesNoun} are changed.`}

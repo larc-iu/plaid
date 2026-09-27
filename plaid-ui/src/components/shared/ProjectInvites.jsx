@@ -18,6 +18,7 @@ import { MintedLinkDialog } from './MintedLinkDialog.jsx';
 import { useConfirm } from './ConfirmProvider';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
+import { ROW_DELETE_CLASS } from '../../lib/destructive.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { GRANT_ROLES, cap, fmtDate } from '../../domain/invites.js';
 
@@ -160,7 +161,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-destructive"
+            className={`h-8 w-8 ${ROW_DELETE_CLASS}`}
             aria-label="Revoke invitation link"
             onClick={() => handleRevoke(inv)}
           >
