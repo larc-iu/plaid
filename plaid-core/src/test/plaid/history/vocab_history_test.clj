@@ -76,6 +76,10 @@
         _ (assert-ok (bulk-update-vocab-items admin-request [{:id b1 :form "aa"}
                                                              {:id b2 :metadata [{:op "delete" :path ["pos"]}]}]))
         _ (snap!)
+        ;; Added out of alphabetical order: the live read and the history
+        ;; must agree on the order anyway.
+        _ (assert-no-content (add-vocab-maintainer admin-request vocab "user2@example.com"))
+        _ (snap!)
         _ (assert-no-content (add-vocab-maintainer admin-request vocab "user1@example.com"))
         _ (snap!)
         _ (assert-ok (api-call admin-request {:method :patch :path (str "/api/v1/vocab-layers/" vocab)

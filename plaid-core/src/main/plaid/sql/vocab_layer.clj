@@ -41,11 +41,15 @@
      :config              (psc/parse-config (:config row))}))
 
 (defn- attach-maintainers
-  "Add :vocab/maintainers (vector of user-ids) to a bare vocab record."
+  "Add :vocab/maintainers (vector of user-ids) to a bare vocab record,
+  ordered by user id: the order the audit images fold them in, so the
+  vocabulary read at a past time (`plaid.history.read/get-vocab-at`) and
+  the live read agree."
   [db vocab-id record]
   (let [maintainers (->> (psc/q db {:select [:user_id]
                                     :from [:vocab_maintainers]
-                                    :where [:= :vocab_layer_id vocab-id]})
+                                    :where [:= :vocab_layer_id vocab-id]
+                                    :order-by [:user_id]})
                          (mapv :user_id))]
     (assoc record :vocab/maintainers maintainers)))
 
