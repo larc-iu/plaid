@@ -206,13 +206,9 @@ export class IgtEditor {
     window.addEventListener('resize', this._onDockWidth);
     window.addEventListener('scroll', this._onWinChange, true);
     window.addEventListener('resize', this._onWinChange);
-    // Project-wide precedent (_ensurePrecedent) is read once per project and
-    // then held, so a decision someone else makes elsewhere in the project
-    // otherwise waits for the cache to age out before it shows up in gloss
-    // guesses or the lexicon popover's ranking. Refetching
-    // on every keystroke would be wasteful; refetching when the tab regains
-    // focus catches it at the moment a person actually resumes work, which is
-    // when staleness would otherwise be noticed.
+    // Whether anyone saved in the project since its precedent was counted is
+    // asked when the tab regains focus, which is when a person resumes work.
+    // The project is counted again only if so (precedentCache.js).
     this._onVisibility = () => {
       if (document.visibilityState !== 'visible' || this.readOnly) return;
       // The lexicon goes the same way as the precedent tally: entries added
