@@ -146,7 +146,7 @@ export const EntryRestoreDialog = ({
         entryRestoreMessage(label, asOf),
       );
       const message = res?.inserted
-        ? `“${label}” is back. Its links come back through each document's history.`
+        ? `“${label}” is back, without its links.`
         : `“${label}” is as it was at ${fullTimestamp(asOf)}.`;
       const after = await latestVocabState(client, vocabularyId).catch(() => null);
       if (res?.inserted || before) {
