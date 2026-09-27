@@ -163,3 +163,41 @@ describe('Settings > Fields when a save is refused', () => {
     await view.unmount();
   });
 });
+
+// A save reads the layers that exist and creates the missing ones. Two saves
+// at once both saw the first new field missing, and both created it.
+describe('Settings > Fields with a save still on its way', () => {
+  it('a second field added meanwhile waits for the first save, so no field is made twice', async () => {
+    const server = project();
+    const word = server.textLayers[0].tokenLayers[1];
+    let release;
+    const held = new Promise((r) => (release = r));
+    const client = fakeClient();
+    client.projects.get = async () => structuredClone(server);
+    client.spanLayers.create = async (parent, name) => {
+      client.calls.push(['spanLayers.create', parent, name]);
+      if (name === 'Note2') await held;
+      const layer = { id: `layer-${name}`, name, config: { igt: { scope: 'Word' } } };
+      word.spanLayers.push(layer);
+      return layer;
+    };
+    const { step, unmount } = await mount(client);
+    await step(() => typeInto(nameBox(), 'Note2'));
+    await step(async () => {
+      addButton().click();
+      await settle();
+    });
+    await step(() => typeInto(nameBox(), 'Note3'));
+    await step(async () => {
+      addButton().click();
+      await settle();
+    });
+    await step(async () => {
+      release();
+      await settle();
+    });
+    const made = client.calls.filter(([k]) => k === 'spanLayers.create').map((c) => c[2]);
+    expect(made).toEqual(['Note2', 'Note3']);
+    await unmount();
+  });
+});

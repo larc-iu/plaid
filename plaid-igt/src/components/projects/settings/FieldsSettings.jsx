@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
 import { notifyError } from '@/utils/feedback';
@@ -87,12 +87,23 @@ export const FieldsSettings = ({
   // its next save, undoing the rename.
   const initialData = useMemo(() => extractFields(project), [project]);
 
+  // One save or move at a time, each after the one before has settled. A save
+  // reads the layers that exist and creates the missing ones, so two at once
+  // (a second field added while the first is on its way) both made the first.
+  const turnRef = useRef(Promise.resolve());
+  const inTurn = (fn) => {
+    const run = turnRef.current.then(fn, fn);
+    turnRef.current = run.catch(() => {});
+    return run;
+  };
+
   // Save changes to the API. A new field's layer is made first, one request
   // for the layer and one for its scope, since the rest needs its id. Every
   // other write of the save is one batch, so it lands whole or not at all.
   // A refusal is thrown to the manager, which puts the table back, and
   // handleError reads the project again so the table shows what landed.
-  const handleSaveChanges = async (data) => {
+  const handleSaveChanges = (data) => inTurn(() => saveNow(data));
+  const saveNow = async (data) => {
     if (!client) {
       throw new Error('Not authenticated');
     }
@@ -199,7 +210,8 @@ export const FieldsSettings = ({
   // server (span layers have a display order), so this is a shift of the
   // layer, and the table re-syncs from the refreshed project. The arrows
   // used to reorder only the table and nothing else; a reload undid them.
-  const handleMoveField = async (field, direction) => {
+  const handleMoveField = (field, direction) => inTurn(() => moveNow(field, direction));
+  const moveNow = async (field, direction) => {
     const layer = (layersOf(project)?.managed || []).find((l) => layerKey(l) === fieldKey(field));
     if (!layer) return;
     await client.spanLayers.shift(layer.id, direction);
