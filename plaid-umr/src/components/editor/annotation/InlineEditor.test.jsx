@@ -347,4 +347,36 @@ describe('InlineEditor', () => {
     expect(onCancel).toHaveBeenCalled();
     await r.unmount();
   });
+
+  // Chromium's select() focuses the input, so a deferred select-on-arrival that
+  // fires after the caret has left pulls it back from wherever it went.
+  it('never selects the value once the caret has left it', async () => {
+    const r = await renderComponent(
+      <InlineEditor
+        x={0}
+        y={0}
+        value="lunch"
+        options={options}
+        onCommit={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const input = r.container.querySelector('input');
+    const elsewhere = document.createElement('input');
+    document.body.appendChild(elsewhere);
+    // The editor takes the caret when it opens, so leave it first and come back.
+    elsewhere.focus();
+    const select = vi.spyOn(input, 'select');
+
+    await r.step(() => {
+      input.focus();
+      elsewhere.focus();
+    });
+    await r.step(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(document.activeElement).toBe(elsewhere);
+    expect(select).not.toHaveBeenCalled();
+    elsewhere.remove();
+    await r.unmount();
+  });
 });
