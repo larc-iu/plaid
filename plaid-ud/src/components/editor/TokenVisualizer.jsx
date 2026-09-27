@@ -41,6 +41,9 @@ export const TokenVisualizer = ({
   onSetWordMorphemes,
   onOpenInAnnotate,
   flashSentenceId = null,
+  // The document's direction. The badges lay out by it, as the annotation
+  // grid's columns do, and each badge's own text takes its own.
+  textDirection = 'ltr',
   setError,
 }) => {
   // Prefer the parent's error banner for inline validation errors; fall back to
@@ -309,6 +312,7 @@ export const TokenVisualizer = ({
       <div>
         <div
           ref={textContainerRef}
+          dir={textDirection}
           className={`${classes.container} ${classes.rawText}`}
           onMouseUp={handleTextSelection}
         >
@@ -334,6 +338,7 @@ export const TokenVisualizer = ({
     const badge = (
       <span
         className={classes.badge}
+        dir="auto"
         data-mwt={isMwt}
         data-sent-start={isSentStart}
         data-sentence={sentenceToken?.id}
@@ -388,7 +393,9 @@ export const TokenVisualizer = ({
         >
           <div ref={panelRef} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-4">
-              <span className="font-mono text-sm font-semibold">{display}</span>
+              <span dir="auto" className="text-sm font-semibold">
+                {display}
+              </span>
               <span className="text-xs text-muted-foreground">
                 [{word.begin}&ndash;{word.end}]
               </span>
@@ -428,7 +435,7 @@ export const TokenVisualizer = ({
                             saveWords(word);
                           }
                         }}
-                        className="h-8 flex-1 font-mono text-sm"
+                        className="h-8 flex-1 text-sm"
                       />
                       {draftForms.length > 1 && (
                         <Button
@@ -542,7 +549,7 @@ export const TokenVisualizer = ({
     }
     if (invalid.length) {
       blocks.push(
-        <p key="invalid" className="mt-2 text-xs text-amber-700">
+        <p key="invalid" dir="ltr" className="mt-2 text-xs text-amber-700">
           {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text.
           Save and re-tokenize to resync.
         </p>,
@@ -558,7 +565,12 @@ export const TokenVisualizer = ({
           Token positions are shown against the unsaved text. Save the text to apply them.
         </div>
       )}
-      <div ref={textContainerRef} className={classes.container} onMouseUp={handleTextSelection}>
+      <div
+        ref={textContainerRef}
+        dir={textDirection}
+        className={classes.container}
+        onMouseUp={handleTextSelection}
+      >
         {renderText()}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">

@@ -295,7 +295,7 @@ Example:
 The quick brown fox jumps over the lazy dog.
 This is a second sentence for testing.`}
             rows={12}
-            className="resize-none overflow-hidden font-mono leading-relaxed"
+            className="resize-none overflow-hidden leading-relaxed"
           />
 
           <div className="flex items-center gap-3">
@@ -373,6 +373,7 @@ This is a second sentence for testing.`}
             onSetWordMorphemes={readOnly ? null : handleSetWordMorphemes}
             onOpenInAnnotate={openInAnnotate}
             flashSentenceId={flashSentId}
+            textDirection={doc.textDirection ?? 'ltr'}
             setError={(msg) => doc.setError(msg)}
           />
         </div>
