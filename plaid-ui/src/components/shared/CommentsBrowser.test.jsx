@@ -101,11 +101,27 @@ describe('a thread header', () => {
     const excerpt = [...view.container.querySelectorAll('span')].find(
       (s) => s.textContent === 'قرأ الولد الكتاب.',
     );
-    expect(excerpt?.getAttribute('dir')).toBe('auto');
+    expect(excerpt?.getAttribute('dir')).toBe('rtl');
     const preview = [...view.container.querySelectorAll('span')].find(
       (s) => s.textContent === 'about c1',
     );
     expect(preview?.getAttribute('dir')).toBe('auto');
     await view.unmount();
+  });
+
+  it('gives the excerpt the direction most of its letters read in, not its first word', async () => {
+    for (const [detail, dir] of [
+      ['CNN قالت إن الاقتصاد ينمو.', 'rtl'],
+      ['قال he would come tomorrow.', 'ltr'],
+    ]) {
+      const view = await renderComponent(
+        browse({ anchors: new Map([['s1', { label: 'Sentence 1', detail, jumpId: 's1' }]]) }),
+      );
+      const excerpt = [...view.container.querySelectorAll('span')].find(
+        (s) => s.textContent === detail,
+      );
+      expect(excerpt?.getAttribute('dir')).toBe(dir);
+      await view.unmount();
+    }
   });
 });

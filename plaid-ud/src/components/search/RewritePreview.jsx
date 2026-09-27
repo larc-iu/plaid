@@ -4,6 +4,7 @@ import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/shared/list-search';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { detectDirection } from '@ui/domain/textDirection.js';
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -139,7 +140,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                     <div className="flex items-baseline gap-2">
                       <Link
                         to={hrefFor(r.docId, r.id)}
-                        dir="auto"
+                        dir={detectDirection(r.text)}
                         className="text-sm leading-relaxed text-primary underline-offset-4 hover:underline"
                       >
                         {r.text}

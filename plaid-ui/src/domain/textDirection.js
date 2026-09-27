@@ -101,6 +101,9 @@ const countMatches = (re, text) => {
  * go on. Over a whole document it is a coin toss on the opening word: one
  * Latin loanword or a speaker's name at the top of an Arabic transcript would
  * lay the entire text out backwards. Counting cannot be swung by one word.
+ * A sentence shown on its own (a search hit, an excerpt) is text in the same
+ * sense and takes this too. A short value (a gloss, a name, a cell) keeps
+ * `dir="auto"`.
  *
  * Text with no letters in it reads left to right, as does a tie.
  */

@@ -11,9 +11,22 @@ describe('an excerpt with its hits marked', () => {
     for (const marks of [[], [{ begin: 0, end: 3 }]]) {
       const view = await renderComponent(<MarkedText text="قرأ الولد الكتاب." marks={marks} />);
       const bdi = view.container.querySelector('bdi');
-      expect(bdi?.getAttribute('dir')).toBe('auto');
+      expect(bdi?.getAttribute('dir')).toBe('rtl');
       expect(bdi.textContent).toBe('قرأ الولد الكتاب.');
       await view.unmount();
+    }
+  });
+
+  it('takes the direction most of its letters read in, not its first word', async () => {
+    for (const [text, dir] of [
+      ['CNN قالت إن الاقتصاد ينمو.', 'rtl'],
+      ['قال he would come tomorrow.', 'ltr'],
+    ]) {
+      for (const marks of [[], [{ begin: 0, end: 3 }]]) {
+        const view = await renderComponent(<MarkedText text={text} marks={marks} />);
+        expect(view.container.querySelector('bdi')?.getAttribute('dir')).toBe(dir);
+        await view.unmount();
+      }
     }
   });
 

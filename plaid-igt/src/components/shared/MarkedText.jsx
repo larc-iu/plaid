@@ -1,9 +1,14 @@
 // Render sentence text with <mark>s over the hit ranges (code-point offsets,
 // already sentence-relative and sorted). Shared by the Search, Bulk Edit,
 // and Validation tabs and the dictionary's concordance. The excerpt is
-// isolated with its own direction, since it sits in an English row.
+// isolated with its own direction, since it sits in an English row. A
+// sentence's direction is its letters' majority, not its first letter's:
+// an Arabic sentence may open with a Latin name.
+import { detectDirection } from '@ui/domain/textDirection.js';
+
 export const MarkedText = ({ text, marks }) => {
-  if (!marks?.length) return <bdi dir="auto">{text}</bdi>;
+  const dir = detectDirection(text);
+  if (!marks?.length) return <bdi dir={dir}>{text}</bdi>;
   const chars = [...text];
   const out = [];
   let pos = 0;
@@ -19,5 +24,5 @@ export const MarkedText = ({ text, marks }) => {
     pos = e;
   });
   if (pos < chars.length) out.push(chars.slice(pos).join(''));
-  return <bdi dir="auto">{out}</bdi>;
+  return <bdi dir={dir}>{out}</bdi>;
 };

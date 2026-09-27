@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/shared/list-search';
+import { detectDirection } from '@ui/domain/textDirection.js';
 import { segmentize } from './grewToHighlight.js';
 
 // Renders grouped sentence matches. `groups` come from groupResults():
@@ -74,7 +75,7 @@ export const SearchResults = ({
               <Link
                 key={s.sentenceId}
                 to={hrefFor(s.docId, s.sentenceId)}
-                dir="auto"
+                dir={detectDirection(s.text)}
                 className={`block p-4 text-sm leading-relaxed hover:bg-muted/50 ${idx ? 'border-t' : ''}`}
               >
                 {segmentize(s.text, s.highlights).map((seg, i) =>

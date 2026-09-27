@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { usePagedList, TALL_LIST_PAGE_SIZE } from '../../hooks/usePagedList.js';
 import { useCommentStore } from '../../domain/useCommentStore.js';
 import { threadList, plainText } from '../../domain/commentThreads.js';
+import { detectDirection } from '../../domain/textDirection.js';
 import { CommentThread } from './CommentThread.jsx';
 
 // Every thread on one document (or one vocabulary), with the list chrome around
@@ -49,9 +50,10 @@ const ThreadRow = ({
           <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
             {/* The word, value or entry this thread is about. */}
             <span dir="auto">{label}</span>
-            {/* An excerpt of the text, so it takes its own direction. */}
+            {/* An excerpt of the text, so it takes its own direction, by
+                letter count since its first word may be a Latin name. */}
             {detail && (
-              <span dir="auto" className="font-normal text-muted-foreground">
+              <span dir={detectDirection(detail)} className="font-normal text-muted-foreground">
                 {detail}
               </span>
             )}
