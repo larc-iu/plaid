@@ -100,3 +100,23 @@
       (assert-ok (get-text admin-request tid))
       (is (= "Doc" (-> (call :get (str "/api/v1/documents/" doc) nil) :body :document/name)))
       (is (= "kai" (-> (call :get (str "/api/v1/vocab-items/" item) nil) :body :vocab-item/form))))))
+
+(deftest what-a-column-can-hold-is-still-stored-as-sent
+  ;; `call` escapes every non-ASCII character, so the emoji reaches the server
+  ;; as the pair 😀, which is one character and not two halves.
+  (let [proj (create-test-project admin-request "StorableFine")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        fine "😀 𐌰 é ‍ x"
+        created (call :post "/api/v1/texts" {:text-layer-id tl :document-id doc :body fine})
+        tid (-> created :body :id)]
+    (is (= 201 (:status created)))
+    (is (= fine (-> (get-text admin-request tid) :body :text/body)))
+    (is (= 200 (:status (call :patch (str "/api/v1/texts/" tid) {:body (str fine "😁")}))))
+    (is (= (str fine "😁") (-> (get-text admin-request tid) :body :text/body)))
+    (is (= 200 (:status (call :patch (str "/api/v1/documents/" doc) {:name "😀 Doc"}))))
+    (is (= "😀 Doc" (-> (call :get (str "/api/v1/documents/" doc) nil) :body :document/name)))
+    (testing "a metadata key that is itself JSON"
+      (is (= 200 (:status (call :put (str "/api/v1/texts/" tid "/metadata") {"{\"k\": [1]}" 1}))))
+      (is (= {"{\"k\": [1]}" 1}
+             (-> (get-text admin-request tid) :body :metadata))))))
