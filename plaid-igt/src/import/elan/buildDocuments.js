@@ -192,6 +192,43 @@ const tiersOfNodes = (eaf, nodeList) => {
 };
 
 /**
+ * Utterances in reading order. The aligned ones go by start time. An
+ * unaligned one has no time, but TIME_ORDER still places its slot among the
+ * others (`slotIndex`), so it follows the aligned utterance whose start slot
+ * comes last before its own, and one with no such utterance leads. That keeps
+ * a document part way through alignment in its own order, even where two
+ * speakers overlap and the times alone disagree with TIME_ORDER. One with no
+ * slot at all (a reference annotation) comes last. Ties keep tier order.
+ */
+function orderUtterances(utterances) {
+  const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  const timed = utterances
+    .filter((u) => u.ann.beginMs != null)
+    .sort(
+      (a, b) =>
+        cmp(a.ann.beginMs, b.ann.beginMs) ||
+        cmp(a.ann.slotIndex ?? Infinity, b.ann.slotIndex ?? Infinity),
+    );
+  const placed = utterances.filter((u) => u.ann.beginMs == null && u.ann.slotIndex != null);
+  const loose = utterances.filter((u) => u.ann.beginMs == null && u.ann.slotIndex == null);
+  const after = new Map([[null, []], ...timed.map((u) => [u, []])]);
+  for (const u of placed) {
+    let anchor = null;
+    for (const t of timed) {
+      const at = t.ann.slotIndex ?? Infinity;
+      if (at < u.ann.slotIndex && (anchor === null || at > anchor.ann.slotIndex)) anchor = t;
+    }
+    after.get(anchor).push(u);
+  }
+  const bySlot = (list) => list.sort((a, b) => a.ann.slotIndex - b.ann.slotIndex);
+  return [
+    ...bySlot(after.get(null)),
+    ...timed.flatMap((t) => [t, ...bySlot(after.get(t))]),
+    ...loose,
+  ];
+}
+
+/**
  * Build importable documents.
  *
  * @param files  parsed .eaf objects (readEaf output)
@@ -439,21 +476,11 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         `Skipped ${unplacedWords} empty word${unplacedWords === 1 ? '' : 's'} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
       );
     }
-    // An unaligned utterance sits where TIME_ORDER puts it (readEaf's
-    // `placeMs`), so a document part way through time alignment keeps its
-    // order. One with no slot at all (a reference annotation) follows, and a
-    // stable sort keeps tier order for the rest.
-    const byPlace = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
-    utterances.sort(
-      (a, b) =>
-        byPlace(a.ann.placeMs ?? Infinity, b.ann.placeMs ?? Infinity) ||
-        byPlace(a.ann.slotIndex ?? Infinity, b.ann.slotIndex ?? Infinity),
-    );
 
     // --- synthesize the baseline -------------------------------------------
     const pieces = [];
     let bodyU16 = '';
-    for (const u of utterances) {
+    for (const u of orderUtterances(utterances)) {
       const text = u.rebuilt
         ? u.rebuilt.text
         : String(u.ann.value ?? '')

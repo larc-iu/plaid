@@ -490,6 +490,32 @@ describe('buildElanDocuments', () => {
     expect(build.documents[0].alignments).toHaveLength(1);
   });
 
+  it('keeps an unaligned utterance after the one before it when two speakers overlap', () => {
+    // Our own export of two speakers: the first sentence 0 to 1500 on one
+    // tier, the second unaligned, the third 1000 to 2000 on another tier.
+    // TIME_ORDER is in document order, so the times alone disagree with it.
+    const xml = eafXml({
+      types: { u: null },
+      tiers: [
+        { id: 'A', type: 'u', participant: 'A', anns: [['a1', 'one', 0, 1500]] },
+        {
+          id: 'B',
+          type: 'u',
+          anns: [
+            ['b1', 'two', null_ms, null_ms],
+            ['b2', 'three', 1000, 2000],
+          ],
+        },
+      ],
+    });
+    const parsed = [readEaf(xml, 'x.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    // Both tiers are sentences, as the mapping table lets a person say.
+    const both = Object.fromEntries(nodes.map((n) => [n.key, ROLES.UTTERANCE]));
+    const { build } = buildFrom([[xml, 'x.eaf']], both);
+    expect(build.documents[0].body).toBe('one\ntwo\nthree');
+  });
+
   it('orders aligned utterances by time even when TIME_ORDER lists them out of order', () => {
     const xml = eafXml({
       types: { u: null },
