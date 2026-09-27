@@ -10,6 +10,8 @@ import { udProjectUrl } from '@ui/domain/siblingApps.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { Button } from '@ui/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 
 // The standalone /configuration page: the layer setup for a project that is
 // not yet annotated for UMR. It is where the document list sends a maintainer
@@ -72,7 +74,7 @@ export const ProjectConfiguration = () => {
   };
 
   if (loading) {
-    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <Loading />;
   }
 
   // A blank screen with no way back is what a writer following a link here
@@ -101,9 +103,9 @@ export const ProjectConfiguration = () => {
   const missingLabels = missingUmrLayerLabels(info.missingLayers).join(', ');
 
   const statusLine = info.isConfigured ? (
-    <p className="text-sm text-green-700">Every UMR layer is set up.</p>
+    <p className="text-sm text-success">Every UMR layer is set up.</p>
   ) : (
-    missingLabels && <p className="text-sm text-amber-700">Missing: {missingLabels}</p>
+    missingLabels && <p className="text-sm text-warning-foreground">Missing: {missingLabels}</p>
   );
 
   return (
@@ -154,9 +156,8 @@ export const ProjectConfiguration = () => {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex gap-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-4">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <div className="flex flex-col items-start gap-3 text-sm">
+        <Notice tone="warning" icon={Info} className="gap-3 p-4">
+          <div className="flex flex-col items-start gap-3">
             <p className="font-medium">No text to annotate</p>
             <p className="text-muted-foreground">
               This project has no sentences or words. Text and tokens are made in Plaid IGT or Plaid
@@ -166,7 +167,7 @@ export const ProjectConfiguration = () => {
               <a href={udProjectUrl(projectId)}>Open in Plaid UD</a>
             </Button>
           </div>
-        </div>
+        </Notice>
       )}
     </div>
   );
