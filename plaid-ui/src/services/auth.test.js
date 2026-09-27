@@ -39,7 +39,7 @@ vi.mock('sonner', () => ({ toast: { dismiss } }));
 const unsaved = vi.hoisted(() => ({ draft: null }));
 vi.mock('../hooks/useUnsavedDraft.js', () => ({ hasUnsavedDraft: () => unsaved.draft }));
 
-const { authService, configureAuth } = await import('./auth.js');
+const { authService, configureAuth, onSignOut } = await import('./auth.js');
 configureAuth({ loginRoute: '#/login' });
 
 const session = () => ({
@@ -121,6 +121,59 @@ describe('authService', () => {
     configureAuth({ loginRoute: null });
     expect(() => authService.logout()).toThrow(/loginRoute/);
     configureAuth({ loginRoute: '#/login' });
+  });
+
+  // What an app keeps in the browser for this login goes before the page
+  // reloads: the reload would cut an unfinished IndexedDB write short.
+  it('lets go of what an app keeps for the login before leaving the page', async () => {
+    localStorage.setItem('token', tokenFor('ada@example.com'));
+    window.location.hash = '#/projects/p1';
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    let done;
+    const hook = vi.fn(() => new Promise((resolve) => (done = resolve)));
+    const off = onSignOut(hook);
+    try {
+      authService.logout();
+      expect(hook).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem('token')).toBe(null);
+      await Promise.resolve();
+      expect(window.location.hash).toBe('#/projects/p1');
+      expect(reload).not.toHaveBeenCalled();
+      done();
+      await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+      expect(window.location.hash).toBe('#/login');
+    } finally {
+      off();
+    }
+  });
+
+  it('leaves the page anyway when a hook fails or never answers', async () => {
+    vi.useFakeTimers();
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const offs = [
+      onSignOut(() => {
+        throw new Error('boom');
+      }),
+      onSignOut(() => new Promise(() => {})),
+    ];
+    try {
+      authService.logout();
+      expect(reload).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(window.location.hash).toBe('#/login');
+    } finally {
+      offs.forEach((off) => off());
+      vi.useRealTimers();
+    }
+  });
+
+  it('runs no hook once it is taken back', () => {
+    vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const hook = vi.fn();
+    onSignOut(hook)();
+    authService.logout();
+    expect(hook).not.toHaveBeenCalled();
   });
 
   it('clears every session key on logout and records the reason', () => {

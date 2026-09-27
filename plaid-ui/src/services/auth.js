@@ -35,6 +35,40 @@ const signInRoute = () => {
   return loginRoute;
 };
 
+// What an app keeps in the browser for the login, and must let go of when it
+// signs out (plaid-igt's precedent counts in IndexedDB). The package knows
+// nothing of what is kept, only that each hook runs before the page leaves.
+const signOutHooks = new Set();
+
+// How long signing out waits on the hooks. A browser store that never
+// answers must not keep a person from signing out.
+const SIGN_OUT_WAIT_MS = 2000;
+
+/**
+ * Run `fn` when this tab signs out, before the page reloads. It may return a
+ * promise, which is waited on for a short while. Returns a function that
+ * takes the hook back.
+ */
+export const onSignOut = (fn) => {
+  signOutHooks.add(fn);
+  return () => signOutHooks.delete(fn);
+};
+
+// Every hook, each allowed to fail, settled or timed out together.
+const runSignOutHooks = () => {
+  const settled = [...signOutHooks].map((fn) => {
+    try {
+      return Promise.resolve(fn()).catch(() => {});
+    } catch {
+      return Promise.resolve();
+    }
+  });
+  return Promise.race([
+    Promise.all(settled),
+    new Promise((resolve) => setTimeout(resolve, SIGN_OUT_WAIT_MS)),
+  ]);
+};
+
 // JWT parsing utility
 function parseJwtPayload(token) {
   try {
@@ -224,6 +258,8 @@ export const authService = {
   },
 
   logout(reason = null) {
+    // Named before anything is cleared, so a missing route is loud.
+    const route = signInRoute();
     client = null;
     // Tell the login page why it is being shown (read once, then cleared).
     try {
@@ -242,9 +278,13 @@ export const authService = {
     // the current path so the base is preserved in both dev ('/') and prod,
     // then hard-reload to clear in-memory React state: the onAuthError path
     // calls logout() outside the AuthContext, so the user state will not reset
-    // itself.
-    window.location.hash = signInRoute();
-    window.location.reload();
+    // itself. What an app keeps for the login goes first (`onSignOut`).
+    const leave = () => {
+      window.location.hash = route;
+      window.location.reload();
+    };
+    if (signOutHooks.size === 0) leave();
+    else runSignOutHooks().then(leave);
   },
 
   getCurrentUser() {
