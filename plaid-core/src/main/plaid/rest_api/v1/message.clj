@@ -8,6 +8,7 @@
             [plaid.sql.user :as user]
             [clojure.core.async :as async]
             [clojure.data.json :as json]
+            [clojure.string :as str]
             [org.httpkit.server :as http-kit]))
 
 (defn get-project-id [{params :parameters}]
@@ -390,6 +391,29 @@
 (defn- uuid-string? [s]
   (boolean (and (string? s) (re-matches #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" s))))
 
+(defn- delegated-projects
+  "The projects a delegated token for this request is scoped to: the one the
+  request is on, then each of `joined` (the other projects a conversation
+  reads, `?project-ids=`) that exists and that the requester can read. A
+  project the requester cannot read is left out, not refused: the service
+  finds it unopenable and says so, as it does for any project it cannot open.
+  A request made with a scoped token never widens that token's reach, since
+  `privileged?` answers only inside it."
+  [req db home joined]
+  (into [(str home)]
+        (comp (remove #{(str home)})
+              (distinct)
+              (filter #(and (prj/get db %)
+                            (pra/privileged? req :project/readers (constantly %)))))
+        joined))
+
+(defn- parse-project-ids
+  "`?project-ids=` as a list of lower-cased ids, or nil when any is not a UUID."
+  [s]
+  (let [ids (->> (str/split (or s "") #",") (map str/trim) (remove str/blank?) (map str/lower-case))]
+    (when (every? uuid-string? ids)
+      (vec ids))))
+
 (defn submit-request-handler
   "Client POSTs work for a service; the response is an SSE stream of that
   service's progress events ending in a result or error. 503 if no service is
@@ -410,7 +434,7 @@
   nothing for them that they could not do themselves). Every service is told
   who asked (`requester-id`)."
   [{{{:keys [id service-id]} :path
-     {:keys [request-id]} :query
+     {:keys [request-id project-ids]} :query
      data :body} :parameters
     db :db secret-key :secret-key :as req}]
   (let [entry (events/get-service-entry id service-id)
@@ -425,6 +449,9 @@
 
       (and request-id (not (uuid-string? request-id)))
       {:status 400 :body {:error "request-id must be a UUID"}}
+
+      (nil? (parse-project-ids project-ids))
+      {:status 400 :body {:error "project-ids must be a comma-separated list of project UUIDs"}}
 
       (nil? entry)
       {:status 503 :body {:error (str "No live service '" service-id "' on this project")}}
@@ -442,10 +469,15 @@
 
       :else
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
+            scope (when delegating?
+                    (delegated-projects req db id (parse-project-ids project-ids)))
             delegated-token (when delegating?
-                              (pra/issue-delegated-token! db secret-key user-id))
+                              (pra/issue-delegated-token! db secret-key user-id scope))
+            ;; The service is told which projects the token reaches, so it
+            ;; can say which of the ones it was asked about it cannot open.
             event (cond-> {:request-id request-id :requester-id user-id :data data}
-                    delegated-token (assoc :delegated-token delegated-token))]
+                    delegated-token (assoc :delegated-token delegated-token
+                                           :delegated-projects scope))]
         (http-kit/as-channel
          req
          {:on-open
@@ -616,7 +648,9 @@
             ;; Reader here; the handler raises the bar to writer for a
             ;; non-delegating service (see `submit-request-handler`).
             :middleware [[pra/wrap-reader-required get-project-id]]
-            :parameters {:query [:map [:request-id {:optional true} :string]]
+            :parameters {:query [:map
+                                 [:request-id {:optional true} :string]
+                                 [:project-ids {:optional true} :string]]
                          :body any?}
             :handler submit-request-handler}}]
 

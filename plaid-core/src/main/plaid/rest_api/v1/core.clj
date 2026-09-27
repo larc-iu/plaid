@@ -129,7 +129,9 @@
              logout-routes
              user-routes
              api-token-routes
-             user-data-routes
+             ;; The routes a scoped token may use with no project gate in
+             ;; front, each with its own check. See `pra/token-scope-gate`.
+             ["" {:plaid/token-scope pra/user-data-token-scope} user-data-routes]
              project-routes
              message-routes
              text-routes
@@ -143,13 +145,13 @@
              audit-routes
              admin-routes
              operation-group-routes
-             batch-routes
+             ["" {:plaid/token-scope pra/each-operation-token-scope} batch-routes]
              vocab-layer-routes
              vocab-item-routes
              vocab-link-routes
              comment-routes
              guideline-routes
-             query-routes]
+             ["" {:plaid/token-scope pra/query-token-scope} query-routes]]
 
             [""
              {:middleware [prm/wrap-route-as-of]}
@@ -241,7 +243,11 @@
                                        ;; `?group-id=` (logical-operation
                                        ;; grouping). Also per batch sub-op.
                                        prm/wrap-operation-group
-                                       openapi/openapi-feature]}})
+                                       openapi/openapi-feature]}
+                   ;; Innermost on every route, after the route's own gates
+                   ;; have run: a scoped token gets through only where one of
+                   ;; them passed it. See `pra/token-scope-gate`.
+                   :reitit.middleware/transform (fn [chain] (conj chain pra/token-scope-gate))})
                  (ring/create-default-handler)
                  ;; Around the router itself rather than in the route data, so
                  ;; that a path matching no route (404) and a method the route

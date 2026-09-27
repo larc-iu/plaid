@@ -138,6 +138,15 @@
                                         :body {:doc 1}})]
       (is (= 403 (:status resp)) "a reader cannot submit work to a non-delegating service"))))
 
+(deftest a-malformed-project-list-is-refused
+  ;; `?project-ids=` names the other projects a delegated token is scoped to
+  ;; (see `scoped-token-test`). Anything but a list of UUIDs is a 400.
+  (let [pid (create-project!)]
+    (is (= 400 (:status (api-call admin-request
+                                  {:method :post
+                                   :path (str "/api/v1/projects/" pid "/services/svc/requests?project-ids=nope")
+                                   :body {}}))))))
+
 (deftest delegating-service-predicate
   (is (events/delegating-service? {:extras {:delegation true}}))
   (is (not (events/delegating-service? {:extras {:delegation "yes"}})) "strictly boolean true")
@@ -150,15 +159,18 @@
   ;; against and attributed to them) but expires on the delegated TTL, not the
   ;; 30-day session default.
   (with-redefs [auth/delegated-token-ttl-seconds (constantly 60)]
-    (let [token (auth/issue-delegated-token! fix/db "fake-secret" "user2@example.com")
+    (let [pid (create-project!)
+          _ (grant-reader! pid "user2@example.com")
+          token (auth/issue-delegated-token! fix/db "fake-secret" "user2@example.com" [pid])
           {:keys [exp] :as claims} (jwt/unsign token "fake-secret")
           ttl (- exp (quot (System/currentTimeMillis) 1000))]
       (is (= "user2@example.com" (:user/id claims)))
       (is (<= 50 ttl 70) (str "expected ~60s TTL, got " ttl))
-      (testing "the token authenticates as that user"
-        (let [resp (fix/rest-handler (-> (mock/request :get "/api/v1/users/user2@example.com")
+      (is (= [(str pid)] (:scope/projects claims)) "scoped to the project it was issued for")
+      (testing "the token authenticates as that user, in that project"
+        (let [resp (fix/rest-handler (-> (mock/request :get (str "/api/v1/projects/" pid))
                                          (mock/header "accept" "application/edn")
                                          (mock/header "Authorization" (str "Bearer " token))))]
           (is (= 200 (:status resp)))))
       (testing "no token for an unknown user"
-        (is (nil? (auth/issue-delegated-token! fix/db "fake-secret" "nobody@example.com")))))))
+        (is (nil? (auth/issue-delegated-token! fix/db "fake-secret" "nobody@example.com" [pid])))))))

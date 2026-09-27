@@ -2,10 +2,13 @@
   "Implements JWT-based authentication and provides authorization middleware."
   (:require [buddy.hashers :as hashers]
             [buddy.sign.jwt :as jwt]
+            [clojure.string :as str]
+            [plaid.query.ast :as ast]
             [plaid.rest-api.v1.rate-limit :as rl]
             [plaid.server.config :refer [config]]
             [plaid.server.log-buffer :as log-buffer]
             [plaid.sql.api-token :as api-token]
+            [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op]
             [plaid.sql.project :as prj]
@@ -60,9 +63,13 @@
   ([secret-key id password-changes]
    (sign-user-token secret-key id password-changes (jwt-ttl-seconds)))
   ([secret-key id password-changes ttl-seconds]
-   (jwt/sign {:user/id id
-              :version password-changes
-              :exp (exp-seconds ttl-seconds)}
+   (sign-user-token secret-key id password-changes ttl-seconds nil))
+  ([secret-key id password-changes ttl-seconds project-ids]
+   (jwt/sign (cond-> {:user/id id
+                      :version password-changes
+                      :exp (exp-seconds ttl-seconds)}
+               ;; A scoped token: see the Scoped tokens section below.
+               (some? project-ids) (assoc :scope/projects (vec project-ids)))
              secret-key)))
 
 (defn- sign-api-token
@@ -101,15 +108,20 @@
   *delegating* service (see `plaid.rest-api.v1.message`) and hands it to the
   service inside the request, so everything the service does for that request
   runs under the requester's own permissions and is attributed to them in the
-  audit log. It is an ordinary session token (rides `password_changes`, so a
-  logout revokes it) with a `delegated-token-ttl-seconds` lifetime instead of
-  the session default. Returns nil if the user is missing."
-  [db secret-key user-id]
+  audit log. It is a session token (rides `password_changes`, so a logout
+  revokes it) with a `delegated-token-ttl-seconds` lifetime instead of the
+  session default, and it is SCOPED to `project-ids`: core refuses it on every
+  route outside those projects, admin and user routes included (see
+  the Scoped tokens section below). A service is run by whoever connected it, so the token must
+  not reach further than the request it was minted for. Returns nil if the
+  user is missing."
+  [db secret-key user-id project-ids]
   (when-let [account (user/get-internal db user-id)]
     (sign-user-token secret-key
                      (:user/id account)
                      (:user/password-changes account)
-                     (delegated-token-ttl-seconds))))
+                     (delegated-token-ttl-seconds)
+                     (vec (distinct (map (comp str/lower-case str) project-ids))))))
 
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
@@ -257,6 +269,127 @@
                  (fn [m] (assoc (if (>= (count m) jwt-rejection-cap) {} m) k now)))
           (log/warn message)))))
 
+;; ---------------------------------------------------------------------------
+;; Scoped tokens
+;; ---------------------------------------------------------------------------
+;;
+;; A delegated token (`issue-delegated-token!`) carries `:scope/projects`, the
+;; projects it was issued for. Whoever connected the service holds it, so it
+;; must do no more than its user could do IN THOSE PROJECTS. The rule, and
+;; where each part of it is enforced:
+;;
+;; - `wrap-read-jwt` recognizes the claim, puts the scope on the request under
+;;   `:auth/token-scope`, binds it to `*token-scope*` for the rest of the
+;;   request, and hands the handlers a user record WITHOUT admin, so no
+;;   handler's own `user/admin?` check lets the token past a project.
+;; - The project gate (`holds-privilege?`, behind every `wrap-*-required` and
+;;   `privileged?`) passes only on a project in scope. An admin counts as a
+;;   maintainer there, and nowhere else.
+;; - The vocab gates (`vocab-reader?`, `vocab-writer?`,
+;;   `wrap-vocab-maintainer-required`) pass only on a vocabulary linked to a
+;;   project in scope, the way a project's own readers reach it. The right
+;;   itself is the usual one (admin, vocab maintainer, or the role on a
+;;   project that links it), except that a role counts only on a project in
+;;   scope.
+;; - `token-scope-gate`, the innermost middleware of every login-required
+;;   route, refuses the request unless one of those gates passed it, or the
+;;   route names its own check under `:plaid/token-scope` (the query, the
+;;   user's private data, the batch). So a route with no project behind it
+;;   (admin screens, users, tokens, invites, project creation, listings) is
+;;   refused without having to be listed.
+
+(declare wrap-login-required)
+
+(def ^:dynamic *token-scope*
+  "The scope of the request being served when it came with a scoped token:
+  `{:user-id :projects #{id} :admin? bool :passed (volatile! false)}`, nil
+  otherwise. Bound by `wrap-read-jwt`. The vocab gates read it here because
+  their callers pass a db and a user id rather than the request."
+  nil)
+
+(defn- token-projects
+  "The project ids a token's claims scope it to, lower-cased, or nil for an
+  unscoped token."
+  [token-data]
+  (when-let [ids (:scope/projects token-data)]
+    (set (map (comp str/lower-case str) ids))))
+
+(defn- in-scope?
+  [scope project-id]
+  (boolean (and project-id (contains? (:projects scope) (str/lower-case (str project-id))))))
+
+(defn- scope-for
+  "The scope that applies to a check about `user-id`: the request's, when the
+  check is about the user the scoped token speaks for. A check about someone
+  else (the member a route adds, the opener of a service channel) is not the
+  token's to narrow."
+  [user-id]
+  (let [scope *token-scope*]
+    (when (and scope (= user-id (:user-id scope)))
+      scope)))
+
+(defn- pass-scope!
+  "Record that a gate let the scoped request through, and answer true."
+  [scope]
+  (vreset! (:passed scope) true)
+  true)
+
+(def ^:private scope-refusal
+  {:status 403
+   :body {:error "This token reaches only the projects it was issued for."}})
+
+(defn query-token-scope
+  "`:plaid/token-scope` for the query route: a scoped token must name its
+  projects (`:scope {:project-ids [...]}`) and every one of them must be in
+  scope. The query then reads only those, since the executor intersects the
+  named projects with what the user can read. A body that does not parse is
+  let through, for the route to answer as it answers anyone."
+  [request scope]
+  (let [parsed (try (ast/parse (-> request :parameters :body))
+                    (catch Exception _ ::unparsed))]
+    (when-not (or (= parsed ::unparsed)
+                  (let [ids (-> parsed :scope :project-ids)]
+                    (and (seq ids) (every? #(in-scope? scope %) ids))))
+      scope-refusal)))
+
+(defn user-data-token-scope
+  "`:plaid/token-scope` for the private data routes: one entry at a time,
+  whose key names a project in scope as one of its colon-separated segments
+  (an assistant's conversation lives under `<app>:assistant:<project>:...`).
+  A listing is refused: it would read the entries of every project at once.
+  That the user is the token's own is `wrap-self-or-admin`'s, with admin
+  already taken away."
+  [request scope]
+  (let [k (-> request :parameters :path :key)]
+    (when-not (and k (some #(in-scope? scope %) (str/split k #":")))
+      scope-refusal)))
+
+(defn each-operation-token-scope
+  "`:plaid/token-scope` for the batch route: every operation in it goes back
+  through the router, and each is checked there."
+  [_ _]
+  nil)
+
+(def token-scope-gate
+  "The innermost middleware of every login-required route (installed by the
+  router's middleware transform in `plaid.rest-api.v1.core`). For a request
+  with a scoped token, it refuses unless a project or vocab gate passed the
+  request on a project in scope, or the route's own `:plaid/token-scope`
+  check passes it. Every other request goes straight through."
+  {:name ::token-scope-gate
+   :compile (fn [data _]
+              (when (some #(identical? wrap-login-required %) (:middleware data))
+                (let [own (:plaid/token-scope data)]
+                  {:name ::token-scope-gate
+                   :wrap (fn [handler]
+                           (fn [request]
+                             (let [scope (:auth/token-scope request)]
+                               (cond
+                                 (nil? scope) (handler request)
+                                 own (or (own request scope) (handler request))
+                                 @(:passed scope) (handler request)
+                                 :else scope-refusal))))})))})
+
 (defn wrap-read-jwt
   "Reitit middleware that looks for JWT tokens in either:
   1. \"Authorization: Bearer ...\" header (standard approach)
@@ -296,6 +429,13 @@
                   ;; `api_tokens.revoked_at` row (and survive password changes).
                   api-token-id (and (map? token-data) (:token/id token-data))
                   user (and (map? token-data) (user/get-internal db (:user/id token-data)))
+                  ;; A scoped token (see `*token-scope*`): the handlers get a
+                  ;; user record without admin, and the gates get the scope.
+                  scope (when-let [projects (and (map? token-data) (token-projects token-data))]
+                          {:user-id (:user/id token-data)
+                           :projects projects
+                           :admin? (user/admin? user)
+                           :passed (volatile! false)})
                   proceed (fn []
                             ;; Don't log the JWT itself (token-data carries the
                             ;; claims). Don't log the raw `token` string either —
@@ -314,15 +454,18 @@
                             ;; line. See `log-buffer/identity-key`.
                             (some-> ^clojure.lang.Volatile (get request log-buffer/identity-key)
                                     (vreset! {:user (:user/id token-data) :token api-token-id}))
-                            (handler (cond-> (assoc request
-                                                    :jwt-data token-data
-                                                    :user/id (:user/id token-data)
-                                                    :user/record (select-keys user [:user/id :user/display-name :user/is-admin]))
-                                       ;; Server-authoritative attribution: the
-                                       ;; validated claim, not client input.
-                                       ;; wrap-api-token-id binds this onto the
-                                       ;; operations row.
-                                       api-token-id (assoc :api-token/id api-token-id))))]
+                            (binding [*token-scope* scope]
+                              (handler (cond-> (assoc request
+                                                      :jwt-data token-data
+                                                      :user/id (:user/id token-data)
+                                                      :user/record (cond-> (select-keys user [:user/id :user/display-name :user/is-admin])
+                                                                     scope (assoc :user/is-admin false)))
+                                         ;; Server-authoritative attribution: the
+                                         ;; validated claim, not client input.
+                                         ;; wrap-api-token-id binds this onto the
+                                         ;; operations row.
+                                         api-token-id (assoc :api-token/id api-token-id)
+                                         scope (assoc :auth/token-scope scope)))))]
               (cond
                 (instance? Exception token-data)
                 ;; Just the message, and only once per token per window — a
@@ -444,13 +587,25 @@
                    :db db
                    :as-of-ts (:as-of-ts request)}))
 
+(defn- member-at?
+  "Does `user-id` hold at least `key` on `project-id` by a role on it?"
+  [db key project-id user-id]
+  (let [project (prj/get db project-id)]
+    (boolean (some #(seq ((-> project % set) user-id)) (key levels)))))
+
 (defn- holds-privilege?
-  "Does `request`'s user hold at least `key` on `project-id`, or admin?"
+  "Does `request`'s user hold at least `key` on `project-id`, or admin?
+
+  With a scoped token (`*token-scope*`), only on a project in scope, where
+  an admin counts as holding every level."
   [{db :db :as request} key project-id]
-  (let [user-id (->user-id request)
-        admin? (user/admin? (:user/record request))
-        project (prj/get db project-id)]
-    (boolean (or admin? (some #(seq ((-> project % set) user-id)) (key levels))))))
+  (let [user-id (->user-id request)]
+    (if-let [scope (:auth/token-scope request)]
+      (boolean (and (in-scope? scope project-id)
+                    (or (:admin? scope) (member-at? db key project-id user-id))
+                    (pass-scope! scope)))
+      (boolean (or (user/admin? (:user/record request))
+                   (member-at? db key project-id user-id))))))
 
 (defn privileged?
   "Does the request's user hold at least `key` (`:project/readers`,
@@ -478,9 +633,16 @@
   (when-not (-> levels keys set key)
     (throw (ex-info "Bad key" {:key key})))
   (fn [request]
-    (let [id (resolve-project-id request get-project-id)]
-      (if (holds-privilege? request key id)
+    (let [id (resolve-project-id request get-project-id)
+          scope (:auth/token-scope request)]
+      (cond
+        (holds-privilege? request key id)
         (handler request)
+
+        (and scope id (not (in-scope? scope id)))
+        scope-refusal
+
+        :else
         {:status 403
          :body {:error (str "User " (->user-id request)
                             " lacks sufficient privileges to " (key verb) " "
@@ -495,6 +657,31 @@
 (defn wrap-maintainer-required [handler get-project-id]
   (wrap-project-privileges-required handler :project/maintainers get-project-id))
 
+(defn- scoped-projects-linking
+  "The projects in `scope` that link vocab layer `vocab-id`."
+  [db scope vocab-id]
+  (when vocab-id
+    (->> (psc/q db {:select [:project_id]
+                    :from [:project_vocabs]
+                    :where [:= :vocab_layer_id vocab-id]})
+         (map :project_id)
+         (filter #(in-scope? scope %)))))
+
+(defn- scoped-vocab-right?
+  "A vocab right under a scoped token. The vocabulary must be linked to a
+  project in scope, which is how a project's own readers reach it. Then an
+  admin or the vocabulary's maintainer holds every right on it, and anyone
+  else holds what their role gives them on one of those projects (`key`,
+  as for `holds-privilege?`), never through a project outside the scope.
+  `key` nil asks for maintainer rights, which no project role gives."
+  [db scope vocab-id user-id key]
+  (let [linking (scoped-projects-linking db scope vocab-id)]
+    (boolean (and (seq linking)
+                  (or (:admin? scope)
+                      (vocab/maintainer? db vocab-id user-id)
+                      (and key (some #(member-at? db key % user-id) linking)))
+                  (pass-scope! scope)))))
+
 (defn vocab-reader?
   "Does `user-id` hold read access to vocab layer `vocab-id` — admin, a
   maintainer of the vocabulary, or a member of a project the vocabulary is
@@ -506,10 +693,12 @@
   ([db vocab-id user-id]
    (vocab-reader? db vocab-id user-id (user/get db user-id)))
   ([db vocab-id user-id user-record]
-   (boolean (or (user/admin? user-record)
-                (and vocab-id
-                     (or (vocab/maintainer? db vocab-id user-id)
-                         (vocab/accessible-through-project? db vocab-id user-id)))))))
+   (if-let [scope (scope-for user-id)]
+     (scoped-vocab-right? db scope vocab-id user-id :project/readers)
+     (boolean (or (user/admin? user-record)
+                  (and vocab-id
+                       (or (vocab/maintainer? db vocab-id user-id)
+                           (vocab/accessible-through-project? db vocab-id user-id))))))))
 
 (defn vocab-writer?
   "Does `user-id` hold write access to vocab layer `vocab-id` — admin, a
@@ -521,10 +710,12 @@
   ([db vocab-id user-id]
    (vocab-writer? db vocab-id user-id (user/get db user-id)))
   ([db vocab-id user-id user-record]
-   (boolean (or (user/admin? user-record)
-                (and vocab-id
-                     (or (vocab/maintainer? db vocab-id user-id)
-                         (vocab/write-accessible-through-project? db vocab-id user-id)))))))
+   (if-let [scope (scope-for user-id)]
+     (scoped-vocab-right? db scope vocab-id user-id :project/writers)
+     (boolean (or (user/admin? user-record)
+                  (and vocab-id
+                       (or (vocab/maintainer? db vocab-id user-id)
+                           (vocab/write-accessible-through-project? db vocab-id user-id))))))))
 
 (defn vocab-layers-refusal
   "The 403 for a bulk vocab write when `user-id` lacks write access to any of
@@ -548,10 +739,13 @@
      (let [user-id (->user-id request)
            vocab-id (get-vocab-id {:parameters (:parameters request)
                                    :db db})
-           admin? (user/admin? (:user/record request))
-           maintainer? (and vocab-id
-                            (vocab/maintainer? db vocab-id user-id))]
-       (if-not (or admin? maintainer?)
+           scope (scope-for user-id)
+           allowed? (if scope
+                      (scoped-vocab-right? db scope vocab-id user-id nil)
+                      (or (user/admin? (:user/record request))
+                          (and vocab-id
+                               (vocab/maintainer? db vocab-id user-id))))]
+       (if-not allowed?
          {:status 403
           :body {:error (or refusal
                             (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
