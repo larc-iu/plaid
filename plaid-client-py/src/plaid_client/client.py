@@ -1080,7 +1080,7 @@ class ApiTokensResource(_Resource):
 
         Args:
             user_id: The user ID who will own the token
-            name: A human label, e.g. "Stanza Parser"
+            name: A human label, e.g. "Stanza parser"
 
         Returns:
             A dict with ``id``, ``name`` and ``token``.

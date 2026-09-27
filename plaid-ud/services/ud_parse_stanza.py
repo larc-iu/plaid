@@ -873,7 +873,7 @@ class StanzaParserService(BaseService):
     def __init__(self):
         super().__init__(
             service_id='stanza-parser',
-            service_name='Stanza Parser',
+            service_name='Stanza parser',
             description=('Provides document parsing using Stanza pipeline with '
                          'tokenization, POS tagging, lemmatization, and dependency parsing'),
             tasks=[TASKS.PARSE],

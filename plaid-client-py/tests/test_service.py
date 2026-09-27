@@ -1204,7 +1204,7 @@ def _served(handler):
 
     registration = svc.serve(
         _Client(), 'p1',
-        {'service_id': 'svc1', 'service_name': 'Punkt Tokenizer'},
+        {'service_id': 'svc1', 'service_name': 'Punkt tokenizer'},
         handler)
 
     def deliver(data=None):
@@ -1232,7 +1232,7 @@ def test_serves_fallback_does_not_hand_the_requester_an_internal_url():
             'HTTP 400 Span value is required at http://plaid.internal:8085/api/v1/spans',
             status=400, url='http://plaid.internal:8085/api/v1/spans', method='POST')
 
-    assert _reported_error(handler) == 'Punkt Tokenizer: HTTP 400 Span value is required'
+    assert _reported_error(handler) == 'Punkt tokenizer: HTTP 400 Span value is required'
 
 
 def test_serves_fallback_does_not_name_a_python_class():
@@ -1241,7 +1241,7 @@ def test_serves_fallback_does_not_name_a_python_class():
 
     message = _reported_error(handler)
     assert 'KeyError' not in message
-    assert message == f'Punkt Tokenizer: {UNKNOWN_FAILURE}'
+    assert message == f'Punkt tokenizer: {UNKNOWN_FAILURE}'
 
 
 def test_a_service_reporting_its_own_error_is_scrubbed_too():

@@ -1,5 +1,5 @@
 """
-NLTK Punkt Tokenizer Service
+NLTK Punkt tokenizer service
 
 Simplified tokenization service using the tokenization framework.
 This demonstrates how easy it is to create new tokenization services.
@@ -91,7 +91,7 @@ class NLTKTokenizerService(BaseService):
     def __init__(self):
         super().__init__(
             service_id='tok:nltk-punkt-tokenizer',
-            service_name='NLTK Punkt Tokenizer',
+            service_name='NLTK Punkt tokenizer',
             description='Tokenizes documents into sentences and words using NLTK\'s pre-trained Punkt tokenizer',
             tasks=[TASKS.TOKENIZE],
             summary=SUMMARY,

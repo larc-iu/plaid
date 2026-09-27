@@ -1326,7 +1326,7 @@ class PlaidClient {
        * credential and is shown ONLY here — store it immediately. API tokens
        * do not expire and survive password changes / logout; revoke to kill.
        * @param {string} userId - The user ID who will own the token
-       * @param {string} name - A human label, e.g. "Stanza Parser"
+       * @param {string} name - A human label, e.g. "Stanza parser"
        * @returns {Promise<{id: string, name: string, token: string}>}
        */
       create: (userId, name, auditMessage) =>

@@ -33,7 +33,7 @@ function served(handler) {
   const registration = serve(
     client,
     "p1",
-    { serviceId: "svc1", serviceName: "Punkt Tokenizer" },
+    { serviceId: "svc1", serviceName: "Punkt tokenizer" },
     handler,
   );
   const deliver = (data) =>
@@ -128,14 +128,14 @@ test("serve's fallback does not hand the requester an internal URL", async () =>
     err.url = "http://plaid.internal:8085/api/v1/spans";
     throw err;
   });
-  assert.equal(message, "Punkt Tokenizer: HTTP 400 Span value is required");
+  assert.equal(message, "Punkt tokenizer: HTTP 400 Span value is required");
 });
 
 test("serve's fallback catches a rejected async handler too", async () => {
   const message = await reportedError(async () => {
     throw new Error("Network error: fetch failed at http://plaid.internal:8085");
   });
-  assert.equal(message, "Punkt Tokenizer: Network error: fetch failed");
+  assert.equal(message, "Punkt tokenizer: Network error: fetch failed");
 });
 
 test("a service reporting its own error is scrubbed too", async () => {

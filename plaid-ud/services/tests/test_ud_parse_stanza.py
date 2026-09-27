@@ -306,7 +306,7 @@ def test_a_document_someone_else_holds_is_refused_without_writing():
 
     # The lock authors its own words for the person who asked, so nothing
     # rewrites them, and the internal URL does not ride along.
-    assert helper.errors == [f'Stanza Parser: {said}']
+    assert helper.errors == [f'Stanza parser: {said}']
     assert service.client.writes == []
 
 
@@ -416,7 +416,7 @@ def test_a_failure_reaches_the_requester_once_without_an_internal_url():
         status=500, url='http://plaid.internal:8085/api/v1/tokens/bulk', method='POST')})
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.errors == ['Stanza Parser: HTTP 500 Internal error']
+    assert helper.errors == ['Stanza parser: HTTP 500 Internal error']
     assert 'plaid.internal' not in helper.errors[0] and 'http' not in helper.errors[0]
 
 

@@ -413,7 +413,7 @@ export const UserProfile = ({ className, children }) => {
                 id="token-name"
                 value={newTokenName}
                 onChange={(e) => setNewTokenName(e.target.value)}
-                placeholder="e.g. Stanza Parser"
+                placeholder="e.g. Stanza parser"
               />
             </div>
             <Button type="submit" disabled={creatingToken}>

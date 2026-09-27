@@ -98,7 +98,7 @@ describe('the API token failures', () => {
 });
 
 describe('revoking a token', () => {
-  const listed = [{ id: 't1', name: 'Stanza Parser', createdAt: '2026-09-01T00:00:00Z' }];
+  const listed = [{ id: 't1', name: 'Stanza parser', createdAt: '2026-09-01T00:00:00Z' }];
 
   it('names the token in the confirm, and does nothing when it is declined', async () => {
     const revoke = vi.fn();
@@ -112,7 +112,7 @@ describe('revoking a token', () => {
 
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        description: expect.stringContaining('Stanza Parser'),
+        description: expect.stringContaining('Stanza parser'),
         destructive: true,
       }),
     );
@@ -144,7 +144,7 @@ describe('revoking a token', () => {
     });
     const view = await mount();
 
-    expect(view.container.textContent).toContain('Stanza Parser');
+    expect(view.container.textContent).toContain('Stanza parser');
     expect(view.container.textContent).not.toContain('Retired');
     await view.unmount();
   });
