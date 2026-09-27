@@ -794,7 +794,7 @@ describe('edits not saved behind a refused one', () => {
     client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const create = client.spans.create;
     let hold;
-    client.spans.create = async (...args) => {
+    client.spans.create = async () => {
       await new Promise((r) => (hold = r));
       throw new Error('refused');
     };
