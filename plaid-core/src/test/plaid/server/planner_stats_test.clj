@@ -347,3 +347,18 @@
         (finally
           (#'server-sql/await-planner-stats!)))
       (is (nil? @@#'server-sql/planner-stats-schedule) "stopping the server stops the schedule"))))
+
+;; A re-entrant :start (mount/start twice with no :stop) schedules again. The
+;; schedule it replaces must stop, or it keeps running unowned: `:stop` only
+;; knows the latest one.
+(deftest scheduling-again-stops-the-schedule-it-replaces
+  (with-fixture
+    (fn [ds _]
+      (try
+        (#'server-sql/schedule-planner-stats! ds 3600000)
+        (let [^java.util.concurrent.ExecutorService first-exec @@#'server-sql/planner-stats-schedule]
+          (#'server-sql/schedule-planner-stats! ds 3600000)
+          (is (.isShutdown first-exec))
+          (is (not (identical? first-exec @@#'server-sql/planner-stats-schedule))))
+        (finally
+          (#'server-sql/await-planner-stats!))))))
