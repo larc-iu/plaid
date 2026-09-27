@@ -775,7 +775,8 @@ class UsersResource(_Resource):
         """
         return self._request('POST', '/api/v1/users',
                              body=_body_of(email=email, password=password, is_admin=is_admin,
-                                           display_name=display_name), audit_message=audit_message)
+                                           display_name=_UNSET if display_name is None else display_name),
+                             audit_message=audit_message)
 
     def get(self, id: str) -> Any:
         """Get a user by ID.
