@@ -33,7 +33,14 @@ const auth = vi.hoisted(() => ({
   logout: vi.fn(),
   user: { id: 'u', isAdmin: true },
 }));
-vi.mock('../../contexts/AuthContext.jsx', () => ({ useAuth: () => auth }));
+// The page is plaid-ui's, which reads the session and shows its toasts
+// through the package's own modules.
+vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
+vi.mock('@ui/lib/notify.js', () => ({
+  notifySuccess: vi.fn(),
+  notifyError: vi.fn(),
+  notifyWarning: vi.fn(),
+}));
 
 const { ProjectImportExport } = await import('./ProjectImportExport.jsx');
 
