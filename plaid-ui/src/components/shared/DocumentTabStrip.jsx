@@ -30,10 +30,13 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
  * status (SaveStatus). `actions` is drawn at the end of the tab row: History,
  * which is about the document on every tab rather than about one of them.
  *
- * `sticky` pins the tab row under the app header while the page scrolls. The
- * header's height, where it is itself pinned, comes from `--plaid-sticky-top`
- * on an ancestor. The strip then lays its three parts out in its parent's box,
- * so the row stays pinned for as long as that box is on screen.
+ * `sticky` pins the tab row under the app header while the page scrolls, in
+ * every app. The header's height comes from `--plaid-sticky-top` (plaid-ui's
+ * index.css sets it on the root). The strip then lays its three parts out in
+ * its parent's box, so the row stays pinned for as long as that box is on
+ * screen: the parent should be the whole page, not a wrapper around the strip.
+ * `inset` is the horizontal padding each part takes in that box, for a page
+ * whose body runs to the window's edge (plaid-ud's and plaid-umr's grids).
  */
 export const DocumentTabStrip = ({
   projectId,
@@ -45,6 +48,7 @@ export const DocumentTabStrip = ({
   status = null,
   actions = null,
   sticky = false,
+  inset = '',
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -61,10 +65,10 @@ export const DocumentTabStrip = ({
 
   return (
     <div className={sticky ? 'contents' : 'mb-6'}>
-      <div className="mb-2 flex items-center gap-2">
+      <div className={cn('mb-2 flex items-center gap-2', inset)}>
         <Breadcrumb
           items={[
-            { label: 'Projects', to: routes.projects },
+            { label: 'Projects', to: routes.projects, fixed: true },
             { label: project?.name || 'Loading…', to: routes.documents(projectId) },
             { label: name || 'Loading…' },
           ]}
@@ -79,6 +83,7 @@ export const DocumentTabStrip = ({
         className={cn(
           'mb-3 break-words text-3xl font-bold tracking-tight',
           !name && 'text-muted-foreground',
+          inset,
         )}
       >
         <span dir="auto">{name || 'Loading…'}</span>
@@ -86,10 +91,12 @@ export const DocumentTabStrip = ({
 
       <div
         data-testid="document-tab-row"
+        data-pinned={sticky || undefined}
         className={cn(
           'flex flex-wrap items-center gap-x-6 gap-y-2',
           sticky &&
             'sticky top-[var(--plaid-sticky-top,0px)] z-30 mb-4 border-b bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+          inset,
         )}
       >
         <Tabs

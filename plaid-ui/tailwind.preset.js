@@ -52,9 +52,12 @@ export default {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
         },
+        // `strong` is the red text on a destructive tint: the notice's error
+        // tone. `foreground` is shadcn's, the white on a solid red button.
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+          strong: 'hsl(var(--destructive-strong))',
         },
         // Caution and done, beside `destructive`. Defined once, in plaid-ui's
         // own index.css, since no app has a reason to differ. DEFAULT is the

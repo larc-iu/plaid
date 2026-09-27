@@ -46,6 +46,7 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
 
   it('answers to the warning and success colours beside destructive', () => {
     expect(resolved.theme.colors.destructive.DEFAULT).toBe('hsl(var(--destructive))');
+    expect(resolved.theme.colors.destructive.strong).toBe('hsl(var(--destructive-strong))');
     expect(resolved.theme.colors.warning.DEFAULT).toBe('hsl(var(--warning))');
     expect(resolved.theme.colors.warning.foreground).toBe('hsl(var(--warning-foreground))');
     expect(resolved.theme.colors.success.DEFAULT).toBe('hsl(var(--success))');
@@ -62,13 +63,19 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
   });
 });
 
-// The preset names `--warning` and `--success`, and no app defines them: the
-// package's stylesheet does, once for all. A name with no value is a
-// transparent banner and no error anywhere.
+// The preset names `--warning`, `--success` and `--destructive-strong`, and no
+// app defines them: the package's stylesheet does, once for all. A name with no
+// value is a transparent banner and no error anywhere.
 describe("the package's stylesheet", () => {
   const css = fs.readFileSync(path.join(repoRoot(), 'plaid-ui/src/index.css'), 'utf8');
 
-  it.each(['--warning', '--warning-foreground', '--success', '--success-foreground'])(
+  it.each([
+    '--warning',
+    '--warning-foreground',
+    '--success',
+    '--success-foreground',
+    '--destructive-strong',
+  ])(
     'defines %s',
     (name) => {
       expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));

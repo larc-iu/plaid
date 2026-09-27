@@ -117,6 +117,15 @@ describe('DocumentTabStrip', () => {
     // The strip lays out in its parent's box, or the row could not stay pinned
     // past the strip's own height.
     expect(row.parentElement.className).toBe('contents');
+    expect(row.hasAttribute('data-pinned')).toBe(true);
+  });
+
+  it('pads each part by the inset when the page runs to the edge', async () => {
+    await mount({ document: { name: 'One' }, sticky: true, inset: 'px-6' });
+    const row = view.container.querySelector('[data-testid="document-tab-row"]');
+    const parts = [...row.parentElement.children];
+    expect(parts).toHaveLength(3);
+    for (const part of parts) expect(part.className.split(' ')).toContain('px-6');
   });
 
   it('turns every tab into a disabled button while the body is busy', async () => {

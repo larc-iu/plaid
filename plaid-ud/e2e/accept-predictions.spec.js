@@ -152,15 +152,19 @@ const dogAccept = (page) =>
     .locator('.token-column', { has: page.locator(`[id="${S.morphIds[1]}-lemma"]`) })
     .locator('.word-accept');
 
-test('the sentence "Accept predictions" button is subtle, prominent on hover', async ({ page }) => {
+test('the sentence "Accept predictions" button is quiet by its outline, readable at rest, filled on hover', async ({
+  page,
+}) => {
   await openAnnotate(page);
   const btn = page.locator('.accept-predictions-btn');
   await expect(btn).toBeVisible();
-  expect(Number(await opacityOf(btn))).toBeLessThan(1); // dimmed by default
+  // Full strength at rest, so its violet text passes AA contrast. The quiet
+  // look is the transparent fill and the soft outline.
+  expect(await opacityOf(btn)).toBe('1');
+  await expect(btn).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   // The violet of the marks it accepts, plaid-ui's --plaid-machine.
   await expect(btn).toHaveCSS('color', 'rgb(109, 40, 217)');
   await btn.hover();
-  await expect.poll(() => opacityOf(btn)).toBe('1'); // pops on hover
   await expect(btn).toHaveCSS('background-color', 'rgb(109, 40, 217)');
 });
 

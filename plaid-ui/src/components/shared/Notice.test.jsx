@@ -26,6 +26,16 @@ describe('Notice', () => {
     await view.unmount();
   });
 
+  it('writes an error in the darker red, the red itself left to the border and icon', async () => {
+    const view = await renderComponent(<Notice tone="error">Import failed.</Notice>);
+    const classes = box(view).className.split(' ');
+    // The red on its own tint measured 3.3:1. The strong red passes AA.
+    expect(classes).toContain('text-destructive-strong');
+    expect(classes).not.toContain('text-destructive');
+    expect(box(view).querySelector('svg').getAttribute('class')).toContain('text-destructive');
+    await view.unmount();
+  });
+
   it('is an info notice when no tone is named', async () => {
     const view = await renderComponent(<Notice>Plain.</Notice>);
     expect(box(view).getAttribute('data-tone')).toBe('info');

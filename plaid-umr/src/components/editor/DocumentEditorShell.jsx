@@ -285,7 +285,7 @@ const DocumentEditor = () => {
     // The drawer pushes the whole page right rather than overlaying it, the
     // chrome and the tab under it together.
     <div
-      className="transition-[margin-left] duration-300 ease-out"
+      className="pt-4 transition-[margin-left] duration-300 ease-out"
       style={{ marginLeft: history.drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
     >
       <DocumentHistoryPanel
@@ -301,29 +301,29 @@ const DocumentEditor = () => {
       />
 
       {/* Chrome: rendered unconditionally, including while the document loads.
-          That is what stops the tab switch from blanking the page. */}
-      <div className="px-6 pt-4">
-        <DocumentTabs
-          projectId={projectId}
-          documentId={documentId}
-          project={project}
-          document={shown?.raw}
-          commentCount={comments?.count ?? 0}
-          disabled={chromeBusy}
-          status={doc ? <SaveStatus doc={doc} /> : null}
-          actions={
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={history.openHistory}
-              disabled={!doc || chromeBusy || history.drawerOpen}
-            >
-              <History className="h-4 w-4" /> History
-            </Button>
-          }
-        />
-      </div>
+          That is what stops the tab switch from blanking the page. Straight
+          in the page box, with no wrapper of its own: the pinned tab row stays
+          pinned only as far down as its parent box reaches. */}
+      <DocumentTabs
+        projectId={projectId}
+        documentId={documentId}
+        project={project}
+        document={shown?.raw}
+        commentCount={comments?.count ?? 0}
+        disabled={chromeBusy}
+        status={doc ? <SaveStatus doc={doc} /> : null}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={history.openHistory}
+            disabled={!doc || chromeBusy || history.drawerOpen}
+          >
+            <History className="h-4 w-4" /> History
+          </Button>
+        }
+      />
 
       {(pastEntry || writeLock.held) && (
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>

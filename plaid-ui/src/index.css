@@ -29,6 +29,9 @@
   --warning-foreground: 22 78% 26%;
   --success: 142 71% 35%;
   --success-foreground: 144 61% 20%;
+  /* Red text on the error tint (red-700, 5.9:1 there), where each app's
+     `--destructive` stays the border, the icon and the solid button. */
+  --destructive-strong: 0 74% 42%;
 }
 
 /* The dark pair, for the day an app turns on `.dark`. */
@@ -37,6 +40,7 @@
   --warning-foreground: 48 96% 89%;
   --success: 142 69% 45%;
   --success-foreground: 141 84% 93%;
+  --destructive-strong: 0 94% 82%;
 }
 
 /* A value a machine proposed and no person has confirmed: violet italic with
@@ -80,7 +84,9 @@
 }
 
 /* The review pair for a sentence or a graph: Accept in the machine's violet,
-   Discard in red, both outlined, dimmed at rest and filled on hover. Only
+   Discard in red, both outlined and filled on hover. At rest the text is at
+   full strength (7.1:1 and 4.8:1 on white) and the quiet look comes from
+   the transparent fill and the soft outline, never from opacity. Only
    colours: the host keeps its own shape (a shadcn outline Button in plaid-ud,
    a pill in plaid-umr). Two classes in the selector so the rule outranks the
    host's single-class background and border, whichever stylesheet loads
@@ -88,9 +94,7 @@
 .plaid-review.plaid-review--accept,
 .plaid-review.plaid-review--discard {
   background-color: transparent;
-  opacity: 0.6;
   transition:
-    opacity 120ms ease,
     background-color 120ms ease,
     border-color 120ms ease,
     color 120ms ease;
@@ -102,12 +106,6 @@
 .plaid-review.plaid-review--discard {
   border-color: #fca5a5;
   color: #dc2626;
-}
-.plaid-review.plaid-review--accept:hover,
-.plaid-review.plaid-review--discard:hover,
-.plaid-review.plaid-review--accept:focus-visible,
-.plaid-review.plaid-review--discard:focus-visible {
-  opacity: 1;
 }
 .plaid-review.plaid-review--accept:hover {
   background-color: var(--plaid-machine);
@@ -133,9 +131,17 @@ html [data-sonner-toaster][data-x-position='right'] {
 }
 
 /* The app header (`AppShell`) is sticky in every app, 3.5rem and a 1px rule
-   tall. Anything scrolled to the top of the window (a pager at the bottom of
-   a list taking the reader back to its first row, a deep link) stops below
-   it instead of under it. */
+   tall: `--plaid-sticky-top`, where a document's pinned tab row stops.
+   Anything scrolled to the top of the window (a pager at the bottom of a list
+   taking the reader back to its first row, a deep link) stops below it
+   instead of under it, and below the pinned tab row too while there is one. */
+:root {
+  --plaid-sticky-top: calc(3.5rem + 1px);
+  --plaid-tab-row-height: 3.5rem;
+}
 html {
-  scroll-padding-top: calc(3.5rem + 1px);
+  scroll-padding-top: var(--plaid-sticky-top);
+}
+html:has([data-pinned]) {
+  scroll-padding-top: calc(var(--plaid-sticky-top) + var(--plaid-tab-row-height));
 }

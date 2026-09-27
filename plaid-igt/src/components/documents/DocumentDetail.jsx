@@ -391,15 +391,14 @@ const DocumentEditor = () => {
           longer changes when it opens: no measured height, no scrollport of its
           own, and no sticky offset that depends on which element that is.
 
-          The tab row is pinned under the app header (57px, the header being
-          pinned itself): the way across the document stays in reach however
+          The tab row is pinned under the app header (`--plaid-sticky-top`, set
+          once in plaid-ui): the way across the document stays in reach however
           far down a long text you are. Asked for by the first real user. */}
       <div
         className="transition-[margin] duration-200"
         style={{
           marginLeft: drawerOpen ? HISTORY_DRAWER_WIDTH : 0,
           minHeight: '100vh',
-          '--plaid-sticky-top': '57px',
         }}
       >
         <div
