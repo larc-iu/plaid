@@ -13,6 +13,12 @@ document name (which may contain spaces, digits, even something like "s12")
 apart from the reference after it. Braces are still read, because a model that
 saw a lot of them in training drifts back to them whatever the prompt says.
 
+In a turn that may read other projects, a tag names one of them with
+``project``: ``<cite project="Lamkang B" doc="Text 1" ref="s3.w2"/>``. It is
+resolved in that project's workspace and its card carries ``project_id``, so
+the tab links it into that project. The brace and bare forms are the
+conversation's own project only.
+
 What is here is the half that is the same in both apps: the syntax, the order
 citations are read in, and the budget one reply's citations may cost. What a
 reference may look like and what a card holds are the app's own, passed in.
@@ -40,39 +46,42 @@ def bare_re(ref: str) -> re.Pattern:
 
 
 def tag_parts(attrs: str, views: tuple = ()):
-    """``(doc, ref, view)`` from a ``<cite>`` tag's attributes, any of them
-    possibly ''. ``view`` is how the model ASKS for the example to be drawn,
-    out of ``views``; the reader can still switch the card."""
+    """``(doc, ref, view, project)`` from a ``<cite>`` tag's attributes, any of
+    them possibly ''. ``view`` is how the model ASKS for the example to be
+    drawn, out of ``views``; the reader can still switch the card."""
     at = {}
     for m in ATTR_RE.finditer(attrs):
         at[m.group(1).lower()] = next(g for g in m.groups()[1:] if g is not None)
     doc = at.get('doc') or at.get('document') or ''
     ref = at.get('ref') or at.get('sentence') or ''
     view = at.get('view', '').strip().lower()
-    return doc.strip(), ref.strip(), (view if view in views else '')
+    project = at.get('project') or ''
+    return doc.strip(), ref.strip(), (view if view in views else ''), project.strip()
 
 
 def cited(text: str, one_document: str, brace: re.Pattern, bare: re.Pattern,
           views: tuple = ()) -> List[tuple]:
-    """``(key, document, ref, view)`` for every citation in ``text``, in the
-    order they are written. ``one_document`` is the id to read a citation
-    against when it names none, or '' when the turn read more than one.
+    """``(key, document, ref, view, project)`` for every citation in ``text``,
+    in the order they are written. ``one_document`` is the id to read a
+    citation against when it names none, or '' when the turn read more than
+    one. ``project`` is '' for the conversation's own project, and a tag that
+    names another project must name its document too.
     """
     found: List[tuple] = []
     text = text or ''
     for m in TAG_RE.finditer(text):
-        doc, ref, view = tag_parts(m.group('attrs'), views)
-        if ref and (doc or one_document):
-            found.append((m.start(), m.group(0), doc or one_document, ref, view))
+        doc, ref, view, project = tag_parts(m.group('attrs'), views)
+        if ref and (doc or (one_document and not project)):
+            found.append((m.start(), m.group(0), doc or one_document, ref, view, project))
     for m in brace.finditer(text):
-        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), ''))
+        found.append((m.start(), m.group(0), m.group('doc').strip().strip('"\''), m.group('ref'), '', ''))
     if one_document:
         # Sloppier models write the reference with no document at all, which
         # is fine where the turn read one and it means one thing.
         blank = lambda m: ' ' * len(m.group(0))  # noqa: E731 - keep offsets, so order survives
         rest = brace.sub(blank, TAG_RE.sub(blank, text))
         for m in bare.finditer(rest):
-            found.append((m.start(), m.group(0), one_document, m.group('ref'), ''))
+            found.append((m.start(), m.group(0), one_document, m.group('ref'), '', ''))
     return [f[1:] for f in sorted(found, key=lambda f: f[0])]
 
 
@@ -84,28 +93,38 @@ def resolve_citations(ws, text: str, *, parse_refs: Callable[[str], List[str]],
     the tag's own text.
 
     ``card(ws, doc, refs, view)`` builds what the app's tab draws, or returns
-    ``None`` where the references name nothing in that document.
+    ``None`` where the references name nothing in that document. It is handed
+    the workspace of the project the citation names.
     """
+    from .reach import target
     out: List[Dict[str, Any]] = []
     seen = set()
     loaded = list(ws._docs.values())
     # Citing a document the turn never read costs a fetch each, and the user is
-    # waiting on the reply: read a few, and drop citations past that.
-    read_before = len(ws._docs)
-    for key, doc_name, ref, view in cited(text, loaded[0].id if len(loaded) == 1 else '',
-                                          brace, bare, views):
+    # waiting on the reply: read a few, and drop citations past that. Counted
+    # over every project's workspace, since each fetch costs the same.
+    read_before: Dict[int, tuple] = {id(ws): (ws, len(ws._docs))}
+
+    def fetched() -> int:
+        return sum(len(w._docs) - n for w, n in read_before.values())
+
+    for key, doc_name, ref, view, project in cited(text, loaded[0].id if len(loaded) == 1 else '',
+                                                   brace, bare, views):
         if key in seen or len(out) >= MAX_CITATIONS:
             continue
         seen.add(key)
         try:
+            w = target(ws, project)
+            read_before.setdefault(id(w), (w, len(w._docs)))
             refs = parse_refs(ref)
-            did = ws.resolve_document_id(doc_name)
-            if did not in ws._docs and len(ws._docs) - read_before >= CITE_DOC_BUDGET:
+            did = w.resolve_document_id(doc_name)
+            if did not in w._docs and fetched() >= CITE_DOC_BUDGET:
                 continue
-            doc = ws.doc(did)
+            doc = w.doc(did)
         except (ToolError, ValueError):
             continue
-        built = card(ws, doc, refs, view)
+        built = card(w, doc, refs, view)
         if built is not None:
-            out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name, **built})
+            foreign = {'project_id': w.project.id} if w is not ws else {}
+            out.append({'key': key, 'document_id': doc.id, 'document_name': doc.name, **foreign, **built})
     return out
