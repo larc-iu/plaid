@@ -5,7 +5,8 @@ import { useTabParam } from '@/hooks/useTabParam';
 // The tab bar's inventory, in display order, and the tab a document opens on.
 // The order is every app's: the work tabs, then Comments, Export, Details.
 const TABS = ['baseline', 'media', 'tokenize', 'analyze', 'comments', 'export', 'details'];
-const DEFAULT_TAB = 'details';
+// A document with no tokens yet has its work ahead of it, at Baseline.
+const DEFAULT_TAB = 'baseline';
 // Details was called Metadata, and a link saved then still opens it.
 const ALIASES = { metadata: 'details' };
 
@@ -15,8 +16,8 @@ const ALIASES = { metadata: 'details' };
 // The selection lives in `?tab=`, so a reload, a bookmark, and the back button
 // all keep the tab the reader was on, and a search or concordance
 // click-through can open the document straight onto Analyze. Every tab writes
-// itself, Details included: here a bare URL means "no tab chosen", which is
-// what the landing below reads, so Details cannot also be the bare URL
+// itself, Baseline included: here a bare URL means "no tab chosen", which is
+// what the landing below reads, so Baseline cannot also be the bare URL
 // without becoming unshareable.
 export function useDocumentTabs({ doc, asOf }) {
   const [searchParams] = useSearchParams();
@@ -39,8 +40,8 @@ export function useDocumentTabs({ doc, asOf }) {
     // string, and a stale one would write the tab onto an outdated URL.
   }, [setActiveTab]);
 
-  // Land on Analyze when the document is already tokenized — the work surface
-  // shouldn't be buried behind Details. Once, on the first live load only (not
+  // Land on Analyze when the document is already tokenized: the work surface
+  // shouldn't be buried behind Baseline. Once, on the first live load only (not
   // on time-travel reloads or after the user has navigated tabs themselves).
   // An explicit tab request in the URL wins over the landing.
   const didAutoTabRef = useRef(!!searchParams.get('tab'));

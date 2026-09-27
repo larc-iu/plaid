@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useStrictClient } from './contexts/StrictModeContext.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -69,6 +69,8 @@ const TABS = [
 // visible without scrolling. The form-shaped tabs stay narrow because long
 // input rows are harder to read, not easier.
 const WIDE_TABS = new Set(['analyze', 'media']);
+
+const NO_SUBSCRIBE = () => () => {};
 
 const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
@@ -209,7 +211,18 @@ const DocumentEditor = () => {
     comments.load();
   }, [comments]);
 
-  useDocumentTitle(doc?.document?.name, doc?.project?.name);
+  // The name in the heading, the breadcrumb and the window title follows a
+  // rename on the Details tab. The name alone: every tab subscribes to the
+  // document itself, and a screen that re-rendered on every save would take
+  // all of them with it.
+  const documentName = useSyncExternalStore(doc?.subscribe ?? NO_SUBSCRIBE, () => doc?.name);
+  // The tab first, as in every app, so the Details page's own title and this
+  // one agree, and leaving Details puts this one back.
+  useDocumentTitle(
+    TABS.find((t) => t.value === activeTab)?.label,
+    documentName,
+    doc?.project?.name,
+  );
 
   useEffect(() => {
     if (!client) {

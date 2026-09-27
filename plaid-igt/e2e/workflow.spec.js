@@ -218,7 +218,13 @@ test('C2-02: rename and delete from the Details tab', async ({ page }) => {
   await expect
     .poll(async () => (await client.documents.get(documentId)).name)
     .toBe('Renamed workflow doc');
-  await expect(page.getByText('Renamed workflow doc').first()).toBeVisible();
+  // The heading, the breadcrumb and the window title follow the rename, on
+  // Details and on the next tab.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Renamed workflow doc');
+  await expect(page).toHaveTitle(/^Details · Renamed workflow doc · /);
+  await page.getByRole('tab', { name: 'Baseline' }).click();
+  await expect(page).toHaveTitle(/^Baseline · Renamed workflow doc · /);
+  await page.getByRole('tab', { name: 'Details' }).click();
   await page.getByRole('button', { name: 'Delete document' }).click();
   const dialog = page.getByRole('dialog').or(page.getByRole('alertdialog'));
   await expect(dialog).toContainText('Renamed workflow doc');

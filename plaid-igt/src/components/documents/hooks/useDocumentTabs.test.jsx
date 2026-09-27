@@ -50,9 +50,17 @@ describe('the document tab', () => {
     await view.unmount();
   });
 
-  it('leaves an untokenized document on Details', async () => {
+  it('leaves an untokenized document on Baseline, where its work starts', async () => {
     const view = await mount(['/d'], { doc: untokenized });
-    expect(last().activeTab).toBe('details');
+    expect(last().activeTab).toBe('baseline');
+    expect(last().search).toBe('');
+    await view.unmount();
+  });
+
+  it('opens Baseline for a tab it does not know, and says baseline', async () => {
+    const view = await mount(['/d?tab=bogus'], { doc: tokenized });
+    expect(last().activeTab).toBe('baseline');
+    expect(last().search).toBe('?tab=baseline');
     await view.unmount();
   });
 
@@ -62,11 +70,14 @@ describe('the document tab', () => {
     await view.unmount();
   });
 
-  it('honours Details asked for by name, which is why the fallback writes itself', async () => {
-    // A bare URL means "no tab chosen" here, so `?tab=metadata` is the only way
-    // to say Details and have it stay.
-    const view = await mount(['/d?tab=metadata'], { doc: tokenized });
-    expect(last().activeTab).toBe('details');
+  it('honours Baseline asked for by name, which is why the fallback writes itself', async () => {
+    // A bare URL means "no tab chosen" here, so `?tab=baseline` is the only way
+    // to say Baseline and have it stay on a tokenized document.
+    const view = await mount(['/d?tab=baseline'], { doc: tokenized });
+    expect(last().activeTab).toBe('baseline');
+    await view.step(() => last().setActiveTab('analyze'));
+    await view.step(() => last().setActiveTab('baseline'));
+    expect(last().search).toBe('?tab=baseline');
     await view.unmount();
   });
 
@@ -95,13 +106,13 @@ describe('the document tab', () => {
 
   it('does not land while a snapshot is being viewed', async () => {
     const view = await mount(['/d'], { doc: tokenized, asOf: '2026-09-01T00:00:00Z' });
-    expect(last().activeTab).toBe('details');
+    expect(last().activeTab).toBe('baseline');
     await view.unmount();
   });
 
   it('waits for the document', async () => {
     const view = await mount(['/d'], { doc: null });
-    expect(last().activeTab).toBe('details');
+    expect(last().activeTab).toBe('baseline');
     await view.unmount();
   });
 
