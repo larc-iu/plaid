@@ -7,10 +7,7 @@ import { APPS, repoRoot } from '../test/apps.js';
 // file is decoded or refused before anything is written. A second decoder in
 // an importer is that check left off one path. Listed here: the decoders that
 // read something other than a picked file of a person's own text.
-const ALLOWED = new Map([
-  // The native archive is written by the export itself, always UTF-8 JSON.
-  ['plaid-igt/src/import/native/readArchive.js', 'own archive'],
-]);
+const ALLOWED = new Map([]);
 
 const sources = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {

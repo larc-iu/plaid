@@ -41,6 +41,18 @@ describe('readNativeArchive', () => {
     expect(readNativeArchive(bytes).documents[0].mediaBytes).toBeNull();
   });
 
+  it('refuses an entry that is not UTF-8, naming it', () => {
+    // "café" in Windows-1252: 0xE9 is not UTF-8.
+    const vocab = new Uint8Array([...enc.encode('{"id":"v1","name":"caf'), 0xe9, 0x22, 0x7d]);
+    const bytes = zipOf({
+      'project.json': JSON.stringify(MANIFEST),
+      'vocabularies/Lex.json': vocab,
+      'documents/A.json': '{"id":"d1"}',
+    });
+    expect(() => readNativeArchive(bytes)).toThrow(ArchiveError);
+    expect(() => readNativeArchive(bytes)).toThrow('vocabularies/Lex.json is not UTF-8.');
+  });
+
   it('refuses two vocabularies with one name', () => {
     const manifest = {
       ...MANIFEST,

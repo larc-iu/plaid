@@ -5,7 +5,10 @@
 // Such a file starts with a byte order mark, and is decoded as what it is.
 // Without the mark, UTF-16 read as UTF-8 puts a NUL after every ASCII letter,
 // which the server refuses deep into an import. A NUL in text is never
-// wanted, so any NUL means the file is refused up front.
+// wanted, so any NUL means the file is refused up front. So is a byte the
+// encoding cannot hold: a Windows-1252 "café" from Excel would otherwise
+// import as "caf" plus U+FFFD, with nothing on screen to say so (ruled
+// 2026-09-27: refuse, never repair or guess another encoding).
 
 export class NotUtf8FileError extends Error {
   constructor(name) {
@@ -25,14 +28,14 @@ const encodingOf = (bytes) => {
 /**
  * The text of a file's bytes: UTF-16 when a byte order mark says so, UTF-8
  * otherwise, with the mark dropped. Throws NotUtf8FileError, naming `name`
- * when given, for text holding a NUL, and with `fatal` also for bytes that
- * are not valid in the encoding (instead of a U+FFFD standing in for them).
+ * when given, for bytes that are not valid in the encoding and for text
+ * holding a NUL.
  */
-export function decodeText(bytes, name = null, { fatal = false } = {}) {
+export function decodeText(bytes, name = null) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let text;
   try {
-    text = new TextDecoder(encodingOf(view), { fatal }).decode(view);
+    text = new TextDecoder(encodingOf(view), { fatal: true }).decode(view);
   } catch (e) {
     if (e instanceof TypeError) throw new NotUtf8FileError(name);
     throw e;

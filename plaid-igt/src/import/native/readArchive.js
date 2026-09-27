@@ -2,6 +2,7 @@
 // docs/native-format.md). Pure: bytes in, parsed structures out.
 
 import { unzipSync } from 'fflate';
+import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
 
 export class ArchiveError extends Error {
   constructor(message) {
@@ -27,8 +28,15 @@ export function readNativeArchive(bytes) {
   }
   const json = (path) => {
     if (!entries[path]) throw new ArchiveError(`Archive entry missing: ${path}`);
+    let text;
     try {
-      return JSON.parse(new TextDecoder().decode(entries[path]));
+      text = decodeText(entries[path]);
+    } catch (e) {
+      if (e instanceof NotUtf8FileError) throw new ArchiveError(`${path} is not UTF-8.`);
+      throw e;
+    }
+    try {
+      return JSON.parse(text);
     } catch (e) {
       throw new ArchiveError(`${path} is not valid JSON: ${e.message}`);
     }

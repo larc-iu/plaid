@@ -38,14 +38,20 @@ describe('decodeText', () => {
     );
   });
 
-  it('refuses a byte the encoding cannot hold only when fatal', () => {
+  it('refuses a byte the encoding cannot hold, never a U+FFFD in its place', () => {
     // "café" in cp1252: 0xE9 is not UTF-8.
     const cp1252 = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
-    expect(decodeText(cp1252)).toBe('caf\uFFFD');
-    expect(() => decodeText(cp1252, 'w.csv', { fatal: true })).toThrow(
+    expect(() => decodeText(cp1252)).toThrow(MESSAGE);
+    expect(() => decodeText(cp1252, 'w.csv')).toThrow(
       'w.csv is not UTF-8. Save it as UTF-8 and import it again.',
     );
-    expect(decodeText(utf16le('kai'), null, { fatal: true })).toBe('kai');
+    // A cut multi-byte sequence, and a lone surrogate in UTF-16.
+    expect(() => decodeText(utf8('tát').slice(0, 2))).toThrow(NotUtf8FileError);
+    expect(() => decodeText(new Uint8Array([0xff, 0xfe, 0x00, 0xd8, 0x61, 0x00]))).toThrow(
+      NotUtf8FileError,
+    );
+    // A U+FFFD the file really holds is text like any other.
+    expect(decodeText(utf8('caf\uFFFD'))).toBe('caf\uFFFD');
   });
 
   it('takes an ArrayBuffer as well as bytes', () => {
@@ -60,5 +66,8 @@ describe('readTextFile', () => {
     await expect(readTextFile(new File([utf16le('kai', false)], 'b.conllu'))).rejects.toThrow(
       MESSAGE,
     );
+    await expect(
+      readTextFile(new File([new Uint8Array([0x63, 0xe9])], 'c.csv'), 'c.csv'),
+    ).rejects.toThrow('c.csv is not UTF-8.');
   });
 });
