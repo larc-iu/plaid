@@ -17,17 +17,15 @@ export function ParseDialog({ parse, isDiscovering, writeLockHeld, blockedHint =
   // nothing, which is all acquireWriteLock could manage.
   const busyElsewhere = !!writeLockHeld && !running;
 
+  // No service online is not a notice: the method row says it, in the place a
+  // method would be chosen.
   const notice = running
     ? null
     : blockedHint
       ? blockedHint
       : busyElsewhere
         ? `${writeLockHeld.label} is running. One run at a time on a document.`
-        : spot.empty
-          ? isDiscovering
-            ? 'Looking for a parsing service.'
-            : 'No parsing service is online for this project.'
-          : null;
+        : null;
 
   return (
     <>
