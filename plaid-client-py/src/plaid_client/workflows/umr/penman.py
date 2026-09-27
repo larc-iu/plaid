@@ -85,6 +85,73 @@ def variable_from(token: str) -> str:
     return (token or '')[:length] if length else token
 
 
+# What a concept or a bare value cannot hold: what ends a TOKEN, and a quote,
+# which starts a string. Written anyway, the value reads back as something
+# else (`big dog` as `big`, a line break and `:ARG0 (...)` as an extra node).
+_NOT_IN_TOKEN = re.compile(r'[\s():#"]')
+
+
+def concept_problem(concept) -> Optional[str]:
+    """Why ``concept`` cannot be written as PENMAN, or None when it can. The
+    app's ``conceptProblem``, which every editor path asks."""
+    text = concept if isinstance(concept, str) else ''
+    if not text:
+        return 'A node needs a concept.'
+    if _NOT_IN_TOKEN.search(text):
+        return f'A concept cannot hold spaces, brackets, colons, quotes or #: {text}'
+    return None
+
+
+def relation_form_problem(relation) -> Optional[str]:
+    """Why ``relation`` cannot be written as a PENMAN relation, or None when it
+    can: a colon, then letters, digits and hyphens only. The app's
+    ``relationProblem`` (its form half), except that the colon is required,
+    since a stored relation is written exactly as it is."""
+    text = relation if isinstance(relation, str) else ''
+    if re.fullmatch(r':[-A-Za-z0-9]+', text):
+        return None
+    bare = text.strip()[1:] if text.strip().startswith(':') else text.strip()
+    if not bare:
+        return 'A relation needs a name after its colon.'
+    return f'A relation holds letters, digits and hyphens only, after a colon: {text}'
+
+
+def attr_value_problem(value) -> Optional[str]:
+    """Why ``value`` cannot be written as an attribute's value, or None when it
+    can. A quoted string may hold anything but a line break (the .umr file is
+    split by line before PENMAN reads it); a bare atom stops where a token
+    stops. The app's ``attrValueProblem``."""
+    text = str(value if value is not None else '').strip()
+    if not text:
+        return 'An attribute needs a value.'
+    if text.startswith('"'):
+        m = STRING.match(text)
+        if not m or m.group(0) != text:
+            return f'A quoted value needs its closing quote: {text}'
+        if '\n' in text or '\r' in text:
+            return f'A value cannot hold a line break: {text}'
+        return None
+    if '"' in text:
+        return f'A value holds a quote only around the whole of it: {text}'
+    if _NOT_IN_TOKEN.search(text):
+        return f'A value cannot hold spaces, brackets, colons or #, unless it is quoted: {text}'
+    return None
+
+
+def variable_form_problem(variable) -> Optional[str]:
+    """Why ``variable`` cannot be written and read back as itself, or None when
+    it can. Any token will do (a released file may break the convention), but
+    not a slash, and not one whose front reads as a conventional variable with
+    the rest left over (``s1x2y``). The app's ``variableFormProblem``."""
+    text = variable if isinstance(variable, str) else ''
+    if not text:
+        return 'A node needs a variable.'
+    front = variable_length(text)
+    if _NOT_IN_TOKEN.search(text) or '/' in text or (front and front != len(text)):
+        return f'A variable cannot be written as it is: {text}'
+    return None
+
+
 @dataclass
 class Child:
     rel: str

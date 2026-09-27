@@ -15,8 +15,10 @@ from typing import Any, Dict, List, Optional
 
 from ..core import docload, opkind
 from ..core.args import sentence_number
-from plaid_client.workflows.umr import (parse_attribute_line, unknown_doc_relation_problem,
-                                        unknown_relation_problem)
+from plaid_client.workflows.umr import (attr_value_problem, concept_problem,
+                                        parse_attribute_line, relation_form_problem,
+                                        unknown_doc_relation_problem, unknown_relation_problem,
+                                        variable_form_problem)
 
 from ..core.limits import OVERVIEW_DOCS, SAMPLE_LINES
 from ..core.tools import ToolError, truncate
@@ -85,8 +87,48 @@ class Workspace(BaseWorkspace):
 
     def guard_op(self, op: Dict[str, Any], replacing: Optional[int] = None) -> None:
         super().guard_op(op, replacing=replacing)
+        self.refuse_unwritable(op)
         self.refuse_unknown_relation(op)
         self.refuse_second_graph(op, replacing=replacing)
+
+    def refuse_unwritable(self, op: Dict[str, Any]) -> None:
+        """A concept, relation, variable or value the .umr file cannot hold,
+        as every editor path in the app refuses it: stored anyway, the export
+        refuses the document (ruled 2026-09-27).
+
+        Asked here, where every staged op passes, for the same reason as
+        :meth:`refuse_unknown_relation`. A value already stored under that
+        relation on that node is kept, as the app keeps it, so an edit of a
+        node's other attributes is not refused for one it did not write.
+        """
+        kind = op.get('kind')
+        doc = self._docs.get(op.get('document_id'))
+        node = None
+        if kind == 'set_attrs' and doc is not None:
+            node = doc.nodes_by_id.get(op.get('span_id'))
+        elif kind == 'create_node' and doc is not None and op.get('renamed_from'):
+            node = doc.nodes_by_id.get(op.get('renamed_from'))
+        stored = {(a.get('rel'), a.get('value')) for a in (node.attrs if node else [])}
+        problems = []
+        if kind == 'create_node':
+            problems += [variable_form_problem(op.get('var')), concept_problem(op.get('concept'))]
+        if kind == 'set_concept':
+            problems.append(concept_problem(op.get('concept')))
+        if kind == 'create_edge':
+            problems.append(relation_form_problem(op.get('role')))
+        if kind in ('create_node', 'set_attrs'):
+            for a in op.get('attrs') or []:
+                if (a.get('rel'), a.get('value')) in stored:
+                    continue
+                problems += [relation_form_problem(a.get('rel')), attr_value_problem(a.get('value'))]
+        if kind == 'attrs_scope':
+            problems.append(relation_form_problem(op.get('rel')))
+            if op.get('value'):
+                problems.append(attr_value_problem(op.get('value')))
+        why = next((p for p in problems if p), None)
+        if why:
+            var = op.get('var') or op.get('source_var')
+            raise ToolError((f'{var}: ' if var else '') + why)
 
     def refuse_unknown_relation(self, op: Dict[str, Any]) -> None:
         """A relation UMR does not have, as the app refuses it on every editor

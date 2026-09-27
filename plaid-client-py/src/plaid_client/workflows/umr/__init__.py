@@ -41,9 +41,9 @@ from .graph import (COREF_RELATIONS, CYCLE_ROLES, DOC_CONSTANTS, Edge, GROUPS, M
 from .inventory import DOC_RELATIONS, unknown_doc_relation_problem, unknown_relation_problem
 from .layers import (GlossLayer, UMR_NAMESPACE, UmrLayers, gloss_values, project_language,
                      resolve_layers, umr_config)
-from .penman import (Graph, is_variable, next_variable,
-                     parse_attribute_line, parse_penman, serialize_penman, tree_edges,
-                     variable_from)
+from .penman import (Graph, attr_value_problem, concept_problem, is_variable, next_variable,
+                     parse_attribute_line, parse_penman, relation_form_problem,
+                     serialize_penman, tree_edges, variable_form_problem, variable_from)
 from .write import (DraftProgress, anchor_pieces, begin_draft, draft_params, finish_draft,
                     write_graphs)
 
@@ -65,6 +65,7 @@ __all__ = [
     # penman
     'Graph', 'parse_penman', 'serialize_penman', 'tree_edges',
     'next_variable', 'is_variable', 'variable_from', 'parse_attribute_line',
+    'concept_problem', 'relation_form_problem', 'attr_value_problem', 'variable_form_problem',
     # write
     'anchor_pieces', 'write_graphs', 'DraftProgress', 'draft_params', 'begin_draft',
     'finish_draft',
