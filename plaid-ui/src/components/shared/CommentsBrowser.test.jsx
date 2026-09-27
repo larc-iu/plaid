@@ -59,3 +59,53 @@ describe('the control that opens what a thread is about', () => {
     await view.unmount();
   });
 });
+
+// The document's own thread is pinned above the list. Once it has a comment it
+// is one of the threads on screen, and a count that left it out said "0
+// threads" above it.
+describe('the counts', () => {
+  const withDoc = (docComments) => ({
+    ...store(),
+    threads: () => [
+      { entityType: 'sentence', entityId: 's1', comments: [comment('c1')] },
+      ...(docComments ? [{ entityType: 'document', entityId: 'd1', comments: docComments }] : []),
+    ],
+  });
+  const counts = (container) => ({
+    list: container.querySelector('span.whitespace-nowrap').textContent,
+    current: container.querySelector('[aria-label="Which threads"] button').textContent,
+  });
+
+  it('count the pinned thread once it has a comment', async () => {
+    const view = await renderComponent(browse({ store: withDoc([comment('c2')]), pinnedId: 'd1' }));
+    expect(counts(view.container)).toEqual({ list: '2 threads', current: 'Current2' });
+    await view.unmount();
+  });
+
+  it('leave out a pinned thread with nothing in it', async () => {
+    const view = await renderComponent(browse({ store: withDoc(null), pinnedId: 'd1' }));
+    expect(counts(view.container)).toEqual({ list: '1 thread', current: 'Current1' });
+    await view.unmount();
+  });
+});
+
+describe('a thread header', () => {
+  it('lets the excerpt and the latest comment take their own direction', async () => {
+    const view = await renderComponent(
+      browse({
+        anchors: new Map([
+          ['s1', { label: 'Sentence 1', detail: 'قرأ الولد الكتاب.', jumpId: 's1' }],
+        ]),
+      }),
+    );
+    const excerpt = [...view.container.querySelectorAll('span')].find(
+      (s) => s.textContent === 'قرأ الولد الكتاب.',
+    );
+    expect(excerpt?.getAttribute('dir')).toBe('auto');
+    const preview = [...view.container.querySelectorAll('span')].find(
+      (s) => s.textContent === 'about c1',
+    );
+    expect(preview?.getAttribute('dir')).toBe('auto');
+    await view.unmount();
+  });
+});

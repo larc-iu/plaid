@@ -49,7 +49,12 @@ const ThreadRow = ({
           <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
             {/* The word, value or entry this thread is about. */}
             <span dir="auto">{label}</span>
-            {detail && <span className="font-normal text-muted-foreground">{detail}</span>}
+            {/* An excerpt of the text, so it takes its own direction. */}
+            {detail && (
+              <span dir="auto" className="font-normal text-muted-foreground">
+                {detail}
+              </span>
+            )}
             {thread.outdated && (
               <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">
                 outdated
@@ -64,9 +69,9 @@ const ThreadRow = ({
             )}
           </span>
           {!open && latest && (
-            <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+            <span dir="auto" className="mt-0.5 block truncate text-sm text-muted-foreground">
               {plainText(latest.body)}
-              {more > 0 && <span className="ml-1 text-xs">+{more}</span>}
+              {more > 0 && <span className="ms-1 text-xs">+{more}</span>}
             </span>
           )}
         </button>
@@ -125,7 +130,13 @@ export const CommentsBrowser = ({
     [store, anchors, query, sort, pinnedId, pinnedType, version],
   );
   const shown = list ? (filter === 'outdated' ? list.outdated : list.current) : [];
-  const total = list ? (filter === 'outdated' ? list.outdatedTotal : list.currentTotal) : 0;
+  // The pinned thread sits above the Current list and outside `threadList`'s
+  // counts, but once it has a comment it is a thread on screen like the rest,
+  // so it is counted with them. Empty, it is only the place to start one.
+  const pinnedCount = list?.pinned?.comments.length ? 1 : 0;
+  const currentTotal = (list?.currentTotal ?? 0) + pinnedCount;
+  const total = list ? (filter === 'outdated' ? list.outdatedTotal : currentTotal) : 0;
+  const shownCount = shown.length + (filter === 'current' ? pinnedCount : 0);
   // A thread row is a label line plus a truncated latest comment, and it
   // opens in place into a whole conversation: the taller of the two page
   // sizes, like every other multi-line list.
@@ -146,7 +157,7 @@ export const CommentsBrowser = ({
   return (
     <div className="mt-2">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <ListCount shown={shown.length} total={total} noun="thread" />
+        <ListCount shown={shownCount} total={total} noun="thread" />
         <SearchInput
           className="w-56"
           placeholder="Search comments…"
@@ -171,9 +182,7 @@ export const CommentsBrowser = ({
             onClick={() => setFilter('current')}
           >
             Current
-            <span className="ml-1 tabular-nums text-muted-foreground">
-              {list?.currentTotal ?? 0}
-            </span>
+            <span className="ml-1 tabular-nums text-muted-foreground">{currentTotal}</span>
           </Button>
           <Button
             size="sm"
