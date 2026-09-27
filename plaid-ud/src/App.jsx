@@ -73,7 +73,7 @@ function App() {
           <Route
             path="/login"
             element={
-              <LoginForm tagline="Universal Dependencies Tree Editor" homePath="/projects" />
+              <LoginForm tagline="Universal Dependencies tree editor" homePath="/projects" />
             }
           />
           {/* Unauthenticated by necessity: whoever follows an invite link has

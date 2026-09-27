@@ -118,7 +118,7 @@ assistantChromeTests({
   // /profile is about the person, not a project: none is in scope there at all.
   projectlessScreen: {
     path: () => '/#/profile',
-    seen: (page) => expect(page.getByText('User Profile')).toBeVisible(),
+    seen: (page) => expect(page.getByText('User profile')).toBeVisible(),
   },
   assistantTab: {
     path: () => `/#/projects/${projectId}/assistant`,

@@ -42,8 +42,7 @@ export const describeReconcile = ({
     parts.push(`added ${plural(createdSyntacticWords, 'word', 'words')} to the annotation grid`);
   if (deletedOrphans) {
     let s = `removed ${plural(deletedOrphans, 'stray word', 'stray words')}`;
-    if (deletedAnnotatedOrphans)
-      s += ` (${deletedAnnotatedOrphans} annotated, recoverable via document history)`;
+    if (deletedAnnotatedOrphans) s += ` (${deletedAnnotatedOrphans} annotated)`;
     parts.push(s);
   }
   if (dedupedSpans)
@@ -53,7 +52,7 @@ export const describeReconcile = ({
       `removed ${plural(deletedRelations, 'relation', 'relations')} crossing a sentence boundary`,
     );
   if (!parts.length) return null;
-  return `Reconcile: ${parts.join(', ')}`;
+  return `Repaired: ${parts.join(', ')}`;
 };
 
 // The rule is about dependency relations as such, so it is asked of the

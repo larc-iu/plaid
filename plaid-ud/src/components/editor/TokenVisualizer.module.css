@@ -60,10 +60,11 @@
   background: #bfdbfe;
 }
 /* A token split into more than one word (a multi-word token): teal, clear of
-   the amber and violet that mark provenance. */
+   the amber and violet that mark provenance. The border is teal-600, 3.7:1
+   on the page. */
 .badge[data-mwt='true'] {
   background: #ccfbf1;
-  border-color: #14b8a6;
+  border-color: #0d9488;
 }
 .badge[data-mwt='true']:hover {
   background: #99f6e4;

@@ -30,7 +30,7 @@ test('this app no longer has a user administration page of its own', async ({ pa
   // What this route actually shows is the login screen, which is also why the
   // two absences alone proved nothing about user administration.
   await expect(page.getByText('Plaid UD').first()).toBeVisible({ timeout: 15000 });
-  await expect(page.getByRole('heading', { name: 'Create User' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Create user' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Create user/i })).toHaveCount(0);
 });
 

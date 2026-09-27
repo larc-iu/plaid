@@ -6,6 +6,7 @@ import { isProvKey } from '../utils/provenanceUi.js';
 import { getUdLayerInfo, missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { parseCoNLLU, buildConlluHierarchy } from '../utils/conlluParser.js';
 import { SUPPRESS_KEY, planEnhancedRow } from './enhancedGraph.js';
+import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -79,12 +80,8 @@ export async function importConlluDocument(
       precomputedLayerInfo || getUdLayerInfo(await client.documents.get(createdDocumentId, true));
 
     if (!layerInfo.isConfigured) {
-      const missingLabels = missingUdLayerLabels(layerInfo.missingLayers).join(', ');
-      throw new Error(
-        missingLabels
-          ? `Project is missing required UD layer configuration: ${missingLabels}. Configure the project before importing.`
-          : 'Project is missing required UD layer configuration. Configure the project before importing.',
-      );
+      console.error('UD layers missing:', missingUdLayerLabels(layerInfo.missingLayers).join(', '));
+      throw new Error('This project is not set up for UD.');
     }
 
     const {
@@ -118,8 +115,8 @@ export async function importConlluDocument(
       if (lost > 0) {
         importWarnings.push(
           `${count(lost, 'enhanced dependency', 'enhanced dependencies')} dropped: ` +
-            'this project has no enhanced dependency layer yet. ' +
-            'One is added the first time a maintainer opens a document in it.',
+            'this project is not set up for enhanced dependencies. ' +
+            'A maintainer opening a document sets it up.',
         );
       }
     }
@@ -232,7 +229,7 @@ export async function importConlluDocument(
     // document back.
     if (morphemeIds.length !== morphemeOps.length) {
       throw new Error(
-        `Import failed: the server returned ${morphemeIds.length} morpheme ids for ` +
+        `Failed to import: the server returned ${morphemeIds.length} morpheme ids for ` +
           `${morphemeOps.length} morphemes, so the annotations could not be attached.`,
       );
     }
@@ -317,7 +314,7 @@ export async function importConlluDocument(
       const ids = createdIds(spanResults[lemmaResultIdx]);
       if (ids.length !== lemmaOps.length) {
         throw new Error(
-          `Import failed: the server returned ${ids.length} Lemma span ids for ` +
+          `Failed to import: the server returned ${ids.length} Lemma span ids for ` +
             `${lemmaOps.length} lemmas, so the dependency relations could not be attached.`,
         );
       }
@@ -417,11 +414,11 @@ export async function importConlluDocument(
         await client.documents.delete(createdDocumentId);
       } catch (delErr) {
         console.error('Failed to clean up document after import failure:', delErr);
-        // Surface the orphan id so the user knows they need to clean up
-        // manually. The original error message stays at the front.
+        // Name the partial document so the user can delete it by hand. The
+        // original error message stays at the front.
         const wrapped = new Error(
-          `${err?.message || 'Import failed'} (rollback also failed, ` +
-            `delete orphan document ${createdDocumentId} manually)`,
+          `${humanizeError(err, 'Failed to import.')} The partial document “${name.trim()}” ` +
+            'was not deleted. Delete it by hand.',
         );
         wrapped.cause = err;
         throw wrapped;

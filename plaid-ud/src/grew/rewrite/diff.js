@@ -22,6 +22,7 @@ import { liveNodes, ANCHOR } from './graph.js';
 import { GrewRuntimeError } from '../errors.js';
 import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
+import { notSetUp } from '../../domain/setupGuard.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
@@ -141,13 +142,13 @@ export function diffGraphs(before, after, layerInfo) {
   const pendingExtras = [];
   const layerIdOf = (key, what) => {
     const id = layer(key);
-    if (!id) throw new GrewRuntimeError(`This project has no ${what} layer.`);
+    if (!id) throw new GrewRuntimeError(notSetUp(`no ${what} layer`));
     return id;
   };
   const enhancedLayerId = () => {
     if (!layer('enhancedRelationLayer')) {
       throw new GrewRuntimeError(
-        'This project has no enhanced dependency layer yet. One is added the first time a maintainer opens a document in it.',
+        'This project is not set up for enhanced dependencies. A maintainer opening a document sets it up.',
       );
     }
     return layer('enhancedRelationLayer');

@@ -61,7 +61,7 @@ function QueryError({ error }) {
         ? 'Unsupported feature'
         : error.name === 'GrewRuntimeError'
           ? `Rule error${error.line ? ` (line ${error.line})` : ''}`
-          : 'Search failed';
+          : 'Failed to search';
   return (
     <Notice tone={isUnsupported ? 'warning' : 'error'} role="alert">
       <div className="flex min-w-0 flex-col gap-1">

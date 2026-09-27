@@ -443,7 +443,7 @@ export const AnnotationEditor = () => {
                   className="font-medium underline underline-offset-2"
                   to={`/projects/${projectId}/configuration`}
                 >
-                  Set up its layers
+                  Set it up
                 </Link>
                 .
               </p>

@@ -63,7 +63,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     copy: {
       successTitle: 'Parsed',
       successMessage: 'The parser finished.',
-      errorTitle: 'Parse failed',
+      errorTitle: 'Failed to parse',
       errorMessage: 'The parse did not run.',
       stoppedTitle: 'Parse',
       // This parser's write phase is one critical block with no checkpoint in
@@ -88,7 +88,7 @@ export const useEditorServices = ({ client, projectId, doc, project, acquireWrit
     copy: {
       successTitle: 'Tokenized',
       successMessage: 'The document is tokenized.',
-      errorTitle: 'Tokenize failed',
+      errorTitle: 'Failed to tokenize',
       errorMessage: 'The tokenizer did not run.',
       stoppedTitle: 'Tokenize',
     },

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
-import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
+import { NOT_SET_UP } from '../../domain/setupGuard.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -78,7 +79,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
     try {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
-      if (!info.textLayer) throw new Error('Project has no configured text layer.');
+      if (!info.textLayer) throw new Error(NOT_SET_UP);
       const loc = locale.trim();
       if (loc)
         await client.textLayers.setConfig(info.textLayer.id, UD_NAMESPACE, 'tokenizerLocale', loc);
@@ -87,7 +88,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
       notifySuccess('Tokenizer locale saved');
     } catch (err) {
       console.error('Failed to save tokenizer locale:', err);
-      notifyError(humanizeError(err, 'Failed to save tokenizer locale.'));
+      notifyError(err, 'Failed to save the tokenizer locale');
     } finally {
       setSaving(false);
     }
@@ -121,7 +122,7 @@ const TokenizerLocaleCard = ({ project, onSaved }) => {
           </form>
         ) : (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set up the project&apos;s UD layers before setting a tokenizer locale.
+            Set the project up for UD first.
           </p>
         )}
       </CardContent>

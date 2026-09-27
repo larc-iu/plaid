@@ -54,7 +54,7 @@ describe('the Grew query box’s error notice', () => {
     const view = await mount(new Error('Could not reach the server'));
     const notice = view.container.querySelector('[data-tone]');
     expect(notice.getAttribute('data-tone')).toBe('error');
-    expect(notice.textContent).toBe('Search failedCould not reach the server');
+    expect(notice.textContent).toBe('Failed to searchCould not reach the server');
     await view.unmount();
   });
 

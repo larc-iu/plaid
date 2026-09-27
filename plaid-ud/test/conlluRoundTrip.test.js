@@ -82,7 +82,7 @@ test('a document whose project is not set up for UD exports a sentinel, and buil
     return [];
   };
 
-  assert.equal(doc.toConllu(), '# Project configuration incomplete: UPOS layer');
+  assert.equal(doc.toConllu(), '# This project is not fully set up for UD.');
   assert.equal(built, 0);
 });
 

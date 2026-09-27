@@ -55,7 +55,7 @@ http://localhost:8080/ud/
 
 Sign in with the email address and password your project administrator gave you.
 Your session stays signed in until the token expires or you log out.
-Your name at the top right opens your account, with your profile and **Logout**.
+Your name at the top right opens your account, with your **Profile** and **Sign out**.
 
 The editor has three levels you move between:
 
@@ -63,7 +63,7 @@ The editor has three levels you move between:
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
-Project-wide tabs sit alongside the document list inside each project: `Search`, `Assistant`, `Validation`, `Activity`, `Project Settings` and `Import & Export`. `Validation`, `Activity` and `Project Settings` are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
+Project-wide tabs sit alongside the document list inside each project: `Search`, `Guidelines`, `Assistant`, `Validation`, `Activity`, `Settings` and `Import and export`. `Validation`, `Activity` and `Settings` are for maintainers, and `Assistant` appears only when one is running. The assistant is also a panel you can open beside any screen (see <<_the_panel>>).
 
 = Projects
 
@@ -102,7 +102,7 @@ A new document starts empty. You give it a name, then add text in the Text Edito
 
 If you already have annotated data, you can import it instead of typing it in.
 
-Open the project's **Import & Export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
+Open the project's **Import and export** tab and drop `.conllu` files on it, one or many, or a ZIP of them.
 Each `# newdoc` boundary inside a file becomes its own document.
 The same tab exports the whole project as a ZIP of `.conllu` files.
 
@@ -129,7 +129,7 @@ Use **Save** to save edits to the raw text without re-tokenizing.
 
 There are two ways to turn saved text into tokens, and both are runs (see <<_services>>):
 
-* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_customization,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
+* **Tokenize** segments the text into sentences and tokens. The built-in method uses your project's tokenizer locale, falling back to the project's language (both set in <<_settings,project settings>>, and language-agnostic when neither is set). It produces tokens only. You add the annotations and dependency tree yourself in the Annotate tab.
 * **Parse** does the whole job at once. Where your project has a parsing service connected, for example the bundled Stanza parser, it fills in the entire document: sentences, tokens, words, every annotation, and the dependency tree. This gives you a first draft to correct by hand, and is the fastest way to get started.
 
 Each button opens a dialog naming the method it will use and the options that method offers.
@@ -220,7 +220,7 @@ A treebank records more than annotations. CoNLL-U keeps those notes as comment l
 
 **About a sentence**, under the sentence in the Annotate view, behind **Edit metadata** in the row of actions below the grid. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
 
-Which fields a project offers is a maintainer's choice, under **Settings > UD Customization**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
+Which fields a project offers is a maintainer's choice, under **Settings > UD settings**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
 
 Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared instead of quietly exporting forever.
 
@@ -284,12 +284,12 @@ If a prediction is already correct, you don't have to retype it:
 
 The **Export** tab shows the current document as CoNLL-U, with **Copy** and **Download**.
 
-To export a whole project, use its **Import & Export** tab, which packages every document into one ZIP of `.conllu` files.
+To export a whole project, use its **Import and export** tab, which packages every document into one ZIP of `.conllu` files.
 
 = Guidelines
 
 The **Guidelines** tab is the project's own annotation manual: the conventions the people working on it have agreed to, written down where everyone can read them.
-The controlled value lists under Customization say which tags a column takes.
+The controlled value lists under UD settings say which tags a column takes.
 Guidelines are for what a list of tags cannot say: which of two analyses this treebank uses for a construction, what belongs in the lemma column, how a hard case was decided and why.
 
 Everyone who can open the project can read them, and anyone who can annotate can write them.
@@ -508,18 +508,18 @@ Projects are shared by adding members with a role:
 * **Writer**: can edit documents and annotations.
 * **Maintainer**: can also change project settings, manage members, and delete the project.
 
-Add members from the project's **Users & Permissions** settings by searching for a name or email address.
+Add members from the project's **Access** settings by searching for a name or email address.
 When you only have Reader access, the editor shows everything but its controls are inert.
 
 Each member also has a **Review work** checkbox, independent of their role.
 Tick it and everything that person enters is marked as needing review until someone else confirms it (see <<_machine_vs_human_annotations>>).
 The mark is shared with every Plaid app on the project.
 
-== Customization
+== Settings
 
-A project's maintainers can tailor the annotation scheme from the project's settings tabs:
+A project's maintainers can tailor the annotation scheme from the project's **Settings** tab:
 
-* **UD Customization**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
+* **UD settings**: the controlled vocabularies (UPOS, XPOS, DEPREL tags), tag and relation **colors**, the **feature inventory** offered in the Features column, and the **document** and **sentence fields** the project keeps notes in (see <<_metadata>>). All vocabularies start from the standard universal sets and can be extended or replaced.
 * **General**: the project's **language**, the **tokenizer locale** used by **Tokenize**, and project deletion. The language is a BCP-47 tag such as `en`, `de` or `zh-Hans`. It is the language a connected parser starts on, and the locale **Tokenize** segments with unless the tokenizer locale is set to something more specific.
 
 === Suggestions or rules
@@ -617,7 +617,7 @@ The link:manual.html#_services[Services chapter of the Plaid manual] explains ho
 
 == Scripting
 
-From the project's **Access Tokens** settings, and from your user profile, you can create named **API tokens** for scripts and services.
+From the project's **Access** settings, and from your user profile, you can create named **API tokens** for scripts and services.
 A token carries your permissions and does not expire, and actions taken with one are attributed to it in the history.
 
 For writing your own scripts against a project, see the link:api-py.html[Python client] and link:api-js.html[JavaScript client] references.

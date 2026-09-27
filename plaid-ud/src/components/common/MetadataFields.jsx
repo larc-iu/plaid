@@ -80,7 +80,7 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
             size="icon"
             className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
             aria-label={`Remove ${name}`}
-            title={declared ? `Clear ${name}. The field stays.` : `Remove ${name}`}
+            title={declared ? `Clear the value of ${name}` : `Remove ${name}`}
             onClick={() => {
               cancelledRef.current = false;
               setDraft('');

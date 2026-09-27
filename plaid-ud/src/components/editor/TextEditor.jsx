@@ -5,7 +5,6 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { cpSlice } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
-  missingUdLayerLabels,
   hasForeignSubstrateParticipants,
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
@@ -257,9 +256,7 @@ export const TextEditor = () => {
         layerInfo.morphemeTokenLayer.parentTokenLayer !== layerInfo.wordTokenLayer.id),
   );
 
-  const missingLayerLabels = !layerInfo.isConfigured
-    ? missingUdLayerLabels(layerInfo.missingLayers)
-    : [];
+  const setupIncomplete = !layerInfo.isConfigured;
 
   return (
     <div>
@@ -267,9 +264,9 @@ export const TextEditor = () => {
         <Notice className="mb-3">Read-only. You have reader access to this project.</Notice>
       )}
 
-      {missingLayerLabels.length > 0 && (
+      {setupIncomplete && (
         <Notice tone="warning" className="mb-3">
-          Project configuration incomplete: {missingLayerLabels.join(', ')}.
+          This project is not fully set up. A project maintainer can finish setup.
         </Notice>
       )}
 
@@ -284,7 +281,7 @@ export const TextEditor = () => {
           widest row of buttons, and on a phone that pushed the page sideways. */}
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-4">
-          <h4 className="text-base font-semibold">Text Content</h4>
+          <h4 className="text-base font-semibold">Text</h4>
           <Textarea
             ref={textareaRef}
             value={textContent}

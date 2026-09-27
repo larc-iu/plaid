@@ -26,6 +26,7 @@ import {
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
+import { notSetUp } from './setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
   interSententialRelationIds,
@@ -246,7 +247,7 @@ export class ConlluDocument extends DocumentModel {
       return false;
     }
     if (!sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError('Token layers are not fully configured.');
+      this.setError(notSetUp('UD token layers missing'));
       return false;
     }
     if (sentenceTokens.length || wordTokens.length || morphemeTokens.length) {
@@ -463,7 +464,7 @@ export class ConlluDocument extends DocumentModel {
   // would discard the just-loaded doc). A single-flight guard plus the editor's
   // per-document gate keep StrictMode's double-invoke from double-healing (which
   // would otherwise seed duplicate syntactic-words).
-  // Every heal write folds under one "Reconcile layers on open" audit entry
+  // Every heal write folds under one "Repair on open" audit entry
   // (no entry at all when nothing needed healing — groups are created lazily
   // by the first write).
   describeReconcile(result) {
@@ -631,7 +632,7 @@ export class ConlluDocument extends DocumentModel {
     const { textLayer, morphemeTokenLayer, lemmaLayer, formLayer } = this.layerInfo;
     const text = textLayer?.text;
     if (!morphemeTokenLayer?.id || !text?.id) {
-      this.setError(`${label}: Word layer not configured`);
+      this.setError(notSetUp('UD word layer missing'));
       return false;
     }
     if (!this._canWrite(label)) return false;
@@ -812,7 +813,7 @@ export class ConlluDocument extends DocumentModel {
     const sentenceTokens = sentenceTokenLayer?.tokens || [];
 
     if (!text?.id || !sentenceTokenLayer?.id || !wordTokenLayer?.id || !morphemeTokenLayer?.id) {
-      this.setError('Token layers are not fully configured.');
+      this.setError(notSetUp('UD token layers missing'));
       return false;
     }
 
@@ -1185,11 +1186,11 @@ export class ConlluDocument extends DocumentModel {
   async createRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.relationLayer) {
-      this.setError('Relation layer not found.');
+      this.setError(notSetUp('UD relation layer missing'));
       return false;
     }
     if (!info.lemmaLayer) {
-      this.setError('Lemma layer not found.');
+      this.setError(notSetUp('UD lemma layer missing'));
       return false;
     }
 
@@ -1294,11 +1295,11 @@ export class ConlluDocument extends DocumentModel {
   async createEnhancedRelation(sourceSpanId, targetSpanId, deprel) {
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError('Enhanced relation layer not found.');
+      this.setError(notSetUp('UD enhanced relation layer missing'));
       return false;
     }
     if (!info.lemmaLayer) {
-      this.setError('Lemma layer not found.');
+      this.setError(notSetUp('UD lemma layer missing'));
       return false;
     }
 
@@ -1381,7 +1382,7 @@ export class ConlluDocument extends DocumentModel {
     const relationId = settledId(rawRelationId);
     const info = this.layerInfo;
     if (!info.enhancedRelationLayer) {
-      this.setError('Enhanced relation layer not found.');
+      this.setError(notSetUp('UD enhanced relation layer missing'));
       return false;
     }
     const basic = (info.relationLayer?.relations || []).find((r) => r.id === relationId);

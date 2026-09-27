@@ -1,5 +1,4 @@
 import { isProvKey } from '../utils/provenanceUi.js';
-import { missingUdLayerLabels } from '../utils/udLayerUtils.js';
 import { enhancedEdges, isSuppressor, serializeDeps } from './enhancedGraph.js';
 
 // CoNLL-U export: the sentence rows and the layer info in, the file out.
@@ -44,15 +43,15 @@ export function conlluLosses({ sentences } = {}) {
   return out;
 }
 
+// What `buildConllu` returns, in place of a file, for a document it cannot
+// write. The export screen lists a document skipped for one of these, with the
+// text after the `#` as the reason.
+export const NOT_SET_UP_FILE = '# This project is not fully set up for UD.';
+export const NOT_TOKENIZED_FILE = '# No tokens.';
+
 export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) {
-  if (!info.isConfigured) {
-    const missing = missingUdLayerLabels(info.missingLayers);
-    const missingList = missing.length > 0 ? missing.join(', ') : 'required UD layers';
-    return `# Project configuration incomplete: ${missingList}`;
-  }
-  if (!sentenceData || sentenceData.length === 0) {
-    return '# No tokenized content available';
-  }
+  if (!info.isConfigured) return NOT_SET_UP_FILE;
+  if (!sentenceData || sentenceData.length === 0) return NOT_TOKENIZED_FILE;
 
   // CoNLL-U is line- and tab-delimited with no escape of its own, so a tab
   // inside a value would make an eleven-column row and a newline would make a

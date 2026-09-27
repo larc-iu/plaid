@@ -310,7 +310,9 @@ describe('a parse run that fails outright', () => {
       'record:clear',
       'lock:release',
     ]);
-    expect(toasts).toEqual([{ kind: 'error', title: 'Parse failed', message: 'The parser broke' }]);
+    expect(toasts).toEqual([
+      { kind: 'error', title: 'Failed to parse', message: 'The parser broke' },
+    ]);
     expect(readRecord()).toBe(null);
     // Said once. The hook logs its own catch rather than toasting again.
     expect(toasts.filter((t) => t.kind === 'error')).toHaveLength(1);
@@ -380,7 +382,7 @@ describe('a run someone stopped', () => {
       {
         kind: 'info',
         title: 'Tokenize',
-        message: 'Stopped. What it had already written stays.',
+        message: 'Stopped partway. What ran before the stop is in the document.',
       },
     ]);
     await view.unmount();

@@ -249,8 +249,8 @@ test('a project with no enhanced relation layer yet says what it dropped', async
   // One extra head, a relabel that is a suppressor and an extra, and one row
   // whose `_` leaves its tree relation out.
   assert.deepEqual(out.importWarnings, [
-    '4 enhanced dependencies dropped: this project has no enhanced dependency layer yet. ' +
-      'One is added the first time a maintainer opens a document in it.',
+    '4 enhanced dependencies dropped: this project is not set up for enhanced dependencies. ' +
+      'A maintainer opening a document sets it up.',
   ]);
 });
 

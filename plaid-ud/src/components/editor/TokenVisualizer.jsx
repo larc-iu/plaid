@@ -254,7 +254,7 @@ export const TokenVisualizer = ({
     end = utf16ToCp(text, end);
 
     if (wordTokens.some((w) => start < w.end && end > w.begin)) {
-      reportError('Cannot create token: selection overlaps an existing token');
+      reportError('The selection overlaps an existing token.');
       return;
     }
     onWordCreate(start, end);

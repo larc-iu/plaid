@@ -28,7 +28,10 @@ export const ExportEditor = () => {
     try {
       await navigator.clipboard.writeText(conlluContent);
     } catch {
-      notifyError('The clipboard is not available here. Download the file instead.', 'Not copied');
+      notifyError(
+        'The clipboard is not available here. Download the file instead.',
+        'Failed to copy',
+      );
       return;
     }
     setCopied(true);

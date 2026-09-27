@@ -70,7 +70,9 @@ test('a history that cannot be read says so, rather than "No entries"', async ({
   await page.getByRole('button', { name: 'History' }).click();
 
   // The drawer's own error box: the heading it alone renders, and the reason.
-  await expect(page.getByText('Error', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Failed to load the history', { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
   await expect(
     page.getByText('The server hit an unexpected error. Try again in a moment.').first(),
   ).toBeVisible();

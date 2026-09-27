@@ -5,15 +5,14 @@ import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
 import { humanizeError } from '../../utils/feedback.jsx';
+import { NOT_SET_UP_FILE, NOT_TOKENIZED_FILE } from '../../domain/conlluSerialize.js';
 import { ProjectImportExportPage } from '@ui/components/shared/ProjectImportExportPage.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 
 // `toConllu()` returns a `#`-prefixed sentinel (not a throw) for documents that
 // can't be serialized (project unconfigured or no tokenized content). A real
 // export begins with `# newdoc id = …`.
-const isExportError = (t) =>
-  t.startsWith('# Project configuration incomplete') ||
-  t.startsWith('# No tokenized content available');
+const isExportError = (t) => t === NOT_SET_UP_FILE || t === NOT_TOKENIZED_FILE;
 
 // Run `fn` over `items` with at most `limit` in flight. `onProgress(done)`
 // fires after each completion.
@@ -93,7 +92,7 @@ const exportDocuments = async ({ client, projectId, onProgress }) => {
           entries.push({ name: d.name, text: t });
         }
       } catch (err) {
-        skipped.push({ name: d.name, reason: humanizeError(err, 'Failed to load') });
+        skipped.push({ name: d.name, reason: humanizeError(err, 'Failed to load it.') });
       }
     },
     (done) => onProgress(done, docs.length),

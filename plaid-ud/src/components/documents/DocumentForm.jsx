@@ -54,7 +54,7 @@ export const DocumentForm = ({ projectId, documents, isOpen, onClose }) => {
       // with it) unmounts, so there's no need to reset it.
       navigate(`/projects/${projectId}/documents/${created.id}/edit`);
     } catch (err) {
-      setError(isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create document');
+      setError(isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create the document.');
       console.error('Error creating document:', err);
       setLoading(false);
     }

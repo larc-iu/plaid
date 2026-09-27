@@ -84,7 +84,7 @@ describe('the skipped-document rows after an export', () => {
     });
 
     const row = view.container.querySelector('li')?.textContent ?? '';
-    expect(row).toBe('Doc one: Could not reach the server. Check your connection and try again.');
+    expect(row).toBe('Doc one: Failed to reach the server. Check your connection and try again.');
     await view.unmount();
   });
 });
@@ -115,7 +115,7 @@ describe('the import card on a project with no UD layers', () => {
     const view = await renderComponent(app);
     await view.step(settle);
     const link = [...view.container.querySelectorAll('a')].find(
-      (a) => a.textContent.trim() === 'Set up its layers',
+      (a) => a.textContent.trim() === 'Set it up',
     );
     expect(link).not.toBe(undefined);
     expect(link.getAttribute('href')).toBe('/projects/A/configuration');
@@ -128,9 +128,7 @@ describe('the import card on a project with no UD layers', () => {
     await view.step(settle);
     expect(view.container.textContent).toContain('A project maintainer can set it up.');
     expect(
-      [...view.container.querySelectorAll('a')].some(
-        (a) => a.textContent.trim() === 'Set up its layers',
-      ),
+      [...view.container.querySelectorAll('a')].some((a) => a.textContent.trim() === 'Set it up'),
     ).toBe(false);
     await view.unmount();
   });

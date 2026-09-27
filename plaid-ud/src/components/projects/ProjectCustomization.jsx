@@ -15,7 +15,7 @@ import {
   DOCUMENT_METADATA_KEY,
   SENTENCE_METADATA_KEY,
 } from '../../utils/udMetadata.js';
-import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { RotateCcw, Trash2 } from 'lucide-react';
 import { TagList } from '../common/TagList.jsx';
@@ -77,7 +77,7 @@ const snapshot = (state) =>
     ),
   });
 
-// "UD Customization" tab: project-specific controlled vocabularies, colors, and
+// "UD settings" section: project-specific controlled vocabularies, colors, and
 // the feature inventory. Everything here is local state until you press Save —
 // nothing round-trips on a keystroke. These settings attach to the UD annotation
 // layers, so the project must be configured before they can be edited. (The
@@ -284,10 +284,10 @@ export const ProjectCustomization = () => {
       );
 
       await fetchProject();
-      notifySuccess('Customization saved');
+      notifySuccess('UD settings saved');
     } catch (err) {
       console.error('Failed to save customization:', err);
-      notifyError(humanizeError(err, 'Failed to save customization.'));
+      notifyError(err, 'Failed to save the UD settings');
     } finally {
       setSaving(false);
     }
@@ -306,8 +306,7 @@ export const ProjectCustomization = () => {
   if (!info.isConfigured) {
     return (
       <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        Set up the project&apos;s UD layers first. Vocabulary and color settings attach to those
-        annotation layers.
+        Set the project up for UD first.
       </p>
     );
   }
@@ -575,7 +574,7 @@ export const ProjectCustomization = () => {
 
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={!dirty || saving}>
-          {saving ? 'Saving…' : 'Save customization'}
+          {saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </div>

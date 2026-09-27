@@ -11,7 +11,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { notifyError, notifySuccess, humanizeError } from '../../utils/feedback.jsx';
+import { notifyError, notifySuccess } from '../../utils/feedback.jsx';
 import { getUdLayerInfo, UD_NAMESPACE } from '../../utils/udLayerUtils.js';
 import { baseRel } from '../../utils/udVocab.js';
 import { MODES } from '../../utils/udVocabMode.js';
@@ -53,7 +53,7 @@ const Occurrences = ({ found, projectId }) => (
   <div className="border-t bg-muted/20 px-3 py-2">
     {!found && <p className="text-sm text-muted-foreground">Finding it…</p>}
     {found === 'failed' && (
-      <p className="text-sm text-destructive">Could not search for this value. Try again.</p>
+      <p className="text-sm text-destructive">Failed to search for this value.</p>
     )}
     {Array.isArray(found) &&
       found.map((doc) => (
@@ -135,7 +135,7 @@ export const ProjectValidation = () => {
       setReport(out);
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(humanizeError(err, 'Could not read the project.'), 'Scan failed');
+      notifyError(err, 'Failed to read the project');
     } finally {
       setBusy(false);
     }
@@ -212,8 +212,8 @@ export const ProjectValidation = () => {
         notifySuccess(`${field.label} updated`);
         window.location.reload();
       } catch (err) {
-        console.error('Could not add the values:', err);
-        notifyError(humanizeError(err, 'Could not add the values.'), 'Not saved');
+        console.error('Failed to add the values:', err);
+        notifyError(err, 'Failed to add the values');
       } finally {
         setAdding(null);
       }
@@ -240,7 +240,7 @@ export const ProjectValidation = () => {
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set up the project&apos;s UD layers first.
+            Set the project up for UD first.
           </p>
         )}
 

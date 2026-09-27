@@ -161,9 +161,9 @@ const bootstrap = async (client, projectName) => {
       console.error('Failed to roll back partially-created project:', deleteErr);
       const original = err?.message || 'Unknown error';
       const dErr = deleteErr?.message || 'Unknown error';
+      console.error('Setup failed:', original, 'Delete failed:', dErr);
       const wrapped = new Error(
-        `Project setup failed (${original}) and the rollback failed too (${dErr}). ` +
-          `Delete project ${projectId} manually.`,
+        `Failed to set up the project, and the partial project was not deleted. Delete “${projectName.trim()}” by hand.`,
       );
       wrapped.cause = err;
       throw wrapped;
@@ -313,7 +313,7 @@ export const ensureEnhancedRelationLayer = async (client, lemmaLayer) => {
     (layer) => layer.config?.[UD_NAMESPACE]?.[UD_ENHANCED_RELATION_CONFIG_KEY] === true,
   );
   if (existing) return null;
-  return client.withOperation('Add the enhanced dependency layer', async () => {
+  return client.withOperation('Add enhanced dependencies', async () => {
     const created = await client.relationLayers.create(lemmaLayer.id, 'Enhanced Dependencies');
     const layerId = createdId(created);
     await client.relationLayers.setConfig(

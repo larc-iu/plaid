@@ -11,7 +11,7 @@ import { ProjectDocumentsPage } from '@ui/components/shared/ProjectDocumentsPage
 // (see `adoptSubstrate`).
 const SETUP = {
   app: 'UD',
-  note: "UD's layers are added beside what is already here. The text and the tokens are left as they are.",
+  note: 'Adds UD annotation. The text and tokens do not change.',
   adopt: (client, project) => adoptSubstrate(client, project),
 };
 

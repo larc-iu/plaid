@@ -82,7 +82,7 @@ export const SearchPage = () => {
         setDocuments(docs || []);
         setLoadError('');
       } catch (err) {
-        if (!cancelled) setLoadError(humanizeError(err, 'This project could not be loaded.'));
+        if (!cancelled) setLoadError(humanizeError(err, 'Failed to load the project.'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -109,7 +109,7 @@ export const SearchPage = () => {
         message: 'The query was too broad and timed out. Add more constraints.',
       });
     } else {
-      setError({ name: 'ServerError', message: humanizeError(err, 'The request failed.') });
+      setError({ name: 'ServerError', message: humanizeError(err, 'Failed to search.') });
     }
   }, []);
 
@@ -226,12 +226,12 @@ export const SearchPage = () => {
         setProgress,
       );
       const summary = applySummary(out, (failed) => humanizeError(failed));
-      if (out.failed) notifyError(summary);
+      if (out.failed) notifyError(summary, 'Failed to apply the changes');
       else notifySuccess(summary);
       // Show what the rules would still change now that these are applied.
       await runPreview();
     } catch (err) {
-      notifyError(humanizeError(err, 'The changes could not be applied.'));
+      notifyError(err, 'Failed to apply the changes');
     } finally {
       setProgress('');
       setApplying(false);
@@ -272,7 +272,7 @@ export const SearchPage = () => {
                     className="text-primary underline underline-offset-4"
                     to={`/projects/${projectId}/configuration`}
                   >
-                    Set up its layers
+                    Set it up
                   </Link>
                   .
                 </p>

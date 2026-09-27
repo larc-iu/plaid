@@ -53,7 +53,7 @@ beforeEach(() => {
 describe('UD customization', () => {
   it('keeps Save disabled until something on the tab changes, and again once undone', async () => {
     const view = await mount();
-    const save = button(view.container, 'Save customization');
+    const save = button(view.container, 'Save');
     expect(save.disabled).toBe(true);
     await view.step(() => button(view.container, 'Add feature').click());
     expect(save.disabled).toBe(false);

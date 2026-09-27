@@ -383,7 +383,7 @@ def test_a_project_without_the_substrate_is_refused_once_and_named():
     helper = servicetest.run(service, REQUEST)
 
     assert helper.errors == [
-        'Stanza Parser: Project is missing the sentence/word/morpheme token layers']
+        'Stanza Parser: This project is not fully set up. A project maintainer can finish setup.']
     assert service.client.writes == []
 
 
@@ -392,7 +392,7 @@ def test_an_empty_document_is_refused_once():
     helper = servicetest.run(service, REQUEST)
 
     assert len(helper.errors) == 1
-    assert helper.errors[0].endswith('Text content is empty for document d1')
+    assert helper.errors[0].endswith('The document has no text.')
     assert service.client.writes == []
 
 

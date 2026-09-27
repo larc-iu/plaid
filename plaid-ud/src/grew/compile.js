@@ -108,7 +108,7 @@ class Compiler {
     if (!layer || !layer.id) {
       throw new GrewUnsupportedError(
         `layer:${feature || key}`,
-        `This project has no ${feature || key} layer. That constraint cannot be matched here.`,
+        `This project does not record ${feature || key}. That constraint cannot be matched here.`,
       );
     }
     return layer.id;

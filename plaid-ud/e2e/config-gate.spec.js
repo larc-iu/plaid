@@ -132,7 +132,7 @@ test('a document opened directly says so and offers the way, without redirecting
 }) => {
   await page.goto(`/#/projects/${projectId}/documents/${documentId}/annotate`);
   await expect(page.getByText('Not set up for UD')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Set up its layers' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Set it up' })).toBeVisible();
   // The point of the change: it stays put instead of bouncing the reader out.
   await expect(page).toHaveURL(new RegExp(`/documents/${documentId}/annotate$`));
 });
