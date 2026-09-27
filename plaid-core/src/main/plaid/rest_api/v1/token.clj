@@ -140,7 +140,7 @@
                                    "keys are:\n<body>id</body>, the token's id\n"
                                    "<body>metadata</body>, a list of metadata ops, as for PATCH on one entity's metadata\n"
                                    "The tokens may lie in several documents of one project; every document touched has "
-                                   "its version bumped and its new version is returned in X-Document-Versions. An unknown "
+                                   "its version bumped and its new version is returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). An unknown "
                                    "id refuses the whole update. <query>document-version</query> names one document, so it "
                                    "is refused when the entries reach more than one.")
                      :middleware [[pra/wrap-writer-required bulk-update-get-project-id]

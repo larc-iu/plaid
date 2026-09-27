@@ -117,7 +117,7 @@
                                    "<body>form</body>, an optional new form (set only when the key is present)\n"
                                    "<body>metadata</body>, an optional list of metadata ops, as for PATCH on one entry's metadata\n"
                                    "Entries may target different vocab layers; the user must have write access to each, and maintainer rights on the vocabulary of every entry whose form changes. An unknown id refuses the whole update, and an id may appear only once. "
-                                   "Only an entry whose form actually changes restates the documents linking it; every document so restated has its version bumped, and their new versions are returned in X-Document-Versions.")
+                                   "Only an entry whose form actually changes restates the documents linking it; every document so restated has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
                      ;; Same two-step gate as the other bulk verbs: the coarse
                      ;; vocab-WRITER check runs on the first entry's layer, and
                      ;; the handler then checks every distinct layer.
@@ -144,7 +144,7 @@
                                           {:status (or code 500)
                                            :body {:error (or error "Internal server error")}})))))}
              :delete {:summary (str "Delete multiple vocab items in a single operation. Provide an array of IDs. Needs maintainer rights on the vocabulary of every item. "
-                                    "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions.")
+                                    "Each item's descendant vocab links are deleted too. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted).")
                       :middleware [[pra/wrap-vocab-writer-required bulk-get-layer-id-from-item]]
                       :parameters {:body [:sequential :uuid]}
                       :handler (fn [{{ids :body} :parameters db :db user-id :user/id :as req}]
@@ -172,7 +172,7 @@
                            :body {:error "Vocab item not found"}})))}
 
      :patch {:summary (str "Update a vocab item's form. A document read carries the entry's form on "
-                           "every link to it, so a rename restates those documents. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions. "
+                           "every link to it, so a rename restates those documents. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
                            "Changing the form needs maintainer rights on the vocabulary.")
              :middleware [[pra/wrap-vocab-writer-required get-vocab-id-from-item]]
              :parameters {:body [:map [:form string?]]}
@@ -193,7 +193,7 @@
                                 {:status (or (:code result) 500)
                                  :body {:error (:error result)}}))))}
 
-     :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions. "
+     :delete {:summary (str "Delete a vocab item, and every link to it. Every document holding a link to the entry has its version bumped, and their new versions are returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). "
                             "Needs maintainer rights on the vocabulary.")
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id-from-item maintainers-only]]
               :handler (fn [{{{:keys [id]} :path} :parameters

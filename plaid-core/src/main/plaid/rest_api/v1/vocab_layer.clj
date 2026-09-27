@@ -185,7 +185,7 @@
                           "<body>metadata</body> say what changed, <body>total</body> is zero when nothing did. "
                           "With <query>dry-run</query> true nothing is written and the summary says what would "
                           "change. A form set back restates every document linking the entry: their versions are "
-                          "bumped and returned in X-Document-Versions. Requires maintainer rights on the vocabulary.")
+                          "bumped and returned in X-Document-Versions (past fifty documents, only their number, in X-Document-Versions-Omitted). Requires maintainer rights on the vocabulary.")
             :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
             :parameters {:query [:map
                                  [:as-of :string]
