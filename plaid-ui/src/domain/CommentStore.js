@@ -11,6 +11,8 @@
 // never bump the document version, and they are deliberately absent from the
 // document read. Nothing in here goes through `client.withOperation`.
 
+import { clipText } from '../lib/text.js';
+
 // Comments sort oldest-first by (createdAt, id), matching the server's keyset
 // order so a locally-inserted comment and a re-fetched page agree.
 const byCreated = (a, b) =>
@@ -339,10 +341,9 @@ export class CommentStore {
   }
 
   async _post(entityType, entityId, text, anchorLabel) {
-    const caption =
-      String(anchorLabel ?? '')
-        .trim()
-        .slice(0, 200) || null;
+    // The server's ceiling is 200 code points. A UTF-16 slice could cut an
+    // emoji in half, and the server refuses the lone surrogate that leaves.
+    const caption = clipText(String(anchorLabel ?? '').trim(), 200).trim() || null;
 
     const optimistic = {
       id: tempId(),

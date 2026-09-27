@@ -205,6 +205,21 @@ describe('CommentStore writes', () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  // A UTF-16 slice at 200 cut the emoji at units 199-200 in half, and the
+  // server refuses the lone surrogate that leaves.
+  it('shortens a long caption without cutting an emoji in half', async () => {
+    const client = fakeClient();
+    const store = makeStore(client);
+    await store.load();
+    const label = 'a'.repeat(199) + '\u{1F600}' + 'b'.repeat(50);
+
+    await store.post('token', 't1', 'hello', label);
+
+    const sent = client.comments.create.mock.calls[0][3].anchorLabel;
+    expect(sent).toBe('a'.repeat(199) + '\u{1F600}');
+    expect(sent.codePointAt(199)).toBe(0x1f600);
+  });
+
   it('refuses to post an empty or whitespace-only body without calling the server', async () => {
     const client = fakeClient();
     const store = makeStore(client);
