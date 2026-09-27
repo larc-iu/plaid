@@ -777,24 +777,30 @@ describe('saves that keep failing', () => {
     await settle(30);
     expect(document.activeElement).toBe(c);
     expect(c.value).toBe('CCC');
-    expect(creates).toBe(1);
+    // a, then b in its own turn behind a's refusal.
+    expect(creates).toBe(2);
     expect(doc.isSaving).toBe(false);
   });
 });
 
-describe('edits not saved behind a refused one', () => {
-  it('come back into their cells, stay through a render, and are sent again on leaving', async () => {
+describe('an edit made behind a refused one', () => {
+  it('is sent, and only the refused one comes back into its cell', async () => {
     // Gloss a (refused after a moment), then b while a is on its way. The
-    // refusal's refetch takes both off the screen, and b is never sent. Both
-    // values come back, b without focus, since focus is in a cell with typed
-    // text.
+    // refusal's refetch takes both off the screen, b is still sent, and only
+    // a comes back, without focus, since focus is in a cell with typed text.
     const { doc, client } = mount();
-    // The server has neither gloss, so the refetch takes both off the screen.
     const before = JSON.parse(JSON.stringify(doc.raw));
     client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const create = client.spans.create;
+    const sent = [];
     let hold;
-    client.spans.create = async () => {
+    let first = true;
+    client.spans.create = async (...args) => {
+      if (!first) {
+        sent.push(args);
+        return create(...args);
+      }
+      first = false;
       await new Promise((r) => (hold = r));
       throw new Error('refused');
     };
@@ -815,23 +821,11 @@ describe('edits not saved behind a refused one', () => {
     client.spans.create = create;
     expect(document.activeElement).toBe(c);
     expect(a.value).toBe('AAA');
-    expect(b.value).toBe('BBB');
-    const glossOn = (id) =>
-      doc.sentences[0].tokens.flatMap((t) => t.morphemes).find((m) => m.id === id).annotations
-        .Gloss;
-    expect(glossOn('m-2')).toBeFalsy();
-    // Another edit re-renders the grid. The values put back stay.
-    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
-    await settle();
-    expect(b.value).toBe('BBB');
-    // a's stored value moved on (PL), so the cell shows it.
-    expect(a.value).toBe('PL');
-    // Focusing b and leaving it sends BBB.
-    focus(b);
-    expect(b.dataset.orig).toBe('');
-    b.blur();
-    await settle(30);
-    expect(glossOn('m-2').value).toBe('BBB');
+    expect(a.igtUnsent).toBeTruthy();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain('BBB');
+    expect(b.igtUnsent).toBeFalsy();
+    expect(doc.isSaving).toBe(false);
   });
 });
 

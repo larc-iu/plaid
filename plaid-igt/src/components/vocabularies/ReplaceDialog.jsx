@@ -172,7 +172,7 @@ export const ReplaceDialog = ({
         setFind('');
         setRepl('');
         onOpenChange(false);
-      } else if (error) {
+      } else {
         console.error('Replace failed:', error);
         notifyError(
           humanizeError(
@@ -180,11 +180,6 @@ export const ReplaceDialog = ({
             `Replaced ${done.toLocaleString()} of ${writes.length.toLocaleString()}.`,
           ),
           'Replace failed',
-        );
-      } else {
-        notifyError(
-          'An edit made before this was not saved. Nothing was replaced.',
-          'Not replaced',
         );
       }
     } finally {

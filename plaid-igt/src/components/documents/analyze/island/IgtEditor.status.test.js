@@ -47,6 +47,9 @@ afterEach(() => {
 // Whether the document's write queue is sending, as the editor reads it.
 const saving = (doc, value) =>
   Object.defineProperty(doc, 'isSaving', { configurable: true, get: () => value });
+// Whether a refetch is waiting for the server to be reachable again.
+const offline = (doc, value) =>
+  Object.defineProperty(doc, 'isOffline', { configurable: true, get: () => value });
 
 describe('the save-status pill', () => {
   const pill = () => host.querySelector('.igt-status');
@@ -83,5 +86,32 @@ describe('the save-status pill', () => {
     expect(pill().dataset.state).toBe('idle');
     expect(pill().textContent).toBe('');
     vi.useRealTimers();
+  });
+
+  it('says the connection is gone while a refetch waits for it, and saving once it is back', () => {
+    const doc = mount();
+    saving(doc, true);
+    offline(doc, true);
+    editor._syncStatus();
+    expect(pill().dataset.state).toBe('offline');
+    expect(pill().textContent).toBe('Offline, retrying');
+    editor._render(true);
+    expect(pill().textContent).toBe('Offline, retrying');
+
+    offline(doc, false);
+    editor._syncStatus();
+    expect(pill().dataset.state).toBe('saving');
+    saving(doc, false);
+    editor._syncStatus();
+    expect(pill().dataset.state).toBe('saved');
+  });
+
+  it('follows the queue into the offline state through the document', async () => {
+    const doc = mount();
+    saving(doc, true);
+    doc._writes._setOffline(true);
+    expect(pill().dataset.state).toBe('offline');
+    doc._writes._setOffline(false);
+    expect(pill().dataset.state).not.toBe('offline');
   });
 });

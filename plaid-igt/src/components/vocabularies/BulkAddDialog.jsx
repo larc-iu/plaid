@@ -505,11 +505,9 @@ export const BulkAddDialog = ({
       close();
       return;
     }
-    if (error) console.error('Bulk add failed:', error);
+    console.error('Bulk add failed:', error);
     setFailure({
-      message: error
-        ? humanizeError(error, 'The server rejected the import.')
-        : 'An edit made before the import was not saved. Nothing was imported.',
+      message: humanizeError(error, 'The server rejected the import.'),
       created,
       updated,
     });

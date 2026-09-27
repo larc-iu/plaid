@@ -3,7 +3,14 @@ import { DocumentTabStrip } from '@ui/components/shared/DocumentTabStrip.jsx';
 // This app's document tabs, as data for the shared strip
 // (@ui/components/shared/DocumentTabStrip), which draws them with the
 // breadcrumb and asks the unsaved-draft guard before leaving one.
-export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
+export const DocumentTabs = ({
+  projectId,
+  documentId,
+  project,
+  document,
+  disabled = false,
+  status = null,
+}) => {
   const base = `/projects/${projectId}/documents/${documentId}`;
   const tabs = [
     { value: 'edit', label: 'Text Editor', to: `${base}/edit` },
@@ -20,6 +27,7 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
       document={document}
       tabs={tabs}
       disabled={disabled}
+      status={status}
     />
   );
 };

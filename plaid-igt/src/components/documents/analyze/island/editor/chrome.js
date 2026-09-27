@@ -13,6 +13,14 @@ import { keys } from '@/lib/keymap.js';
 // An action's chord as keycaps, in whatever the person has bound it to.
 const kbd = (id) => keys.caps(id).map((cap, i) => html`${i ? '+' : ''}<kbd>${cap}</kbd>`);
 
+// What the save-status pill says in each state. `offline`: a refused edit's
+// refetch is waiting for the server to be reachable again.
+const STATUS_TEXT = {
+  saving: 'Saving…',
+  offline: 'Offline, retrying',
+  saved: 'Saved ✓',
+};
+
 export const chrome = {
   _template() {
     const doc = this.doc;
@@ -93,7 +101,7 @@ export const chrome = {
       ${this._toolbar(sentences, ctx, pageCount)} ${this._helpOpen ? this._legend(ctx) : nothing}
       ${doc.error
         ? html`<div class="igt-island__error" role="alert">
-            ${humanizeError(doc.error, doc.error)}
+            ${humanizeError(doc.errorCause ?? doc.error, doc.error)}
           </div>`
         : nothing}
       ${repeat(
@@ -152,7 +160,7 @@ export const chrome = {
   _statusPill() {
     const state = this._statusState || 'idle';
     return html`<span class="igt-status" role="status" aria-live="polite" data-state=${state}
-      >${state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : ''}</span
+      >${STATUS_TEXT[state] ?? ''}</span
     >`;
   },
 

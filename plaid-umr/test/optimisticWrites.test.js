@@ -192,7 +192,7 @@ test('an edit of a node still being saved shows at once and is sent under its se
   assert.equal(doc.node(saved.nodeId).concept, 'meal');
 });
 
-test('a refused write reloads, and the edits queued behind it are not sent', async () => {
+test('a refused write reloads, and the edits queued behind it are still sent', async () => {
   const { doc, calls, release, byVar } = open({ fail: 'relations.create' });
   const eat = byVar('s1e');
   const name = byVar('s1n');
@@ -203,11 +203,11 @@ test('a refused write reloads, and the edits queued behind it are not sent', asy
 
   release();
   assert.equal(await drawn, false);
-  assert.equal(await relabelled, false);
-  assert.ok(!calls.some((c) => c.name === 'spans.update'));
-  assert.equal(byVar('s1e').concept, 'eat-01');
+  assert.equal(await relabelled, true);
+  assert.ok(calls.some((c) => c.name === 'spans.update'));
+  while (doc.isSaving) await settle();
+  // Once it has landed the document is read again (this server kept nothing).
   assert.ok(!byVar('s1e').out.some((e) => e.target === name.id));
-  assert.equal(doc.isSaving, false);
 });
 
 test('a create the server answers with no id keeps its pending id', async () => {

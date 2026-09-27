@@ -59,6 +59,7 @@ export class DocumentModel {
     this._listeners = new Set();
     this._derivedCache = new Map();
     this._error = '';
+    this._errorCause = null;
     // The queue behind `_queueWrite`. A write starting clears the last error.
     this._writes = new WriteQueue({
       onSavingChange: (saving) => {
@@ -67,6 +68,7 @@ export class DocumentModel {
       },
       reloadDrained: () => this._reloadDrained(),
       onOutOfStep: (err) => this._reportOutOfStep(err),
+      onOfflineChange: () => this._emit(),
     });
     // How many screens show this document right now (`hold`).
     this._holds = 0;
@@ -106,8 +108,19 @@ export class DocumentModel {
   get isSaving() {
     return this._writes.isSaving;
   }
+  // True while a refetch after a refused edit waits for the server to be
+  // reachable again. The save-status pills say "Offline, retrying".
+  get isOffline() {
+    return this._writes.isOffline;
+  }
   get error() {
     return this._error;
+  }
+  // The client's error behind `error` when a write failed, for a screen that
+  // words it: a lost answer to a write reads differently from a server that
+  // could not be reached, and only the error object says which.
+  get errorCause() {
+    return this._error ? this._errorCause : null;
   }
 
   /**
@@ -219,9 +232,7 @@ export class DocumentModel {
    * queue still sends what it holds (useSavingGuard keeps the close-tab
    * question on until it has), but a refetch after a refusal stops, even one
    * retrying while offline, so the question does not stay on with nothing
-   * left to lose. The edits queued behind that refusal are reported as not
-   * saved at that point. With no `onError` to report them through, the
-   * document keeps going as if held.
+   * left to lose.
    *
    * The release takes effect a moment later, so a screen that lets go and
    * holds again at once (StrictMode, a remount) is not let go at all. Held
@@ -238,7 +249,7 @@ export class DocumentModel {
       released = true;
       this._holds -= 1;
       setTimeout(() => {
-        if (this._holds === 0 && this.onError) this._writes.letGo();
+        if (this._holds === 0) this._writes.letGo();
       }, 0);
     };
   }
@@ -266,6 +277,7 @@ export class DocumentModel {
   setError(msg) {
     if (this._error === msg) return;
     this._error = msg;
+    this._errorCause = null;
     if (msg && this.onError) this.onError(msg);
     this._emit();
   }
@@ -297,6 +309,7 @@ export class DocumentModel {
     if (!this._asOf) return true;
     const err = new Error('An earlier state of the document cannot be edited.');
     this._error = `${label}: ${err.message}`;
+    this._errorCause = err;
     if (this.onError) this.onError(this._error, err, label);
     this._emit();
     return false;
@@ -307,17 +320,10 @@ export class DocumentModel {
   _writeFailed(label, err) {
     console.error(`${label}:`, err);
     this._error = `${label}: ${err.message || 'Unknown error'}`;
+    this._errorCause = err;
     // The raw error rides along so the screen can word it (statuses, network
     // failures) while keeping the "Failed to ..." label as the title.
     if (this.onError) this.onError(this._error, err, label);
-  }
-
-  // Say how many edits made after a refused one were not sent (WriteQueue's
-  // `_behindRefusal`). The refetch has already taken them off the screen.
-  _reportNotSent(count) {
-    const message =
-      count === 1 ? '1 later edit was not saved.' : `${count} later edits were not saved.`;
-    if (this.onError) this.onError(message, null, 'Not saved');
   }
 
   // A refetch was given up (WriteQueue's `onOutOfStep`): the server failed it
@@ -366,7 +372,6 @@ export class DocumentModel {
         shown,
         refused: (err) => this._writeFailed(label, err),
         resync: () => this._reloadAfterFailure(),
-        notSent: (count) => this._reportNotSent(count),
       },
     );
   }
@@ -469,7 +474,7 @@ export class DocumentModel {
   // From inside a send. The edits queued behind it are not on the server yet,
   // so the refetch takes them off the screen, but they are still sent: a
   // refetch once the queue has drained puts the screen back in step with the
-  // server. Nothing is skipped, since nothing was refused.
+  // server.
   async _reloadInSend() {
     if (!this._client || !this.id) return;
     await this._fetchAndAdopt();
@@ -477,10 +482,10 @@ export class DocumentModel {
   }
 
   // After a refused send. The screen still holds the refused edit and the
-  // edits planned on top of it, so the refetch takes them all back, and the
-  // queue does not send the ones queued behind (an edit made while this fetch
-  // was on the wire included) once it has landed. A failure throws, and the
-  // queue tries again.
+  // edits planned on top of it, so the refetch takes them all back. The ones
+  // queued behind it (an edit made while this fetch was on the wire included)
+  // are still sent, and `_reloadDrained` shows them once they have landed. A
+  // failure throws, and the queue tries again.
   async _reloadAfterFailure() {
     if (!this._client || !this.id) return;
     await this._fetchAndAdopt();

@@ -183,7 +183,7 @@ test('a second edit made while the first is in flight shows at once and is sent 
   assert.ok(!isPendingId(saved.id));
 });
 
-test('a refused write reloads, and the edits queued behind it are not sent', async () => {
+test('a refused write reloads, and the edits queued behind it are still sent', async () => {
   const { doc, release, calls, lemma, headOf } = open({ fail: 'relations.create' });
   const before = headOf(lemma('home'))[0];
   const drawn = doc.createRelation(lemma('come'), lemma('home'), 'obj');
@@ -192,10 +192,11 @@ test('a refused write reloads, and the edits queued behind it are not sent', asy
 
   release();
   assert.equal(await drawn, false);
-  assert.equal(await relabelled, false);
-  assert.ok(!calls.some((c) => c.call === 'relations.update'));
+  assert.equal(await relabelled, true);
+  assert.ok(calls.some((c) => c.call === 'relations.update'));
+  while (doc.isSaving) await settle();
+  // Once it has landed the document is read again (this server kept nothing).
   assert.deepEqual(headOf(lemma('home')), [before]);
-  assert.equal(doc.isSaving, false);
 });
 
 test('a sentence split and a merge show before the server answers', async () => {

@@ -510,12 +510,13 @@ export class IgtEditor {
     this._render();
   }
 
-  // Drive the save-status pill from doc.isSaving (no grid re-render).
+  // Drive the save-status pill from doc.isSaving and doc.isOffline (no grid
+  // re-render). Offline is a save still on its way, waiting for the server.
   _syncStatus() {
     if (this.doc.isSaving) {
-      this._statusState = 'saving';
+      this._statusState = this.doc.isOffline ? 'offline' : 'saving';
       clearTimeout(this._savedTimer);
-    } else if (this._statusState === 'saving') {
+    } else if (this._statusState === 'saving' || this._statusState === 'offline') {
       // Save just finished: flash "Saved" briefly unless it failed (the error
       // banner/toast covers failures).
       if (this.doc.error) {

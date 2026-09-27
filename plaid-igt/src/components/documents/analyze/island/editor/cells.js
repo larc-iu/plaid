@@ -440,9 +440,7 @@ export const cells = {
   // Run a cell commit; when it FAILS (server unreachable, conflict…) the doc
   // reloads and re-renders, which used to drop focus to <body> and leave the
   // user to click back. Put the typed value back into the same cell, so
-  // nothing typed is lost. The same holds for an edit that was not sent
-  // because one before it was refused: the refetch took it off the screen,
-  // and it comes back here.
+  // nothing typed is lost.
   //
   // The cell is refocused, so Enter retries (E2: focus is never lost), only
   // when that loses nothing: focus still in this cell, dropped to the body, or

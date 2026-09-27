@@ -39,7 +39,7 @@ describe('WriteQueue', () => {
     expect(sent).toEqual(['a', 'b']);
   });
 
-  it('skips what is queued behind a refusal, and what is queued while its refetch runs', async () => {
+  it('sends what is queued behind a refusal, and what is queued while its refetch runs', async () => {
     const q = new WriteQueue();
     const sent = [];
     const refetch = deferred();
@@ -59,15 +59,12 @@ describe('WriteQueue', () => {
     await flush();
     refetch.resolve();
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(await late).toBe(false);
-    expect(sent).toEqual([]);
-    // What comes after is sent again.
-    expect(await q.push(async () => sent.push('after'))).toBe(true);
-    expect(sent).toEqual(['after']);
+    expect(await b).toBe(true);
+    expect(await late).toBe(true);
+    expect(sent).toEqual(['b', 'late']);
   });
 
-  it('skips behind a refusal even when its refetch fails too', async () => {
+  it('sends what is queued behind a refusal even when its refetch fails too', async () => {
     const q = new WriteQueue();
     const sent = [];
     const a = q.push(
@@ -82,8 +79,8 @@ describe('WriteQueue', () => {
     );
     const b = q.push(async () => sent.push('b'));
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(sent).toEqual([]);
+    expect(await b).toBe(true);
+    expect(sent).toEqual(['b']);
   });
 
   it('tries a failed resync again until it lands, saving all the while', async () => {
@@ -102,8 +99,10 @@ describe('WriteQueue', () => {
     await flush();
     expect(q.isSaving).toBe(true);
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(resync).toHaveBeenCalledTimes(4);
+    expect(await b).toBe(true);
+    // Once b has landed, the screen is refetched again to show it.
+    await q.whenIdle();
+    expect(resync).toHaveBeenCalledTimes(5);
     expect(q.isSaving).toBe(false);
   });
 
@@ -123,10 +122,15 @@ describe('WriteQueue', () => {
     expect(q.isSaving).toBe(false);
   });
 
-  it('says how many shown sends behind a refusal were not sent', async () => {
+  it('refetches again once the sends behind a refusal have landed, saving all the while', async () => {
     const q = new WriteQueue();
     const refetch = deferred();
-    const notSent = vi.fn();
+    const server = [];
+    const shows = [];
+    const resync = vi.fn(async () => {
+      if (resync.mock.calls.length === 1) await refetch.promise;
+      shows.push([q.isSaving, ...server]);
+    });
     let late;
     const a = q.push(
       async () => {
@@ -134,30 +138,138 @@ describe('WriteQueue', () => {
       },
       {
         resync: async () => {
-          late = q.push(async () => {});
-          await refetch.promise;
+          if (!late) late = q.push(async () => server.push('late'), { resync });
+          await resync();
         },
-        notSent,
       },
     );
-    const b = q.push(async () => {});
-    const copy = q.push(async () => {}, { shown: false });
+    const b = q.push(async () => server.push('b'), { resync });
+    const copy = q.push(async () => server.push('copy'), { shown: false });
     await flush();
     refetch.resolve();
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(await late).toBe(false);
+    expect(await b).toBe(true);
     expect(await copy).toBe(true);
-    expect(notSent).toHaveBeenCalledTimes(1);
-    expect(notSent).toHaveBeenCalledWith(2);
-    // A later refusal with nothing behind it says nothing more.
+    expect(await late).toBe(true);
+    await q.whenIdle();
+    // The refusal's own refetch, then one that shows what was sent behind it,
+    // both while the queue is still saving.
+    expect(shows).toEqual([[true], [true, 'b', 'copy', 'late']]);
+    expect(q.isSaving).toBe(false);
+  });
+
+  it('refetches nothing more after a refusal with nothing behind it', async () => {
+    const q = new WriteQueue();
+    const resync = vi.fn(async () => {});
     await q.push(
       async () => {
         throw new Error('refused');
       },
-      { resync: async () => {}, notSent },
+      { resync },
     );
-    expect(notSent).toHaveBeenCalledTimes(1);
+    await q.whenIdle();
+    expect(resync).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches once for two refusals in a row, the later one standing in for the earlier', async () => {
+    const q = new WriteQueue();
+    const resync = vi.fn(async () => {});
+    const refuse = async () => {
+      throw new Error('refused');
+    };
+    const a = q.push(refuse, { resync });
+    const b = q.push(refuse, { resync });
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    await q.whenIdle();
+    expect(resync).toHaveBeenCalledTimes(2);
+  });
+
+  it('refetches through its own reloadDrained once the sends behind a refusal have landed', async () => {
+    const reloadDrained = vi.fn(async () => {});
+    const q = new WriteQueue({ reloadDrained });
+    const resync = vi.fn(async () => {});
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    const b = q.push(async () => {}, { resync });
+    expect(await a).toBe(false);
+    expect(await b).toBe(true);
+    await q.whenIdle();
+    expect(resync).toHaveBeenCalledTimes(1);
+    expect(reloadDrained).toHaveBeenCalledTimes(1);
+  });
+
+  it('is offline while a refetch waits for the server, and says so to whoever watches', async () => {
+    const offlineSeen = [];
+    const q = new WriteQueue({
+      retryDelay: () => 10,
+      onOfflineChange: (o) => offlineSeen.push(o),
+    });
+    const watched = [];
+    q.subscribe(() => watched.push(q.isOffline));
+    let down = true;
+    const resync = vi.fn(async () => {
+      if (down) throw offline();
+    });
+    const a = q.push(
+      async () => {
+        throw offline();
+      },
+      { resync },
+    );
+    await flush();
+    expect(q.isOffline).toBe(true);
+    expect(q.isSaving).toBe(true);
+    // Editing goes on while offline: the edit is queued and sent once back.
+    const b = q.push(async () => {}, { resync });
+    down = false;
+    expect(await a).toBe(false);
+    expect(q.isOffline).toBe(false);
+    expect(await b).toBe(true);
+    await q.whenIdle();
+    expect(offlineSeen).toEqual([true, false]);
+    expect(watched).toContain(true);
+    expect(q.isOffline).toBe(false);
+  });
+
+  it('is not offline while a refetch fails for a reason of the server', async () => {
+    const q = new WriteQueue({ retryDelay: () => 0 });
+    const seen = [];
+    const resync = vi.fn(async () => {
+      seen.push(q.isOffline);
+      if (resync.mock.calls.length < 3) throw boom500();
+    });
+    await q.push(
+      async () => {
+        throw boom500();
+      },
+      { resync },
+    );
+    expect(seen).toEqual([false, false, false]);
+    expect(q.isOffline).toBe(false);
+  });
+
+  it('is no longer offline once let go', async () => {
+    const q = new WriteQueue({ retryDelay: () => 60000 });
+    const a = q.push(
+      async () => {
+        throw offline();
+      },
+      {
+        resync: async () => {
+          throw offline();
+        },
+      },
+    );
+    await flush();
+    expect(q.isOffline).toBe(true);
+    q.letGo();
+    await a;
+    expect(q.isOffline).toBe(false);
   });
 
   it('sends a write that showed nothing past a refusal ahead of it, and skips nothing for its own', async () => {
@@ -258,9 +370,8 @@ describe('WriteQueue', () => {
     expect(outOfStep).not.toHaveBeenCalled();
   });
 
-  it('gives up on a resync the server keeps failing, says the screen is out of step, and still reports what was not sent', async () => {
+  it('gives up on a resync the server keeps failing, says the screen is out of step once, and still sends what is behind', async () => {
     const outOfStep = vi.fn();
-    const notSent = vi.fn();
     const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
     const boom = Object.assign(new Error('HTTP 500 boom'), { status: 500 });
     const resync = vi.fn(async () => {
@@ -270,15 +381,16 @@ describe('WriteQueue', () => {
       async () => {
         throw new Error('refused');
       },
-      { resync, notSent },
+      { resync },
     );
     const b = q.push(async () => {});
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(resync).toHaveBeenCalledTimes(4);
+    expect(await b).toBe(true);
+    await q.whenIdle();
+    // Four tries after the refusal, four more once b has landed.
+    expect(resync).toHaveBeenCalledTimes(8);
     expect(outOfStep).toHaveBeenCalledTimes(1);
     expect(outOfStep).toHaveBeenCalledWith(boom);
-    expect(notSent).toHaveBeenCalledWith(1);
     expect(q.isSaving).toBe(false);
   });
 
@@ -383,9 +495,8 @@ describe('WriteQueue', () => {
     expect(q.isSaving).toBe(false);
   });
 
-  it('stops retrying a resync once let go, and reports what it was holding', async () => {
+  it('stops retrying a resync once let go, and still sends what it was holding', async () => {
     const q = new WriteQueue({ retryDelay: () => 60000 });
-    const notSent = vi.fn();
     const resync = vi.fn(async () => {
       throw offline();
     });
@@ -393,16 +504,15 @@ describe('WriteQueue', () => {
       async () => {
         throw offline();
       },
-      { resync, notSent },
+      { resync },
     );
     const b = q.push(async () => {});
     await flush();
     expect(q.isSaving).toBe(true);
     q.letGo();
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
+    expect(await b).toBe(true);
     expect(resync).toHaveBeenCalledTimes(1);
-    expect(notSent).toHaveBeenCalledWith(1);
     expect(q.isSaving).toBe(false);
     // Held again, the queue says a refetch was left undone.
     expect(q.hold()).toBe(true);

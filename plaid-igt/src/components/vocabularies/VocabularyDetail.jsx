@@ -67,7 +67,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
-import { vocabWriteQueue, reportNotSent } from './vocabWriteQueue.js';
+import { vocabWriteQueue } from './vocabWriteQueue.js';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
@@ -373,7 +373,6 @@ export const VocabularyDetail = () => {
                 notifyError('Failed to save vocabulary', 'Error');
               },
               resync: resyncSchema,
-              notSent: reportNotSent,
             })
             .then((landed) => {
               if (landed) notifySuccess('Vocabulary name updated successfully', 'Success');
@@ -476,7 +475,6 @@ export const VocabularyDetail = () => {
           notifyError('Failed to save fields', 'Error');
         },
         resync: resyncSchema,
-        notSent: reportNotSent,
       },
     );
   };
@@ -657,7 +655,6 @@ export const VocabularyDetail = () => {
           setDraftTagsets(null);
         },
         resync: resyncSchema,
-        notSent: reportNotSent,
       },
     );
     const renamed = meta?.renamed;

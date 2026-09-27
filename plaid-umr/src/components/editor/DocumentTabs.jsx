@@ -6,7 +6,14 @@ import { DocumentTabStrip } from '@ui/components/shared/DocumentTabStrip.jsx';
 //
 // There is no Text Editor tab: the text and the tokens under it are made in
 // Plaid IGT or Plaid UD, and this app reads them.
-export const DocumentTabs = ({ projectId, documentId, project, document, disabled = false }) => {
+export const DocumentTabs = ({
+  projectId,
+  documentId,
+  project,
+  document,
+  disabled = false,
+  status = null,
+}) => {
   const base = `/projects/${projectId}/documents/${documentId}`;
   const tabs = [
     { value: 'annotate', label: 'Annotate', to: `${base}/annotate` },
@@ -23,6 +30,7 @@ export const DocumentTabs = ({ projectId, documentId, project, document, disable
       document={document}
       tabs={tabs}
       disabled={disabled}
+      status={status}
     />
   );
 };

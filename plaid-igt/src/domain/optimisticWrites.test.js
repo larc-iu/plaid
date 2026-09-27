@@ -166,7 +166,7 @@ describe('an Analyze edit shows before the server answers', () => {
     expect(isPendingId(span.args[1][0])).toBe(false);
   });
 
-  it('a refused write reloads, and the edits queued behind it are not sent', async () => {
+  it('a refused write reloads, and the edits queued behind it are still sent', async () => {
     const { doc, client, release } = makeDoc({ fail: 'spans.create' });
     const first = doc.updateMorphemeSpan('m-1', 'Gloss', 'DEF');
     const second = doc.updateTokenSpan('w-1', 'POS', 'DET');
@@ -175,10 +175,11 @@ describe('an Analyze edit shows before the server answers', () => {
 
     release();
     expect(await first).toBe(false);
-    expect(await second).toBe(false);
-    expect(client.calls.filter((c) => c.kind === 'spans.create')).toHaveLength(0);
-    expect(word(doc, 0).annotations.POS ?? null).toBeNull();
-    expect(doc.isSaving).toBe(false);
+    expect(await second).toBe(true);
+    const creates = client.calls.filter((c) => c.kind === 'spans.create');
+    expect(creates).toHaveLength(1);
+    expect(creates[0].args).toContain('DET');
+    while (doc.isSaving) await settle();
   });
 });
 

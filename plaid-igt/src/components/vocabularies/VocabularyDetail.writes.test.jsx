@@ -240,7 +240,7 @@ describe('the vocabulary screen', () => {
     await view.unmount();
   });
 
-  it('says how many schema writes queued behind a refused one were not sent', async () => {
+  it('sends a schema write queued behind a refused one', async () => {
     const { client, calls, holds } = stub();
     const refused = deferred();
     holds.push(refused);
@@ -256,8 +256,8 @@ describe('the vocabulary screen', () => {
       refused.reject(new Error('refused'));
       await settle();
     });
-    expect(calls).toEqual(['setConfig']);
-    expect(feedback.notifyError).toHaveBeenCalledWith('1 later edit was not saved.', 'Not saved');
+    expect(calls).toEqual(['setConfig', 'update']);
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 

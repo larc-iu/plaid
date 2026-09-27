@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
 import { DocumentTabs } from './DocumentTabs.jsx';
+import { SaveStatus } from '@ui/components/shared/SaveStatus.jsx';
 import { CommentStore } from '@ui/domain/CommentStore';
 import { useCommentStore } from '@ui/domain/useCommentStore';
 import { useWriteLock } from '@ui/hooks/useWriteLock.js';
@@ -275,6 +276,7 @@ export const DocumentEditorShell = () => {
           project={project}
           document={doc?.raw}
           disabled={chromeBusy}
+          status={doc ? <SaveStatus doc={doc} /> : null}
         />
       </div>
 

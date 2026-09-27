@@ -1,7 +1,8 @@
 // A refetch puts the server's document on screen. An edit the server has not
 // had yet cannot survive it, so what the screen shows afterwards and what the
-// server holds must agree: an edit the refetch took off the screen is not sent,
-// and an edit made around a reload from outside the queue is waited for.
+// server holds must agree: an edit the refetch took off the screen is still
+// sent and shown again once it has landed, and an edit made around a reload
+// from outside the queue is waited for.
 import { describe, it, expect } from 'vitest';
 import { DocumentModel } from './DocumentModel.js';
 
@@ -72,7 +73,7 @@ const drain = async (doc) => {
 };
 
 describe('a refetch and the edits around it', () => {
-  it('does not send an edit made while the refetch after a failure is on the wire', async () => {
+  it('sends an edit made while the refetch after a failure is on the wire, and shows it once landed', async () => {
     const { doc, server } = load();
     const refused = deferred();
     const refetch = deferred();
@@ -88,10 +89,31 @@ describe('a refetch and the edits around it', () => {
     refetch.resolve();
 
     expect(await a).toBe(false);
-    expect(await c).toBe(false);
+    expect(await c).toBe(true);
     await drain(doc);
-    expect(server.values).toEqual({});
+    expect(server.values).toEqual({ c: 'CCC' });
     expect(doc.raw.values).toEqual(server.values);
+  });
+
+  it('is offline while the refetch after a refusal cannot reach the server, and says so to the screen', async () => {
+    const { doc, server } = load();
+    doc._writes._retryDelay = () => 10;
+    let emits = 0;
+    doc.subscribe(() => (emits += 1));
+    const refused = deferred();
+    server.writes.push(refused);
+    server.offline = true;
+    const a = doc.set('a', 'GHOST');
+    refused.reject(Object.assign(new Error('Network error: Failed to fetch'), { status: 0 }));
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 15));
+    expect(doc.isOffline).toBe(true);
+    expect(doc.isSaving).toBe(true);
+    const seen = emits;
+    server.offline = false;
+    expect(await a).toBe(false);
+    await drain(doc);
+    expect(doc.isOffline).toBe(false);
+    expect(emits).toBeGreaterThan(seen);
   });
 
   it('keeps saving until the screen is back in step, when the refetch after a refusal fails too', async () => {
@@ -116,7 +138,7 @@ describe('a refetch and the edits around it', () => {
     expect(doc.raw.values).toEqual({});
   });
 
-  it('says how many edits made after a refused one were not saved', async () => {
+  it('sends the edits made after a refused one, and reports only the refused one', async () => {
     const { doc, server } = load();
     const errors = [];
     doc.onError = (msg, err, label) => errors.push({ msg, err, label });
@@ -127,11 +149,12 @@ describe('a refetch and the edits around it', () => {
     const c = doc.set('c', 'tres');
     refused.reject(new Error('500'));
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
-    expect(await c).toBe(false);
-    expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Not saved']);
-    expect(errors[1].msg).toBe('2 later edits were not saved.');
-    expect(errors[1].err).toBe(null);
+    expect(await b).toBe(true);
+    expect(await c).toBe(true);
+    await drain(doc);
+    expect(errors.map((e) => e.label)).toEqual(['Failed to set a']);
+    expect(server.values).toEqual({ b: 'dos', c: 'tres' });
+    expect(doc.raw.values).toEqual(server.values);
   });
 
   it('sends an edit queued behind a send that refetches, and shows it once the queue drains', async () => {
@@ -252,7 +275,7 @@ describe('a refetch and the edits around it', () => {
     expect(server.values).toEqual({ b: 'BBB' });
   });
 
-  it('stops refetching once no screen holds it, and says what was not sent', async () => {
+  it('stops refetching once no screen holds it, and still sends what was made after', async () => {
     // Offline, a gloss is refused and the refetch keeps failing. The linguist
     // goes back to the project's list: nothing is on screen for a refetch to
     // put right, so it stops and the document is no longer saving.
@@ -272,10 +295,11 @@ describe('a refetch and the edits around it', () => {
     expect(doc.isSaving).toBe(true);
     release();
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
+    expect(await b).toBe(true);
+    await drain(doc);
     expect(doc.isSaving).toBe(false);
-    expect(server.values).toEqual({});
-    expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Not saved']);
+    expect(server.values).toEqual({ b: 'LATER' });
+    expect(errors.map((e) => e.label)).toEqual(['Failed to set a']);
   });
 
   it('keeps refetching through a release and a hold straight after it', async () => {
@@ -320,25 +344,6 @@ describe('a refetch and the edits around it', () => {
     expect(doc.raw.values).toEqual({});
   });
 
-  it('keeps saving when let go with no one to tell about the edits it holds', async () => {
-    const { doc, server } = load();
-    doc.onError = null;
-    doc._writes._retryDelay = () => 5;
-    const release = doc.hold();
-    const refused = deferred();
-    server.writes.push(refused);
-    server.offline = true;
-    const a = doc.set('a', 'GHOST');
-    doc.set('b', 'LATER');
-    refused.reject(new Error('Network error: Failed to fetch'));
-    await tick();
-    release();
-    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
-    expect(doc.isSaving).toBe(true);
-    server.offline = false;
-    expect(await a).toBe(false);
-  });
-
   it('gives up on a refetch the server keeps failing, and says the page is out of date', async () => {
     const { doc, server } = load();
     const errors = [];
@@ -351,12 +356,28 @@ describe('a refetch and the edits around it', () => {
     const b = doc.set('b', 'LATER');
     refused.reject(Object.assign(new Error('HTTP 500 boom'), { status: 500 }));
     expect(await a).toBe(false);
-    expect(await b).toBe(false);
+    expect(await b).toBe(true);
     await drain(doc);
     expect(doc.isSaving).toBe(false);
     // What was typed stays on screen, for the reader to see before reloading.
     expect(doc.raw.values).toEqual({ a: 'GHOST', b: 'LATER' });
-    expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Out of date', 'Not saved']);
+    expect(server.values).toEqual({ b: 'LATER' });
+    // Said once, though the refetch after b failed the same way.
+    expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Out of date']);
     expect(errors[1].msg).toBe('Reload the page to see what is saved.');
+  });
+
+  it('keeps the client error behind a failed write, for the screen to word', async () => {
+    const { doc, server } = load();
+    const refused = deferred();
+    server.writes.push(refused);
+    const a = doc.set('a', 'AAA');
+    const lost = Object.assign(new Error('Request timed out'), { status: 0, method: 'POST' });
+    refused.reject(lost);
+    expect(await a).toBe(false);
+    expect(doc.error).toBe('Failed to set a: Request timed out');
+    expect(doc.errorCause).toBe(lost);
+    doc.setError('Something else');
+    expect(doc.errorCause).toBe(null);
   });
 });

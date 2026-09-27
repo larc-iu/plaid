@@ -6,16 +6,16 @@
 //
 // A refused send runs the caller's `refused`, which reports it, and then its
 // `resync`, the refetch that takes the refused edit back off the screen. That
-// refetch takes the edits queued behind it off the screen as well, so once it
-// has landed the generation moves on, and every send queued before then is
-// not sent: the ones behind the refusal, and one made while its refetch was on
-// the wire. `notSent(n)` hears how many. `_behindRefusal` is the one place
-// that decides it.
+// refetch takes the edits queued behind it off the screen as well, but they
+// are still sent, each in its turn, and once the last has landed the screen
+// is refetched again to show them (`_behindRefusal`). One that fails the same
+// way is refused and reported in its own turn.
 //
 // A `resync` that fails is tried again until it lands, with the queue held
 // (`isSaving` stays true) all the while: until then the screen shows an edit
-// the server does not have, and closing the tab must still ask. A caller that
-// passes no `resync` refetches inside `refused` and gets one try.
+// the server does not have, and closing the tab must still ask. While it is
+// the network that fails, `isOffline` is true. A caller that passes no
+// `resync` refetches inside `refused` and gets one try.
 //
 // Only the network is waited out that way. A refetch that fails for any other
 // reason (the server's error, a bug in the refetch itself) is given a few
@@ -28,9 +28,8 @@
 // refetches nothing, and a retry waiting its turn stops at once. `hold` says
 // whether a refetch was left undone meanwhile, for a screen that comes back.
 //
-// `shown: false` is for a write that put nothing on screen (a copy). Nothing
-// was planned on it, so a refusal ahead of it does not skip it, and its own
-// failure takes nothing back and skips nothing behind it.
+// `shown: false` is for a write that put nothing on screen (a copy). Its
+// failure takes nothing back, so it refetches nothing.
 //
 // A refetch from OUTSIDE the queue (a service run, an import, the assistant)
 // waits until the queue has drained, and reads again when a write is queued
@@ -38,8 +37,9 @@
 // that misses an edit the server is still to get. A refetch from INSIDE a send
 // cannot wait for the queue, which is waiting on it.
 //
-// `isSaving` and `subscribe` are the shape `useSavingGuard` watches, so
-// closing the tab asks while anything is still on its way.
+// `isSaving`, `isOffline` and `subscribe` are the shape `useSavingGuard` and
+// the save-status pills watch, so closing the tab asks while anything is
+// still on its way.
 //
 // One import, lib/errors.js, which imports nothing: plaid-ud's node suite
 // reaches DocumentModel, and through it this file, by relative path.
@@ -65,13 +65,15 @@ export class WriteQueue {
    * `resync` it is tried again until it lands. `retryDelay(attempt)` is the
    * wait in milliseconds before each retry. `onOutOfStep(err)` runs when a
    * refetch is given up for good, the screen still showing what the server
-   * may not have.
+   * may not have. `onOfflineChange(offline)` runs when a refetch starts or
+   * stops waiting out the network.
    */
   constructor({
     onSavingChange = null,
     reloadDrained = null,
     retryDelay = backoff,
     onOutOfStep = null,
+    onOfflineChange = null,
   } = {}) {
     this._tail = Promise.resolve();
     // Sends waiting or in flight.
@@ -79,14 +81,20 @@ export class WriteQueue {
     // Every send ever queued, so a reader can tell that one was made while it
     // was on the wire, even one that has since landed.
     this._pushes = 0;
-    this._generation = 0;
-    // Sends queued and not started yet, each as `{ generation, shown }`.
+    // Sends queued and not started yet, each as `{ shown }`.
     this._waiting = new Set();
     this.reloadWhenDrained = false;
+    // A caller's `resync`, run again once the sends behind its refusal have
+    // landed, for a queue with no `reloadDrained` of its own.
+    this._resyncWhenDrained = null;
     this._onSavingChange = onSavingChange;
     this._reloadDrained = reloadDrained;
     this._retryDelay = retryDelay;
     this._onOutOfStep = onOutOfStep;
+    this._onOfflineChange = onOfflineChange;
+    this._offline = false;
+    // Whether `onOutOfStep` has been told since a refetch last landed.
+    this._outOfStep = false;
     this._listeners = new Set();
     // Whether the screen showing this queue's work has gone (`letGo`), and
     // whether a refetch was left undone since.
@@ -120,6 +128,21 @@ export class WriteQueue {
     return this._count > 0;
   }
 
+  /**
+   * True while a refetch is waiting for the server to be reachable again.
+   * Editing goes on meanwhile: every edit is still queued and sent.
+   */
+  get isOffline() {
+    return this._offline;
+  }
+
+  _setOffline(offline) {
+    if (this._offline === offline) return;
+    this._offline = offline;
+    if (this._onOfflineChange) this._onOfflineChange(offline);
+    this._listeners.forEach((fn) => fn());
+  }
+
   /** Sends waiting or in flight, the one running included. */
   get queued() {
     return this._count;
@@ -143,13 +166,12 @@ export class WriteQueue {
   }
 
   /**
-   * Queue `send`. Resolves true when it landed, false when it was refused or
-   * not sent. `refused(err)` reports a refusal. For a write that showed
-   * something, `resync()` refetches what it showed, and `notSent(n)` is told
-   * how many sends queued behind it were not sent, when there were any.
+   * Queue `send`. Resolves true when it landed, false when it was refused.
+   * `refused(err)` reports a refusal. For a write that showed something,
+   * `resync()` refetches what it showed.
    */
-  push(send, { refused = null, resync = null, notSent = null, shown = true } = {}) {
-    const entry = { generation: this._generation, shown };
+  push(send, { refused = null, resync = null, shown = true } = {}) {
+    const entry = { shown };
     this._waiting.add(entry);
     this._count += 1;
     this._pushes += 1;
@@ -157,11 +179,12 @@ export class WriteQueue {
     const run = async () => {
       this._waiting.delete(entry);
       try {
-        if (shown && entry.generation !== this._generation) return false;
         await send();
         return true;
       } catch (err) {
+        // Its own refetch below stands in for one asked for earlier.
         if (shown) this.reloadWhenDrained = false;
+        if (shown && resync) this._resyncWhenDrained = null;
         try {
           if (refused) await refused(err);
         } catch (refetchErr) {
@@ -169,13 +192,10 @@ export class WriteQueue {
         }
         if (!shown) return false;
         if (resync) await this._refetch(resync, 'Reload after a refused write');
-        const behind = this._behindRefusal();
-        if (behind > 0 && notSent) notSent(behind);
+        this._behindRefusal(resync);
         return false;
       } finally {
-        if (this._count === 1 && this.reloadWhenDrained && this._reloadDrained) {
-          await this._refetch(this._reloadDrained, 'Reload after a write');
-        }
+        if (this._count === 1) await this._refetchDrained();
         this._count -= 1;
         if (this._count === 0) this._savingChanged(false);
       }
@@ -186,21 +206,28 @@ export class WriteQueue {
   }
 
   // What becomes of the sends queued behind a refusal once its refetch has
-  // landed, and how many of them it touches. They were shown on top of the
-  // refused edit and the refetch has taken them off the screen with it, so
-  // today they are not sent: the generation moves on, and each resolves false
-  // in its turn, which is how a screen knows to put its value back.
-  //
-  // To send them instead: return 0 here without moving the generation, and
-  // set `this.reloadWhenDrained = true` so the screen is refetched once they
-  // have landed and shows them again. Nothing else in the queue changes.
-  _behindRefusal() {
-    let behind = 0;
-    for (const w of this._waiting) {
-      if (w.shown && w.generation === this._generation) behind += 1;
+  // landed. They were shown on top of the refused edit, and the refetch has
+  // taken them off the screen with it, but they are still sent: once the last
+  // of them has landed, the screen is refetched again and shows them. With no
+  // `reloadDrained` of the queue's own, that refetch is the caller's `resync`.
+  _behindRefusal(resync) {
+    const behind = [...this._waiting].some((w) => w.shown);
+    if (!behind) return;
+    if (this._reloadDrained) this.reloadWhenDrained = true;
+    else if (resync) this._resyncWhenDrained = resync;
+  }
+
+  // The last queued send has landed (or been refused): refetch, when a send
+  // asked for the server's view or sends behind a refusal wait to be shown.
+  async _refetchDrained() {
+    if (this.reloadWhenDrained && this._reloadDrained) {
+      this._resyncWhenDrained = null;
+      await this._refetch(this._reloadDrained, 'Reload after a write');
+    } else if (this._resyncWhenDrained) {
+      const resync = this._resyncWhenDrained;
+      this._resyncWhenDrained = null;
+      await this._refetch(resync, 'Reload after the writes behind a refusal');
     }
-    this._generation += 1;
-    return behind;
   }
 
   // Run the refetch `fn` until it lands, waiting longer after each failure.
@@ -217,18 +244,25 @@ export class WriteQueue {
       if (this._letGo) {
         this._missed = true;
         this.reloadWhenDrained = false;
+        this._setOffline(false);
         return;
       }
       try {
         await fn();
+        this._setOffline(false);
+        this._outOfStep = false;
         return;
       } catch (err) {
         console.error(`${what} failed:`, err);
-        if (FINAL_STATUSES.has(statusOf(err))) return;
         // The network's failures (`isUnreachable`, the same test that words
         // them "Could not reach the server") are waited out.
-        if (!isUnreachable(err) && ++failed >= TRIES) {
-          if (this._onOutOfStep) this._onOutOfStep(err);
+        const unreachable = isUnreachable(err);
+        this._setOffline(unreachable);
+        if (FINAL_STATUSES.has(statusOf(err))) return;
+        if (!unreachable && ++failed >= TRIES) {
+          // Said once: a refetch after it that fails the same way adds nothing.
+          if (this._onOutOfStep && !this._outOfStep) this._onOutOfStep(err);
+          this._outOfStep = true;
           return;
         }
         await this._sleep(this._retryDelay(attempt));

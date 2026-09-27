@@ -120,7 +120,7 @@ const listed = () =>
     .sort();
 
 describe('the entry form', () => {
-  it('does not send a save queued behind one that was refused', async () => {
+  it('sends a save queued behind one that was refused, and reads the entries again once it lands', async () => {
     const { client, calls, holds } = stub([
       { id: 'a', form: 'uno' },
       { id: 'b', form: 'dos' },
@@ -128,6 +128,7 @@ describe('the entry form', () => {
     const refused = deferred();
     holds.push(refused);
     const view = await mount(client, '/vocabularies/v1?item=a');
+    const get = vi.spyOn(client.vocabLayers, 'get');
 
     await view.step(() => setValue(formInput(), 'uno-EDIT'));
     await view.step(() => button('Save').click());
@@ -141,8 +142,30 @@ describe('the entry form', () => {
       refused.reject(new Error('refused'));
       for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
     });
-    expect(calls.filter(([kind]) => kind !== 'create')).toHaveLength(1);
-    expect(listed()).toEqual(['dos', 'uno']);
+    const updates = calls.filter(([kind]) => kind === 'bulkUpdate');
+    expect(updates).toHaveLength(2);
+    expect(updates[1][1]).toEqual([{ id: 'b', form: 'dos-EDIT' }]);
+    // The refusal's read, then the one that shows the save sent behind it.
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('says nothing when a save or a delete lands', async () => {
+    const { client, calls } = stub([{ id: 'a', form: 'uno' }]);
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(async () => {
+      button('Save').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    await view.step(() => button('Delete').click());
+    await view.step(async () => {
+      button('Delete entry').click();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(calls.map(([kind]) => kind)).toEqual(['bulkUpdate', 'delete']);
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
     await view.unmount();
   });
 
@@ -295,7 +318,7 @@ describe('the entry form', () => {
 
 // Bulk Add and Replace plan against the entries as shown, which can hold a
 // save still on its way. Their writes take their turn behind it, and a plan
-// made over a save the server then refused is not sent.
+// made over a save the server then refused is still sent, as planned.
 describe('Bulk Add and Replace', () => {
   const settle = async () => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
@@ -348,14 +371,15 @@ describe('Bulk Add and Replace', () => {
     expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
   });
 
-  it('does not send a Replace planned over a save that was refused', async () => {
+  it('sends a Replace planned over a save that was refused, as planned', async () => {
     const { calls, held, view } = await saving();
     await replaceEdit(view);
     await view.step(async () => {
       held.reject(new Error('refused'));
       await settle();
     });
-    expect(kinds(calls)).toEqual(['bulkUpdate']);
+    expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkUpdate']);
+    expect(calls[1][1]).toEqual([{ id: 'a', form: 'uno-X' }]);
   });
 
   it('sends a Bulk Add behind a save still on its way', async () => {
@@ -405,14 +429,14 @@ describe('Bulk Add and Replace', () => {
     expect(update[1].map((u) => u.id)).toEqual(['server-1']);
   });
 
-  it('does not send a Bulk Add planned over a save that was refused', async () => {
+  it('sends a Bulk Add planned over a save that was refused', async () => {
     const { calls, held, view } = await saving();
     await bulkAdd(view);
     await view.step(async () => {
       held.reject(new Error('refused'));
       await settle();
     });
-    expect(kinds(calls)).toEqual(['bulkUpdate']);
+    expect(kinds(calls)).toEqual(['bulkUpdate', 'bulkCreate']);
   });
 });
 
@@ -474,7 +498,57 @@ describe('a refused entry write', () => {
       await settle();
     });
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
-    expect(feedback.notifySuccess).toHaveBeenCalledWith('Entry created', 'Success');
+    // A create that lands says nothing: the list already shows it.
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+  });
+
+  it('reads the entries again before offering Create again, when the answer to a create was lost', async () => {
+    const entries = [{ id: 'a', form: 'uno' }];
+    const { client, calls, holds } = stub(entries);
+    const lost = deferred();
+    holds.push(lost);
+    // The server made the entry, but its answer never came back.
+    client.vocabLayers.get = async () => ({
+      id: 'v1',
+      name: 'Lexicon',
+      config: {},
+      items: structuredClone(entries),
+    });
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    await view.step(() => setValue(formInput(), 'seis'));
+    await view.step(() => button('Create').click());
+    await view.step(async () => {
+      entries.push({ id: 'made-1', form: 'seis' });
+      lost.reject(
+        Object.assign(new Error('Request timed out at http://x/api/v1/vocab-layers/v1/items'), {
+          status: 0,
+          method: 'POST',
+        }),
+      );
+      await settle();
+    });
+    expect(calls.map(([kind]) => kind)).toEqual(['create']);
+    // The entry it made is open, not a form that would make a second one.
+    expect(button('Create')).toBeUndefined();
+    expect(formInput().value).toBe('seis');
+    expect(link('seis').getAttribute('href')).toContain('item=made-1');
+  });
+
+  it('offers Create again when the entries read after a lost answer do not hold it', async () => {
+    const { client, holds } = stub([{ id: 'a', form: 'uno' }]);
+    const lost = deferred();
+    holds.push(lost);
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    await view.step(() => setValue(formInput(), 'seis'));
+    await view.step(() => button('Create').click());
+    await view.step(async () => {
+      lost.reject(
+        Object.assign(new Error('Network error: Failed to fetch'), { status: 0, method: 'POST' }),
+      );
+      await settle();
+    });
+    expect(formInput().value).toBe('seis');
+    expect(button('Create').disabled).toBe(false);
   });
 
   it('reads the entries again until the read lands, and asks before the tab closes until then', async () => {
@@ -509,26 +583,6 @@ describe('a refused entry write', () => {
     });
     expect(writes.isSaving).toBe(false);
     expect(listed()).toEqual(['uno']);
-  });
-
-  it('says how many saves queued behind a refused one were not sent', async () => {
-    const { client, holds } = stub([
-      { id: 'a', form: 'uno' },
-      { id: 'b', form: 'dos' },
-    ]);
-    const refused = deferred();
-    holds.push(refused);
-    const view = (mounted = await mount(client, '/vocabularies/v1?item=a'));
-    await view.step(() => setValue(formInput(), 'uno-EDIT'));
-    await view.step(() => button('Save').click());
-    await view.step(() => link('dos').click());
-    await view.step(() => setValue(formInput(), 'dos-EDIT'));
-    await view.step(() => button('Save').click());
-    await view.step(async () => {
-      refused.reject(new Error('refused'));
-      await settle();
-    });
-    expect(feedback.notifyError).toHaveBeenCalledWith('1 later edit was not saved.', 'Not saved');
   });
 });
 

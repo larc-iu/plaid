@@ -127,6 +127,10 @@
   color: var(--igt-amber);
   background: #fffbeb;
 }
+.igt-status[data-state='offline'] {
+  color: var(--igt-gray-600);
+  background: var(--igt-gray-100);
+}
 .igt-status[data-state='saved'] {
   color: var(--igt-green);
   background: var(--igt-green-50);

@@ -17,8 +17,18 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
  * repair writing under a screen that has moved on, which is the thing the
  * spinner exists to prevent. Dropping `to` gives a real disabled trigger, so
  * click, cmd-click and keyboard activation are all inert.
+ *
+ * `status` is drawn at the end of the breadcrumb row: the document's save
+ * status (SaveStatus).
  */
-export const DocumentTabStrip = ({ projectId, project, document, tabs, disabled = false }) => {
+export const DocumentTabStrip = ({
+  projectId,
+  project,
+  document,
+  tabs,
+  disabled = false,
+  status = null,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   // A tab that holds something typed and unsaved is asked about before the
@@ -48,6 +58,7 @@ export const DocumentTabStrip = ({ projectId, project, document, tabs, disabled 
         <span dir="auto" className="truncate text-muted-foreground">
           {document?.name || 'Loading…'}
         </span>
+        {status && <span className="ms-auto">{status}</span>}
       </nav>
 
       <Tabs value={active} onValueChange={(v) => !disabled && navigate(to[v])} guard={guard}>

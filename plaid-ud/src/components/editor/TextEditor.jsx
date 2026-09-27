@@ -344,7 +344,8 @@ export const TextEditor = () => {
           </div>
 
           <p className="text-sm">
-            {saving && <span className="italic text-blue-600">Saving…</span>}
+            {/* Offline, the shell's save status says so, over every tab. */}
+            {saving && !doc.isOffline && <span className="italic text-blue-600">Saving…</span>}
             {!saving && lastSaved && (
               <span className="text-emerald-600">Saved: {lastSaved.toLocaleTimeString()}</span>
             )}

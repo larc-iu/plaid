@@ -16,8 +16,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@/hooks/useTabParam';
-import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
-import { reportNotSent } from './vocabWriteQueue.js';
+import { notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
+import { isUnknownOutcome } from '@ui/lib/errors.js';
 import {
   fieldLabel,
   groupFieldsForForm,
@@ -488,8 +488,9 @@ export const VocabularyItems = ({
   // here is in the list under a pending id until the server answers, and
   // `settleEntries` swaps the server's in, in the list, in any reference to
   // it, and in `?item=`. A refused write says so and fetches the list again,
-  // which puts back what the screen showed, and the writes queued behind it
-  // are not sent. Resolves to whether the write landed.
+  // which puts back what the screen showed. The writes queued behind it are
+  // still sent, and the list is fetched again once they have landed. Resolves
+  // to whether the write landed.
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   // The pending id a create has sent the URL to, until a render shows it
@@ -515,22 +516,22 @@ export const VocabularyItems = ({
     if (!typedRef.current) dispatch({ type: 'draft/unseed' });
   };
   const resync = () => fetchItems({ quiet: true, inTurn: true });
-  const sendInTurn = (label, write, failure, { refused } = {}) =>
+  // A save says nothing when it lands, the way every screen that shows an
+  // edit at once does. A refusal is toasted. `resync` stands in for the
+  // entries' refetch, for a save that needs to see what it brought back.
+  const sendInTurn = (label, write, failure, { refused, resync: reread = resync } = {}) =>
     writes.push(() => client.withOperation(label, write), {
       refused: (err) => {
         console.error(`${label}:`, err);
         notifyError(err, failure);
-        (refused || unseedUnlessTyped)();
+        (refused || unseedUnlessTyped)(err);
       },
-      resync,
-      notSent: reportNotSent,
+      resync: reread,
     });
 
   // Bulk Add and Replace: a run of writes planned against the entries as
   // shown, which can hold a save still on its way. The run takes its turn
-  // behind that save, and is not sent at all when a save before it was
-  // refused, because its plan counted on it. Resolves `{ landed, error }`:
-  // neither landed nor an error means it was not sent. A refusal re-reads the
+  // behind that save. Resolves `{ landed, error }`. A refusal re-reads the
   // entries here, the dialog reports it.
   const sendPlanned = async (label, write) => {
     let error = null;
@@ -540,7 +541,6 @@ export const VocabularyItems = ({
         unseedUnlessTyped();
       },
       resync,
-      notSent: reportNotSent,
     });
     return { landed, error };
   };
@@ -777,6 +777,23 @@ export const VocabularyItems = ({
       creatingRef.current = id;
       goItem(id, { replace: true });
       dispatch({ type: 'draft/form', form });
+      // Back to the new-entry form holding what is typed there, so Create
+      // sends it again.
+      const backToNew = ({ form: typedForm, fields: typedFields }) => {
+        refusedNewRef.current = {
+          seedKey: seedKeyFor(NEW_ID, parent),
+          seedForm: parentForm,
+          form: typedForm,
+          fields: typedFields,
+        };
+        goItem(NEW_ID, { replace: true }, parent);
+      };
+      // A create whose answer was lost may have made the entry. The entries
+      // are read again first, and Create is offered again only when the
+      // entry is not among them, so pressing it cannot make a second one.
+      const alreadyThere = new Set(items.map((i) => i.id));
+      let reread = null;
+      let unsure = null;
       sendInTurn(
         `Add entry "${form}"`,
         async () => {
@@ -787,30 +804,33 @@ export const VocabularyItems = ({
             Object.keys(meta).length ? meta : undefined,
           );
           settleEntries(new Map([[id, createdId(created)]]));
-          notifySuccess('Entry created', 'Success');
         },
         'Failed to save the entry',
         {
           // The pending id names nothing now. Still open, it goes back to the
-          // new-entry form holding what is typed there, so Create sends it again.
-          refused: () => {
+          // new-entry form.
+          refused: (err) => {
             const stillOpen = selectedIdRef.current === id || creatingRef.current === id;
             if (creatingRef.current === id) creatingRef.current = null;
             if (!stillOpen) {
               unseedUnlessTyped();
               return;
             }
-            const { form: typedForm, fields: typedFields } = draftRef.current;
-            refusedNewRef.current = {
-              seedKey: seedKeyFor(NEW_ID, parent),
-              seedForm: parentForm,
-              form: typedForm,
-              fields: typedFields,
-            };
-            goItem(NEW_ID, { replace: true }, parent);
+            if (isUnknownOutcome(err)) unsure = draftRef.current;
+            else backToNew(draftRef.current);
+          },
+          resync: async () => {
+            reread = await fetchItems({ quiet: true, inTurn: true });
           },
         },
-      );
+      ).then(() => {
+        // Only while nothing else has been opened since.
+        const here = selectedIdRef.current;
+        if (!unsure || (here !== id && here !== NEW_ID)) return;
+        const made = (reread || []).find((i) => i.form === form && !alreadyThere.has(i.id));
+        if (made) goItem(made.id, { replace: true });
+        else backToNew(unsure);
+      });
       return;
     }
     const item = selectedItem;
@@ -828,7 +848,6 @@ export const VocabularyItems = ({
           ...(ops.length ? { metadata: followIds(ops) } : {}),
         };
         if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
-        notifySuccess('Entry updated', 'Success');
       },
       'Failed to save the entry',
     );
@@ -866,7 +885,6 @@ export const VocabularyItems = ({
           // Its links go with it, in documents no editor has open.
           dropPrecedent();
         }
-        notifySuccess('Entry deleted', 'Success');
       },
       'Failed to delete the entry',
     );

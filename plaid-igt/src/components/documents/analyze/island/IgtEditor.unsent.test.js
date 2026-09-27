@@ -4,9 +4,8 @@ import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
-// Values put back into their cells after they were not saved (a refusal, or
-// an edit queued behind one): what keeps them on screen, and what counts them
-// as unsaved.
+// Values put back into their cells after they were not saved: what keeps them
+// on screen, and what counts them as unsaved.
 
 vi.mock('@/utils/feedback', () => ({
   humanizeError: (e) => String(e),
@@ -47,19 +46,25 @@ const settle = async (n = 6) => {
 };
 
 // Gloss a (refused once released), then the edits `more` makes while a is on
-// its way, then type into another cell and leave focus there.
+// its way, then type into another cell and leave focus there. The server
+// refuses those too, each in its turn behind a's refusal.
 async function refuseFirst(doc, client, more) {
   const before = JSON.parse(JSON.stringify(doc.raw));
   client.documents.get = async () => JSON.parse(JSON.stringify(before));
-  const create = client.spans.create;
+  const spans = { ...client.spans };
   let hold;
   let first = true;
-  client.spans.create = async (...args) => {
-    if (!first) return create(...args);
-    first = false;
-    await new Promise((r) => (hold = r));
-    throw new Error('refused');
-  };
+  let refusing = true;
+  for (const method of Object.keys(spans)) {
+    client.spans[method] = async (...args) => {
+      if (!refusing) return spans[method](...args);
+      if (first) {
+        first = false;
+        await new Promise((r) => (hold = r));
+      }
+      throw new Error('refused');
+    };
+  }
   const a = cell('ma:m-1:Gloss');
   focus(a);
   type(a, 'AAA');
@@ -72,7 +77,8 @@ async function refuseFirst(doc, client, more) {
   await settle();
   hold();
   await settle(30);
-  client.spans.create = create;
+  refusing = false;
+  Object.assign(client.spans, spans);
   return { a, c };
 }
 
