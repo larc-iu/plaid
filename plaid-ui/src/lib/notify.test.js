@@ -25,9 +25,9 @@ describe('notifyError', () => {
     expect(toast.error.mock.calls[0][1].description).toMatch(/being edited right now/);
   });
 
-  it('strips the transport noise and the ids off anything else', () => {
+  it('does not show a message that names a record by its id', () => {
     notifyError('HTTP 400 bad thing 01a04095-38c4-74d1-8450-a7d6a0267af7 at http://x/api/v1/spans');
-    expect(toast.error.mock.calls[0][1].description).toBe('bad thing this item');
+    expect(toast.error.mock.calls[0][1].description).toBe('Something went wrong.');
   });
 
   it('leaves an ordinary message alone', () => {

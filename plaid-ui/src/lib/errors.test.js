@@ -44,6 +44,42 @@ describe('what a person is told', () => {
     expect(said).not.toMatch(/1111/);
   });
 
+  it('says a record named by its id is not found, without swapping a stand-in word for the id', () => {
+    expect(
+      humanizeError(new Error('Vocab item 01a04095-38c4-74d1-8450-a7d6a0267af7 not found')),
+    ).toBe('Not found.');
+    expect(humanizeError('Morpheme 01a04095-38c4-74d1-8450-a7d6a0267af7 not found')).toBe(
+      'Not found.',
+    );
+  });
+
+  it('shows the fallback for any other message that names a record by its id', () => {
+    expect(
+      humanizeError(
+        new Error('HTTP 400 Token 01a04095-38c4-74d1-8450-a7d6a0267af7 is out of bounds'),
+        'Could not save.',
+      ),
+    ).toBe('Could not save.');
+  });
+
+  it('words a lapsed document lock without the document id', () => {
+    const lost = new Error(
+      'The lock on document 01a04095-38c4-74d1-8450-a7d6a0267af7 lapsed: it could not be renewed.',
+    );
+    lost.name = 'DocumentLockLost';
+    expect(humanizeError(lost)).toBe('The lock on this document lapsed.');
+  });
+
+  it('never says "item"', () => {
+    for (const e of [
+      httpError(404),
+      new Error('Vocab item 01a04095-38c4-74d1-8450-a7d6a0267af7 not found'),
+      new Error('bad thing 01a04095-38c4-74d1-8450-a7d6a0267af7'),
+    ]) {
+      expect(humanizeError(e)).not.toMatch(/\bitem\b/);
+    }
+  });
+
   it('names the network rather than the server when the server was never reached', () => {
     expect(humanizeError(new TypeError('Failed to fetch'))).toMatch(/Check your connection/);
     expect(humanizeError(httpError(503))).toMatch(/Check your connection/);

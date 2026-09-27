@@ -57,11 +57,11 @@ describe('humanizeError', () => {
   it('maps known statuses', () => {
     expect(humanizeError({ status: 403 })).toMatch(/permission/);
   });
-  it('strips URLs and ids otherwise', () => {
+  it('does not show a message that names a record by its id', () => {
     expect(
       humanizeError({
         message: 'HTTP 400 bad thing 01a04095-38c4-74d1-8450-a7d6a0267af7 at http://x/api',
       }),
-    ).toBe('bad thing this item');
+    ).toBe('Something went wrong.');
   });
 });

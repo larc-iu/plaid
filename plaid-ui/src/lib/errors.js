@@ -38,19 +38,28 @@ export const isUnreachable = (error) => {
   return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
 };
 
+// A message that names a record by its id was written for a developer. A
+// sentence with the id swapped for a stand-in word reads broken ("Vocab item
+// this item not found"), so such a message is replaced whole: a missing
+// record is "Not found.", anything else is the caller's fallback. The toast's
+// title already names the action that failed.
+const namesAnId = (msg) => msg.search(UUID_RE) !== -1;
+
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
   if (isUnreachable(error)) return UNREACHABLE;
+  // plaid-client's DocumentLockLost, whose message names the document by id.
+  if (error && error.name === 'DocumentLockLost') return 'The lock on this document lapsed.';
   switch (statusOf(error)) {
     case 401:
       return 'Your sign-in is no longer valid.';
     case 403:
       return "You don't have permission to do that.";
     case 404:
-      return 'That item could not be found.';
+      return 'Not found.';
     case 409:
       // Both apps resync a document after a conflict, so the user is never
       // told to reload by hand.
-      return 'This changed elsewhere since you loaded it. It has been refreshed to the latest version, so redo your edit.';
+      return 'Changed elsewhere. Now showing the latest version. Redo your edit.';
     case 423:
       return 'This document is being edited right now (by another user or a service). Try again in a moment.';
     case 500:
@@ -60,9 +69,9 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
   }
   const msg = String((error && error.message) || error || '')
     .replace(/\s*at\s+https?:\/\/\S+/gi, '') // " at http://…/api/v1/…"
-    .replace(UUID_RE, 'this item')
     .replace(/^HTTP \d+\s*/i, '')
     .trim();
+  if (namesAnId(msg)) return /\bnot found\b/i.test(msg) ? 'Not found.' : fallback;
   return msg || fallback;
 };
 
