@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifyError } from '@/utils/feedback';
-import { notSetUp } from '@/domain/setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,

@@ -14,7 +14,7 @@ import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
 import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];

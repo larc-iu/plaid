@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { UD_NAMESPACE, getUdLayerInfo, readProjectLanguage } from '../../utils/udLayerUtils.js';
 import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
-import { NOT_SET_UP } from '../../domain/setupGuard.js';
+import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';

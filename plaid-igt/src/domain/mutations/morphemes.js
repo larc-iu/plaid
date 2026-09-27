@@ -21,7 +21,7 @@ import {
   virtualMorphemeId,
   virtualMorphemeWordId,
 } from '../virtualMorpheme.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // A person's edit of a morpheme carries the writer's edit stamp (provenance
 // write-contract rule 3): a verifier's edit confirms a machine-made or

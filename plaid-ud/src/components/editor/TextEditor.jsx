@@ -12,6 +12,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { canEditProject } from '@ui/domain/permissions.js';
+import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { ParseDialog } from './services/ParseDialog.jsx';
@@ -266,7 +267,7 @@ export const TextEditor = () => {
 
       {setupIncomplete && (
         <Notice tone="warning" className="mb-3">
-          This project is not fully set up. A project maintainer can finish setup.
+          {NOT_SET_UP}
         </Notice>
       )}
 

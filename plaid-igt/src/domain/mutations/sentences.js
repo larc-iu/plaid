@@ -12,7 +12,7 @@ import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {

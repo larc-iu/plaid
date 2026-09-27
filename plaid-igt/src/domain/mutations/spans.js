@@ -7,7 +7,7 @@
 
 import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];

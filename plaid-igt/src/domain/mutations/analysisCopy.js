@@ -30,7 +30,7 @@ import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Entities per chunk. A chunk is one atomic batch, and the writes inside it go
 // to the BULK endpoints, so its op count is a handful (one per entity kind,

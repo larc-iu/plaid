@@ -27,7 +27,7 @@ import {
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>

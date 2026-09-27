@@ -26,7 +26,7 @@ import {
   dependencyRelationLayers,
 } from '../utils/udLayerUtils.js';
 import { SUPPRESS_KEY, isSuppressor, suppressorFor } from './enhancedGraph.js';
-import { notSetUp } from './setupGuard.js';
+import { notSetUp } from '../../../plaid-ui/src/domain/setupGuard.js';
 import { pendingId, settledId } from '../../../plaid-ui/src/domain/pendingIds.js';
 import {
   interSententialRelationIds,

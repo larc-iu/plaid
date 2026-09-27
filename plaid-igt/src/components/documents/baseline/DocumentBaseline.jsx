@@ -3,6 +3,7 @@ import { Info, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
 import { Textarea } from '@ui/components/ui/textarea';
+import { NOT_SET_UP } from '@ui/domain/setupGuard.js';
 import { useBaselineOperations } from './useBaselineOperations.js';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 
@@ -120,9 +121,7 @@ export function DocumentBaseline() {
                 <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                    <p className="text-sm text-destructive">
-                      This project is not fully set up. A project maintainer can finish setup.
-                    </p>
+                    <p className="text-sm text-destructive">{NOT_SET_UP}</p>
                   </div>
                 </div>
               )}

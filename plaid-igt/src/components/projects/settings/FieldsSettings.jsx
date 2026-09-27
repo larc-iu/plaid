@@ -15,7 +15,7 @@ import {
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
-import { notSetUp } from '@/domain/setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);

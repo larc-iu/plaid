@@ -13,7 +13,7 @@ import {
   metadataOps,
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
-import { notSetUp } from '../setupGuard.js';
+import { notSetUp } from '@ui/domain/setupGuard.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.

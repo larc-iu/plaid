@@ -22,7 +22,7 @@ import { liveNodes, ANCHOR } from './graph.js';
 import { GrewRuntimeError } from '../errors.js';
 import { isEnhancedLabel, bareLabel } from '../edgeLabel.js';
 import { SUPPRESS_KEY } from '../../domain/enhancedGraph.js';
-import { notSetUp } from '../../domain/setupGuard.js';
+import { notSetUp } from '../../../../plaid-ui/src/domain/setupGuard.js';
 
 const COLUMN_LAYER = {
   form: 'formLayer',
