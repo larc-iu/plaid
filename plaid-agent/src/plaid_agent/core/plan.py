@@ -16,6 +16,7 @@ ops with a :class:`TrackingBatcher` and a :class:`Stamps`, and lets
 """
 
 import json
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 # created_id is plaid_client's reader of a create response, which the plans take from here.
@@ -340,10 +341,43 @@ def expand_ops(ops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # A ``ctx`` here is the app's own execution context: it carries the client, the
 # batcher ``b``, and the list of restores to run after the batches.
 
+ANCHOR_LABEL_MAX = 200  # the server's ceiling on a comment's caption, in code points
+
+
+def _extends(ch: str) -> bool:
+    """Whether ``ch`` belongs to the character before it: a combining mark,
+    a zero-width joiner, a variation selector, a skin tone or an emoji tag."""
+    o = ord(ch)
+    return (unicodedata.category(ch).startswith('M') or o == 0x200D or 0xFE00 <= o <= 0xFE0F
+            or 0x1F3FB <= o <= 0x1F3FF or 0xE0020 <= o <= 0xE007F or 0xE0100 <= o <= 0xE01EF)
+
+
+def clip_caption(text: str, limit: int = ANCHOR_LABEL_MAX) -> str:
+    """``text`` cut to at most ``limit`` code points, backing off so the cut
+    does not fall inside a character a person sees as one, as the editor's
+    clipText does. A single such character longer than ``limit`` is cut by
+    code point."""
+    if len(text) <= limit:
+        return text
+    cut = limit
+    while cut > 0 and (_extends(text[cut]) or text[cut - 1] == '\u200d'):
+        cut -= 1
+    # A flag is a pair of regional indicators: never keep half of one.
+    ri = lambda c: 0x1F1E6 <= ord(c) <= 0x1F1FF  # noqa: E731
+    if cut > 0 and ri(text[cut]):
+        run = 0
+        while run < cut and ri(text[cut - 1 - run]):
+            run += 1
+        cut -= run % 2
+    return text[:cut] if cut > 0 else text[:limit]
+
+
 def apply_add_comment(ctx, op) -> int:
-    """A comment, unaudited like every comment and under the requester's name."""
+    """A comment, unaudited like every comment and under the requester's name.
+    The caption is shortened to the server's ceiling here, for every app."""
+    label = clip_caption((op.get('anchor_label') or '').strip()).strip() or None
     ctx.b.add(lambda batch, o=op: batch.comments.create(o['entity_type'], o['entity_id'], o['body'],
-                                                        anchor_label=o.get('anchor_label') or None))
+                                                        anchor_label=label))
     return 1
 
 
