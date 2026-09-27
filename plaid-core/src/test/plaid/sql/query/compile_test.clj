@@ -59,14 +59,15 @@
       (is (some #(= % [:in :t_2.token_layer_id ["UT1" "UT2"]]) (nodes hq)))
       (testing "as a list on its own layer column, never a join to the layer table"
         (is (not-any? #(and (vector? %) (= :token_layers (first %))) (:from hq))))))
-  (testing "an entity whose layer is a variable is scoped to the universe AND joined to the variable"
+  (testing "an entity whose layer is a variable is scoped through its join to the variable"
     (let [hq (qc/compile-query
               (resolved {"find" ["?s"]
                          "where" [["span" "?s" {"layer" "?sl" "value" "NOUN"}]
                                   ["span-layer" "?sl" {"name" "pos"}]]}
                         #{"P1"} nil))
           sql (sql-of hq)]
-      (is (some #(= % [:in :s_2.span_layer_id ["US"]]) (nodes hq)))
+      ;; not the list again on the entity: it would be tested on every one of its rows
+      (is (not-any? #(= % [:in :s_2.span_layer_id ["US"]]) (nodes hq)))
       (is (re-find #"s_2\.span_layer_id = slv_1\.id" sql))
       (testing "the layer variable itself is scoped by id"
         (is (some #(= % [:in :slv_1.id ["US"]]) (nodes hq))))))
