@@ -252,16 +252,21 @@
   [hqs plan limit]
   (let [inner (if (= 1 (count hqs)) (first hqs) {:union hqs})
         group-cols (:group-cols plan)
+        ;; a key that depends only on another group key is read once per group
+        ;; here, and does not take part in the grouping
+        deferred (:deferred-group plan)
+        group-selects (mapv (fn [c] (if-let [e (get deferred c)] [e c] c)) group-cols)
+        grouping (vec (remove #(contains? deferred %) group-cols))
         agg-selects (map-indexed
                      (fn [j {:keys [op col]}]
                        [(if (= op :count) :%count.* [op col]) (keyword (str "__c_" j))])
                      (:aggs plan))
         read-kws (into (vec group-cols) (map second agg-selects))
         labels (into (vec (:group-labels plan)) (map :label (:aggs plan)))
-        hq (cond-> {:select (into (vec group-cols) agg-selects)
-                    :from [[inner :_agg]]
+        hq (cond-> {:select (into group-selects agg-selects)
+                    :from [[inner qc/aggregate-alias]]
                     :limit limit}
-             (seq group-cols) (assoc :group-by (vec group-cols)))]
+             (seq grouping) (assoc :group-by grouping))]
     {:hq hq :read-kws read-kws :labels labels}))
 
 (defn- hydrate

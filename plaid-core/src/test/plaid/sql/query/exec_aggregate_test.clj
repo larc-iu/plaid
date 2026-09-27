@@ -7,6 +7,8 @@
                                     db admin-request]]
             [plaid.test-helpers :as h]
             [plaid.sql.query.exec :as qe]
+            [plaid.sql.query.compile]
+            [plaid.sql.query.resolve]
             [plaid.query.ast :as ast]))
 
 (use-fixtures :once with-db with-mount-states with-rest-handler with-admin with-test-users)
@@ -221,3 +223,43 @@
          clojure.lang.ExceptionInfo #"is not supported"
          (ast/expand {"where" [["token" "?t" {"layer" "AggProj/words" "begin" {"var" "?b"}}]]
                       "return" {"group" [] "aggregates" [["median" "?b"]]}})))))
+
+;; A group key that is a metadata field of an entity var which is itself a group
+;; key is read once per group, after the grouping, instead of once per match
+;; (igt's project-wide link count reads an entry's morph type 94k times rather
+;; than 346k). The results must be exactly what reading it per match gives.
+(deftest a-metadata-key-of-a-grouped-var-is-read-once-per-group
+  (let [{:keys [d1 d2 words pos]} (build!)
+        _ (h/update-document-metadata admin-request d1 {"genre" "news" "meta" {"n" 2}})
+        run (fn [body] (qe/run db "admin@example.com" body))
+        per-match (fn [body] (with-redefs [plaid.sql.query.compile/deferred-group-keys (fn [& _] {})]
+                               (run body)))
+        shapes {"key after its var"
+                {"where" [["token" "?t" {"layer" words}] ["document" "?d" {}] ["=" "?t.doc" "?d"]]
+                 "return" {"group" ["?d" "?d.metadata.genre"] "aggregates" [["count"]]}}
+                "key before its var, and a nested path"
+                {"where" [["token" "?t" {"layer" words}] ["document" "?d" {}] ["=" "?t.doc" "?d"]]
+                 "return" {"group" ["?d.metadata.meta.n" "?t.value" "?d"] "aggregates" [["count"]]}}
+                "under or"
+                {"where" [["token" "?t" {"layer" words}] ["document" "?d" {}] ["=" "?t.doc" "?d"]
+                          ["or"
+                           [["span" "?s" {"layer" pos "value" 10}] ["covers" "?s" "?t"]]
+                           [["span" "?s" {"layer" pos "value" 30}] ["covers" "?s" "?t"]]]]
+                 "return" {"group" ["?d" "?d.metadata.genre"] "aggregates" [["count"]]}}}]
+    (doseq [[label body] shapes]
+      (testing label
+        (is (= 1 (count (:deferred-group (plaid.sql.query.compile/aggregate-plan
+                                          (plaid.sql.query.compile/compile-query
+                                           (plaid.sql.query.resolve/resolve-query
+                                            db "admin@example.com" (first (ast/expand body))))))))
+            "the key is read after the grouping")
+        (is (= (set (:results (per-match body))) (set (:results (run body))))
+            "the same groups and counts as reading the key for every match")))
+    (testing "the key is read after the grouping and does not split a group"
+      (let [r (run (shapes "key after its var"))]
+        (is (= {(str d1) ["news" 3] (str d2) [nil 2]} (by-key r)))
+        (is (= ["d" "d_metadata_genre" "count"] (:columns r)))))
+    (testing "a metadata key of a var that is NOT grouped is still read per match"
+      (let [r (run {"where" [["token" "?t" {"layer" words}] ["document" "?d" {}] ["=" "?t.doc" "?d"]]
+                    "return" {"group" ["?d.metadata.genre"] "aggregates" [["count"]]}})]
+        (is (= #{["news" 3] [nil 2]} (set (:results r))))))))

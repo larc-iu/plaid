@@ -821,6 +821,20 @@
   [segs]
   (str "$" (apply str (map #(str "." (json-path-key %)) segs))))
 
+(defn- metadata-lookup
+  "The scalar subquery that reads metadata field `res` (a `field-resolve`
+  result of type :metadata) of the `kind` entity whose id is `id-expr`."
+  [st kind id-expr res]
+  (let [em (next-alias! st "emf")
+        et (or (kind->meta-type kind) (err-500! (str "kind " kind " has no metadata entity-type") {:kind kind}))]
+    {:select [[[:json_extract (col em :value) (json-path (:subpath res))] :v]]
+     :from   [[:entity_metadata em]]
+     :where  [:and
+              [:= (col em :entity_type) et]
+              [:= (col em :entity_id) id-expr]
+              [:= (col em :key) (:key res)]]
+     :limit  1}))
+
 (defn- field-expr
   "Resolve a field-ref term to {:sql expr :enc enc}. `clauses/field-resolve` interprets
   the path against the host var's kind; this builds the column / decoded column /
@@ -856,16 +870,7 @@
       :config
       {:sql [:json_extract (col a :config) (json-path (:subpath res))] :enc identity}
       :metadata
-      (let [em (next-alias! st "emf")
-            et (or (kind->meta-type kind) (err-500! (str "kind " kind " has no metadata entity-type") {:kind kind}))]
-        {:sql {:select [[[:json_extract (col em :value) (json-path (:subpath res))] :v]]
-               :from   [[:entity_metadata em]]
-               :where  [:and
-                        [:= (col em :entity_type) et]
-                        [:= (col em :entity_id) (col a :id)]
-                        [:= (col em :key) (:key res)]]
-               :limit  1}
-         :enc identity}))))
+      {:sql (metadata-lookup st kind (col a :id) res) :enc identity})))
 
 (defn- resolve-term
   "Resolve a predicate term to {:sql expr :enc enc} (a field path -> its column/
@@ -1003,6 +1008,40 @@
                    (err-500! (str "Group var " g " was never bound to a table") {:var g}))
                :id)))
 
+(def aggregate-alias
+  "The alias exec gives the distinct-match query inside its GROUP BY. A
+  deferred group key (`deferred-group-keys`) reads its entity's id from it."
+  :_agg)
+
+(defn- deferred-group-keys
+  "The group keys that are a METADATA field of an entity var which is itself a
+  group key, as {group-index <the lookup, run once per group>}. Such a key is
+  a function of the grouped id, so it cannot split a group and need not be read
+  for every match: `[\"?v\", ..., \"?v.metadata.morphType\"]` reads the
+  entry's morph type once per group instead of once per link. On igt's
+  project-wide link count that is 94k lookups instead of 346k."
+  [st group-vars]
+  (let [;; entity or layer var -> the index of its (first) group key
+        entity-group-index (reduce (fn [m [i g]]
+                                     (if (and (clauses/var? g)
+                                              (get-in @st [:var->alias g])
+                                              (not (contains? m g)))
+                                       (assoc m g i)
+                                       m))
+                                   {}
+                                   (map-indexed vector group-vars))]
+    (into {}
+          (keep-indexed
+           (fn [i g]
+             (when (clauses/field-ref? g)
+               (let [v (clauses/field-var g)
+                     k (get entity-group-index v)
+                     kind (get-in @st [:kinds v])
+                     res (clauses/field-resolve kind (clauses/field-path g))]
+                 (when (and k (= :metadata (:type res)))
+                   [i (metadata-lookup st kind (col aggregate-alias (str "__g_" k)) res)])))))
+          group-vars)))
+
 (defn- aggregate-projection
   "Returns {:select <distinct-match projection> :plan <plan for exec>
   :entity-vars <the vars whose ids are projected>}. ALL the internal aliases
@@ -1022,7 +1061,13 @@
   into a 500."
   [st ret align]
   (let [group-vars (:group ret)
-        g-proj (map-indexed (fn [i v] [(group-expr st v) (keyword (str "__g_" i))]) group-vars)
+        deferred (deferred-group-keys st group-vars)
+        g-cols (mapv #(keyword (str "__g_" %)) (range (count group-vars)))
+        ;; a deferred key is read after the grouping, so the matches never carry it
+        g-proj (keep-indexed (fn [i v]
+                               (when-not (contains? deferred i)
+                                 [(group-expr st v) (g-cols i)]))
+                             group-vars)
         agg-srcs (distinct (keep second (:aggregates ret)))
         src->kw (into {} (map-indexed (fn [i v] [v (keyword (str "__a_" i))]) agg-srcs))
         a-proj (mapv (fn [v] [(scalar-agg-expr st v) (src->kw v)]) agg-srcs)
@@ -1038,7 +1083,8 @@
                     [(if alias (col alias :id) nil) (keyword (str "__e_" i))]))
                 e-vars)
         label (fn [op src] (if src (str (name op) "_" (term-label src)) (name op)))
-        plan {:group-cols (mapv second g-proj)
+        plan {:group-cols g-cols
+              :deferred-group (into {} (map (fn [[i expr]] [(g-cols i) expr])) deferred)
               :group-labels (mapv term-label group-vars)
               :aggs (mapv (fn [[op src]] {:op op :col (when src (src->kw src)) :label (label op src)})
                           (:aggregates ret))}
