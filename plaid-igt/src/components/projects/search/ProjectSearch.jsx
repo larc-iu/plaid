@@ -264,8 +264,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
                 ) : (
                   g.rows.length === 0 && (
                     <p className="px-4 py-2 text-xs text-muted-foreground">
-                      Hits in this document could not be located (it may have changed since the
-                      search). Open it to look.
+                      Hits in this document could not be located. Open it to look.
                     </p>
                   )
                 )}

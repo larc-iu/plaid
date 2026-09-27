@@ -144,10 +144,7 @@ export function useWaveform({ mediaBlob, duration, timelineWidth, scrollLeft, co
         publish(canvas, at);
       } catch (error) {
         console.error('Failed to generate waveform:', error);
-        notifyWarning(
-          'The audio waveform could not be generated, so the timeline shows a flat placeholder. Playback and time alignment still work.',
-          'Waveform unavailable',
-        );
+        notifyWarning('The timeline shows a flat line.', 'Waveform unavailable');
         // No amplitudes, so a flat centreline rather than randomised bars,
         // which would read as a genuine signal.
         const { canvas, ctx, drawWidth } = canvasFor(at.width);

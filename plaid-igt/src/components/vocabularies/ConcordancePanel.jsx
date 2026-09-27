@@ -89,8 +89,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
                 })}
                 {g.rows.length === 0 && (
                   <p className="px-3 py-2 text-xs text-muted-foreground">
-                    Uses in this document could not be located (it may have changed). Open it to
-                    look.
+                    Uses in this document could not be located. Open it to look.
                   </p>
                 )}
               </div>

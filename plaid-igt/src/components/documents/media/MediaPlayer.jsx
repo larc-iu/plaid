@@ -94,9 +94,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
         // playing.
         if (error?.name === 'AbortError' || error?.name === 'NotAllowedError') return;
         console.error('Media playback error:', error);
-        setMediaError(
-          'Media format not supported by your browser. Please try MP4, WebM, MP3, or WAV files.',
-        );
+        setMediaError('This browser cannot play this format. Use MP4, WebM, MP3, or WAV.');
       }
     }
   };

@@ -50,7 +50,7 @@ const FORMATS = {
     accept: '.fwbackup,application/zip',
     drop: 'Drop a .fwbackup file here, or click to choose',
     where: 'In FieldWorks: File → Project Management → Back up this Project',
-    reading: 'Reading backup… large projects can take a few seconds.',
+    reading: 'Reading backup…',
     again: 'Choose the same backup: what is already there is kept.',
     operation: 'Import FLEx project',
   },
@@ -407,7 +407,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             <p className="text-sm text-muted-foreground">
               Create a project from a FieldWorks backup (<code>.fwbackup</code>). Texts, glosses,
               morpheme analyses, translations, and the full lexicon are imported. Media (audio and
-              pictures) is not yet imported.
+              pictures) is not imported.
             </p>
           )}
           {resumeId && (
@@ -794,7 +794,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 <p className="mb-1 font-medium">Orthographies</p>
                 <p className="mb-3 text-sm text-muted-foreground">
                   The baseline text is in {parsed.build.baselineWs}. Other writing systems on words
-                  become orthographies. Rename them if you like.
+                  become orthographies.
                 </p>
                 <div className="flex flex-col gap-2">
                   {liveConfig.orthographies.map((o) => (

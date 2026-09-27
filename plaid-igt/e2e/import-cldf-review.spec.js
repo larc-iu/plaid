@@ -288,9 +288,7 @@ test('review: a dictionary on its own says so instead of offering a dead button'
   page,
 }) => {
   await upload(page, dictionaryOnly());
-  await expect(
-    page.getByText('Importing a dictionary on its own is not yet implemented'),
-  ).toBeVisible();
+  await expect(page.getByText('A dictionary without examples cannot be imported')).toBeVisible();
   await expect(page.getByText(/2 entries but no ExampleTable/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create project & import' })).toBeDisabled();
 });

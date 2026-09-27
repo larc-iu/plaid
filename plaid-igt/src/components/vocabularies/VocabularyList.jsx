@@ -158,7 +158,7 @@ export const VocabularyList = () => {
       error={error}
       empty={{
         title: 'No vocabularies found',
-        hint: 'Create your first vocabulary to get started.',
+        hint: 'Create one with New Vocabulary.',
       }}
       tableId="vocabularies"
       noun="vocabulary"

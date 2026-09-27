@@ -259,8 +259,8 @@ export function DocumentTokenize() {
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {text?.body
-                        ? 'The text has not been divided into sentences. Save it again on the Baseline tab, and it can be split into sentences and words here.'
-                        : 'Add the text on the Baseline tab first. Once it is saved, it can be split into sentences and words here.'}
+                        ? 'The text has no sentences. Save it again on the Baseline tab.'
+                        : 'Add the text on the Baseline tab first.'}
                     </p>
                   </div>
                 </div>
@@ -287,8 +287,7 @@ export function DocumentTokenize() {
             <div className="flex items-start gap-2">
               <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
               <p className="text-sm text-destructive">
-                Missing primary token layer. Please ensure your project has a primary token layer
-                configured.
+                This project is not set up for words. A project maintainer can finish setup.
               </p>
             </div>
           </div>

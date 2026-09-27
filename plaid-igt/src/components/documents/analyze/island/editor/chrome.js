@@ -19,11 +19,8 @@ export const chrome = {
     const info = doc.layerInfo;
     if (!info.primaryTokenLayer) {
       return html` <div class="igt-island__empty igt-island__empty--warn">
-        <div class="igt-empty__title">This document isn't set up for interlinear analysis yet</div>
-        <p class="igt-empty__body">
-          No primary <em>word</em> token layer is configured for this project. An administrator
-          needs to finish project setup before the interlinear grid can be used.
-        </p>
+        <div class="igt-empty__title">Not set up for analysis</div>
+        <p class="igt-empty__body">A project maintainer needs to finish setting up this project.</p>
       </div>`;
     }
     const sentences = doc.sentences;
@@ -32,8 +29,7 @@ export const chrome = {
       return html` <div class="igt-island__empty">
         <div class="igt-empty__title">Nothing to analyze yet</div>
         <p class="igt-empty__body">
-          Interlinear glossing happens here once the text is split into words. Head to the
-          <strong>Tokenize</strong> tab to break the baseline text into sentences and words first.
+          Split the text into sentences and words on the <strong>Tokenize</strong> tab.
         </p>
         ${this.readOnly
           ? nothing

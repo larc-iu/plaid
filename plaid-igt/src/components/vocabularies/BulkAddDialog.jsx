@@ -675,8 +675,7 @@ export const BulkAddDialog = ({
           </p>
           <dl className="flex flex-col gap-1.5 text-xs">
             <LegendEntry name="Form" note="required">
-              The entry as it appears in the text, which is what a token gets linked to. Repeating a
-              form is allowed, since a homonym is a separate entry.
+              The entry as it appears in the text. A form may repeat: each homonym is its own entry.
             </LegendEntry>
             {fieldNames.map((f) => (
               <LegendEntry key={f} name={humanizeFieldName(f)} note="optional">

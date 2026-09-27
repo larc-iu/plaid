@@ -294,9 +294,7 @@ export const ImportCldfProject = () => {
                 <div>
                   <p className="text-sm font-medium">How the examples split into texts</p>
                   <p className="text-xs text-muted-foreground">
-                    Not every corpus is running text. A survey whose examples are standalone
-                    illustrations is best imported one document per example, which is also the only
-                    way an example’s own audio can come with it.
+                    Only “One document per example” keeps each example’s own audio.
                   </p>
                 </div>
                 <Select
@@ -323,8 +321,7 @@ export const ImportCldfProject = () => {
                 <div>
                   <p className="text-sm font-medium">Columns CLDF has no term for</p>
                   <p className="text-xs text-muted-foreground">
-                    These carry no ontology binding, so where they belong is a judgement call.
-                    Per-word scopes need a column whose values are one list per word.
+                    Choose where each goes. A Word or Morpheme field needs one value per word.
                   </p>
                 </div>
                 {columnChoices
@@ -382,12 +379,11 @@ export const ImportCldfProject = () => {
                   {build.lexicon.length > 0 ? (
                     <>
                       <p className="font-medium">
-                        Importing a dictionary on its own is not yet implemented
+                        A dictionary without examples cannot be imported
                       </p>
                       <p className="text-xs text-muted-foreground">
                         This dataset has {plural(build.lexicon.length, 'entry', 'entries')} but no
-                        ExampleTable, so there are no texts to build a project around. Bringing a
-                        CLDF dictionary in as a standalone vocabulary is still to do.
+                        ExampleTable, so it has no texts.
                       </p>
                     </>
                   ) : (

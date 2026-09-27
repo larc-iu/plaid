@@ -37,7 +37,7 @@ export const DocumentList = ({
 
   const handleCreateDocument = async () => {
     if (!documentName.trim()) {
-      notifyError('Document name is required', 'Error');
+      notifyError('Name the document.', 'Error');
       return;
     }
     setIsCreating(true);
@@ -89,14 +89,17 @@ export const DocumentList = ({
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md"
+          {...(choosing ? { 'aria-describedby': undefined } : {})}
+        >
           <DialogHeader>
             <DialogTitle>New document</DialogTitle>
-            <DialogDescription>
-              {choosing
-                ? 'How would you like to add one?'
-                : 'Name the document. Its text goes on the Baseline tab.'}
-            </DialogDescription>
+            {!choosing && (
+              <DialogDescription>
+                Name the document. Its text goes on the Baseline tab.
+              </DialogDescription>
+            )}
           </DialogHeader>
           {choosing ? (
             <div className="flex flex-col gap-2">

@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { TASKS } from '@larc-iu/plaid-client';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
-import { notifySuccess, notifyError } from '@/utils/feedback';
+import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useServiceRequest } from '@ui/hooks/useServiceRequest.js';
 import { useServiceSpot } from '@ui/hooks/useServiceSpot.js';
 import { useRunProgress, useMirroredProgress } from '@ui/hooks/useRunProgress.js';
@@ -226,7 +226,11 @@ export const useMediaOperations = () => {
         const response = await fetch(mediaSrcUrl, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         });
-        if (!response.ok) throw new Error(`server responded ${response.status}`);
+        if (!response.ok) {
+          const failed = new Error(`HTTP ${response.status}`);
+          failed.status = response.status;
+          throw failed;
+        }
         const blob = await response.blob();
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -234,7 +238,7 @@ export const useMediaOperations = () => {
       } catch (error) {
         if (cancelled) return;
         console.error('Failed to load media:', error);
-        setMediaLoadError(error?.message ?? String(error));
+        setMediaLoadError(humanizeError(error, 'The media could not be loaded.'));
       } finally {
         if (!cancelled) setIsLoadingMedia(false);
       }
@@ -537,7 +541,7 @@ export const useMediaOperations = () => {
     const documentId = doc.document.id;
 
     if (!documentId) {
-      notifyError('Document ID not found', 'Error');
+      notifyError('This document could not be found.', 'Error');
       return;
     }
 

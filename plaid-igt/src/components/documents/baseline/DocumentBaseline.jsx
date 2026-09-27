@@ -53,9 +53,6 @@ export function DocumentBaseline() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">Baseline Text</h2>
-              <p className="text-sm text-muted-foreground">
-                The text you are analyzing, written the way you work with it.
-              </p>
             </div>
             {!ops.isEditing && !readOnly && (
               <Button variant="outline" size="sm" onClick={ops.handleEdit}>
@@ -89,8 +86,7 @@ export function DocumentBaseline() {
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 h-4 w-4 shrink-0" />
                     <p className="text-sm">
-                      Existing sentences, words, and annotations are kept and adjusted to match your
-                      edits. Words inside text you delete are removed along with their annotations.
+                      Words inside deleted text are removed with their annotations.
                     </p>
                   </div>
                 </div>

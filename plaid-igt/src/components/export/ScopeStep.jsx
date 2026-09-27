@@ -53,8 +53,7 @@ export const ScopeStep = ({
         <Label>Scope</Label>
         {radio('document', `This document: ${defaultDocument?.name}`)}
         <p className="text-xs text-muted-foreground">
-          You are viewing a historical state, so the export covers this document as of that moment.
-          Project-wide export is available outside of history view.
+          Exports this document as of the selected past state.
         </p>
         {zipNote && <p className="text-xs text-muted-foreground">{zipNote}</p>}
       </div>

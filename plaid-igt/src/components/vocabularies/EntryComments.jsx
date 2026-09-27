@@ -30,7 +30,7 @@ export const EntryComments = ({ store, itemId, caption, canWrite, canDeleteAny }
             comment.authorId === store.currentUserId
               ? 'Delete your comment?'
               : `Delete ${store.authorName(comment.authorId)}'s comment?`,
-          description: 'Comments are not kept in the history, so this cannot be undone.',
+          description: 'This cannot be undone.',
           confirmLabel: 'Delete',
           destructive: true,
         }),

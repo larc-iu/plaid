@@ -175,8 +175,8 @@ export const ImportElanProject = () => {
             >
               ELAN
             </a>{' '}
-            annotation files. Every file becomes one document, and every file must share the same
-            tier structure so one set of decisions covers the whole corpus.
+            annotation files. Every file becomes one document. All files must share one tier
+            structure.
           </p>
           {resumeId && (
             <ResumeBanner

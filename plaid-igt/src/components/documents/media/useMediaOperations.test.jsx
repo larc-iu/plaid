@@ -161,7 +161,7 @@ describe('useMediaOperations: fetching the recording', () => {
     expect(failed.seq).toEqual([
       EMPTY,
       LOADING,
-      { url: null, loading: false, error: 'server responded 404' },
+      { url: null, loading: false, error: 'Not found.' },
     ]);
     await failed.unmount();
 

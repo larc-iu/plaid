@@ -95,9 +95,8 @@ export const VocabularySettings = ({ projectId, client }) => {
     <div>
       <h2 className="text-lg font-semibold">Vocabularies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        Link vocabularies to your project. Vocabularies allow you to link tokens to
-        document-independent vocabulary entries, allowing you to track constructs such as morphemes,
-        words, or multi-word expressions.
+        Vocabularies linked to this project. Words, morphemes and multi-word expressions link to
+        their entries.
       </p>
 
       <VocabularyManager

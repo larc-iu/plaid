@@ -107,7 +107,7 @@ export const useMetadataOperations = () => {
     setDeleting(false);
     setDeleteModalOpen(false);
     if (ok) {
-      notifySuccess(`"${name}" has been successfully deleted.`, 'Document deleted');
+      notifySuccess(`Deleted “${name}”`);
       // Nothing to ask: the document what was typed belonged to is gone. The
       // extra history entry still comes out before the route changes.
       await dropUnsavedDrafts();

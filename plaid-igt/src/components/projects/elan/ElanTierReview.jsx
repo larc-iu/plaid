@@ -51,9 +51,7 @@ const ROLE_GROUPS = [
 export const SchemaMismatch = ({ comparison, onReset }) => (
   <Panel tone="error" icon={AlertTriangle} title="These files do not share one tier structure">
     <p className="mt-1 text-xs">
-      One mapping has to describe the whole batch, so importing a mixture would apply decisions to
-      files they were never made for. Import each structure separately, or make the tiers match in
-      ELAN first.
+      Import each structure separately, or make the tiers match in ELAN first.
     </p>
     <ul className="mt-2 flex flex-col gap-2 text-xs">
       {comparison.differences.map((d, i) => (
@@ -90,9 +88,7 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
     title={`${groups.length} pair${groups.length === 1 ? '' : 's'} of tier names read alike`}
   >
     <p className="mt-1 text-xs">
-      Tiers are matched by their exact names, so these are separate tiers unless you say otherwise.
-      Two rows that read alike is how a tier gets mapped by mistake and its twin silently dropped,
-      so this usually means a typo in the corpus.
+      Tiers are matched by exact name. These read alike, which usually means a typo.
     </p>
     <div className="mt-2 flex flex-col gap-2">
       {groups.map((g) => (
@@ -124,9 +120,7 @@ const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
       ))}
     </div>
     {undecided.length > 0 && (
-      <p className="mt-2 text-xs font-medium">
-        Decide each pair to continue. Renaming the tiers in ELAN is the durable fix.
-      </p>
+      <p className="mt-2 text-xs font-medium">Decide each pair to continue.</p>
     )}
   </Panel>
 );

@@ -385,7 +385,7 @@ export function buildCldfDocuments(dataset, options = {}) {
     if (off) {
       warnings.push(
         `"${c.column}" does not line up with the analyzed words on ${off} ` +
-          `${off === 1 ? 'example' : 'examples'}; its values there are read by position ` +
+          `${off === 1 ? 'example' : 'examples'}. Its values there are read by position ` +
           'and may be shifted or missing.',
       );
     }
@@ -567,7 +567,7 @@ export function buildCldfDocuments(dataset, options = {}) {
       const synthesized = primary === '' && analyzed.length > 0;
       const text = synthesized ? analyzed.map(surfaceOf).join(' ') : primary;
       if (text === '') {
-        docWarnings.push(`Example ${cell(examples, row, 'id') || '?'} has no text; skipped`);
+        docWarnings.push(`Example ${cell(examples, row, 'id') || '?'} has no text. Skipped.`);
         continue;
       }
       if (synthesized) synthesizedBodies += 1;
@@ -864,8 +864,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   for (const [wanted, kept] of nameClashes) {
     warnings.push(
       `Two fields both arrive as "${wanted}": one bound to a CLDF term and one carried as ` +
-        `"${kept}". The second keeps the column's own name so no values are overwritten. ` +
-        `Rename it after importing if you want it called something else.`,
+        `"${kept}". The second keeps the column's own name so no values are overwritten.`,
     );
   }
   const orthographies = custom.filter((c) => c.scope === 'Orthography').map((c) => c.name);
@@ -892,7 +891,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   if (objectLanguageIds.size > 1) {
     warnings.push(
       `This dataset covers ${objectLanguageIds.size} object languages. A Plaid project documents ` +
-        'one, so no language identity was set. You can set it in Settings afterwards.',
+        'one, so no language identity was set. Set it under Settings, Languages.',
     );
   }
 

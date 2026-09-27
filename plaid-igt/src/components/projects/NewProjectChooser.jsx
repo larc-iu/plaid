@@ -65,7 +65,6 @@ export const NewProjectChooser = () => {
 
         <div>
           <h1 className="text-2xl font-bold">New Project</h1>
-          <p className="text-sm text-muted-foreground">How would you like to start?</p>
         </div>
 
         <div className="flex flex-col gap-3">

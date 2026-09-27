@@ -197,13 +197,10 @@ export function DocumentMetadata() {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="text-sm">
-                  <p className="font-medium text-destructive">This action is irreversible</p>
-                  <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the document{' '}
-                    <strong>"{ops.document.name}"</strong> and all of its associated data including
-                    annotations and text content.
+                  <p className="text-muted-foreground">
+                    Deletes <strong>“{ops.document.name}”</strong> and its annotations. This cannot
+                    be undone.
                   </p>
-                  <p className="mt-2 text-muted-foreground">This action cannot be undone.</p>
                 </div>
               </div>
             </div>

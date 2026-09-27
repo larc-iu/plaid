@@ -81,7 +81,7 @@ describe('a play() the browser refuses', () => {
   it('still names an unplayable file', async () => {
     const view = await mountWith(named(new Error('no supported source'), 'NotSupportedError'));
     expect(banner(view.container)).toBe('shown');
-    expect(view.container.textContent).toContain('Media format not supported');
+    expect(view.container.textContent).toContain('This browser cannot play this format.');
     await view.unmount();
   });
 });
