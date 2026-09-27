@@ -98,6 +98,27 @@ describe('Breadcrumb', () => {
     expect(texts(view.container, 'li:not([aria-hidden])')).toEqual(['Projects', 'مشروع', 'نص أول']);
   });
 
+  it('never shrinks a fixed label, and lets a name truncate', async () => {
+    await mount([
+      { label: 'Projects', to: '/projects', fixed: true },
+      { label: 'A project with a very long name', to: '/projects/p1/documents' },
+      { label: 'Add ELAN documents', fixed: true },
+    ]);
+    const [projects, name, page] = all(view.container, 'li:not([aria-hidden])');
+    for (const fixed of [projects, page]) {
+      expect(fixed.className).toContain('shrink-0');
+      expect(fixed.className).not.toContain('truncate');
+    }
+    // It grows to its own width and no further, from a basis of nothing, so a
+    // long name never pushes the fixed labels onto a second line.
+    expect(name.className.split(' ')).toEqual(
+      expect.arrayContaining(['min-w-0', 'truncate', 'flex-1', 'max-w-fit']),
+    );
+    expect(name.className).not.toContain('shrink-0');
+    // Fixed labels that cannot all fit wrap rather than push the page wide.
+    expect(view.container.querySelector('ol').className).toContain('flex-wrap');
+  });
+
   it('shows a lone item as the current page', async () => {
     await mount([{ label: 'Projects', to: '/projects' }]);
     expect(all(view.container, 'a')).toEqual([]);

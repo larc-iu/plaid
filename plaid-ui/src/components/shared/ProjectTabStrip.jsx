@@ -75,7 +75,7 @@ export const ProjectTabStrip = ({
       <Breadcrumb
         className="mb-2"
         items={[
-          { label: 'Projects', to: appRoutes().projects },
+          { label: 'Projects', to: appRoutes().projects, fixed: true },
           { label: project?.name || 'Loading…' },
         ]}
       />
@@ -83,7 +83,7 @@ export const ProjectTabStrip = ({
           a heading that stays with the chrome: an Arabic name reads right to
           left and still starts at the left edge under the breadcrumb. The
           minimum height holds the tabs still while the project loads. */}
-      <h1 className="mb-2 min-h-9 truncate text-3xl font-bold tracking-tight">
+      <h1 className="mb-3 min-h-9 truncate text-3xl font-bold tracking-tight">
         <span dir="auto">{project?.name}</span>
       </h1>
 

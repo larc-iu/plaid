@@ -15,6 +15,7 @@ import { OrthographiesStep } from './setup/OrthographiesStep';
 import { FieldsStep } from './setup/FieldsStep';
 import { VocabularyStep } from './setup/VocabularyStep';
 import { ConfirmationStep } from './setup/ConfirmationStep';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 export const ProjectSetup = () => {
   useDocumentTitle('Project Setup');
@@ -138,17 +139,20 @@ export const ProjectSetup = () => {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-8">
         <Breadcrumb
           items={
             isNewProject
               ? [
-                  { label: 'Projects', to: '/projects' },
-                  { label: 'New Project', to: '/projects/new' },
-                  { label: 'Start from scratch' },
+                  { label: 'Projects', to: '/projects', fixed: true },
+                  { label: 'New Project', to: '/projects/new', fixed: true },
+                  { label: 'Start from scratch', fixed: true },
                 ]
-              : [{ label: 'Projects', to: '/projects' }, { label: 'Project Setup' }]
+              : [
+                  { label: 'Projects', to: '/projects', fixed: true },
+                  { label: 'Project Setup', fixed: true },
+                ]
           }
         />
 

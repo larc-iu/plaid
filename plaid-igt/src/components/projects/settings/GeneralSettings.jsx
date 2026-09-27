@@ -12,18 +12,16 @@ import { LanguagesSettings } from './LanguagesSettings.jsx';
 // IGT keeps two languages (object and meta), so it passes its own section
 // instead of the shared single-tag Language card.
 export const GeneralSettings = ({ project, projectId, client, onProjectUpdate }) => (
-  <div className="pt-4">
-    <ProjectGeneralPage project={project} onSaved={onProjectUpdate}>
-      <Card>
-        <CardContent className="pt-6">
-          <LanguagesSettings
-            project={project}
-            projectId={projectId}
-            client={client}
-            onProjectUpdate={onProjectUpdate}
-          />
-        </CardContent>
-      </Card>
-    </ProjectGeneralPage>
-  </div>
+  <ProjectGeneralPage project={project} onSaved={onProjectUpdate}>
+    <Card>
+      <CardContent className="pt-6">
+        <LanguagesSettings
+          project={project}
+          projectId={projectId}
+          client={client}
+          onProjectUpdate={onProjectUpdate}
+        />
+      </CardContent>
+    </Card>
+  </ProjectGeneralPage>
 );

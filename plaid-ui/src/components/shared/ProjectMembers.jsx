@@ -218,10 +218,16 @@ export const ProjectMembers = ({
             avatarHash={m.avatarHash}
             className="h-7 w-7"
           />
-          <div className="min-w-0 [overflow-wrap:anywhere]">
+          {/* A floor for the name: on a phone the table scrolls sideways in
+              its own box rather than squeezing the name a letter a line. */}
+          <div className="min-w-[10rem] [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-x-2">
               <span className="font-medium">{m.displayName}</span>
-              {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
+              {m.isAdmin && (
+                <Badge variant="secondary" className="shrink-0 [overflow-wrap:normal]">
+                  Admin
+                </Badge>
+              )}
             </div>
             <span className="text-xs text-muted-foreground">{m.id}</span>
           </div>

@@ -150,7 +150,6 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
       />
 
       <LinkedListPage
-        className=""
         title="Projects"
         action={
           <Button onClick={() => setShowCreateForm(true)}>

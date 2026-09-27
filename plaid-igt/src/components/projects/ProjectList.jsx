@@ -123,8 +123,6 @@ export const ProjectList = () => {
 
   return (
     <LinkedListPage
-      // The shell's container is the page: a list is as wide as the header.
-      className=""
       title="Projects"
       action={
         <NewLinkButton to="/projects/new">

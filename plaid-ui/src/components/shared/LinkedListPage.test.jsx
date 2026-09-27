@@ -40,6 +40,13 @@ const mount = (props = {}) =>
   );
 
 describe('LinkedListPage', () => {
+  it('takes the width and padding the app shell gives it, adding none of its own', async () => {
+    const { container, unmount } = await mount();
+    const page = container.firstElementChild;
+    expect(page.className).not.toMatch(/\b(mx-auto|max-w-\S+|px-\d+|py-\d+)\b/);
+    await unmount();
+  });
+
   it('puts a real link in every cell, pointing at the same row', async () => {
     const { container, unmount } = await mount();
     const first = all(container, 'tbody tr')[0];

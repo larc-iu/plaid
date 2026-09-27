@@ -47,13 +47,13 @@ export const TimeCell = ({ at }) =>
  * name there, down to a floor of 10rem. Without it the column grows to the
  * whole name and pushes the rest of the row out of sight.
  *
- * `className` is the page's outer wrapper, because the two shells differ:
- * plaid-ud's Outlet is already padded and plaid-igt's is not.
+ * `className` is added to the page's outer wrapper. The app shell already pads
+ * the page and holds it to the list width, so it takes no width of its own.
  */
 export const LinkedListPage = ({
   title,
   action,
-  className = 'mx-auto max-w-5xl px-4 py-8',
+  className = '',
   href,
   rows,
   columns,

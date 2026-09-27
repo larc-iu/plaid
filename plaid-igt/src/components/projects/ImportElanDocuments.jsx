@@ -64,6 +64,7 @@ import { ElanPreview } from './elan/ElanPreview.jsx';
 import { useMediaDurations } from './elan/useMediaDurations';
 import { useRecordingConversion } from './elan/useRecordingConversion';
 import { useServerLimits } from '@/hooks/useServerLimits';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 const NEW_FIELD = '__new__';
 
@@ -326,14 +327,14 @@ export const ImportElanDocuments = () => {
 
   if (loadError) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className={FORM_PAGE_WIDTH}>
         <Panel tone="error" title={loadError} />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       {/* Outside the pick step: the review step reopens it to add recordings. */}
       <input
         ref={fileInputRef}
@@ -349,9 +350,9 @@ export const ImportElanDocuments = () => {
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
-            { label: 'Projects', to: '/projects' },
+            { label: 'Projects', to: '/projects', fixed: true },
             { label: project?.name ?? 'Project', to: projectHref },
-            { label: 'Add ELAN documents' },
+            { label: 'Add ELAN documents', fixed: true },
           ]}
         />
 

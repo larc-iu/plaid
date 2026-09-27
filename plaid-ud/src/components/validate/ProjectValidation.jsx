@@ -1,3 +1,5 @@
+import { cn } from '@ui/lib/utils';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
@@ -227,7 +229,8 @@ export const ProjectValidation = () => {
   return (
     <div className="w-full">
       <ProjectTabs projectId={projectId} project={project} />
-      <div className="mx-auto w-full max-w-4xl">
+      {/* The same width in every app: a form's, from the page's left edge. */}
+      <div className={cn('w-full', FORM_PAGE_WIDTH)}>
         <ValidationHeader
           description="Values in this project that its lists do not include. Parsers, imports and the API are not held to the lists."
           busy={busy}

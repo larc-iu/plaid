@@ -26,6 +26,7 @@ import { plural } from '@/utils/plural';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 export const ImportNativeProject = () => {
   useDocumentTitle('Import Archive');
@@ -104,13 +105,13 @@ export const ImportNativeProject = () => {
     : 0;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
-            { label: 'Projects', to: '/projects' },
-            { label: 'New Project', to: '/projects/new' },
-            { label: 'Import archive' },
+            { label: 'Projects', to: '/projects', fixed: true },
+            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'Import archive', fixed: true },
           ]}
         />
 

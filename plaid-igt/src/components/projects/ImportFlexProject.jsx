@@ -42,6 +42,7 @@ import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { plural } from '@/utils/plural';
 import { readTextFile } from '@ui/lib/textFile.js';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`, which also names the route a resume comes back to).
@@ -384,13 +385,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   const locked = stage !== 'review' || setupDoneRef.current || !!resumeId;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
-            { label: 'Projects', to: '/projects' },
-            { label: 'New Project', to: '/projects/new' },
-            { label: fmt.title },
+            { label: 'Projects', to: '/projects', fixed: true },
+            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: fmt.title, fixed: true },
           ]}
         />
 

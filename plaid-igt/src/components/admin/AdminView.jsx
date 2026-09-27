@@ -40,8 +40,9 @@ export const AdminView = () => {
   if (!client) return null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
-      <h1 className="pb-4 text-2xl font-bold">Administration</h1>
+    // The shell already pads the page and holds it to the list width.
+    <div>
+      <h1 className="pb-4 text-3xl font-bold tracking-tight">Administration</h1>
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="users" to={tabHref('/admin', 'users')}>

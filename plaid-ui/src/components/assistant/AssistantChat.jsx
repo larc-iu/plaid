@@ -784,8 +784,8 @@ export const AssistantChat = ({
       {renderSidebar?.(chrome)}
       <section
         className={cn(
-          'flex min-w-0 flex-1 flex-col bg-card',
-          compact ? 'min-h-0' : 'rounded-lg border',
+          'flex min-h-0 min-w-0 flex-1 flex-col bg-card',
+          !compact && 'rounded-lg border',
         )}
       >
         {/* `min-h-14` matches the app header's own height, so the two bars

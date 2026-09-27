@@ -43,6 +43,7 @@ import { plural } from '@/utils/plural';
 
 import { documentFraction, documentLabel } from '../../import/progress';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 const SCOPES = ['Sentence', 'Word', 'Morpheme', 'Orthography'];
 const OFF = '__off__';
@@ -154,13 +155,13 @@ export const ImportCldfProject = () => {
   const locked = !editable || setupDoneRef.current || !!resumeId;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
-            { label: 'Projects', to: '/projects' },
-            { label: 'New Project', to: '/projects/new' },
-            { label: 'Import CLDF' },
+            { label: 'Projects', to: '/projects', fixed: true },
+            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'Import CLDF', fixed: true },
           ]}
         />
 

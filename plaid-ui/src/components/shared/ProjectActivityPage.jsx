@@ -28,7 +28,7 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
   return (
     <div className="w-full">
       <Tabs projectId={projectId} project={project} />
-      <div className="mx-auto w-full max-w-6xl">
+      <div className="w-full">
         <ActivityPanel
           client={client}
           projectId={projectId}

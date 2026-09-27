@@ -107,8 +107,10 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                   const isRecording = recording === action.id;
                   return (
                     <li key={action.id} className="flex flex-col gap-1 px-3 py-2">
-                      <div className="flex items-center gap-3">
-                        <span className="min-w-0 flex-1 text-sm">{action.label}</span>
+                      {/* On a narrow screen the keys and the buttons wrap under
+                          the label instead of squeezing it a word a line. */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="min-w-0 flex-1 basis-48 text-sm">{action.label}</span>
                         {isRecording ? (
                           <button
                             type="button"
@@ -121,7 +123,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                             Press the new shortcut
                           </button>
                         ) : (
-                          <span className="flex shrink-0 items-center gap-1">
+                          <span className="flex flex-wrap items-center gap-1">
                             {keymap.chords(action.id).map((chord, i) => (
                               <Fragment key={chord}>
                                 {i > 0 && (
@@ -132,7 +134,7 @@ export const KeyboardSettings = ({ keymap, groups }) => {
                             ))}
                           </span>
                         )}
-                        <span className="flex w-32 shrink-0 justify-end gap-1">
+                        <span className="ms-auto flex w-32 shrink-0 justify-end gap-1">
                           {isRecording ? (
                             <Button variant="ghost" size="sm" onMouseDown={stop}>
                               Cancel

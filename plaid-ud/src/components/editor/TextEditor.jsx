@@ -280,8 +280,10 @@ export const TextEditor = () => {
         </Notice>
       )}
 
+      {/* `min-w-0` on each column: a grid column is otherwise as wide as its
+          widest row of buttons, and on a phone that pushed the page sideways. */}
       <div className="grid gap-8 lg:grid-cols-2">
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <h4 className="text-base font-semibold">Text Content</h4>
           <Textarea
             ref={textareaRef}
@@ -294,7 +296,7 @@ export const TextEditor = () => {
             className="resize-none overflow-hidden leading-relaxed"
           />
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {!readOnly && (
               <Button
                 onClick={handleSaveText}
@@ -341,7 +343,7 @@ export const TextEditor = () => {
               </Button>
             )}
 
-            <span className="ml-auto text-sm font-medium text-muted-foreground">
+            <span className="ms-auto whitespace-nowrap text-sm font-medium text-muted-foreground">
               {wordTokens.length} token{wordTokens.length !== 1 ? 's' : ''}, {sentenceTokens.length}{' '}
               sentence{sentenceTokens.length !== 1 ? 's' : ''}
             </span>
@@ -359,7 +361,7 @@ export const TextEditor = () => {
           </p>
         </div>
 
-        <div className="rounded-md border bg-muted/40 p-4">
+        <div className="min-w-0 rounded-md border bg-muted/40 p-4">
           <h4 className="mb-4 text-base font-semibold">Tokens</h4>
           <TokenVisualizer
             text={textContent}

@@ -12,7 +12,8 @@ import {
 } from './ConversationList.jsx';
 
 // The Assistant tab: the whole screen, laid out like any chat app, with past
-// conversations on the left and the active one on the right.
+// conversations on the left and the active one on the right. On a phone the
+// list sits above the conversation, in a short box of its own.
 //
 // What it adds to the chat: the rail of conversations, the export menu, and
 // the room to introduce itself. The conversation it is showing is in the URL
@@ -28,7 +29,7 @@ export const AssistantTab = ({
 }) => {
   const [convId, setConvId] = useConversationParam();
   return (
-    <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
+    <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] flex-col gap-4 sm:flex-row">
       <AssistantChat
         projectId={projectId}
         projectName={projectName}
@@ -40,7 +41,7 @@ export const AssistantTab = ({
         conversationId={convId}
         onConversationId={setConvId}
         renderSidebar={({ listProps, allProjects, setAllProjects, startNew }) => (
-          <aside className="flex w-64 shrink-0 flex-col rounded-lg border bg-card">
+          <aside className="flex max-h-48 w-full shrink-0 flex-col rounded-lg border bg-card sm:max-h-none sm:w-64">
             <div className="flex items-center justify-between border-b px-3 py-2">
               <span className="text-sm font-medium">Conversations</span>
               <Button

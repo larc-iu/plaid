@@ -234,7 +234,7 @@ export const ProjectDetail = () => {
     <div className={FORM_PAGE_WIDTH}>
       <Breadcrumb
         className="mb-2"
-        items={[{ label: 'Projects', to: '/projects' }, { label: project.name }]}
+        items={[{ label: 'Projects', to: '/projects', fixed: true }, { label: project.name }]}
       />
       {/* The name takes its own direction inside a heading that stays with
           the chrome, as the tab strip's does. */}
@@ -308,13 +308,16 @@ export const ProjectDetail = () => {
   } else if (activeTab === 'bulk' && canManage) {
     body = <ProjectBulkEdit project={project} projectId={projectId} client={client} />;
   } else if (activeTab === 'validate' && canManage) {
+    // The same width as plaid-ud's and plaid-umr's Validation.
     body = (
-      <ProjectValidation
-        project={project}
-        projectId={projectId}
-        client={client}
-        onProjectUpdate={refreshProject}
-      />
+      <div className={FORM_PAGE_WIDTH}>
+        <ProjectValidation
+          project={project}
+          projectId={projectId}
+          client={client}
+          onProjectUpdate={refreshProject}
+        />
+      </div>
     );
   } else if (activeTab === 'activity' && canManage) {
     body = <ProjectActivity client={client} project={project} projectId={projectId} />;

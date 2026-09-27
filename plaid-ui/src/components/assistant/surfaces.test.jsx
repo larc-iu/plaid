@@ -251,7 +251,9 @@ describe('AssistantTab', () => {
     await flush(m);
     const s = shell(m);
     expect(s.card).toContain('rounded-lg border');
-    expect(s.card).not.toContain('min-h-0');
+    // It may shrink too: on a phone the tab stacks the conversation list over
+    // the chat in one fixed height, and the chat's transcript scrolls.
+    expect(s.card).toContain('min-h-0');
     expect(s.transcript).toContain('px-4');
     expect(s.composer).toContain('px-4');
     await m.unmount();

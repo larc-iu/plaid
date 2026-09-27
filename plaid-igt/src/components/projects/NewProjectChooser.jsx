@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { PenLine, FileUp, FileText, Archive, Table2, AudioLines, ChevronRight } from 'lucide-react';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 const OPTIONS = [
   {
@@ -54,9 +55,14 @@ const OPTIONS = [
 export const NewProjectChooser = () => {
   useDocumentTitle('New Project');
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
-        <Breadcrumb items={[{ label: 'Projects', to: '/projects' }, { label: 'New Project' }]} />
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects', fixed: true },
+            { label: 'New Project', fixed: true },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">New Project</h1>

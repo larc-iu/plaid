@@ -124,7 +124,7 @@ export const UmrSettings = () => {
             const header = HEADERS.find((h) => h.key === row.header);
             const stored = row.source === STORED;
             return (
-              <div key={i} className="flex items-center gap-2">
+              <div key={i} className="flex flex-wrap items-center gap-2">
                 <Select
                   value={row.source}
                   onValueChange={(v) => update(i, { source: v })}
@@ -142,7 +142,9 @@ export const UmrSettings = () => {
                   </SelectContent>
                 </Select>
                 {stored ? (
-                  <span className="flex-1 text-sm text-muted-foreground">Written as stored</span>
+                  <span className="flex-1 whitespace-nowrap text-sm text-muted-foreground">
+                    Written as stored
+                  </span>
                 ) : (
                   <>
                     <Select
@@ -204,7 +206,7 @@ export const UmrSettings = () => {
             );
           })}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={add} disabled={saving}>
             <Plus className="h-4 w-4" /> Add line
           </Button>

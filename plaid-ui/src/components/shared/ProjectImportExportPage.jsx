@@ -456,8 +456,10 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                                   <span className="text-sm font-medium" dir="auto">
                                     {r.name}
                                   </span>
+                                  {/* The file name takes its own direction, the
+                                      brackets stay with the chrome. */}
                                   <span className="truncate text-xs text-muted-foreground">
-                                    ({r.file})
+                                    (<span dir="auto">{r.file}</span>)
                                   </span>
                                 </div>
                                 {r.status === 'rejected' && (
