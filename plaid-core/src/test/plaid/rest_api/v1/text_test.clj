@@ -158,6 +158,45 @@
     (is (= [0 5 "юкъуь"] (extent anchor)))
     (is (= [6 11 "хьана"] (extent next-word)))))
 
+(deftest text-body-word-replaced-outright-keeps-its-tokens-on-the-new-word
+  ;; `ta` to `bad` diffs to `t` respelled `b`, keep `a`, insert `d`, which
+  ;; left the word token, its morpheme and the gloss on the `ba` of `bad`. A
+  ;; replaced word keeps its annotations (ruled 2026-09-21), on the new word.
+  (let [proj (create-test-project admin-request "TextReplaceWordProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        morphemes (-> (create-token-layer-opts admin-request tl "Morphemes"
+                                               {:parent-token-layer-id words})
+                      :body :id)
+        glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
+        text-id (-> (create-text admin-request tl doc "ta aa bad") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                              :begin 0 :end 9}]))
+        ta (-> (create-token admin-request words text-id 0 2) :body :id)
+        aa (-> (create-token admin-request words text-id 3 5) :body :id)
+        bad (-> (create-token admin-request words text-id 6 9) :body :id)
+        ta-m (-> (create-token admin-request morphemes text-id 0 2) :body :id)
+        gloss (-> (create-span admin-request glosses [ta-m] "TA") :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "bad aa bad"))
+    (is (= [0 3 "bad"] (extent ta)))
+    (is (= [0 3 "bad"] (extent ta-m)))
+    (is (= [4 6 "aa"] (extent aa)))
+    (is (= [7 10 "bad"] (extent bad)))
+    (let [s (get-span admin-request gloss)]
+      (assert-ok s)
+      (is (= [ta-m] (-> s :body :span/tokens))))))
+
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")
         doc (create-test-document admin-request proj "Doc")

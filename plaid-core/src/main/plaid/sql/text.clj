@@ -244,7 +244,9 @@
              ;; token boundaries where the edit script left an equivalent
              ;; choice open (see ta/normalize-deletes), and then each delete with an insert
              ;; beside it becomes one replace op, so a token covering the
-             ;; changed letters keeps the new ones (see ta/pair-replacements).
+             ;; changed letters keeps the new ones (see ta/pair-replacements), and the
+             ;; pieces of a word replaced outright become one replace of it, so its
+             ;; tokens move onto the new word (see ta/fold-whole-words).
              ;; The pairing comes second because normalize-deletes reads only
              ;; deletes and inserts, and it must see where the deletes end up.
              ;; Explicit client ops are applied as sent.
@@ -252,7 +254,8 @@
                    (-> (ta/diff old-body new-body-or-ops)
                        (ta/slide-to-tokens old-body tokens)
                        (ta/normalize-deletes old-body tokens)
-                       (ta/pair-replacements old-body tokens))
+                       (ta/pair-replacements old-body tokens)
+                       (ta/fold-whole-words old-body tokens))
                    (vec new-body-or-ops))
              indexed-old (reduce (fn [m t] (assoc m (:token/id t) t)) {} tokens)
              {new-text :text new-tokens :tokens deleted-ids :deleted}

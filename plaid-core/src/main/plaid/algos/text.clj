@@ -398,17 +398,21 @@
 
 (defn- ops->edits
   "Sequential running-coordinate ops -> edits in OLD-body coordinates:
-  {:kind :delete :start s :end e} / {:kind :insert :at a :value v}."
+  {:kind :delete :start s :end e} / {:kind :insert :at a :value v} /
+  {:kind :replace :start s :end e :value v}."
   [ops]
   (loop [ops ops del 0 ins 0 out []]
-    (if-let [{:keys [type index value]} (first ops)]
+    (if-let [{:keys [type index value length]} (first ops)]
       (let [type (if (keyword? type) type (keyword type))
             old-pos (+ index del (- ins))]
         (case type
           :delete (recur (rest ops) (+ del value) ins
                          (conj out {:kind :delete :start old-pos :end (+ old-pos value)}))
           :insert (recur (rest ops) del (+ ins (cp/cp-count value))
-                         (conj out {:kind :insert :at old-pos :value value}))))
+                         (conj out {:kind :insert :at old-pos :value value}))
+          :replace (recur (rest ops) (+ del length) (+ ins (cp/cp-count value))
+                          (conj out {:kind :replace :start old-pos :end (+ old-pos length)
+                                     :value value}))))
       out)))
 
 (defn- edits->ops
@@ -427,7 +431,10 @@
                     (recur (rest edits) (conj dels [(:start e) n]) ins
                            (conj out (delete-op running n))))
           :insert (recur (rest edits) dels (+ ins (cp/cp-count (:value e)))
-                         (conj out (insert-op running (:value e))))))
+                         (conj out (insert-op running (:value e))))
+          :replace (let [n (- (:end e) (:start e))]
+                     (recur (rest edits) (conj dels [(:start e) n]) (+ ins (cp/cp-count (:value e)))
+                            (conj out (replace-op running n (:value e)))))))
       out)))
 
 ;; ---------------------------------------------------------------------------
@@ -703,6 +710,83 @@
                    (and (<= s begin) (<= end e)
                         (not (and (<= begin s) (<= e end)))))
                  tokens)))
+
+;; A word replaced by another comes out of the diff as pieces with kept
+;; letters between them: `cow` to `abc` is insert `ab`, keep `c`, delete
+;; `ow`, and applied as it is that leaves the token of `cow` on the `c` of
+;; `abc`, with its gloss. A replaced word keeps its annotations (ruled
+;; 2026-09-21), so when the pieces lie exactly over a token, from its first
+;; letter to its last, they become one replace and the token moves onto the
+;; new word whole.
+
+(defn fold-whole-words
+  "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
+  edits lying within one token's extent, reaching both its ends and holding a
+  delete and an insert between them, become ONE replace of that extent. Only when no other edit
+  touches the extent, no token sits inside it (a same-extent token on another
+  layer moves with it, a zero-width one at its edge stays at the edge) and it
+  is not the whole of `old`. Edits over two words never lie within one
+  word's extent, and a token over both has the words inside it, so they stay
+  as they are. Inserts alone (`a` to `tat`) stay too: text typed at a word's
+  edge stays outside it. The reconstructed string is unchanged."
+  [ops old tokens]
+  (let [edits (vec (ops->edits ops))
+        ^ints o (.toArray (.codePoints ^String old))
+        whole (alength o)
+        old-text (fn [p q] (String. o (int p) (int (- q p))))
+        start-of (fn [e] (or (:start e) (:at e)))
+        reach-of (fn [e] (or (:end e) (:at e)))
+        starts (set (map start-of edits))
+        ends-at (reduce (fn [m {:token/keys [begin end]}]
+                          (if (and (starts begin) (< begin end)
+                                   (not (and (zero? begin) (= end whole))))
+                            (update m begin (fnil conj (sorted-set)) end)
+                            m))
+                        {} (when (< 1 (count edits)) tokens))
+        near (delay (tokens-near tokens (count edits)))
+        inside? (fn [b e]
+                  (some (fn [{tb :token/begin te :token/end}]
+                          (if (= tb te)
+                            (< b tb e)
+                            (and (<= b tb) (<= te e) (not (and (= tb b) (= te e))))))
+                        (@near b e)))
+        ;; The edits from i on that make up the whole of [b e), or nil.
+        group (fn [i b e]
+                (let [j (loop [j i]
+                          (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                   (>= (start-of (edits j)) b))
+                            (recur (inc j))
+                            j))
+                      g (subvec edits i j)
+                      kinds (set (map :kind g))]
+                  (when (and (> (count g) 1)
+                             (= e (reduce max (map reach-of g)))
+                             (or (= j (count edits)) (> (start-of (edits j)) e))
+                             (or (kinds :replace)
+                                 (and (kinds :delete) (kinds :insert)))
+                             (not (inside? b e)))
+                    g)))
+        ;; [b e) of `old` with the edits of `g` applied.
+        new-text (fn [g b e]
+                   (loop [g g p b sb (StringBuilder.)]
+                     (if-let [x (first g)]
+                       (do (.append sb (old-text p (start-of x)))
+                           (when (:value x) (.append sb ^String (:value x)))
+                           (recur (rest g) (reach-of x) sb))
+                       (str (.append sb (old-text p e))))))]
+    (loop [i 0 out [] folded? false]
+      (if (< i (count edits))
+        (let [e0 (edits i)
+              b (start-of e0)
+              prev (peek out)
+              g-e (when (or (nil? prev) (< (reach-of prev) b))
+                    (some (fn [e] (when-let [g (group i b e)] [g e])) (ends-at b)))]
+          (if-let [[g e] g-e]
+            (recur (+ i (count g))
+                   (conj out {:kind :replace :start b :end e :value (new-text g b e)})
+                   true)
+            (recur (inc i) (conj out e0) folded?)))
+        (if folded? (edits->ops out) ops)))))
 
 (defn pair-replacements
   "Rewrite `ops` (as produced by `diff` for `old`, after `normalize-deletes`)

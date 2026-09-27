@@ -360,13 +360,14 @@
 (defn- extents [tokens] (set (map (juxt :token/id :token/begin :token/end) tokens)))
 
 (defn- body-edit
-  "Apply a whole-body edit the way update-body does: diff, snap the deletes,
-  pair them with their inserts."
+  "Apply a whole-body edit the way update-body does: diff, slide, snap the
+  deletes, pair them with their inserts, fold a word replaced outright."
   [old new tokens]
   (-> (ta/diff old new)
       (ta/slide-to-tokens old tokens)
       (ta/normalize-deletes old tokens)
       (ta/pair-replacements old tokens)
+      (ta/fold-whole-words old tokens)
       (apply-all old tokens)))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
@@ -666,6 +667,83 @@
             (is (= new (:text/body text)))
             (is (empty? (word-edit-errors kind words words' new before tokens))
                 (str "seed " seed " case " case-n ": " (pr-str old) " -> " (pr-str new)))))))))
+
+;; ---------------------------------------------------------------------------
+;; A word replaced outright keeps its tokens, on the new word (ruled
+;; 2026-09-21). The diff spells `cow` to `abc` as insert `ab`, keep `c`,
+;; delete `ow`, which left the token of `cow` on the `c` of `abc`.
+
+(deftest a-word-replaced-outright-moves-its-token-onto-the-new-word
+  (doseq [[old new tokens expected]
+          [["cat cow" "cat abc" [(tok :cat 0 3) (tok :cow 4 7)] #{[:cat 0 3] [:cow 4 7]}]
+           ["ta aa bad" "bad aa bad" [(tok :ta 0 2) (tok :aa 3 5) (tok :bad 6 9)]
+            #{[:ta 0 3] [:aa 4 6] [:bad 7 10]}]
+           ["ab é" "bad é" [(tok :ab 0 2) (tok :e 3 4)] #{[:ab 0 3] [:e 4 5]}]
+           ["cat 𐌰" "ta. 𐌰" [(tok :cat 0 3) (tok :goth 4 5)] #{[:cat 0 3] [:goth 4 5]}]
+           ["x cow y" "x owl y" [(tok :cow 2 5)] #{[:cow 2 5]}]
+           ;; a morpheme over the whole word, and a sentence ending with it,
+           ;; move with it, and a zero-width token at either edge stays there
+           ["cat cow" "cat abc"
+            [(tok :cow 4 7) (tok :morph 4 7) (tok :sent 0 7) (tok :z1 4 4) (tok :z2 7 7)]
+            #{[:cow 4 7] [:morph 4 7] [:sent 0 7] [:z1 4 4] [:z2 7 7]}]]]
+    (let [{:keys [text tokens deleted]} (body-edit old new tokens)]
+      (is (= new (:text/body text)))
+      (is (= [] deleted))
+      (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))
+  (testing "two words respelled keep a token each, and a token over both stays over both"
+    (let [{:keys [tokens]} (body-edit "the cat sat" "the cot sit"
+                                      [(tok :cat 4 7) (tok :sat 8 11) (tok :both 4 11)])]
+      (is (= #{[:cat 4 7] [:sat 8 11] [:both 4 11]} (extents tokens)))))
+  (testing "not folded: a token inside the word, letters typed at its edges, the whole text"
+    (let [fold (fn [old new tokens]
+                 (-> (ta/diff old new)
+                     (ta/pair-replacements old tokens)
+                     (ta/fold-whole-words old tokens)))]
+      (is (= [(ta/insert-op 4 "ab") (ta/delete-op 7 2)]
+             (fold "cat cow" "cat abc" [(tok :cow 4 7) (tok :m1 4 6) (tok :m2 6 7)])))
+      (is (= [(ta/insert-op 2 "t") (ta/insert-op 4 "t")]
+             (fold "x a y" "x tat y" [(tok :a 2 3)])))
+      (is (= [(ta/insert-op 0 "ab") (ta/delete-op 3 2)]
+             (fold "cow" "abc" [(tok :cow 0 3)]))))))
+
+(defn- subsequence? [a b]
+  (loop [a (seq (.toArray (.codePoints ^String a))) b (seq (.toArray (.codePoints ^String b)))]
+    (cond (empty? a) true
+          (empty? b) false
+          (= (first a) (first b)) (recur (rest a) (rest b))
+          :else (recur a (rest b)))))
+
+(deftest a-word-replaced-leaves-every-token-on-its-word
+  ;; The oracle above, extended to replaces: the replaced word's token reads
+  ;; the new word, every other one its own. Left out, since the body cannot
+  ;; tell what was meant: a new word that only adds letters to the old one
+  ;; (typed at its edge, which stays outside it), and one that repeats a
+  ;; neighbour (`cat cow` to `cow cow` is also `cat` deleted and `cow` added).
+  (let [vocab ["the" "cat" "cow" "a" "at" "ab" "abc" "tat" "ta" "big" "bad" "𐌰𐌱" "𐌰" "é" "שלום" "ta."]
+        cases (atom 0)]
+    (doseq [seed (range 1 7)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [_ 200]
+          (let [words (vec (repeatedly (+ 2 (.nextInt rng 6)) #(pick vocab)))
+                k (.nextInt rng (count words))
+                w (pick vocab)]
+            (when-not (or (subsequence? (words k) w)
+                          (= w (get words (dec k)))
+                          (= w (get words (inc k))))
+              (swap! cases inc)
+              (let [words' (assoc words k w)
+                    old (str/join " " words)
+                    new (str/join " " words')
+                    before (word-tokens words)
+                    {:keys [text tokens deleted]} (body-edit old new before)
+                    extents (mapv (juxt :token/begin :token/end) (word-tokens words'))]
+                (is (= new (:text/body text)))
+                (is (= [] deleted))
+                (is (= extents (mapv (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)
+                                     (range (count words))))
+                    (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))))))))
+    (is (< 800 @cases))))
 
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
