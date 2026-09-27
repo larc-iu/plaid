@@ -121,7 +121,9 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                 onChange={(e) => setMany(keys, e.currentTarget.checked)}
                 aria-label="Select document"
               />
-              <span className="truncate text-sm font-semibold">{sentences[0].docName}</span>
+              <span dir="auto" className="truncate text-sm font-semibold">
+                {sentences[0].docName}
+              </span>
             </div>
             <div className="flex flex-col">
               {sentences.map((r, idx) => (
@@ -137,6 +139,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                     <div className="flex items-baseline gap-2">
                       <Link
                         to={hrefFor(r.docId, r.id)}
+                        dir="auto"
                         className="text-sm leading-relaxed text-primary underline-offset-4 hover:underline"
                       >
                         {r.text}
@@ -148,7 +151,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                       )}
                     </div>
                     {r.changes.map((c, i) => (
-                      <p key={i} className="font-mono text-xs">
+                      <p key={i} className="text-xs">
                         {c.text}
                       </p>
                     ))}

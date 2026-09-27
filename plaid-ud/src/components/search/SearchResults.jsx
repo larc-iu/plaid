@@ -66,7 +66,7 @@ export const SearchResults = ({
 
       {byDoc.map(([docId, sentences]) => (
         <div key={docId} className="overflow-hidden rounded-md border">
-          <div className="truncate border-b px-4 py-2 text-sm font-semibold">
+          <div dir="auto" className="truncate border-b px-4 py-2 text-sm font-semibold">
             {docName(docId) || docId}
           </div>
           <div className="flex flex-col">
@@ -74,6 +74,7 @@ export const SearchResults = ({
               <Link
                 key={s.sentenceId}
                 to={hrefFor(s.docId, s.sentenceId)}
+                dir="auto"
                 className={`block p-4 text-sm leading-relaxed hover:bg-muted/50 ${idx ? 'border-t' : ''}`}
               >
                 {segmentize(s.text, s.highlights).map((seg, i) =>
