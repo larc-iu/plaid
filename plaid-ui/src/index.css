@@ -1,5 +1,6 @@
 /* What the apps share in CSS: the provenance tokens and marks, the warning
-   and success colours, and the gutter the assistant dock takes.
+   and success colours, the gutter the assistant dock takes, and the room the
+   sticky app header takes at the top of the window.
 
    The shadcn design tokens themselves stay per app (each app's own index.css),
    since a dictionary reader and an annotation editor are allowed to look
@@ -129,4 +130,12 @@
    this stylesheet and win. */
 html [data-sonner-toaster][data-x-position='right'] {
   right: calc(var(--plaid-dock-width, 0px) + 24px);
+}
+
+/* The app header (`AppShell`) is sticky in every app, 3.5rem and a 1px rule
+   tall. Anything scrolled to the top of the window (a pager at the bottom of
+   a list taking the reader back to its first row, a deep link) stops below
+   it instead of under it. */
+html {
+  scroll-padding-top: calc(3.5rem + 1px);
 }
