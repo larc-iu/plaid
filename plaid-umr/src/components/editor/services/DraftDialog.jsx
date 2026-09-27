@@ -16,15 +16,10 @@ export function DraftDialog({ draft, isDiscovering, writeLockHeld, disabled = fa
   // nothing, which is all acquireWriteLock could manage.
   const busyElsewhere = !!writeLockHeld && !running;
 
-  const notice = running
-    ? null
-    : busyElsewhere
-      ? `${writeLockHeld.label} is running. One run at a time on a document.`
-      : spot.empty
-        ? isDiscovering
-          ? 'Looking for a drafting service.'
-          : 'No drafting service is online for this project.'
-        : null;
+  // No service online is the method row's to say, and said once.
+  const notice = busyElsewhere
+    ? `${writeLockHeld.label} is running. One run at a time on a document.`
+    : null;
 
   return (
     <>

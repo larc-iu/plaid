@@ -306,21 +306,18 @@ function CompareDialog({
   const running = run.running;
   const busyElsewhere = !!writeLockHeld && !running;
 
+  // No service online is the method row's to say, and said once.
   const notice = running
     ? null
     : busyElsewhere
       ? `${writeLockHeld.label} is running. One run at a time on a document.`
-      : spot.empty
-        ? isDiscovering
-          ? 'Looking for a comparison service.'
-          : 'No comparison service is online for this project.'
-        : listError
-          ? listError
-          : documents && documents.length === 0
-            ? 'This project has no other document to compare with.'
-            : !chosenId
-              ? 'Choose a document to compare with.'
-              : null;
+      : listError
+        ? listError
+        : documents && documents.length === 0
+          ? 'This project has no other document to compare with.'
+          : !chosenId
+            ? 'Choose a document to compare with.'
+            : null;
 
   return (
     <>
