@@ -241,7 +241,7 @@ describe('the shared chrome', () => {
     expect(chrome.assistantRoute).toBe(false);
   });
 
-  it('ProjectTabStrip names the project in a heading of its own direction', async () => {
+  it('ProjectTabStrip names the project in its own direction, starting at the left edge', async () => {
     await mount(
       <ProjectTabStrip
         projectId="p1"
@@ -251,7 +251,10 @@ describe('the shared chrome', () => {
     );
     const h1 = view.container.querySelector('h1');
     expect(h1.textContent).toBe('مشروع');
-    expect(h1.getAttribute('dir')).toBe('auto');
+    // The heading keeps the chrome's direction, so an Arabic name starts at
+    // the left edge under the breadcrumb, and the name inside it takes its own.
+    expect(h1.hasAttribute('dir')).toBe(false);
+    expect(h1.querySelector('[dir="auto"]').textContent).toBe('مشروع');
     // The current page closes the trail, dark and not a link.
     expect(view.container.querySelector('[aria-current="page"]').tagName).toBe('SPAN');
   });

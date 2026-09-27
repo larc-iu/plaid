@@ -47,6 +47,7 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
     } catch (err) {
       if (!isCurrent()) return null;
       console.error('Error fetching project:', err);
+      setProject(null);
       notifyError('Failed to load project data');
       return null;
     } finally {
@@ -67,16 +68,20 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  if (loading) return <Loading />;
-
   const denied = (message) => (
     <Notice tone="error" role="alert">
       {message}
     </Notice>
   );
 
-  if (!project) return denied('Project not found');
-  if (!canManageProject(project, user))
+  // Only the project the path names is shown. Until it is in hand, Loading
+  // stands in, and a project the reader left is never drawn under the next
+  // one's id. A re-read after a change keeps the screen mounted, or the member
+  // table, a search being typed and an open dialog would all be thrown away on
+  // every role change.
+  const current = project?.id === projectId ? project : null;
+  if (!current) return project === null && !loading ? denied('Project not found') : <Loading />;
+  if (!canManageProject(current, user))
     return denied('You do not have permission to manage this project.');
 
   return (
@@ -84,7 +89,7 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
       <Card>
         <CardContent className="pt-2">
           <ProjectAccessScreen
-            project={project}
+            project={current}
             projectId={projectId}
             client={getClient()}
             user={user}

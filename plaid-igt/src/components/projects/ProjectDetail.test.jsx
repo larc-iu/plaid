@@ -13,8 +13,8 @@ import { renderComponent } from '@ui/test/renderComponent.jsx';
 // again before any effect has run.
 const listed = vi.hoisted(() => []);
 vi.mock('./DocumentList', () => ({
-  DocumentList: ({ documents, projectId }) => {
-    listed.push({ projectId, ids: documents.map((d) => d.id).join(',') });
+  DocumentList: ({ documents, project, projectId }) => {
+    listed.push({ projectId, of: project?.id, ids: documents.map((d) => d.id).join(',') });
     return <div data-testid="docs">{documents.map((d) => d.id).join(',')}</div>;
   },
 }));
@@ -126,6 +126,24 @@ describe('the project screen when the reader walks to another project', () => {
 
     const wrong = listed.filter((r) => r.ids && !r.ids.startsWith(r.projectId));
     expect(wrong).toEqual([]);
+    await view.unmount();
+  });
+
+  // The same frame hands every tab the project itself, and Settings takes
+  // layer ids off it: a tab must never be drawn for B with A in hand.
+  it('never hands a tab the project the reader left', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    listed.length = 0;
+    const view = await renderComponent(app);
+    await view.step(async () => d.settle('A'));
+
+    await view.step(() => go('/projects/B'));
+    expect(heading(view.container)).not.toBe('Ayvale');
+    await view.step(async () => d.settle('B'));
+    expect(heading(view.container)).toBe('Beeworth');
+
+    expect(listed.filter((r) => r.of !== r.projectId)).toEqual([]);
     await view.unmount();
   });
 

@@ -65,7 +65,11 @@ export const ProjectDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, client, logout } = useAuth();
-  const [project, setProject] = useState(null);
+  const [loaded, setProject] = useState(null);
+  // Only the project the path names. The same frame that carries B's id still
+  // holds A until B's read lands, and every tab below takes ids off `project`
+  // (Settings takes layer ids), so until then there is none.
+  const project = loaded?.id === projectId ? loaded : null;
   // The rows and the project they belong to, together: walking from A to B
   // renders once with B's id and A's state before any effect runs, and a list
   // of A's documents under B's name is a list the reader can click.
@@ -214,7 +218,7 @@ export const ProjectDetail = () => {
   // none yet.
   const documents = docs.projectId === projectId ? docs.rows : [];
 
-  if (loading) return <Loading />;
+  if (loading || (!project && !error)) return <Loading />;
 
   if (error || !project) {
     return (
@@ -232,8 +236,10 @@ export const ProjectDetail = () => {
         className="mb-2"
         items={[{ label: 'Projects', to: '/projects' }, { label: project.name }]}
       />
-      <h1 dir="auto" className="truncate text-3xl font-bold tracking-tight">
-        {project.name}
+      {/* The name takes its own direction inside a heading that stays with
+          the chrome, as the tab strip's does. */}
+      <h1 className="truncate text-3xl font-bold tracking-tight">
+        <span dir="auto">{project.name}</span>
       </h1>
       <Notice role="status" icon={null} className="mt-4">
         {children}

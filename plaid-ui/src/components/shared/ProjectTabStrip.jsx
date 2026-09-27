@@ -79,10 +79,12 @@ export const ProjectTabStrip = ({
           { label: project?.name || 'Loading…' },
         ]}
       />
-      {/* The name is data in any script, so it takes its own direction. The
+      {/* The name is data in any script, so it takes its own direction inside
+          a heading that stays with the chrome: an Arabic name reads right to
+          left and still starts at the left edge under the breadcrumb. The
           minimum height holds the tabs still while the project loads. */}
-      <h1 dir="auto" className="mb-2 min-h-9 truncate text-3xl font-bold tracking-tight">
-        {project?.name}
+      <h1 className="mb-2 min-h-9 truncate text-3xl font-bold tracking-tight">
+        <span dir="auto">{project?.name}</span>
       </h1>
 
       {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open
