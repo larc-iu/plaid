@@ -51,7 +51,9 @@ test.afterEach(async () => {
 const openValidation = async (page) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/validate`);
-  await expect(page.getByRole('heading', { name: 'Validation' })).toBeVisible({ timeout: 15000 });
+  await expect(
+    page.getByRole('heading', { name: 'Validation', exact: true, level: 2 }),
+  ).toBeVisible({ timeout: 15000 });
 };
 
 test('it lists what is stored but not on the list, with counts', async ({ page }) => {
