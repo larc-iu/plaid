@@ -5,6 +5,7 @@ import { Input } from '@ui/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@ui/components/ui/popover';
 import { Switch } from '@ui/components/ui/switch';
 import { Label } from '@ui/components/ui/label';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { cpLength, cpSlice, cpIndexOf, utf16ToCp } from '@larc-iu/plaid-client';
 import { containsToken } from '../../utils/udLayerUtils.js';
 import { notifyError } from '../../utils/feedback.jsx';
@@ -469,7 +470,7 @@ export const TokenVisualizer = ({
             <div className="flex items-center justify-between gap-2">
               {onWordDelete ? (
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
                   onClick={() => handleDeleteClick(word)}
@@ -549,7 +550,7 @@ export const TokenVisualizer = ({
     }
     if (invalid.length) {
       blocks.push(
-        <p key="invalid" dir="ltr" className="mt-2 text-xs text-amber-700">
+        <p key="invalid" dir="ltr" className="mt-2 text-xs text-warning-foreground">
           {invalid.length} token{invalid.length !== 1 ? 's' : ''} no longer match the edited text.
           Save and re-tokenize to resync.
         </p>,
@@ -561,9 +562,9 @@ export const TokenVisualizer = ({
   return (
     <div>
       {isTextDirty && (
-        <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+        <Notice tone="warning" className="mb-2">
           Token positions are shown against the unsaved text. Save the text to apply them.
-        </div>
+        </Notice>
       )}
       <div
         ref={textContainerRef}

@@ -1,6 +1,6 @@
-import { Search, TriangleAlert } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
-import { cn } from '@ui/lib/utils';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { highlightGrew } from './grewSyntax.js';
 import { CodeEditor } from './CodeEditor.jsx';
 
@@ -63,16 +63,7 @@ function QueryError({ error }) {
           ? `Rule error${error.line ? ` (line ${error.line})` : ''}`
           : 'Search failed';
   return (
-    <div
-      role="alert"
-      className={cn(
-        'flex gap-2 rounded-md border px-3 py-2 text-sm',
-        isUnsupported
-          ? 'border-amber-500/40 bg-amber-500/10 text-amber-900'
-          : 'border-destructive/40 bg-destructive/10 text-destructive',
-      )}
-    >
-      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+    <Notice tone={isUnsupported ? 'warning' : 'error'} role="alert">
       <div className="flex min-w-0 flex-col gap-1">
         <p className="font-medium">{title}</p>
         <p>{error.message}</p>
@@ -86,6 +77,6 @@ function QueryError({ error }) {
           </pre>
         )}
       </div>
-    </div>
+    </Notice>
   );
 }

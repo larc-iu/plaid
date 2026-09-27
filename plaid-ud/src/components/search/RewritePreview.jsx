@@ -157,7 +157,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                       </p>
                     ))}
                     {r.warnings.map((w, i) => (
-                      <p key={i} className="text-xs text-amber-700">
+                      <p key={i} className="text-xs text-warning-foreground">
                         {w}
                       </p>
                     ))}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { TriangleAlert } from 'lucide-react';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUdLayerInfo } from '../../utils/udLayerUtils.js';
 import { canManageProject } from '@ui/domain/permissions.js';
@@ -243,15 +244,12 @@ export const SearchPage = () => {
     [projectId],
   );
 
-  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <Loading />;
   if (loadError)
     return (
-      <div
-        role="alert"
-        className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-      >
+      <Notice tone="error" role="alert">
         {loadError}
-      </div>
+      </Notice>
     );
 
   return (
@@ -262,8 +260,7 @@ export const SearchPage = () => {
         <h2 className="text-2xl font-semibold tracking-tight">Search {project?.name}</h2>
 
         {!layerInfo.isConfigured ? (
-          <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <Notice tone="warning">
             <div>
               <p className="font-medium">Not available</p>
               {/* Only a maintainer can make a layer, so only a maintainer is
@@ -285,7 +282,7 @@ export const SearchPage = () => {
                 </p>
               )}
             </div>
-          </div>
+          </Notice>
         ) : (
           <>
             {/* A plain lookup writes a pattern into the box below rather than

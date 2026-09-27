@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError } from '../../utils/feedback.jsx';
@@ -51,14 +52,14 @@ export const ExportEditor = () => {
       <h3 className="text-xl font-semibold tracking-tight">CoNLL-U</h3>
 
       {losses.length > 0 && (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <Notice tone="warning">
           <p className="font-medium">This file cannot say everything the document does.</p>
-          <ul className="mt-1 list-disc pl-5">
+          <ul className="mt-1 list-disc ps-5">
             {losses.map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>
-        </div>
+        </Notice>
       )}
 
       <div className="flex flex-wrap gap-2">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -44,9 +44,10 @@ const Field = ({ name, declared, value, readOnly, onCommit, onRemove }) => {
     <div className="flex flex-col gap-1.5">
       <Label
         htmlFor={`metadata-${name}`}
-        className={declared ? undefined : 'text-amber-700'}
+        className={declared ? undefined : 'flex items-center gap-1 text-warning-foreground'}
         title={hint}
       >
+        {!declared && <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5 text-warning" />}
         {name}
       </Label>
       <div className="flex items-center gap-2">
