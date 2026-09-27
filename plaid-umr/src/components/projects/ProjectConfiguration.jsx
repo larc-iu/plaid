@@ -119,7 +119,9 @@ export const ProjectConfiguration = () => {
         </Button>
       </div>
 
-      {hasSubstrate ? (
+      {/* Set up already: the button would add nothing, so the status line is
+          the whole page. */}
+      {info.isConfigured ? null : hasSubstrate ? (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">UMR layers</CardTitle>
