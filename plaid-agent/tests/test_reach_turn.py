@@ -8,7 +8,8 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
-from multi_fixtures import OTHER_ID, OTHER_NAME, client, home_workspace, reached, service  # noqa: E402
+from multi_fixtures import (OTHER_ID, OTHER_NAME, client, home_workspace, reached,  # noqa: E402
+                            reads_in, service)
 
 from plaid_agent.core import prompt as shared  # noqa: E402
 from plaid_agent.core import service as service_mod  # noqa: E402
@@ -198,7 +199,7 @@ class _Helper:
 @pytest.mark.parametrize('app', APPS)
 def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypatch):
     c = client(app)
-    pid = c.home.project['id']
+    pid = c.project['id']
     store = _seed(c, app, [{'id': OTHER_ID, 'name': OTHER_NAME}, {'id': 'gone', 'name': 'Gone'}], pid)
     seen = {}
 
@@ -214,7 +215,7 @@ def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypa
     _svc(app).process_request({'requester_client': c, 'requester_id': 'u@x', 'project_id': pid,
                                'conversation_id': 'c1'}, helper)
     assert not helper.errors, helper.errors
-    home_name = c.home.project['name']
+    home_name = c.project['name']
     assert seen['transcript'][-1]['content'] == (
         f'[Projects in this conversation: "{home_name}", "{OTHER_NAME}"]\n\nCompare.')
     assert 'OTHER PROJECTS IN THIS CONVERSATION' in seen['system']
@@ -222,13 +223,13 @@ def test_a_turn_reads_the_other_project_and_says_what_did_not_open(app, monkeypa
     conv, _ = store.load('c1')
     item = conv['display'][-1]
     assert item['unavailable_projects'] == [{'id': 'gone', 'name': 'Gone'}]
-    assert c.others[OTHER_ID].reads, 'the other project was read with the requester client'
+    assert reads_in(c, OTHER_ID), 'the other project was read with the requester client'
 
 
 @pytest.mark.parametrize('app', APPS)
 def test_a_turn_with_no_other_projects_is_todays_turn(app, monkeypatch):
     c = client(app)
-    pid = c.home.project['id']
+    pid = c.project['id']
     store = _seed(c, app, None, pid)
     seen = {}
 
@@ -254,7 +255,7 @@ def test_a_projects_list_that_names_no_other_project_is_todays_turn(app, project
     # adds no project: the turn is exactly a one-project turn, with no
     # paragraph saying other projects failed to open.
     c = client(app)
-    pid = c.home.project['id']
+    pid = c.project['id']
     store = _seed(c, app, [{'id': pid, 'name': 'Home'}] if projects == 'home' else projects, pid)
     seen = {}
 

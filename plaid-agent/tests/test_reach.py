@@ -9,8 +9,8 @@ import pytest
 
 sys.path.insert(0, 'tests')
 
-from multi_fixtures import OTHER_ID, OTHER_NAME, client, home_workspace, reached, service  # noqa: E402
-from project_client import other_project  # noqa: E402
+from multi_fixtures import (OTHER_ID, OTHER_NAME, client, home_workspace, other_project,  # noqa: E402
+                            reached, reads_in, service)
 
 from plaid_agent.core import reach as reach_mod  # noqa: E402
 from plaid_agent.core.limits import MAX_PROJECTS  # noqa: E402
@@ -72,9 +72,9 @@ def test_a_project_the_app_cannot_read_is_unavailable():
     """The IGT assistant handed a project with no baseline layer: its loader
     raises ValueError, and the project is simply not opened."""
     import fixtures as f
-    p2, docs2, _ = other_project(f.project_raw(), {'d1': f.document_raw()}, OTHER_ID, OTHER_NAME)
-    p2['text_layers'] = []
-    svc, c, ws, r = reached('igt', others={OTHER_ID: f.FakeClient(project=p2, documents=docs2)})
+    p2 = other_project(f.project_raw(), {'d1': f.document_raw()}, OTHER_ID, OTHER_NAME)
+    p2['project']['text_layers'] = []
+    svc, c, ws, r = reached('igt', others={OTHER_ID: p2})
     assert r.others == [] and r.unavailable == [{'id': OTHER_ID, 'name': OTHER_NAME}]
 
 
@@ -83,10 +83,9 @@ def test_past_the_cap_a_project_is_unavailable_not_silently_dropped():
     others, services = {}, {}
     for i in range(MAX_PROJECTS):
         pid = f'px{i}'
-        p, docs, _ = other_project(f.project_raw(), {'d1': f.document_raw()}, pid, f'P{i}')
-        others[pid] = f.FakeClient(project=p, documents=docs)
+        others[pid] = other_project(f.project_raw(), {'d1': f.document_raw()}, pid, f'P{i}')
         services[pid] = [{'service_id': 'igt:assist:fake', 'online': True}]
-    joined = [{'id': pid, 'name': others[pid].project['name']} for pid in others]
+    joined = [{'id': pid, 'name': others[pid]['project']['name']} for pid in others]
     svc, c, ws, r = reached('igt', joined=joined, others=others, services=services)
     assert len(r.others) == MAX_PROJECTS - 1
     assert r.unavailable == [joined[-1]]
@@ -127,8 +126,8 @@ def test_an_unknown_project_is_refused_naming_the_ones_there_are():
 
 def test_two_projects_with_one_name_are_named_by_id():
     import fixtures as f
-    p2, docs2, _ = other_project(f.project_raw(), {'d1': f.document_raw()}, OTHER_ID, 'Demo')
-    svc, c, ws, r = reached('igt', others={OTHER_ID: f.FakeClient(project=p2, documents=docs2)})
+    p2 = other_project(f.project_raw(), {'d1': f.document_raw()}, OTHER_ID, 'Demo')
+    svc, c, ws, r = reached('igt', others={OTHER_ID: p2})
     assert r.labels() == ['p1', OTHER_ID]
     with pytest.raises(ToolError) as e:
         r.workspace('Demo')
@@ -165,10 +164,10 @@ def test_a_read_tool_reads_the_other_project(app):
     call = svc.kit.call_tool if svc.kit else svc.toolkit().call_tool
     out = call(ws, 'list_documents', {'project': 'Second'})
     assert not out.startswith('Error') and out.count('document') == call(ws, 'list_documents', {}).count('document')
-    c.home.reads.clear()
+    c.reads.clear()
     other = r.workspace('Second')
     other.doc(other.documents()[0]['id'])
-    assert c.others[OTHER_ID].reads and not c.home.reads
+    assert reads_in(c, OTHER_ID) and not reads_in(c, c.project['id'])
 
 
 @pytest.mark.parametrize('app', APPS)
