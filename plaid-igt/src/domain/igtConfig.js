@@ -289,7 +289,8 @@ export const readInitialized = (config) => readIgt(config, 'initialized') === tr
  * startedAt}`, `kind` being the format ('FLEx', 'FLEx .flextext', 'CLDF',
  * 'ELAN', 'Plaid IGT archive'), `source` the file it was reading, `vocabId`
  * the lexicon it writes into once known and `vocabsMade` the vocabularies
- * project setup has made so far.
+ * project setup has made so far. The archive import adds `unmarked` (see
+ * `recordImportUnmarked`).
  * Every importer resumes, so the way to clear it is to run the same import
  * again.
  */
@@ -306,6 +307,9 @@ export const readImportState = (config) => readIgt(config, IMPORT_KEY) ?? null;
  * `vocabsMade` is every vocabulary project setup has made so far, as
  * `{name: id}`, written while setup runs: it is what a resumed setup reads to
  * finish those rather than make them again.
+ *
+ * The record is rewritten on every run, so the `unmarked` an earlier run of
+ * the same import wrote is read first and kept.
  */
 export const markImportStarted = async (
   client,
@@ -317,6 +321,7 @@ export const markImportStarted = async (
   vocabsMade = null,
 ) => {
   try {
+    const earlier = readImportState((await client.projects.get(projectId))?.config);
     await client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, {
       kind,
       source: source ?? null,
@@ -326,12 +331,24 @@ export const markImportStarted = async (
       // here: each wizard writes and reads its own shape.
       choices: choices ?? null,
       vocabsMade: vocabsMade ?? null,
+      ...(earlier?.unmarked ? { unmarked: earlier.unmarked } : {}),
       startedAt: new Date().toISOString(),
     });
   } catch (err) {
     console.error('Could not record the import as started:', err);
   }
 };
+
+/**
+ * Record what an import made without its marks on `record`, the import record
+ * as the run read it. An archive entry or document whose metadata is at core's
+ * key cap has no room for the marks a resume finds it by, so the record names
+ * it instead: `unmarked = {documents: {archiveId: {id, done}}, entries:
+ * {archiveId: id}}`. Throws when the write fails, since a resume would make
+ * again what the record does not name.
+ */
+export const recordImportUnmarked = (client, projectId, record, unmarked) =>
+  client.projects.setConfig(projectId, IGT_NAMESPACE, IMPORT_KEY, { ...record, unmarked });
 
 /**
  * Where an unfinished import of `kind` is picked up again (the routes are in

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ROLES } from '@larc-iu/plaid-client';
 import {
   findBaselineTextLayer,
@@ -18,6 +18,7 @@ import {
   hasLanguageIdentity,
   markImportStarted,
   readImportState,
+  recordImportUnmarked,
   IGNORED_TOKEN_MODES,
   DEFAULT_IGNORED_TOKENS,
   defaultIgnoredTokensSetup,
@@ -249,7 +250,10 @@ describe('the import record', () => {
   it('keeps the review screen’s answers for a resume', async () => {
     const written = [];
     const client = {
-      projects: { setConfig: async (...args) => written.push(args) },
+      projects: {
+        get: async () => ({ config: {} }),
+        setConfig: async (...args) => written.push(args),
+      },
     };
     const choices = { texts: ['g1'], analysisWss: ['ru'], orthoNames: { xx: 'IPA' } };
     await markImportStarted(client, 'p1', 'FLEx', 'lezgi.fwbackup', 'v1', choices);
@@ -260,9 +264,52 @@ describe('the import record', () => {
 
   it('records no answers when a wizard offers none', async () => {
     const written = [];
-    const client = { projects: { setConfig: async (...args) => written.push(args) } };
+    const client = {
+      projects: {
+        get: async () => ({ config: {} }),
+        setConfig: async (...args) => written.push(args),
+      },
+    };
     await markImportStarted(client, 'p1', 'Plaid IGT archive', null);
     expect(written[0][3].choices).toBe(null);
+    expect(written[0][3]).not.toHaveProperty('unmarked');
+  });
+
+  it('keeps what an earlier run of the import made unmarked', async () => {
+    // The wizard rewrites the record before each run, and a resume needs the
+    // entries and documents the stopped run named there.
+    const written = [];
+    const unmarked = { documents: { d1: { id: 'x', done: false } }, entries: { i1: 'y' } };
+    const config = { igt: { import: { kind: 'Plaid IGT archive', source: 'P', unmarked } } };
+    const client = {
+      projects: { get: async () => ({ config }), setConfig: async (...args) => written.push(args) },
+    };
+    await markImportStarted(client, 'p1', 'Plaid IGT archive', 'P');
+    expect(written[0][3].unmarked).toEqual(unmarked);
+    await recordImportUnmarked(client, 'p1', written[0][3], {
+      documents: {},
+      entries: { i2: 'z' },
+    });
+    expect(written[1][3]).toMatchObject({
+      kind: 'Plaid IGT archive',
+      unmarked: { entries: { i2: 'z' } },
+    });
+  });
+
+  it('leaves the record as it was when the project cannot be read', async () => {
+    const written = [];
+    const client = {
+      projects: {
+        get: async () => {
+          throw new Error('offline');
+        },
+        setConfig: async (...args) => written.push(args),
+      },
+    };
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await markImportStarted(client, 'p1', 'Plaid IGT archive', 'P');
+    quiet.mockRestore();
+    expect(written).toEqual([]);
   });
 });
 

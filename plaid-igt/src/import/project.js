@@ -140,10 +140,10 @@ export function resolveIgtTargets(project, fields = []) {
  * text's, if the source carries one; as a function it is called once the
  * document exists, which is what an engine that resolves references against
  * the new document needs. `onDocument` is told the new id as soon as there is
- * one, before anything is written under it. `createTokens(specs)` answers the
- * new ids and lets an engine route the call through its own writer (the
- * archive import rewrites references in metadata as it goes); without it the
- * partition is written straight. `onText` is told the new text's id before
+ * one, before anything is written under it, and is awaited.
+ * `createTokens(specs)` answers the new ids and lets an engine route the call
+ * through its own writer (the archive import rewrites references in metadata
+ * as it goes); without it the partition is written straight. `onText` is told the new text's id before
  * anything is written on it.
  */
 export async function createDocumentShell({
@@ -165,7 +165,7 @@ export async function createDocumentShell({
   progress('Creating document');
   const created = await client.documents.create(projectId, name, metadata);
   const documentId = created.id ?? created;
-  onDocument?.(documentId);
+  await onDocument?.(documentId);
   if (!body?.length && !keepEmptyText) return { documentId, textId: null, sentenceIds: [] };
 
   check();

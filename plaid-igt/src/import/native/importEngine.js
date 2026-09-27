@@ -22,7 +22,9 @@
 // (metadata.importDone, see ../resume.js) only after every write succeeded; on resume, done
 // documents are skipped and half-imported ones are deleted and redone. Vocab
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
-// at creation — it doubles as provenance back to the source archive).
+// at creation — it doubles as provenance back to the source archive). An entry
+// or document whose metadata has no room for those marks is named on the
+// project's import record instead (`unmarkedLedger`).
 
 import { ROLES, createdIds } from '@larc-iu/plaid-client';
 import { documentProgress } from '../progress.js';
@@ -47,6 +49,8 @@ import {
   findBaselineTextLayer,
   readScope,
   ignoredTokensSetup,
+  readImportState,
+  recordImportUnmarked,
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
 
@@ -98,9 +102,42 @@ export function resolveNativeTargets(project, manifest) {
 }
 
 /**
+ * What this import made without its marks, because the entity's metadata was
+ * at core's key cap: the archive's entries and documents, by archive id, kept
+ * on the project's import record so a resume finds them as it finds a marked
+ * one. The record is removed when the import finishes, so nothing stays on
+ * the data. With no record (the engine run on its own) there is no resume to
+ * serve and nothing is written.
+ */
+function unmarkedLedger({ client, projectId, project }) {
+  const record = readImportState(project?.config);
+  const documents = { ...(record?.unmarked?.documents || {}) };
+  const entries = { ...(record?.unmarked?.entries || {}) };
+  const save = async () => {
+    if (record) await recordImportUnmarked(client, projectId, record, { documents, entries });
+  };
+  return {
+    /** The entry an earlier run made for this archive entry, or null. */
+    entry: (archiveId) => entries[String(archiveId)] ?? null,
+    /** `{id, done}` of the document an earlier run made for this one, or null. */
+    document: (archiveId) => documents[String(archiveId)] ?? null,
+    hasDocuments: () => Object.keys(documents).length > 0,
+    entriesMade: async (pairs) => {
+      for (const [archiveId, id] of pairs) entries[String(archiveId)] = id;
+      await save();
+    },
+    documentMade: async (archiveId, id, done) => {
+      documents[String(archiveId)] = { id, done };
+      await save();
+    },
+  };
+}
+
+/**
  * Import one vocabulary's items IN ARRAY ORDER (the entry-numbering
  * contract). Returns Map<archiveItemId, newItemId>. Resume-safe: items
- * already stamped with a matching nativeImportId are reused.
+ * already stamped with a matching nativeImportId are reused, and so are the
+ * ones `unmarked` (an `unmarkedLedger`) names.
  */
 export async function importVocabulary({
   client,
@@ -109,6 +146,7 @@ export async function importVocabulary({
   onProgress,
   shouldStop,
   warnings = [],
+  unmarked = null,
 }) {
   const check = () => {
     if (shouldStop?.()) throw new ImportCancelled();
@@ -160,22 +198,27 @@ export async function importVocabulary({
     const source = item.metadata?.[ITEM_SOURCE_KEY];
     if (source) itemIdMap.set(source, item.id);
   }
+  // Entries an earlier run made unmarked, where they are still in the vocabulary.
+  const present = new Set((existing.items || []).map((item) => item.id));
+  for (const it of vocabData.items || []) {
+    const made = unmarked?.entry(it.id);
+    if (made && present.has(made) && !itemIdMap.has(it.id)) itemIdMap.set(it.id, made);
+  }
 
   const pending = (vocabData.items || []).filter((it) => !itemIdMap.has(it.id));
-  // An entry whose metadata is at the cap is made without the mark, which a
-  // resume would then not recognize.
-  const unmarked = pending.filter(
-    (it) => !fitsCap({ ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id }),
-  ).length;
-  if (unmarked) {
+  // An entry whose metadata is at the cap is made without the mark, and the
+  // import record names it instead.
+  const fitsMark = (it) => fitsCap({ ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id });
+  const unmarkedCount = pending.filter((it) => !fitsMark(it)).length;
+  if (unmarkedCount) {
     warnings.push(
-      `"${vocabData.name}": ${unmarked} ${unmarked === 1 ? 'entry holds' : 'entries hold'} too much metadata to be marked, so a resumed import would create ${unmarked === 1 ? 'it' : 'them'} again`,
+      `"${vocabData.name}": ${unmarkedCount} ${unmarkedCount === 1 ? 'entry' : 'entries'} imported without ${unmarkedCount === 1 ? 'its archive id' : 'their archive ids'} (metadata at the 500-key limit)`,
     );
   }
-  const stamped = (it) => {
-    const metadata = { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id };
-    return fitsCap(metadata) ? metadata : { ...(it.metadata || {}) };
-  };
+  const stamped = (it) =>
+    fitsMark(it)
+      ? { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id }
+      : { ...(it.metadata || {}) };
   let done = 0;
   for (let i = 0; i < pending.length; i += CHUNK) {
     check();
@@ -196,6 +239,11 @@ export async function importVocabulary({
     chunk.forEach((it, j) => {
       if (ids[j]) itemIdMap.set(it.id, ids[j]);
     });
+    // Named on the record before anything else is written.
+    const madeUnmarked = chunk.flatMap((it, j) =>
+      ids[j] && !fitsMark(it) ? [[it.id, ids[j]]] : [],
+    );
+    if (madeUnmarked.length && unmarked) await unmarked.entriesMade(madeUnmarked);
     done += chunk.length;
     onProgress?.({ phase: 'vocabulary', name: vocabData.name, done, total: pending.length });
   }
@@ -364,6 +412,8 @@ async function importNativeDocument({
   // Archive document id -> the project's document, for every document that is
   // finished: what a reference to a document resolves through.
   docIdMap = new Map(),
+  // Where a document made without the import's marks is named (unmarkedLedger).
+  unmarked = null,
 }) {
   const progress = documentProgress({
     onProgress,
@@ -420,9 +470,15 @@ async function importNativeDocument({
   const marked = fitsCap(importStamp(docMetadata, docData.id, true));
   if (!marked) {
     warnings.push(
-      `"${docData.name}": its metadata is too large to be marked, so a resumed import would bring it in again`,
+      `"${docData.name}": imported without its archive id (metadata at the 500-key limit)`,
     );
   }
+  // An unmarked document is named on the import record instead, as soon as it
+  // exists and again once it is finished.
+  const recordUnmarked = async (id, done) => {
+    if (!marked && unmarked && docData.id != null)
+      await unmarked.documentMade(docData.id, id, done);
+  };
   const stamp = (metadata, done = false) =>
     marked ? importStamp(metadata, docData.id, done) : metadata;
   const shell = await createDocumentShell({
@@ -442,9 +498,10 @@ async function importNativeDocument({
       metadata: { ...(s.metadata || {}) },
     })),
     textMetadata: () => (textMetadata = refs.prepare(docData.baseline?.metadata || {})).metadata,
-    onDocument: (id) => {
+    onDocument: async (id) => {
       docId = id;
       if (docMaps && docData.id != null) docMaps.set(docData.id, { docId: id, tokenIdMap });
+      await recordUnmarked(id, false);
     },
     onText: (id) => {
       if (docData.baseline?.textId != null) textIdMap.set(docData.baseline.textId, id);
@@ -810,6 +867,7 @@ async function importNativeDocument({
   // itself exists. From here on another document's reference to it resolves.
   if (!mediaFailed) {
     await client.documents.setMetadata(docId, stamp(rewriteReferences(docMetadata, lookup), true));
+    await recordUnmarked(docId, true);
     if (docData.id != null) docIdMap.set(docData.id, docId);
   }
   return docId;
@@ -831,6 +889,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   const project = await client.projects.get(projectId);
   const targets = resolveNativeTargets(project, archive.manifest);
   const warnings = [];
+  const unmarked = unmarkedLedger({ client, projectId, project });
 
   // Stored app config the setup wizard doesn't cover, written verbatim. The
   // wizard does create documentMetadata, but only as `{name}` rows, so the
@@ -949,12 +1008,24 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       onProgress,
       shouldStop,
       warnings,
+      unmarked,
     });
     for (const [oldId, newId] of map) itemIdMap.set(oldId, newId);
   }
 
-  // Resume bookkeeping: what an earlier run made, by archive document id.
+  // Resume bookkeeping: what an earlier run made, by archive document id, as
+  // `{id, done}`. A marked document is found by its marks, an unmarked one by
+  // the import record, while it is still in the project.
   const prior = await priorImports(client, projectId);
+  const listed = unmarked.hasDocuments()
+    ? new Set((await client.projects.listDocuments(projectId)).map((d) => d.id))
+    : new Set();
+  const earlierRun = (archiveId) => {
+    const found = prior.find(archiveId);
+    if (found) return { id: found.id, done: prior.done(found) };
+    const recorded = unmarked.document(archiveId);
+    return recorded && listed.has(recorded.id) ? recorded : null;
+  };
 
   const docMaps = new Map(); // archive document id → {docId, tokenIdMap}
   // The documents a promoted example points into. A resume skips a document an
@@ -973,8 +1044,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
   // run finished. Each one this run finishes joins them.
   const docIdMap = new Map();
   for (const doc of archive.documents) {
-    const existing = prior.find(doc.data?.id);
-    if (existing && prior.done(existing)) docIdMap.set(doc.data.id, existing.id);
+    const existing = earlierRun(doc.data?.id);
+    if (existing?.done) docIdMap.set(doc.data.id, existing.id);
   }
   for (let i = 0; i < archive.documents.length; i += 1) {
     if (shouldStop?.()) throw new ImportCancelled();
@@ -986,8 +1057,8 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       total: archive.documents.length,
       step: 'Starting',
     });
-    const existing = prior.find(doc.data?.id);
-    if (existing && prior.done(existing)) {
+    const existing = earlierRun(doc.data?.id);
+    if (existing?.done) {
       results.skipped += 1;
       if (cited.has(doc.data?.id)) {
         const tokenIdMap = await rebuildTokenMap({
@@ -1012,6 +1083,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       itemIdMap,
       docMaps,
       docIdMap,
+      unmarked,
       mediaBytes: doc.mediaBytes,
       mediaName: doc.mediaFile ? doc.mediaFile.split('/').at(-1) : null,
       index: i,

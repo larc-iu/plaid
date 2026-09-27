@@ -448,7 +448,10 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
 5. All offsets are code points; never re-derive them from UTF-16 indices.
    An entry or document whose metadata is at core's key cap (500 keys, counted
    at every level) has no room for the import's marks. It is created unmarked
-   with a warning, and a resume would create it a second time.
+   with a warning, and the project's import record (`config.igt.import.unmarked`,
+   removed with the record when the import finishes) names it by archive id
+   instead: a resume reuses such an entry, skips such a document it finished,
+   and deletes and redoes one it did not.
 6. References in metadata are rewritten throughout (below).
 
 ### References in metadata

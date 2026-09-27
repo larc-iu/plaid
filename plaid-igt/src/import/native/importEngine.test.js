@@ -18,6 +18,7 @@ import {
 import { CHUNK } from '../../domain/bulk.js';
 import { importOtherLayerData, noOtherLayers } from './otherLayers.js';
 import { REFERENCE_KINDS } from './references.js';
+import { ImportCancelled } from '../resume.js';
 import {
   deriveSetupData,
   resolveNativeTargets,
@@ -114,15 +115,22 @@ function stubClient({
   existingVocabComments = [],
   // What the server says of a token layer that a project read leaves out.
   tokenLayerShapes = {},
+  // A server that outlives one run (makeStore): what a run writes is there for
+  // the next, as a resume finds it.
+  store = null,
+  // Asked before each call. Returning true makes that call fail, as a lost
+  // connection would.
+  failAt = null,
 } = {}) {
   const calls = [];
-  const written = new Map();
+  const written = store?.docs ?? new Map();
   let batch = null;
-  let nextId = 0;
-  const fresh = (prefix) => `${prefix}-${nextId++}`;
+  const counter = store ?? { nextId: 0 };
+  const fresh = (prefix) => `${prefix}-${counter.nextId++}`;
   // Each call keeps what it answered, out of sight of toEqual, so a test can
   // follow an id from the call that made it to the calls that use it.
   const record = (name, args, result) => {
+    if (failAt?.(name)) throw new Error(`${name} failed`);
     const entry = [name, ...args];
     Object.defineProperty(entry, 'result', { value: result, enumerable: false });
     calls.push(entry);
@@ -131,12 +139,34 @@ function stubClient({
   const client = {
     calls,
     projects: {
-      get: async (id) => record('projects.get', [id], targetProject()),
-      setConfig: async (...a) => record('projects.setConfig', a),
-      listDocuments: async (id) => record('projects.listDocuments', [id], existingDocs),
+      get: async (id) =>
+        record('projects.get', [id], {
+          ...targetProject(),
+          ...(store ? { config: JSON.parse(JSON.stringify(store.config)) } : {}),
+        }),
+      setConfig: async (...a) => {
+        const [, ns, key, value] = a;
+        record('projects.setConfig', a);
+        if (store) store.config[ns] = { ...store.config[ns], [key]: value };
+      },
+      listDocuments: async (id) =>
+        record(
+          'projects.listDocuments',
+          [id],
+          store
+            ? [
+                ...existingDocs,
+                ...[...written.values()].map(({ id: d, name }) => ({ id: d, name })),
+              ]
+            : existingDocs,
+        ),
     },
     vocabLayers: {
-      get: async (id) => record('vocabLayers.get', [id], { id, items: existingItems }),
+      get: async (id) =>
+        record('vocabLayers.get', [id], {
+          id,
+          items: [...existingItems, ...(store?.items.filter((it) => it.vocabId === id) ?? [])],
+        }),
       setConfig: async (...a) => record('vocabLayers.setConfig', a),
       deleteConfig: async (...a) => record('vocabLayers.deleteConfig', a),
     },
@@ -171,8 +201,20 @@ function stubClient({
       list: async () => [],
     },
     vocabItems: {
-      bulkCreate: async (body) =>
-        record('vocabItems.bulkCreate', [body], { ids: body.map(() => fresh('item')) }),
+      bulkCreate: async (body) => {
+        const made = record('vocabItems.bulkCreate', [body], {
+          ids: body.map(() => fresh('item')),
+        });
+        body.forEach((it, i) =>
+          store?.items.push({
+            id: made.ids[i],
+            vocabId: it.vocabLayerId,
+            form: it.form,
+            metadata: it.metadata,
+          }),
+        );
+        return made;
+      },
       setMetadata: async (...a) => record('vocabItems.setMetadata', a),
       bulkUpdate: async (body) => record('vocabItems.bulkUpdate', [body], { count: body.length }),
       deleteMetadata: async (...a) => record('vocabItems.deleteMetadata', a),
@@ -214,7 +256,10 @@ function stubClient({
           [id],
           existingDocs.find((d) => d.id === id) ?? written.get(id) ?? { id, metadata: {} },
         ),
-      delete: async (id) => record('documents.delete', [id]),
+      delete: async (id) => {
+        record('documents.delete', [id]);
+        if (store) written.delete(id);
+      },
       setMetadata: async (id, metadata) => {
         if (written.has(id)) written.get(id).metadata = metadata;
         return record('documents.setMetadata', [id, metadata]);
@@ -903,14 +948,14 @@ describe('runNativeImport, what the archive holds comes back as it was', () => {
     });
   });
 
-  it('imports a document at the metadata key cap unmarked, and says a resume would repeat it', async () => {
+  it('imports a document at the metadata key cap unmarked, and says so', async () => {
     const raw = makeNativeRaw();
     raw.metadata = Object.fromEntries(Array.from({ length: 499 }, (_, i) => [`k${i}`, i]));
     const { client, result } = await importOf(archiveOf(raw));
     expect(callsOf(client, 'documents.create')[0][3]).toEqual(raw.metadata);
     expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toEqual(raw.metadata);
     expect(result.warnings).toEqual([
-      '"Doc One": its metadata is too large to be marked, so a resumed import would bring it in again',
+      '"Doc One": imported without its archive id (metadata at the 500-key limit)',
     ]);
   });
 
@@ -1049,8 +1094,153 @@ describe('importVocabulary at the metadata key cap', () => {
     expect(second.metadata).toEqual({ gloss: 'dog', nativeImportId: 'i2' });
     expect(map.size).toBe(2);
     expect(warnings).toEqual([
-      '"Lex": 1 entry holds too much metadata to be marked, so a resumed import would create it again',
+      '"Lex": 1 entry imported without its archive id (metadata at the 500-key limit)',
     ]);
+  });
+});
+
+// A server kept across runs, holding the import record the wizard writes
+// before the engine runs.
+const makeStore = () => ({
+  nextId: 0,
+  docs: new Map(),
+  items: [],
+  config: { igt: { import: { kind: 'Plaid IGT archive', source: 'P' } } },
+});
+
+describe('a resume and what was made at the metadata key cap', () => {
+  const full = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, i]));
+  // Two documents, the first too full for the marks, and a lexicon with one
+  // entry too full for its mark between two that have room.
+  const cappedArchive = () => {
+    const project = makeNativeProject();
+    const one = makeNativeRaw();
+    one.metadata = full(499);
+    const two = makeNativeRaw();
+    two.id = 'doc2';
+    two.name = 'Doc Two';
+    const docs = [one, two].map((raw) => {
+      const igtDoc = new IgtDocument({ raw, project, vocabularies: {} });
+      const row = { id: raw.id, name: raw.name, file: `documents/${raw.id}.json`, mediaFile: null };
+      return { ...row, data: serializeDocumentNative(igtDoc, {}), mediaBytes: null };
+    });
+    const vocab = {
+      ...VOCAB,
+      items: [
+        VOCAB.items[0],
+        { id: 'itemFull', form: 'lleno', metadata: full(500) },
+        ...VOCAB.items.slice(1),
+      ],
+    };
+    const vocabRow = { id: 'vocab1', name: 'Lex', file: 'vocabularies/Lex.json' };
+    return {
+      manifest: buildProjectFile({
+        project,
+        documents: docs.map(({ data: _d, mediaBytes: _m, ...row }) => row),
+        vocabularies: [vocabRow],
+        exportedAt: '2026-09-27T00:00:00.000Z',
+      }),
+      vocabularies: [{ ...vocabRow, data: serializeVocabularyNative(vocab) }],
+      documents: docs,
+    };
+  };
+  // What the project holds, in terms that do not depend on the ids a run drew.
+  const holdings = (store) => ({
+    documents: [...store.docs.values()].map((d) => [d.name, Object.keys(d.metadata || {}).length]),
+    entries: store.items.map((it) => it.form),
+  });
+  const run = (store, opts = {}) =>
+    runNativeImport({
+      client: stubClient({ store, ...opts }),
+      projectId: 'newp',
+      archive: cappedArchive(),
+      ...opts,
+    });
+
+  it('names what it made unmarked on the import record', async () => {
+    const store = makeStore();
+    await run(store);
+    const { unmarked } = store.config.igt.import;
+    const [one] = [...store.docs.values()];
+    expect(unmarked.documents).toEqual({ doc1: { id: one.id, done: true } });
+    expect(unmarked.entries).toEqual({
+      itemFull: store.items.find((it) => it.form === 'lleno').id,
+    });
+    // The rest of the record is left as the wizard wrote it.
+    expect(store.config.igt.import).toMatchObject({ kind: 'Plaid IGT archive', source: 'P' });
+    expect(one.metadata).toEqual(full(499));
+  });
+
+  it('writes no import record when the project has none', async () => {
+    const store = makeStore();
+    store.config = {};
+    await run(store);
+    expect(store.config.igt?.import).toBeUndefined();
+  });
+
+  it('comes back from a stop at every point to what one straight run makes', async () => {
+    const straight = makeStore();
+    await run(straight);
+    const want = holdings(straight);
+    expect(want.documents).toEqual([
+      ['Doc One', 499],
+      ['Doc Two', 4],
+    ]);
+    expect(want.entries).toEqual(['perro', 'lleno', 'perro', 'np']);
+
+    let stops = 0;
+    for (let n = 1; n < 500; n += 1) {
+      const store = makeStore();
+      let asked = 0;
+      let cancelled = false;
+      try {
+        await run(store, { shouldStop: () => (asked += 1) > n });
+      } catch (err) {
+        if (!(err instanceof ImportCancelled)) throw err;
+        cancelled = true;
+      }
+      if (!cancelled) break;
+      stops += 1;
+      const result = await run(store);
+      expect(holdings(store), `stopped after ${n}`).toEqual(want);
+      const done = [...store.docs.values()].find((d) => d.name === 'Doc One');
+      expect(store.config.igt.import.unmarked.documents.doc1).toEqual({ id: done.id, done: true });
+      expect(result.imported + result.skipped).toBe(2);
+    }
+    // Stopped before, inside and after each of the two documents at least.
+    expect(stops).toBeGreaterThan(8);
+  });
+
+  it('deletes and redoes a half-made unmarked document, and keeps a finished one', async () => {
+    const store = makeStore();
+    // Stop inside the first document, once it exists.
+    let made = false;
+    await expect(
+      run(store, {
+        shouldStop: () => made,
+        failAt: (name) => {
+          if (name === 'texts.create') made = true;
+          return false;
+        },
+      }),
+    ).rejects.toBeInstanceOf(ImportCancelled);
+    const [half] = [...store.docs.values()];
+    expect(store.config.igt.import.unmarked.documents.doc1).toEqual({ id: half.id, done: false });
+
+    const client = stubClient({ store });
+    const again = await runNativeImport({ client, projectId: 'newp', archive: cappedArchive() });
+    expect(argsOf(client, 'documents.delete')).toEqual([[half.id]]);
+    expect(again.redone).toBe(1);
+
+    const third = stubClient({ store });
+    const last = await runNativeImport({
+      client: third,
+      projectId: 'newp',
+      archive: cappedArchive(),
+    });
+    expect(last).toMatchObject({ imported: 0, skipped: 2, redone: 0 });
+    expect(callsOf(third, 'documents.delete')).toEqual([]);
+    expect(callsOf(third, 'vocabItems.bulkCreate')).toEqual([]);
   });
 });
 
