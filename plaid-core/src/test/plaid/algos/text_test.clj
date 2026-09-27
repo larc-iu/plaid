@@ -819,6 +819,17 @@
       (is (= new (:text/body text)))
       (is (= [] deleted))
       (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))
+  (testing "the new words never move out of a sentence or away from a marker"
+    ;; In front of `cow` is the start of a sentence, and the sentence before
+    ;; would take `a ` there.
+    (is (= #{[:s1 0 3] [:s2 3 9] [:cow 3 7]}
+           (extents (:tokens (body-edit "x. cow y" "x. a co y"
+                                        [(tok :s1 0 3) (tok :s2 3 8) (tok :cow 3 6)])))))
+    ;; `NY` keeps its `Y` in `York`, and a zero-width token after it marks
+    ;; that letter's end, so of the two words that share a letter with `NY`
+    ;; the token takes `York`.
+    (is (= #{[:ny 6 10] [:z 10 10]}
+           (extents (:tokens (body-edit "x NY y" "x New York y" [(tok :ny 2 4) (tok :z 4 4)]))))))
   (testing "a token with a space in it, such as a sentence, still takes the new text whole"
     (let [{:keys [tokens]} (body-edit "The cat.\nA dog.\n" "My pig ate.\nA dog.\n"
                                       [(tok :s1 0 9) (tok :s2 9 16)])]

@@ -769,7 +769,10 @@
   without whitespace cover [s, t). `cat` to `cat dog` keeps `cat`'s token
   on `cat`. Where the replace takes the whole of those tokens, they stay on
   the new word that shares the most letters with the old one, the first on
-  a tie. `near` gives the tokens that begin or end in a stretch (see
+  a tie, or the next such on a tie when putting the rest beside the first
+  would move text into the token before or away from a zero-width token.
+  When no word can take them so, the replace stays as it is.
+  `near` gives the tokens that begin or end in a stretch (see
   `tokens-near`)."
   [^ints o near r]
   (let [n (alength o)
@@ -795,23 +798,46 @@
                   (pos? p) (conj {:kind :insert :at s :value (sub 0 p)})
                   (< p q) (conj (assoc r :value (sub p q)))
                   (= p q) (conj {:kind :delete :start s :end t})
-                  (< q (alength v)) (conj {:kind :insert :at t :value (sub q (alength v))})))]
+                  (< q (alength v)) (conj {:kind :insert :at t :value (sub q (alength v))})))
+        ;; Text put in front of [s, t) lands outside every token beginning
+        ;; at s. With a token ending at s as well (the sentence before, when
+        ;; s starts a sentence) a partition hands it to that token, so it
+        ;; goes there only when nothing ends at s. It also lands after a
+        ;; zero-width token at s, which marks the start of the old word's
+        ;; first letter, so when that letter came through it goes there only
+        ;; when no such token is at s. Text put after [s, t)
+        ;; lands after a zero-width token at t, which marks the end of the
+        ;; old word's last letter, and the same holds.
+        front-ok? (not-any? (fn [{:token/keys [begin end]}]
+                              (or (and (< begin end) (= end s))
+                                  (and (:head-kept r) (= begin end s))))
+                            (near s s))
+        back-ok? (or (not (:tail-kept r))
+                     (not-any? (fn [{:token/keys [begin end]}] (= begin end t)) (near t t)))
+        allowed? (fn [[p q]] (and (or (zero? p) front-ok?) (or (= q (alength v)) back-ok?)))]
     (if (empty? covering)
       [r]
       (let [before? (< (reduce min (map :token/begin covering)) s)
-            after? (< t (reduce max (map :token/end covering)))]
-        (cond
-          ;; a word split in two where it was edited: leave it to the tokens
-          (and before? after?) [r]
-          ;; letters of the token before the replace: its first new word joins them
-          before? (edits (if (ws? (aget v 0)) [0 0] (first words)))
-          ;; letters after it: its last new word joins them
-          after? (edits (if (ws? (aget v (dec (alength v)))) [(alength v) (alength v)] (peek words)))
-          :else (let [old-word (java.util.Arrays/copyOfRange o (int s) (int t))
-                      score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))]
-                  (edits (if (seq words)
-                           (reduce (fn [best w] (if (> (score w) (score best)) w best)) words)
-                           [0 0]))))))))
+            after? (< t (reduce max (map :token/end covering)))
+            ;; the part of v that stays in the tokens, by preference
+            choices (cond
+                      ;; a word split in two where it was edited: leave it to the tokens
+                      (and before? after?) []
+                      ;; letters of the token before the replace: its first new word joins them
+                      before? [(if (ws? (aget v 0)) [0 0] (first words))]
+                      ;; letters after it: its last new word joins them
+                      after? [(if (ws? (aget v (dec (alength v)))) [(alength v) (alength v)] (peek words))]
+                      (empty? words) [[0 0]]
+                      :else (let [old-word (java.util.Arrays/copyOfRange o (int s) (int t))
+                                  score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))]
+                              ;; the words that share the most letters, first to
+                              ;; last (a word that shares fewer is no better a
+                              ;; home than the whole new text)
+                              (let [best (reduce max (map score words))]
+                                (filter #(= best (score %)) words))))]
+        (if-let [choice (first (filter allowed? choices))]
+          (edits choice)
+          [r])))))
 
 (defn fold-whole-words
   "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
@@ -927,7 +953,10 @@
                               (around lo e0))))]
           (if-let [[g b e] g-e]
             (recur (+ i (count g))
-                   (conj out {:kind :replace :start b :end e :value (new-text g b e)})
+                   (conj out {:kind :replace :start b :end e :value (new-text g b e)
+                              ;; the old word's last letter came through
+                              :tail-kept (not-any? #(= e (:end %)) g)
+                              :head-kept (not-any? #(and (:end %) (= b (:start %))) g)})
                    true)
             (recur (inc i) (conj out e0) folded?)))
         ;; A word typed beside the replaced letters stays out of them,
