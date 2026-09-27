@@ -230,3 +230,67 @@ describe('AssistantComposer attachments', () => {
     await m.unmount();
   });
 });
+
+// The other projects a conversation reads: the button beside the paperclip,
+// offered only by an assistant that says how many it reads, and a chip each.
+describe('AssistantComposer and other projects', () => {
+  const B = { id: 'pB', name: 'Lamkang B' };
+  const projectsClient = () => ({
+    ...fakeClient(),
+    projects: {
+      ...fakeClient().projects,
+      list: vi
+        .fn()
+        .mockResolvedValue([{ id: 'p1', name: 'Home' }, B, { id: 'pC', name: 'Lamkang C' }]),
+    },
+  });
+  const addButton = (m) => m.container.querySelector('[aria-label="Add project"]');
+
+  it('offers no button when the assistant names no number of projects', async () => {
+    const m = await mount({ onAddProject: vi.fn(), maxProjects: null });
+    expect(addButton(m)).toBeNull();
+    await m.unmount();
+  });
+
+  it('offers the button beside the paperclip when it does', async () => {
+    const m = await mount({ onAddProject: vi.fn(), maxProjects: 5 });
+    expect(addButton(m).disabled).toBe(false);
+    expect(addButton(m).title).toBe('Add project');
+    await m.unmount();
+  });
+
+  it('is disabled at the cap, which counts the home project', async () => {
+    const four = ['a', 'b', 'c', 'd'].map((id) => ({ id, name: id }));
+    const m = await mount({ onAddProject: vi.fn(), maxProjects: 5, projects: four });
+    expect(addButton(m).disabled).toBe(true);
+    expect(addButton(m).title).toBe('At most 5 projects');
+    await m.unmount();
+  });
+
+  it('shows a chip for each project, and removes one', async () => {
+    const onRemoveProject = vi.fn();
+    const m = await mount({
+      onAddProject: vi.fn(),
+      maxProjects: 5,
+      projects: [B],
+      onRemoveProject,
+    });
+    expect(m.container.textContent).toContain('Lamkang B');
+    await m.step(() => m.container.querySelector('[aria-label="Remove Lamkang B"]').click());
+    expect(onRemoveProject).toHaveBeenCalledWith('pB');
+    await m.unmount();
+  });
+
+  it('lists the projects not yet in the conversation, and adds the one picked', async () => {
+    const onAddProject = vi.fn().mockResolvedValue(true);
+    const client = projectsClient();
+    const m = await mount({ client, onAddProject, maxProjects: 5, projects: [B] });
+    await m.step(() => addButton(m).click());
+    await m.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const options = all(document.body, '[role="option"]').map((n) => n.textContent);
+    expect(options).toEqual(['Lamkang C']);
+    await m.step(() => document.body.querySelector('[role="option"]').click());
+    expect(onAddProject).toHaveBeenCalledWith({ id: 'pC', name: 'Lamkang C' });
+    await m.unmount();
+  });
+});

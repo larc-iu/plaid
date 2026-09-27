@@ -1,9 +1,18 @@
 import { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, MapPin, Quote, Wrench } from 'lucide-react';
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  MapPin,
+  Quote,
+  Wrench,
+} from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
+import { couldNotOpen, withProjects } from './projectReach.js';
 import { PlanCard } from './PlanCard.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
@@ -63,7 +72,7 @@ export const CitedMarkdown = ({ text, citations, projectId, adapter }) => {
     <div>
       {segments.map((seg, i) =>
         seg.card ? (
-          <ExampleCard key={i} c={seg.card} projectId={projectId} />
+          <ExampleCard key={i} c={seg.card} projectId={seg.card.projectId ?? projectId} />
         ) : (
           <AssistantMarkdown key={i}>{linkify(seg.md)}</AssistantMarkdown>
         ),
@@ -98,7 +107,8 @@ const CitedExamples = ({ cited, projectId, adapter }) => {
         <Quote className="h-3 w-3" />
         {cited.length === 1 ? '1 cited example' : `${cited.length} cited examples`}
       </button>
-      {open && cited.map((c) => <ExampleCard key={c.key} c={c} projectId={projectId} />)}
+      {open &&
+        cited.map((c) => <ExampleCard key={c.key} c={c} projectId={c.projectId ?? projectId} />)}
     </div>
   );
 };
@@ -111,6 +121,7 @@ export const Turn = ({
   results,
   fromAnotherModel,
   movedHere,
+  reachChanged = false,
   canWrite,
   contributor,
   busy,
@@ -131,6 +142,14 @@ export const Turn = ({
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3" />
             {item.where.name}
+          </div>
+        )}
+        {/* The other projects this one reads, shown only where the set
+            changed, on the same terms as the place above. */}
+        {reachChanged && item.projects?.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <FolderOpen className="h-3 w-3 shrink-0" />
+            {withProjects(item.projects)}
           </div>
         )}
         <div
@@ -186,6 +205,12 @@ export const Turn = ({
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <BookOpen className="h-3 w-3 shrink-0" />
             {item.contextNote}
+          </div>
+        )}
+        {item.unavailableProjects?.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <FolderOpen className="h-3 w-3 shrink-0" />
+            {couldNotOpen(item.unavailableProjects)}
           </div>
         )}
         {item.text ? (

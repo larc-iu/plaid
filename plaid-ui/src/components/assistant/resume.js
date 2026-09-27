@@ -23,12 +23,17 @@ export const rewindForRetry = (conv) => {
   // conversation, so sending it again points at the same ones rather than
   // writing them twice or losing them.
   const files = conv.display[i].files || [];
+  // The other projects it read. The service reads them off the last user
+  // message only, so a message sent again without them reads its home
+  // project alone, and says nothing about it.
+  const projects = conv.display[i].projects || [];
   // A lost turn still has the user's message in the model transcript; a
   // failed or stopped one had it dropped so a retry could not send it twice.
   const last = conv.messages.at(-1);
   return {
     text,
     files,
+    projects,
     conv: {
       ...conv,
       messages:

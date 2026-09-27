@@ -9,6 +9,14 @@ import { AssistantComposer } from './AssistantComposer.jsx';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { rewindForRetry, stoppedIn } from './resume.js';
 import {
+  atProjectCap,
+  lastProjects,
+  notServedThere,
+  projectsToSend,
+  reachChanged,
+  servedThere,
+} from './projectReach.js';
+import {
   MAX_FILES,
   readAttachment,
   refOf,
@@ -207,6 +215,9 @@ export const AssistantChat = ({
   const activeMeta = list.rows.find((m) => m.id === active?.id) || null;
   const choice = useAssistantChoice({ client, projectId, app: adapter.app, meta: activeMeta });
   const { service } = choice;
+  // How many projects the answering assistant reads at once, home included. An
+  // assistant that says nothing reads one, and then the conversation reads one.
+  const maxProjects = service?.extras?.maxProjects || null;
 
   // --- the job in flight for the shown conversation ----------------------
   const [input, setInput] = useState('');
@@ -216,6 +227,16 @@ export const AssistantChat = ({
   // written under the conversation the message actually joins.
   const [attachments, setAttachments] = useState([]);
   const [attaching, setAttaching] = useState(false); // reading or storing one
+  // The other projects the reader added to this conversation, held with the
+  // conversation they were added to. Until the reader changes them, they are
+  // whatever the conversation's last message carried, so opening a thread
+  // brings its projects back and a new one starts with none.
+  const [reachEdit, setReachEdit] = useState({ convId: null, projects: [] });
+  const reach = !maxProjects
+    ? []
+    : reachEdit.convId === active?.id
+      ? reachEdit.projects
+      : lastProjects(active?.display);
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
@@ -424,7 +445,7 @@ export const AssistantChat = ({
   // nothing is written for them a second time. A retry sends the OLD message,
   // so the composer (text, files, chip) is the reader's next one and is left
   // as it is.
-  const send = async (textOverride, files = null) => {
+  const send = async (textOverride, files = null, projects = null) => {
     const retry = files !== null;
     const typed = (textOverride ?? input).trim();
     if (!typed || !canSend) return;
@@ -463,6 +484,9 @@ export const AssistantChat = ({
     // The model's copy is stamped by the service, which owns every word the
     // model reads, and only when the place has changed since the last turn.
     const sent = files || pending.map(refOf);
+    // The other projects this message reads. The service reads them off the
+    // last user message and nowhere else, so a retry carries its own again.
+    const joined = retry ? projects || [] : projectsToSend(reach, projectId);
     const conv = {
       id: base.id,
       messages: [...base.messages, { role: 'user', content: text }],
@@ -473,6 +497,7 @@ export const AssistantChat = ({
           text,
           ...(where ? { where } : {}),
           ...(sent.length ? { files: sent } : {}),
+          ...(joined.length ? { projects: joined } : {}),
         },
       ],
     };
@@ -524,6 +549,36 @@ export const AssistantChat = ({
 
   const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
 
+  // A project joins only where the assistant answering this conversation runs
+  // too. That is asked here, before the chip appears: a read, and no write, so
+  // there is nothing to show before the answer. Answers whether it joined.
+  const addProject = async (p) => {
+    const at = activeRef.current?.id;
+    const serviceId = service?.serviceId;
+    let found;
+    try {
+      found = await client.messages.discoverServices(p.id);
+    } catch (e) {
+      notifyError(humanizeError(e, notServedThere(p.name)));
+      return false;
+    }
+    if (!servedThere(found, serviceId)) {
+      notifyError(notServedThere(p.name));
+      return false;
+    }
+    // The reader moved to another conversation while this was asked.
+    if (activeRef.current?.id !== at) return false;
+    setReachEdit((prev) => {
+      const now = prev.convId === at ? prev.projects : lastProjects(activeRef.current?.display);
+      if (now.some((q) => q.id === p.id) || atProjectCap(now, maxProjects)) return prev;
+      return { convId: at, projects: [...now, { id: p.id, name: p.name }] };
+    });
+    return true;
+  };
+
+  const removeProject = (id) =>
+    setReachEdit({ convId: active?.id, projects: reach.filter((p) => p.id !== id) });
+
   // Files left behind by a send that stored them and then could not write the
   // record, which is the only way one is made. Once per project, and only once
   // the list has really been READ: a failed listing looks exactly like a user
@@ -546,7 +601,7 @@ export const AssistantChat = ({
     const rewound = rewindForRetry(conv);
     if (!rewound) return;
     activeRef.current = rewound.conv;
-    send(rewound.text, rewound.files);
+    send(rewound.text, rewound.files, rewound.projects);
   };
 
   // Stop a turn: the service is asked to stop, and does so between steps.
@@ -734,6 +789,7 @@ export const AssistantChat = ({
                   !!d.model && !!previousModel(display, i) && d.model !== previousModel(display, i)
                 }
                 movedHere={movedHere(display, i)}
+                reachChanged={reachChanged(display, i)}
                 canWrite={canWrite}
                 contributor={contributor}
                 busy={!!busy}
@@ -838,6 +894,10 @@ export const AssistantChat = ({
           onAttach={addFiles}
           onRemoveAttachment={removeAttachment}
           attaching={attaching}
+          projects={reach}
+          maxProjects={maxProjects}
+          onAddProject={addProject}
+          onRemoveProject={removeProject}
           onSend={send}
           compact={compact}
         />

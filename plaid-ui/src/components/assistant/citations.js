@@ -76,5 +76,7 @@ export const linkifyCitations = (adapter, text, byKey, { origin, projectId, onCi
     const c = byKey.get(m);
     if (!c) return citePlain(m);
     onCited?.(m, c);
-    return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, projectId, c)})`;
+    // A citation into another project the conversation reads carries that
+    // project's id, and links there.
+    return `[${linkLabel(adapter.citationTitle(c))}](${adapter.citationHref(origin, c.projectId ?? projectId, c)})`;
   });

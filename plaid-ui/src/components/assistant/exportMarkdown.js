@@ -4,6 +4,12 @@
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
 import { linkifyCitations, markdownText } from './citations.js';
+import { couldNotOpen, reachChanged, withProjects } from './projectReach.js';
+
+// A citation's card, linked into the project it cites: another project the
+// conversation reads, or its own.
+const cardToMarkdown = (c, ctx) =>
+  ctx.adapter.citationToMarkdown(c, { ...ctx, projectId: c.projectId ?? ctx.projectId });
 
 // Reply text with its citations: a citation alone on a line becomes the
 // table in place, an inline one a link, and the inline-only ones' tables
@@ -16,7 +22,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
     const key = line.trim();
     if (byKey.has(key)) {
       shown.add(key);
-      return ctx.adapter.citationToMarkdown(byKey.get(key), ctx);
+      return cardToMarkdown(byKey.get(key), ctx);
     }
     return linkifyCitations(ctx.adapter, line, byKey, {
       ...ctx,
@@ -27,7 +33,7 @@ export const replyToMarkdown = (text, citations, ctx) => {
   });
   const out = lines.join('\n');
   if (!inline.length) return out;
-  return `${out}\n\n**Cited examples**\n\n${inline.map((c) => ctx.adapter.citationToMarkdown(c, ctx)).join('\n\n')}`;
+  return `${out}\n\n**Cited examples**\n\n${inline.map((c) => cardToMarkdown(c, ctx)).join('\n\n')}`;
 };
 
 const planToMarkdown = (plan, status, interrupted) => {
@@ -52,9 +58,12 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
   if (meta?.model) facts.push(`Assistant: ${markdownText(meta.model)}`);
   if (meta?.createdAt) facts.push(`Started: ${meta.createdAt.slice(0, 10)}`);
   if (facts.length) out.push(facts.join(' · '), '');
-  (conv?.display || []).forEach((d) => {
+  const display = conv?.display || [];
+  display.forEach((d, i) => {
     if (d.kind === 'user') {
-      out.push('## You', '', d.text || '', '');
+      out.push('## You', '');
+      if (reachChanged(display, i)) out.push(`*${markdownText(withProjects(d.projects))}*`, '');
+      out.push(d.text || '', '');
     } else if (d.kind === 'error') {
       out.push(`> **Error:** ${d.text || ''}`, '');
     } else {
@@ -62,6 +71,8 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       // What it did before answering, in the service's own words.
       if (d.stepsSummary) out.push(`*${d.stepsSummary}*`, '');
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
+      if (d.unavailableProjects?.length)
+        out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');
       if (d.text) out.push(replyToMarkdown(d.text, d.citations, ctx), '');
       if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted), '');
     }

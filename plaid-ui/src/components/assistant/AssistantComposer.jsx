@@ -5,6 +5,7 @@ import { Textarea } from '../ui/textarea.jsx';
 import { cn } from '../../lib/utils.js';
 import { ACCEPT } from './attachments.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
+import { AddProject, ProjectChip } from './ProjectChips.jsx';
 import { AssistantPicker } from './ConversationList.jsx';
 import { MentionList } from './MentionList.jsx';
 import { NEARLY_FULL, fullness } from './usage.js';
@@ -46,6 +47,14 @@ export const AssistantComposer = ({
   onAttach = null,
   onRemoveAttachment = null,
   attaching = false,
+  // The other projects this conversation reads, as [{id, name}], and how the
+  // reader changes them (see projectReach.js). `maxProjects` is what the
+  // answering assistant advertises: without it the assistant reads one project
+  // and the button is not offered.
+  projects = [],
+  maxProjects = null,
+  onAddProject = null,
+  onRemoveProject = null,
   onSend,
   // A narrow column: tighter padding.
   compact = false,
@@ -149,8 +158,11 @@ export const AssistantComposer = ({
           rather than off the caret: measuring a character position inside a
           textarea needs a mirror element and breaks on wrap and on resize,
           and the composer is never far from the caret anyway. */}
-      {attachments.length > 0 && (
+      {(attachments.length > 0 || projects.length > 0) && (
         <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-1.5">
+          {projects.map((p) => (
+            <ProjectChip key={p.id} project={p} onRemove={onRemoveProject} />
+          ))}
           {attachments.map((f) => (
             <AttachmentChip key={f.id} file={f} onRemove={onRemoveAttachment} />
           ))}
@@ -226,6 +238,16 @@ export const AssistantComposer = ({
               <Paperclip className="h-4 w-4" />
             </Button>
           </>
+        )}
+        {onAddProject && !!maxProjects && (
+          <AddProject
+            client={client}
+            homeId={projectId}
+            joined={projects}
+            max={maxProjects}
+            disabled={!canSend}
+            onPick={onAddProject}
+          />
         )}
         <Button
           type="button"
