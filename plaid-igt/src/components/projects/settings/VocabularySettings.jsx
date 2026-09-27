@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { VocabularyManager } from './VocabularyManager';
 import { notifyError } from '@/utils/feedback';
 import { useAuth } from '@/contexts/AuthContext.jsx';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // What to show for a refused write: the server's own words when it gave any
 // (a refused link says who may make it), otherwise the error for the toast to
@@ -42,7 +43,7 @@ export const VocabularySettings = ({ projectId, client }) => {
           id: vocab.id,
           enabled,
           isCustom: false, // All existing vocabs from API are not custom
-          locked: !enabled && !user?.isAdmin && !(vocab.maintainers || []).includes(user?.id),
+          locked: !enabled && !canManageVocabulary(vocab, user),
         };
       });
 
