@@ -4,6 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError } from '../../utils/feedback.jsx';
+import { ExportProblems } from './ExportProblems.jsx';
 
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
@@ -13,7 +14,9 @@ export const ExportEditor = () => {
 
   useDocumentTitle('Export', doc?.name, project?.name);
 
-  const umrContent = doc.toUmr();
+  // A value the file cannot hold refuses the export and is listed instead.
+  const problems = doc.exportProblems;
+  const umrContent = problems.length ? '' : doc.toUmr();
 
   const handleCopy = async () => {
     // On a non-secure origin `navigator.clipboard` is undefined, and a denied
@@ -46,12 +49,14 @@ export const ExportEditor = () => {
     <div className="flex flex-col gap-4">
       <h3 className="text-xl font-semibold tracking-tight">UMR</h3>
 
+      {problems.length > 0 && <ExportProblems problems={problems} />}
+
       <div className="flex flex-wrap gap-2">
-        <Button onClick={handleCopy}>
+        <Button onClick={handleCopy} disabled={problems.length > 0}>
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           {copied ? 'Copied' : 'Copy'}
         </Button>
-        <Button variant="outline" onClick={handleDownload}>
+        <Button variant="outline" onClick={handleDownload} disabled={problems.length > 0}>
           <Download className="h-4 w-4" />
           Download
         </Button>
@@ -59,13 +64,15 @@ export const ExportEditor = () => {
 
       {/* Read-only and sized to the document: a corpus is read by scrolling one
           long column, not by scrolling a box inside a page. */}
-      <textarea
-        value={umrContent}
-        spellCheck={false}
-        readOnly
-        rows={Math.min(Math.max(umrContent.split('\n').length, 20), 400)}
-        className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
+      {problems.length === 0 && (
+        <textarea
+          value={umrContent}
+          spellCheck={false}
+          readOnly
+          rows={Math.min(Math.max(umrContent.split('\n').length, 20), 400)}
+          className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+      )}
     </div>
   );
 };

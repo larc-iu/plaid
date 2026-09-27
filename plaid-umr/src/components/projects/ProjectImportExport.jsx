@@ -10,6 +10,8 @@ import JSZip from 'jszip';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { importUmrDocument } from '../../domain/umrImport.js';
 import { exportProjectUmr } from '../../domain/umrExport.js';
+import { UnwritableUmrError } from '../../domain/format/umrFile.js';
+import { ExportProblems } from '../editor/ExportProblems.jsx';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
@@ -130,6 +132,7 @@ export const ProjectImportExport = () => {
   // Export state
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState({ done: 0, total: 0 });
+  const [exportProblems, setExportProblems] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,6 +294,7 @@ export const ProjectImportExport = () => {
   const runExport = async () => {
     setExporting(true);
     setExportProgress({ done: 0, total: 0 });
+    setExportProblems([]);
     const client = getClient();
     try {
       const entries = await exportProjectUmr(client, projectId, layerInfo, {
@@ -307,6 +311,10 @@ export const ProjectImportExport = () => {
       downloadBlob(blob, `${sanitize(project?.name)}.zip`);
       notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
     } catch (err) {
+      if (err instanceof UnwritableUmrError) {
+        setExportProblems(err.problems);
+        return;
+      }
       console.error('Export failed:', err);
       notifyError(humanizeError(err, 'Export failed.'));
     } finally {
@@ -531,6 +539,10 @@ export const ProjectImportExport = () => {
                 {exporting ? 'Exporting…' : 'Export'}
               </Button>
             </div>
+
+            {!exporting && exportProblems.length > 0 && (
+              <ExportProblems problems={exportProblems} />
+            )}
 
             {exporting && (
               <div className="flex flex-col gap-1">

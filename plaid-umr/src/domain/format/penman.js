@@ -72,6 +72,64 @@ export const attrValueProblem = (value) => {
     : null;
 };
 
+// A relation as the writer must find it stored: colon included, nothing
+// around it.
+const RELATION_EXACT = /^:[-A-Za-z0-9]+$/;
+
+/**
+ * Why `variable` cannot be written and read back as itself, or null when it
+ * can. Looser than the UMR convention on purpose: a released file may use a
+ * variable of another shape, and the reader takes any token. What it cannot
+ * take is a character that ends a token, a slash, or a variable whose front
+ * reads as a conventional one and whose rest is then left over (`s1x2y`).
+ */
+export const variableFormProblem = (variable) => {
+  const text = typeof variable === 'string' ? variable : '';
+  if (!text) return 'A node needs a variable.';
+  const front = VARIABLE_PREFIX.exec(text)?.[0];
+  return NOT_IN_CONCEPT.test(text) || text.includes('/') || (front && front !== text)
+    ? `A variable cannot be written as it is: ${text}`
+    : null;
+};
+
+/**
+ * Every place in `graph` that `serializePenman` would write as something
+ * `parsePenman` reads back differently, as `{ var, message }`: a variable, a
+ * concept, a relation or an attribute value. Stored values are written as
+ * they are, so each is judged exactly as stored, not trimmed. An export
+ * refuses a graph with any (ruled 2026-09-27: refuse and list, never repair).
+ *
+ * @param {{root: string|null, nodes: Map}} graph
+ * @returns {Array<{var: string, message: string}>}
+ */
+export function penmanProblems(graph) {
+  const problems = [];
+  const { root, nodes } = graph || {};
+  if (!root || !nodes) return problems;
+  for (const [variable, node] of nodes) {
+    const at = (message) => problems.push({ var: variable, message });
+    const badVar = variableFormProblem(variable);
+    if (badVar) at(badVar);
+    const concept = typeof node.concept === 'string' ? node.concept : '';
+    const badConcept = concept ? conceptProblem(concept) : 'A node needs a concept.';
+    if (badConcept) at(badConcept);
+    for (const child of node.children) {
+      const rel = typeof child.rel === 'string' ? child.rel : '';
+      if (!RELATION_EXACT.test(rel)) {
+        at(relationProblem(rel) ?? `A relation starts with a colon and holds no spaces: ${rel}`);
+      }
+      if (child.kind === 'node') {
+        const badTarget = variableFormProblem(child.value);
+        if (badTarget) at(badTarget);
+      } else {
+        const badValue = attrValueProblem(child.value);
+        if (badValue) at(badValue);
+      }
+    }
+  }
+  return problems;
+}
+
 // A quoted string and a comment must not be mistaken for graph text when the
 // definition set is collected, so both are blanked first. Newlines survive so
 // that positions still line up.

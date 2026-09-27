@@ -30,7 +30,7 @@ import {
 } from './sentenceGraph.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { describeUmrReconcile, planUnalignedHeal } from './umrReconcile.js';
-import { serializeUmrFile, readAlignment } from './format/umrFile.js';
+import { serializeUmrFile, readAlignment, umrFileProblems } from './format/umrFile.js';
 import {
   conceptProblem,
   relationProblem as relationFormProblem,
@@ -147,9 +147,18 @@ export class UmrDocument extends DocumentModel {
     return this.graph.sentences;
   }
 
-  // The document in the .umr file format.
+  // The document in the .umr file format. Throws UnwritableUmrError when
+  // `exportProblems` lists anything.
   toUmr() {
     return this._derived('umr', () => serializeUmrFile({ sentences: toUmrSentences(this.graph) }));
+  }
+
+  // Each stored value the .umr file cannot hold as it is, by sentence and
+  // variable: a concept with a space, a relation or value with a bracket or a
+  // line break. Only the API and older writers store such a value, since every
+  // editor path refuses it. The export refuses the document while any is left.
+  get exportProblems() {
+    return this._derived('exportProblems', () => umrFileProblems(toUmrSentences(this.graph)));
   }
 
   // What the official checks find, over the same sentences the export writes,

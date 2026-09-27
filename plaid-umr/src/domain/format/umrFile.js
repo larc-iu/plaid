@@ -10,7 +10,7 @@
 // Sanapaná still has UMR 1.0's '-1--1' for unaligned. Each tolerance used
 // leaves a warning behind, and writing always produces the modern spelling.
 
-import { parsePenman, serializePenman } from './penman.js';
+import { parsePenman, penmanProblems, serializePenman, relationProblem } from './penman.js';
 
 const SEPARATOR = '#'.repeat(80);
 
@@ -507,25 +507,114 @@ function serializeDocGraph(docGraph) {
   return lines;
 }
 
+// Text the file holds on one line: a line break in it would start a line the
+// reader takes for something else (a separator, a block header, a phantom
+// sentence). Written as a space, which loses nothing structural.
+const oneLine = (text) => String(text ?? '').replace(/\s*[\r\n]+\s*/g, ' ');
+
+// A line the reader takes as structure rather than as the text around it.
+const isStructural = (line) =>
+  /^#{3,}\s*$/.test(line) ||
+  SENT_ID.test(line.trim()) ||
+  BLOCK_HEADERS.some((header) => header.re.test(line.trim()));
+
+/**
+ * Everything in `sentences` that `serializeUmrFile` cannot write so that the
+ * file reads back as the same graphs: each sentence's graph (see
+ * `penmanProblems`), a document-level relation or end the block cannot hold,
+ * a metadata line that is not a comment or reads as structure, and a graph
+ * kept as text that holds a separator or block header.
+ *
+ * @returns {Array<{sentence: number, var: string|null, message: string}>}
+ */
+export function umrFileProblems(sentences) {
+  const problems = [];
+  (sentences ?? []).forEach((sentence) => {
+    const number = sentence.snt ?? sentence.index;
+    const at = (variable, message) => problems.push({ sentence: number, var: variable, message });
+    (sentence.meta ?? []).forEach((line) => {
+      const text = oneLine(line);
+      if (!text.trimStart().startsWith('#') || isStructural(text)) {
+        at(null, `A metadata line cannot be written as it is: ${text}`);
+      }
+    });
+    if (typeof sentence.rawGraph === 'string') {
+      const raw = [sentence.rawGraph, sentence.rawAlignment ?? ''].join('\n');
+      if (raw.split('\n').some(isStructural)) {
+        at(null, 'The graph kept as text holds a sentence separator or a block header.');
+      }
+    } else if (sentence.graph) {
+      penmanProblems(sentence.graph).forEach((p) => at(p.var, p.message));
+      // A quoted value may run over several lines (a released corpus has
+      // one), but the file is split into blocks by line before PENMAN reads
+      // it, so no line of one may read as structure.
+      for (const [variable, node] of sentence.graph.nodes ?? []) {
+        for (const child of node.children) {
+          if (child.kind !== 'node' && String(child.value).split('\n').some(isStructural)) {
+            at(variable, `A value holds a line that starts a new block: ${child.rel}`);
+          }
+        }
+      }
+    }
+    const doc = sentence.docGraph;
+    ['temporal', 'modal', 'coref'].forEach((group) => {
+      (doc?.[group] ?? []).forEach(([a, rel, b]) => {
+        const token = /^[^\s()]+$/;
+        if (!token.test(String(a)) || !token.test(String(b))) {
+          at(null, `A document-level relation cannot be written as it is: ${a} ${rel} ${b}`);
+        } else if (!/^:[-A-Za-z0-9]+$/.test(String(rel))) {
+          at(a, relationProblem(rel) ?? `A relation starts with a colon: ${rel}`);
+        }
+      });
+    });
+  });
+  return problems;
+}
+
+/** Where a problem is, as a person reads it: "Lunch, sentence 3, s3b". */
+export const problemPlace = (p) =>
+  [p.document, `sentence ${p.sentence}`, p.var]
+    .filter(Boolean)
+    .join(', ')
+    .replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * The export refused: `problems` lists each place that cannot be written,
+ * with `document` (its name) where the export was of several.
+ */
+export class UnwritableUmrError extends Error {
+  constructor(problems) {
+    super(problems.map((p) => `${problemPlace(p)}: ${p.message}`).join('\n'));
+    this.name = 'UnwritableUmrError';
+    this.problems = problems;
+  }
+}
+
 /**
  * Write sentences back as a .umr file, in the shape the standard prescribes:
  * 80 hashes, the four blocks in order with their header comments, one empty
  * line after each block and two after the last.
  *
+ * Throws UnwritableUmrError when anything cannot be written as it is stored
+ * (`umrFileProblems`): the file would not match the graphs.
+ *
  * @param {{sentences: Array<object>}} document
  * @returns {string}
  */
 export function serializeUmrFile({ sentences }) {
+  const problems = umrFileProblems(sentences);
+  if (problems.length) throw new UnwritableUmrError(problems);
   const out = [];
   (sentences ?? []).forEach((sentence) => {
     out.push(SEPARATOR);
-    (sentence.meta ?? []).forEach((line) => out.push(line));
-    const text = (sentence.sentenceText ?? '').trim();
+    (sentence.meta ?? []).forEach((line) => out.push(oneLine(line)));
+    const text = oneLine(sentence.sentenceText).trim();
     out.push(`# :: snt${sentence.snt ?? sentence.index}${text ? `\t${text}` : ''}`);
     const ilg = ilgLinesToWrite(sentence);
     const width = Math.max(0, ...ilg.map((line) => modernHeader(line).length + 1));
     ilg.forEach((line) => {
-      out.push(`${`${modernHeader(line)}:`.padEnd(width + 1)}${line.items.join(' ')}`);
+      const items = line.items.map(oneLine).join(' ');
+      out.push(`${`${oneLine(modernHeader(line))}:`.padEnd(width + 1)}${items}`);
     });
     out.push('');
 
