@@ -36,7 +36,7 @@ describe('readNativeArchive', () => {
     const bytes = zipOf({
       'project.json': JSON.stringify(MANIFEST),
       'vocabularies/Lex.json': '{}',
-      'documents/A.json': '{}',
+      'documents/A.json': '{"id":"d1"}',
     });
     expect(readNativeArchive(bytes).documents[0].mediaBytes).toBeNull();
   });
@@ -56,6 +56,34 @@ describe('readNativeArchive', () => {
       'documents/A.json': '{}',
     });
     expect(() => readNativeArchive(bytes)).toThrow(/Two vocabularies are named "Lex"/);
+  });
+
+  // A resume finds what an earlier run made by the archive's document id, so
+  // two documents sharing one, or one without any, would be taken for each
+  // other: a finished one imported twice, a half-made one deleted twice.
+  it('refuses a document with no id, and two documents with one id', () => {
+    const manifest = {
+      ...MANIFEST,
+      documents: [
+        { id: 'd1', name: 'A', file: 'documents/A.json' },
+        { id: 'd2', name: 'B', file: 'documents/B.json' },
+      ],
+    };
+    const archive = (a, b) =>
+      zipOf({
+        'project.json': JSON.stringify(manifest),
+        'vocabularies/Lex.json': '{}',
+        'documents/A.json': JSON.stringify(a),
+        'documents/B.json': JSON.stringify(b),
+      });
+    expect(() => readNativeArchive(archive({ id: 'd1' }, { id: 'd1' }))).toThrow(
+      'Two documents in the archive have the id "d1".',
+    );
+    expect(() => readNativeArchive(archive({ id: 'd1' }, { name: 'B' }))).toThrow(
+      'The document in documents/B.json has no id.',
+    );
+    expect(() => readNativeArchive(archive({ id: 'd1' }, { id: '' }))).toThrow(ArchiveError);
+    expect(readNativeArchive(archive({ id: 'd1' }, { id: 'd2' })).documents).toHaveLength(2);
   });
 
   it('rejects non-zips, foreign zips, and unsupported versions', () => {
