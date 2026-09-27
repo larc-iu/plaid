@@ -420,21 +420,26 @@
   "Old-coordinate edits, in their original (position-monotone) order ->
   sequential running-coordinate ops. An edit at old position p is shifted by
   the inserts before it and by the deletes that START strictly before p (a
-  delete starting AT p removes text after p and doesn't move p)."
+  delete starting AT p removes text after p and doesn't move p). Linear:
+  the deletes are summed as the edits pass them, and only those starting at
+  the current position wait."
   [edits]
-  (loop [edits edits dels [] ins 0 out []]
+  (loop [edits edits del-before 0 waiting [] ins 0 out []]
     (if-let [e (first edits)]
       (let [p (or (:start e) (:at e))
-            del-before (reduce + 0 (map second (filter #(< (first %) p) dels)))
+            passed (filter #(< (first %) p) waiting)
+            del-before (+ del-before (reduce + 0 (map second passed)))
+            waiting (if (seq passed) (filterv #(>= (first %) p) waiting) waiting)
             running (+ p (- del-before) ins)]
         (case (:kind e)
           :delete (let [n (- (:end e) (:start e))]
-                    (recur (rest edits) (conj dels [(:start e) n]) ins
+                    (recur (rest edits) del-before (conj waiting [(:start e) n]) ins
                            (conj out (delete-op running n))))
-          :insert (recur (rest edits) dels (+ ins (cp/cp-count (:value e)))
+          :insert (recur (rest edits) del-before waiting (+ ins (cp/cp-count (:value e)))
                          (conj out (insert-op running (:value e))))
           :replace (let [n (- (:end e) (:start e))]
-                     (recur (rest edits) (conj dels [(:start e) n]) (+ ins (cp/cp-count (:value e)))
+                     (recur (rest edits) del-before (conj waiting [(:start e) n])
+                            (+ ins (cp/cp-count (:value e)))
                             (conj out (replace-op running n (:value e)))))))
       out)))
 
@@ -463,10 +468,10 @@
   whose neighbouring letter it changes: inserting `t ta` after the `ta` of
   `cat ta bad` leaves that token on the start of the new `tat`, where
   inserting `tat ` before it leaves it between the same two spaces. An
-  insert where two tokens of one layer meet disturbs both, even with the
-  same letters either side: an `a` typed at the end of `aa`, glossed as
-  `a` + `a`, would otherwise go between the two morphemes, inside the word
-  but in neither."
+  insert where two tokens of one layer meet disturbs at least one of them,
+  even with the same letters either side: an `a` typed at the end of `aa`,
+  glossed as `a` + `a`, would otherwise go between the two morphemes, inside
+  the word but in neither."
   [^ints o tokens edit]
   (let [n (alength o)
         ;; The edge of the text and a space both only separate, so a word
@@ -487,27 +492,34 @@
                        tokens)))
       (let [a (:at edit)
             v (.toArray (.codePoints ^String (:value edit)))
+            ;; A token ending at `a` gets a new letter after it, one
+            ;; beginning there a new letter before it.
+            new-after? (not= (at a) (apart (aget v 0)))
+            new-before? (not= (at (dec a)) (apart (aget v (dec (alength v)))))
             ;; Two tokens of one layer that meet between two letters are
             ;; pulled apart by whatever is put between them, even the letters
-            ;; they already had beside them. (Where a space or the edge of the
+            ;; they already had beside them, so the pair counts once when
+            ;; neither letter changes. Once, and not once each: the start of
+            ;; the word would then cost less, and a letter doubled in `a` +
+            ;; `b` would leave the word. (Where a space or the edge of the
             ;; text is on one side, as between two sentences of a partition,
             ;; the neighbouring letters tell.)
             layers-at (fn [k] (into #{} (comp (filter #(and (< (:token/begin %) (:token/end %))
                                                             (= a (k %))))
                                               (map :token/layer))
                                     tokens))
-            met (if (or (= :apart (at (dec a))) (= :apart (at a)))
+            met (if (or new-after? new-before? (= :apart (at (dec a))) (= :apart (at a)))
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
-        (count (filter (fn [{:token/keys [begin end layer]}]
-                         (cond
-                           (= begin end) false
-                           (< begin a end) true
-                           (= end a) (or (contains? met layer) (not= (at a) (apart (aget v 0))))
-                           (= begin a) (or (contains? met layer)
-                                           (not= (at (dec a)) (apart (aget v (dec (alength v))))))
-                           :else false))
-                       tokens))))))
+        (+ (count met)
+           (count (filter (fn [{:token/keys [begin end]}]
+                            (cond
+                              (= begin end) false
+                              (< begin a end) true
+                              (= end a) new-after?
+                              (= begin a) new-before?
+                              :else false))
+                          tokens)))))))
 
 (defn- slide-places
   "Every place `edit` (old-body coordinates, over the code points `o`) could
@@ -737,6 +749,70 @@
 ;; letter to its last, they become one replace and the token moves onto the
 ;; new word whole.
 
+(defn- lcs-length
+  "Length of the longest common subsequence of two code-point arrays."
+  [^ints a ^ints b]
+  (let [n (alength b)]
+    (loop [i 0 prev (long-array (inc n))]
+      (if (< i (alength a))
+        (let [cur (long-array (inc n))]
+          (dotimes [j n]
+            (aset cur (inc j) (if (= (aget a i) (aget b j))
+                                (inc (aget prev j))
+                                (max (aget prev (inc j)) (aget cur j)))))
+          (recur (inc i) cur))
+        (aget prev n)))))
+
+(defn- split-off-new-words
+  "The edits for `r`, a replace of [s, t) in `o`, with any whole word its
+  new text adds beside the replaced letters put outside them, when tokens
+  without whitespace cover [s, t). `cat` to `cat dog` keeps `cat`'s token
+  on `cat`. Where the replace takes the whole of those tokens, they stay on
+  the new word that shares the most letters with the old one, the first on
+  a tie. `near` gives the tokens that begin or end in a stretch (see
+  `tokens-near`)."
+  [^ints o near r]
+  (let [n (alength o)
+        {s :start t :end ^String value :value} r
+        v (.toArray (.codePoints value))
+        ws? (fn [c] (Character/isWhitespace (int c)))
+        ;; the new text's words, as [from to) code-point ranges of v
+        words (loop [i 0 out []]
+                (let [b (loop [i i] (if (and (< i (alength v)) (ws? (aget v i))) (recur (inc i)) i))
+                      e (loop [i b] (if (and (< i (alength v)) (not (ws? (aget v i)))) (recur (inc i)) i))]
+                  (if (< b e) (recur e (conj out [b e])) out)))
+        ;; the run of old text without whitespace around [s, t)
+        B (loop [i s] (if (and (pos? i) (not (ws? (aget o (dec i))))) (recur (dec i)) i))
+        E (loop [i t] (if (and (< i n) (not (ws? (aget o i)))) (recur (inc i)) i))
+        covering (when (and (some ws? v)
+                            (not-any? #(ws? (aget o %)) (range s t)))
+                   (filter (fn [{:token/keys [begin end]}]
+                             (and (< begin end) (<= B begin s) (<= t end E)))
+                           (near B E)))
+        sub (fn [p q] (String. v (int p) (int (- q p))))
+        edits (fn [[p q]]
+                (cond-> []
+                  (pos? p) (conj {:kind :insert :at s :value (sub 0 p)})
+                  (< p q) (conj (assoc r :value (sub p q)))
+                  (= p q) (conj {:kind :delete :start s :end t})
+                  (< q (alength v)) (conj {:kind :insert :at t :value (sub q (alength v))})))]
+    (if (empty? covering)
+      [r]
+      (let [before? (< (reduce min (map :token/begin covering)) s)
+            after? (< t (reduce max (map :token/end covering)))]
+        (cond
+          ;; a word split in two where it was edited: leave it to the tokens
+          (and before? after?) [r]
+          ;; letters of the token before the replace: its first new word joins them
+          before? (edits (if (ws? (aget v 0)) [0 0] (first words)))
+          ;; letters after it: its last new word joins them
+          after? (edits (if (ws? (aget v (dec (alength v)))) [(alength v) (alength v)] (peek words)))
+          :else (let [old-word (java.util.Arrays/copyOfRange o (int s) (int t))
+                      score (fn [[p q]] (lcs-length old-word (java.util.Arrays/copyOfRange v (int p) (int q))))]
+                  (edits (if (seq words)
+                           (reduce (fn [best w] (if (> (score w) (score best)) w best)) words)
+                           [0 0]))))))))
+
 (defn fold-whole-words
   "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
   edits lying within one token's extent, reaching both its ends and holding a
@@ -746,7 +822,13 @@
   is not the whole of `old`. Edits over two words never lie within one
   word's extent, and a token over both has the words inside it, so they stay
   as they are. Inserts alone (`a` to `tat`) stay too: text typed at a word's
-  edge stays outside it. The reconstructed string is unchanged."
+  edge stays outside it. So does a whole word typed beside the replaced
+  letters, in this replace or one `pair-replacements` made (`cow` to `a co`
+  keeps the token on `co`, see `split-off-new-words`). Edits that give a
+  token without whitespace a space are folded the same way, inserts alone
+  and wherever they begin, so the token goes on one of the new words and
+  not over both (`NY` to `New York`). The reconstructed string is
+  unchanged."
   [ops old tokens]
   (let [edits (vec (ops->edits ops))
         ^ints o (.toArray (.codePoints ^String old))
@@ -760,7 +842,7 @@
                                    (not (and (zero? begin) (= end whole))))
                             (update m begin (fnil conj (sorted-set)) end)
                             m))
-                        {} (when (< 1 (count edits)) tokens))
+                        {} tokens)
         near (delay (tokens-near tokens (count edits)))
         inside? (fn [b e]
                   (some (fn [{tb :token/begin te :token/end}]
@@ -768,6 +850,39 @@
                             (< b tb e)
                             (and (<= b tb) (<= te e) (not (and (= tb b) (= te e))))))
                         (@near b e)))
+        ;; [b e) of `old` with the edits of `g` applied.
+        new-text (fn [g b e]
+                   (loop [g g p b sb (StringBuilder.)]
+                     (if-let [x (first g)]
+                       (do (.append sb (old-text p (start-of x)))
+                           (when (:value x) (.append sb ^String (:value x)))
+                           (recur (rest g) (reach-of x) sb))
+                       (str (.append sb (old-text p e))))))
+        ws? (fn [c] (Character/isWhitespace (int c)))
+        has-ws? (fn [^String v] (and v (.anyMatch (.codePoints v) (reify java.util.function.IntPredicate
+                                                                    (test [_ c] (Character/isWhitespace c))))))
+        ;; The edits put whitespace between letters of a token that had
+        ;; none, so the letters it keeps are in two words now, and its token
+        ;; goes on one of them.
+        splits? (fn [g b e]
+                  (and (some #(has-ws? (:value %)) g)
+                       (not-any? #(ws? (aget o %)) (range b e))
+                       ;; the words of the new text that hold a kept letter
+                       (loop [g g p b word 0 prev-ws? true held #{}]
+                         (let [x (first g)
+                               kept (if x (- (start-of x) p) (- e p))
+                               held (if (pos? kept) (conj held (if prev-ws? (inc word) word)) held)
+                               word (if (and (pos? kept) prev-ws?) (inc word) word)
+                               prev-ws? (if (pos? kept) false prev-ws?)]
+                           (cond
+                             (< 1 (count held)) true
+                             (nil? x) false
+                             :else
+                             (let [[word prev-ws?]
+                                   (reduce (fn [[w pw] c] (if (ws? c) [w true] [(if pw (inc w) w) false]))
+                                           [word prev-ws?]
+                                           (when-let [v (:value x)] (.toArray (.codePoints ^String v))))]
+                               (recur (rest g) (reach-of x) word prev-ws? held)))))))
         ;; The edits from i on that make up the whole of [b e), or nil.
         group (fn [i b e]
                 (let [j (loop [j i]
@@ -777,34 +892,49 @@
                             j))
                       g (subvec edits i j)
                       kinds (set (map :kind g))]
-                  (when (and (> (count g) 1)
-                             (= e (reduce max (map reach-of g)))
+                  (when (and (seq g)
                              (or (= j (count edits)) (> (start-of (edits j)) e))
-                             (or (kinds :replace)
-                                 (and (kinds :delete) (kinds :insert)))
+                             (or (and (> (count g) 1)
+                                      (= b (start-of (first g)))
+                                      (= e (reduce max (map reach-of g)))
+                                      (or (kinds :replace)
+                                          (and (kinds :delete) (kinds :insert))))
+                                 (splits? g b e))
                              (not (inside? b e)))
                     g)))
-        ;; [b e) of `old` with the edits of `g` applied.
-        new-text (fn [g b e]
-                   (loop [g g p b sb (StringBuilder.)]
-                     (if-let [x (first g)]
-                       (do (.append sb (old-text p (start-of x)))
-                           (when (:value x) (.append sb ^String (:value x)))
-                           (recur (rest g) (reach-of x) sb))
-                       (str (.append sb (old-text p e))))))]
+        ;; Tokens without whitespace that an edit giving one a space falls
+        ;; strictly inside: `NY` to `New York` is `ew ` typed inside it and
+        ;; `ork` after it.
+        around (fn [lo e0]
+                 (let [p (start-of e0)
+                       B (loop [q p] (if (and (> q lo) (not (ws? (aget o (dec q))))) (recur (dec q)) q))]
+                   (when (and (has-ws? (:value e0)) (< B p))
+                     (->> (@near B p)
+                          (filter (fn [{tb :token/begin te :token/end}]
+                                    (and (<= B tb) (< tb p) (< p te)
+                                         (not (and (zero? tb) (= te whole))))))
+                          (sort-by :token/begin)))))]
     (loop [i 0 out [] folded? false]
       (if (< i (count edits))
         (let [e0 (edits i)
               b (start-of e0)
               prev (peek out)
+              lo (if prev (inc (reach-of prev)) 0)
               g-e (when (or (nil? prev) (< (reach-of prev) b))
-                    (some (fn [e] (when-let [g (group i b e)] [g e])) (ends-at b)))]
-          (if-let [[g e] g-e]
+                    (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
+                        (some (fn [{tb :token/begin te :token/end}]
+                                (when-let [g (group i tb te)] [g tb te]))
+                              (around lo e0))))]
+          (if-let [[g b e] g-e]
             (recur (+ i (count g))
                    (conj out {:kind :replace :start b :end e :value (new-text g b e)})
                    true)
             (recur (inc i) (conj out e0) folded?)))
-        (if folded? (edits->ops out) ops)))))
+        ;; A word typed beside the replaced letters stays out of them,
+        ;; here and in the replaces `pair-replacements` made.
+        (let [out' (into [] (mapcat #(if (= :replace (:kind %)) (split-off-new-words o @near %) [%]))
+                         out)]
+          (if (or folded? (not= out out')) (edits->ops out') ops))))))
 
 (defn pair-replacements
   "Rewrite `ops` (as produced by `diff` for `old`, after `normalize-deletes`)

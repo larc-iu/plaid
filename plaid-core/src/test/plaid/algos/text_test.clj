@@ -754,15 +754,75 @@
       (let [{:keys [tokens]} (body-edit "ab aa tat" "ab aaa tat"
                                         [(on :w (tok :w 3 5)) (on :m (tok :m1 3 4)) (on :m (tok :m2 4 5))])]
         (is (= #{[:w 3 5] [:m1 3 4] [:m2 4 5]} (extents tokens)))))
-    (testing "a `b` doubled in `ab` + `c` joins `ab`"
+    (testing "a `b` doubled in `ab` + `c` stays inside the word, between the two as before the slide"
+      ;; Joining `ab` would need the pair to cost more than a letter inside a
+      ;; morpheme, and then a letter doubled in `a` + `b` leaves the word
+      ;; (see the test below).
       (let [{:keys [tokens]} (body-edit "at abc cat" "at abbc cat"
                                         [(on :w (tok :w 3 6)) (on :m (tok :m1 3 5)) (on :m (tok :m2 5 6))])]
-        (is (= #{[:w 3 7] [:m1 3 6] [:m2 6 7]} (extents tokens)))))
+        (is (= #{[:w 3 7] [:m1 3 5] [:m2 6 7]} (extents tokens)))))
     (testing "two sentences meeting at a word's start do not keep a new word out of there"
       (let [{:keys [tokens]} (body-edit "x.\nabc" "x.\nat abc"
                                         [(on :s (tok :s1 0 3)) (on :s (tok :s2 3 6))
                                          (on :w (tok :x 0 1)) (on :w (tok :abc 3 6))])]
         (is (= [6 9] ((juxt :token/begin :token/end) (first (filter #(= :abc (:token/id %)) tokens)))))))))
+
+(deftest a-letter-doubled-where-two-tokens-meet-is-not-pushed-out-of-its-word
+  ;; A place between two tokens of one layer that meet costs something, but
+  ;; no more than the start of the word, or the letter leaves the word.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        at (fn [tokens id] ((juxt :token/begin :token/end) (first (filter #(= id (:token/id %)) tokens))))]
+    (testing "an `a` doubled in `a` + `b` stays inside the word"
+      (let [{:keys [tokens]} (body-edit "x ab y" "x aab y"
+                                        [(on :w (tok :ab 2 4)) (on :m (tok :m1 2 3)) (on :m (tok :m2 3 4))])]
+        (is (= [2 5] (at tokens :ab)))))
+    (testing "an `a` doubled in the word `a` before a full stop is not put before the word"
+      (let [{:keys [tokens]} (body-edit "x a. y" "x aa. y"
+                                        [(on :w (tok :x 0 1)) (on :w (tok :a 2 3)) (on :w (tok :p 3 4))
+                                         (on :w (tok :y 5 6))])]
+        (is (= [2 3] (at tokens :a)))))
+    (testing "nor at the start of a sentence, where the sentence before would take it"
+      (let [{:keys [tokens]} (body-edit "tat! a. tat" "tat! aa. tat"
+                                        [(on :w (tok :tat 0 3)) (on :w (tok :x 3 4)) (on :w (tok :a 5 6))
+                                         (on :w (tok :p 6 7)) (on :w (tok :tat2 8 11))
+                                         (on :s (tok :s1 0 5)) (on :s (tok :s2 5 11))])]
+        (is (= [5 6] (at tokens :a)))
+        (is (= [0 5] (at tokens :s1)))))))
+
+(deftest a-new-word-typed-beside-a-changed-word-stays-out-of-its-token
+  ;; A replaced or respelled word keeps its token, and a word typed next to it
+  ;; in the same save is a new word, outside that token.
+  (doseq [[old new tokens expected]
+          [["x cow y" "x a co y" [(tok :x 0 1) (tok :cow 2 5) (tok :y 6 7)]
+            #{[:x 0 1] [:cow 4 6] [:y 7 8]}]
+           ["x cow y" "x co ab y" [(tok :x 0 1) (tok :cow 2 5) (tok :y 6 7)]
+            #{[:x 0 1] [:cow 2 4] [:y 8 9]}]
+           ["a tac tat" "a tac bad 𐌰" [(tok :a 0 1) (tok :tac 2 5) (tok :tat 6 9)]
+            #{[:a 0 1] [:tac 2 5] [:tat 6 9]}]
+           ["ta.! 𐌰" "the big! 𐌰" [(tok :ta 0 3) (tok :p 3 4) (tok :g 5 6)]
+            #{[:ta 0 3] [:p 7 8] [:g 9 10]}]
+           ["tat ab c" "owl cat ab c" [(tok :tat 0 3) (tok :ab 4 6) (tok :c 7 8)]
+            #{[:tat 4 7] [:ab 8 10] [:c 11 12]}]
+           ;; a zero-width token at the word's end stays at its end
+           ["x cow y" "x co ab y" [(tok :cow 2 5) (tok :z 5 5)] #{[:cow 2 4] [:z 4 4]}]
+           ;; a word typed over with two, the space typed inside it
+           ["x NY y" "x New York y" [(tok :x 0 1) (tok :ny 2 4) (tok :y 5 6)]
+            #{[:x 0 1] [:ny 2 5] [:y 11 12]}]
+           ;; a space typed inside a word: the token goes on the part that
+           ;; keeps more of it
+           ["x cow y" "x c ow y" [(tok :x 0 1) (tok :cow 2 5) (tok :y 6 7)]
+            #{[:x 0 1] [:cow 4 6] [:y 7 8]}]
+           ;; a word typed before a word is only an insert
+           ["x cow y" "x a cow y" [(tok :x 0 1) (tok :cow 2 5) (tok :y 6 7)]
+            #{[:x 0 1] [:cow 4 7] [:y 8 9]}]]]
+    (let [{:keys [text tokens deleted]} (body-edit old new tokens)]
+      (is (= new (:text/body text)))
+      (is (= [] deleted))
+      (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))
+  (testing "a token with a space in it, such as a sentence, still takes the new text whole"
+    (let [{:keys [tokens]} (body-edit "The cat.\nA dog.\n" "My pig ate.\nA dog.\n"
+                                      [(tok :s1 0 9) (tok :s2 9 16)])]
+      (is (= #{[:s1 0 12] [:s2 12 19]} (extents tokens))))))
 
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of

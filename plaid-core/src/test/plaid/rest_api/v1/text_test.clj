@@ -197,6 +197,51 @@
       (assert-ok s)
       (is (= [ta-m] (-> s :body :span/tokens))))))
 
+(deftest text-body-new-word-beside-a-changed-word-and-a-doubled-letter-stay-where-typed
+  ;; `cow` to `a co` in one save: the word typed before it stays out of its
+  ;; token, which with its morpheme and gloss goes on `co`. Doubling the
+  ;; `a` of `a.` at the start of a sentence keeps the letter in that
+  ;; sentence. It was put before the word, where the sentence before took
+  ;; it.
+  (let [proj (create-test-project admin-request "TextNewWordBesideProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        morphemes (-> (create-token-layer-opts admin-request tl "Morphemes"
+                                               {:parent-token-layer-id words})
+                      :body :id)
+        glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
+        text-id (-> (create-text admin-request tl doc "the cow sat. a. tat") :body :id)
+        sentence-ids (-> (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                             :begin 0 :end 13}
+                                                            {:token-layer-id sentences :text text-id
+                                                             :begin 13 :end 19}])
+                         :body :ids)
+        cow (-> (create-token admin-request words text-id 4 7) :body :id)
+        cow-m (-> (create-token admin-request morphemes text-id 4 7) :body :id)
+        gloss (-> (create-span admin-request glosses [cow-m] "COW") :body :id)
+        a (-> (create-token admin-request words text-id 13 14) :body :id)
+        _stop (-> (create-token admin-request words text-id 14 15) :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "the a co sat. a. tat"))
+    (is (= [6 8 "co"] (extent cow)))
+    (is (= [6 8 "co"] (extent cow-m)))
+    (assert-ok (update-text admin-request text-id "the a co sat. aa. tat"))
+    (is (= [14 15 "a"] (extent a)))
+    (is (= [[0 14 "the a co sat. "] [14 21 "aa. tat"]] (mapv extent sentence-ids)))
+    (let [s (get-span admin-request gloss)]
+      (assert-ok s)
+      (is (= [cow-m] (-> s :body :span/tokens))))))
+
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")
         doc (create-test-document admin-request proj "Doc")
