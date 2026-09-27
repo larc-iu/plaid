@@ -205,7 +205,9 @@ def vocab_entries(items, vocab_name) -> List[dict]:
 
 def load_lexicon(client, project, on_progress=None) -> List[dict]:
     """Every entry of every vocab linked to the project, with the fields the
-    prompt shows and its project-wide link count (precedent).
+    prompt shows and its project-wide link count (precedent). The count is
+    this project's links only: a vocabulary shared with other projects is
+    ranked by what was linked here (ruling, 2026-09-27).
 
     Two requests per vocabulary, one of them a query over every link in the
     project, so a big lexicon is a slow stretch: `on_progress(n, total)` names
@@ -221,6 +223,7 @@ def load_lexicon(client, project, on_progress=None) -> List[dict]:
             res = client.query({
                 'where': [['vocab', '?v', {'layer': v['id']}], ['vocab-link', '?t', '?v']],
                 'return': {'group': ['?v'], 'aggregates': [['count']]},
+                'scope': {'project_ids': [project['id']]},
             })
             counts = {row[0]: row[1] for row in (res.get('results') or [])}
             for e in entries:

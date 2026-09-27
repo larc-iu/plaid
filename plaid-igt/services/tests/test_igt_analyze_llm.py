@@ -132,3 +132,33 @@ def test_tagset_paragraph_states_the_rule_and_lists_tags_within_budget():
     assert llm.tagset_paragraph(None) == ''
     closed = llm.tagset_paragraph({'name': 'POS', 'mode': 'closed', 'delimiters': '', 'values': []})
     assert closed == 'The gloss field is held to the tagset "POS". Only the listed values are accepted.'
+
+
+def test_lexicon_precedent_counts_this_project_s_links_only():
+    """A vocabulary shared with another project is ranked by the links made
+    in the project being glossed (ruling, 2026-09-27). The fake server
+    counts over the projects the query's scope names, or over every project
+    when it names none, as core does."""
+    links = {'p1': {'kai1': 1}, 'p2': {'kai2': 3}}
+    seen = []
+
+    class VocabLayers:
+        def get(self, vid, include_items=False):
+            return {'name': 'L', 'items': [{'id': 'kai1', 'form': 'kai', 'metadata': {'gloss': 'go'}},
+                                           {'id': 'kai2', 'form': 'kai', 'metadata': {'gloss': 'eat'}}]}
+
+    class Client:
+        vocab_layers = VocabLayers()
+
+        def query(self, body):
+            seen.append(body)
+            counts = {}
+            for p in (body.get('scope') or {}).get('project_ids') or list(links):
+                for item, n in links[p].items():
+                    counts[item] = counts.get(item, 0) + n
+            return {'results': [[k, n] for k, n in counts.items()]}
+
+    entries = llm.load_lexicon(Client(), {'id': 'p1', 'vocabs': [{'id': 'v', 'name': 'L'}]})
+    assert {e['id']: e['count'] for e in entries} == {'kai1': 1, 'kai2': 0}
+    assert [e['id'] for e in llm.matching_entries(entries, ['kai'])] == ['kai1', 'kai2']
+    assert all(b['scope'] == {'project_ids': ['p1']} for b in seen)
