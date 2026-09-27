@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderComponent, all, byText } from '../../test/renderComponent.jsx';
 import { CitedMarkdown, Turn } from './Turn.jsx';
+import { couldNotOpen, withProjects } from './projectReach.js';
 
 // The smallest adapter the citation half of a turn reads: a citation is
 // `{{key}}`, it is titled and linked by its key, and its card is one div.
@@ -133,6 +134,61 @@ describe('Turn and the other projects', () => {
     // The inline-only card, unfolded, is the home project's.
     await view.step(() => byText(view.container, 'button', 'cited example').click());
     expect(view.container.querySelector('[data-card="{{here}}"]').dataset.project).toBe('pA');
+    await view.unmount();
+  });
+});
+
+// A project's name is data, in whatever script it was written in. Each name is
+// isolated, so two Arabic names in a row are not read as one right-to-left run
+// that puts the second first, and a long name wraps rather than running off
+// the message.
+describe('Turn and the names of other projects', () => {
+  const R1 = { id: 'r1', name: 'مدونة الحجاز' };
+  const R2 = { id: 'r2', name: 'نصوص نجد' };
+  const draw = (item, extra = {}) =>
+    renderComponent(
+      <Turn
+        item={item}
+        projectId="pA"
+        adapter={adapter}
+        results={new Map()}
+        movedHere={false}
+        {...extra}
+      />,
+    );
+  const isolated = (container) => all(container, 'bdi').map((n) => n.textContent);
+
+  it('isolates each name in the "With" line, which may wrap', async () => {
+    const view = await draw(
+      { kind: 'user', text: 'compare', projects: [R1, R2] },
+      { reachChanged: true },
+    );
+    expect(isolated(view.container)).toEqual([R1.name, R2.name]);
+    const line = view.container.querySelector('bdi').parentElement;
+    // The words the export writes.
+    expect(line.textContent).toBe(withProjects([R1, R2]));
+    expect(line.className).toContain('[overflow-wrap:anywhere]');
+    await view.unmount();
+  });
+
+  it('isolates each name in the could-not-open line, which may wrap', async () => {
+    const view = await draw({ kind: 'assistant', text: 'Here.', unavailableProjects: [R1, R2] });
+    expect(isolated(view.container)).toEqual([R1.name, R2.name]);
+    const line = view.container.querySelector('bdi').parentElement;
+    expect(line.textContent).toBe(couldNotOpen([R1, R2]));
+    expect(line.className).toContain('[overflow-wrap:anywhere]');
+    await view.unmount();
+  });
+
+  it('isolates the place a message was asked from, which may wrap', async () => {
+    const view = await draw(
+      { kind: 'user', text: 'here', where: { kind: 'document', id: 'd', name: R1.name } },
+      { movedHere: true },
+    );
+    expect(isolated(view.container)).toEqual([R1.name]);
+    expect(view.container.querySelector('bdi').parentElement.className).toContain(
+      '[overflow-wrap:anywhere]',
+    );
     await view.unmount();
   });
 });

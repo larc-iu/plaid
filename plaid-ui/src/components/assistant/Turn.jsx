@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
@@ -12,7 +12,6 @@ import { cn } from '../../lib/utils.js';
 import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
-import { couldNotOpen, withProjects } from './projectReach.js';
 import { PlanCard } from './PlanCard.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
@@ -113,6 +112,13 @@ const CitedExamples = ({ cited, projectId, adapter }) => {
   );
 };
 
+// A line naming projects or a place. Each name is data in its own script, so
+// it is isolated in a <bdi>: two right-to-left names in a row are otherwise
+// read as one run, second name first. A name with no spaces in it wraps
+// rather than running off the message. The words are the export's
+// (`withProjects` and `couldNotOpen` in projectReach.js).
+const NAMES = 'min-w-0 [overflow-wrap:anywhere]';
+
 export const Turn = ({
   item,
   projectId,
@@ -139,17 +145,27 @@ export const Turn = ({
             sense against the place each question came from. The model is told
             the same thing, on the same terms. */}
         {movedHere && item.where?.name && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" />
-            {item.where.name}
+          <div className="flex max-w-full items-center gap-1 text-xs text-muted-foreground">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className={NAMES}>
+              <bdi>{item.where.name}</bdi>
+            </span>
           </div>
         )}
         {/* The other projects this one reads, shown only where the set
             changed, on the same terms as the place above. */}
         {reachChanged && item.projects?.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex max-w-full items-center gap-1 text-xs text-muted-foreground">
             <FolderOpen className="h-3 w-3 shrink-0" />
-            {withProjects(item.projects)}
+            <span className={NAMES}>
+              With{' '}
+              {item.projects.map((p, k) => (
+                <Fragment key={p.id ?? k}>
+                  {k > 0 && ', '}
+                  <bdi>{p.name || p.id}</bdi>
+                </Fragment>
+              ))}
+            </span>
           </div>
         )}
         <div
@@ -210,7 +226,14 @@ export const Turn = ({
         {item.unavailableProjects?.length > 0 && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <FolderOpen className="h-3 w-3 shrink-0" />
-            {couldNotOpen(item.unavailableProjects)}
+            <span className={NAMES}>
+              {item.unavailableProjects.map((p, k) => (
+                <Fragment key={p.id ?? k}>
+                  {k > 0 && ' '}
+                  <bdi>{p.name || p.id}</bdi> could not be opened.
+                </Fragment>
+              ))}
+            </span>
           </div>
         )}
         {item.text ? (
