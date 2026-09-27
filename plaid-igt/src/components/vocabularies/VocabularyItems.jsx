@@ -89,6 +89,7 @@ import { useAskAssistant, useAssistantSubject } from '@ui/components/assistant/s
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 
 // The Entries screen of a vocabulary. This component owns the data (the
 // entries, their usage counts) and every write, sent through `writes`, the
@@ -1080,12 +1081,7 @@ export const VocabularyItems = ({
   );
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center gap-6 py-6">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-        <p className="text-sm">Loading entries…</p>
-      </div>
-    );
+    return <Loading label="Loading entries…" className="py-6 text-center" />;
   }
 
   if (error) {

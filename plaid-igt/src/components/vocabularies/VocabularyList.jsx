@@ -145,6 +145,7 @@ export const VocabularyList = () => {
 
   return (
     <LinkedListPage
+      className=""
       title="Vocabularies"
       action={
         <NewLinkButton to="/vocabularies/new">

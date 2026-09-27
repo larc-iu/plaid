@@ -3,6 +3,7 @@ import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { ContextRow } from './DictionaryPanels';
 import { sentenceTo } from './vocabConcordance';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 
 // The Concordance tab: the open entry's uses, grouped by document, each row
 // a link into the sentence, with "Use as example" for a maintainer. `conc` is
@@ -34,10 +35,7 @@ export const ConcordancePanel = ({ conc, selectedItem, canManage, onAddExample }
       </div>
 
       {concLoading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-          Loading usage examples…
-        </div>
+        <Loading label="Loading usage examples…" className="py-10 text-center" />
       ) : concError ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{concError}</p>
       ) : !concPlan || concPlan.totalHits === 0 ? (

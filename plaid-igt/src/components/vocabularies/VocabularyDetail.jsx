@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   BookText,
@@ -70,6 +70,10 @@ import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { vocabWriteQueue } from './vocabWriteQueue.js';
 import { findLostCreate } from '@ui/lib/lostCreate.js';
 import { useTabParam } from '@/hooks/useTabParam';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
@@ -941,60 +945,35 @@ export const VocabularyDetail = () => {
   );
 
   if (loading) {
-    return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-          <p>Loading vocabulary...</p>
-        </div>
-      </div>
-    );
+    return <Loading label="Loading vocabulary…" />;
   }
 
   if (error) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <div className="text-sm">
-              <p className="font-medium text-destructive">Error</p>
-              <p className="mt-1 text-muted-foreground">{error}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Notice tone="error">
+        <p className="font-medium">Error</p>
+        <p>{error}</p>
+      </Notice>
     );
   }
 
   if (!vocabulary && !isNewVocabulary) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <div className="text-sm">
-              <p className="font-medium text-destructive">Vocabulary Not Found</p>
-              <p className="mt-1 text-muted-foreground">
-                The requested vocabulary could not be found.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Notice tone="error">
+        <p className="font-medium">Vocabulary not found</p>
+      </Notice>
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div>
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/vocabularies" className="text-primary hover:underline">
-            Vocabularies
-          </Link>
-          <span>/</span>
-          <span>{isNewVocabulary ? 'New Vocabulary' : vocabulary?.name || 'Loading...'}</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Vocabularies', to: '/vocabularies' },
+            { label: isNewVocabulary ? 'New Vocabulary' : vocabulary?.name || 'Loading…' },
+          ]}
+        />
 
         {!isNewVocabulary && (
           <div>
@@ -1147,7 +1126,11 @@ export const VocabularyDetail = () => {
                         Delete this vocabulary permanently. This action cannot be undone.
                       </p>
                       <div>
-                        <Button variant="destructive" onClick={openDeleteModal}>
+                        <Button
+                          variant="outline"
+                          className={DELETE_BUTTON_CLASS}
+                          onClick={openDeleteModal}
+                        >
                           <Trash2 className="h-4 w-4" /> Delete Vocabulary
                         </Button>
                       </div>

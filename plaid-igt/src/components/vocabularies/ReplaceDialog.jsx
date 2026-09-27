@@ -30,6 +30,7 @@ import { planVocabReplace, replaceWrites } from '@/domain/vocabReplace';
 import { MATCH_TYPES } from '../projects/search/searchQueries.js';
 import { CHUNK } from '@/domain/bulk';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 
 // The search tab's kinds, plus filling a blank. That last one is Replace's
 // alone: the search tab queries the server, which has no way to ask for the
@@ -341,12 +342,7 @@ export const ReplaceDialog = ({
         </div>
 
         <DialogFooter>
-          {progress && (
-            <span className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
-              {progress}
-            </span>
-          )}
+          {progress && <Loading className="mr-auto p-0" label={progress} />}
           <Button variant="outline" onClick={close} disabled={busy}>
             Cancel
           </Button>

@@ -7,6 +7,9 @@ import { notifySuccess, notifyError } from '@/utils/feedback';
 import { useUserSearch } from '@ui/hooks/useUserSearch.js';
 import { UserSearch } from '@ui/components/shared/UserSearch.jsx';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
+import { cn } from '@ui/lib/utils';
 
 // Current maintainers are resolved id-by-id (the per-user GET is open to any
 // logged-in caller); new ones come from the shared directory search.
@@ -110,9 +113,7 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
           vocabulary.
         </p>
         {loading ? (
-          <div className="flex justify-center py-8 text-muted-foreground">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          </div>
+          <Loading className="py-8 text-center" />
         ) : (
           <table className="w-full text-sm">
             <tbody>
@@ -141,8 +142,11 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
                     {m.id !== user.id && (
                       <Button
                         size="icon"
-                        variant="destructive"
-                        className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                        variant="ghost"
+                        className={cn(
+                          'h-8 w-8 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100',
+                          ROW_DELETE_CLASS,
+                        )}
                         onClick={() => handleRemoveMaintainer(m.id)}
                         disabled={updatingUser === m.id}
                         aria-label={`Remove ${m.displayName}`}

@@ -20,6 +20,7 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 import { cn } from '@ui/lib/utils';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { CHUNK } from '@/domain/bulk';
 import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
@@ -75,8 +76,8 @@ const actionLabel = (d) => {
 };
 const actionTone = (d) => {
   if (d.action === 'skip') return 'text-muted-foreground';
-  if (d.action === 'update' && d.kind === 'conflict') return 'text-amber-700';
-  return 'text-emerald-600';
+  if (d.action === 'update' && d.kind === 'conflict') return 'text-warning-foreground';
+  return 'text-success';
 };
 
 // Short labels for the per-row choice. The bucket dropdowns say the same thing
@@ -171,8 +172,8 @@ const ValueCell = ({ value, clash, add }) => (
   <td className="break-words px-1 align-top">
     <span
       className={cn(
-        clash && 'font-semibold text-amber-700',
-        add && 'font-semibold text-emerald-700',
+        clash && 'font-semibold text-warning-foreground',
+        add && 'font-semibold text-success',
       )}
     >
       {value || ''}
@@ -803,7 +804,7 @@ export const BulkAddDialog = ({
         </div>
 
         {rejectedRows > 0 && (
-          <p className="flex items-start gap-1.5 text-xs text-amber-600">
+          <p className="flex items-start gap-1.5 text-xs text-warning-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             {n(rejectedRows)} row{rejectedRows === 1 ? ' has a' : 's have a'} value that{' '}
             {rejectedIn} does not accept. That value is left out and the rest of the row still
@@ -829,8 +830,8 @@ export const BulkAddDialog = ({
                 <span
                   className={cn(
                     'min-w-[4.5rem] text-right text-sm font-semibold tabular-nums',
-                    tone === 'good' && 'text-emerald-600',
-                    tone === 'warn' && 'text-amber-600',
+                    tone === 'good' && 'text-success',
+                    tone === 'warn' && 'text-warning-foreground',
                     tone === 'muted' && 'text-muted-foreground',
                   )}
                 >
@@ -867,12 +868,11 @@ export const BulkAddDialog = ({
         </p>
       </div>
     ) : (
-      <div className="flex items-center justify-center gap-3 py-8">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-        <p className="text-sm text-muted-foreground">
-          {progress?.phase === 'updating' ? 'Filling in entries' : 'Adding entries'}:{' '}
-          {n(progress?.done ?? 0)} of {n(progress?.total ?? 0)}
-        </p>
+      <div className="py-8 text-center">
+        <Loading
+          className="p-0"
+          label={`${progress?.phase === 'updating' ? 'Filling in entries' : 'Adding entries'}: ${n(progress?.done ?? 0)} of ${n(progress?.total ?? 0)}`}
+        />
       </div>
     );
 

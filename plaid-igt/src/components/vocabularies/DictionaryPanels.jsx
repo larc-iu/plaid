@@ -15,7 +15,7 @@ import {
 import { loadConcordanceGroups, sentenceTo } from './vocabConcordance';
 import { ItemPicker } from './ItemPicker';
 import { FormLabel } from './FormLabel';
-import { MarkedText } from '@/components/shared/MarkedText.jsx';
+import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 
 // The dictionary panels of an entry: where it sits in its sense tree, what
 // refers to it, and its examples.
