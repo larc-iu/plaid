@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useLocation, Outlet, useSearchParams } from 'react-router-dom';
+import { History } from 'lucide-react';
+import { Button } from '@ui/components/ui/button';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { useDocumentModel } from '@ui/domain/useDocumentModel.js';
@@ -20,6 +22,14 @@ import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { dismissIntegrityFindings } from '@ui/lib/integrityToast.js';
 import { humanizeError } from '@ui/lib/errors.js';
 import { notifyError } from '../../utils/feedback.jsx';
+import { useHistoryView } from '@ui/hooks/useHistoryView.js';
+import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
+import { HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
+import { DocumentHistoryPanel } from '@ui/components/shared/DocumentHistoryPanel.jsx';
+import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 
 // Parent route of the four document tabs (/edit, /annotate, /export, /details).
 // It owns the project + ConlluDocument load and renders the breadcrumbs and the
@@ -39,7 +49,19 @@ import { notifyError } from '../../utils/feedback.jsx';
 // width under the tabs.
 const isWideRoute = (pathname) => pathname.includes('/annotate');
 
+// The tabs that can show the document at a past state. The others edit it (the
+// Text Editor) or hang live threads on it (Comments), so while a history entry
+// is open they say they are not shown.
+const showsPast = (pathname) => /\/(annotate|export|details)$/.test(pathname);
+
+// Keyed by document, so opening another document starts from nothing: no
+// history rail, no past state and no busy flag carried over from the last one.
 export const DocumentEditorShell = () => {
+  const { documentId } = useParams();
+  return <DocumentEditor key={documentId} />;
+};
+
+const DocumentEditor = () => {
   const { projectId, documentId } = useParams();
   const { pathname } = useLocation();
   const { getClient, logout, user } = useAuth();
@@ -49,11 +71,6 @@ export const DocumentEditorShell = () => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-
-  // The annotation editor's history drawer pushes its content right rather than
-  // overlaying it. The chrome lives up here now, so it has to move too — the
-  // child publishes the offset through the outlet context.
-  const [chromeOffset, setChromeOffset] = useState(0);
 
   // One comment store per document, shared by every tab through the outlet, so
   // the Comments tab and the grid's badges read the same instance rather than
@@ -183,6 +200,24 @@ export const DocumentEditorShell = () => {
     }
   }, [projectId, doc, getClient, logout]);
 
+  // The history drawer, the entry being viewed, and the restore it can lead to.
+  // The shell's, not a tab's: history is about the document, so History is in
+  // the tab strip on every tab, and a past state stays open across a tab
+  // switch. Every tab is handed what is on screen (`doc`, the snapshot while an
+  // entry is open) and the live document beside it (`liveDoc`).
+  const history = useHistoryView({ documentId, client, doc, reload, onExpired: logout });
+  const pastEntry = history.selectedEntry;
+  const shown = history.snapshot ?? doc;
+  const onPastTab = showsPast(pathname);
+  // Opening an entry puts the past on screen in place of what was typed here
+  // and not saved (or takes a tab that cannot show the past off screen), so it
+  // asks first, as leaving would.
+  const guardLeaving = useUnsavedGuard();
+  const selectEntry = async (entry) => {
+    if (entry && !pastEntry && !(await guardLeaving())) return;
+    await history.selectEntry(entry);
+  };
+
   // The integrity notice the Annotate tab raises never expires, because an
   // unrepaired document is a standing fact. It is about one DOCUMENT, not about
   // one tab: it belongs to the shell, which survives a tab switch, so the
@@ -242,7 +277,7 @@ export const DocumentEditorShell = () => {
     kind: 'document',
     id: documentId,
     name: doc?.raw?.name,
-    canWrite: canEditProject(project, user),
+    canWrite: canEditProject(project, user) && !pastEntry,
     contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
     onApplied: reload,
     onFocusHere: focusHere,
@@ -263,39 +298,62 @@ export const DocumentEditorShell = () => {
   const askAssistant = useAskAssistant();
 
   return (
-    <div className="w-full">
+    // The drawer pushes the whole page right rather than overlaying it, the
+    // chrome and the tab under it together.
+    <div
+      className="w-full transition-[margin-left] duration-300 ease-out"
+      style={{ marginLeft: history.drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
+    >
+      <DocumentHistoryPanel
+        history={{ ...history, selectEntry }}
+        client={client}
+        documentId={documentId}
+        raw={doc?.raw}
+        // A restore rewrites the whole document, which is exactly what a
+        // running service is doing.
+        canRestore={canManageProject(project, user) && !writeLock.held}
+        roleWords={TOKEN_ROLE_WORDS}
+      />
+
       {/* Chrome: rendered unconditionally, including while the document loads.
           That is what stops the tab switch from blanking the page. */}
-      <div
-        style={{ marginLeft: chromeOffset, transition: 'margin-left 300ms ease' }}
-        className="px-6 pt-4"
-      >
+      <div className="px-6 pt-4">
         <DocumentTabs
           projectId={projectId}
           documentId={documentId}
           project={project}
-          document={doc?.raw}
+          document={shown?.raw}
+          commentCount={comments?.count ?? 0}
           disabled={chromeBusy}
           status={doc ? <SaveStatus doc={doc} /> : null}
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={history.openHistory}
+              disabled={!doc || chromeBusy || history.drawerOpen}
+            >
+              <History className="h-4 w-4" /> History
+            </Button>
+          }
         />
       </div>
 
-      {writeLock.held && (
+      {(pastEntry || writeLock.held) && (
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
-          <RunBanner {...writeLock.held} />
+          <HistoricalBanner entry={pastEntry} loading={history.loadingSnapshot} className="mb-4" />
+          {writeLock.held && <RunBanner {...writeLock.held} />}
         </div>
       )}
 
-      {loading && <p className="p-4 text-sm text-muted-foreground">Loading…</p>}
+      {loading && <Loading />}
 
       {!loading && (loadError || !doc || !project) && (
         <div className={wide ? 'px-6' : 'max-w-[1320px] px-6'}>
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <Notice tone="error" icon={null} role="alert">
             {loadError || 'Document or project not found'}
-          </div>
+          </Notice>
         </div>
       )}
 
@@ -307,25 +365,31 @@ export const DocumentEditorShell = () => {
         // Always this div, its class alone changing with the tab: a
         // wrapper that came and went would remount the tab under it.
         <div className={wide ? undefined : 'max-w-[1320px] px-6 pb-8'}>
-          <Outlet
-            context={{
-              projectId,
-              documentId,
-              doc,
-              project,
-              reload,
-              comments,
-              canComment: canEditProject(project, user),
-              canDeleteAnyComment: canManageProject(project, user),
-              services,
-              writeLockHeld: writeLock.held,
-              setChromeOffset,
-              setChromeBusy,
-              assistantAvailable,
-              askAssistant,
-              focusNonce,
-            }}
-          />
+          {pastEntry && !onPastTab ? (
+            <p className="pt-2 text-sm text-muted-foreground">Not shown at a past state.</p>
+          ) : (
+            <Outlet
+              context={{
+                projectId,
+                documentId,
+                doc: shown,
+                liveDoc: doc,
+                pastEntry,
+                asOf: history.asOf,
+                project,
+                reload,
+                comments,
+                canComment: canEditProject(project, user),
+                canDeleteAnyComment: canManageProject(project, user),
+                services,
+                writeLockHeld: writeLock.held,
+                setChromeBusy,
+                assistantAvailable,
+                askAssistant,
+                focusNonce,
+              }}
+            />
+          )}
         </div>
       )}
     </div>

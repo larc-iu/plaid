@@ -64,6 +64,28 @@ vi.mock('@ui/components/assistant/subject.js', () => ({
   useAssistantSubject: () => {},
 }));
 vi.mock('./hooks/useEditorServices.js', () => ({ useEditorServices: () => ({}) }));
+// The history view, as a test sets it: which entry is open, and the snapshot
+// read for it. Its own behaviour is plaid-ui's and tested there.
+const past = vi.hoisted(() => ({ entry: null, snapshot: null, select: null }));
+vi.mock('@ui/hooks/useHistoryView.js', () => ({
+  useHistoryView: () => ({
+    drawerOpen: !!past.entry,
+    openHistory: () => {},
+    closeHistory: () => {},
+    selectedEntry: past.entry,
+    selectEntry: (e) => past.select?.(e),
+    snapshot: past.snapshot,
+    asOf: past.snapshot?.asOf ?? null,
+    isViewingHistorical: !!past.snapshot,
+    loadingSnapshot: false,
+    auditEntries: [],
+    loadingAudit: false,
+    historyError: null,
+    restoreEntry: null,
+    setRestoreEntry: () => {},
+    handleRestored: () => {},
+  }),
+}));
 
 const { DocumentEditorShell } = await import('./DocumentEditorShell.jsx');
 const { useDocumentEditor } = await import('@ui/hooks/useDocumentEditor.js');
@@ -94,6 +116,7 @@ const mountAt = async (path) => {
           <Route path="annotate" element={<Tab name="annotate" />} />
           <Route path="edit" element={<Tab name="edit" />} />
           <Route path="show" element={<DocTab />} />
+          <Route path="details" element={<DocTab />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -109,6 +132,9 @@ const at = (name) => !!view.container.querySelector(`[data-testid="${name}"]`);
 const textOf = (name) => view.container.querySelector(`[data-testid="${name}"]`)?.textContent;
 
 beforeEach(() => {
+  past.entry = null;
+  past.snapshot = null;
+  past.select = null;
   toast.dismissIntegrityFindings.mockReset();
   feedback.notifyError.mockReset();
   docs.length = 0;
@@ -207,6 +233,22 @@ describe('the document editor shell', () => {
 
     await view.step(() => go('/projects/p1/documents/d2/annotate'));
     expect(toast.dismissIntegrityFindings).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  // History is the shell's, so a past state holds across a tab switch. A tab
+  // that can show the past is handed the snapshot and the live document beside
+  // it. One that cannot (the Text Editor writes the text) is not drawn at all.
+  it('hands a past-capable tab the snapshot and says the others are not shown', async () => {
+    past.entry = { id: 'e1', time: '2026-09-01T00:00:00Z' };
+    past.snapshot = { raw: { id: 'd1-then' }, asOf: '2026-09-01T00:00:00Z' };
+    await mountAt('/projects/p1/documents/d1/details');
+    expect(textOf('show')).toBe('d1-then');
+    expect(view.container.textContent).toContain('Read-only. This is the document as of');
+
+    await view.step(() => go('/projects/p1/documents/d1/edit'));
+    expect(at('edit')).toBe(false);
+    expect(view.container.textContent).toContain('Not shown at a past state.');
     await view.unmount();
   });
 });

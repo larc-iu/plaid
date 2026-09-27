@@ -76,3 +76,29 @@ test('a history that cannot be read says so, rather than "No entries"', async ({
   ).toBeVisible();
   await expect(page.getByText('No entries')).toHaveCount(0);
 });
+
+// History is about the document, so it is in the tab strip on every tab. A tab
+// that can show the past shows it read-only. The Text Editor, which writes the
+// text, is not drawn at a past state.
+test('History opens from every tab, and a past state holds across a tab switch', async ({
+  page,
+}) => {
+  await seedAuth(page);
+  await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/details`);
+  const name = page.getByLabel('Name', { exact: true });
+  await expect(name).toBeEnabled({ timeout: 15000 });
+
+  await page.getByRole('button', { name: 'History' }).click();
+  await expect(page.getByText(/\d+ entries/)).toBeVisible({ timeout: 15000 });
+  await page.locator('.cursor-pointer.border-b').first().click();
+  await expect(page.getByText(/This is the document as of/)).toBeVisible({ timeout: 15000 });
+  await expect(name).toBeDisabled();
+
+  await page.getByRole('tab', { name: 'Text Editor' }).click();
+  await expect(page.getByText('Not shown at a past state.')).toBeVisible();
+  await expect(page.getByText(/This is the document as of/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Return to current' }).click();
+  await expect(page.getByText('Not shown at a past state.')).toHaveCount(0);
+  await expect(page.getByText(/This is the document as of/)).toHaveCount(0);
+});

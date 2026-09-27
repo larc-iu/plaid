@@ -1,25 +1,20 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { History, Info } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
 import { needsReview } from '@larc-iu/plaid-client';
 import { ParseDialog } from './services/ParseDialog.jsx';
 import { SentenceRow } from './annotation/SentenceRow.jsx';
 import { EditorSessionContext } from './annotation/editorSession.js';
 import { UnsentValues } from './annotation/unsentValues.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
-import { useHistoryView } from '@ui/hooks/useHistoryView.js';
-import { HistoricalBanner } from '@ui/components/shared/HistoricalBanner.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useReviewGestures } from './hooks/useReviewGestures.js';
 import { useSentenceDeepLink } from './hooks/useSentenceDeepLink.js';
 import { usePrecedent } from './hooks/usePrecedent.js';
-import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer';
 import { ListPager } from '@ui/components/shared/list-search';
 import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
-import { RestoreDialog } from '@ui/components/shared/RestoreDialog.jsx';
-import { TOKEN_ROLE_WORDS } from '../../domain/restoreSummary.js';
 import { EditorLegend } from './annotation/EditorLegend.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 // Raised here, dismissed by DocumentEditorShell: the notice outlives this tab.
@@ -57,24 +52,32 @@ const loadVisibleFields = () => {
 export const AnnotationEditor = () => {
   // Project, document, the breadcrumbs/tab strip and the version-counter
   // subscription all come from DocumentEditorShell, which guarantees both the
-  // project and the document are loaded before this renders.
+  // project and the document are loaded before this renders. So does history:
+  // the drawer is the shell's, and `shown` is what it has on screen, the
+  // snapshot a history entry named or the live document (`doc`). Handlers bind
+  // to the live one and are nulled from the click on an entry, so no mutation
+  // reaches either.
   const {
     projectId,
     documentId,
-    doc,
+    doc: shown,
+    liveDoc: doc,
+    pastEntry: selectedEntry,
+    asOf,
     project,
-    reload,
     comments,
     canComment,
     canDeleteAnyComment,
     services,
     writeLockHeld,
-    setChromeOffset,
     setChromeBusy,
     assistantAvailable,
     askAssistant,
     focusNonce = 0,
   } = useDocumentEditor();
+  // The snapshot has landed: what is on screen is the past, not the live
+  // document.
+  const isViewingHistorical = shown !== doc;
   // Ask hands the shell a reference and the shell opens the assistant panel on
   // it, so where there is no room for a panel Ask does nothing at all.
   const roomToDock = useWideEnoughToDock();
@@ -83,26 +86,7 @@ export const AnnotationEditor = () => {
   // rendered.
   const [searchParams] = useSearchParams();
   const sentParam = searchParams.get('sent');
-  const { getClient, logout, user } = useAuth();
-
-  // The history drawer, the entry being viewed, and the restore it can lead to.
-  const {
-    drawerOpen,
-    openHistory,
-    closeHistory,
-    selectedEntry,
-    selectEntry,
-    isViewingHistorical,
-    asOf,
-    snapshot,
-    loadingSnapshot,
-    auditEntries,
-    loadingAudit,
-    historyError,
-    restoreEntry,
-    setRestoreEntry,
-    handleRestored,
-  } = useHistoryView({ documentId, client: getClient(), doc, reload, onExpired: logout });
+  const { getClient, user } = useAuth();
 
   // The initial repair, and the gate the grid holds behind a spinner while it
   // runs. Strict mode OCC-guards annotation edits and is entered only AFTER the
@@ -141,21 +125,8 @@ export const AnnotationEditor = () => {
     return () => setChromeBusy(false);
   }, [reconciling, setChromeBusy]);
 
-  // The history drawer pushes content right rather than overlaying it. The
-  // breadcrumbs and tab strip live in DocumentEditorShell now, so tell it to
-  // move with us — and put it back when we leave the tab.
-  useEffect(() => {
-    setChromeOffset(drawerOpen ? HISTORY_DRAWER_WIDTH : 0);
-    return () => setChromeOffset(0);
-  }, [drawerOpen, setChromeOffset]);
-
   // doc-level operation errors surface as toasts (see ConlluDocument.setError);
   // a hard document-load failure is DocumentEditorShell's banner, not ours.
-
-  // What is on screen: the snapshot a history entry named, or the live
-  // document. Handlers are nulled from the click on an entry, so no mutation
-  // reaches either.
-  const shown = snapshot ?? doc;
   const activeDocument = shown?.raw;
 
   // Read-only mode is on when the user lacks write access to the project OR
@@ -426,51 +397,31 @@ export const AnnotationEditor = () => {
 
   const hasText = !isViewingHistorical && Boolean(activeDocument?.textLayers?.[0]?.text);
 
-  // Single shared toolbar: History on the left, the run controls on the right.
-  // Parse is the same run the Text Editor's button opens, so a parse started
-  // there shows its clock here. It is gated on `canEdit` rather than on
-  // `readOnly`, or the button carrying a run's progress would vanish the
-  // moment that run took the lock.
-  const toolbar = (
-    <div className="mt-4 flex items-center justify-between gap-3">
-      <Button variant="secondary" className="gap-2" onClick={openHistory}>
-        <History className="h-4 w-4" />
-        History
-      </Button>
-
-      <div className="flex items-center gap-3">
-        {selectedEntry && <Button onClick={closeHistory}>Return to current</Button>}
-
-        {/* No Assistant button here: the panel is app chrome now and its
-            control is in the header, on every screen. "Ask" under a sentence
-            still opens it, pointed at that sentence. */}
-
-        {hasText && canEdit && !selectedEntry && (
-          <ParseDialog
-            parse={services.parse}
-            isDiscovering={services.isDiscovering}
-            writeLockHeld={writeLockHeld}
-          />
-        )}
-      </div>
+  // The run controls. History is in the tab strip, on every tab. Parse is the
+  // same run the Text Editor's button opens, so a parse started there shows
+  // its clock here. It is gated on `canEdit` rather than on `readOnly`, or the
+  // button carrying a run's progress would vanish the moment that run took the
+  // lock. No Assistant button here: the panel is app chrome and its control is
+  // in the header, on every screen. "Ask" under a sentence still opens it,
+  // pointed at that sentence.
+  const toolbar = hasText && canEdit && !selectedEntry && (
+    <div className="flex items-center justify-end gap-3">
+      <ParseDialog
+        parse={services.parse}
+        isDiscovering={services.isDiscovering}
+        writeLockHeld={writeLockHeld}
+      />
     </div>
   );
 
-  // Persistent read-only banner, shown whenever editing is disabled — either
-  // because the user only has viewer access or because they're viewing a past
-  // state. The message names the reason so it isn't mysterious. For time travel
-  // this is the sole indicator (the toolbar chip was removed), so it carries the
-  // timestamp and the loading state too, and shows as soon as an entry is picked.
-  const readOnlyBanner = selectedEntry ? (
-    <HistoricalBanner entry={selectedEntry} loading={loadingSnapshot} className="mt-4" />
-  ) : !canEdit ? (
-    <div className="mt-4 flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
-      <Info className="h-4 w-4 shrink-0" />
+  // Persistent read-only notice for a reader. A past state says so in the
+  // shell's banner, over every tab.
+  const readOnlyBanner = !selectedEntry && !canEdit && (
+    <Notice tone="info" className="mt-4">
       Read-only. You have reader access to this project.
-    </div>
-  ) : null;
+    </Notice>
+  );
 
-  // Always render the main container with drawer to maintain state.
   // Reaching the editor in an unconfigured project means a link straight to
   // this URL, since clicking into the project sends you to the setup page
   // first. Say so and offer the way there, rather than redirecting: a bounce
@@ -483,29 +434,26 @@ export const AnnotationEditor = () => {
     return (
       <div className="min-h-screen w-full">
         <div className="flex justify-center py-16">
-          <div className="flex max-w-lg gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-medium">Not set up for UD</p>
-              {canManageProject(project, user) ? (
-                <p className="mt-1">
-                  This project is not set up for Universal Dependencies.{' '}
-                  <Link
-                    className="font-medium underline underline-offset-2"
-                    to={`/projects/${projectId}/configuration`}
-                  >
-                    Set up its layers
-                  </Link>
-                  .
-                </p>
-              ) : (
-                <p className="mt-1">
-                  This project is not set up for Universal Dependencies. A project maintainer can
-                  set it up.
-                </p>
-              )}
-            </div>
-          </div>
+          <Notice tone="warning" className="max-w-lg p-4">
+            <p className="font-medium">Not set up for UD</p>
+            {canManageProject(project, user) ? (
+              <p className="mt-1">
+                This project is not set up for Universal Dependencies.{' '}
+                <Link
+                  className="font-medium underline underline-offset-2"
+                  to={`/projects/${projectId}/configuration`}
+                >
+                  Set up its layers
+                </Link>
+                .
+              </p>
+            ) : (
+              <p className="mt-1">
+                This project is not set up for Universal Dependencies. A project maintainer can set
+                it up.
+              </p>
+            )}
+          </Notice>
         </div>
       </div>
     );
@@ -513,115 +461,78 @@ export const AnnotationEditor = () => {
 
   return (
     <div className="min-h-screen w-full">
-      <HistoryDrawer
-        isOpen={drawerOpen}
-        onClose={closeHistory}
-        auditEntries={auditEntries}
-        loading={loadingAudit}
-        error={historyError}
-        onSelectEntry={selectEntry}
-        selectedEntry={selectedEntry}
-        // A restore rewrites the whole document, which is exactly what a
-        // running service is doing.
-        canRestore={canManageProject(project, user) && !writeLockHeld}
-        onRestore={setRestoreEntry}
-      />
+      {/* Only the BODY waits here: the breadcrumbs and tab strip are the
+          shell's and stay on screen throughout. */}
+      {reconciling && <Loading label="Checking this document…" className="px-6" />}
 
-      <RestoreDialog
-        open={!!restoreEntry}
-        onOpenChange={(o) => {
-          if (!o) setRestoreEntry(null);
-        }}
-        client={getClient()}
-        documentId={documentId}
-        raw={doc?.raw}
-        roleWords={TOKEN_ROLE_WORDS}
-        entry={restoreEntry}
-        onRestored={handleRestored}
-      />
+      {!reconciling && !activeDocument && (
+        <p className="py-10 text-center text-muted-foreground">Document not found</p>
+      )}
 
-      {/* Main content area - pushed right (not overlaid) when the drawer is open */}
-      <div
-        className="min-h-screen transition-[margin-left] duration-300 ease-out"
-        style={{ marginLeft: drawerOpen ? HISTORY_DRAWER_WIDTH : 0 }}
-      >
-        {/* Only the BODY waits here — the breadcrumbs and tab strip are the
-            shell's and stay on screen throughout. */}
-        {reconciling && (
-          <div className="flex justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      {!reconciling && activeDocument && (
+        <>
+          <div className="px-6 pb-4">
+            {toolbar}
+            {readOnlyBanner}
+            {processedSentences.length > 0 && !readOnly && (
+              <EditorLegend
+                project={project}
+                annotatesEnhanced={Boolean(layerInfo?.enhancedRelationLayer)}
+              />
+            )}
+            <ListPager
+              {...paged}
+              onPage={setPage}
+              position="top"
+              className="mt-4 rounded-md border"
+            />
           </div>
-        )}
 
-        {!reconciling && !activeDocument && (
-          <p className="py-10 text-center text-muted-foreground">Document not found</p>
-        )}
+          {processedSentences.length === 0 ? (
+            <p className="py-10 text-center text-muted-foreground">
+              {isViewingHistorical
+                ? 'This state has no tokens.'
+                : 'No sentences. Tokenize the document in the Text Editor.'}
+            </p>
+          ) : (
+            // The review gestures listen here, above every sentence, because
+            // each of them can cross a sentence boundary.
+            <div onKeyDown={reviewKeyDown} ref={listTopRef}>
+              <EditorSessionContext.Provider value={session}>
+                {paged.pageItems.map((sentenceData, offset) => {
+                  // The sentence's place in the DOCUMENT, not on the page.
+                  const index = page * TALL_LIST_PAGE_SIZE + offset;
 
-        {!reconciling && activeDocument && (
-          <>
-            <div className="px-6 pb-4">
-              {toolbar}
-              {readOnlyBanner}
-              {processedSentences.length > 0 && !readOnly && (
-                <EditorLegend
-                  project={project}
-                  annotatesEnhanced={Boolean(layerInfo?.enhancedRelationLayer)}
-                />
-              )}
+                  return (
+                    <div
+                      key={stableKey(sentenceData.id)}
+                      data-sentence-row={sentenceData.id}
+                      className="transition-shadow duration-300"
+                      style={
+                        flashSentId === String(sentenceData.id)
+                          ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
+                          : undefined
+                      }
+                    >
+                      <SentenceRow
+                        sentenceData={sentenceData}
+                        commentAnchorLabel={anchorCaption(anchors.get(sentenceData.id))}
+                        sentenceIndex={index}
+                        totalTokensBefore={tokensBefore[index] ?? 0}
+                      />
+                    </div>
+                  );
+                })}
+              </EditorSessionContext.Provider>
               <ListPager
                 {...paged}
-                onPage={setPage}
-                position="top"
-                className="mt-4 rounded-md border"
+                onPage={handlePageFromBottom}
+                className="mx-6 mb-6 rounded-md border"
               />
             </div>
-
-            {processedSentences.length === 0 ? (
-              <p className="py-10 text-center text-muted-foreground">
-                {isViewingHistorical
-                  ? 'This state has no tokens.'
-                  : 'No sentences. Tokenize the document in the Text Editor.'}
-              </p>
-            ) : (
-              // The review gestures listen here, above every sentence, because
-              // each of them can cross a sentence boundary.
-              <div onKeyDown={reviewKeyDown} ref={listTopRef}>
-                <EditorSessionContext.Provider value={session}>
-                  {paged.pageItems.map((sentenceData, offset) => {
-                    // The sentence's place in the DOCUMENT, not on the page.
-                    const index = page * TALL_LIST_PAGE_SIZE + offset;
-
-                    return (
-                      <div
-                        key={stableKey(sentenceData.id)}
-                        data-sentence-row={sentenceData.id}
-                        className="transition-shadow duration-300"
-                        style={
-                          flashSentId === String(sentenceData.id)
-                            ? { boxShadow: '0 0 0 3px #fcd34d', borderRadius: 6 }
-                            : undefined
-                        }
-                      >
-                        <SentenceRow
-                          sentenceData={sentenceData}
-                          commentAnchorLabel={anchorCaption(anchors.get(sentenceData.id))}
-                          sentenceIndex={index}
-                          totalTokensBefore={tokensBefore[index] ?? 0}
-                        />
-                      </div>
-                    );
-                  })}
-                </EditorSessionContext.Provider>
-                <ListPager
-                  {...paged}
-                  onPage={handlePageFromBottom}
-                  className="mx-6 mb-6 rounded-md border"
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          )}
+        </>
+      )}
     </div>
   );
 };

@@ -5,6 +5,8 @@ import { Badge } from '../ui/badge.jsx';
 import { cn } from '../../lib/utils.js';
 import { fullTimestamp } from '../../lib/formatTime.js';
 import { readableDescription } from '../../lib/auditText.js';
+import { Loading } from './Loading.jsx';
+import { Notice } from './Notice.jsx';
 
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
@@ -171,19 +173,14 @@ export const HistoryDrawer = ({
 
       {/* Content */}
       <div className="flex min-h-0 flex-1 flex-col">
-        {loading && (
-          <div className="flex flex-col items-center gap-2 py-10">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">Loading history…</p>
-          </div>
-        )}
+        {loading && <Loading label="Loading history…" className="py-10 text-center" />}
 
         {error && (
           <div className="p-4">
-            <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">Error</p>
-              <p className="text-sm text-muted-foreground">{error}</p>
-            </div>
+            <Notice tone="error">
+              <p className="font-medium">Error</p>
+              <p className="text-muted-foreground">{error}</p>
+            </Notice>
           </div>
         )}
 

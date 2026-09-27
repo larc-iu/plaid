@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { readRole } from '@larc-iu/plaid-client';
+import { Loading } from './Loading.jsx';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import {
@@ -169,12 +170,7 @@ export const RestoreDialog = ({
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {!error && !preview && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
-              Comparing…
-            </p>
-          )}
+          {!error && !preview && <Loading label="Comparing…" className="p-0" />}
 
           {preview && lines.length === 0 && (
             <p className="text-sm text-muted-foreground">Nothing differs from the current state.</p>
