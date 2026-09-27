@@ -2,8 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Toaster } from '@ui/components/ui/sonner';
 import { configureUi } from '@ui/lib/uiConfig.js';
-import { configureAuth } from '@ui/services/auth.js';
+import { configureAuth, onSignOut } from '@ui/services/auth.js';
 import { attachCompose } from '@/lib/composeInput.js';
+import { forgetPrecedent } from '@/domain/precedentCache.js';
 import { APP_ROUTES } from './appRoutes.js';
 import App from './App';
 // The provenance palette the apps share, then this app's own tokens.
@@ -26,6 +27,10 @@ configureUi({
 
 // Where a signed-out session lands. The app's routing table is the app's.
 configureAuth({ loginRoute: '#/login' });
+
+// The precedent counts a tab keeps in the browser hold this login's word
+// forms and values, so signing out forgets them.
+onSignOut(forgetPrecedent);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

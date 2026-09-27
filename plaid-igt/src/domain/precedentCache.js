@@ -54,7 +54,10 @@
 //
 // The counts and every document left after an edit are also kept in the
 // browser (precedentStore.js), so a reload or a new tab starts from them and
-// asks the same question before using them.
+// asks the same question before using them. So are the rows of each document
+// open now, at the version the counts list for it: a reload inside a
+// document edited here, or a new tab opening it, subtracts those rows and
+// folds the document live, instead of counting the project again.
 
 import {
   createTally,
@@ -64,7 +67,7 @@ import {
   mergeTally,
   valuePrecedentQueries,
 } from './precedent.js';
-import { clearStored, loginHash, readStored, writeStored } from './precedentStore.js';
+import { clearStored, closeStore, loginHash, readStored, writeStored } from './precedentStore.js';
 
 // While a document stays open, whether the project changed is asked again
 // after this long. The question is one list read, the count is not.
@@ -103,10 +106,10 @@ function entryFor(doc, create = true) {
   let entry = entries.get(key);
   if (!entry && create) {
     entry = {
-      // { results, versions, fetchedAt, checkedAt, promise, failed }
+      // { results, versions, fetchedAt, checkedAt, promise, failed, readId }
       project: null,
       // docId -> { results, promise, overlay, overlayVersion, failedAt,
-      //            version, alongside, opened }
+      //            version, alongside, opened, left }
       docs: new Map(),
       generation: 0,
       memo: null,
@@ -166,6 +169,7 @@ function fetchDoc(entry, doc, { alongside = false } = {}) {
   rec.promise = fetchRows(doc, doc.id)
     .then((results) => {
       rec.results = results;
+      if (entry.docs.get(doc.id) === rec) persistDocs(entry);
     })
     .catch((err) => {
       // Without its own rows the document cannot be taken out of the
@@ -210,42 +214,95 @@ function changedSince(entry, project, listed, openDoc = null) {
   return false;
 }
 
-// Keep the counts, and every document left after an edit, in the browser.
-// Only a read that landed whole is kept.
-function persist(entry) {
+// Two records per entry: the counts, written once per project read, and the
+// documents beside them, written whenever one lands or is left. The counts can
+// be large and the documents are small. `readId` pairs the two, so documents
+// kept beside one read are never used with another.
+const docsKeyOf = (entry) => `${entry.storeKey}\u0000docs`;
+const newReadId = () => `${Date.now()}.${Math.random().toString(36).slice(2)}`;
+
+// A project read that landed whole, or null.
+function landed(entry) {
   const project = entry.project;
-  if (!project?.results || project.failed || !project.versions) return;
-  const docs = [];
-  for (const [id, rec] of entry.docs) {
-    if (!rec.overlay || !rec.results) continue;
-    const { results, version, alongside, overlay, overlayVersion } = rec;
-    docs.push([id, { results, version, alongside, overlay, overlayVersion }]);
-  }
+  return project?.results && !project.failed && project.versions ? project : null;
+}
+
+// Keep the counts in the browser.
+function persistProject(entry) {
+  const project = landed(entry);
+  if (!project) return;
   writeStored(entry.storeKey, {
     login: entry.login,
+    readId: project.readId,
     results: project.results,
     versions: project.versions,
     fetchedAt: project.fetchedAt,
-    docs,
   });
+}
+
+// Keep beside them every document left after an edit, and the rows of every
+// document open now that are the rows the counts hold for it.
+function persistDocs(entry) {
+  const project = landed(entry);
+  if (!project) return;
+  const docs = [];
+  for (const [id, rec] of entry.docs) {
+    if (!rec.results) continue;
+    const open = rec.opened.doc && !rec.left;
+    if (!rec.overlay && !(open && inStep(project.versions, rec, id))) continue;
+    const { results, version, alongside, overlay, overlayVersion } = rec;
+    docs.push([id, { results, version, alongside, overlay, overlayVersion }]);
+  }
+  writeStored(docsKeyOf(entry), { login: entry.login, readId: project.readId, docs });
+}
+
+// Rows read at the version the counts list for the document: the rows the
+// counts hold for it.
+function inStep(versions, rec, docId) {
+  return rec.version != null && rec.version === versions.get(docId);
 }
 
 // A fresh tab's first open: the counts the browser kept, when the versions
 // say they are still good, else a new read. `own` is the opened document's
 // record, read alongside: kept counts hold it to their versions instead.
 async function restoreOrFetch(entry, next, doc, own) {
-  const stored = await readStored(entry.storeKey, entry.login);
+  const [stored, storedDocs] = await Promise.all([
+    readStored(entry.storeKey, entry.login),
+    readStored(docsKeyOf(entry), entry.login),
+  ]);
   if (stored && entry.project === next) {
     const listed = await listVersions(doc);
+    const docs = storedDocs && storedDocs.readId === stored.readId ? storedDocs.docs : [];
     // The kept documents stand beside the one being opened, whose own rows
     // are being read now.
-    const kept = new Map(stored.docs.filter(([id]) => id !== doc.id));
+    const kept = new Map(docs.filter(([id]) => id !== doc.id));
     const trial = { docs: kept };
     if (!changedSince(trial, stored, listed, doc) && entry.project === next) {
-      if (entry.docs.get(doc.id) === own) own.alongside = false;
+      if (entry.docs.get(doc.id) === own) {
+        own.alongside = false;
+        // The opened document was saved since the count, from a tab that
+        // never left it: its rows read now are not the ones the count holds.
+        // Rows kept at the counted version are, so those are subtracted, and
+        // the document counts as changed when it is left.
+        const keptOwn = docs.find(([id]) => id === doc.id)?.[1];
+        if (
+          keptOwn?.results &&
+          versionOf(doc) !== keptOwn.version &&
+          inStep(stored.versions, keptOwn, doc.id)
+        ) {
+          entry.docs.set(doc.id, {
+            ...keptOwn,
+            alongside: false,
+            promise: null,
+            failedAt: 0,
+            opened: { doc, dataVersion: null },
+          });
+        }
+      }
       next.versions = stored.versions;
       next.results = stored.results;
       next.fetchedAt = stored.fetchedAt;
+      next.readId = stored.readId;
       for (const [id, rec] of kept) {
         if (entry.docs.has(id)) continue;
         entry.docs.set(id, {
@@ -261,7 +318,10 @@ async function restoreOrFetch(entry, next, doc, own) {
   const { versions, results } = await fetchProject(doc);
   next.versions = versions;
   next.results = results;
-  if (entry.project === next) persist(entry);
+  if (entry.project === next) {
+    persistProject(entry);
+    persistDocs(entry);
+  }
 }
 
 // Read the project again, and this document's own rows beside it. Every
@@ -276,6 +336,7 @@ function readProject(entry, doc, { restore = false, listed = null } = {}) {
     checkedAt: now,
     promise: null,
     failed: false,
+    readId: newReadId(),
   };
   entry.project = next;
   // Read in the same breath as the project, unless the project turns out
@@ -286,7 +347,10 @@ function readProject(entry, doc, { restore = false, listed = null } = {}) {
     : fetchProject(doc, listed).then(({ versions, results }) => {
         next.versions = versions;
         next.results = results;
-        if (entry.project === next) persist(entry);
+        if (entry.project === next) {
+          persistProject(entry);
+          persistDocs(entry);
+        }
       });
   next.promise = read
     .catch((err) => {
@@ -357,6 +421,11 @@ export function openPrecedent(doc, { check = false } = {}) {
     return readProject(entry, doc, { restore: !project });
   }
   if (project.failed) return null;
+  if (rec?.left && rec.opened.doc === doc) {
+    // Shown again after it was left: its rows are kept while it is open.
+    rec.left = false;
+    persistDocs(entry);
+  }
   if (!rec || (rec.failedAt && Date.now() - rec.failedAt > RETRY_AFTER_FAIL_MS)) {
     // Checked against the project's versions once both have landed.
     const opened = !project.promise && checkProject(entry, doc);
@@ -367,7 +436,10 @@ export function openPrecedent(doc, { check = false } = {}) {
   // Another model of the same document (opened again): changes are counted
   // from here, once the project is known not to have changed meanwhile.
   if (rec.opened.doc !== doc) {
-    rec.opened = baselineOf(doc);
+    // Rows kept at another version than this model's (a reload inside a
+    // document edited there) already differ from it, so it counts as changed.
+    rec.opened = rec.version === versionOf(doc) ? baselineOf(doc) : { doc, dataVersion: null };
+    rec.left = false;
     if (!project.promise && !rec.promise) return checkProject(entry, doc);
   }
   if ((check || Date.now() - project.checkedAt > CHECK_EVERY_MS) && !project.promise) {
@@ -423,13 +495,15 @@ export function leavePrecedent(doc, opts = {}) {
   const entry = entryFor(doc, false);
   const rec = entry?.docs.get(doc.id);
   if (!rec?.results || rec.opened.doc !== doc) return;
+  // No longer open, so its rows are no longer kept for a reload inside it.
+  rec.left = true;
   if (rec.opened.dataVersion !== null && doc.dataVersion === rec.opened.dataVersion) return;
   rec.overlay = foldDocument(createTally(), doc.sentences, opts);
   // The version the overlay speaks for: any other version of this document
   // is a save made somewhere else.
   rec.overlayVersion = doc.isSaving ? null : versionOf(doc);
   entry.generation++;
-  persist(entry);
+  persistDocs(entry);
 }
 
 /**
@@ -440,4 +514,15 @@ export function leavePrecedent(doc, opts = {}) {
 export function dropPrecedent() {
   byLogin.clear();
   clearStored();
+}
+
+/**
+ * Signing out: forget every count, in this tab and in the browser, and keep
+ * nothing more until the page loads again. They hold word forms, values and
+ * entry ids another person at this machine should not find. Resolves once
+ * the browser has let go of them.
+ */
+export function forgetPrecedent() {
+  byLogin.clear();
+  return closeStore();
 }

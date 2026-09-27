@@ -3,16 +3,21 @@
 // counting the whole project again. What is kept is only ever used after
 // asking the server whether anything changed since it was counted.
 //
-// One record per server and cache key. Each record names the login that
-// counted it by a hash of its token, and a record counted under another login
-// is never handed back: the rows are what that login may read. Everything
-// here is quiet on failure (a private window, blocked site data, a browser
-// without IndexedDB): the tab counts as if nothing had been kept.
+// Two records per server and cache key (the counts, and the documents beside
+// them: precedentCache.js). Each record names the login that counted it by a
+// hash of its token, and a record counted under another login is never handed
+// back: the rows are what that login may read. Everything here is quiet on
+// failure (a private window, blocked site data, a browser without IndexedDB):
+// the tab counts as if nothing had been kept.
 
 const DB_NAME = 'plaid-igt-precedent';
 const STORE = 'projects';
 
 let dbPromise = null;
+
+// Set on sign-out: nothing more is written until the page loads again, so a
+// read landing between the sign-out and the reload keeps nothing.
+let closed = false;
 
 function openDb() {
   if (dbPromise) return dbPromise;
@@ -70,10 +75,17 @@ export async function readStored(key, login) {
 
 /** Keep `record` under `key`, replacing what was there. */
 export function writeStored(key, record) {
+  if (closed) return Promise.resolve(null);
   return run('readwrite', (store) => store.put(record, key));
 }
 
 /** Forget every record. */
 export function clearStored() {
   return run('readwrite', (store) => store.clear());
+}
+
+/** Forget every record and keep nothing more (signing out). */
+export function closeStore() {
+  closed = true;
+  return clearStored();
 }

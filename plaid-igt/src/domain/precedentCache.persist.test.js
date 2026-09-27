@@ -12,11 +12,14 @@ vi.mock('./precedentStore.js', () => ({
     store.records.set(key, structuredClone(record));
   },
   clearStored: async () => store.records.clear(),
+  closeStore: async () => {
+    store.closed = true;
+    store.records.clear();
+  },
 }));
 
-const { dropPrecedent, leavePrecedent, openPrecedent, precedentBase } = await import(
-  './precedentCache.js'
-);
+const { dropPrecedent, forgetPrecedent, leavePrecedent, openPrecedent, precedentBase } =
+  await import('./precedentCache.js');
 const { precedentCounts } = await import('./precedent.js');
 
 const layerInfo = {
@@ -164,5 +167,109 @@ describe('precedent kept across reloads', () => {
     const bob = tab(srv, 'bob');
     await openPrecedent(docOf(bob, 'b'));
     expect(projectQueries(bob)).toHaveLength(1);
+  });
+
+  // The most common reload: inside the document just edited. The editor is
+  // not unmounted on unload, so nothing was left behind for it.
+  it('a reload inside a document edited there counts nothing, and ranks as before', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    a.sentences = docOf(first, 'a', [['kai', 'eat']]).sentences;
+    a.dataVersion++;
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.versions.a = 2;
+    first.documentVersions = { a: 2 };
+    reload();
+    const second = tab(srv);
+    second.documentVersions = { a: 2 };
+    const again = docOf(second, 'a', [['kai', 'eat']]);
+    again.raw.version = 2;
+    await openPrecedent(again);
+    await openPrecedent(again);
+    expect(projectQueries(second)).toHaveLength(0);
+    // b's go, with a's old go taken out: a counts live.
+    expect(gloss(precedentBase(again))).toEqual(new Map([['go', 1]]));
+  });
+
+  it('a document edited before the reload and left after it counts as it was left', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    a.sentences = docOf(first, 'a', [['kai', 'eat']]).sentences;
+    a.dataVersion++;
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.versions.a = 2;
+    reload();
+    const second = tab(srv);
+    second.documentVersions = { a: 2 };
+    const again = docOf(second, 'a', [['kai', 'eat']]);
+    again.raw.version = 2;
+    await openPrecedent(again);
+    // Left with no further edit: it still differs from the rows the count holds.
+    leavePrecedent(again, { wordFields: ['Gloss'] });
+    const b = docOf(second, 'b');
+    await openPrecedent(b);
+    await openPrecedent(b);
+    expect(projectQueries(second)).toHaveLength(0);
+    expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+  });
+
+  it('a new tab opening a document still open and edited in another counts nothing', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const b = docOf(first, 'b');
+    await openPrecedent(b);
+    leavePrecedent(b, { wordFields: ['Gloss'] });
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    a.sentences = docOf(first, 'a', [['kai', 'eat']]).sentences;
+    a.dataVersion++;
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.versions.a = 2;
+    first.documentVersions = { a: 2 };
+    reload();
+    const second = tab(srv);
+    const inNew = docOf(second, 'a', [['kai', 'eat']]);
+    inNew.raw.version = 2;
+    await openPrecedent(inNew);
+    await openPrecedent(inNew);
+    expect(projectQueries(second)).toHaveLength(0);
+    expect(gloss(precedentBase(inNew))).toEqual(new Map([['go', 1]]));
+  });
+
+  it('kept rows of a document saved elsewhere since are not used for it', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    await openPrecedent(a);
+    reload();
+    // Someone else saves a and b after the count was kept.
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.glossByDoc.b = [['kai', 'eat']];
+    srv.versions.a = 2;
+    srv.versions.b = 2;
+    const second = tab(srv);
+    const again = docOf(second, 'a', [['kai', 'eat']]);
+    again.raw.version = 2;
+    await openPrecedent(again);
+    await openPrecedent(again);
+    expect(projectQueries(second)).toHaveLength(1);
+    expect(gloss(precedentBase(again))).toEqual(new Map([['eat', 1]]));
+  });
+
+  it('signing out forgets the counts in memory and in the browser', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [] });
+    const first = tab(srv);
+    await openPrecedent(docOf(first, 'a'));
+    expect(store.records.size).toBeGreaterThan(0);
+    await forgetPrecedent();
+    expect(store.records.size).toBe(0);
+    expect(store.closed).toBe(true);
+    const b = docOf(first, 'b');
+    expect(precedentBase(b)).toBe(null);
+    store.closed = false;
   });
 });
