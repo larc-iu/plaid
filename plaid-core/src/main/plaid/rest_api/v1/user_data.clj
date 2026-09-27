@@ -2,7 +2,7 @@
   "REST surface for private per-user key/value storage: `/users/:user-id/data`.
   The owning user or a global admin may read and write; nobody else can see
   that a key exists. Values are arbitrary JSON, stored and returned verbatim."
-  (:require [plaid.rest-api.v1.api-token :refer [wrap-self-or-admin]]
+  (:require [plaid.rest-api.v1.api-token :refer [self-or-admin]]
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.user-data :as user-data]))
@@ -11,7 +11,8 @@
   ["/users/:user-id/data"
    {:openapi {:security [{:auth []}]}
     :parameters {:path [:map [:user-id string?]]}
-    :middleware [pra/wrap-login-required wrap-self-or-admin]}
+    :middleware [pra/wrap-login-required
+                 (self-or-admin "You can only read or change your own private data.")]}
 
    [""
     {:get {:summary (str "List a user's private data entries ({key, updated-at}), ordered by key "

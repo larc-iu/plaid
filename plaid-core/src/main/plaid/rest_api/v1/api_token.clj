@@ -8,18 +8,23 @@
             [plaid.sql.user :as user]
             [reitit.coercion.malli]))
 
-(defn wrap-self-or-admin
-  "Authorize only the path `:user-id` owner or a global admin. 403 otherwise.
-  Authentication (a valid token) is already guaranteed by the inherited
-  `wrap-login-required`, so this is purely the ownership check."
-  [handler]
-  (fn [{{{:keys [user-id]} :path} :parameters :as request}]
-    (let [current-user-id (pra/->user-id request)
-          admin? (user/admin? (:user/record request))]
-      (if (or admin? (= user-id current-user-id))
-        (handler request)
-        {:status 403
-         :body {:error "You can only manage your own API tokens."}}))))
+(defn self-or-admin
+  "Middleware that authorizes only the path `:user-id` owner or a global
+  admin, and answers anyone else 403 with `refusal`. Authentication (a valid
+  token) is already guaranteed by the inherited `wrap-login-required`, so
+  this is purely the ownership check."
+  [refusal]
+  (fn [handler]
+    (fn [{{{:keys [user-id]} :path} :parameters :as request}]
+      (let [current-user-id (pra/->user-id request)
+            admin? (user/admin? (:user/record request))]
+        (if (or admin? (= user-id current-user-id))
+          (handler request)
+          {:status 403
+           :body {:error refusal}})))))
+
+(def wrap-self-or-admin
+  (self-or-admin "You can only manage your own API tokens."))
 
 (def api-token-routes
   ["/users/:user-id/tokens"

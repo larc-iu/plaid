@@ -366,7 +366,7 @@
   whose key names a project in scope as one of its colon-separated segments
   (an assistant's conversation lives under `<app>:assistant:<project>:...`).
   A listing is refused: it would read the entries of every project at once.
-  That the user is the token's own is `wrap-self-or-admin`'s, with admin
+  That the user is the token's own is `self-or-admin`'s, with admin
   already taken away."
   [request scope]
   (let [k (-> request :parameters :path :key)]

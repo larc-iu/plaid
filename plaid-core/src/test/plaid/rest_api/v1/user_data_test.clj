@@ -146,6 +146,11 @@
     (is (= 403 (:status (api-call user2-request {:method :get :path (path u1)}))))
     (is (= 403 (:status (api-call user2-request {:method :put :path (path u1 "k") :body {}}))))
     (is (= 403 (:status (api-call user2-request {:method :delete :path (path u1 "k")})))))
+  (testing "the refusal names private data, not API tokens"
+    (is (= "You can only read or change your own private data."
+           (:error (:body (api-call user2-request {:method :get :path (path u1 "k")})))))
+    (is (= "You can only manage your own API tokens."
+           (:error (:body (api-call user2-request {:method :get :path (str "/api/v1/users/" u1 "/tokens")}))))))
   (testing "an admin can"
     (is (= {"secret" 1} (:value (:body (api-call admin-request {:method :get :path (path u1 "k")})))))
     (is (= 204 (:status (api-call admin-request {:method :delete :path (path u1 "k")})))))
