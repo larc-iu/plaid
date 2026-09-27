@@ -14,16 +14,17 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
 
   // A morpheme row of a word cited for its morphemes, rebuilt piece by piece
   // with the named ones bold; anything else is the cell as the grid shows it.
+  // Each piece is escaped before it is bolded, so the markers stay markup.
   const cell = (r, j) => {
     const w = words[j] || {};
     const marked = cited.get(w.index);
     const parts =
       marked instanceof Set &&
       (r.kind === 'morphemes' ? w.morphs : (w.lines || []).find((l) => l.field === r.label)?.parts);
-    if (!parts) return r.cells[j];
+    if (!parts) return tableCell(r.cells[j]);
     return parts
-      .map((part, k) => (marked.has(k + 1) ? `**${part}**` : part))
-      .reduce((acc, part, k) => (k ? acc + (w.joiners?.[k - 1] ?? '-') + part : part), '');
+      .map((part, k) => (marked.has(k + 1) ? `**${tableCell(part)}**` : tableCell(part)))
+      .reduce((acc, part, k) => (k ? acc + tableCell(w.joiners?.[k - 1] ?? '-') + part : part), '');
   };
 
   const out = [`**[${linkLabel(citationTitle(c))}](${sentenceHref(origin, projectId, c)})**`, ''];
@@ -35,7 +36,7 @@ export const citationToMarkdown = (c, { origin, projectId }) => {
     );
     out.push(`|---|${words.map(() => '---').join('|')}|`);
     rows.forEach((r) =>
-      out.push(`| ${[r.label, ...r.cells.map((_, j) => cell(r, j))].map(tableCell).join(' | ')} |`),
+      out.push(`| ${[tableCell(r.label), ...r.cells.map((_, j) => cell(r, j))].join(' | ')} |`),
     );
   } else {
     out.push(tableCell(c.text));

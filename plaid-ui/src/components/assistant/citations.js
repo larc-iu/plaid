@@ -29,25 +29,44 @@ export const citationFocus = (c) => c?.focus || [];
 export const centeredScrollLeft = (left, right, viewport, scrollWidth) =>
   Math.max(0, Math.min((left + right) / 2 - viewport / 2, scrollWidth - viewport));
 
-// A citation's title goes in the LABEL of a Markdown link, and a document is
-// named by whoever imported it. An unbalanced bracket there ends the label
-// early and the whole citation renders as plain text with a URL in it: the
-// reader loses the link, in the reply, in the export and in the admin
-// transcript alike. Newlines and pipes go too, so a title is safe in a table
-// cell as well.
-export const linkLabel = (text) =>
-  String(text ?? '')
-    .replace(/([[\]])/g, '\\$1')
-    .replace(/\|/g, '\\|')
-    .replace(/\n/g, ' ');
+// The one Markdown escaper. Every name, title and cell value the assistant
+// writes into Markdown (a reply, the conversation export, the admin
+// transcript) goes through it. A document is named by whoever imported it,
+// so a name can hold anything:
+// - an unbalanced bracket ended a link's label early and cost the citation
+//   its link, and a balanced pair with a URL made a link of its own
+// - a CR or newline ends a heading, a table row or a bold run and starts
+//   whatever comes next, a second heading or a `javascript:` link
+// - a pipe ends a table cell, and a backslash before an escape undoes it
+// - `<` opens an autolink or an HTML tag, and `*`, `_`, `~` and a backtick
+//   restyle the text (a reconstructed `*kat` is not emphasis)
+// - marked reads `\](` as the end of a label even when the bracket is
+//   escaped, so an opening parenthesis is escaped as well (a closing one
+//   stays bare, or a URL just before it would take the backslash)
+// Every Markdown punctuation character that can start any of these is
+// backslash-escaped, which CommonMark allows for any ASCII punctuation, and
+// line breaks become one space. The result is one line of literal text,
+// safe in a link label, a heading, a bold run and a table cell alike.
+const MARKDOWN_SPECIAL = /[\\`*_[\](<>|~#]/g;
 
-// One value in a Markdown table cell. A pipe would end the cell and a newline
-// would end the row, so both go. Kept here because both apps' citation tables
-// need it and had a byte-identical copy each: one escaper per language.
-export const tableCell = (s) =>
-  String(s ?? '')
-    .replace(/\|/g, '\\|')
-    .replace(/\n/g, ' ');
+export const markdownText = (text) =>
+  String(text ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(MARKDOWN_SPECIAL, '\\$&');
+
+// The same rule under the names the apps' citation writers use.
+export const linkLabel = markdownText;
+export const tableCell = markdownText;
+
+// Text shown verbatim in a fenced code block, as the block's lines. A fence
+// ends at the first run of backticks as long as its own, so the fence is one
+// backtick longer than the longest run inside the text.
+export const fencedBlock = (text) => {
+  const body = String(text ?? '');
+  const longest = Math.max(0, ...(body.match(/`+/g) || []).map((run) => run.length));
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return [fence, body, fence];
+};
 
 // Text with every citation replaced: a resolved one by a Markdown link to the
 // place in the editor (`onCited` sees each, for listing the cards), an

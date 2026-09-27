@@ -73,6 +73,28 @@ describe('citationToMarkdown', () => {
     expect(md).toContain('| Gloss | Ali-**ERG** | fish |  |');
   });
 
+  it('escapes a cited morpheme but not the bold around it', () => {
+    const md = citationToMarkdown(
+      {
+        ...cite,
+        focus: [{ word: 1, morpheme: 2 }],
+        words: [
+          {
+            index: 1,
+            surface: 'Ali-di',
+            seg: 'Ali-*kat',
+            morphs: ['Ali', '*kat|x'],
+            joiners: ['-'],
+            lines: [],
+          },
+          ...cite.words.slice(1),
+        ],
+      },
+      ctx,
+    );
+    expect(md).toContain('| Morphemes | Ali-**\\*kat\\|x** |');
+  });
+
   it('bolds every word a citation names', () => {
     const md = citationToMarkdown(
       {

@@ -7,6 +7,8 @@
 // citation as the plain document and reference it names, which is what an
 // unresolved one has always shown.
 
+import { markdownText } from './citations.js';
+
 // A cite tag of any app, plus the older brace form. Deliberately looser than
 // either app's: it matches the syntax, not the addressing inside it.
 const PLAIN_CITE_RE =
@@ -17,5 +19,6 @@ export const PLAIN_CITATIONS = {
   citationTitle: (c) => `${c.documentName || 'document'}, sentence ${c.sentence}`,
   // No link: this app does not know where another app's editor lives.
   citationHref: () => '',
-  citationToMarkdown: (c) => `**${c.documentName || 'document'}, sentence ${c.sentence}**`,
+  citationToMarkdown: (c) =>
+    `**${markdownText(`${c.documentName || 'document'}, sentence ${c.sentence}`)}**`,
 };

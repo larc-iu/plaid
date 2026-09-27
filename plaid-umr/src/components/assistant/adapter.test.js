@@ -127,4 +127,12 @@ describe('citationToMarkdown', () => {
     expect(md).toContain('```\n(s1b / bark-01)\n```');
     expect(md).toContain('Nodes cited: s1d');
   });
+
+  it('keeps a graph holding a run of backticks inside its block', () => {
+    const md = UMR_ASSISTANT.citationToMarkdown(
+      { documentName: 'Story', documentId: 'd1', sentence: 1, penman: '(s1x / ```)' },
+      { origin: '', projectId: 'p1' },
+    );
+    expect(md).toContain('````\n(s1x / ```)\n````');
+  });
 });

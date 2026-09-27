@@ -6,7 +6,12 @@
 // This is the whole of UMR's side of the tab. The generic half is
 // plaid-ui/src/components/assistant/, and plaid-ud and plaid-igt have adapters
 // of their own.
-import { citationFocus, linkLabel, tableCell } from '@ui/components/assistant/citations.js';
+import {
+  citationFocus,
+  fencedBlock,
+  linkLabel,
+  tableCell,
+} from '@ui/components/assistant/citations.js';
 import { ExampleCard } from './ExampleCard.jsx';
 
 // Cite tags, plus the older `{{Doc sN}}` braces and bare "s3.s3e" references
@@ -103,7 +108,7 @@ const citationToMarkdown = (c, { origin, projectId }) => {
   } else if (c.text) {
     out.push(tableCell(c.text), '');
   }
-  if (c.penman) out.push('```', c.penman, '```');
+  if (c.penman) out.push(...fencedBlock(c.penman));
   const focus = citationFocus(c);
   if (focus.length) out.push('', `Nodes cited: ${focus.join(', ')}`);
   return out.join('\n');

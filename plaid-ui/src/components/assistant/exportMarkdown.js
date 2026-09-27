@@ -3,7 +3,7 @@
 // with their changes and outcome, and errors. Tool traces are summarized in
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
-import { linkifyCitations } from './citations.js';
+import { linkifyCitations, markdownText } from './citations.js';
 
 // Reply text with its citations: a citation alone on a line becomes the
 // table in place, an inline one a link, and the inline-only ones' tables
@@ -46,10 +46,10 @@ const planToMarkdown = (plan, status, interrupted) => {
 
 export const conversationToMarkdown = (conv, meta, { origin, projectId, projectName, adapter }) => {
   const ctx = { origin, projectId, adapter };
-  const out = [`# ${meta?.title || 'Conversation'}`, ''];
+  const out = [`# ${markdownText(meta?.title || 'Conversation')}`, ''];
   const facts = [];
-  if (projectName) facts.push(`Project: ${projectName}`);
-  if (meta?.model) facts.push(`Assistant: ${meta.model}`);
+  if (projectName) facts.push(`Project: ${markdownText(projectName)}`);
+  if (meta?.model) facts.push(`Assistant: ${markdownText(meta.model)}`);
   if (meta?.createdAt) facts.push(`Started: ${meta.createdAt.slice(0, 10)}`);
   if (facts.length) out.push(facts.join(' · '), '');
   (conv?.display || []).forEach((d) => {
