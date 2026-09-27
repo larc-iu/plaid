@@ -16,8 +16,8 @@
 // counting in the next, since the project's rows predate it. Every document's
 // rows are read once per project read and kept, so going back to a document
 // sends nothing, and subtracting them undoes what the project's rows hold for
-// it. A project read (the refresh on returning to the tab, or an old one on
-// opening a document) holds every saved edit, so it drops them all.
+// it. A project read (after a save made elsewhere, see below) holds every
+// saved edit, so it drops them all.
 //
 // Subtracting a document's rows is only right when they are the rows the
 // project read holds for it. The project read lists every document's version
@@ -27,6 +27,32 @@
 //
 // A history snapshot takes no part: it is a past state, not the document
 // whose rows the project holds.
+//
+// WHEN THE PROJECT IS COUNTED AGAIN: only after a change. The counting
+// queries take seconds on a large project and hold one of the server's few
+// database connections the whole time, so a tab never counts on a timer.
+// Instead it asks the cheap question first: the version of every document
+// in the project, which is one short list read. The rows it holds are still
+// good when every document is at the version they account for:
+//
+//   a document left here after an edit   the version it was left at
+//   every other document                 the version the project read listed
+//
+// The document open here is not asked about: its rows are taken out of the
+// count and it is folded live, so a save to it changes nothing the count
+// holds. It is held to its version again once it is left.
+//
+// Any other version, a document added or a document gone, is a save made
+// somewhere else (another person, another tab, a script, an import), and
+// the project is counted again. The question is asked when a document is
+// opened and when the tab comes back into view. Every write to a document's
+// content bumps its version, deleting or respelling an entry included, so
+// the versions see every change the counts can show. An entry's own fields
+// changing does not bump a document, and does not change the counts either.
+//
+// The counts and every document left after an edit are also kept in the
+// browser (precedentStore.js), so a reload or a new tab starts from them and
+// asks the same question before using them.
 
 import {
   createTally,
@@ -36,10 +62,7 @@ import {
   mergeTally,
   valuePrecedentQueries,
 } from './precedent.js';
-
-// A project read older than this is read again when a document opens, so
-// other people's decisions reach a session that never leaves the tab.
-const PRECEDENT_MAX_AGE_MS = 10 * 60_000;
+import { clearStored, loginHash, readStored, writeStored } from './precedentStore.js';
 
 // A read that failed is asked again after this, and not before: the editor
 // asks on every render, and a server that is failing should not hear about
@@ -74,11 +97,18 @@ function entryFor(doc, create = true) {
   let entry = entries.get(key);
   if (!entry && create) {
     entry = {
-      project: null, // { results, versions, fetchedAt, promise, failed }
-      // docId -> { results, promise, overlay, failedAt, version, alongside, opened }
+      // { results, versions, fetchedAt, checkedAt, promise, failed }
+      project: null,
+      // docId -> { results, promise, overlay, overlayVersion, failedAt,
+      //            version, alongside, opened }
       docs: new Map(),
       generation: 0,
       memo: null,
+      // The version question in flight, if any.
+      checking: null,
+      // Where the browser keeps this entry, and whose it is.
+      storeKey: `${doc.client.baseUrl}\u0000${key}`,
+      login: loginHash(doc.client.token),
     };
     entries.set(key, entry);
   }
@@ -144,13 +174,147 @@ function fetchDoc(entry, doc, { alongside = false } = {}) {
   return rec.promise;
 }
 
+// Every document of the project and its version: the cheap question.
+async function listVersions(doc) {
+  const listed = await doc.client.projects.listDocuments(doc.projectId);
+  return new Map((listed || []).map((d) => [d.id, d.version]));
+}
+
 // The project and every document's version in it, the versions first: an
 // edit landing between the two then shows as a version the rows already
-// hold, which costs a needless read and never a wrong one.
-async function fetchProject(doc) {
-  const listed = await doc.client.projects.listDocuments(doc.projectId);
-  const versions = new Map((listed || []).map((d) => [d.id, d.version]));
+// hold, which costs a needless read and never a wrong one. `listed` is a
+// list the caller has just read.
+async function fetchProject(doc, listed = null) {
+  const versions = listed || (await listVersions(doc));
   return { versions, results: await fetchRows(doc) };
+}
+
+// Has anything been saved since `project` was counted, other than what this
+// tab accounts for itself? See the header for the version each document is
+// held to. `openDoc` is the document open here now, which is not asked about.
+function changedSince(entry, project, listed, openDoc = null) {
+  const held = project.versions;
+  if (!held || listed.size !== held.size) return true;
+  for (const [id, version] of listed) {
+    if (!held.has(id)) return true;
+    if (openDoc && id === openDoc.id) continue;
+    const rec = entry.docs.get(id);
+    if (version !== (rec?.overlay ? rec.overlayVersion : held.get(id))) return true;
+  }
+  return false;
+}
+
+// Keep the counts, and every document left after an edit, in the browser.
+// Only a read that landed whole is kept.
+function persist(entry) {
+  const project = entry.project;
+  if (!project?.results || project.failed || !project.versions) return;
+  const docs = [];
+  for (const [id, rec] of entry.docs) {
+    if (!rec.overlay || !rec.results) continue;
+    const { results, version, alongside, overlay, overlayVersion } = rec;
+    docs.push([id, { results, version, alongside, overlay, overlayVersion }]);
+  }
+  writeStored(entry.storeKey, {
+    login: entry.login,
+    results: project.results,
+    versions: project.versions,
+    fetchedAt: project.fetchedAt,
+    docs,
+  });
+}
+
+// A fresh tab's first open: the counts the browser kept, when the versions
+// say they are still good, else a new read. `own` is the opened document's
+// record, read alongside: kept counts hold it to their versions instead.
+async function restoreOrFetch(entry, next, doc, own) {
+  const stored = await readStored(entry.storeKey, entry.login);
+  if (stored && entry.project === next) {
+    const listed = await listVersions(doc);
+    // The kept documents stand beside the one being opened, whose own rows
+    // are being read now.
+    const kept = new Map(stored.docs.filter(([id]) => id !== doc.id));
+    const trial = { docs: kept };
+    if (!changedSince(trial, stored, listed, doc) && entry.project === next) {
+      if (entry.docs.get(doc.id) === own) own.alongside = false;
+      next.versions = stored.versions;
+      next.results = stored.results;
+      next.fetchedAt = stored.fetchedAt;
+      for (const [id, rec] of kept) {
+        if (entry.docs.has(id)) continue;
+        entry.docs.set(id, {
+          ...rec,
+          promise: null,
+          failedAt: 0,
+          opened: { doc: null, dataVersion: null },
+        });
+      }
+      return;
+    }
+  }
+  const { versions, results } = await fetchProject(doc);
+  next.versions = versions;
+  next.results = results;
+  if (entry.project === next) persist(entry);
+}
+
+// Read the project again, and this document's own rows beside it. Every
+// other document's rows and state belong to the old read.
+function readProject(entry, doc, { restore = false, listed = null } = {}) {
+  entry.docs.clear();
+  const now = Date.now();
+  const next = {
+    results: null,
+    versions: null,
+    fetchedAt: now,
+    checkedAt: now,
+    promise: null,
+    failed: false,
+  };
+  entry.project = next;
+  // Read in the same breath as the project, unless the project turns out
+  // to be the one the browser kept: then it is held to the kept versions.
+  const own = fetchDoc(entry, doc, { alongside: true });
+  const read = restore
+    ? restoreOrFetch(entry, next, doc, entry.docs.get(doc.id))
+    : fetchProject(doc, listed).then(({ versions, results }) => {
+        next.versions = versions;
+        next.results = results;
+        if (entry.project === next) persist(entry);
+      });
+  next.promise = read
+    .catch((err) => {
+      console.warn('Project precedent unavailable; using this document only:', err);
+      next.failed = true;
+    })
+    .finally(() => {
+      next.promise = null;
+      entry.generation++;
+    });
+  return Promise.all([next.promise, own]);
+}
+
+// Ask whether anything was saved since the project was counted, and count
+// it again if so. One question at a time. A question that fails keeps what
+// is held: it cannot tell a change from none.
+function checkProject(entry, doc) {
+  if (entry.checking) return entry.checking;
+  const project = entry.project;
+  project.checkedAt = Date.now();
+  const checking = listVersions(doc)
+    .then((listed) => {
+      if (entry.project !== project || !changedSince(entry, project, listed, doc)) return null;
+      return readProject(entry, doc, { listed });
+    })
+    .catch((err) => {
+      console.warn('Could not ask whether the project changed:', err);
+      return null;
+    })
+    .finally(() => {
+      if (entry.checking === checking) entry.checking = null;
+    });
+  entry.checking = checking;
+  return checking;
 }
 
 // A document's rows were read after the project's, and it was at another
@@ -165,63 +329,49 @@ function outOfStep(project, rec, docId) {
 /**
  * Make sure `doc`'s precedent is read. Returns a promise that settles when
  * something new has landed, or null when everything is already here (or
- * there is nothing to read). `force` reads the project again even when its
- * rows are fresh.
+ * there is nothing to read). Asked on every render. Opening a document asks
+ * the server whether the project changed (see the header), and so does
+ * `check`, which the editor passes when the tab comes back into view.
  */
-export function openPrecedent(doc, { force = false } = {}) {
+export function openPrecedent(doc, { check = false } = {}) {
   if (doc?.asOf) return null;
   const entry = entryFor(doc);
   if (!entry) return null;
   if (!vocabIdsOf(doc).length && !valuePrecedentQueries(doc.layerInfo).length) return null;
   const project = entry.project;
-  const maxAge = project?.failed ? RETRY_AFTER_FAIL_MS : PRECEDENT_MAX_AGE_MS;
   const rec = entry.docs.get(doc.id);
   const stale =
-    force ||
     !project ||
-    (!project.promise && Date.now() - project.fetchedAt > maxAge) ||
+    (project.failed && !project.promise && Date.now() - project.fetchedAt > RETRY_AFTER_FAIL_MS) ||
     outOfStep(project, rec, doc.id);
   if (stale) {
     // The project and this document are read side by side, so the rows
     // subtracted are as close as they can be to the rows they come out of.
-    // Every other document's rows and state belong to the old read.
-    entry.docs.clear();
-    const next = {
-      results: null,
-      versions: null,
-      fetchedAt: Date.now(),
-      promise: null,
-      failed: false,
-    };
-    entry.project = next;
-    next.promise = fetchProject(doc)
-      .then(({ versions, results }) => {
-        next.versions = versions;
-        next.results = results;
-      })
-      .catch((err) => {
-        console.warn('Project precedent unavailable; using this document only:', err);
-        next.failed = true;
-      })
-      .finally(() => {
-        next.promise = null;
-        entry.generation++;
-      });
-    return Promise.all([next.promise, fetchDoc(entry, doc, { alongside: true })]);
+    // A tab's first read starts from what the browser kept, if it is good.
+    return readProject(entry, doc, { restore: !project });
   }
+  if (project.failed) return null;
   if (!rec || (rec.failedAt && Date.now() - rec.failedAt > RETRY_AFTER_FAIL_MS)) {
     // Checked against the project's versions once both have landed.
-    return Promise.all([project.promise, fetchDoc(entry, doc)]).then(() => openPrecedent(doc));
+    const opened = !project.promise && checkProject(entry, doc);
+    return Promise.all([project.promise, fetchDoc(entry, doc), opened]).then(() =>
+      openPrecedent(doc),
+    );
   }
   // Another model of the same document (opened again): changes are counted
-  // from here.
-  if (rec.opened.doc !== doc) rec.opened = baselineOf(doc);
-  return project.promise || rec.promise || null;
+  // from here, once the project is known not to have changed meanwhile.
+  if (rec.opened.doc !== doc) {
+    rec.opened = baselineOf(doc);
+    if (!project.promise && !rec.promise) return checkProject(entry, doc);
+  }
+  if (check && !project.promise) return checkProject(entry, doc);
+  return project.promise || rec.promise || entry.checking || null;
 }
 
-/** When the project's rows were last asked for, or 0. */
+/** When the project's rows were last read or checked, or 0. */
 export function precedentFetchedAt(doc) {
-  return entryFor(doc, false)?.project?.fetchedAt || 0;
+  const project = entryFor(doc, false)?.project;
+  return Math.max(project?.fetchedAt || 0, project?.checkedAt || 0);
 }
 
 /**
@@ -267,7 +417,11 @@ export function leavePrecedent(doc, opts = {}) {
   if (!rec?.results || rec.opened.doc !== doc) return;
   if (rec.opened.dataVersion !== null && doc.dataVersion === rec.opened.dataVersion) return;
   rec.overlay = foldDocument(createTally(), doc.sentences, opts);
+  // The version the overlay speaks for: any other version of this document
+  // is a save made somewhere else.
+  rec.overlayVersion = doc.isSaving ? null : versionOf(doc);
   entry.generation++;
+  persist(entry);
 }
 
 /**
@@ -277,4 +431,5 @@ export function leavePrecedent(doc, opts = {}) {
  */
 export function dropPrecedent() {
   byLogin.clear();
+  clearStored();
 }

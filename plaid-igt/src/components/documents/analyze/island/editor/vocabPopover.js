@@ -67,11 +67,11 @@ export const vocabPopover = {
   // the document alone; the island re-renders when they land. A failed read
   // keeps it that way (popover and guesses still work).
   //
-  // `force` reads the project again: someone else's decision elsewhere in the
-  // project would otherwise wait for the cache to age out (see the
-  // visibilitychange listener in the constructor).
-  _ensurePrecedent(force = false) {
-    const pending = openPrecedent(this.doc, { force });
+  // `check` asks the server whether anyone saved in the project since it was
+  // counted, and counts it again if so (see the visibilitychange listener in
+  // the constructor). Opening a document asks the same.
+  _ensurePrecedent(check = false) {
+    const pending = openPrecedent(this.doc, { check });
     // Asked on every render, and answered with the same promise until it
     // settles: one repaint per read, not one per render.
     if (!pending || pending === this._precedentPending) return;

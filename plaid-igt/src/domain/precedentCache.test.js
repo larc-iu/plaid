@@ -91,11 +91,16 @@ describe('precedentCache', () => {
     await openPrecedent(b);
     expect(gloss(precedentBase(b))).toEqual(new Map([['go', 2]]));
     expect(projectQueries(client)).toHaveLength(1);
-    // Back to a, through a new client for the same login: nothing is asked.
+    // Back to a, through a new client for the same login: only whether
+    // anything changed is asked, and nothing had.
     const calls = client.query.mock.calls.length;
+    const lists = client.projects.listDocuments.mock.calls.length;
     const again = { ...client };
-    expect(openPrecedent(docOf(again, 'a'))).toBeNull();
+    await openPrecedent(docOf(again, 'a'));
     expect(client.query.mock.calls.length).toBe(calls);
+    expect(client.projects.listDocuments.mock.calls.length).toBe(lists + 1);
+    // Asked again on every render, the model already open asks nothing.
+    expect(openPrecedent(docOf(again, 'a'))).not.toBeNull();
   });
 
   it('a document edited and left counts as it was left in the next one', async () => {
@@ -124,36 +129,139 @@ describe('precedentCache', () => {
 
   it('an edit still on its way when the project is read again counts once the document is left', async () => {
     const glossByDoc = { a: [['kai', 'go']], b: [] };
-    const client = fakeClient(glossByDoc);
+    const versions = {};
+    const client = fakeClient(glossByDoc, versions);
     const a = docOf(client, 'a', [['kai', 'go']]);
     await openPrecedent(a);
-    // The person reglosses kai as eat, and the read that follows (the age
-    // re-read on the next render) runs while that write is still queued, so
-    // the server's rows still say go.
+    // The person reglosses kai as eat, and a read of the project (someone
+    // saved b) runs while that write is still queued, so the server's rows
+    // still say go.
     editGlosses(a, [['kai', 'eat']]);
     a.isSaving = true;
-    await openPrecedent(a, { force: true });
+    versions.b = 2;
+    await openPrecedent(a, { check: true });
+    expect(projectQueries(client)).toHaveLength(2);
     a.isSaving = false;
     glossByDoc.a = [['kai', 'eat']]; // the write lands
+    versions.a = 3;
+    client.documentVersions = { a: 3 };
     leavePrecedent(a, { wordFields: ['Gloss'] });
     const b = docOf(client, 'b');
     await openPrecedent(b);
     expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
   });
 
-  it('a forced read asks the project again and drops what the old read kept', async () => {
-    const glossByDoc = { a: [['kai', 'go']], b: [] };
-    const client = fakeClient(glossByDoc);
-    const a = docOf(client, 'a', [['kai', 'go']]);
-    await openPrecedent(a);
-    editGlosses(a, [['kai', 'eat']]);
-    leavePrecedent(a, { wordFields: ['Gloss'] });
-    glossByDoc.a = [['kai', 'eat']]; // saved
-    const b = docOf(client, 'b');
-    await openPrecedent(b);
-    await openPrecedent(b, { force: true });
-    expect(projectQueries(client)).toHaveLength(2);
-    expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+  // The project is counted again only after a change, never on a timer.
+  describe('only after a change', () => {
+    it('asks whether anything changed, and counts nothing, however long it has been', async () => {
+      const client = fakeClient({ a: [['kai', 'go']], b: [], c: [] });
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      await openPrecedent(docOf(client, 'a'));
+      now.mockReturnValue(1_000_000 + 24 * 3600_000);
+      const b = docOf(client, 'b');
+      await openPrecedent(b);
+      await openPrecedent(b, { check: true });
+      await openPrecedent(docOf(client, 'c'));
+      now.mockRestore();
+      expect(projectQueries(client)).toHaveLength(1);
+      expect(client.projects.listDocuments.mock.calls.length).toBeGreaterThanOrEqual(4);
+      expect(gloss(precedentBase(b))).toEqual(new Map([['go', 1]]));
+    });
+
+    it('counts again when someone else saved a document, and drops what the old count kept', async () => {
+      const glossByDoc = { a: [['kai', 'go']], b: [['kai', 'go']], c: [] };
+      const versions = {};
+      const client = fakeClient(glossByDoc, versions);
+      const a = docOf(client, 'a', [['kai', 'go']]);
+      await openPrecedent(a);
+      editGlosses(a, [['kai', 'eat']]);
+      leavePrecedent(a, { wordFields: ['Gloss'] });
+      // Another person, or this person in another tab, reglosses b, and the
+      // edit to a lands too.
+      glossByDoc.b = [['kai', 'sleep']];
+      versions.b = 2;
+      glossByDoc.a = [['kai', 'eat']];
+      versions.a = 2;
+      client.documentVersions = { a: 2 };
+      const c = docOf(client, 'c');
+      await openPrecedent(c);
+      expect(projectQueries(client)).toHaveLength(2);
+      expect(gloss(precedentBase(c))).toEqual(
+        new Map([
+          ['eat', 1],
+          ['sleep', 1],
+        ]),
+      );
+    });
+
+    it("never counts again for this tab's own saves", async () => {
+      const glossByDoc = { a: [['kai', 'go']], b: [] };
+      const versions = {};
+      const client = fakeClient(glossByDoc, versions);
+      const a = docOf(client, 'a', [['kai', 'go']]);
+      await openPrecedent(a);
+      // Saved while open: the tab's own write, and the check on coming back
+      // to the tab.
+      editGlosses(a, [['kai', 'eat']]);
+      glossByDoc.a = [['kai', 'eat']];
+      versions.a = 2;
+      client.documentVersions = { a: 2 };
+      await openPrecedent(a, { check: true });
+      leavePrecedent(a, { wordFields: ['Gloss'] });
+      const b = docOf(client, 'b');
+      await openPrecedent(b);
+      await openPrecedent(b, { check: true });
+      expect(projectQueries(client)).toHaveLength(1);
+      expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+    });
+
+    it('counts a save made elsewhere to the document open here once it is left', async () => {
+      const glossByDoc = { a: [['kai', 'go']], b: [] };
+      const versions = {};
+      const client = fakeClient(glossByDoc, versions);
+      const a = docOf(client, 'a', [['kai', 'go']]);
+      await openPrecedent(a);
+      // Its rows are out of the count and it is folded live, so a save to it
+      // from another tab changes nothing the count holds while it is open.
+      glossByDoc.a = [['kai', 'eat']];
+      versions.a = 2;
+      await openPrecedent(a, { check: true });
+      expect(projectQueries(client)).toHaveLength(1);
+      // Left untouched here, it is held to the version the count listed.
+      leavePrecedent(a, { wordFields: ['Gloss'] });
+      const b = docOf(client, 'b');
+      await openPrecedent(b);
+      expect(projectQueries(client)).toHaveLength(2);
+      expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+    });
+
+    it('counts again when a document is added or deleted', async () => {
+      const glossByDoc = { a: [], b: [['kai', 'go']] };
+      const client = fakeClient(glossByDoc);
+      const a = docOf(client, 'a');
+      await openPrecedent(a);
+      delete glossByDoc.b;
+      await openPrecedent(a, { check: true });
+      expect(projectQueries(client)).toHaveLength(2);
+      expect(precedentBase(a)).not.toBeNull();
+      expect(gloss(precedentBase(a))).toBeNull();
+      glossByDoc.c = [['kai', 'eat']];
+      await openPrecedent(a, { check: true });
+      expect(projectQueries(client)).toHaveLength(3);
+      expect(gloss(precedentBase(a))).toEqual(new Map([['eat', 1]]));
+    });
+
+    it('keeps what it holds when the question cannot be answered', async () => {
+      const client = fakeClient({ a: [], b: [['kai', 'go']] });
+      const a = docOf(client, 'a');
+      await openPrecedent(a);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      client.projects.listDocuments.mockRejectedValueOnce(new Error('down'));
+      await openPrecedent(a, { check: true });
+      warn.mockRestore();
+      expect(projectQueries(client)).toHaveLength(1);
+      expect(gloss(precedentBase(a))).toEqual(new Map([['go', 1]]));
+    });
   });
 
   it('a failed read leaves the document on its own, and is asked again only after a wait', async () => {

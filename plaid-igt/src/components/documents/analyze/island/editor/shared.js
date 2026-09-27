@@ -10,8 +10,9 @@ import { keys } from '@/lib/keymap.js';
 export const numHtml = (sub, cls) => (sub ? html`<sub class="${cls}__num">${sub}</sub>` : nothing);
 
 export const EMPTY_SET = new Set();
-// Minimum time between tab-focus-triggered precedent refetches (see
-// _onVisibility in the constructor and the force path in _ensurePrecedent).
+// Minimum time between tab-focus-triggered checks of the project precedent
+// (see _onVisibility in the constructor and the check path in
+// _ensurePrecedent). A check that finds a save made elsewhere counts again.
 export const PRECEDENT_REFRESH_MIN_MS = 60_000;
 
 // ---- uncontrolledValue: set input.value only when the user is not mid-edit
