@@ -1834,10 +1834,10 @@ describe("runNativeImport, other apps' layers", () => {
     const { client, result } = await freshImport(archive);
     expect(argsOf(client, 'tokenLayers.create').map((c) => c[1])).toEqual(['Nodes']);
     expect(result.warnings).toEqual([
-      'Annotation layer "Words" skipped (the layer it is nested in is missing)',
-      'Annotation layer "Parts" skipped (the layer it is nested in is missing)',
-      '"Doc One": 1 token from another app skipped (their layer is missing)',
-      '"Doc One": 1 token from another app skipped (their layer is missing)',
+      'Another app\'s annotations "Words" skipped (the archive does not describe where they go)',
+      'Another app\'s annotations "Parts" skipped (the archive does not describe where they go)',
+      '"Doc One": 1 token from another app skipped (the archive does not describe where they go)',
+      '"Doc One": 1 token from another app skipped (the archive does not describe where they go)',
     ]);
   });
 });
@@ -1911,7 +1911,7 @@ describe('importOtherLayerData', () => {
       warnings,
     });
     expect(warnings).toEqual([
-      '"Doc": 1 token from another app skipped (their layer is missing)',
+      '"Doc": 1 token from another app skipped (the archive does not describe where they go)',
       '"Doc": 1 annotation from another app skipped (unresolvable tokens)',
       '"Doc": 1 relation skipped (unresolvable annotations)',
     ]);

@@ -30,6 +30,18 @@ const sameValue = (a, b) => a !== undefined && canonical(a) === canonical(b);
 
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
+// A warning names what the linguist knows, never the layer underneath.
+const ROLE_NOUN = {
+  [ROLES.BASELINE]: 'the text',
+  [ROLES.SENTENCE]: 'sentences',
+  [ROLES.WORD]: 'words',
+  [ROLES.SYNTACTIC_WORD]: 'syntactic words',
+  [ROLES.MORPHEME]: 'morphemes',
+  [ROLES.TIME_ALIGNMENT]: 'time alignment',
+};
+const roleNoun = (role) => ROLE_NOUN[role] ?? role;
+const NOT_DESCRIBED = 'the archive does not describe where they go';
+
 /** What `restoreOtherLayers` found or made: archive ids mapped onto the project's. */
 export const noOtherLayers = () => ({
   // Archive token layer ids, parents first: the order their tokens are made in.
@@ -126,7 +138,9 @@ export async function restoreOtherLayers({
     const isText = role === ROLES.BASELINE;
     const layer = isText ? textLayer : ownByRole.get(role);
     if (!layer) {
-      warnings.push(`Settings another app keeps on the ${role} layer skipped (no such layer)`);
+      warnings.push(
+        `Another app's settings for ${roleNoun(role)} skipped (the project is not set up for ${roleNoun(role)})`,
+      );
       continue;
     }
     const setConfig = isText
@@ -152,8 +166,10 @@ export async function restoreOtherLayers({
       }
     }
     if (!layer) {
-      const missing = host ? `no ${row.scope} field of that name` : `no ${row.tokenLayer} layer`;
-      warnings.push(`Annotation layer "${row.name}" skipped (${missing})`);
+      const missing = host
+        ? `no ${row.scope} field of that name`
+        : `the project is not set up for ${roleNoun(row.tokenLayer)}`;
+      warnings.push(`Another app's annotations "${row.name}" skipped (${missing})`);
       continue;
     }
     out.spanLayers.set(row.id, layer.id);
@@ -189,9 +205,7 @@ export async function restoreOtherLayers({
     if (row.parent?.role) parentId = ownByRole.get(row.parent.role)?.id ?? null;
     else if (row.parent?.id) parentId = out.tokenLayers.get(row.parent.id)?.id ?? null;
     if (row.parent && !parentId) {
-      warnings.push(
-        `Annotation layer "${row.name}" skipped (the layer it is nested in is missing)`,
-      );
+      warnings.push(`Another app's annotations "${row.name}" skipped (${NOT_DESCRIBED})`);
       continue;
     }
     const overlapMode = row.overlapMode ?? 'any';
@@ -284,7 +298,7 @@ export async function importOtherLayerData({
     const layer = restored.tokenLayers.get(oldLayerId);
     if (!layer) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'token')} from another app skipped (their layer is missing)`,
+        `"${name}": ${plural(rows.length, 'token')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
@@ -317,7 +331,7 @@ export async function importOtherLayerData({
     const spanLayerId = restored.spanLayers.get(oldLayerId);
     if (!spanLayerId) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'annotation')} from another app skipped (their layer is missing)`,
+        `"${name}": ${plural(rows.length, 'annotation')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
@@ -351,7 +365,7 @@ export async function importOtherLayerData({
     const relationLayerId = restored.relationLayers.get(oldLayerId);
     if (!relationLayerId) {
       warnings.push(
-        `"${name}": ${plural(rows.length, 'relation')} skipped (their layer is missing)`,
+        `"${name}": ${plural(rows.length, 'relation')} from another app skipped (${NOT_DESCRIBED})`,
       );
       continue;
     }
