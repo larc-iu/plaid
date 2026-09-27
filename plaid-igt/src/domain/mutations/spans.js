@@ -179,7 +179,7 @@ export const spanMutations = {
     );
     const confirm = span ? this.confirmStamp(span.metadata) : null;
     if (!confirm) return true;
-    const label = `Failed to confirm ${fieldName}`;
+    const label = `Failed to accept ${fieldName}`;
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, infoNext) => {
       const layerDoc = (infoNext.spanLayers?.sentence || []).find((sl) => sl.id === layer.id);

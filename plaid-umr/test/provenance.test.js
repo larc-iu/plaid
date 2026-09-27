@@ -309,6 +309,11 @@ test('confirming a node confirms it and its relation to its parent, and nothing 
   assert.equal(doc.node(country.id).metadata[PROV.sourceKey], 'service:umr-draft-llm');
   const patched = calls.filter((c) => c.name.endsWith('patchMetadata')).map((c) => c.args[0]);
   assert.deepEqual(new Set(patched), new Set([country.id, into.id]));
+  // The history names the gesture as the canvas does: Accept.
+  assert.ok(
+    calls.some((c) => c.name === 'operation' && c.args[0] === `Accept ${country.var}`),
+    'the operation is named Accept',
+  );
   // Nothing is left to confirm, so a second confirm writes nothing.
   assert.equal(doc.canConfirm(country.id), false);
   const before = calls.length;
@@ -317,9 +322,13 @@ test('confirming a node confirms it and its relation to its parent, and nothing 
 });
 
 test("confirming a sentence's graph confirms every node and edge in it", async () => {
-  const { doc } = load({ machine: true });
+  const { doc, calls } = load({ machine: true });
   assert.equal(doc.canConfirmSentence(1), true);
   assert.equal(await doc.confirmSentence(1), true);
+  assert.ok(
+    calls.some((c) => c.name === 'operation' && c.args[0] === 'Accept the graph of sentence 1'),
+    'the operation is named as the Accept graph button is',
+  );
   const s1 = doc.sentence(1);
   s1.nodes.forEach((n) => assert.equal(provState(n.metadata), PROV_STATES.VERIFIED, n.var));
   s1.edges.forEach((e) => assert.equal(provState(e.metadata), PROV_STATES.VERIFIED, e.role));

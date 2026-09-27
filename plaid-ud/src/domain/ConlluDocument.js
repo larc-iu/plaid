@@ -1524,7 +1524,7 @@ export class ConlluDocument extends DocumentModel {
   async confirmTokens(tokenIds) {
     const idSet = new Set(tokenIds || []);
     if (idSet.size === 0) return false;
-    const label = 'Failed to confirm annotations';
+    const label = 'Failed to accept annotations';
     if (!this._canWrite(label)) return false;
     const info = this.layerInfo;
     const spanLayers = [
@@ -1596,7 +1596,7 @@ export class ConlluDocument extends DocumentModel {
             b.relations.patchMetadata(settledId(id), metadataOps(patch));
           }
         }),
-      'Confirm predicted annotations',
+      'Accept predicted annotations',
     );
   }
 

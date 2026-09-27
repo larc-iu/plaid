@@ -759,7 +759,7 @@ export const analysisCopyMutations = {
     }
 
     if (!spanIds.length && !tokenIds.length && !linkIds.length && !writes.length) return true;
-    const label = 'Failed to confirm word analysis';
+    const label = 'Failed to accept word analysis';
     if (!this._canWrite(label)) return false;
 
     // An adoption can target the morpheme derive synthesized for a word

@@ -100,7 +100,7 @@ export const KEY_ACTIONS = [
     id: 'node.confirm',
     scope: 'canvas',
     group: 'node',
-    label: 'Confirm the node and its relation to its parent',
+    label: 'Accept the node and its relation to its parent',
     keys: ['Mod+Enter'],
   },
   {

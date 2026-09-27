@@ -1130,7 +1130,7 @@ export class UmrDocument extends DocumentModel {
   confirmNode(nodeId) {
     const node = this.node(nodeId);
     if (!node || node.constant) return Promise.resolve(false);
-    return this._confirm([node], 'Failed to confirm the node', `Confirm ${node.var}`);
+    return this._confirm([node], 'Failed to accept the node', `Accept ${node.var}`);
   }
 
   /** Every node and edge of a sentence's graph, as `confirmNode` does one. */
@@ -1139,8 +1139,8 @@ export class UmrDocument extends DocumentModel {
     if (!sentence) return Promise.resolve(false);
     return this._confirm(
       sentence.nodes,
-      'Failed to confirm the graph',
-      `Confirm the graph of sentence ${sentenceIndex}`,
+      'Failed to accept the graph',
+      `Accept the graph of sentence ${sentenceIndex}`,
     );
   }
 

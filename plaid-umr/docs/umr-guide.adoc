@@ -126,9 +126,9 @@ The **Annotate** tab draws every sentence of the document as a block: the graph 
 A node shows its variable, its concept, and its attributes as a line of text (`aspect performance · polarity -`).
 A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
-A node a service drafted is tinted violet, and one made by a member whose work the project reviews is tinted amber; the tint goes when you edit the node, which records it as yours.
-To accept a node as it stands, choose **Confirm** on its menu or press Ctrl+Enter (Cmd+Enter). That confirms the node and its relation to its parent. **Confirm graph** beside a sentence confirms every node and relation of it.
-A confirmed node is kept when a draft overwrites the sentence.
+A node a service drafted has a dashed violet border, and one made by a member whose work the project reviews a dashed amber one. The mark goes when you edit the node, which records it as yours.
+To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter (Cmd+Enter). That accepts the node and its relation to its parent. **Accept graph** beside a sentence accepts every node and relation of it.
+An accepted node is kept when a draft overwrites the sentence.
 The root's concept is underlined.
 
 == Edges
@@ -152,7 +152,7 @@ Which layers feed which lines is set in **Project Settings, UMR settings** (see 
 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
 Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
-A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in purple, temporal ones in teal, coreference in amber.
+A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in dark blue-grey, temporal ones in teal, coreference in brown.
 The tag reads the triple in its own order, with a dot where the node itself stands: `(s3d :before s3b)` is `● :before s3b` on `s3d` and `s3d :before ●` on `s3b`. A temporal relation says how the second node stands to the first, its reference time, so here `s3b` is before `s3d`.
 The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
 `author :full-affirmative`, which nearly every event carries, is grey, so that any other modality stands out.
@@ -341,7 +341,7 @@ The defaults. Every shortcut can be rebound under your profile, Keyboard.
 | o | Modal relation
 | n | New node with no parent
 | Ctrl+Shift+R | Make the node the root
-| Ctrl+Enter | Confirm the node and its relation to its parent
+| Ctrl+Enter | Accept the node and its relation to its parent
 | Shift+Backspace | Delete the edge to the parent, with what only it reached
 | Ctrl+Shift+Backspace | Delete the node and everything under it
 | Escape | Leave a mode, cancel a picker, or unfocus the node

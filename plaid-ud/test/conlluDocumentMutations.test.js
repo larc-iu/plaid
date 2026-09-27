@@ -357,6 +357,11 @@ test("a contributor's edit of a plain annotation marks it contributed; a verifie
 test('confirmTokens: a contributor takes machine proposals as contributions and leaves contributed work alone', async () => {
   const raw = rawDocFromConllu(INPUT, 'mut-doc');
   const client = provClient();
+  const operations = [];
+  client.withOperation = async (label, fn) => {
+    operations.push(label);
+    return fn();
+  };
   const doc = asAnn(raw, client);
   const noun = doc.layerInfo.uposLayer.spans.find((s) => s.value === 'NOUN');
   noun.metadata = { prov: 'inferred', provSource: 'service:stanza-parser' };
@@ -364,6 +369,8 @@ test('confirmTokens: a contributor takes machine proposals as contributions and 
   det.metadata = { ...CONTRIBUTED };
 
   assert.equal(await doc.confirmTokens([...noun.tokens, ...det.tokens]), true);
+  // The history names the gesture as the button does (idiom ruling 05).
+  assert.deepEqual(operations, ['Accept predicted annotations']);
   const patches = client.calls.filter((c) => c[0] === 'spans.patchMetadata');
   assert.deepEqual(
     patches.map((c) => c[1]),

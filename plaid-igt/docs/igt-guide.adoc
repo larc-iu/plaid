@@ -308,8 +308,8 @@ Plaid IGT tracks who, or what, produced every value.
 Four states are distinguished in the grid:
 
 * A value **you typed** shows plain. So does a marked value once you have edited or confirmed it.
-* A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to confirm or discard it.
-* A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to confirm or discard it.
+* A **machine-made** value, such as a gloss a service proposed or a vocabulary link Auto-analyze made, shows in **violet italic**. It is in the document, and it waits for a person to accept or discard it.
+* A **contributed** value shows in **amber italic**. It was entered by someone whose work the project reviews (see <<_access>>), and it waits for a verifier to accept or discard it.
 * A **guess** is a faint gray placeholder in an empty cell. It is not in the document at all until you take it with Enter.
 The small form beneath a word or morpheme is the lexicon entry it is linked to, and nothing beneath it means it has no link.
 
@@ -514,7 +514,7 @@ The popover for a single word lists the multi-word expressions it is part of, an
 Most of the words in a running text are repeats, and much of the rest can be guessed at.
 **Auto-analyze**, a button on the Analyze tab's toolbar, makes that first pass over a whole document so that your time goes into checking rather than typing.
 It runs up to four steps in order, each of which you can switch on or off.
-Everything it produces is marked as machine-made and shows in violet until you confirm or discard it (see <<_provenance>>), and nothing a person has written is ever changed.
+Everything it produces is marked as machine-made and shows in violet until you accept or discard it (see <<_provenance>>), and nothing a person has written is ever changed.
 
 == The four steps
 
@@ -534,7 +534,7 @@ Editing is paused for as long as the run writes, and the document says so at the
 Reloading the page does not stop it, but it does end the run early: the step that was in flight is picked up and finishes, and the steps after it do not run.
 **Stop** ends the run at whichever step it is on, whether that step is a service or one of the built-in ones, and the steps after it do not run.
 When the run finishes, a message says what was done: how many translations were proposed, how many words received a copied analysis, and so on. It also says when a service went without a field it reads for context, such as the translation an analysis service is shown.
-Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** confirms a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
+Then review the result with the gestures under <<_analyze>>: **Ctrl/Cmd+Enter** accepts a whole word, **Ctrl/Cmd+Backspace** discards its proposal, and **Ctrl/Cmd+Shift+↑/↓** jumps between the words that still have unconfirmed material.
 
 == Copying previous analyses
 
