@@ -469,6 +469,7 @@ def test_the_fake_methods_take_the_real_signatures():
              (testing.FakeClient._Comments, real.CommentsResource),
              (testing.FakeClient._Guidelines, real.GuidelinesResource),
              (testing.FakeClient._UserData, real.UserDataResource),
+             (testing.FakeClient._Messages, real.MessagesResource),
              (testing._BatchUserData, real.UserDataResource),
              (testing._Operation, real._OperationContext)]
     for fake, real_cls in pairs:
@@ -655,3 +656,80 @@ def test_an_audit_entry_and_each_of_its_ops_carry_the_time_to_read_at():
     assert second['end_time'] == 'T9' and second['ops'][0]['end_time'] == 'T9'
     assert [e['end_time'] for e in c.projects.audit('p')] == ['T3', 'T9']
     assert 'end_time' not in c.audit[0]  # the fixture itself is not changed
+
+
+def test_an_op_types_read_ends_each_entry_at_the_last_op_it_kept():
+    """The server's entry end_time is its last member's, and a filter drops
+    members, so a filtered entry ends where its last kept op does."""
+    c = _project_client(audit=[
+        {'id': 'a', 'time': 'T1', 'documents': [{'id': 'd'}],
+         'ops': [{'type': 'span/create', 'time': 'T1'},
+                 {'type': 'span/delete', 'time': 'T2'}]}])
+    [entry] = c.documents.audit('d', op_types=['span/create'])
+    assert [o['type'] for o in entry['ops']] == ['span/create']
+    assert entry['end_time'] == 'T1'
+    assert c.documents.audit('d')[0]['end_time'] == 'T2'
+
+
+def _two_projects(**kw):
+    other = {'project': {'id': 'q', 'name': 'Q', 'text_layers': [{'id': 'qtl'}]},
+             'documents': {'qd': {'id': 'qd', 'name': 'QD', 'text_layers': [{'id': 'qtl'}]}},
+             'guidelines': [{'id': 'qg', 'title': 'Theirs', 'body': 'x', 'pinned': False}],
+             'comments': [{'id': 'qc', 'body': 'hi'}],
+             'audit': [{'id': 'qa', 'time': 'T5', 'documents': [{'id': 'qd'}]}]}
+    return _project_client(
+        audit=[{'id': 'a', 'time': 'T1', 'documents': [{'id': 'd'}]}],
+        guidelines=[{'id': 'g', 'title': 'Ours', 'body': '', 'pinned': False}],
+        comments=[{'id': 'c', 'body': 'ours'}],
+        projects={'q': other},
+        services={'q': [{'service_id': 's', 'online': True}]}, **kw)
+
+
+def test_a_fake_given_other_projects_answers_each_read_for_the_project_it_names():
+    c = _two_projects()
+    assert c.projects.get('p')['name'] == 'P' and c.projects.get('q')['name'] == 'Q'
+    assert [p['id'] for p in c.projects.list()] == ['p', 'q']
+    assert [d['id'] for d in c.projects.list_documents('q')] == ['qd']
+    assert [d['id'] for d in c.projects.list_documents('p')] == ['d', 'e']
+    assert [e['id'] for e in c.projects.audit('q')] == ['qa']
+    assert [e['id'] for e in c.projects.audit('p')] == ['a']
+    assert [g['title'] for g in c.guidelines.list('q')] == ['Theirs']
+    assert [g['title'] for g in c.guidelines.list('p')] == ['Ours']
+    assert c.guidelines.get('qg')['title'] == 'Theirs'
+    assert [r['id'] for r in c.comments.list('q')] == ['qc']
+    # A document is read from whichever project holds it, its layers too.
+    assert c.documents.get('qd')['name'] == 'QD'
+    assert c.documents.get('qd', include_body=True, layers=['qtl'])['id'] == 'qd'
+    assert [e['id'] for e in c.documents.audit('qd')] == ['qa']
+    assert c.documents.get('d')['name'] == 'D'
+    assert c.messages.discover_services('q') == [{'service_id': 's', 'online': True}]
+    assert c.messages.discover_services('p') == []
+
+
+def test_a_project_the_fake_does_not_know_is_a_403_once_it_knows_several():
+    c = _two_projects()
+    for read in (lambda: c.projects.get('x'), lambda: c.projects.list_documents('x'),
+                 lambda: c.projects.audit('x'), lambda: c.guidelines.list('x'),
+                 lambda: c.comments.list('x'), lambda: c.messages.discover_services('x')):
+        with pytest.raises(PlaidAPIError) as e:
+            read()
+        assert e.value.status == 403
+    # Knowing one project, every id is that one, as before.
+    single = _project_client()
+    assert single.projects.get('x')['id'] == 'p'
+    assert single.messages.discover_services('x') == []
+
+
+def test_a_guideline_write_lands_in_the_project_it_names_and_a_refused_batch_undoes_it():
+    c = _two_projects()
+    c.guidelines.create('q', 'New')
+    assert [g['title'] for g in c.guidelines.list('q')] == ['Theirs', 'New']
+    assert [g['title'] for g in c.guidelines.list('p')] == ['Ours']
+    c.guidelines.delete('qg')
+    assert [g['title'] for g in c.guidelines.list('q')] == ['New']
+    with pytest.raises(PlaidAPIError):
+        with c.batched() as b:
+            b.guidelines.create('q', 'Rolled back')
+            b.guidelines.update('g', title='X', expected_updated_at='stale')
+    assert [g['title'] for g in c.guidelines.list('q')] == ['New']
+    assert [g['title'] for g in c.guidelines.list('p')] == ['Ours']

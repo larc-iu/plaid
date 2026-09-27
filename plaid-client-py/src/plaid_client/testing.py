@@ -356,13 +356,14 @@ class _Batch:
         if self._refused is not None:
             raise self._refused
         # One transaction: an effect that refuses rolls back the ones before it.
-        rows = self.client.guideline_rows
-        before = [dict(r) for r in rows]
+        tables = self.client._guideline_tables()
+        before = [[dict(r) for r in rows] for rows in tables]
         try:
             for effect in effects:
                 effect()
         except BaseException:
-            rows[:] = before
+            for rows, saved in zip(tables, before):
+                rows[:] = saved
             raise
         self.client.batches.append(list(queued))
         self.client.calls.extend(queued)
@@ -588,12 +589,11 @@ def _pruned(doc, named):
 
 
 def _with_end_times(entry):
-    """A copy of a fixture audit entry carrying ``end_time`` as the server
-    sends it, where the fixture left it out: on each op, the time to read at
-    to see that op done (its own ``time``, or the last ``time`` among the
-    entry's ops of its ``batch_id``), and on the entry, its last op's. An op
-    with no ``time`` of its own takes the entry's. A value the fixture gives
-    is kept."""
+    """A copy of a fixture audit entry carrying ``end_time`` on each op as the
+    server sends it, where the fixture left it out: the time to read at to see
+    that op done (its own ``time``, or the last ``time`` among the entry's ops
+    of its ``batch_id``). An op with no ``time`` of its own takes the entry's.
+    A value the fixture gives is kept."""
     ops = [dict(o) for o in entry.get('ops') or []]
     batch_end = {}
     for o in ops:
@@ -605,23 +605,32 @@ def _with_end_times(entry):
     out = {**entry}
     if 'ops' in entry:
         out['ops'] = ops
-    out.setdefault('end_time', ops[-1]['end_time'] if ops else entry.get('time'))
     return out
+
+
+def _with_entry_end_time(entry, given):
+    """``entry`` with the ``end_time`` the server gives it, its last op's
+    (after an ``op_types`` filter, the last op the filter kept), unless the
+    fixture ``given`` carried one."""
+    if 'end_time' in given:
+        return entry
+    ops = entry.get('ops') or []
+    return {**entry, 'end_time': ops[-1]['end_time'] if ops else entry.get('time')}
 
 
 def _audit_filter(entries, start_time, end_time, op_types):
     """An audit read's filters, as the server applies them: the time range is
     inclusive at both ends, and ``op_types`` keeps an entry one of whose
     operations matches, carrying only the ones that do."""
-    out = [_with_end_times(e) for e in entries
+    out = [(_with_end_times(e), e) for e in entries
            if (not start_time or (e.get('time') or '') >= start_time)
            and (not end_time or (e.get('time') or '') <= end_time)]
     if op_types:
         types = set(op_types.split(',') if isinstance(op_types, str) else op_types)
-        out = [{**e, 'ops': [o for o in e.get('ops') or [] if o.get('type') in types]}
-               for e in out]
-        out = [e for e in out if e['ops']]
-    return out
+        out = [({**e, 'ops': [o for o in e.get('ops') or [] if o.get('type') in types]}, given)
+               for e, given in out]
+        out = [(e, given) for e, given in out if e['ops']]
+    return [_with_entry_end_time(e, given) for e, given in out]
 
 
 class FakeClient:
@@ -648,13 +657,26 @@ class FakeClient:
     does not apply a write to the documents, the comments or the audit log: a
     later read sees the fixture as it was given. Guidelines and user data
     are the two it keeps up to date.
+
+    A caller that reads SEVERAL projects (an assistant a user has added other
+    projects to) also gives ``projects``, the other projects this user can
+    read, as ``{pid: {'project', 'documents', 'guidelines', 'comments',
+    'audit'}}`` (every key but ``project`` optional, ``documents`` by id).
+    ``projects.get``, ``projects.list``, ``projects.list_documents``,
+    ``projects.audit``, ``guidelines.list`` and ``comments.list`` then answer
+    for the project they name, ``documents.get`` and ``documents.audit`` for
+    the project holding the document, and a project that is neither this one
+    nor in the map is the 403 the server gives a user who cannot read it.
+    Without ``projects``, ``projects.get`` answers ``project`` whatever id it
+    is given. ``services`` is ``{pid: [service entries]}``, what
+    ``messages.discover_services`` answers for each project.
     """
 
     #: resources a caller may write through, each recording under its own name.
     RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links', 'vocab_items')
 
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
-                 comments=None, restore_summary=None):
+                 comments=None, restore_summary=None, projects=None, services=None):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -681,6 +703,18 @@ class FakeClient:
         self.guideline_rows = list(guidelines or [])
         self.comment_rows = list(comments or [])
         self.restore_summary = restore_summary
+        #: the other projects this user can read, each as ``{'project',
+        #: 'documents', 'guidelines', 'comments', 'audit'}``, or None when the
+        #: fake knows one project only
+        self.other_projects = None if projects is None else {
+            pid: {'project': spec['project'],
+                  'documents': dict(spec.get('documents') or {}),
+                  'guidelines': list(spec.get('guidelines') or []),
+                  'comments': list(spec.get('comments') or []),
+                  'audit': list(spec.get('audit') or [])}
+            for pid, spec in projects.items()}
+        #: {pid: [service entries]} for ``messages.discover_services``
+        self.services = {pid: list(entries) for pid, entries in (services or {}).items()}
         self._ids = itertools.count(1)
         self._operation_depth = 0
         self.documents = FakeClient._Documents(self)
@@ -688,6 +722,7 @@ class FakeClient:
         self.comments = FakeClient._Comments(self)
         self.guidelines = FakeClient._Guidelines(self)
         self.user_data = FakeClient._UserData(self.base_url)
+        self.messages = FakeClient._Messages(self)
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
 
@@ -741,6 +776,37 @@ class FakeClient:
 
     def document(self, index=-1):
         return self._documents[index]
+
+    # -- which project answers --
+    def _home(self):
+        """This project's own fixture, in the shape of an ``other_projects``
+        entry. The lists are the fake's own, so a guideline write shows."""
+        return {'project': self.project, 'documents': self._documents,
+                'guidelines': self.guideline_rows, 'comments': self.comment_rows,
+                'audit': self.audit}
+
+    def _project(self, project_id, path):
+        """The fixture of the project ``project_id`` names. Knowing several,
+        one it does not know is the server's 403 for a user who cannot read
+        it. Knowing one, every id is that one."""
+        if self.other_projects is None or project_id == (self.project or {}).get('id'):
+            return self._home()
+        if project_id in self.other_projects:
+            return self.other_projects[project_id]
+        raise _refusal(self, 403, 'You do not have access to this project', 'GET', path)
+
+    def _holder(self, document_id):
+        """The fixture of the project holding the document: another
+        project's when one of them has it, else this one's."""
+        for spec in (self.other_projects or {}).values():
+            if document_id in spec['documents']:
+                return spec
+        return self._home()
+
+    def _guideline_tables(self):
+        """Every project's guideline rows, this one's first."""
+        return [self.guideline_rows,
+                *(spec['guidelines'] for spec in (self.other_projects or {}).values())]
 
     # -- the client surface --
     def batch(self):
@@ -799,18 +865,20 @@ class FakeClient:
             if named and not include_body:
                 raise _refusal(root, 400, '?layers= selects which layers a body read returns, '
                                'so it requires include-body=true.', 'GET', path)
-            if isinstance(root._documents, dict):
-                if document_id not in root._documents:
+            holder = root._holder(document_id)
+            documents = holder['documents']
+            if isinstance(documents, dict):
+                if document_id not in documents:
                     raise _refusal(root, 404, 'Document not found', 'GET', path)
-                doc = root._documents[document_id]
+                doc = documents[document_id]
             else:
-                doc = root._documents[min(len(root.reads) - 1, len(root._documents) - 1)]
+                doc = documents[min(len(root.reads) - 1, len(documents) - 1)]
             if not include_body:
                 return {k: v for k, v in doc.items() if k != 'text_layers'}
             if not named:
                 return doc
             named = set(named.split(','))
-            unknown = sorted(named - _layer_ids(doc) - _layer_ids(root.project))
+            unknown = sorted(named - _layer_ids(doc) - _layer_ids(holder['project']))
             if unknown:
                 raise _refusal(root, 400, 'No such layer in this document\'s project: '
                                + ', '.join(unknown), 'GET', path)
@@ -827,7 +895,7 @@ class FakeClient:
                 self._root.calls.append(('unlock', document_id))
 
         def audit(self, document_id, *, start_time=None, end_time=None, op_types=None):
-            entries = [e for e in self._root.audit
+            entries = [e for e in self._root._holder(document_id)['audit']
                        if any(d['id'] == document_id for d in e.get('documents', []))]
             return _audit_filter(entries, start_time, end_time, op_types)
 
@@ -860,10 +928,16 @@ class FakeClient:
             self._client = client
 
         def get(self, id):
-            return self._client.project
+            return self._client._project(id, f'/api/v1/projects/{id}')['project']
+
+        def list(self):
+            c = self._client
+            home = [c.project] if c.project else []
+            return home + [spec['project'] for spec in (c.other_projects or {}).values()]
 
         def audit(self, project_id, *, start_time=None, end_time=None, op_types=None):
-            return _audit_filter(self._client.audit, start_time, end_time, op_types)
+            spec = self._client._project(project_id, f'/api/v1/projects/{project_id}/audit')
+            return _audit_filter(spec['audit'], start_time, end_time, op_types)
 
         def audit_page(self, project_id, *, start_time=None, end_time=None,
                        op_types=None, order=None, limit=None, cursor=None):
@@ -872,7 +946,7 @@ class FakeClient:
             return self._client._audit_page(entries, order, limit, cursor, start_time)
 
         def list_documents(self, id):
-            docs = self._client._documents
+            docs = self._client._project(id, f'/api/v1/projects/{id}/documents')['documents']
             docs = docs.values() if isinstance(docs, dict) else docs
             return [{'id': d.get('id'), 'name': d.get('name'), 'version': d.get('version'),
                      'time_created': d.get('time_created'),
@@ -888,7 +962,8 @@ class FakeClient:
             self._root = _root(writer)
 
         def list(self, project_id, *, document_id=None, entity_type=None, entity_id=None):
-            return [r for r in self._root.comment_rows
+            rows = self._root._project(project_id, f'/api/v1/projects/{project_id}/comments')
+            return [r for r in rows['comments']
                     if (not document_id or r.get('document_id') == document_id)
                     and (not entity_type or r.get('entity_type') == entity_type)
                     and (not entity_id or r.get('entity_id') == entity_id)]
@@ -916,14 +991,22 @@ class FakeClient:
         def __init__(self, writer):
             self._writer = writer
             self._root = _root(writer)
-            self._rows = self._root.guideline_rows
+
+        def _rows(self, project_id):
+            path = f'/api/v1/projects/{project_id}/guidelines'
+            return self._root._project(project_id, path)['guidelines']
+
+        def _table(self, guideline_id, method):
+            """The rows of whichever project holds the guideline."""
+            for rows in self._root._guideline_tables():
+                if any(r.get('id') == guideline_id for r in rows):
+                    return rows
+            raise _refusal(self._root, 404, 'Guideline not found', method,
+                           f'/api/v1/guidelines/{guideline_id}')
 
         def _row(self, guideline_id, method):
-            row = next((r for r in self._rows if r.get('id') == guideline_id), None)
-            if row is None:
-                raise _refusal(self._root, 404, 'Guideline not found', method,
-                               f'/api/v1/guidelines/{guideline_id}')
-            return row
+            rows = self._table(guideline_id, method)
+            return next(r for r in rows if r.get('id') == guideline_id)
 
         def _write(self, kind, path, payload, result, effect):
             """Record a write and apply ``effect``, now on the client and at
@@ -943,7 +1026,7 @@ class FakeClient:
 
         def list(self, project_id, *, include_bodies=None):
             out = []
-            for r in self._rows:
+            for r in self._rows(project_id):
                 row = {'project': project_id, 'created_at': r.get('updated_at'), **r}
                 if not include_bodies:
                     row = {k: v for k, v in row.items() if k != 'body'} | {
@@ -960,8 +1043,10 @@ class FakeClient:
             row = {'id': new, 'project': project_id, 'title': title, 'body': body or '',
                    'pinned': bool(pinned), 'created_at': now, 'updated_at': now}
 
+            rows = self._rows(project_id)
+
             def effect():
-                self._rows.append(row)
+                rows.append(row)
                 return {'id': new}
             return self._write('guidelines.create', f'/api/v1/projects/{project_id}/guidelines',
                                {'args': (project_id, title), 'kwargs': {'body': body or ''}},
@@ -993,8 +1078,20 @@ class FakeClient:
             path = f'/api/v1/guidelines/{guideline_id}'
 
             def effect():
-                self._rows.remove(self._row(guideline_id, 'DELETE'))
+                self._table(guideline_id, 'DELETE').remove(self._row(guideline_id, 'DELETE'))
             return self._write('guidelines.delete', path, guideline_id, {'body': {}}, effect)
+
+    class _Messages:
+        """Service discovery, answered from ``services``. The route is
+        reader-gated, so a project the fake does not know is a 403."""
+
+        def __init__(self, client):
+            self._client = client
+
+        def discover_services(self, project_id):
+            c = self._client
+            c._project(project_id, f'/api/v1/projects/{project_id}/services')
+            return [dict(s) for s in c.services.get(project_id, [])]
 
     class _UserData:
         """The user's private key/value store, in memory and not logged. A
