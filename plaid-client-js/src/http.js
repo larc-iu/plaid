@@ -32,15 +32,16 @@ import { transformRequest, transformResponse } from "./transforms.js";
 //    written and leave the relabel PATCH 404ing on a group nothing ever
 //    created.
 //
-// Strict mode stamps the batch's one expected document-version onto the first
-// write queued on it (whole-batch OCC: stamping every op would 409 the second
-// against the bump the first caused). A call that went over the wire on its
-// own carries its own stamp and spends nothing of any batch's.
+// Strict mode stamps the expected document-version onto every write, queued
+// or not. The server checks the first write of a batch request that names the
+// document and skips the rest of that document's, so the bump one op causes
+// does not 409 the next. A batch split past MAX_BATCH_OPS restamps each later
+// request with the version the one before it left (see submitBatch).
 //
-// `noBatch` is not part of that judgment. It marks the five calls the batch
-// transport cannot carry at all (a batch inside a batch, the multipart media
-// and avatar uploads, the user-data store's put and delete) and raises so the
-// caller finds out. Never put it on a read: it turns a swallowed read into a
+// `noBatch` is not part of that judgment. It marks the four calls the batch
+// transport cannot carry at all (the multipart media and avatar uploads, the
+// user-data store's put and delete) and raises so the caller finds out. A
+// batch inside a batch is refused by the batch itself. Never put it on a read: it turns a swallowed read into a
 // thrown one, which is what the chrome hit when an unrelated import was
 // running. A blobless DELETE beside an upload is not one of them: it carries
 // nothing the transport cannot express, so it takes its class from the three
@@ -293,48 +294,15 @@ export function xhrSend(
 }
 
 /**
- * Generic request method handling all fetch logic.
- *
- * Options:
- *   body            - Object body, run through transformRequest
- *   rawBody         - Body value passed directly (no transform). Mutually exclusive with body.
- *   formData        - If true, body is FormData; skip Content-Type header
- *   queryParams     - Object of query param key/values to append
- *   noBatch         - If true, throw when made on a batch. Only for calls the
- *                     batch transport cannot carry at all (see the note at the
- *                     top of this file); never for a read.
- *   outOfBand       - If true, the call is a signal rather than a write of
- *                     project data: made on a batch it still goes over the
- *                     wire, and it never joins an open logical operation (see
- *                     the note at the top of this file).
- *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
- *   noAuth          - Skip Authorization header
- *   binaryResponse  - Return arrayBuffer instead of JSON/text
- *   timeout         - Per-request timeout in ms overriding client.timeout
- *                     for this call (0/null disables). Used for known-long
- *                     ops like project delete.
- *   onUploadProgress - Called with `{ loaded, total }` (bytes; total null when
- *                     unknown) as the request body goes up. In a browser the
- *                     request then travels by XMLHttpRequest (see xhrSend),
- *                     where the timeout only fires when the upload stalls;
- *                     elsewhere the callback is ignored and fetch is used.
- */
-/**
  * Everything a request is before it goes anywhere: the URL with its query
  * params and the stamps strict mode, a per-call audit message and an open
  * logical operation add, plus the transformed body. Shared by the wire path
  * (`makeRequest`) and the batch path (`queueRequest`), so a queued op is
- * exactly the request that would have gone out. `batch` is the batch the call
- * is being queued on, if any: strict mode stamps its document-version onto the
- * first write queued there and no other.
+ * exactly the request that would have gone out. Strict mode stamps every
+ * write, queued or not, and `stampedDocument` names the document it stamped
+ * for (null when it stamped nothing).
  */
-export function prepareRequest(
-  client,
-  method,
-  path,
-  options = {},
-  batch = null,
-) {
+export function prepareRequest(client, method, path, options = {}) {
   const { body, rawBody, formData, queryParams, outOfBand, auditMessage } =
     options;
 
@@ -383,20 +351,23 @@ export function prepareRequest(
   // one. Stamping only the first write was silently no check at all
   // whenever that write was one the route ignores, such as a vocabulary
   // entry's metadata, which is exactly what the igt editor queues first.
+  // `stampedDocument` names the document the stamp is for, so a batch split
+  // into several requests can restamp its later ones (see submitBatch).
+  let stampedDocument = null;
   if (client.strictModeDocumentId && method !== "GET") {
     const docId = client.strictModeDocumentId;
     if (client.documentVersions[docId]) {
       const docVersion = client.documentVersions[docId];
       const separator = url.includes("?") ? "&" : "?";
       url += `${separator}document-version=${encodeURIComponent(docVersion)}`;
+      stampedDocument = docId;
     }
   }
 
   // Per-call custom audit-log message (overrides the auto-generated
-  // description of THIS write). Unlike document-version this has no OCC
-  // self-conflict, so it is stamped on every queued batch op, not just the
-  // first. The server templates `{param}` placeholders against the endpoint's
-  // own path/query/body params.
+  // description of THIS write), stamped on the one write it was given to. The
+  // server templates `{param}` placeholders against the endpoint's own
+  // path/query/body params.
   if (auditMessage && method !== "GET") {
     const separator = url.includes("?") ? "&" : "?";
     url += `${separator}audit-message=${encodeURIComponent(auditMessage)}`;
@@ -419,7 +390,25 @@ export function prepareRequest(
     group.written = true;
   }
 
-  return { url, requestBody };
+  return { url, requestBody, stampedDocument };
+}
+
+/**
+ * `path` with its strict-mode `document-version` claim replaced by `version`,
+ * or dropped when `version` is unknown. For the later requests of a batch
+ * split past MAX_BATCH_OPS: each op was stamped with the version the document
+ * had when it was queued, and every request before it has since moved the
+ * document on.
+ */
+export function restampDocumentVersion(path, version) {
+  const [base, query = ""] = path.split(/\?(.*)/s);
+  const params = query
+    .split("&")
+    .filter((p) => p && !p.startsWith("document-version="));
+  if (version !== undefined && version !== null) {
+    params.push(`document-version=${encodeURIComponent(version)}`);
+  }
+  return params.length ? `${base}?${params.join("&")}` : base;
 }
 
 /**
@@ -439,12 +428,11 @@ export async function queueRequest(batch, method, path, options = {}) {
   if (options.noBatch) {
     throw new Error(`This endpoint cannot be used in a batch: ${path}`);
   }
-  const { url, requestBody } = prepareRequest(
+  const { url, requestBody, stampedDocument } = prepareRequest(
     batch.client,
     method,
     path,
     options,
-    batch,
   );
   const operation = {
     path: url.replace(batch.client.baseUrl, ""),
@@ -454,9 +442,37 @@ export async function queueRequest(batch, method, path, options = {}) {
     operation.body = requestBody;
   }
   batch.operations.push(operation);
+  batch.stampedDocuments.push(stampedDocument);
   return { batched: true };
 }
 
+/**
+ * Generic request method handling all fetch logic.
+ *
+ * Options:
+ *   body            - Object body, run through transformRequest
+ *   rawBody         - Body value passed directly (no transform). Mutually exclusive with body.
+ *   formData        - If true, body is FormData; skip Content-Type header
+ *   queryParams     - Object of query param key/values to append
+ *   noBatch         - If true, throw when made on a batch. Only for calls the
+ *                     batch transport cannot carry at all (see the note at the
+ *                     top of this file); never for a read.
+ *   outOfBand       - If true, the call is a signal rather than a write of
+ *                     project data: made on a batch it still goes over the
+ *                     wire, and it never joins an open logical operation (see
+ *                     the note at the top of this file).
+ *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
+ *   noAuth          - Skip Authorization header
+ *   binaryResponse  - Return arrayBuffer instead of JSON/text
+ *   timeout         - Per-request timeout in ms overriding client.timeout
+ *                     for this call (0/null disables). Used for known-long
+ *                     ops like project delete.
+ *   onUploadProgress - Called with `{ loaded, total }` (bytes; total null when
+ *                     unknown) as the request body goes up. In a browser the
+ *                     request then travels by XMLHttpRequest (see xhrSend),
+ *                     where the timeout only fires when the upload stalls;
+ *                     elsewhere the callback is ignored and fetch is used.
+ */
 export async function makeRequest(client, method, path, options = {}) {
   const {
     formData,

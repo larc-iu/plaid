@@ -40,15 +40,16 @@ logger = logging.getLogger(__name__)
 #    writes, and a signal that is never audited would mark the group written
 #    and leave the relabel PATCH 404ing on a group nothing ever created.
 #
-# Strict mode stamps the batch's one expected document-version onto the first
-# write queued on it (whole-batch OCC: stamping every op would 409 the second
-# against the bump the first caused). A call that went over the wire on its
-# own carries its own stamp and spends nothing of any batch's.
+# Strict mode stamps the expected document-version onto every write, queued
+# or not. The server checks the first write of a batch request that names the
+# document and skips the rest of that document's, so the bump one op causes
+# does not 409 the next. A batch split past MAX_BATCH_OPS restamps each later
+# request with the version the one before it left (see ``_post_batch``).
 #
-# ``no_batch`` is not part of that judgment. It marks the five calls the batch
-# transport cannot carry at all (the multipart media and
-# avatar uploads, the user-data store's put and delete) and raises so the caller
-# finds out. Never put it on a read: it turns a swallowed read into a thrown
+# ``no_batch`` is not part of that judgment. It marks the four calls the batch
+# transport cannot carry at all (the multipart media and avatar uploads, the
+# user-data store's put and delete) and raises so the caller finds out. A
+# batch inside a batch is refused by the batch itself. Never put it on a read: it turns a swallowed read into a thrown
 # one, which is what the chrome hit when an unrelated import was running. A
 # blobless DELETE beside an upload is not one of them: it carries nothing the
 # transport cannot express, so it takes its class from the three above like
@@ -348,16 +349,16 @@ class _ProgressBody:
 
 
 def prepare_request(client, method, path, *, body=None, raw_body=None, form_data=False,
-                    query_params=None, out_of_band=False, audit_message=None, batch=None):
+                    query_params=None, out_of_band=False, audit_message=None):
     """Everything a request is before it goes anywhere: the URL with its query
     params and the stamps strict mode, a per-call audit message and an open
     logical operation add, plus the transformed body. Shared by the wire path
     (``make_request``) and the batch path (``queue_request``), so a queued op
-    is exactly the request that would have gone out. ``batch`` is the batch the
-    call is being queued on, if any: strict mode stamps its document-version
-    onto the first write queued there and no other.
+    is exactly the request that would have gone out. Strict mode stamps every
+    write, queued or not, and ``stamped_document`` names the document it
+    stamped for (None when it stamped nothing).
 
-    Returns ``(url, request_body)``.
+    Returns ``(url, request_body, stamped_document)``.
     """
     url = f'{client.base_url}{path}'
 
@@ -395,17 +396,20 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # document's, so the version bump a sub-op causes does not 409 the next
     # one. Stamping only the first write was silently no check at all
     # whenever that write was one the route ignores, such as a vocabulary
-    # entry's metadata.
+    # entry's metadata. ``stamped_document`` names the document the stamp is
+    # for, so a batch split into several requests can restamp its later ones
+    # (see ``PlaidClient._post_batch``).
+    stamped_document = None
     if client.strict_mode_document_id and method != 'GET':
         doc_id = client.strict_mode_document_id
         doc_version = client.document_versions.get(doc_id)
         if doc_version:
             separator = '&' if '?' in url else '?'
             url += f'{separator}document-version={quote(str(doc_version), safe="")}'
+            stamped_document = doc_id
 
-    # Per-call custom audit-log message. Unlike document-version this has no
-    # OCC self-conflict, so it is stamped on every queued op, not just the
-    # first.
+    # Per-call custom audit-log message, stamped on the one write it was
+    # given to.
     if audit_message and method != 'GET':
         separator = '&' if '?' in url else '?'
         url += f'{separator}audit-message={quote(str(audit_message), safe="")}'
@@ -424,7 +428,20 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
             url += f'&group-message={quote(str(group["message"]), safe="")}'
         group['written'] = True
 
-    return url, request_body
+    return url, request_body, stamped_document
+
+
+def restamp_document_version(path, version):
+    """``path`` with its strict-mode ``document-version`` claim replaced by
+    ``version``, or dropped when ``version`` is unknown. For the later requests
+    of a batch split past MAX_BATCH_OPS: each op was stamped with the version
+    the document had when it was queued, and every request before it has since
+    moved the document on."""
+    base, _, query = path.partition('?')
+    params = [p for p in query.split('&') if p and not p.startswith('document-version=')]
+    if version is not None:
+        params.append(f'document-version={quote(str(version), safe="")}')
+    return f'{base}?{"&".join(params)}' if params else base
 
 
 def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **kwargs):
@@ -442,7 +459,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
         raise PlaidAPIError(f'This endpoint cannot be used in a batch: {path}')
     prep = {k: v for k, v in kwargs.items()
             if k in ('body', 'raw_body', 'form_data', 'query_params', 'audit_message')}
-    url, request_body = prepare_request(batch.client, method, path, batch=batch, **prep)
+    url, request_body, stamped_document = prepare_request(batch.client, method, path, **prep)
     operation = {
         'path': url.replace(batch.client.base_url, ''),
         'method': method.upper(),
@@ -450,6 +467,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
     if request_body is not None:
         operation['body'] = request_body
     batch.operations.append(operation)
+    batch.stamped_documents.append(stamped_document)
     return {'batched': True}
 
 
@@ -487,7 +505,7 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             encoded up front and streamed from memory, which is what
             ``requests`` does for ``files=`` anyway.
     """
-    url, request_body = prepare_request(
+    url, request_body, _ = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
         query_params=query_params, out_of_band=out_of_band, audit_message=audit_message)
 

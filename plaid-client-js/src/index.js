@@ -6,6 +6,7 @@ import { transformRequest, transformResponse } from "./transforms.js";
 import {
   makeRequest,
   queueRequest,
+  restampDocumentVersion,
   extractDocumentVersions,
   parseErrorBody,
   makeHttpError,
@@ -128,6 +129,9 @@ function openBatch(client) {
   const batch = Object.create(client);
   batch.client = client;
   batch.operations = [];
+  // The document each queued op's strict-mode stamp is for (null for none),
+  // index for index with `operations`.
+  batch.stampedDocuments = [];
   batch.open = true;
   batch._request = (method, path, options = {}) =>
     queueRequest(batch, method, path, options);
@@ -138,6 +142,7 @@ function openBatch(client) {
   batch.submit = () => submitBatch(batch);
   batch.abort = () => {
     batch.operations = [];
+    batch.stampedDocuments = [];
     batch.open = false;
   };
   batch._installResources();
@@ -150,19 +155,35 @@ async function submitBatch(batch) {
   }
   batch.open = false;
   const ops = batch.operations;
+  const stamps = batch.stampedDocuments;
   batch.operations = [];
+  batch.stampedDocuments = [];
   if (ops.length === 0) return [];
-  const url = `${batch.client.baseUrl}/api/v1/batch`;
+  const client = batch.client;
+  const url = `${client.baseUrl}/api/v1/batch`;
   // The server caps a batch at MAX_BATCH_OPS so one transaction cannot hold
   // the write lock without bound. A larger batch goes as consecutive
   // requests, results concatenated in queue order: it could not have been one
   // transaction anyway, and a repair or bulk edit over a big document must
-  // not fail on its size alone.
+  // not fail on its size alone. Past the first request, a strict-mode stamp
+  // claims the version the requests before it left (learned from their
+  // results), not the one the document had when the op was queued, which the
+  // first request has already moved on.
   const results = [];
   for (let i = 0; i < ops.length; i += MAX_BATCH_OPS) {
-    results.push(
-      ...(await batch.client._postBatch(url, ops.slice(i, i + MAX_BATCH_OPS))),
-    );
+    let chunk = ops.slice(i, i + MAX_BATCH_OPS);
+    if (i > 0) {
+      chunk = chunk.map((op, j) => {
+        const docId = stamps[i + j];
+        if (!docId) return op;
+        const path = restampDocumentVersion(
+          op.path,
+          client.documentVersions[docId],
+        );
+        return { ...op, path };
+      });
+    }
+    results.push(...(await client._postBatch(url, chunk)));
   }
   return results;
 }
@@ -3280,7 +3301,11 @@ class PlaidClient {
     return openBatch(this);
   }
 
-  /** POST one batch request (at most MAX_BATCH_OPS operations); resolves to its transformed results. */
+  /**
+   * POST one batch request (at most MAX_BATCH_OPS operations). Resolves to
+   * one `{ status, headers, body }` per operation, with only the body
+   * recased: the headers keep the server's spelling.
+   */
   async _postBatch(url, body) {
     const fetchOptions = {
       method: "POST",
@@ -3305,6 +3330,22 @@ class PlaidClient {
           throw makeHttpError(res, await parseErrorBody(res), url, "POST");
         }
         return res;
+      }).catch((error) => {
+        // 401 means the token is missing, expired or invalid: fire the app's
+        // auth-error handler once, exactly as makeRequest does.
+        if (
+          error?.status === 401 &&
+          typeof this.onAuthError === "function" &&
+          !this._authErrorFired
+        ) {
+          this._authErrorFired = true;
+          try {
+            this.onAuthError(error);
+          } catch (_) {
+            /* handler must not mask the original error */
+          }
+        }
+        throw error;
       });
 
       const results = await response.json();
@@ -3332,7 +3373,10 @@ class PlaidClient {
         }
       }
 
-      return results.map((result) => transformResponse(result));
+      return results.map((result) => ({
+        ...result,
+        body: transformResponse(result.body),
+      }));
     } catch (error) {
       if (error.status) throw error;
       throw makeNetworkError(error, url, "POST");

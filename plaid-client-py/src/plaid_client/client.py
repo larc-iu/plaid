@@ -14,6 +14,7 @@ import requests as req_lib
 from plaid_client.document_lock import DocumentLock, LockKeeper, lock_ttl_s
 from plaid_client.http import (
     PlaidAPIError, make_request, queue_request, extract_document_versions,
+    restamp_document_version,
     list_all, list_page, iter_pages, build_api_error, retry_while_busy,
     DEFAULT_TIMEOUT_S, DEFAULT_BATCH_TIMEOUT_S,
 )
@@ -3385,9 +3386,13 @@ class PlaidClient:
         """
         return PlaidBatch(self)
 
-    def _post_batch(self, ops: list[dict]) -> list[Any]:
-        """POST queued operations (see PlaidBatch.submit); returns their
-        transformed results in order."""
+    def _post_batch(self, ops: list[dict], stamped_documents: list | None = None) -> list[Any]:
+        """POST queued operations (see PlaidBatch.submit) and return one
+        ``{'status', 'headers', 'body'}`` per operation, in order, with only
+        the body recased: the headers keep the server's spelling.
+
+        ``stamped_documents`` names, index for index, the document each op's
+        strict-mode stamp is for (None for none)."""
         url = f'{self.base_url}/api/v1/batch'
         try:
             headers = {
@@ -3400,9 +3405,21 @@ class PlaidClient:
             # as consecutive requests, results concatenated in queue order:
             # it could not have been one transaction anyway, and a repair or
             # bulk edit over a big document must not fail on its size alone.
+            # Past the first request, a strict-mode stamp claims the version
+            # the requests before it left (learned from their results), not
+            # the one the document had when the op was queued, which the first
+            # request has already moved on.
+            stamps = stamped_documents or [None] * len(ops)
             results_out: list[Any] = []
             for start in range(0, len(ops), MAX_BATCH_OPS):
                 body = ops[start:start + MAX_BATCH_OPS]
+                if start > 0:
+                    body = [
+                        {**op, 'path': restamp_document_version(
+                            op['path'], self.document_versions.get(doc_id))}
+                        if doc_id else op
+                        for op, doc_id in zip(body, stamps[start:start + MAX_BATCH_OPS])
+                    ]
 
                 # Retry a 503: the batch is atomic, so a refused one wrote
                 # nothing and repeating it is safe. The batch timeout is its
@@ -3429,7 +3446,9 @@ class PlaidClient:
                             except (json.JSONDecodeError, TypeError):
                                 pass
 
-                results_out.extend(transform_response(r) for r in results)
+                results_out.extend({**r, 'body': transform_response(r.get('body'))}
+                                   if isinstance(r, dict) else r
+                                   for r in results)
             return results_out
         except PlaidAPIError:
             raise
@@ -3627,6 +3646,9 @@ class PlaidBatch:
     def __init__(self, client: PlaidClient):
         self.client = client
         self.operations: list[dict] = []
+        #: the document each queued op's strict-mode stamp is for (None for
+        #: none), index for index with ``operations``
+        self.stamped_documents: list[str | None] = []
         self.open = True
         self.results: list[Any] = []
         _install_resources(self)
@@ -3651,10 +3673,12 @@ class PlaidBatch:
             raise PlaidAPIError('This batch was already submitted or aborted')
         self.open = False
         ops, self.operations = self.operations, []
-        self.results = self.client._post_batch(ops) if ops else []
+        stamps, self.stamped_documents = self.stamped_documents, []
+        self.results = self.client._post_batch(ops, stamps) if ops else []
         return self.results
 
     def abort(self) -> None:
         """Drop the queued operations without sending them."""
         self.operations = []
+        self.stamped_documents = []
         self.open = False
