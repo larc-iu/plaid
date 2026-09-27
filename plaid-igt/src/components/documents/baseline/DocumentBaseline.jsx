@@ -52,11 +52,11 @@ export function DocumentBaseline() {
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold">Baseline Text</h2>
+              <h2 className="text-lg font-semibold">Baseline text</h2>
             </div>
             {!ops.isEditing && !readOnly && (
               <Button variant="outline" size="sm" onClick={ops.handleEdit}>
-                <Pencil className="h-4 w-4" /> Edit Text
+                <Pencil className="h-4 w-4" /> Edit text
               </Button>
             )}
           </div>
@@ -66,7 +66,7 @@ export function DocumentBaseline() {
           {ops.isEditing ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="baseline-text">Document Text</Label>
+                <Label htmlFor="baseline-text">Document text</Label>
                 <Textarea
                   ref={textareaRef}
                   id="baseline-text"
@@ -102,7 +102,7 @@ export function DocumentBaseline() {
                   <X className="h-4 w-4" /> Cancel
                 </Button>
                 <Button onClick={ops.handleSave} disabled={ops.saving}>
-                  <Save className="h-4 w-4" /> {ops.saving ? 'Saving...' : 'Save Changes'}
+                  <Save className="h-4 w-4" /> {ops.saving ? 'Saving…' : 'Save changes'}
                 </Button>
               </div>
             </div>
@@ -121,7 +121,7 @@ export function DocumentBaseline() {
                   <div className="flex items-start gap-2">
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                     <p className="text-sm text-destructive">
-                      No primary text layer found for this project. Text editing is not available.
+                      This project is not fully set up. A project maintainer can finish setup.
                     </p>
                   </div>
                 </div>

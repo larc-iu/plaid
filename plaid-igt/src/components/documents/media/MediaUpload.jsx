@@ -67,7 +67,7 @@ export const MediaUpload = ({
         <div className="flex w-full flex-col items-center gap-6">
           <Upload className="h-12 w-12 text-muted-foreground" />
           <div className="text-center">
-            <p className="mb-1 text-lg font-medium">Upload Media File</p>
+            <p className="mb-1 text-lg font-medium">Upload media file</p>
             <p className="mb-4 text-sm text-muted-foreground">
               Upload an audio or video file to begin time-aligned transcription
             </p>
@@ -144,7 +144,7 @@ export const MediaUpload = ({
               onClick={() => inputRef.current?.click()}
             >
               <Upload className="h-4 w-4" />
-              Choose Media File
+              Choose media file
             </Button>
           )}
 

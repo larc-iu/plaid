@@ -263,7 +263,7 @@ export const Timeline = ({ mediaOps, readOnly = false }) => {
                     pointerEvents: 'none',
                   }}
                 >
-                  Loading waveform...
+                  Loading waveform…
                 </div>
               )}
 

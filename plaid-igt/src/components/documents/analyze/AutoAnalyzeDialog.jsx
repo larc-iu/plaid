@@ -20,7 +20,7 @@ const STEPS_STORAGE_KEY = 'plaid_igt_auto_analyze_steps';
 const ANALYZE_TIMEOUT_MS = 20 * 60 * 1000;
 
 const LINK_BUILTINS = [
-  { name: BUILTIN_LINK_PRECEDENT, label: 'Built-in (precedent & unique matches)' },
+  { name: BUILTIN_LINK_PRECEDENT, label: 'Built-in (precedent and unique matches)' },
 ];
 
 // Auto-analyze: one dialog, four ordered steps, each toggleable, one Run.
@@ -233,7 +233,8 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
     const stopped = (result) => result?.stopped === true;
     // A stop noticed anywhere else has nobody else to report it: a built-in
     // step's checkpoint, or between steps while a reload was in flight.
-    const halt = () => notifyInfo('Stopped. What it had already written stays.', 'Auto-analyze');
+    const halt = () =>
+      notifyInfo('Stopped partway. What ran before the stop is in the document.', 'Auto-analyze');
     // A reload after each service step costs seconds on a large document and
     // shows nothing while it runs, so it gets its own line rather than a pause.
     const reload = async () => {
@@ -256,7 +257,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           {
             successTitle: 'Translation complete',
             successMessage: `${service.serviceName} finished.`,
-            errorTitle: 'Translation failed',
+            errorTitle: 'Failed to translate',
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep,
@@ -315,7 +316,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
           {
             successTitle: 'Analysis complete',
             successMessage: `${service.serviceName} finished.`,
-            errorTitle: 'Analysis failed',
+            errorTitle: 'Failed to analyze',
             errorMessage: `${service.serviceName} reported an error.`,
             stoppedTitle: 'Auto-analyze',
             onRequestId: recordStep,
@@ -371,7 +372,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
             {
               successTitle: 'Linking complete',
               successMessage: `${service.serviceName} finished.`,
-              errorTitle: 'Linking failed',
+              errorTitle: 'Failed to link',
               errorMessage: `${service.serviceName} reported an error.`,
               stoppedTitle: 'Auto-analyze',
               onRequestId: recordStep,
@@ -402,7 +403,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
       // `isProcessing`, which the closure fixes at false for the whole run, so
       // every service failure was toasted twice: once by its own name, and
       // again as "Auto-analyze failed".
-      if (!err?.reported) notifyError('Auto-analyze failed. Try again.', 'Auto-analyze');
+      if (!err?.reported) notifyError('Try again.', 'Failed to run Auto-analyze');
     } finally {
       if (!stillOut) clearRunRecord(doc.id);
       progress.finish();

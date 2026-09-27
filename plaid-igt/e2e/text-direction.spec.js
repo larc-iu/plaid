@@ -197,7 +197,7 @@ test('the baseline reads and types right to left', async ({ page }) => {
   expect(await shown.evaluate((el) => getComputedStyle(el).direction)).toBe('rtl');
 
   // And the box it is edited in, where direction decides where the caret goes.
-  await page.getByRole('button', { name: 'Edit Text' }).click();
+  await page.getByRole('button', { name: 'Edit text' }).click();
   const box = page.locator('#baseline-text');
   await box.waitFor({ state: 'visible' });
   expect(await box.evaluate((el) => getComputedStyle(el).direction)).toBe('rtl');

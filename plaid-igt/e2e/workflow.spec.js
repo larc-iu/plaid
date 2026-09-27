@@ -65,12 +65,12 @@ test('C3 first save creates the sentence partition; C4-01 the built-in tokenizer
 }) => {
   await openTab(page, 'baseline');
   // An empty document opens straight into the editor; one with text waits
-  // behind Edit Text.
-  await page.locator('textarea#baseline-text, button:has-text("Edit Text")').first().waitFor();
-  const editButton = page.getByRole('button', { name: 'Edit Text' });
+  // behind Edit text.
+  await page.locator('textarea#baseline-text, button:has-text("Edit text")').first().waitFor();
+  const editButton = page.getByRole('button', { name: 'Edit text' });
   if (await editButton.isVisible()) await editButton.click();
   await page.getByPlaceholder('Type or paste the text').fill(BODY);
-  await page.getByRole('button', { name: 'Save Changes' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
   await page.waitForLoadState('networkidle');
   await expect.poll(async () => (await layerOf(ROLES.SENTENCE)).tokens.length).toBe(1);
   await openTab(page, 'tokenize');
@@ -105,7 +105,7 @@ test('B15-01/02/03: the Auto-analyze dialog cancels cleanly and links on Run', a
   // built-in linker available the method is stated rather than offered as a
   // one-item dropdown.
   await expect(dialog.getByRole('checkbox')).toHaveCount(4);
-  await expect(dialog).toContainText('Built-in (precedent & unique matches)');
+  await expect(dialog).toContainText('Built-in (precedent and unique matches)');
   // The footer dismiss; the corner X carries the same accessible name.
   await dialog.getByRole('button', { name: 'Close' }).first().click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -161,18 +161,18 @@ test('C3-01/02: appending needs no confirm and extends the sentence; a mid-text 
   await client.spans.create(glossLayerId, [mOf(wordAt(FORMS[1])).id], 'HUMAN');
 
   await openTab(page, 'baseline');
-  await page.getByRole('button', { name: 'Edit Text' }).click();
+  await page.getByRole('button', { name: 'Edit text' }).click();
   const ta = page.getByPlaceholder('Type or paste the text');
   await ta.fill(`${BODY} equal`);
-  await page.getByRole('button', { name: 'Save Changes' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await expect
     .poll(async () => (await layerOf(ROLES.SENTENCE)).tokens[0]?.end, { timeout: 10_000 })
     .toBe([...`${BODY} equal`].length);
 
-  await page.getByRole('button', { name: 'Edit Text' }).click();
+  await page.getByRole('button', { name: 'Edit text' }).click();
   await ta.fill(`a ${FORMS[1]}, ${FORMS[2]}. Adiós! equal`);
-  await page.getByRole('button', { name: 'Save Changes' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
   const confirm = page.getByRole('alertdialog');
   await expect(confirm).toBeVisible();
   await expect(confirm).toContainText('Save baseline changes?');

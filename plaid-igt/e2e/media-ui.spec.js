@@ -40,7 +40,7 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
   await openMedia(page);
 
   // Upload prompt visible (no media yet).
-  await expect(page.getByText('Upload Media File')).toBeVisible();
+  await expect(page.getByText('Upload media file')).toBeVisible();
 
   // Drive the real hidden file input with a valid 6s WAV.
   await page.locator('input[type="file"]').setInputFiles({
@@ -51,7 +51,7 @@ test('file picker uploads media and reveals the timeline', async ({ page }) => {
 
   // The PUT /media must succeed and the component must swap to the timeline.
   await expect(page.getByText('Timeline', { exact: true })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText('Upload Media File')).toHaveCount(0);
+  await expect(page.getByText('Upload media file')).toHaveCount(0);
 
   // The "?" legend opens and closes from the Recording header.
   const help = page.getByRole('button', { name: 'Keyboard help' });
@@ -289,5 +289,5 @@ test('uploaded media can be deleted from the UI', async ({ page }) => {
   // dialog (an AlertDialog, not window.confirm), so accept it by its button.
   await page.getByRole('button', { name: 'Delete media file' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete' }).click();
-  await expect(page.getByText('Upload Media File')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Upload media file')).toBeVisible({ timeout: 15000 });
 });

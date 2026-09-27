@@ -185,7 +185,7 @@ describe('span (annotation) mutations', () => {
     const doc = makeDoc();
     const ok = await doc.updateTokenSpan('w-1', 'Nonexistent', 'x');
     expect(ok).toBe(false);
-    expect(doc.error).toMatch(/not found/i);
+    expect(doc.error).toMatch(/not fully set up/i);
   });
 });
 

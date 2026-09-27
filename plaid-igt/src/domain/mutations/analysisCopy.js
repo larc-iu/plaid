@@ -30,6 +30,7 @@ import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { CHUNK } from '../bulk.js';
 import { isUnanalyzedWord, extractAnalysis, analysisSignature } from '../analysisMemory.js';
 import { isVirtualMorphemeId } from '../virtualMorpheme.js';
+import { notSetUp } from '../setupGuard.js';
 
 // Entities per chunk. A chunk is one atomic batch, and the writes inside it go
 // to the BULK endpoints, so its op count is a handful (one per entity kind,
@@ -244,7 +245,7 @@ export const analysisCopyMutations = {
       const todo = this._planAnalysisApply(
         targets.map(({ wordTokenId, analysis }) => ({ wordTokenId, analysis })),
       );
-      if (todo === false) throw new Error('Morpheme layer not configured');
+      if (todo === false) throw new Error(notSetUp('Morpheme layer not configured'));
       await this._applyAnalysesImpl(todo, this.createStamp || {});
       // The occurrences that already carried this analysis are what the
       // person chose it from: they are confirmed with the rest.
@@ -266,7 +267,7 @@ export const analysisCopyMutations = {
   _planAnalysisApply(proposals) {
     const info = this.layerInfo;
     if (!info.morphemeTokenLayer?.id || !info.primaryTextLayer?.text?.id) {
-      this.setError('Morpheme layer not configured');
+      this.setError(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const todo = [];

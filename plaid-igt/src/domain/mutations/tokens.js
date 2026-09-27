@@ -14,6 +14,7 @@ import { reparentSpans, reparentVocabLinks } from './reparent.js';
 import { planSpanDedup, planVocabLinkDedup, applyVocabLinkDedup } from '../igtReconcile.js';
 import { removeTokensLocally } from '../textEdits.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { notSetUp } from '../setupGuard.js';
 
 const findCoincidentMorphemeIds = (morphemeTokens, targets) => {
   if (!Array.isArray(morphemeTokens) || morphemeTokens.length === 0) return [];
@@ -183,7 +184,7 @@ export const tokenMutations = {
     const primaryTokenLayer = info.primaryTokenLayer;
     const text = info.primaryTextLayer?.text;
     if (!primaryTokenLayer?.id || !text?.id) {
-      this.setError('Token layer is not configured');
+      this.setError(notSetUp('Token layer is not configured'));
       return false;
     }
     const sentenceTokens = info.sentenceTokenLayer?.tokens || [];
@@ -213,7 +214,7 @@ export const tokenMutations = {
     const primaryTokenLayer = info.primaryTokenLayer;
     const text = info.primaryTextLayer?.text;
     if (!primaryTokenLayer?.id || !text?.id) {
-      this.setError('Token layer is not configured');
+      this.setError(notSetUp('Token layer is not configured'));
       return null;
     }
     const body = this.body;
@@ -228,7 +229,8 @@ export const tokenMutations = {
     const newTokens = tokenizeText(body, ignoredTokensConfig, untokenizedRanges);
     const validation = validateTokenization(newTokens, body);
     if (!validation.isValid) {
-      this.setError(`Tokenization validation failed: ${validation.errors.join(', ')}`);
+      console.error(`Tokenization validation failed: ${validation.errors.join(', ')}`);
+      this.setError('Could not split the text into words.');
       return null;
     }
     if (newTokens.length === 0) return 0;

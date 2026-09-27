@@ -219,10 +219,8 @@ export const useTokenOperations = () => {
           sentenceLayerId: layers.sentenceTokenLayer?.id,
         },
         {
-          successTitle: 'Tokenization Complete',
-          successMessage: 'Document has been tokenized successfully',
-          errorTitle: 'Tokenization Failed',
-          errorMessage: 'An error occurred during tokenization',
+          successMessage: 'Tokenization complete',
+          errorTitle: 'Failed to tokenize',
           stoppedTitle: 'Tokenize',
           // Written down before the request is submitted, so a reload in that
           // window can still find the run.
@@ -286,11 +284,11 @@ export const useTokenOperations = () => {
       // null = failure (already toasted by the domain via doc.onError); 0 = nothing
       // to do; N = created.
       if (created === null) return;
-      if (created > 0) notifySuccess(`Created ${created} tokens`, 'Success');
-      else notifyInfo('Text is already fully tokenized', 'Complete');
+      if (created > 0) notifySuccess(`Created ${created} tokens`);
+      else notifyInfo('Text is already fully tokenized');
     } catch (error) {
       console.error('Tokenization failed:', error);
-      notifyError(humanizeError(error), 'Tokenization failed');
+      notifyError(humanizeError(error), 'Failed to tokenize');
     } finally {
       setIsTokenizing(false);
       tokenizeRun.finish();
@@ -308,14 +306,14 @@ export const useTokenOperations = () => {
   const handleClearTokens = async () => {
     setIsTokenizing(true);
     const ok = await doc.clearTokens();
-    if (ok) notifySuccess('Tokens cleared', 'Success');
+    if (ok) notifySuccess('Tokens cleared');
     setIsTokenizing(false);
   };
 
   const handleClearSentences = async () => {
     setIsTokenizing(true);
     const ok = await doc.clearSentences();
-    if (ok) notifySuccess('Reset to single sentence', 'Success');
+    if (ok) notifySuccess('Reset to single sentence');
     setIsTokenizing(false);
   };
 

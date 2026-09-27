@@ -7,6 +7,7 @@
 
 import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { notSetUp } from '../setupGuard.js';
 
 const findSpanLayer = (doc, scope, fieldName) => {
   const spanLayers = doc.layerInfo.spanLayers?.[scope] || [];
@@ -102,7 +103,7 @@ const makeSpanUpdater = (scope) =>
   async function (targetId, fieldName, value, metadata = null) {
     const layer = findSpanLayer(this, scope, fieldName);
     if (!layer) {
-      this.setError(`Annotation layer "${fieldName}" not found`);
+      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const label = `Failed to update ${fieldName}`;
@@ -147,7 +148,7 @@ export const spanMutations = {
   async discardSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
-      this.setError(`Annotation layer "${fieldName}" not found`);
+      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const span = (layer.spans || []).find(
@@ -171,7 +172,7 @@ export const spanMutations = {
   async confirmSentenceSpan(sentenceId, fieldName) {
     const layer = findSpanLayer(this, 'sentence', fieldName);
     if (!layer) {
-      this.setError(`Annotation layer "${fieldName}" not found`);
+      this.setError(notSetUp(`Annotation layer "${fieldName}" not found`));
       return false;
     }
     const span = (layer.spans || []).find(

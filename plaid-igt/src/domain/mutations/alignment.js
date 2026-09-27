@@ -27,6 +27,7 @@ import {
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { applyTextEditsLocally, removeTokensLocally } from '../textEdits.js';
 import { rangeProblem } from '../alignmentTimes.js';
+import { notSetUp } from '../setupGuard.js';
 
 // Two ranges [a, b) and [c, d) overlap iff a < d && b > c.
 const findOverlappingAlignment = (tokens, begin, end, excludeId = null) =>
@@ -107,12 +108,12 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError('Required layers not found');
+      this.setError(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError('Text layer not found');
+      this.setError(notSetUp('Text layer not found'));
       return false;
     }
 
@@ -237,12 +238,12 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError('Required layers not found');
+      this.setError(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError('Text layer not found');
+      this.setError(notSetUp('Text layer not found'));
       return false;
     }
     const alignmentTokens = alignmentTokenLayer.tokens || [];
@@ -337,12 +338,12 @@ export const alignmentMutations = {
     const alignmentTokenLayer = info.alignmentTokenLayer;
     const sentenceTokenLayer = info.sentenceTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer || !sentenceTokenLayer) {
-      this.setError('Required layers not found');
+      this.setError(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError('Text layer not found');
+      this.setError(notSetUp('Text layer not found'));
       return false;
     }
 
@@ -398,12 +399,12 @@ export const alignmentMutations = {
     const primaryTextLayer = info.primaryTextLayer;
     const alignmentTokenLayer = info.alignmentTokenLayer;
     if (!primaryTextLayer || !alignmentTokenLayer) {
-      this.setError('Required layers not found');
+      this.setError(notSetUp('Required layers not found'));
       return false;
     }
     const textId = primaryTextLayer.text?.id;
     if (!textId) {
-      this.setError('Text layer not found');
+      this.setError(notSetUp('Text layer not found'));
       return false;
     }
     const existingAlignment = (alignmentTokenLayer.tokens || []).find((t) => t.id === alignmentId);

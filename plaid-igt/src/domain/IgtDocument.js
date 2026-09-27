@@ -149,6 +149,8 @@ export class IgtDocument extends DocumentModel {
     if (failed.length && next.onError) {
       next.onError(
         `${failed.length} ${failed.length === 1 ? 'vocabulary' : 'vocabularies'} could not be read as of that time. Entries show as they are now.`,
+        null,
+        'Failed to read the vocabularies',
       );
     }
     return next;
@@ -370,14 +372,18 @@ export class IgtDocument extends DocumentModel {
       this._vocabularies = mergeRawVocabLinks(updated, reloaded);
       if (failedCount > 0 && this.onError) {
         this.onError(
-          `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.`,
+          `${failedCount} vocabular${failedCount === 1 ? 'y' : 'ies'} could not be refreshed. Linked entries may show old values until the page is reloaded.`,
+          null,
+          'Failed to refresh the vocabularies',
         );
       }
     } catch (err) {
       console.warn('Vocab reload failed:', err);
       if (this.onError)
         this.onError(
-          'Vocabulary data could not be refreshed. Vocab links may display stale values. Reload the page if they look wrong.',
+          'Linked entries may show old values until the page is reloaded.',
+          null,
+          'Failed to refresh the vocabularies',
         );
     }
   }

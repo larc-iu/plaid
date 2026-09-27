@@ -220,13 +220,13 @@ describe('planSpanDedup', () => {
 describe('describeReconcile', () => {
   it('names each repair, and says nothing when nothing was written', () => {
     expect(describeReconcile({})).toBeNull();
-    expect(describeReconcile({ deleted: 1 })).toBe('Reconcile: removed 1 orphaned morpheme');
-    expect(describeReconcile({ deleted: 2 })).toBe('Reconcile: removed 2 orphaned morphemes');
+    expect(describeReconcile({ deleted: 1 })).toBe('Repaired: removed 1 stray morpheme');
+    expect(describeReconcile({ deleted: 2 })).toBe('Repaired: removed 2 stray morphemes');
     expect(describeReconcile({ syncedMorphTypes: 2 })).toBe(
-      'Reconcile: synced 2 morpheme types from lexicon entries',
+      'Repaired: synced 2 morpheme types from lexicon entries',
     );
     expect(describeReconcile({ dedupedSpans: 1, dedupedLinks: 3 })).toBe(
-      'Reconcile: merged 1 duplicate annotation, removed 3 extra vocabulary links',
+      'Repaired: merged 1 duplicate annotation, removed 3 extra vocabulary links',
     );
   });
 
@@ -356,7 +356,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
     // The entry the History drawer shows.
     const relabel = client.calls.filter((c) => c.kind === 'operationGroups.update');
     expect(relabel).toHaveLength(1);
-    expect(relabel[0].args[1]).toBe('Reconcile: synced 1 morpheme type from lexicon entries');
+    expect(relabel[0].args[1]).toBe('Repaired: synced 1 morpheme type from lexicon entries');
     // And a second open has nothing left to do, so no entry at all.
     const again = await doc.reconcileOnOpen();
     expect(again.syncedMorphTypes).toBe(0);
@@ -368,7 +368,7 @@ describe('IgtDocument.reconcileOnOpen', () => {
     await doc.reconcileOnOpen();
     expect(client.calls.some((c) => c.kind === 'operationGroups.update')).toBe(false);
     expect(client.calls.filter((c) => c.kind === 'beginOperation')[0].args[0]).toBe(
-      'Reconcile layers on open',
+      'Repair on open',
     );
   });
 });

@@ -70,7 +70,7 @@ describe('copying a sentence', () => {
     await editor._copySentence(sentence, FIELDS, 'plain');
 
     expect(editor._copiedFlash).toBeNull();
-    expect(notifyError).toHaveBeenCalledWith('Clipboard access was refused.', 'Could not copy');
+    expect(notifyError).toHaveBeenCalledWith('Clipboard access was refused.', 'Failed to copy');
   });
 
   it('keeps the tick for a copy that landed', async () => {

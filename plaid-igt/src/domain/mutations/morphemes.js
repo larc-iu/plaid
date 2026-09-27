@@ -21,6 +21,7 @@ import {
   virtualMorphemeId,
   virtualMorphemeWordId,
 } from '../virtualMorpheme.js';
+import { notSetUp } from '../setupGuard.js';
 
 // A person's edit of a morpheme carries the writer's edit stamp (provenance
 // write-contract rule 3): a verifier's edit confirms a machine-made or
@@ -102,7 +103,7 @@ export const morphemeMutations = {
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
     if (!morphemeLayer?.id || !textId) {
-      this.setError('Morpheme layer not configured');
+      this.setError(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const word = (info.primaryTokenLayer?.tokens || []).find((t) => t.id === wordTokenId);
@@ -162,14 +163,15 @@ export const morphemeMutations = {
   // overwriting a type the target morpheme already has.
   async splitMorphemeMulti(morphemeId, segments, { joiners = [] } = {}) {
     if (!Array.isArray(segments) || segments.length < 2) {
-      this.setError('splitMorphemeMulti needs at least two segments');
+      console.error('splitMorphemeMulti needs at least two segments', segments);
+      this.setError('Could not split the morpheme.');
       return false;
     }
     const info = this.layerInfo;
     const morphemeLayer = info.morphemeTokenLayer;
     const textId = info.primaryTextLayer?.text?.id;
     if (!morphemeLayer?.id || !textId) {
-      this.setError('Morpheme layer not configured');
+      this.setError(notSetUp('Morpheme layer not configured'));
       return false;
     }
     const resolved = resolveMorpheme(this, morphemeId);

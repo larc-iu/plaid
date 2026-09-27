@@ -12,6 +12,7 @@ import { mergeMetadata, metadataOps, createdId } from '@larc-iu/plaid-client';
 import { newHalfMetadata, survivingProvenance, survivorPatch } from '../tokenReshape.js';
 import { reparentSpans } from './reparent.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
+import { notSetUp } from '../setupGuard.js';
 
 export const sentenceMutations = {
   async mergeSentence(sentenceId) {
@@ -157,7 +158,7 @@ export const sentenceMutations = {
     const sentenceLayer = info.sentenceTokenLayer;
     const sentenceTokens = [...(sentenceLayer?.tokens || [])].sort((a, b) => a.begin - b.begin);
     if (!sentenceLayer?.id) {
-      this.setError('Sentence layer not configured');
+      this.setError(notSetUp('Sentence layer not configured'));
       return false;
     }
     if (sentenceTokens.length === 0) return false;

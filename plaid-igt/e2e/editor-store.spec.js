@@ -19,7 +19,7 @@ test('reactive store drives tab switching and the Details page', async ({ page }
 
   // Switch to Baseline — proves docProxy.ui.activeTab mutation triggers a re-render.
   await page.getByRole('tab', { name: 'Baseline' }).click();
-  await expect(page.getByRole('heading', { name: 'Baseline Text' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Baseline text' })).toBeVisible();
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0);
 
   // Switch to Tokenize — proves the tab renders token pieces from the shared
@@ -34,7 +34,7 @@ test('reactive store drives tab switching and the Details page', async ({ page }
   // session often enough that asserting the upload half made this flaky.
   await page.getByRole('tab', { name: 'Media' }).click();
   await expect(
-    page.getByText('Upload Media File').or(page.getByText('Timeline', { exact: true })),
+    page.getByText('Upload media file').or(page.getByText('Timeline', { exact: true })),
   ).toBeVisible();
 
   await page.getByRole('tab', { name: 'Details' }).click();

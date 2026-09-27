@@ -54,7 +54,7 @@ export const useBaselineOperations = () => {
     const ok = await doc.saveBaselineText(editedText);
     setSaving(false);
     if (ok) {
-      notifySuccess('Baseline text saved', 'Success');
+      notifySuccess('Baseline text saved');
       setIsEditing(false);
     }
   };

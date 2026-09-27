@@ -38,7 +38,7 @@ export const describeReconcile = ({
   syncedMorphTypes = 0,
 } = {}) => {
   const parts = [];
-  if (deleted) parts.push(`removed ${plural(deleted, 'orphaned morpheme', 'orphaned morphemes')}`);
+  if (deleted) parts.push(`removed ${plural(deleted, 'stray morpheme', 'stray morphemes')}`);
   if (dedupedSpans)
     parts.push(`merged ${plural(dedupedSpans, 'duplicate annotation', 'duplicate annotations')}`);
   if (dedupedLinks)
@@ -50,7 +50,7 @@ export const describeReconcile = ({
       `synced ${plural(syncedMorphTypes, 'morpheme type', 'morpheme types')} from lexicon entries`,
     );
   if (!parts.length) return null;
-  return `Reconcile: ${parts.join(', ')}`;
+  return `Repaired: ${parts.join(', ')}`;
 };
 
 /**

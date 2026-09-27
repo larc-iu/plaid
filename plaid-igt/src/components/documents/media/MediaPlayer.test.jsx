@@ -51,7 +51,7 @@ const mountWith = async (rejection) => {
   return view;
 };
 
-const banner = (container) => (container.textContent.includes('Playback Error') ? 'shown' : 'none');
+const banner = (container) => (container.textContent.includes('Playback error') ? 'shown' : 'none');
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});

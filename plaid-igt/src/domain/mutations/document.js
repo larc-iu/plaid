@@ -13,6 +13,7 @@ import {
   metadataOps,
 } from '@larc-iu/plaid-client';
 import { lineSentenceRanges } from '../../utils/tokenizationUtils.js';
+import { notSetUp } from '../setupGuard.js';
 
 // One sentence per line of a freshly saved text. The server keeps the
 // partition in step with later edits; the Tokenize tab moves the breaks.
@@ -39,11 +40,11 @@ export const documentMutations = {
     const sentenceTokenLayer = info.sentenceTokenLayer;
 
     if (!primaryTextLayer) {
-      this.setError('No primary text layer found');
+      this.setError(notSetUp('No primary text layer found'));
       return false;
     }
     if (!sentenceTokenLayer?.id) {
-      this.setError('No sentence layer found');
+      this.setError(notSetUp('No sentence layer found'));
       return false;
     }
 

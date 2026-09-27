@@ -239,7 +239,9 @@ const DocumentEditor = () => {
         // edits are stamped as such (IgtDocument.contributorId).
         const d = await IgtDocument.load(client, projectId, documentId, null, { user });
         if (cancelled) return;
-        d.onError = (msg, err, label) => notifyError(err ?? msg, label);
+        // A refusal the document makes before anything is sent (a guard, a
+        // check) comes without a label: nothing was written, which is the fact.
+        d.onError = (msg, err, label) => notifyError(err ?? msg, label ?? 'Not changed');
         setLiveDoc(d);
       } catch (e) {
         if (cancelled) return;

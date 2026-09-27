@@ -82,7 +82,7 @@ export const copy = {
       } finally {
         ta.remove();
       }
-      if (!ok) notifyError('Clipboard access was refused.', 'Could not copy');
+      if (!ok) notifyError('Clipboard access was refused.', 'Failed to copy');
       return ok;
     }
   },

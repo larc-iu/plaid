@@ -500,7 +500,7 @@ export const useMediaOperations = () => {
             setUploadProgress((p) => (p ? { ...p, loaded, total: total ?? p.total } : p)),
         });
         if (ok) {
-          notifySuccess('Media file uploaded successfully', 'Success');
+          notifySuccess('Media file uploaded');
         }
       } finally {
         setIsUploading(false);
@@ -516,9 +516,7 @@ export const useMediaOperations = () => {
     if (
       !(await confirm({
         title: 'Delete media file?',
-        description:
-          'This will permanently remove the audio/video from this document. ' +
-          'This cannot be undone.',
+        description: 'Removes the recording from this document. This cannot be undone.',
         confirmLabel: 'Delete',
         destructive: true,
       }))
@@ -528,7 +526,7 @@ export const useMediaOperations = () => {
 
     const ok = await doc.deleteMedia();
     if (ok) {
-      notifySuccess('Media file has been deleted successfully', 'Media Deleted');
+      notifySuccess('Media file deleted');
     }
   }, [doc, confirm]);
 
@@ -541,7 +539,7 @@ export const useMediaOperations = () => {
     const documentId = doc.document.id;
 
     if (!documentId) {
-      notifyError('This document could not be found.', 'Error');
+      notifyError('This document could not be found.', 'Failed to transcribe');
       return;
     }
 
@@ -622,10 +620,8 @@ export const useMediaOperations = () => {
             sentenceTokenLayerId: sentenceTokenLayer.id,
           },
           {
-            successTitle: 'Transcription Complete',
-            successMessage: 'Audio has been transcribed successfully',
-            errorTitle: 'Transcription Failed',
-            errorMessage: 'An error occurred during transcription',
+            successMessage: 'Transcription complete',
+            errorTitle: 'Failed to transcribe',
             stoppedTitle: 'Transcribe',
             // Written down before submitting, so a reload can still find it.
             onRequestId: (requestId) =>
@@ -714,12 +710,12 @@ export const useMediaOperations = () => {
         {
           successTitle: 'Speech detection complete',
           successMessage: `${service.serviceName} finished.`,
-          errorTitle: 'Speech detection failed',
+          errorTitle: 'Failed to detect speech',
           errorMessage: `${service.serviceName} reported an error.`,
           stoppedTitle: 'Speech detection',
           // Detection writes nothing: a segment is a stretch of the baseline
           // and cannot exist without text, so there is nothing to have kept.
-          stoppedMessage: 'Stopped. The proposals already on the document stay.',
+          stoppedMessage: 'Stopped. The proposals on the document are unchanged.',
           // And it writes down no run, so a reload would find nothing to rejoin.
           lostMessage: 'Lost contact with the service.',
         },

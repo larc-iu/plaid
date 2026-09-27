@@ -114,7 +114,7 @@ export function DocumentTokenize() {
   // Why Tokenize cannot run, stated in the dialog rather than left to a
   // disabled button with no explanation. Null means it can.
   const tokenizeBlockedHint = !layers?.primaryTokenLayer
-    ? 'This project has no word layer.'
+    ? 'This project is not set up for words.'
     : !text?.body
       ? 'This document has no text yet.'
       : !hasSentencePartition
@@ -219,27 +219,27 @@ export function DocumentTokenize() {
                 </p>
                 <div className="flex flex-col gap-[0.4rem] mb-2">
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
                     + <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Drag</kbd>:
                     Create token from selection, or merge tokens
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>:
-                    Split Token
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>:
+                    Split token
                   </div>
                   <div>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right Click</kbd>
-                    : Delete Token
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Right click</kbd>
+                    : Delete token
                   </div>
                   <div>
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Ctrl</kbd>/
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Cmd</kbd> +{' '}
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
                     on token: Split sentence here
                   </div>
                   <div>
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Alt</kbd> +{' '}
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left Click</kbd>{' '}
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 text-xs">Left click</kbd>{' '}
                     on token: Open it in Analyze
                   </div>
                   <div>

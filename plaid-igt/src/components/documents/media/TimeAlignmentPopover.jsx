@@ -120,7 +120,7 @@ export const TimeAlignmentPopover = ({
       }
       if (!ok) return; // the document toasted the reason
       setStickySpeaker(sp);
-      notifySuccess(mode === 'align' ? 'Text aligned' : 'Segment created', 'Success');
+      notifySuccess(mode === 'align' ? 'Text aligned' : 'Segment created');
       setText('');
       setPicked(null);
       setMode('new');

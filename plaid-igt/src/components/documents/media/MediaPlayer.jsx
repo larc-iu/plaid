@@ -188,7 +188,7 @@ export const MediaPlayer = ({ mediaOps, readOnly = false, canWrite = false }) =>
               never talks to the server itself. */}
           {(mediaLoadError || mediaError) && (
             <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
-              <p className="text-sm font-medium text-destructive">Playback Error</p>
+              <p className="text-sm font-medium text-destructive">Playback error</p>
               <p className="text-sm text-muted-foreground">
                 {mediaLoadError ? `Failed to load media: ${mediaLoadError}` : mediaError}
               </p>
