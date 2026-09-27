@@ -439,10 +439,10 @@ test('export skips reserved provenance keys on sentence tokens', async ({ page }
   );
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/export`);
-  const ta = page.locator('textarea').first();
-  await expect(ta).toBeVisible({ timeout: 15000 });
-  await expect.poll(() => ta.inputValue()).toContain('# sent_id');
-  const out = await ta.inputValue();
+  const preview = page.getByTestId('conllu-preview');
+  await expect(preview).toBeVisible({ timeout: 15000 });
+  await expect.poll(() => preview.textContent()).toContain('# sent_id');
+  const out = await preview.textContent();
   console.log('[export]\n' + out);
   expect(out).toContain('# text = the dog runs');
   expect(out).not.toMatch(/# prov/);

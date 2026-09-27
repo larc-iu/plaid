@@ -4,6 +4,7 @@ import { Button } from '@ui/components/ui/button';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { notifyError } from '../../utils/feedback.jsx';
+import { ConlluPreview } from './ConlluPreview.jsx';
 
 export const ExportEditor = () => {
   // Project, document and the breadcrumbs/tab strip all come from
@@ -71,15 +72,9 @@ export const ExportEditor = () => {
         </Button>
       </div>
 
-      {/* Read-only and sized to the document: a treebank is read by scrolling
-          one long column, not by scrolling a box inside a page. */}
-      <textarea
-        value={conlluContent}
-        spellCheck={false}
-        readOnly
-        rows={Math.min(Math.max(conlluContent.split('\n').length, 20), 400)}
-        className="w-full rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
+      {/* Sized to the document up to 400 rows: a treebank is read by
+          scrolling one long column, not by scrolling a box inside a page. */}
+      <ConlluPreview content={conlluContent} />
     </div>
   );
 };
