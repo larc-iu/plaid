@@ -635,3 +635,23 @@ def test_the_operation_handle_is_the_real_one_and_the_label_is_read_off_the_clie
     assert not hasattr(op, 'message')
     assert c.operations == ['Merge', 'inner']
     assert c.operation_labels == ['Merged 3', 'inner']
+
+
+def test_an_audit_entry_and_each_of_its_ops_carry_the_time_to_read_at():
+    """The server sends ``end_time`` on an entry and on each op: an op's own
+    time, or its batch's last op when it ran in one. A fixture that leaves
+    them out reads as the server would send it, and a given one is kept."""
+    c = _project_client(audit=[
+        {'id': 'a', 'time': 'T1', 'documents': [{'id': 'd'}],
+         'ops': [{'type': 'span/create', 'time': 'T1', 'batch_id': 'b'},
+                 {'type': 'span/create', 'time': 'T2', 'batch_id': 'b'},
+                 {'type': 'span/update', 'time': 'T3'}]},
+        {'id': 'z', 'time': 'T4', 'end_time': 'T9', 'documents': [{'id': 'd'}],
+         'ops': [{'type': 'span/delete'}]},
+    ])
+    first, second = c.documents.audit('d')
+    assert [o['end_time'] for o in first['ops']] == ['T2', 'T2', 'T3']
+    assert first['end_time'] == 'T3'
+    assert second['end_time'] == 'T9' and second['ops'][0]['end_time'] == 'T9'
+    assert [e['end_time'] for e in c.projects.audit('p')] == ['T3', 'T9']
+    assert 'end_time' not in c.audit[0]  # the fixture itself is not changed

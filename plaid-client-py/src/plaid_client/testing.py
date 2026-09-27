@@ -587,11 +587,33 @@ def _pruned(doc, named):
     return {**doc, 'text_layers': [x for x in map(text_layer, doc.get('text_layers') or []) if x]}
 
 
+def _with_end_times(entry):
+    """A copy of a fixture audit entry carrying ``end_time`` as the server
+    sends it, where the fixture left it out: on each op, the time to read at
+    to see that op done (its own ``time``, or the last ``time`` among the
+    entry's ops of its ``batch_id``), and on the entry, its last op's. An op
+    with no ``time`` of its own takes the entry's. A value the fixture gives
+    is kept."""
+    ops = [dict(o) for o in entry.get('ops') or []]
+    batch_end = {}
+    for o in ops:
+        if o.get('batch_id') and o.get('time'):
+            batch_end[o['batch_id']] = max(batch_end.get(o['batch_id'], ''), o['time'])
+    fallback = entry.get('end_time') or entry.get('time')
+    for o in ops:
+        o.setdefault('end_time', batch_end.get(o.get('batch_id')) or o.get('time') or fallback)
+    out = {**entry}
+    if 'ops' in entry:
+        out['ops'] = ops
+    out.setdefault('end_time', ops[-1]['end_time'] if ops else entry.get('time'))
+    return out
+
+
 def _audit_filter(entries, start_time, end_time, op_types):
     """An audit read's filters, as the server applies them: the time range is
     inclusive at both ends, and ``op_types`` keeps an entry one of whose
     operations matches, carrying only the ones that do."""
-    out = [e for e in entries
+    out = [_with_end_times(e) for e in entries
            if (not start_time or (e.get('time') or '') >= start_time)
            and (not end_time or (e.get('time') or '') <= end_time)]
     if op_types:
