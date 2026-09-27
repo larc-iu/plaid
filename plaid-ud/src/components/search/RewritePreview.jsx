@@ -152,7 +152,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
                     </div>
                     {r.changes.map((c, i) => (
                       <p key={i} className="text-xs">
-                        {c.text}
+                        {c.parts.map((part, j) => (j % 2 ? <bdi key={j}>{part}</bdi> : part))}
                       </p>
                     ))}
                     {r.warnings.map((w, i) => (

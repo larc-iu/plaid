@@ -46,7 +46,7 @@ export function diffGraphs(before, after, layerInfo) {
     if (b.deleted || b.anchor) continue;
     if (a.deleted) {
       deleted.add(id);
-      changes.push({ kind: 'node', node: id, text: `${b.form}: word deleted` });
+      changes.push({ kind: 'node', node: id, ...line`${b.form}: word deleted` });
       continue;
     }
     for (const col of ['form', 'lemma', 'upos', 'xpos']) {
@@ -54,7 +54,7 @@ export function diffGraphs(before, after, layerInfo) {
       changes.push({
         kind: 'feat',
         node: id,
-        text: `${b.form}: ${col} ${describe(b[col])} → ${describe(a[col])}`,
+        ...line`${b.form}: ${col} ${describe(b[col])} → ${describe(a[col])}`,
       });
       if (col === 'lemma' && a.lemma === undefined) {
         // A cleared lemma keeps its span, with no value. The span is the
@@ -80,10 +80,10 @@ export function diffGraphs(before, after, layerInfo) {
       if (bv === av) continue;
       const spanId = b.spanIds.features.get(key);
       if (av === undefined) {
-        changes.push({ kind: 'feat', node: id, text: `${b.form}: ${key}=${bv} removed` });
+        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key}=${bv} removed` });
         writes.main.push({ op: 'deleteSpan', id: spanId });
       } else if (bv === undefined) {
-        changes.push({ kind: 'feat', node: id, text: `${b.form}: ${key}=${av} added` });
+        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key}=${av} added` });
         writes.main.push({
           op: 'createSpan',
           layer: layer('featuresLayer'),
@@ -91,7 +91,7 @@ export function diffGraphs(before, after, layerInfo) {
           value: `${key}=${av}`,
         });
       } else {
-        changes.push({ kind: 'feat', node: id, text: `${b.form}: ${key} ${bv} → ${av}` });
+        changes.push({ kind: 'feat', node: id, ...line`${b.form}: ${key} ${bv} → ${av}` });
         writes.main.push({
           op: 'updateSpan',
           id: spanId,
@@ -166,7 +166,7 @@ export function diffGraphs(before, after, layerInfo) {
     needsLemma.add(a.tgt);
   };
   const emit = (lines, ops, needs = []) => {
-    for (const text of lines) changes.push({ kind: 'edge', text });
+    for (const l of lines) changes.push({ kind: 'edge', ...l });
     writes.main.push(...ops);
     for (const n of needs) needsLemma.add(n);
   };
@@ -177,23 +177,23 @@ export function diffGraphs(before, after, layerInfo) {
       if (touchesDeleted(b)) continue; // cascades with the word
       changes.push({
         kind: 'edge',
-        text: `${formOf(before, b.src)} → ${formOf(before, b.tgt)}: ${b.label} removed`,
+        ...line`${formOf(before, b.src)} → ${formOf(before, b.tgt)}: ${b.label} removed`,
       });
       writes.main.push({ op: 'deleteRelation', id });
       continue;
     }
     const lines = [];
     if (a.label !== b.label) {
-      lines.push(`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`);
+      lines.push(line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${b.label} → ${a.label}`);
     }
     if (a.src !== b.src) {
       lines.push(
-        `${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
+        line`${a.label} of ${formOf(after, a.tgt)}: head ${formOf(before, b.src)} → ${formOf(after, a.src)}`,
       );
     }
     if (a.tgt !== b.tgt) {
       lines.push(
-        `${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
+        line`${a.label} from ${formOf(after, a.src)}: ${formOf(before, b.tgt)} → ${formOf(after, a.tgt)}`,
       );
     }
     // The relation as it stands on the server now, which is where it is drawn
@@ -239,12 +239,18 @@ export function diffGraphs(before, after, layerInfo) {
   }
   for (const [id, a] of after.edges) {
     if (before.edges.has(id)) continue;
-    const line = `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`;
+    const added = line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${a.label} added`;
     if (isEnhancedLabel(a.label)) {
-      pendingExtras.push({ a, lines: [line], layerId: enhancedLayerId(), create: true, row: null });
+      pendingExtras.push({
+        a,
+        lines: [added],
+        layerId: enhancedLayerId(),
+        create: true,
+        row: null,
+      });
       continue;
     }
-    emit([line], []);
+    emit([added], []);
     writeCreate(a, basicLayerId());
   }
 
@@ -283,7 +289,7 @@ export function diffGraphs(before, after, layerInfo) {
   const drop = (p, why) => {
     if (!p.row) return; // nothing was stored, so nothing is written
     emit(
-      [`${p.row.src} → ${p.row.tgt}: ${p.row.label} removed${why}`],
+      [line`${p.row.src} → ${p.row.tgt}: ${p.row.label} removed${why}`],
       [{ op: 'deleteRelation', id: p.row.id }],
     );
   };
@@ -319,7 +325,7 @@ export function diffGraphs(before, after, layerInfo) {
       const { a, layerId } = kept[0];
       changes.push({
         kind: 'edge',
-        text: `${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${[...basics].join(', ')} left out of the enhanced graph`,
+        ...line`${formOf(after, a.src)} → ${formOf(after, a.tgt)}: ${[...basics].join(', ')} left out of the enhanced graph`,
       });
       writeCreate(a, layerId, { value: null, metadata: { [SUPPRESS_KEY]: true } });
     }
@@ -356,7 +362,7 @@ export function diffGraphs(before, after, layerInfo) {
       const label = [...(basicLabels.get(pair) || [])].join(', ');
       changes.push({
         kind: 'edge',
-        text: `${formOf(after, s.src)} → ${formOf(after, s.tgt)}: ${label} back in the enhanced graph`,
+        ...line`${formOf(after, s.src)} → ${formOf(after, s.tgt)}: ${label} back in the enhanced graph`,
       });
     }
     writes.main.push({ op: 'deleteRelation', id: s.id });
@@ -370,7 +376,7 @@ export function diffGraphs(before, after, layerInfo) {
     if (b.spanIds.lemma || !(gained || needsLemma.has(n.id))) continue;
     const value = n.lemma ?? n.substring;
     if (!gained)
-      changes.push({ kind: 'feat', node: n.id, text: `${b.form}: lemma ${value} added` });
+      changes.push({ kind: 'feat', node: n.id, ...line`${b.form}: lemma ${value} added` });
     writes.lemmaCreates.push({
       op: 'createSpan',
       layer: layer('lemmaLayer'),
@@ -409,3 +415,14 @@ function columnWrite(list, node, col, value, layerId) {
 }
 
 const describe = (v) => (v === undefined ? '(none)' : String(v));
+
+// A change line as `text` and as `parts`: the line's own words at even
+// indices and each value it names (a form, a label, a feature) at odd ones.
+// The preview isolates every value, since an Arabic form on each side of an
+// arrow otherwise joins the arrow into one right-to-left run and the line
+// reads as the relation going the other way.
+function line(strings, ...values) {
+  const parts = [strings[0]];
+  values.forEach((v, i) => parts.push(String(v), strings[i + 1]));
+  return { text: parts.join(''), parts };
+}
