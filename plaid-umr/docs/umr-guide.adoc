@@ -104,7 +104,7 @@ When the project already has a document of the file's name whose words match the
 This is how a document glossed in Plaid IGT gets its UMR annotation from a file.
 Words that differ, or a graph already there, refuse the import before anything is written.
 
-A sentence whose graph the parser cannot read is kept as text and written back unchanged on export; the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
+A sentence whose graph the parser cannot read is kept as text and written back unchanged on export, and the sentence's header says so. **Text** opens on the kept text, to mend it and apply it. Once the sentence has a node, made there or on the canvas, the graph you see is the one exported and the kept text is not written.
 Older files are read as they are: an obsolete gloss header is written back in its current form, and `-1--1` is read as unaligned.
 
 == Exporting
@@ -124,7 +124,7 @@ The **Annotate** tab draws every sentence of the document as a block: the graph 
 == Nodes
 
 A node shows its variable, its concept, and its attributes as a line of text (`aspect performance · polarity -`).
-A node anchored to words sits above them; the anchored words are underlined, and hovering or focusing a node lights them.
+A node anchored to words sits above them. The anchored words are underlined, and hovering or focusing a node lights them.
 A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and sits above its parent.
 A node a service drafted has a dashed violet border, and one made by a member whose work the project reviews a dashed amber one. The mark goes when you edit the node, which records it as yours.
 To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter (Cmd+Enter). That accepts the node and its relation to its parent. **Accept graph** beside a sentence accepts every node and relation of it.
@@ -151,7 +151,7 @@ Which layers feed which lines is set in **Settings → UMR settings** (see <<Glo
 == The margin
 
 The margin to the left of each graph pins the document graph's constants: `author`, `root`, `document-creation-time`, and any other constant a triple of that sentence names.
-Only the ones the sentence uses are shown; the rest appear while a node is focused or while you are dragging, which is when you would aim at one.
+Only the ones the sentence uses are shown. The rest appear while a node is focused or while you are dragging, which is when you would aim at one.
 A document-level relation reads on each node it joins as a tag, in this sentence or another: modal relations in dark blue-grey, temporal ones in teal, coreference in brown.
 The tag reads the triple in its own order, with a dot where the node itself stands: `(s3d :before s3b)` is `● :before s3b` on `s3d` and `s3d :before ●` on `s3b`. A temporal relation says how the second node stands to the first, its reference time, so here `s3b` is before `s3d`.
 The relations of one kind and one direction share a tag (`● :overlap s1d s1m`), each variable in it its own click.
@@ -168,7 +168,7 @@ Clicking the chip goes to the next mention of the chain, in this sentence or ano
 == Validation marks
 
 The official UMR checks run as you edit.
-A sentence's header counts its errors and warnings; clicking the count lists them.
+A sentence's header counts its errors and warnings, and clicking the count lists them.
 A node a check names wears a dot and a ring in red for an error or magenta for a warning, with the message on hover.
 Besides the official checks, an edge whose two nodes have come to be in different sentences (a sentence split in Plaid IGT or UD can do this) is an error on the node it leaves: it stays stored, so merging the sentences back makes it whole, but the export leaves it out.
 The project's **Validation** tab lists every problem in every document.
@@ -185,9 +185,9 @@ A sentence's text deleted takes that sentence's nodes with it, and its history k
 
 = Editing
 
-Every edit is written as it happens and lands in the document's history; there is no save button.
+Every edit is written as it happens and lands in the document's history. There is no save button.
 Focus a node by clicking it or with the arrows, then the keys below act on it.
-The default shortcuts are listed here; every one of them can be rebound under your profile.
+The default shortcuts are listed here. Every one of them can be rebound under your profile.
 
 == With the mouse
 
@@ -211,7 +211,7 @@ A node with two parents is written in full and drawn under the parent the writte
 
 * **Tab** starts a child of the focused node. Type a word's number to anchor the child to that word, then pick its concept from the word's senses (Enter keeps the word as typed), or type a concept for an abstract node. Then the relation.
 * Drag the grip on a node's lower edge onto another node for an edge (a second edge into a node is a re-entrancy), onto a word for a new node anchored there, or onto empty space for an abstract node. The relation is asked at the drop.
-* **n** makes a node with no parent; so does a double-click on a word or on empty space. Either way the concept picker opens, prefilled with the word when there is one.
+* **n** makes a node with no parent, and so does a double-click on a word or on empty space. Either way the concept picker opens, prefilled with the word when there is one.
 * Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
 * **r** adds a second parent to the focused node: click the parent, then give the relation.
 
@@ -227,13 +227,13 @@ A node with two parents is written in full and drawn under the parent the writte
 
 == Deleting
 
-* **Shift+Backspace** deletes the edge into the focused node, and with it whatever only that edge reached. More than one node going asks first; a leaf goes without a question, since history keeps it.
+* **Shift+Backspace** deletes the edge into the focused node, and with it whatever only that edge reached. More than one node going asks first. A leaf goes without a question, since history keeps it.
 * **Ctrl+Shift+Backspace** (Cmd+Shift+Backspace) deletes the node and everything under it.
 * In a relation editor, Shift+Backspace before anything is typed deletes that edge or triple.
 
 == The pickers
 
-Enter commits what was typed. An option is taken instead only when the arrows moved to it, it was clicked, or its value is exactly what was typed; a highlight the pointer left behind is not a choice.
+Enter commits what was typed. An option is taken instead only when the arrows moved to it, it was clicked, or its value is exactly what was typed. A highlight the pointer left behind is not a choice.
 The list also shows options whose description holds the typed text, so an argument can be found by what it means, but Enter never takes one of those on its own: typing `place` gives `:place`, not the `:ARG1` described as "place or thing escaped".
 In the relation pickers, the start of a relation is enough (`ARG` gives `:ARG0`, the colon optional). A concept is any word, so it is never finished for you: `rat` stays `rat`.
 Escape cancels.
@@ -299,7 +299,7 @@ A document's **Comments** tab holds comments on the document and on its sentence
 A project's **Services** settings name which service each task runs with by default.
 The **Draft** button on the Annotate tab runs a drafting service over the document or one sentence: a language model proposes a sentence graph from the words and their glosses, written as machine annotation for you to correct.
 Sentences that already have a graph are skipped.
-**Overwrite existing graphs** redrafts the ones a service wrote; a graph you built or confirmed is kept, and the run's report counts what it kept.
+**Overwrite existing graphs** redrafts the ones a service wrote. A graph you built or confirmed is kept, and the run's report counts what it kept.
 A second drafting method, **Skeleton from glosses**, needs no model: it writes one anchored node per word that is linked to a vocabulary entry or carries a gloss, with the headword or the gloss's lexical part as the concept and the grammatical abbreviations (`3SG`, `NEG`, `HAB`) as attributes, and marks the word carrying tense or aspect as the root. It draws no relations.
 
 == Compare

@@ -297,7 +297,7 @@ Everyone who can open the project can read them, and anyone who can annotate can
 Each guideline has a title and a body written in a rich-text editor (bold, headings, lists, tables, links).
 The title is the only thing to keep current, and it is how a guideline is referred to, including by the Assistant.
 Name the subject rather than the rule, so that the title still fits after the rule is refined.
-Two guidelines with the same title are worth avoiding; the editor says so while you are typing one that is already in use, and saves it anyway.
+Two guidelines with the same title are worth avoiding. The editor says so while you are typing one that is already in use, and saves it anyway.
 If a title cannot name what a guideline covers, it is two guidelines.
 One topic each is what makes them findable, by a person and by the Assistant.
 
