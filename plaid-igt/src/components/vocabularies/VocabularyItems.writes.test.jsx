@@ -34,6 +34,7 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth }));
 const { VocabularyItems } = await import('./VocabularyItems.jsx');
 const { WriteQueue } = await import('@ui/domain/WriteQueue.js');
 const { hasUnsavedDraft } = await import('@ui/hooks/useUnsavedDraft.js');
+const feedback = await import('@/utils/feedback');
 
 const FIELDS = [{ name: 'gloss', type: 'text' }];
 
@@ -412,5 +413,91 @@ describe('Bulk Add and Replace', () => {
       await settle();
     });
     expect(kinds(calls)).toEqual(['bulkUpdate']);
+  });
+});
+
+// A refusal says so and reads the entries again. It must not take what is
+// typed into the entry open NOW, which need not be the one it was about, and a
+// refused new entry goes back to a form that can be sent again.
+describe('a refused entry write', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  let mounted = null;
+  afterEach(async () => {
+    await mounted?.unmount();
+    mounted = null;
+    vi.clearAllMocks();
+  });
+
+  it('leaves the gloss being typed into another entry alone', async () => {
+    const { client, holds } = stub([
+      { id: 'a', form: 'uno' },
+      { id: 'b', form: 'dos' },
+    ]);
+    const refused = deferred();
+    holds.push(refused);
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=a'));
+    await view.step(() => setValue(glossInput(), 'one'));
+    await view.step(() => button('Save').click());
+    await view.step(() => link('dos').click());
+    await view.step(() => setValue(glossInput(), 'two, not saved'));
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    expect(formInput().value).toBe('dos');
+    expect(glossInput().value).toBe('two, not saved');
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+    expect(feedback.notifyError).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts a refused new entry back in the new-entry form, ready to send again', async () => {
+    const { client, calls, holds } = stub([{ id: 'a', form: 'uno' }]);
+    const refused = deferred();
+    holds.push(refused);
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=new'));
+    await view.step(() => setValue(formInput(), 'nuevo'));
+    await view.step(() => setValue(glossInput(), 'new'));
+    await view.step(() => button('Create').click());
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    expect(feedback.notifySuccess).not.toHaveBeenCalled();
+    expect(formInput().value).toBe('nuevo');
+    expect(glossInput().value).toBe('new');
+    expect(button('Create').disabled).toBe(false);
+    expect(hasUnsavedDraft()).toBe('The entry you have typed');
+    await view.step(async () => {
+      button('Create').click();
+      await settle();
+    });
+    expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
+    expect(feedback.notifySuccess).toHaveBeenCalledWith('Entry created', 'Success');
+  });
+});
+
+// The usage query names this vocabulary in the projects that link it, and
+// with none it is refused. Nothing is asked, and nothing is shown.
+describe('usage counts', () => {
+  const usageQueries = (client) =>
+    client.query.mock.calls.filter(([q]) => q.return?.group?.includes('?tl.config.plaid.role'));
+  it('are not asked for a vocabulary no project links', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    client.query = vi.fn(async () => ({ results: [] }));
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    expect(usageQueries(client)).toHaveLength(0);
+    expect(feedback.notifyWarning).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('are asked when a project links it', async () => {
+    const { client } = stub([{ id: 'a', form: 'uno' }]);
+    client.projects.list = async () => [{ id: 'p1', vocabs: [{ id: 'v1' }] }];
+    client.query = vi.fn(async () => ({ results: [['a', 'word', 3]] }));
+    const view = await mount(client, '/vocabularies/v1?item=a');
+    expect(usageQueries(client)).toHaveLength(1);
+    await view.unmount();
   });
 });

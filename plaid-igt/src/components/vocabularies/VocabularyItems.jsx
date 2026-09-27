@@ -266,11 +266,25 @@ export const VocabularyItems = ({
   // linking project counts, unlike the assistant above, because a roleset
   // belongs to the entry rather than to one project's thread.
   const [umrLinked, setUmrLinked] = useState(false);
+  // The projects this user can read, one call per vocabulary, shared by the
+  // lookups above and the usage counts, which have no project to count in
+  // when nothing links the vocabulary.
+  const projectsRef = useRef(null);
+  const readableProjects = () => {
+    if (projectsRef.current?.key !== vocabularyId) {
+      const promise = client.projects.list();
+      // A failed read is asked again next time rather than remembered.
+      promise.catch(() => {
+        if (projectsRef.current?.promise === promise) projectsRef.current = null;
+      });
+      projectsRef.current = { key: vocabularyId, promise };
+    }
+    return projectsRef.current.promise;
+  };
   useEffect(() => {
     if (!client || !vocabularyId) return undefined;
     let alive = true;
-    client.projects
-      .list()
+    readableProjects()
       .then((projects) => {
         if (!alive) return;
         const id = soleProjectLinking(projects, vocabularyId);
@@ -287,6 +301,9 @@ export const VocabularyItems = ({
     return () => {
       alive = false;
     };
+    // `readableProjects` is rebuilt every render and reads the vocabulary it
+    // is keyed on, so these two are what the lookup depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, vocabularyId]);
   const assistantAvailable = useAssistantAvailable(client, assistantProject?.id, IGT_ASSISTANT.app);
   // Ask sets a focus and the SHELL opens the panel on it, so in a window with
@@ -382,6 +399,16 @@ export const VocabularyItems = ({
   // words and morphemes (an entry may be linked from both).
   const fetchUsageCounts = async () => {
     try {
+      // A vocabulary no project links has no uses, and the query refuses it.
+      const projects = await readableProjects().catch(() => null);
+      if (
+        projects &&
+        !projects.some((p) => (p?.vocabs || []).some((v) => v?.id === vocabularyId))
+      ) {
+        setUsageCounts(null);
+        setUsageKinds(null);
+        return;
+      }
       const res = await client.query({
         where: [
           ['vocab', '?v', { layer: vocabularyId }],
@@ -452,6 +479,10 @@ export const VocabularyItems = ({
   // are not sent. Resolves to whether the write landed.
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
+  // The pending id a create has sent the URL to, until a render shows it
+  // there: a refusal can arrive first.
+  const creatingRef = useRef(null);
+  if (creatingRef.current === selectedId) creatingRef.current = null;
   const settleEntries = (ids) => {
     const known = new Map([...ids].filter(([, server]) => server));
     if (!known.size) return;
@@ -463,12 +494,19 @@ export const VocabularyItems = ({
   // Closing the tab asks first while a write is still on its way, and keeps
   // asking after this screen is left, since the writes go on without it.
   useSavingGuard(writes);
-  const sendInTurn = (label, write, failure) =>
+  // A refusal's refetch re-seeds the open draft from what the server holds, unless
+  // something is typed into it: the entry open now need not be the one the
+  // refused write was about, and what is typed there is not the server's to
+  // take back. `refused` replaces that step for a write with its own way back.
+  const unseedUnlessTyped = () => {
+    if (!typedRef.current) dispatch({ type: 'draft/unseed' });
+  };
+  const sendInTurn = (label, write, failure, { refused } = {}) =>
     writes.push(() => client.withOperation(label, write), {
       refused: async (err) => {
         console.error(`${label}:`, err);
-        notifyError(failure, 'Error');
-        dispatch({ type: 'draft/unseed' });
+        notifyError(err, failure);
+        (refused || unseedUnlessTyped)();
         await fetchItems({ quiet: true, inTurn: true });
       },
     });
@@ -484,7 +522,7 @@ export const VocabularyItems = ({
     const landed = await writes.push(() => client.withOperation(label, write), {
       refused: async (err) => {
         error = err;
-        dispatch({ type: 'draft/unseed' });
+        unseedUnlessTyped();
         await fetchItems({ quiet: true, inTurn: true });
       },
     });
@@ -495,6 +533,8 @@ export const VocabularyItems = ({
   // a round trip later and need to know what the form was filled from.
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  // A refused new entry's draft, held until the form it goes back to opens.
+  const refusedNewRef = useRef(null);
 
   // A reference that points at an entry no longer here (deleted through the
   // API, or by another app) is cleared on the first load by someone who can
@@ -556,6 +596,15 @@ export const VocabularyItems = ({
     // replaces the pending one in the URL.
     const seedKey = seedKeyFor(stableKey(selectedId), newParent);
     if (draft.seedKey === seedKey) return;
+    if (selectedId === NEW_ID && refusedNewRef.current?.seedKey === seedKey) {
+      // A new entry the server refused, back in the form as it was typed.
+      const back = refusedNewRef.current;
+      refusedNewRef.current = null;
+      dispatch({ type: 'draft/seed', seedKey, form: back.seedForm, fields: {} });
+      dispatch({ type: 'draft/form', form: back.form });
+      dispatch({ type: 'draft/fields', fields: back.fields });
+      return;
+    }
     if (!selectedId || selectedId === NEW_ID) {
       // A sense is spelled like its headword (a FLEx import gives every
       // sense the entry's form, and "adidi 1.2" reads that way), so Add sense
@@ -704,12 +753,14 @@ export const VocabularyItems = ({
     if (isNew) {
       const withPlace = liveNewParent ? withParentSet(tree, { metadata }, liveNewParent) : metadata;
       const id = pendingId();
+      const parent = liveNewParent;
+      const parentForm = parent ? (tree.byId.get(parent)?.form ?? '') : '';
       setItems((prev) => [...prev, saved(id, withPlace)]);
       // Replace: the `?item=new` step becomes the entry it created, so Back
       // does not return to an empty form for an entry that now exists.
+      creatingRef.current = id;
       goItem(id, { replace: true });
       dispatch({ type: 'draft/form', form });
-      notifySuccess('Entry created', 'Success');
       sendInTurn(
         `Add entry "${form}"`,
         async () => {
@@ -720,15 +771,35 @@ export const VocabularyItems = ({
             Object.keys(meta).length ? meta : undefined,
           );
           settleEntries(new Map([[id, createdId(created)]]));
+          notifySuccess('Entry created', 'Success');
         },
         'Failed to save the entry',
+        {
+          // The pending id names nothing now. Still open, it goes back to the
+          // new-entry form holding what is typed there, so Create sends it again.
+          refused: () => {
+            const stillOpen = selectedIdRef.current === id || creatingRef.current === id;
+            if (creatingRef.current === id) creatingRef.current = null;
+            if (!stillOpen) {
+              unseedUnlessTyped();
+              return;
+            }
+            const { form: typedForm, fields: typedFields } = draftRef.current;
+            refusedNewRef.current = {
+              seedKey: seedKeyFor(NEW_ID, parent),
+              seedForm: parentForm,
+              form: typedForm,
+              fields: typedFields,
+            };
+            goItem(NEW_ID, { replace: true }, parent);
+          },
+        },
       );
       return;
     }
     const item = selectedItem;
     setItems((prev) => prev.map((i) => (i.id === item.id ? saved(item.id) : i)));
     dispatch({ type: 'draft/form', form });
-    notifySuccess('Entry updated', 'Success');
     // Only the keys the save changes are sent, so one written elsewhere
     // since this entry was loaded stays.
     const ops = metadataPatchTo(item.metadata, metadata);
@@ -741,6 +812,7 @@ export const VocabularyItems = ({
           ...(ops.length ? { metadata: followIds(ops) } : {}),
         };
         if (Object.keys(update).length > 1) await client.vocabItems.bulkUpdate([update]);
+        notifySuccess('Entry updated', 'Success');
       },
       'Failed to save the entry',
     );
@@ -768,7 +840,6 @@ export const VocabularyItems = ({
     goItem(null, { replace: true });
     if (patches.length) foldPatches(patches);
     setItems((prev) => prev.filter((i) => i.id !== deletedId));
-    notifySuccess('Entry deleted', 'Success');
     sendInTurn(
       `Delete entry "${selectedItem.form}"`,
       async () => {
@@ -779,6 +850,7 @@ export const VocabularyItems = ({
           // Its links go with it, in documents no editor has open.
           dropPrecedent();
         }
+        notifySuccess('Entry deleted', 'Success');
       },
       'Failed to delete the entry',
     );
