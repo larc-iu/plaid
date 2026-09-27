@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { X, History, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Badge } from '../ui/badge.jsx';
@@ -72,24 +72,93 @@ export const HistoryDrawer = ({
       label: readableDescription(op.description),
     });
 
+  // The list is one tab stop (roving tabindex): the entry last focused, else
+  // the selected one, else the newest. The arrow keys walk the entries and
+  // the actions of an open entry, Right opens an entry and Left closes it or
+  // steps from an action back to its entry, mirrored in a right-to-left page.
+  const listRef = useRef(null);
+  const [focusKey, setFocusKey] = useState(null);
+  const unitKey = (entry) => `u:${entry.id}`;
+  const opKey = (entry, op) => `o:${entry.id}:${op.id}`;
+  const visibleKeys = [];
+  let selectedKey = null;
+  for (const entry of reversedAuditEntries) {
+    visibleKeys.push(unitKey(entry));
+    const ops = entry.ops || [];
+    const open = ops.length > 1 && expanded.has(entry.id);
+    if (entry.id === selectedEntry?.id) selectedKey = unitKey(entry);
+    for (const op of ops) {
+      if (op.id !== selectedEntry?.id) continue;
+      selectedKey = open ? opKey(entry, op) : unitKey(entry);
+    }
+    if (open) [...ops].reverse().forEach((op) => visibleKeys.push(opKey(entry, op)));
+  }
+  const tabKey =
+    [focusKey, selectedKey].find((k) => k && visibleKeys.includes(k)) ?? visibleKeys[0];
+
+  const itemProps = (key) => ({
+    type: 'button',
+    'data-history-item': key,
+    tabIndex: key === tabKey ? 0 : -1,
+    onFocus: () => setFocusKey(key),
+  });
+
+  const focusItem = (key) =>
+    listRef.current?.querySelector(`[data-history-item="${CSS.escape(key)}"]`)?.focus();
+
+  const onListKeyDown = (e) => {
+    const item = e.target.closest?.('[data-history-item]');
+    if (!item) return;
+    const key = item.getAttribute('data-history-item');
+    const i = visibleKeys.indexOf(key);
+    if (i === -1) return;
+    const rtl = getComputedStyle(item).direction === 'rtl';
+    const forward = rtl ? 'ArrowLeft' : 'ArrowRight';
+    const back = rtl ? 'ArrowRight' : 'ArrowLeft';
+    const entryId = key.slice(2).split(':')[0];
+    const entry = reversedAuditEntries.find((en) => en.id === entryId);
+    const multi = (entry?.ops || []).length > 1;
+    let handled = true;
+    if (e.key === 'ArrowDown') focusItem(visibleKeys[Math.min(i + 1, visibleKeys.length - 1)]);
+    else if (e.key === 'ArrowUp') focusItem(visibleKeys[Math.max(i - 1, 0)]);
+    else if (e.key === 'Home') focusItem(visibleKeys[0]);
+    else if (e.key === 'End') focusItem(visibleKeys[visibleKeys.length - 1]);
+    else if (e.key === forward && key.startsWith('u:') && multi) {
+      if (expanded.has(entryId)) focusItem(visibleKeys[i + 1]);
+      else toggleExpanded(entryId);
+    } else if (e.key === back && key.startsWith('o:')) focusItem(unitKey(entry));
+    else if (e.key === back && key.startsWith('u:') && expanded.has(entryId)) {
+      toggleExpanded(entryId);
+    } else handled = false;
+    if (handled) e.preventDefault();
+  };
+
+  const focusRing =
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring';
+
   const renderOp = (entry, op, isLast) => {
     const isSelected = selectedEntry?.id === op.id;
     return (
-      <div
+      <button
         key={`${entry.id}:${op.id}`}
+        {...itemProps(opKey(entry, op))}
+        aria-current={isSelected ? 'true' : undefined}
         className={cn(
-          'cursor-pointer border-b border-l-4 border-l-primary/30 bg-muted/20 py-2 pl-9 pr-3 hover:bg-muted/50',
+          'block w-full cursor-pointer border-b border-l-4 border-l-primary/30 bg-muted/20 py-2 pl-9 pr-3 text-start hover:bg-muted/50',
+          focusRing,
           isLast && 'border-b',
           isSelected && 'bg-accent hover:bg-accent',
         )}
         onClick={() => selectOp(op)}
       >
-        <p className="line-clamp-2 text-sm leading-snug">{readableDescription(op.description)}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <span className="line-clamp-2 block text-sm leading-snug">
+          {readableDescription(op.description)}
+        </span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">
           {fullTimestamp(op.time)}
           {actor(op.user, null)}
-        </p>
-      </div>
+        </span>
+      </button>
     );
   };
 
@@ -106,6 +175,9 @@ export const HistoryDrawer = ({
         : undefined;
     return (
       <div key={entry.id}>
+        {/* The row takes a click anywhere on it. The button inside is what a
+            keyboard reaches, and the chevron is the mouse's way to open the
+            entry (the keyboard's is ArrowRight on the button). */}
         <div
           className={cn(
             'flex cursor-pointer gap-1.5 border-b px-2 py-2.5 hover:bg-muted/50',
@@ -117,6 +189,7 @@ export const HistoryDrawer = ({
           {multi ? (
             <button
               type="button"
+              tabIndex={-1}
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
               aria-expanded={isExpanded}
               className="mt-0.5 h-5 w-5 shrink-0 rounded hover:bg-muted"
@@ -126,26 +199,38 @@ export const HistoryDrawer = ({
               }}
             >
               <ChevronRight
-                className={cn('h-4 w-4 transition-transform', isExpanded && 'rotate-90')}
+                className={cn(
+                  'h-4 w-4 transition-transform rtl:-scale-x-100',
+                  isExpanded && 'rotate-90',
+                )}
               />
             </button>
           ) : (
             <span className="w-5 shrink-0" />
           )}
-          <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-sm font-medium leading-snug">
+          <button
+            {...itemProps(unitKey(entry))}
+            aria-current={isSelected ? 'true' : undefined}
+            aria-expanded={multi ? isExpanded : undefined}
+            className={cn('min-w-0 flex-1 rounded-sm text-start', focusRing)}
+            onClick={(e) => {
+              e.stopPropagation();
+              selectUnit(entry);
+            }}
+          >
+            <span className="line-clamp-2 block text-sm font-medium leading-snug">
               {multi && (
                 <span className="mr-1.5 inline-block rounded bg-primary/10 px-1.5 py-px align-[1px] text-[11px] font-semibold text-primary">
                   {ops.length} actions
                 </span>
               )}
               {unitLabel(entry)}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground" title={range}>
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground" title={range}>
               {fullTimestamp(entry.time)}
               {actor(entry.user, entry.apiToken)}
-            </p>
-          </div>
+            </span>
+          </button>
         </div>
         {isExpanded &&
           [...ops].reverse().map((op, i, arr) => renderOp(entry, op, i === arr.length - 1))}
@@ -178,7 +263,7 @@ export const HistoryDrawer = ({
         {error && (
           <div className="p-4">
             <Notice tone="error">
-              <p className="font-medium">Error</p>
+              <p className="font-medium">Failed to load the history</p>
               <p className="text-muted-foreground">{error}</p>
             </Notice>
           </div>
@@ -197,7 +282,11 @@ export const HistoryDrawer = ({
                 ? '1 entry'
                 : `${reversedAuditEntries.length.toLocaleString()} entries`}
             </p>
-            <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-background">
+            <div
+              ref={listRef}
+              onKeyDown={onListKeyDown}
+              className="min-h-0 flex-1 overflow-auto rounded-md border bg-background"
+            >
               {reversedAuditEntries.map(renderUnit)}
             </div>
           </div>
