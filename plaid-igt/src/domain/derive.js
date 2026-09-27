@@ -9,8 +9,7 @@
 // `sentences`.
 
 import { provState, provOrigin } from '@larc-iu/plaid-client';
-import { lexiconView } from './vocabDictionary.js';
-import { itemsById, linkedItem } from './vocabLookup.js';
+import { entryMorphTypesOf, itemsById, linkedItem } from './vocabLookup.js';
 import {
   readDocumentMetadata,
   readOrthographies,
@@ -355,12 +354,10 @@ const effectiveMorphType = (tokenMetadata, vocabItem, entryTypes = null) =>
  * its headword's. A sense made by hand carries none of its own.
  */
 const collectEntryMorphTypes = (vocabularies) => {
-  const out = new Map();
-  for (const vocab of Object.values(vocabularies || {})) {
-    const view = lexiconView(vocab.items || []);
-    for (const it of vocab.items || []) out.set(it.id, view.morphTypeOf(it.id));
-  }
-  return out;
+  const maps = Object.values(vocabularies || {}).map((vocab) => entryMorphTypesOf(vocab.items));
+  if (maps.length === 1) return maps[0];
+  // An entry is in one vocabulary, so the one that knows its id answers.
+  return { get: (id) => maps.find((m) => m.has(id))?.get(id) };
 };
 
 function collectOrthographies(token, primaryTokenLayer) {

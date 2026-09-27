@@ -1,8 +1,8 @@
 // Drive a whole export: resolve the document list for the chosen scope,
-// fetch documents SEQUENTIALLY (server load, memory), serialize each with the
-// preset's format, and assemble the result — a bare file for a single
-// document, a zip (documents/ + optional vocabularies/) otherwise. Three
-// formats are dataset-level rather than per-document:
+// read the documents four at a time and in order (documentReads.js),
+// serialize each in turn with the preset's format, and assemble the result — a
+// bare file for a single document, a zip (documents/ + optional vocabularies/)
+// otherwise. Three formats are dataset-level rather than per-document:
 // 'plaid-igt-json' (project.json + vocabularies/*.json + documents/*.json +
 // optional media/*, self-contained and re-importable regardless of scope) and
 // 'cldf' (cldf-metadata.json + one CSV per component table, with every
@@ -14,6 +14,8 @@
 // `warnings`, not an aborted run; cancellation throws ExportCancelled.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '../domain/IgtDocument.js';
+import { readInOrder, readLayerIds } from '../domain/documentReads.js';
+import { shareVocabularies } from '../domain/vocabLookup.js';
 import {
   MEDIA_FILE_FIELD,
   findBaselineTextLayer,
@@ -206,11 +208,6 @@ async function withTokenLayerShapes(client, project) {
   };
 }
 
-/** A document's comments, shaped for `serializeDocumentNative`. */
-async function loadDocumentComments(client, projectId, documentId, nameCache) {
-  return shapeComments(client, await client.comments.list(projectId, { documentId }), nameCache);
-}
-
 /** A vocabulary's entry comments, shaped for `serializeVocabularyNative`. */
 async function loadVocabComments(client, vocabId, nameCache) {
   return shapeComments(client, await client.comments.listInVocab(vocabId), nameCache);
@@ -299,7 +296,9 @@ export async function runExport({
     // A vocabulary read has no as-of form, so a historical export carries
     // today's vocabularies beside the document as it was.
     const loaded = await loadProjectVocabularies(client, project);
-    vocabs = Object.values(loaded.vocabularies);
+    // Every document of the export is handed these entry lists, so each index
+    // over them is built once for the run rather than once per document.
+    vocabs = Object.values(shareVocabularies(loaded.vocabularies));
     if (loaded.failedCount) {
       warnings.push(
         `${loaded.failedCount} vocabular${loaded.failedCount === 1 ? 'y' : 'ies'} failed to load`,
@@ -359,14 +358,42 @@ export async function runExport({
   // Author display names, resolved once per export rather than per document.
   const authorNames = new Map();
 
-  // Sequential per-document fetch + serialize.
+  // Comments ride the native archive only, and never a historical one: they
+  // are unaudited (plaid.sql.comment), so there is no state at `asOf` to
+  // read. Today's comments in a time-travelled archive would carry today's
+  // dates and could anchor to entities that did not yet exist.
+  const wantComments = isNative && !asOf;
+  // The native archive carries every layer of the project, other apps' too.
+  // Every other format writes this app's layers alone.
+  const readLayers = isNative ? null : readLayerIds(project);
+  // A document and its comments are read ahead of the serializer, a few
+  // documents at a time. A read's failure is kept for its turn in the loop,
+  // where it becomes a warning as before.
+  const readDoc = async (id) => {
+    const raw = await client.documents.get(id, true, asOf || undefined, readLayers);
+    let comments = null;
+    if (wantComments) {
+      comments = await client.comments.list(project.id, { documentId: id }).then(
+        (list) => ({ list }),
+        (error) => ({ error }),
+      );
+    }
+    return { raw, comments };
+  };
+
+  // Documents in order, each serialized as its turn comes.
   const docFiles = [];
+  // A run left early (a cancel, a throw) starts no further reads: the
+  // generator starts one only when asked for the next.
+  const reads = readInOrder(docIds, readDoc);
   for (let i = 0; i < docIds.length; i++) {
     checkStop();
     onProgress({ done: i, total: progressTotal, name: null });
+    const { value: read, error: readError } = (await reads.next()).value;
     let igtDoc;
     try {
-      const raw = await client.documents.get(docIds[i], true, asOf || undefined);
+      if (readError) throw readError;
+      const { raw } = read;
       // Vocab links ride embedded in the document GET, and the constructor
       // folds them into the vocabularies map it is handed. The items in that
       // map are the project's own, rebased so each document starts with only
@@ -413,17 +440,12 @@ export async function runExport({
       }
     }
 
-    // Comments ride the native archive only, and never a historical one: they
-    // are unaudited (plaid.sql.comment), so there is no state at `asOf` to
-    // read. Today's comments in a time-travelled archive would carry today's
-    // dates and could anchor to entities that did not yet exist.
     let docComments = [];
-    if (isNative && !asOf) {
-      try {
-        docComments = await loadDocumentComments(client, project.id, docIds[i], authorNames);
-      } catch (err) {
-        warnings.push(`"${name}": comments could not be fetched: ${err?.message ?? err}`);
-      }
+    if (read.comments?.error) {
+      const err = read.comments.error;
+      warnings.push(`"${name}": comments could not be fetched: ${err?.message ?? err}`);
+    } else if (read.comments) {
+      docComments = await shapeComments(client, read.comments.list, authorNames);
     }
 
     try {
@@ -466,13 +488,18 @@ export async function runExport({
       warnings.push(`"${name}" failed to serialize: ${err?.message ?? err}`);
     }
   }
-  // The example documents the scope did not cover. One failing is a warning
-  // and a few examples left out, never a failed export.
+  // The example documents the scope did not cover, read whole: one can be in
+  // another project, whose layers this project's ids do not name. One failing
+  // is a warning and a few examples left out, never a failed export.
+  const exampleReads = readInOrder(exampleDocIds, (id) =>
+    client.documents.get(id, true, asOf || undefined),
+  );
   for (const [i, docId] of exampleDocIds.entries()) {
     checkStop();
     onProgress({ done: docIds.length + i, total: progressTotal, name: null });
+    const { value: raw, error: readError } = (await exampleReads.next()).value;
     try {
-      const raw = await client.documents.get(docId, true, asOf || undefined);
+      if (readError) throw readError;
       const igtDoc = new IgtDocument({ raw, vocabularies: {}, client });
       harvestExampleSentences(igtDoc, docId, exampleTokensByDoc.get(docId), exampleTexts);
     } catch (err) {

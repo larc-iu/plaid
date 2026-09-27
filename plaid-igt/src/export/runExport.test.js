@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { unzipSync } from 'fflate';
 import { runExport, ExportCancelled } from './runExport.js';
+import { READS_IN_FLIGHT } from '../domain/documentReads.js';
 import { discoverExportLayers } from './exportLayers.js';
 import { newPreset } from './presets.js';
 
@@ -72,10 +73,14 @@ function stubClient({
   vocabCommentsFail = false,
   guidelines = [],
   guidelinesFail = false,
+  delays = {},
 }) {
   const calls = [];
+  // The `layers` each document read named, by document id.
+  const readLayers = new Map();
   return {
     calls,
+    readLayers,
     guidelines: {
       list: async (projectId, opts) => {
         calls.push(['guidelines.list', projectId, opts]);
@@ -109,8 +114,10 @@ function stubClient({
       },
     },
     documents: {
-      get: async (id, full, asOf) => {
+      get: async (id, full, asOf, layers) => {
         calls.push(asOf ? ['documents.get', id, asOf] : ['documents.get', id]);
+        readLayers.set(id, layers ?? null);
+        if (delays[id]) await new Promise((r) => setTimeout(r, delays[id]));
         if (failIds.includes(id)) throw new Error('boom');
         return JSON.parse(JSON.stringify(docs.find((d) => d.id === id)));
       },
@@ -479,8 +486,8 @@ describe('runExport', () => {
     ).rejects.toThrow(/Nothing exported/);
   });
 
-  it('honors cancellation between documents', async () => {
-    const docs = [rawDoc('d1', 'A', 'hi'), rawDoc('d2', 'B', 'yo')];
+  it('honors cancellation between documents, and reads no further than the reads ahead', async () => {
+    const docs = Array.from({ length: 10 }, (_, i) => rawDoc(`d${i + 1}`, `T${i + 1}`, 'hi'));
     const client = stubClient({ docs });
     let fetched = 0;
     await expect(
@@ -495,7 +502,76 @@ describe('runExport', () => {
         shouldStop: () => fetched >= 1,
       }),
     ).rejects.toThrow(ExportCancelled);
-    expect(client.calls.filter(([m]) => m === 'documents.get')).toEqual([['documents.get', 'd1']]);
+    // The first document, and the few read ahead of it before the cancel.
+    const read = client.calls.filter(([m]) => m === 'documents.get').map(([, id]) => id);
+    expect(read[0]).toBe('d1');
+    expect(read.length).toBeLessThanOrEqual(1 + READS_IN_FLIGHT);
+  });
+
+  it('reads ahead but writes the documents, their progress and their warnings in order', async () => {
+    // The first read is the slowest, so the others land before it.
+    const docs = ['d1', 'd2', 'd3', 'd4', 'd5'].map((id) => rawDoc(id, id.toUpperCase(), 'hi'));
+    const client = stubClient({ docs, failIds: ['d3'], delays: { d1: 30, d2: 10 } });
+    const progress = [];
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: plainPreset(),
+      scope: { type: 'project' },
+      onProgress: (p) => progress.push(p),
+    });
+    const files = Object.keys(await unzipBlob(result.blob)).filter((f) =>
+      f.startsWith('documents/'),
+    );
+    expect(files).toEqual([
+      'documents/D1.txt',
+      'documents/D2.txt',
+      'documents/D4.txt',
+      'documents/D5.txt',
+    ]);
+    expect(progress.filter((p) => p.name).map((p) => p.name)).toEqual(['D1', 'D2', 'D4', 'D5']);
+    expect(result.warnings).toEqual(['Document d3 failed to load: boom']);
+  });
+
+  it("reads only this app's layers, except for the archive, which reads every layer", async () => {
+    const project = {
+      ...PROJECT,
+      textLayers: [
+        {
+          id: 'tl',
+          config: role('baseline'),
+          tokenLayers: [
+            { id: 'wl', config: role('word'), spanLayers: [] },
+            {
+              id: 'sl',
+              config: role('sentence'),
+              spanLayers: [
+                { id: 'tr', config: { igt: { scope: 'Sentence' } } },
+                { id: 'other', config: {} },
+              ],
+            },
+            { id: 'ud', config: {}, spanLayers: [], overlapMode: 'any' },
+          ],
+        },
+      ],
+    };
+    const docs = [rawDoc('d1', 'A', 'hi')];
+    const plain = stubClient({ docs });
+    await runExport({
+      client: plain,
+      project,
+      preset: newPreset('plaintext', discoverExportLayers(project), 'p'),
+      scope: { type: 'project' },
+    });
+    expect([...plain.readLayers.get('d1')].sort()).toEqual(['sl', 'tl', 'tr', 'wl']);
+    const archive = stubClient({ docs });
+    await runExport({
+      client: archive,
+      project,
+      preset: newPreset('plaid-igt-json', discoverExportLayers(project), 'p'),
+      scope: { type: 'project' },
+    });
+    expect(archive.readLayers.get('d1')).toBeNull();
   });
 
   it('includes vocabulary TSVs (the fields entries show, no Uses column)', async () => {

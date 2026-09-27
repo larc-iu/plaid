@@ -1,7 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { applyField, applyMerge, applyReanalyze, applyRespell } from './bulkRunner.js';
+import {
+  applyField,
+  applyMerge,
+  applyReanalyze,
+  applyRespell,
+  planField,
+  planMerge,
+  planReanalyze,
+  planRespell,
+} from './bulkRunner.js';
+import { buildReplacer } from './bulkPlan.js';
 import { openPrecedent } from '@/domain/precedentCache.js';
-import { makeFakeClient } from '@/domain/test-helpers.js';
+import { buildRawDoc, makeFakeClient } from '@/domain/test-helpers.js';
+import { getIgtLayerInfo } from '@/domain/layerInfo.js';
 
 // A Bulk Edit writes to documents other than any one open, so a project
 // precedent read taken before it (precedentCache.js) holds rows it changed.
@@ -176,5 +187,92 @@ describe('applyRespell', () => {
     const texts = client.calls.filter((c) => c.kind === 'texts.update').map((c) => c.args[0]);
     // a once, then b refused, then b again. Never a second time.
     expect(texts).toEqual(['t-a', 't-b', 't-b']);
+  });
+});
+
+// A preview reads every document a change touches. Each read names only the
+// layers the preview looks at, and the entry lists are shared by the run.
+describe('the previews read what they need', () => {
+  const project = () => {
+    const p = buildRawDoc();
+    p.id = 'p1';
+    p.vocabs = [{ id: 'v1' }];
+    // Another app's token layer, whose links a merge must still see.
+    p.textLayers[0].tokenLayers.push({ id: 'udL', config: {}, spanLayers: [] });
+    return p;
+  };
+  const readClient = () => {
+    const reads = [];
+    return {
+      reads,
+      query: async () => ({
+        results: [
+          ['d1', 2],
+          ['d2', 1],
+        ],
+      }),
+      documents: {
+        get: async (id, full, asOf, layers) => {
+          reads.push({ id, layers: layers ? [...layers].sort() : null });
+          return { ...buildRawDoc({ body: 'ka ta' }), id };
+        },
+      },
+      vocabLayers: {
+        get: async () => ({ id: 'v1', name: 'Lexicon', items: [{ id: 'k1', form: 'ka' }] }),
+      },
+    };
+  };
+  const substrate = ['alignL', 'morphL', 'sentL', 'tl-1', 'wordL'];
+  const replace = buildReplacer('ka', 'exact', 'kaa');
+
+  it('a respell reads the text, the words and the morphemes', async () => {
+    const client = readClient();
+    const p = project();
+    const { docs } = await planRespell(client, p, getIgtLayerInfo(p), {
+      find: 'ka',
+      matchType: 'exact',
+      apply: replace.apply,
+    });
+    expect(docs.map((d) => d.id)).toEqual(['d1', 'd2']);
+    expect(client.reads.map((r) => r.layers)).toEqual([substrate, substrate]);
+  });
+
+  it('a field replace reads its one field too', async () => {
+    const client = readClient();
+    const target = { kind: 'span', layerId: 'msl-0', scope: 'morpheme', field: 'Gloss' };
+    await planField(client, project(), target, {
+      find: 'x',
+      matchType: 'exact',
+      apply: replace.apply,
+    });
+    expect(client.reads[0].layers).toEqual([...substrate, 'msl-0'].sort());
+    const forms = readClient();
+    await planField(
+      forms,
+      project(),
+      { kind: 'morpheme', layerId: 'morphL' },
+      {
+        find: 'x',
+        matchType: 'exact',
+        apply: replace.apply,
+      },
+    );
+    expect(forms.reads[0].layers).toEqual(substrate);
+  });
+
+  it('a merge reads every token layer, and no field', async () => {
+    const client = readClient();
+    await planMerge(client, project(), 'v1', ['k1']);
+    expect(client.reads[0].layers).toEqual([...substrate, 'udL'].sort());
+  });
+
+  it('a re-analyze reads every field, over one shared entry list', async () => {
+    const client = readClient();
+    const p = project();
+    const { docs } = await planReanalyze(client, p, getIgtLayerInfo(p), 'ka');
+    expect(client.reads[0].layers).toEqual([...substrate, 'msl-0', 'ssl-0', 'wsl-0'].sort());
+    const [a, b] = docs.map((d) => d.vocabularies.v1.items);
+    expect(a).toBe(b);
+    expect(Object.isFrozen(a)).toBe(true);
   });
 });

@@ -12,6 +12,8 @@
 // it can't.
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
+import { readAll, readLayerIds } from '@/domain/documentReads';
+import { shareVocabularies } from '@/domain/vocabLookup';
 import { readIgnoredTokens } from '@/domain/igtConfig';
 import { chunk, CHUNK } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
@@ -49,18 +51,19 @@ async function findDocs(client, domain, spec) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-// Vocab tables are mutated by mergeRawVocabLinks (each document folds its own
-// links in), so every IgtDocument gets its own link-free copy of the shared
-// item tables.
-// Load documents one at a time (a bulk edit can touch every document in the
-// project, and a burst of parallel GETs for big documents is what makes the
-// tab feel stuck). `onProgress(done, total)` drives the progress line.
-async function loadDocs(client, project, docEntries, vocabularies, onProgress) {
-  const docs = [];
-  let done = 0;
-  for (const [docId] of docEntries) {
-    const raw = await client.documents.get(docId, true);
-    docs.push(
+// Read the documents a change touches, four at a time and in the order
+// given (documentReads.js), each narrowed to `layers`. `onProgress(done,
+// total)` drives the progress line. Each IgtDocument gets its own link-free
+// copy of the vocabulary map, since the constructor folds that document's
+// links into it. The entry lists inside are shared by every document.
+async function loadDocs(client, project, docEntries, vocabularies, onProgress, layers) {
+  const raws = await readAll(
+    docEntries.map(([docId]) => docId),
+    (docId) => client.documents.get(docId, true, undefined, layers),
+    { onProgress },
+  );
+  return raws.map(
+    (raw) =>
       new IgtDocument({
         raw,
         project,
@@ -68,11 +71,7 @@ async function loadDocs(client, project, docEntries, vocabularies, onProgress) {
         client,
         projectId: project.id,
       }),
-    );
-    done += 1;
-    onProgress?.(done, docEntries.length);
-  }
-  return docs;
+  );
 }
 
 // ---- respell --------------------------------------------------------------
@@ -89,7 +88,9 @@ export async function planRespell(
     findDocs(client, domain, buildMatchSpec(find, matchType)),
     loadProjectVocabularies(client, project),
   ]);
-  const docs = await loadDocs(client, project, docEntries, {}, onProgress);
+  // The text, the words and the morphemes: no annotation field.
+  const layers = readLayerIds(project, { spans: [] });
+  const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const rows = docs.flatMap((doc) => collectRespellRows(doc, apply));
   const lexiconRows = collectLexiconRows(vocabularies, apply);
   return { rows, lexiconRows, docs };
@@ -151,7 +152,9 @@ export async function applyRespell(
 
 export async function planField(client, project, target, { find, matchType, apply }, onProgress) {
   const docEntries = await findDocs(client, target, buildMatchSpec(find, matchType));
-  const docs = await loadDocs(client, project, docEntries, {}, onProgress);
+  // The one field replaced, or none for morpheme forms.
+  const layers = readLayerIds(project, { spans: target.kind === 'span' ? [target.layerId] : [] });
+  const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const rows = docs.flatMap((doc) => collectFieldRows(doc, target, apply));
   return { rows, docs };
 }
@@ -187,8 +190,12 @@ export async function planReanalyze(client, project, layerInfo, form, onProgress
     loadProjectVocabularies(client, project),
   ]);
   // These documents will be MUTATED (bulkReplaceAnalyses), so they need the
-  // real item tables to resolve the analysis's vocab links.
-  const docs = await loadDocs(client, project, docEntries, vocabularies, onProgress);
+  // real item tables to resolve the analysis's vocab links, and every field
+  // an analysis can carry. The entry lists are shared, so each index over
+  // them is built once for the run rather than once per document.
+  shareVocabularies(vocabularies);
+  const layers = readLayerIds(project);
+  const docs = await loadDocs(client, project, docEntries, vocabularies, onProgress, layers);
   const ignoredCfg = readIgnoredTokens(layerInfo.primaryTokenLayer?.config);
   const rows = docs.flatMap((doc) => collectOccurrenceRows(doc, form, ignoredCfg));
   const itemFormById = new Map();
@@ -257,7 +264,10 @@ export async function planMerge(
       docCounts.set(String(docId), (docCounts.get(String(docId)) || 0) + n);
   }
   const docEntries = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
-  const docs = await loadDocs(client, project, docEntries, {}, onProgress);
+  // Every token layer of the project, since a link comes back with the token
+  // layer it is on, and no annotation field.
+  const layers = readLayerIds(project, { tokenLayers: 'all', spans: [] });
+  const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const links = docs.flatMap((doc) => collectLinksToMove(doc, loserIds, survivorId));
   return { links, docs };
 }

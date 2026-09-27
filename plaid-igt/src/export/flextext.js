@@ -44,7 +44,7 @@
 import { FLEX_MORPH_TYPES, decorateWithAffixMarkers } from '../domain/affixMarkers.js';
 import { morphFormOf } from '../domain/igtExport.js';
 import { hasValidTimes } from '../domain/alignmentTimes.js';
-import { lexiconView } from '../domain/vocabDictionary.js';
+import { lexiconViewOf } from '../domain/vocabLookup.js';
 import { resolveFieldLang, parseFieldName, isLangTag } from '../domain/fieldNames.js';
 import { userMetadata } from '@ui/domain/textDirection.js';
 
@@ -454,7 +454,7 @@ const mediaLocationOf = (docData) => {
 const lexiconResolver = (vocabularies) => {
   const views = new Map();
   for (const vocab of Object.values(vocabularies || {})) {
-    views.set(vocab.id, lexiconView(vocab.items || []));
+    views.set(vocab.id, lexiconViewOf(vocab.items));
   }
   return (vocabItem) => {
     const view = views.get(vocabItem?.vocabId);
