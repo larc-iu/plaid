@@ -55,6 +55,8 @@ Tabs.displayName = TabsPrimitive.Root.displayName;
 
 const NO_EDGES = { start: false, end: false, rtl: false };
 const FADE = '2rem';
+// The same width in pixels, for scrolling a tab clear of it.
+const fadePx = () => 2 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
 
 // Whether tabs lie past the start and the end of the strip, in its own
 // direction. In a right-to-left box `scrollLeft` runs from 0 down to minus
@@ -97,40 +99,27 @@ const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref
     setEdges((prev) => (sameEdges(prev, next) ? prev : next));
   }, []);
 
-  React.useEffect(() => {
-    const list = inner.current;
-    if (!list || typeof ResizeObserver === 'undefined') return undefined;
-    // The tabs too, not only the strip: once the strip is as wide as its box,
-    // a label that grows (a count going from 9 to 10) changes what overflows
-    // without changing the strip's own size.
-    const observer = new ResizeObserver(measure);
-    const watch = () => {
-      observer.observe(list);
-      for (const tab of list.children) observer.observe(tab);
-    };
-    watch();
-    const added = new MutationObserver(watch);
-    added.observe(list, { childList: true });
-    return () => {
-      added.disconnect();
-      observer.disconnect();
-    };
-  }, [measure]);
-
   // Radix flips `data-state` on the triggers rather than re-rendering this, so
-  // watch the attribute instead of reacting to a prop. `block: 'nearest'` keeps
-  // it from scrolling the page vertically on the way.
+  // watch the attribute instead of reacting to a prop.
   React.useEffect(() => {
     const list = inner.current;
     if (!list) return undefined;
     const reveal = () => {
       const active = list.querySelector('[data-state="active"]');
-      if (!active) return;
-      // Instant, not smooth: landing on a screen should not animate its tab
-      // strip sideways, and an animation here would also be the only thing
-      // moving on first paint. (Chrome does not run smooth scrolls in a
-      // background tab either, so the default is the honest choice.)
-      active.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+      if (active) {
+        // Clear of the fade as well as inside the box: a tab brought just to
+        // the edge sat under the fade, cut and pale, when more tabs lay past
+        // it. Instant, not smooth: landing on a screen should not animate its
+        // tab strip sideways. Only the strip scrolls, never the page.
+        const room = fadePx();
+        const box = list.getBoundingClientRect();
+        const tab = active.getBoundingClientRect();
+        const slack = tab.left - box.left - room;
+        if (slack < 0) list.scrollLeft += slack;
+        else if (tab.right > box.right - room) {
+          list.scrollLeft += Math.min(tab.right - (box.right - room), slack);
+        }
+      }
       measure();
     };
     // After a frame as well as now: on the first mount the triggers are often
@@ -139,16 +128,43 @@ const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref
     // mutation alone leaves the first paint scrolled to the left.
     const frame = requestAnimationFrame(reveal);
     reveal();
-    const observer = new MutationObserver(reveal);
-    observer.observe(list, {
+    const changed = new MutationObserver(reveal);
+    changed.observe(list, {
       subtree: true,
       childList: true,
       attributes: true,
       attributeFilter: ['data-state'],
     });
+
+    // A strip that gets narrower (the window, or the page's own scrollbar
+    // arriving once the content loads) brings the current tab back into
+    // sight. Any other change in size is measured only, so a strip the
+    // reader scrolled stays where they left it. The tabs are watched too:
+    // once the strip is as wide as its box, a label that grows (a count going
+    // from 9 to 10) changes what overflows without changing the strip.
+    let width = list.clientWidth;
+    const resized =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            if (list.clientWidth !== width) {
+              width = list.clientWidth;
+              reveal();
+            } else measure();
+          });
+    const watch = () => {
+      if (!resized) return;
+      resized.observe(list);
+      for (const tab of list.children) resized.observe(tab);
+    };
+    watch();
+    const added = new MutationObserver(watch);
+    added.observe(list, { childList: true });
     return () => {
       cancelAnimationFrame(frame);
-      observer.disconnect();
+      changed.disconnect();
+      added.disconnect();
+      resized?.disconnect();
     };
   }, [measure]);
 

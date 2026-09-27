@@ -126,4 +126,81 @@ describe('a tab strip that does not fit', () => {
       await view.unmount();
     });
   });
+
+  // The current tab is brought clear of the fade, not just to the edge where
+  // the fade covers it. ud's Comments tab, with Details past it, was drawn cut
+  // and pale at 390px, and so was "Project Settings" once the page's own
+  // scrollbar arrived after the first reveal and made the strip narrower.
+  describe('the current tab', () => {
+    let observers = [];
+    class FakeResizeObserver {
+      constructor(cb) {
+        this.cb = cb;
+        observers.push(this);
+      }
+      observe() {}
+      disconnect() {}
+    }
+    const rect = (left, width) => ({ left, right: left + width, width, top: 0, bottom: 36 });
+    // A strip whose second tab sits at 460 to 560 when the strip is scrolled
+    // to 0. The strip is `box` wide, and holds 800px of tabs.
+    const layout = (list, box) => {
+      Object.defineProperty(list, 'clientWidth', { configurable: true, value: box });
+      Object.defineProperty(list, 'scrollWidth', { configurable: true, value: 800 });
+      list.getBoundingClientRect = () => rect(0, box);
+      const [, two] = list.querySelectorAll('[role="tab"]');
+      two.getBoundingClientRect = () => rect(460 - list.scrollLeft, 100);
+    };
+    const onTwo = () => (
+      <MemoryRouter>
+        <Tabs value="two" onValueChange={() => {}}>
+          <TabsList>
+            <TabsTrigger value="one" to="/x?tab=one">
+              One
+            </TabsTrigger>
+            <TabsTrigger value="two" to="/x?tab=two">
+              Two
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </MemoryRouter>
+    );
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      observers = [];
+    });
+
+    it('is scrolled clear of the fade at the end', async () => {
+      const view = await renderComponent(onTwo());
+      const list = view.container.querySelector('[role="tablist"]');
+      await view.step(() => {
+        list.scrollLeft = 0;
+        layout(list, 500);
+        // A change of the current tab is what reveals it.
+        list.querySelector('[role="tab"]').setAttribute('data-state', 'inactive');
+      });
+      // Its right edge (560) at 500 - 32, the start of the fade.
+      expect(list.scrollLeft).toBe(92);
+      await view.unmount();
+    });
+
+    it('is brought back into sight when the strip gets narrower', async () => {
+      vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+      const view = await renderComponent(onTwo());
+      const list = view.container.querySelector('[role="tablist"]');
+      const watching = observers[0];
+      await view.step(() => {
+        list.scrollLeft = 0;
+        layout(list, 600);
+        watching.cb([]);
+      });
+      expect(list.scrollLeft).toBe(0);
+      await view.step(() => {
+        layout(list, 500);
+        watching.cb([]);
+      });
+      expect(list.scrollLeft).toBe(92);
+      await view.unmount();
+    });
+  });
 });
