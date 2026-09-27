@@ -135,7 +135,10 @@
    ["/:id"
     {:middleware [[pra/wrap-maintainer-required get-project-id]]}
     ["/vocabs/:vocab-id"
-     {:post {:summary "Link a vocabulary to a project. Requires maintaining both the project and the vocabulary."
+     ;; Linking or unlinking changes who reaches the vocabulary, which a
+     ;; delegated token may not do (`pra/token-scope-gate`).
+     {:plaid/vocabulary-admin true
+      :post {:summary "Link a vocabulary to a project. Requires maintaining both the project and the vocabulary."
              ;; The link grants every member of the project access to the
              ;; vocabulary, so only someone who already controls who touches
              ;; it may make one. Unlinking only withdraws that grant, so it

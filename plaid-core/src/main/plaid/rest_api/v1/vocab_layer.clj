@@ -26,6 +26,10 @@
 ;; (audit-vocab-history, ruled 2026-09-27). Access is today's: a reader of
 ;; the vocabulary now may read any of its past, and only a maintainer may
 ;; put an entry back.
+;;
+;; The routes that act on the vocabulary as a whole (rename, delete,
+;; maintainers, config, restore) carry `:plaid/vocabulary-admin`, which
+;; refuses a delegated token (`pra/token-scope-gate`).
 ;; ============================================================
 
 (def ^:private as-of-routes
@@ -119,6 +123,7 @@
 
      :patch {:summary "Update a vocab layer's name."
              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+             :plaid/vocabulary-admin true
              :parameters {:body [:map [:name string?]]}
              :handler (fn [{{{:keys [id]} :path {:keys [name]} :body} :parameters
                             db :db
@@ -132,6 +137,7 @@
 
      :delete {:summary "Delete a vocab layer."
               :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+              :plaid/vocabulary-admin true
               :handler (fn [{{{:keys [id]} :path} :parameters
                              db :db
                              user-id :user/id :as req}]
@@ -179,6 +185,7 @@
 
    ["/:id/items/:item-id/restore"
     {:parameters {:path [:map [:id :uuid] [:item-id :uuid]]}
+     :plaid/vocabulary-admin true
      :post {:summary (str "Put one entry of the vocabulary back as it was at <query>as-of</query> (an ISO-8601 "
                           "instant), as one operation. A deleted entry comes back under its original id with its "
                           "form and fields. A living entry has its form and fields set back. Links are not part "
@@ -216,7 +223,8 @@
 
    ;; Maintainer management endpoints
    ["/:id"
-    {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]}
+    {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+     :plaid/vocabulary-admin true}
     ["/maintainers/:user-id"
      {:post {:summary "Assign a user as a maintainer for this vocab layer."
              :parameters {:path [:map [:id :uuid] [:user-id string?]]}
@@ -242,5 +250,6 @@
 
    ;; Config endpoints
    ["/:id"
-    {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]}
+    {:middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+     :plaid/vocabulary-admin true}
     (layer-config-routes :vocab_layers :id)]])

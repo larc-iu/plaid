@@ -306,6 +306,14 @@
 ;;   user's private data, the batch). So a route with no project behind it
 ;;   (admin screens, users, tokens, invites, project creation, listings) is
 ;;   refused without having to be listed.
+;; - A route that acts on a vocabulary as a whole carries
+;;   `:plaid/vocabulary-admin` in its data: renaming or deleting the
+;;   vocabulary, adding or removing its maintainers, linking it to or
+;;   unlinking it from a project, restoring its entries, its config.
+;;   `token-scope-gate` refuses a scoped token there whatever its user's
+;;   rights, since such a change reaches every project the vocabulary is
+;;   shared with and a maintainer grant outlasts the token (ruled 2026-09-27).
+;;   Renaming, merging and deleting single entries stay open to it.
 
 (declare wrap-login-required)
 
@@ -347,6 +355,11 @@
   {:status 403
    :body {:error "This token reaches only the projects it was issued for."}})
 
+(def ^:private vocabulary-admin-refusal
+  {:status 403
+   :body {:error (str "A delegated token cannot rename or delete a vocabulary, change its maintainers "
+                      "or settings, link or unlink it, or restore its entries.")}})
+
 (defn query-token-scope
   "`:plaid/token-scope` for the query route: a scoped token must name its
   projects (`:scope {:project-ids [...]}`) and every one of them must be in
@@ -384,17 +397,20 @@
   router's middleware transform in `plaid.rest-api.v1.core`). For a request
   with a scoped token, it refuses unless a project or vocab gate passed the
   request on a project in scope, or the route's own `:plaid/token-scope`
-  check passes it. Every other request goes straight through."
+  check passes it. On a route marked `:plaid/vocabulary-admin` it refuses
+  every scoped request. Every other request goes straight through."
   {:name ::token-scope-gate
    :compile (fn [data _]
               (when (some #(identical? wrap-login-required %) (:middleware data))
-                (let [own (:plaid/token-scope data)]
+                (let [own (:plaid/token-scope data)
+                      vocabulary-admin? (:plaid/vocabulary-admin data)]
                   {:name ::token-scope-gate
                    :wrap (fn [handler]
                            (fn [request]
                              (let [scope (:auth/token-scope request)]
                                (cond
                                  (nil? scope) (handler request)
+                                 vocabulary-admin? vocabulary-admin-refusal
                                  own (or (own request scope) (handler request))
                                  @(:passed scope) (handler request)
                                  :else scope-refusal))))})))})
