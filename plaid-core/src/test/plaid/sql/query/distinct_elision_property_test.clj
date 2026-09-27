@@ -65,8 +65,17 @@
   (let [v   ["vocab" "?v" {"layer" (str vocab)}]
         lnk [["link" "?l" {"item" "?v"}] ["link-token" "?l" "?t"]]]
     {"igt's Entries count"
+     {"where" [v ["vocab-link" "?t" "?v"] ["token" "?t" {"layer" "?tl"}] ["token-layer" "?tl" {}]]
+      "return" {"group" ["?v" "?tl"] "aggregates" [["count"]]}}
+     "named, per entry and layer"
      {"where" (into [v] (concat lnk [["token" "?t" {"layer" "?tl"}] ["token-layer" "?tl" {}]]))
       "return" {"group" ["?v" "?tl"] "aggregates" [["count"]]}}
+     "the shorthand twice"
+     {"where" [v ["vocab" "?v2" {"layer" (str vocab)}] ["vocab-link" "?t" "?v"] ["vocab-link" "?t" "?v2"]]
+      "return" {"group" ["?v" "?v2"] "aggregates" [["count"]]}}
+     "the shorthand beside spans"
+     {"where" [v ["vocab-link" "?t" "?v"] ["span" "?s" {"layer" (str pos)}] ["covers" "?s" "?t"]]
+      "return" {"group" ["?v"] "aggregates" [["count"]]}}
      "one overall count"
      {"where" (into [v] lnk) "return" {"group" [] "aggregates" [["count"]]}}
      "per link"
@@ -128,9 +137,10 @@
 
 (deftest the-shapes-that-elide
   (let [ctx (build! (java.util.Random. 42) 42)
-        elides #{"igt's Entries count" "one overall count" "per link" "two tokens of one link"
-                 "one token twice through the junction" "a sum over begin"
-                 "a not over the spans" "an or both of whose branches name the link"}
+        elides #{"igt's Entries count" "named, per entry and layer" "one overall count" "per link"
+                 "two tokens of one link" "one token twice through the junction" "a sum over begin"
+                 "a not over the spans" "an or both of whose branches name the link"
+                 "named beside the shorthand" "the shorthand alone" "the shorthand twice"}
         s (shapes ctx)]
     (doseq [[label body] s]
       (testing label
@@ -141,7 +151,7 @@
   ;; that rule (never by a write path) makes the two answers differ, so the
   ;; differential above would see a shape that repeats a match.
   (let [ctx (build! (java.util.Random. 7) 7)
-        body (get (shapes ctx) "igt's Entries count")
+        body (get (shapes ctx) "named, per entry and layer")
         {:keys [vocab_link_id token_id]} (first (psc/q db {:select [:vocab_link_id :token_id]
                                                            :from [:vocab_link_tokens]
                                                            :limit 1}))]
@@ -149,12 +159,10 @@
                       :values [{:vocab_link_id vocab_link_id :token_id token_id :order_idx 99}]})
     (is (not= (run-kept body) (run-sorted body)))))
 
-(deftest named-and-shorthand-counts-part-where-one-entry-links-a-token-twice
-  ;; Not the elision: the two query shapes count different things. The
-  ;; shorthand counts an entry and a token once, a named link counts each link.
-  ;; They agree unless one entry reaches one token through two links, which
-  ;; igt's reconcile removes for single-word links and the alpha server holds
-  ;; none of (2026-09-27). REV-R-IGTVOCAB asks whether that case matters.
+(defn- twice-linked!
+  "An entry \"aa bb\" with a multi-word link over aa and bb, and a second link
+  of the same entry on aa alone. Returns the vocab layer id."
+  []
   (let [pid  (h/create-test-project admin-request "TwiceLinked")
         txtl (id (h/create-text-layer admin-request pid "text"))
         words (id (h/create-token-layer admin-request txtl "words"))
@@ -164,12 +172,35 @@
         t1   (id (h/create-token admin-request words tx 3 5))
         vl   (id (h/create-vocab-layer admin-request "TwiceLinked lexicon"))
         _    (h/link-vocab-to-project admin-request pid vl)
-        e    (id (h/create-vocab-item admin-request vl "aa bb"))
+        e    (id (h/create-vocab-item admin-request vl "aa bb"))]
+    (h/create-vocab-link admin-request e [t0 t1])
+    (h/create-vocab-link admin-request e [t0])
+    vl))
+
+(deftest the-test-sees-a-shorthand-without-its-guard
+  ;; The shorthand drops its DISTINCT only behind first-link-only. Without the
+  ;; guard an entry that reaches a word through two links counts it twice, and
+  ;; the differential sees it.
+  (let [vl (twice-linked!)
+        body (get (shapes {:vocab vl :pos nil}) "igt's Entries count")]
+    (is (elided? body))
+    (is (= (run-kept body) (run-sorted body)))
+    (with-redefs [qc/first-link-only (fn [& _] nil)]
+      (is (not= (run-kept body) (run-sorted body))))))
+
+(deftest igts-entries-count-counts-a-word-once-per-entry
+  ;; perf-entry-link-counts (a): today's counts. The Entries screen's shorthand
+  ;; counts an entry and a word once, however many of the entry's links name
+  ;; the word, and it does so without the DISTINCT. A named link counts each
+  ;; link: 3 here, which is why the Entries screen does not name it.
+  (let [vl (twice-linked!)
+        entries (get (shapes {:vocab vl :pos nil}) "igt's Entries count")
         count-of (fn [link-clauses]
                    (ffirst (:results (qe/run db "admin@example.com"
                                              {"where" (into [["vocab" "?v" {"layer" (str vl)}]] link-clauses)
                                               "return" {"group" [] "aggregates" [["count"]]}}))))]
-    (h/create-vocab-link admin-request e [t0 t1])
-    (h/create-vocab-link admin-request e [t0])
+    (is (elided? entries))
+    (is (= [2] (map last (:results (qe/run db "admin@example.com" entries)))))
     (is (= 2 (count-of [["vocab-link" "?t" "?v"]])))
     (is (= 3 (count-of [["link" "?l" {"item" "?v"}] ["link-token" "?l" "?t"]])))))
+

@@ -80,6 +80,9 @@
          ;; junction alias -> the two aliases whose ids key its rows (see
          ;; distinct-redundant?)
          :keyed-junctions {}
+         ;; each `vocab-link` shorthand: its two aliases and the token and
+         ;; vocab aliases they join (see distinct-redundant? and first-link-only)
+         :shorthand-links []
          :scoped #{}}))   ; entity vars that have received a scope predicate
 
 (defn- next-alias! [st prefix]
@@ -605,6 +608,7 @@
                         vlt (next-alias! st "vlt")]
                     (add-from! st [:vocab_links vl])
                     (add-from! st [:vocab_link_tokens vlt])
+                    (swap! st update :shorthand-links conj {:vl vl :vlt vlt :keys [t v]})
                     (add-where! st [:= (col vlt :token_id) (col t :id)])
                     (add-where! st [:= (col vlt :vocab_link_id) (col vl :id)])
                     (add-where! st [:= (col vl :vocab_item_id) (col v :id)]))
@@ -1124,19 +1128,44 @@
   (`:keyed-junctions`): it holds one row per link and token, so with both of
   those vars projected it cannot repeat a match either. That is what lets igt's
   per-entry link count, which names the link, skip the DISTINCT (ruled
-  perf-entry-link-counts a). The `vocab-link` shorthand joins the same table
-  with no link var, so two links of one entry to one token stay one match
-  there, and it keeps the DISTINCT.
+  perf-entry-link-counts a).
+
+  A `vocab-link` shorthand joins the same table with no link var, so two links
+  of one entry to one token are two rows of ONE match. Its two aliases are
+  accepted when its token and vocab vars are both projected, on the condition
+  that `compile-query` then adds `first-link-only`, which keeps only the row of
+  the lowest link id and leaves one row per token and entry. Without that guard
+  the shorthand repeats a match, so the guard and the elision go together.
 
   Worth the care: the DISTINCT is a temp B-tree over every match, and on the alpha
   server the project list's per-layer token count spent 3.8s in it and 0.2s without."
   [st projected-vars]
   (let [projected-aliases (set (keep #(get-in @st [:var->alias %]) projected-vars))
         keyed (:keyed-junctions @st)
+        shorthand (into {} (mapcat (fn [{:keys [vl vlt keys]}] [[vl keys] [vlt keys]]))
+                        (:shorthand-links @st))
         distinct-alias? (fn [a]
                           (or (contains? projected-aliases a)
-                              (some->> (get keyed a) (every? projected-aliases))))]
+                              (some->> (or (get keyed a) (get shorthand a))
+                                       (every? projected-aliases))))]
     (every? distinct-alias? (map second (:from @st)))))
+
+(defn- first-link-only
+  "The WHERE term that leaves a `vocab-link` shorthand one row per token and
+  entry: the row whose link has the lowest id among the entry's links naming
+  that token. The id order is arbitrary and only picks one row, and the lowest
+  link always exists among the rows, so the set of matches is unchanged. With a
+  link naming a token once (see the `link-token` clause), that is one row."
+  [st {:keys [vl vlt]}]
+  (let [x (next-alias! st "flt")
+        y (next-alias! st "fl")]
+    [:not [:exists {:select [1]
+                    :from [[:vocab_link_tokens x] [:vocab_links y]]
+                    :where [:and
+                            [:= (col x :token_id) (col vlt :token_id)]
+                            [:= (col y :id) (col x :vocab_link_id)]
+                            [:= (col y :vocab_item_id) (col vl :vocab_item_id)]
+                            [:< (col y :id) (col vl :id)]]}]]))
 
 (defn compile-query
   "Resolved AST -> HoneySQL map. Throws 400 on a field path into an array, 500 on
@@ -1184,7 +1213,12 @@
       (let [{:keys [select plan entity-vars]} (aggregate-projection
                                                st (:return resolved)
                                                (:plaid.query.ast/align-entities resolved))
-            select-kw (if (distinct-redundant? st entity-vars) :select :select-distinct)]
+            elide? (distinct-redundant? st entity-vars)
+            ;; the elision counted on these, see distinct-redundant?
+            _ (when elide?
+                (doseq [link (:shorthand-links @st)]
+                  (add-where! st (first-link-only st link))))
+            select-kw (if elide? :select :select-distinct)]
         (vary-meta {select-kw select :from (:from @st) :where (into [:and] (:where @st))}
                    assoc ::aggregate plan))
       (let [order-pairs (order-projection st (:order-by resolved))

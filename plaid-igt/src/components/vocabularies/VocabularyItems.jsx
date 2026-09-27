@@ -454,10 +454,10 @@ export const VocabularyItems = ({
 
   // One grouped aggregate query: links per item AND per token-layer role
   // across every readable project. The role splits each entry's uses into
-  // words and morphemes (an entry may be linked from both). The link is named
-  // (`?l`), not left to the `vocab-link` shorthand: a link names a token once,
-  // so with the link named the server can count without first removing
-  // duplicate matches, which on a large lexicon took most of the query's time.
+  // words and morphemes (an entry may be linked from both). The `vocab-link`
+  // shorthand counts each word once per entry, even where two links of one
+  // entry name the same word (a multi-word link beside a single-word one).
+  // Naming the link would count each link instead.
   const fetchUsageCounts = async () => {
     try {
       // A vocabulary no project links has no uses, and the query refuses it.
@@ -469,8 +469,7 @@ export const VocabularyItems = ({
       const res = await client.query({
         where: [
           ['vocab', '?v', { layer: vocabularyId }],
-          ['link', '?l', { item: '?v' }],
-          ['link-token', '?l', '?t'],
+          ['vocab-link', '?t', '?v'],
           ['token', '?t', { layer: '?tl' }],
           ['token-layer', '?tl', {}],
         ],

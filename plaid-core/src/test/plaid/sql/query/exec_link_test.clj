@@ -146,10 +146,10 @@
     (is (= 400 (code-of #(qe/run db "admin@example.com"
                                  {"find" ["?l"] "where" [["link" "?l" {}] ["span" "?s" {}] ["link-token" "?l" "?s"]]}))))))
 
-;; igt's Entries screen counts each entry's uses per token-layer role. Naming
-;; the link lets the compiler skip the DISTINCT (perf-entry-link-counts, ruled
-;; a), and the counts must be the ones the shorthand gives: a link names a token
-;; once, so one link and one token are one match either way.
+;; A named link counts each link and the shorthand each token per entry. Where
+;; no entry reaches one token through two links, as here, the two agree. Where
+;; one does they part, see distinct-elision-property-test (igt's Entries screen
+;; keeps the shorthand, perf-entry-link-counts ruled a).
 (deftest a-named-link-counts-what-the-shorthand-counts
   (let [{:keys [vl]} (build! "LinkCount")
         counts (fn [link-clauses]

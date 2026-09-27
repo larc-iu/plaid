@@ -177,10 +177,11 @@
                         #{"P1"} ["L1"]))]
       (is (= :select-distinct (agg-select-key hq))))))
 
-;; igt's per-entry link count (perf-entry-link-counts, ruled a). Named, a link
-;; and a token are one row of vocab_link_tokens, so the junction cannot repeat a
-;; match once both are projected. The shorthand has no link var, and two links
-;; of one entry to one token would be two rows of one match, so it keeps it.
+;; Link counts (perf-entry-link-counts, ruled a). Named, a link and a token are
+;; one row of vocab_link_tokens, so the junction cannot repeat a match once both
+;; are projected. The shorthand has no link var, and two links of one entry to
+;; one token would be two rows of one match, so it drops the DISTINCT only with
+;; a guard that keeps the row of the entry's lowest link.
 (def ^:private link-count-where
   [["vocab" "?v" {"layer" "V1"}]
    ["link" "?l" {"item" "?v"}]
@@ -196,7 +197,26 @@
     (is (some #(and (vector? %) (= :vocab_link_tokens (first %))) (:from hq)))
     (is (= :select (agg-select-key hq)))))
 
-(deftest aggregate-keeps-distinct-over-the-vocab-link-shorthand
+(defn- first-link-guards
+  "The NOT EXISTS terms over vocab_links in a compiled WHERE."
+  [hq]
+  (filter #(and (vector? %) (= :not (first %))
+                (= [:vocab_links] (some->> % second second :from (map first) (filter #{:vocab_links}))))
+          (rest (:where hq))))
+
+(defn- first-branch
+  "The first branch of an `or` query, resolved as `resolved` does."
+  [raw]
+  (let [b (first (ast/expand raw))]
+    (-> b
+        (assoc :where (mapv (fn [[head v cmap :as clause]]
+                              (if (and (map? cmap) (:layer cmap))
+                                [head v (assoc cmap ::qr/layer-ids nil)]
+                                clause))
+                            (:where b)))
+        (assoc ::qr/scope #{"P1"}))))
+
+(deftest aggregate-drops-distinct-over-the-vocab-link-shorthand-behind-a-guard
   (let [hq (qc/compile-query
             (resolved {"where" [["vocab" "?v" {"layer" "V1"}]
                                 ["vocab-link" "?t" "?v"]
@@ -204,7 +224,18 @@
                                 ["token-layer" "?tl" {}]]
                        "return" {"group" ["?v" "?tl.config.plaid.role"] "aggregates" [["count"]]}}
                       #{"P1"} nil))]
-    (is (= :select-distinct (agg-select-key hq)))))
+    (is (= :select (agg-select-key hq)))
+    (is (= 1 (count (first-link-guards hq))))))
+
+(deftest aggregate-keeps-distinct-and-adds-no-guard-when-the-shorthand-token-is-not-projected
+  (testing "only one alternative binds the token, so it is not projected"
+    (let [hq (qc/compile-query
+              (first-branch {"where" [["vocab" "?v" {"layer" "V1"}]
+                                      ["or" [["vocab-link" "?t" "?v"]]
+                                       [["link" "?l" {"item" "?v"}]]]]
+                             "return" {"group" ["?v"] "aggregates" [["count"]]}}))]
+      (is (= :select-distinct (agg-select-key hq)))
+      (is (empty? (first-link-guards hq))))))
 
 (deftest aggregate-drops-distinct-for-a-vocab-var
   (testing "a vocab entry is scoped by an IN over the grants, not a join to
