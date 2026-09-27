@@ -36,6 +36,7 @@ import {
 import { DOC_CONSTANTS } from '../../../domain/format/inventory.js';
 import { followIds, stableKey } from '@ui/domain/pendingIds.js';
 import { useFollowedState } from '@ui/hooks/useFollowedState.js';
+import { SentenceComments } from '@ui/components/shared/SentenceComments';
 import './canvas.css';
 
 // The margin to the left of every graph, where the document graph's
@@ -104,6 +105,13 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // Told which node of this block is active (hovered, or focused while the
   // block holds focus), so the canvas can draw what reaches other sentences.
   onActive = null,
+  // The Comment action: the document's CommentStore (null at a past state,
+  // or while none has loaded), the caption the thread is headed with, and
+  // what the reader may do there.
+  comments = null,
+  commentAnchorLabel = null,
+  canComment = false,
+  canDeleteAnyComment = false,
 }) {
   const confirm = useConfirm();
   // Problems by the node they name, for the marks; the rest belong to the
@@ -1236,6 +1244,18 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           >
             Text
           </button>
+        )}
+        {/* Comments are about the sentence, not the graph, so a reader sees
+            the thread too (and a writer can start one) whatever the mode. */}
+        {comments && (
+          <SentenceComments
+            store={comments}
+            sentenceId={sentence.tokenId}
+            anchorLabel={commentAnchorLabel}
+            canWrite={canComment}
+            canDeleteAny={canDeleteAnyComment}
+            className="umr-comment-toggle"
+          />
         )}
         {problems.length > 0 && (
           <button

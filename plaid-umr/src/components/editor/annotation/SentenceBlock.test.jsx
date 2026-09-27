@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { CommentStore } from '@ui/domain/CommentStore.js';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { keys } from '../../../lib/keymap.js';
@@ -601,5 +602,80 @@ describe('SentenceBlock node menu, the move keys', () => {
   it('says a key that is not an arrow as it is', async () => {
     keys.setOverrides({ 'node.earlier': ['Alt+J'] });
     expect(await rows('rtl')).toEqual(['Alt+J', 'Alt+←']);
+  });
+});
+
+// A comment can start from a sentence, as in plaid-ud: the shared Comment
+// action sits in the block's header, anchored to the sentence token.
+describe('SentenceBlock comments', () => {
+  const makeStore = async (rows = []) => {
+    const client = {
+      comments: {
+        list: vi.fn(async () => rows),
+        create: vi.fn(),
+        update: vi.fn(),
+        delete: vi.fn(),
+      },
+      users: { get: vi.fn(async (id) => ({ id, displayName: id })) },
+    };
+    const store = new CommentStore({
+      client,
+      projectId: 'p1',
+      documentId: 'd1',
+      currentUserId: 'me@x.com',
+    });
+    store.onError = () => {};
+    await store.load();
+    return store;
+  };
+  const comment = (id, entityId) => ({
+    id,
+    projectId: 'p1',
+    documentId: 'd1',
+    entityType: 'token',
+    entityId,
+    authorId: 'me@x.com',
+    body: `comment ${id}`,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+    edited: false,
+  });
+  const mount = (props) => {
+    const { sentence, nodesById } = fixture();
+    return renderComponent(
+      <SentenceBlock sentence={sentence} nodesById={nodesById} dataVersion={1} {...props} />,
+    );
+  };
+
+  it('offers a writer the Comment action in the header, in the pill look', async () => {
+    const store = await makeStore();
+    const r = await mount({ comments: store, canComment: true, commentAnchorLabel: 'Sentence 1' });
+    const btn = r.container.querySelector('.umr-block-header .umr-comment-toggle');
+    expect(btn).not.toBeNull();
+    expect(btn.getAttribute('aria-label')).toBe('Comment on this sentence');
+    await r.unmount();
+  });
+
+  it("shows a reader this sentence's count, and nothing where nobody has written", async () => {
+    const store = await makeStore([
+      comment('c1', 't1'),
+      comment('c2', 't1'),
+      comment('c3', 'other'),
+    ]);
+    const r = await mount({ comments: store, canComment: false, readOnly: true });
+    const btn = r.container.querySelector('.umr-comment-toggle');
+    expect(btn.getAttribute('data-count')).toBe('2');
+    await r.unmount();
+
+    const empty = await makeStore([comment('c3', 'other')]);
+    const r2 = await mount({ comments: empty, canComment: false, readOnly: true });
+    expect(r2.container.querySelector('.umr-comment-toggle')).toBeNull();
+    await r2.unmount();
+  });
+
+  it('draws no Comment action without a store (a past state)', async () => {
+    const r = await mount({ comments: null, canComment: true });
+    expect(r.container.querySelector('.umr-comment-toggle')).toBeNull();
+    await r.unmount();
   });
 });

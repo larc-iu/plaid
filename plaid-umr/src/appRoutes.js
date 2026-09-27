@@ -11,8 +11,10 @@ export const APP_ROUTES = {
   profile: '/profile',
   documents: (projectId) => `/projects/${projectId}/documents`,
   document: (projectId, documentId) => `/projects/${projectId}/documents/${documentId}/annotate`,
-  sentence: (projectId, documentId, sentenceId) =>
-    `/projects/${projectId}/documents/${documentId}/annotate?sent=${sentenceId}`,
+  // Here a sentence is named by its NUMBER: `?sent=` is what the canvas reads,
+  // and a comment anchor's jump is the number (domain/commentAnchors.js).
+  sentence: (projectId, documentId, sentence) =>
+    `/projects/${projectId}/documents/${documentId}/annotate?sent=${sentence}`,
   // What kind of screen a path is, for the shell: whether a project is in
   // scope, whether the width belongs to a document, and whether the assistant
   // already has the whole screen.

@@ -54,9 +54,9 @@ export function buildAnchorIndex(doc) {
     order: [-1],
   });
 
-  // A sentence is anchored by its sentence TOKEN, which is also what the
-  // editor's `?sent=` deep link names. `index` is the sentence's number,
-  // counting from one.
+  // A sentence is anchored by its sentence TOKEN. The editor's `?sent=` deep
+  // link names the sentence by its NUMBER, counting from one, so that is the
+  // jump. A token id there found no block and the jump went nowhere.
   (doc.sentences || []).forEach((sentence, offset) => {
     if (!sentence?.tokenId) return;
     const number = sentence.index ?? offset + 1;
@@ -68,7 +68,7 @@ export function buildAnchorIndex(doc) {
       excerpt,
       sentenceIndex: number,
       sentenceId: sentence.tokenId,
-      jumpId: sentence.tokenId,
+      jumpId: String(number),
       order: [number],
     });
   });

@@ -38,3 +38,18 @@ test('the document graph uses no violet and no amber', () => {
     assert.ok(!(hue >= 25 && hue <= 50), `${name} hue ${hue} is not amber`);
   }
 });
+
+// A problem on a drafted node must not repaint the drafted border: red or amber
+// there read as a contributor's node, or hid the violet altogether. The problem
+// is the corner dot plus a ring outside the border.
+test("a problem rings the node and leaves the provenance border's colour alone", () => {
+  for (const level of ['warning', 'error']) {
+    const rule = block(`.umr-node:has(> .umr-node-mark--${level})`);
+    assert.doesNotMatch(rule, /border-color/);
+    assert.match(rule, /outline:\s*2px solid/);
+  }
+  // Hover and focus come first, so the drafted colour holds under both.
+  const drafted = css.indexOf('.umr-node.umr-node--machine {');
+  assert.ok(drafted > css.indexOf('.umr-node:hover {'));
+  assert.ok(drafted > css.indexOf('.umr-node:focus-visible {'));
+});

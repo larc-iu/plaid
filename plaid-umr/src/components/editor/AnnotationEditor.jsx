@@ -31,6 +31,9 @@ export const AnnotationEditor = () => {
     writeLockHeld,
     setChromeBusy,
     focusNonce = 0,
+    comments,
+    canComment,
+    canDeleteAnyComment,
   } = useDocumentEditor();
   const { user } = useAuth();
   // The deep link: ?sent=<sentence number>, and ?var= for one of its nodes.
@@ -150,6 +153,11 @@ export const AnnotationEditor = () => {
             sentParam={sentParam}
             varParam={varParam}
             focusNonce={focusNonce}
+            // Comments are about the live document: a past state shows none,
+            // as in plaid-ud.
+            comments={selectedEntry ? null : comments}
+            canComment={canComment}
+            canDeleteAnyComment={canDeleteAnyComment}
           />
         </>
       )}

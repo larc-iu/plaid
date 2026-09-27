@@ -30,3 +30,20 @@ describe('a long sentence anchor', () => {
     expect(index.get('t2').excerpt).toBe(`${'b'.repeat(58)}…`);
   });
 });
+
+// The Comments tab's "show this sentence" link lands on `?sent=`, which the
+// canvas reads as the sentence's number, not its token.
+describe('a sentence anchor jump', () => {
+  it('names the sentence by its number, as the canvas deep link reads it', () => {
+    const index = buildAnchorIndex({
+      id: 'd',
+      sentences: [
+        { tokenId: 't1', index: 1, text: 'One.' },
+        { tokenId: 't7', index: 7, text: 'Seven.' },
+      ],
+    });
+    expect(index.get('t1').jumpId).toBe('1');
+    expect(index.get('t7').jumpId).toBe('7');
+    expect(index.get('d').jumpId).toBeNull();
+  });
+});

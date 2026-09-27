@@ -581,8 +581,23 @@ test.describe('editing', () => {
         fill: 'rgb(255, 255, 255)',
       });
 
+      // A problem on a drafted node rings it from outside and leaves the
+      // violet border alone (red or amber there read as another kind of node).
+      const flagged = await block
+        .locator('.umr-node--machine')
+        .filter({ has: page.locator('.umr-node-mark') })
+        .evaluateAll((els) =>
+          els.map((el) => {
+            const s = getComputedStyle(el);
+            return { color: s.borderTopColor, outline: s.outlineStyle };
+          }),
+        );
+      for (const f of flagged) expect(f).toEqual({ color: 'rgb(109, 40, 217)', outline: 'solid' });
+
       const accept = block.getByRole('button', { name: 'Accept graph' });
       await expect(accept).toHaveCSS('color', 'rgb(109, 40, 217)');
+      // Full strength at rest: the quiet look is the outline, not opacity.
+      await expect(accept).toHaveCSS('opacity', '1');
       await accept.click();
       await expect(block.locator('.umr-node--machine')).toHaveCount(0);
       await expect(accept).toHaveCount(0);

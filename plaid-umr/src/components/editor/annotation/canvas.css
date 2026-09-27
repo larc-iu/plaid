@@ -176,36 +176,40 @@
   font-size: 0.85em;
   color: hsl(var(--muted-foreground));
 }
-/* Provenance (the cross-app convention): a node a machine drafted wears a
-   dashed violet border and a contributor's a dashed amber one, until a
-   person's edit settles it. No fill: fill carries no meaning in any app.
-   plaid-ui's `plaid-prov-node--machine`, restated here because `.umr-node`
-   sets its own border after that stylesheet loads. Placed above the hover,
-   problem and focus rules so each of those still owns the border's colour.
-   A settled node draws plain: the mark is for what needs a look. */
-.umr-node--machine {
-  border-style: dashed;
-  border-color: var(--plaid-machine);
-}
-.umr-node--contributed {
-  border-style: dashed;
-  border-color: var(--plaid-contributed);
-}
 .umr-node:hover {
   border-color: var(--umr-edge);
 }
-/* A problem colours the border as well as the corner dot, so it shows from
-   across a large graph. */
+/* A problem shows as the corner dot plus a ring OUTSIDE the border, so it
+   shows from across a large graph and the border keeps saying who made the
+   node. */
 .umr-node:has(> .umr-node-mark--warning) {
-  border-color: hsl(38 92% 55%);
+  outline: 2px solid hsl(38 92% 55%);
+  outline-offset: 2px;
 }
 .umr-node:has(> .umr-node-mark--error) {
-  border-color: hsl(0 72% 62%);
+  outline: 2px solid hsl(0 72% 62%);
+  outline-offset: 2px;
 }
 .umr-node.umr-node--focused,
 .umr-node:focus-visible {
   border-color: var(--umr-edge-lit);
   box-shadow: 0 0 0 3px hsl(221 83% 53% / 0.2);
+}
+/* Provenance (the cross-app convention): a node a machine drafted wears a
+   dashed violet border and a contributor's a dashed amber one, until a
+   person's edit settles it. No fill: fill carries no meaning in any app.
+   plaid-ui's `plaid-prov-node--machine`, restated here because `.umr-node`
+   sets its own border after that stylesheet loads. Placed AFTER the hover and
+   focus rules, with their weight, so the colour holds under the pointer and
+   under focus (focus still draws its blue ring outside). A settled node draws
+   plain: the mark is for what needs a look. */
+.umr-node.umr-node--machine {
+  border-style: dashed;
+  border-color: var(--plaid-machine);
+}
+.umr-node.umr-node--contributed {
+  border-style: dashed;
+  border-color: var(--plaid-contributed);
 }
 
 .umr-node-head {
@@ -446,7 +450,8 @@
   text-decoration-color: var(--umr-node-border);
   text-underline-offset: 3px;
 }
-.umr-node--drop,
+/* Over a problem's ring while a drag is over it. */
+.umr-node.umr-node--drop,
 .umr-word--drop {
   outline: 2px solid var(--umr-edge-lit);
   outline-offset: 2px;
@@ -557,6 +562,8 @@
 /* Text mode. */
 .umr-text-toggle {
   margin-inline-start: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
   border: 1px solid var(--umr-node-border);
   border-radius: 999px;
   background: hsl(var(--background));
@@ -571,7 +578,36 @@
   color: hsl(221 83% 40%);
 }
 .umr-text-toggle + .umr-problems-toggle,
-.umr-block-note + .umr-text-toggle {
+.umr-block-note + .umr-text-toggle,
+.umr-text-toggle + .umr-text-toggle {
+  margin-inline-start: 8px;
+}
+/* The sentence's Comment action (plaid-ui's SentenceComments), in the pill
+   the header's other actions wear. After Accept graph and Text, or first in
+   the row for a reader, who has neither. Two classes, so the pill wins over
+   the shared button's own utilities in either load order. */
+.umr-block-header .umr-comment-toggle {
+  margin-inline-start: auto;
+  height: auto;
+  border: 1px solid var(--umr-node-border);
+  border-radius: 999px;
+  background: hsl(var(--background));
+  padding: 0 10px;
+  font-size: 0.72rem;
+  line-height: 1.25rem;
+  color: inherit;
+  opacity: 1;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.umr-block-header .umr-comment-toggle:hover {
+  border-color: var(--umr-edge);
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.umr-block-header .umr-text-toggle + .umr-comment-toggle,
+.umr-block-header .umr-block-note + .umr-comment-toggle,
+.umr-comment-toggle + .umr-problems-toggle {
   margin-inline-start: 8px;
 }
 .umr-penman {

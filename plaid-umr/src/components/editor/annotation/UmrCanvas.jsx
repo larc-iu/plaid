@@ -6,6 +6,8 @@ import { usePagedList, pageKey, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedLi
 import { readProjectLanguage } from '../../../utils/umrLayerUtils.js';
 import { loadFrames } from '../../../domain/lexicon.js';
 import { EMPTY_LEXICON, loadVocabularies } from '../../../domain/vocabLexicon.js';
+import { buildAnchorIndex } from '../../../domain/commentAnchors.js';
+import { anchorCaption } from '@ui/domain/commentAnchors';
 
 // The frame file of the project's language, once it has loaded; null for a
 // language without one, or until it arrives.
@@ -64,12 +66,23 @@ export const UmrCanvas = ({
   sentParam = null,
   varParam = null,
   focusNonce = 0,
+  // The document's CommentStore and what the reader may do with it, for the
+  // Comment action on each sentence.
+  comments = null,
+  canComment = false,
+  canDeleteAnyComment = false,
 }) => {
   const frames = useFrames(readProjectLanguage(doc.project));
   const lexicon = useLexicon(doc.client, doc.project);
   const graph = doc.graph;
   const problems = doc.problemsBySentence;
   const sentences = graph.sentences;
+
+  // What each sentence's thread is headed with, as the Comments tab names it.
+  // The labels change only when the document's DATA does.
+  const version = doc.dataVersion;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const anchors = useMemo(() => buildAnchorIndex(doc), [doc, version]);
 
   // The page is remembered per document, because coming back to a corpus
   // means coming back to where the work stopped.
@@ -195,6 +208,10 @@ export const UmrCanvas = ({
           problems={problems.get(sentence.index) || NO_PROBLEMS}
           goToNode={goToNode}
           onActive={onActive}
+          comments={comments}
+          canComment={canComment}
+          canDeleteAnyComment={canDeleteAnyComment}
+          commentAnchorLabel={anchorCaption(anchors.get(sentence.tokenId))}
         />
       ))}
       <ListPager {...paged} onPage={handlePageFromBottom} className="mx-6 mb-6 rounded-md border" />
