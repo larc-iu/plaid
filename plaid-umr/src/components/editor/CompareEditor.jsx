@@ -36,10 +36,13 @@ import { humanizeError } from '../../utils/feedback.jsx';
 // two graphs with the disagreements marked, a node with no counterpart and a
 // node paired with one of another concept.
 
-// The two marks, one class each, shared by the graphs and the legend.
+// The two marks, one class each, shared by the graphs and the legend. Each
+// has an outline at 3:1 or more on the page, and they differ in pattern as
+// well as hue: dashed where the other graph has nothing, solid where it has
+// another concept. Never amber, the contributor's colour.
 const MARK_CLASS = {
-  missing: 'rounded bg-amber-200 px-0.5 text-amber-950',
-  differs: 'rounded bg-rose-200 px-0.5 text-rose-950',
+  missing: 'rounded bg-sky-100 px-0.5 text-sky-950 outline-dashed outline-1 outline-sky-700',
+  differs: 'rounded bg-rose-100 px-0.5 text-rose-950 outline outline-1 outline-rose-700',
 };
 export const CompareEditor = () => {
   const { projectId, documentId, doc, project, services, writeLockHeld } = useDocumentEditor();

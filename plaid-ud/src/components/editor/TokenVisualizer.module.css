@@ -49,7 +49,8 @@
   display: inline-block;
   padding: 0.125rem 0.25rem;
   margin: 0 0.125rem;
-  border: 1px solid #93c5fd;
+  /* blue-500, 3.7:1 on the page, so the badge's edge reads as a shape. */
+  border: 1px solid #3b82f6;
   border-radius: 4px;
   background: #dbeafe;
   cursor: pointer;
@@ -69,7 +70,8 @@
 .badge[data-mwt='true']:hover {
   background: #99f6e4;
 }
+/* The first token of a sentence: green-700, 5.0:1 on the page. */
 .badge[data-sent-start='true'] {
-  border-color: #22c55e;
+  border-color: #15803d;
   border-width: 2px;
 }

@@ -50,11 +50,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A note on the sentence's graph (unconnected, unreadable) is a warning, so
+   it takes the warning's magenta. Never amber, the contributor's colour. */
 .umr-block-note {
   margin-inline-start: auto;
   border-radius: 999px;
-  background: hsl(38 92% 90%);
-  color: hsl(26 90% 30%);
+  background: hsl(320 70% 45% / 0.1);
+  color: hsl(320 70% 32%);
   padding: 1px 8px;
   font-size: 0.75rem;
   white-space: nowrap;
