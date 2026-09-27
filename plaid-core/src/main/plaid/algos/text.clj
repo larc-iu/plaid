@@ -193,6 +193,22 @@
 (defn- delete-str [s i v]
   (str (cp/cp-subs s 0 i) (cp/cp-subs s (+ i v))))
 
+(defn- combining-mark?
+  "A code point of Unicode category Mn, Mc or Me: a mark that belongs to the
+  letter before it."
+  [c]
+  (let [t (Character/getType (int c))]
+    (or (= t Character/NON_SPACING_MARK)
+        (= t Character/COMBINING_SPACING_MARK)
+        (= t Character/ENCLOSING_MARK))))
+
+(defn- leading-marks
+  "How many code points at the start of `s` are combining marks."
+  [^String s]
+  (let [cps (.toArray (.codePoints s))]
+    (loop [i 0]
+      (if (and (< i (alength cps)) (combining-mark? (aget cps i))) (recur (inc i)) i))))
+
 (defn apply-text-edit
   "Given an operation, a text and tokens, shift :token/begin and :token/end on a list
   of tokens as appropriate. Operations are maps, with :type of :delete, :insert or
@@ -224,6 +240,14 @@
   delete+insert (clipped to the outside; the replacement belongs to no token),
   as are zero-width tokens. An empty :value is a delete; a zero :length is an
   insert.
+
+  Text typed at a token's end stays outside it (`cat` to `cats` leaves the
+  token on `cat`), except the combining marks (Unicode Mn, Mc, Me) it starts
+  with: those belong to the letter before them, so a token ending there takes
+  them, and a zero-width token there moves past them. An accent typed as a
+  separate mark after `cafe` makes the token read `café`, as a precomposed é
+  does. A replace whose new text starts with marks is those marks inserted,
+  then the rest replacing the range.
 
   Returns a map:
    - :text contains the new text map
@@ -273,6 +297,17 @@
         (cond
           (zero? length) (apply-text-edit (insert-op index value) text tokens)
           (= value "") (apply-text-edit (delete-op index length) text tokens)
+
+          (and (pos? index) (pos? (leading-marks value)))
+          (let [k (leading-marks value)
+                marks (cp/cp-subs value 0 k)
+                {text* :text tokens* :tokens deleted :deleted}
+                (apply-text-edit (insert-op index marks) text tokens)
+                rest-op (replace-op (+ index k) length (cp/cp-subs value k))
+                {text** :text tokens** :tokens deleted* :deleted}
+                (apply-text-edit rest-op text* tokens*)]
+            {:text text** :tokens tokens** :deleted (into deleted deleted*)})
+
           :else
           (let [end-index (+ index length)
                 delta (- (cp/cp-count value) length)
@@ -308,19 +343,36 @@
         ;; - token opens and closes before index (no changes)
         ;; - token opens before index but closes later (expand the token)
         ;; - token opens and closes after index (add offset to both indices)
+        ;; - a token ending at index takes the combining marks the value
+        ;;   starts with, and a zero-width one there moves past them
         :insert
         (let [offset (cp/cp-count value)
-              unaffected-tokens (filterv #(<= (:token/end %) index) tokens)
-              affected-tokens (filterv #(> (:token/end %) index) tokens)]
+              marks (if (pos? index) (leading-marks value) 0)
+              unaffected-tokens (filterv #(or (< (:token/end %) index)
+                                              (and (= (:token/end %) index) (zero? marks)))
+                                         tokens)
+              affected-tokens (filterv #(or (> (:token/end %) index)
+                                            (and (= (:token/end %) index) (pos? marks)))
+                                       tokens)]
           {:text (update text :text/body insert-str index value)
            :tokens (into unaffected-tokens
                          (map (fn [{:token/keys [begin end] :as token}]
-                                (if (and (> index begin) (< index end))
+                                (cond
+                                  (and (> index begin) (< index end))
+                                  (update token :token/end + offset)
+
+                                  (and (< begin index) (= end index))
+                                  (update token :token/end + marks)
+
+                                  (= begin end index)
                                   (-> token
-                                      (update :token/end #(+ % offset)))
+                                      (update :token/begin + marks)
+                                      (update :token/end + marks))
+
+                                  :else
                                   (-> token
-                                      (update :token/begin #(+ % offset))
-                                      (update :token/end #(+ % offset)))))
+                                      (update :token/begin + offset)
+                                      (update :token/end + offset))))
                               affected-tokens))
            :deleted []})
 
@@ -471,8 +523,19 @@
   insert where two tokens of one layer meet disturbs at least one of them,
   even with the same letters either side: an `a` typed at the end of `aa`,
   glossed as `a` + `a`, would otherwise go between the two morphemes, inside
-  the word but in neither."
-  [^ints o tokens edit]
+  the word but in neither. A zero-width token where a token begins and no
+  token of a layer that is not a partition ends marks that token's start, and
+  text inserted there comes between the two, so it is disturbed when the
+  letter after it changes.
+
+  A layer in `partitioning` has no gaps, so text inserted where two of its
+  tokens meet goes into the one that ends there (and at the start of the
+  text into the first). That token counts as disturbed there, as it does for
+  an insert inside it, and the one beginning there when its letter before
+  changes. Doubling the `a` of `tat! a. tat` before the `a` gives it to the
+  sentence before and puts the sentence boundary inside `aa`, where doubling
+  it after the `a` keeps both sentences on their words."
+  [^ints o tokens partitioning edit]
   (let [n (alength o)
         ;; The edge of the text and a space both only separate, so a word
         ;; that comes to stand at the start of the text keeps its place.
@@ -505,17 +568,31 @@
             ;; text is on one side, as between two sentences of a partition,
             ;; the neighbouring letters tell.)
             layers-at (fn [k] (into #{} (comp (filter #(and (< (:token/begin %) (:token/end %))
-                                                            (= a (k %))))
+                                                            (= a (k %))
+                                                            (not (partitioning (:token/layer %)))))
                                               (map :token/layer))
                                     tokens))
+            ;; A zero-width token where a token begins and none ends (a
+            ;; partition's always does) marks that token's start.
+            start-mark? (and (some #(and (< (:token/begin %) (:token/end %)) (= a (:token/begin %))) tokens)
+                             (not-any? #(and (< (:token/begin %) (:token/end %)) (= a (:token/end %))
+                                             (not (partitioning (:token/layer %))))
+                                       tokens))
             met (if (or new-after? new-before? (= :apart (at (dec a))) (= :apart (at a)))
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
         (+ (count met)
-           (count (filter (fn [{:token/keys [begin end]}]
+           (count (filter (fn [{:token/keys [begin end layer]}]
                             (cond
-                              (= begin end) false
+                              ;; A zero-width token stays in front of text
+                              ;; inserted where it stands, which parts it
+                              ;; from the token it marks the start of.
+                              (= begin end) (and (= begin a) new-after? start-mark?)
                               (< begin a end) true
+                              (partitioning layer) (cond
+                                                     (= end a) true
+                                                     (= begin a) (or (zero? a) new-before?)
+                                                     :else false)
                               (= end a) new-after?
                               (= begin a) new-before?
                               :else false))
@@ -590,42 +667,46 @@
   when there are several. An edit that disturbs no more than any other place
   stays where it is. Edits that touch stay together, since
   `pair-replacements` reads them as one respelling. The reconstructed string
-  is unchanged."
-  [ops old tokens]
-  (let [edits (vec (ops->edits ops))
-        ^ints o (.toArray (.codePoints ^String old))
-        n (alength o)
-        reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
-        start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
-        near (tokens-near tokens (count edits))
-        moved (reduce
-               (fn [moved e]
-                 (let [i (count moved)
-                       prev (get edits (dec i))
-                       nxt (get edits (inc i))
-                       ;; A neighbour this edit touches makes the two one
-                       ;; stretch, and a place that touches one would too.
-                       ;; The edit before may already have moved towards
-                       ;; this one, and the two must not meet.
-                       lo (if prev (inc (max (reach-of prev) (reach-of (peek moved)))) 0)
-                       hi (if nxt (dec (start-of nxt)) n)]
-                   (conj moved
-                         (if (or (< (start-of e) lo) (> (reach-of e) hi))
-                           e
-                           (let [places (slide-places o e lo hi)
-                                 near (near (reduce min (map start-of places))
-                                            (reduce max (map reach-of places)))
-                                 here (slide-cost o near e)]
-                             (if (zero? here)
-                               e
-                               ;; The fewest cuts, then the nearest place. The sort
-                               ;; is stable and `places` starts with the edit itself.
-                               (first (sort-by (juxt #(slide-cost o near %)
-                                                     #(Math/abs (long (- (start-of %) (start-of e)))))
-                                               places))))))))
-               []
-               edits)]
-    (if (= edits moved) ops (edits->ops moved))))
+  is unchanged. `partitioning` is the set of the tokens' layers that are
+  partitions (see `slide-cost`)."
+  ([ops old tokens] (slide-to-tokens ops old tokens #{}))
+  ([ops old tokens partitioning]
+   (let [partitioning (set partitioning)
+         edits (vec (ops->edits ops))
+         ^ints o (.toArray (.codePoints ^String old))
+         n (alength o)
+         reach-of (fn [e] (if (= :delete (:kind e)) (:end e) (:at e)))
+         start-of (fn [e] (if (= :delete (:kind e)) (:start e) (:at e)))
+         near (tokens-near tokens (count edits))
+         moved (reduce
+                (fn [moved e]
+                  (let [i (count moved)
+                        prev (get edits (dec i))
+                        nxt (get edits (inc i))
+                        ;; A neighbour this edit touches makes the two one
+                        ;; stretch, and a place that touches one would too.
+                        ;; The edit before may already have moved towards
+                        ;; this one, and the two must not meet.
+                        lo (if prev (inc (max (reach-of prev) (reach-of (peek moved)))) 0)
+                        hi (if nxt (dec (start-of nxt)) n)]
+                    (conj moved
+                          (if (or (< (start-of e) lo) (> (reach-of e) hi))
+                            e
+                            (let [places (slide-places o e lo hi)
+                                  near (near (reduce min (map start-of places))
+                                             (reduce max (map reach-of places)))
+                                  cost #(slide-cost o near partitioning %)
+                                  here (cost e)]
+                              (if (zero? here)
+                                e
+                                ;; The fewest cuts, then the nearest place. The sort
+                                ;; is stable and `places` starts with the edit itself.
+                                (first (sort-by (juxt cost
+                                                      #(Math/abs (long (- (start-of %) (start-of e)))))
+                                                places))))))))
+                []
+                edits)]
+     (if (= edits moved) ops (edits->ops moved)))))
 
 (defn- cut-count
   "How many (non-empty) tokens the delete ranges overlap only PARTIALLY."
@@ -839,13 +920,20 @@
           (edits choice)
           [r])))))
 
+(declare apply-text-edits)
+
 (defn fold-whole-words
   "Rewrite `ops` (as produced by `pair-replacements` for `old`) so that the
   edits lying within one token's extent, reaching both its ends and holding a
   delete and an insert between them, become ONE replace of that extent. Only when no other edit
   touches the extent, no token sits inside it (a same-extent token on another
   layer moves with it, a zero-width one at its edge stays at the edge) and it
-  is not the whole of `old`. Edits over two words never lie within one
+  is not the whole of `old`. A word with tokens inside it (its morphemes) is
+  folded too when it has no whitespace, the edits as they are would leave it
+  off the new text or cut or delete a token inside it, and it lands on one
+  new word: the word moves onto the new one and the tokens inside are
+  deleted (ruled 2026-09-27, `cow` analyzed `co` + `w` replaced by `abc`
+  left the word and `co` on the `c`). Edits over two words never lie within one
   word's extent, and a token over both has the words inside it, so they stay
   as they are. Inserts alone (`a` to `tat`) stay too: text typed at a word's
   edge stays outside it. So does a whole word typed beside the replaced
@@ -870,12 +958,13 @@
                             m))
                         {} tokens)
         near (delay (tokens-near tokens (count edits)))
-        inside? (fn [b e]
-                  (some (fn [{tb :token/begin te :token/end}]
+        parts (fn [b e]
+                (filter (fn [{tb :token/begin te :token/end}]
                           (if (= tb te)
                             (< b tb e)
                             (and (<= b tb) (<= te e) (not (and (= tb b) (= te e))))))
                         (@near b e)))
+        inside? (fn [b e] (seq (parts b e)))
         ;; [b e) of `old` with the edits of `g` applied.
         new-text (fn [g b e]
                    (loop [g g p b sb (StringBuilder.)]
@@ -909,6 +998,38 @@
                                            [word prev-ws?]
                                            (when-let [v (:value x)] (.toArray (.codePoints ^String v))))]
                                (recur (rest g) (reach-of x) word prev-ws? held)))))))
+        ;; Whether the edits of `g`, applied as they are, would leave the
+        ;; token over [b e) off the new text or cut or delete a token inside
+        ;; it (a morpheme of the word): `cow` (`co` + `w`) to `abc` leaves
+        ;; the word and `co` on the `c` and deletes `w`. A token inside that
+        ;; holds each change it meets keeps it as a respelling.
+        broken? (fn [g b e]
+                  (let [w {:token/id ::whole :token/begin 0 :token/end (- e b)}
+                        shifted (mapv (fn [x] (cond-> x
+                                                (:start x) (update :start - b)
+                                                (:end x) (update :end - b)
+                                                (:at x) (update :at - b)))
+                                      g)
+                        {:keys [tokens]} (apply-text-edits (edits->ops shifted)
+                                                           {:text/body (old-text b e)} [w])
+                        want [0 (cp/cp-count (new-text g b e))]]
+                    (or (not= [want] (mapv (juxt :token/begin :token/end) tokens))
+                        (some (fn [{tb :token/begin te :token/end}]
+                                (some (fn [{s :start t :end k :kind}]
+                                        (and s (< s t)
+                                             (if (= tb te)
+                                               (< s tb t)
+                                               (and (< s te) (> t tb)
+                                                    (not (and (<= tb s) (<= t te)
+                                                              (or (= k :replace) (< tb s) (< t te))))))))
+                                      g))
+                              (parts b e)))))
+        ;; The edits of `g` as one replace of [b e).
+        as-replace (fn [g b e]
+                     {:kind :replace :start b :end e :value (new-text g b e)
+                      ;; the old word's last letter came through
+                      :tail-kept (not-any? #(= e (:end %)) g)
+                      :head-kept (not-any? #(and (:end %) (= b (:start %))) g)})
         ;; The edits from i on that make up the whole of [b e), or nil.
         group (fn [i b e]
                 (let [j (loop [j i]
@@ -926,7 +1047,18 @@
                                       (or (kinds :replace)
                                           (and (kinds :delete) (kinds :insert))))
                                  (splits? g b e))
-                             (not (inside? b e)))
+                             ;; A word with tokens inside (its morphemes)
+                             ;; takes the replace only when the edits as they
+                             ;; are would break it, and when the word then
+                             ;; lands on one new word: kept apart from a word
+                             ;; typed beside it (`cow` to `at co` at a
+                             ;; sentence start keeps the word and `co` on
+                             ;; `co`, as the edits leave them).
+                             (or (not (inside? b e))
+                                 (and (not-any? #(ws? (aget o %)) (range b e))
+                                      (broken? g b e)
+                                      (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
+                                                (split-off-new-words o @near (as-replace g b e))))))
                     g)))
         ;; Tokens without whitespace that an edit giving one a space falls
         ;; strictly inside: `NY` to `New York` is `ew ` typed inside it and
@@ -953,10 +1085,7 @@
                               (around lo e0))))]
           (if-let [[g b e] g-e]
             (recur (+ i (count g))
-                   (conj out {:kind :replace :start b :end e :value (new-text g b e)
-                              ;; the old word's last letter came through
-                              :tail-kept (not-any? #(= e (:end %)) g)
-                              :head-kept (not-any? #(and (:end %) (= b (:start %))) g)})
+                   (conj out (as-replace g b e))
                    true)
             (recur (inc i) (conj out e0) folded?)))
         ;; A word typed beside the replaced letters stays out of them,

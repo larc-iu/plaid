@@ -242,6 +242,104 @@
       (assert-ok s)
       (is (= [cow-m] (-> s :body :span/tokens))))))
 
+(deftest text-body-analyzed-word-replaced-outright-moves-and-drops-its-morphemes
+  ;; `cow`, analyzed `co` + `w`, replaced by `abc`: the word and its own
+  ;; annotations move onto `abc`, and its morphemes go with their glosses.
+  ;; They were left on the `c` of `abc`, with `w` deleted (ruled 2026-09-27).
+  (let [proj (create-test-project admin-request "TextAnalyzedWordProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        morphemes (-> (create-token-layer-opts admin-request tl "Morphemes"
+                                               {:parent-token-layer-id words})
+                      :body :id)
+        translations (-> (create-span-layer admin-request words "Translation") :body :id)
+        glosses (-> (create-span-layer admin-request morphemes "Gloss") :body :id)
+        text-id (-> (create-text admin-request tl doc "the cow sat.") :body :id)
+        _ (assert-created (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                              :begin 0 :end 12}]))
+        cow (-> (create-token admin-request words text-id 4 7) :body :id)
+        sat (-> (create-token admin-request words text-id 8 11) :body :id)
+        co (-> (create-token admin-request morphemes text-id 4 6) :body :id)
+        w (-> (create-token admin-request morphemes text-id 6 7) :body :id)
+        sa (-> (create-token admin-request morphemes text-id 8 10) :body :id)
+        translation (-> (create-span admin-request translations [cow] "COW") :body :id)
+        co-gloss (-> (create-span admin-request glosses [co] "CO") :body :id)
+        sa-gloss (-> (create-span admin-request glosses [sa] "SA") :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "the abc sat."))
+    (is (= [4 7 "abc"] (extent cow)))
+    (is (= [8 11 "sat"] (extent sat)))
+    (is (= [8 10 "sa"] (extent sa)))
+    (assert-not-found (get-token admin-request co))
+    (assert-not-found (get-token admin-request w))
+    (assert-not-found (get-span admin-request co-gloss))
+    (assert-ok (get-span admin-request sa-gloss))
+    (let [s (get-span admin-request translation)]
+      (assert-ok s)
+      (is (= [cow] (-> s :body :span/tokens))))))
+
+(deftest text-combining-mark-typed-at-a-words-end-joins-the-word
+  ;; An accent typed as a separate mark after `cafe` makes the word `café`,
+  ;; through a whole body and through an explicit insert (ruled 2026-09-27).
+  (let [proj (create-test-project admin-request "TextCombiningMarkProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words" {:overlap-mode "non-overlapping"})
+                  :body :id)
+        text-id (-> (create-text admin-request tl doc "cafe latte") :body :id)
+        cafe (-> (create-token admin-request words text-id 0 4) :body :id)
+        latte (-> (create-token admin-request words text-id 5 10) :body :id)
+        acute (String. (Character/toChars 0x301))
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id (str "cafe" acute " latte")))
+    (is (= [0 5 (str "cafe" acute)] (extent cafe)))
+    (is (= [6 11 "latte"] (extent latte)))
+    (assert-ok (update-text admin-request text-id [{:type "insert" :index 11 :value acute}]))
+    (is (= [6 12 (str "latte" acute)] (extent latte)))))
+
+(deftest text-body-letter-doubled-at-a-sentence-start-in-a-save-with-another-edit
+  ;; `tat! a. tat big` to `tot! aa. tat big` in one save: the diff puts the
+  ;; new `a` before the word, where the partition gave it to the sentence
+  ;; before and the sentence boundary fell inside `aa`. The slide now knows
+  ;; that the sentences are a partition (ruled 2026-09-27).
+  (let [proj (create-test-project admin-request "TextPartitionSlideProj")
+        doc (create-test-document admin-request proj "Doc")
+        tl (-> (create-text-layer admin-request proj "TL") :body :id)
+        sentences (-> (create-token-layer-opts admin-request tl "Sentences"
+                                               {:overlap-mode "partitioning"})
+                      :body :id)
+        words (-> (create-token-layer-opts admin-request tl "Words"
+                                           {:overlap-mode "non-overlapping"
+                                            :parent-token-layer-id sentences})
+                  :body :id)
+        text-id (-> (create-text admin-request tl doc "tat! a. tat big") :body :id)
+        sentence-ids (-> (bulk-create-tokens admin-request [{:token-layer-id sentences :text text-id
+                                                             :begin 0 :end 5}
+                                                            {:token-layer-id sentences :text text-id
+                                                             :begin 5 :end 15}])
+                         :body :ids)
+        a (-> (create-token admin-request words text-id 5 6) :body :id)
+        extent (fn [id]
+                 (let [t (get-token admin-request id)]
+                   (assert-ok t)
+                   ((juxt :token/begin :token/end :token/value) (:body t))))]
+    (assert-ok (update-text admin-request text-id "tot! aa. tat big"))
+    (is (= [[0 5 "tot! "] [5 16 "aa. tat big"]] (mapv extent sentence-ids)))
+    (is (= [5 6 "a"] (extent a)))))
+
 (deftest text-update-with-tokens
   (let [proj (create-test-project admin-request "TextUpdateProj")
         doc (create-test-document admin-request proj "Doc")

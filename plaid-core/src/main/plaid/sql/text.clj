@@ -249,10 +249,20 @@
              ;; tokens move onto the new word (see ta/fold-whole-words).
              ;; The pairing comes second because normalize-deletes reads only
              ;; deletes and inserts, and it must see where the deletes end up.
-             ;; Explicit client ops are applied as sent.
+             ;; Explicit client ops are applied as sent. The slide is told
+             ;; which layers are partitions, where an insert at a boundary
+             ;; goes into the token that ends there.
+             partitioning (when (and (string? new-body-or-ops) (seq tokens))
+                            (into #{}
+                                  (map :id)
+                                  (psc/q tx {:select [:id]
+                                             :from [:token_layers]
+                                             :where [:and
+                                                     [:in :id (vec (distinct (map :token/layer tokens)))]
+                                                     [:= :overlap_mode "partitioning"]]})))
              ops (if (string? new-body-or-ops)
                    (-> (ta/diff old-body new-body-or-ops)
-                       (ta/slide-to-tokens old-body tokens)
+                       (ta/slide-to-tokens old-body tokens partitioning)
                        (ta/normalize-deletes old-body tokens)
                        (ta/pair-replacements old-body tokens)
                        (ta/fold-whole-words old-body tokens))

@@ -361,14 +361,16 @@
 
 (defn- body-edit
   "Apply a whole-body edit the way update-body does: diff, slide, snap the
-  deletes, pair them with their inserts, fold a word replaced outright."
-  [old new tokens]
-  (-> (ta/diff old new)
-      (ta/slide-to-tokens old tokens)
-      (ta/normalize-deletes old tokens)
-      (ta/pair-replacements old tokens)
-      (ta/fold-whole-words old tokens)
-      (apply-all old tokens)))
+  deletes, pair them with their inserts, fold a word replaced outright.
+  `partitioning` is the set of layers that are partitions."
+  ([old new tokens] (body-edit old new tokens #{}))
+  ([old new tokens partitioning]
+   (-> (ta/diff old new)
+       (ta/slide-to-tokens old tokens partitioning)
+       (ta/normalize-deletes old tokens)
+       (ta/pair-replacements old tokens)
+       (ta/fold-whole-words old tokens)
+       (apply-all old tokens))))
 
 (deftest pair-replacements-turns-a-respelled-letter-into-a-replace
   (testing "the diff spells the respelling as delete then insert at one index"
@@ -694,13 +696,11 @@
     (let [{:keys [tokens]} (body-edit "the cat sat" "the cot sit"
                                       [(tok :cat 4 7) (tok :sat 8 11) (tok :both 4 11)])]
       (is (= #{[:cat 4 7] [:sat 8 11] [:both 4 11]} (extents tokens)))))
-  (testing "not folded: a token inside the word, letters typed at its edges, the whole text"
+  (testing "not folded: letters typed at its edges, the whole text"
     (let [fold (fn [old new tokens]
                  (-> (ta/diff old new)
                      (ta/pair-replacements old tokens)
                      (ta/fold-whole-words old tokens)))]
-      (is (= [(ta/insert-op 4 "ab") (ta/delete-op 7 2)]
-             (fold "cat cow" "cat abc" [(tok :cow 4 7) (tok :m1 4 6) (tok :m2 6 7)])))
       (is (= [(ta/insert-op 2 "t") (ta/insert-op 4 "t")]
              (fold "x a y" "x tat y" [(tok :a 2 3)])))
       (is (= [(ta/insert-op 0 "ab") (ta/delete-op 3 2)]
@@ -859,3 +859,211 @@
     (is (= 1000 (count ops)))
     (is (= new (:text/body (:text (apply-all slid old [])))))
     (is (< ms 1000) (str ms " ms"))))
+
+;; ---------------------------------------------------------------------------
+;; A combining mark typed at a word's end joins the word (ruled 2026-09-27).
+;; Some keyboards type an accent as a separate mark after the letter, and the
+;; standing rule that text typed after a word stays outside it split the
+;; letter from its accent at the token's edge.
+
+(defn- cps
+  "A string of the given code points, so the marks read as numbers here."
+  [& xs]
+  (let [sb (StringBuilder.)]
+    (doseq [x xs] (if (string? x) (.append sb ^String x) (.appendCodePoint sb (int x))))
+    (str sb)))
+
+(def ^:private acute 0x301)
+
+(deftest a-combining-mark-typed-at-a-words-end-joins-the-word
+  (testing "an explicit insert"
+    (let [{:keys [text tokens deleted]}
+          (ta/apply-text-edit (ta/insert-op 4 (cps acute)) {:text/body "cafe latte"}
+                              [(tok :cafe 0 4) (tok :z 4 4) (tok :latte 5 10)])]
+      (is (= (cps "cafe" acute " latte") (:text/body text)))
+      (is (= [] deleted))
+      ;; the zero-width token at the word's end stays at its end, not between
+      ;; the letter and its accent
+      (is (= #{[:cafe 0 5] [:z 5 5] [:latte 6 11]} (extents tokens)))))
+  (testing "only the marks join: what follows them stays outside"
+    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 4 (cps acute 0x323 "!"))
+                                               {:text/body "cafe latte"}
+                                               [(tok :cafe 0 4) (tok :latte 5 10)])]
+      (is (= #{[:cafe 0 6] [:latte 8 13]} (extents tokens)))))
+  (testing "a token that begins there moves past the mark"
+    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 4 (cps acute)) {:text/body "cafe."}
+                                               [(tok :cafe 0 4) (tok :stop 4 5)])]
+      (is (= #{[:cafe 0 5] [:stop 5 6]} (extents tokens)))))
+  (testing "spacing (Mc) and enclosing (Me) marks, and an astral one, join too"
+    (doseq [[mark body end] [[0x93E (cps 0x915) 1] [0x20DD "a" 1] [0x1D167 "do" 2]]]
+      (let [n (cp/cp-count body)
+            {:keys [tokens]} (ta/apply-text-edit (ta/insert-op n (cps mark)) {:text/body (str body " x")}
+                                                 [(tok :w 0 n) (tok :x (inc n) (+ n 2))])]
+        (is (= #{[:w 0 (inc end)] [:x (+ n 2) (+ n 3)]} (extents tokens)) (format "U+%04X" mark)))))
+  (testing "a replace whose new text starts with a mark gives the mark to the letter before"
+    (let [{:keys [text tokens]} (ta/apply-text-edit (ta/replace-op 1 1 (cps acute "c")) {:text/body "ab"}
+                                                    [(tok :a 0 1) (tok :b 1 2)])]
+      (is (= (cps "a" acute "c") (:text/body text)))
+      (is (= #{[:a 0 2] [:b 2 3]} (extents tokens)))))
+  (testing "a letter typed at a word's end still stays outside it"
+    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 3 "s") {:text/body "cat"} [(tok :cat 0 3)])]
+      (is (= #{[:cat 0 3]} (extents tokens)))))
+  (testing "a mark at the very start of the text has no letter to join"
+    (let [{:keys [tokens]} (ta/apply-text-edit (ta/insert-op 0 (cps acute)) {:text/body "ab"}
+                                               [(tok :z 0 0) (tok :ab 0 2)])]
+      (is (= #{[:z 0 0] [:ab 1 3]} (extents tokens)))))
+  (testing "a whole-body update"
+    (let [{:keys [text tokens]} (body-edit "cafe latte" (cps "cafe" acute " latte")
+                                           [(tok :cafe 0 4) (tok :latte 5 10) (tok :s 0 10)])]
+      (is (= (cps "cafe" acute " latte") (:text/body text)))
+      (is (= #{[:cafe 0 5] [:latte 6 11] [:s 0 11]} (extents tokens))))
+    ;; at the end of the text, with an accent put on the last word
+    (let [{:keys [tokens]} (body-edit "cafe" (cps "cafe" acute) [(tok :cafe 0 4)])]
+      (is (= #{[:cafe 0 5]} (extents tokens))))))
+
+;; ---------------------------------------------------------------------------
+;; A word analyzed into morphemes and replaced outright moves onto the new
+;; word, and its morphemes are deleted (ruled 2026-09-27). `cow` (`co` + `w`)
+;; replaced by `abc` left the word and `co` on the `c` of `abc` and deleted
+;; `w`.
+
+(deftest an-analyzed-word-replaced-outright-moves-and-drops-its-morphemes
+  (doseq [[old new tokens expected deleted]
+          [["cat cow" "cat abc" [(tok :cat 0 3) (tok :cow 4 7) (tok :co 4 6) (tok :w 6 7)]
+            #{[:cat 0 3] [:cow 4 7]} #{:co :w}]
+           ;; `ta` to `bad` kept the word on `ba` and the `d` outside it
+           ["x ta y" "x bad y" [(tok :ta 2 4) (tok :t 2 3) (tok :a 3 4)]
+            #{[:ta 2 5]} #{:t :a}]
+           ;; the sentence around it, a zero-width token at its start and the
+           ;; other words' morphemes are untouched
+           ["the cow sat" "the abc sat"
+            [(tok :s 0 11) (tok :the 0 3) (tok :cow 4 7) (tok :sat 8 11) (tok :z 4 4)
+             (tok :th 0 2) (tok :e 2 3) (tok :co 4 6) (tok :w 6 7) (tok :sa 8 10) (tok :t 10 11)]
+            #{[:s 0 11] [:the 0 3] [:cow 4 7] [:sat 8 11] [:z 4 4]
+              [:th 0 2] [:e 2 3] [:sa 8 10] [:t 10 11]}
+            #{:co :w}]
+           ;; a new word typed beside it stays out of it, as for a word
+           ;; nobody analyzed
+           ["x cow y" "x abc d y" [(tok :cow 2 5) (tok :co 2 4) (tok :w 4 5)]
+            #{[:cow 2 5]} #{:co :w}]]]
+    (let [{:keys [text tokens] :as r} (body-edit old new tokens)]
+      (is (= new (:text/body text)))
+      (is (= deleted (set (:deleted r))) (str (pr-str old) " -> " (pr-str new)))
+      (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new))))))
+
+(deftest a-word-whose-parts-each-hold-their-change-keeps-them
+  ;; Only a replace that would leave the word or its parts broken is folded
+  ;; over them. Otherwise each part keeps its own respelling, as before.
+  (testing "a one-word sentence ending in a full stop, both of its words respelled"
+    (let [{:keys [tokens deleted]} (body-edit "x\ncat." "x\nbat!"
+                                              [(tok :s1 0 2) (tok :s2 2 6) (tok :cat 2 5) (tok :stop 5 6)])]
+      (is (= [] deleted))
+      (is (= #{[:s1 0 2] [:s2 2 6] [:cat 2 5] [:stop 5 6]} (extents tokens)))))
+  (testing "a word respelled at both ends, each end inside one of its morphemes"
+    (let [{:keys [tokens deleted]} (body-edit "x cat y" "x bad y"
+                                              [(tok :cat 2 5) (tok :ca 2 4) (tok :t 4 5)])]
+      (is (= [] deleted))
+      (is (= #{[:cat 2 5] [:ca 2 4] [:t 4 5]} (extents tokens))))))
+
+(deftest an-analyzed-word-replaced-leaves-no-part-of-its-analysis
+  ;; Every word is analyzed into one or two morphemes. After one word is
+  ;; replaced, its token is on the new word, and its morphemes are either all
+  ;; gone or still cover the new word from end to end, never a part of it.
+  ;; Every other word keeps its word and morpheme tokens where they were.
+  (let [vocab ["the" "cat" "cow" "at" "ab" "abc" "tat" "ta" "big" "bad" "𐌰𐌱" "שלום" "ta."]
+        cases (atom 0)]
+    (doseq [seed (range 1 7)]
+      (let [rng (java.util.Random. seed)
+            pick #(nth % (.nextInt rng (count %)))]
+        (dotimes [_ 200]
+          (let [words (vec (repeatedly (+ 2 (.nextInt rng 5)) #(pick vocab)))
+                k (.nextInt rng (count words))
+                w (pick vocab)]
+            (when-not (or (subsequence? (words k) w)
+                          (= w (get words (dec k)))
+                          (= w (get words (inc k))))
+              (swap! cases inc)
+              (let [words' (assoc words k w)
+                    old (str/join " " words)
+                    new (str/join " " words')
+                    wt (word-tokens words)
+                    ;; morphemes: a cut after the first letter of a word of two or more
+                    morphs (mapcat (fn [{:token/keys [id begin end]}]
+                                     (if (< 1 (- end begin))
+                                       [(tok [id 0] begin (inc begin)) (tok [id 1] (inc begin) end)]
+                                       [(tok [id 0] begin end)]))
+                                   wt)
+                    {:keys [text tokens]} (body-edit old new (concat wt morphs))
+                    now (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)
+                    new-wt (word-tokens words')
+                    msg (str "seed " seed ": " (pr-str old) " -> " (pr-str new))]
+                (is (= new (:text/body text)))
+                (doseq [i (range (count words))
+                        :let [[b e] ((juxt :token/begin :token/end) (new-wt i))]]
+                  (is (= [b e] (now i)) msg)
+                  (if (= i k)
+                    (let [parts (sort (keep #(now [i %]) [0 1]))]
+                      (is (or (empty? parts)
+                              (and (= b (ffirst parts)) (= e (second (last parts)))
+                                   (every? (fn [[[_ e1] [b2 _]]] (= e1 b2)) (partition 2 1 parts))))
+                          (str msg " parts " (pr-str parts))))
+                    (let [delta (- b (:token/begin (wt i)))]
+                      (doseq [m (filter #(= i (first (:token/id %))) morphs)]
+                        (is (= [(+ delta (:token/begin m)) (+ delta (:token/end m))] (now (:token/id m)))
+                            msg)))))))))))
+    (is (< 600 @cases))))
+
+;; ---------------------------------------------------------------------------
+;; The slide knows which layers are partitions (ruled 2026-09-27). A letter
+;; inserted where two sentences of a partition meet goes into the sentence
+;; that ends there, so a place there is not free for that layer.
+
+(deftest the-slide-counts-an-insert-at-a-partition-boundary-as-growing-the-sentence-before
+  (let [old "tat! a. tat big"
+        new "tot! aa. tat big"
+        tokens (map #(assoc % :token/layer :w)
+                    [(tok :tat 0 3) (tok :x 3 4) (tok :a 5 6) (tok :p 6 7) (tok :tat2 8 11) (tok :big 12 15)])
+        sentences [(assoc (tok :s1 0 5) :token/layer :s) (assoc (tok :s2 5 15) :token/layer :s)]
+        all (concat tokens sentences)
+        ops (ta/diff old new)]
+    (testing "editscript puts the doubled `a` before the word, in the same save as another edit"
+      (is (= 5 (:index (peek ops)))))
+    (testing "told that the sentences are a partition, the slide puts it after"
+      (let [{:keys [text tokens]} (body-edit old new all #{:s})
+            at (into {} (map (juxt :token/id (juxt :token/begin :token/end))) tokens)]
+        (is (= new (:text/body text)))
+        (is (= [5 6] (at :a)))
+        ;; the second sentence still starts at the word, so the partition
+        ;; gives the first nothing of it
+        (is (= [5 16] (at :s2)))))
+    (testing "a layer that is not a partition leaves the choice as it was"
+      (is (= (ta/slide-to-tokens ops old all) (ta/slide-to-tokens ops old all #{}))))
+    (testing "a word typed at the start of a sentence stays out of the word after it"
+      (let [s [(assoc (tok :s1 0 3) :token/layer :s) (assoc (tok :s2 3 6) :token/layer :s)
+               (assoc (tok :x 0 1) :token/layer :w) (assoc (tok :abc 3 6) :token/layer :w)]
+            {:keys [tokens]} (body-edit "x.\nabc" "x.\nat abc" s #{:s})]
+        (is (= [6 9] ((juxt :token/begin :token/end) (first (filter #(= :abc (:token/id %)) tokens)))))))))
+
+(deftest a-marker-at-a-words-start-stays-with-the-word-when-a-word-is-typed-before-it
+  ;; Inside a sentence of a partition every place costs the sentence the
+  ;; same, so what decides is the zero-width token at `cow`'s start: text
+  ;; inserted where it stands would come between it and `cow`.
+  (let [tokens [(assoc (tok :s 0 7) :token/layer :s) (assoc (tok :big 0 3) :token/layer :w)
+                (assoc (tok :cow 4 7) :token/layer :w) (assoc (tok :z 4 4) :token/layer :z)]
+        {:keys [tokens]} (body-edit "big cow" "big big cow" tokens #{:s})]
+    (is (= #{[:s 0 11] [:big 0 3] [:cow 8 11] [:z 8 8]} (extents tokens))))
+  (testing "a zero-width token between a word and a full stop glued to it is left alone"
+    (let [tokens [(tok :c 6 7) (tok :stop 7 8) (tok :z 7 7)]
+          {:keys [tokens]} (body-edit "a big c, x" "a big cc, x" tokens)]
+      (is (= #{[:c 6 7] [:stop 8 9] [:z 7 7]} (extents tokens))))))
+
+(deftest an-analyzed-word-with-a-new-word-typed-before-it-at-a-sentence-start-is-not-folded
+  ;; The fold would keep `at co` together, since the sentence before would
+  ;; take `at `, so the edits stay as they are: the word and `co` on `co`.
+  (let [tokens [(assoc (tok :s1 0 3) :token/layer :s) (assoc (tok :s2 3 8) :token/layer :s)
+                (assoc (tok :cow 3 6) :token/layer :w)
+                (assoc (tok :co 3 5) :token/layer :m) (assoc (tok :w 5 6) :token/layer :m)]
+        {:keys [text tokens deleted]} (body-edit "x. cow y" "x. at co y" tokens #{:s})]
+    (is (= "x. at co y" (:text/body text)))
+    (is (= [:w] deleted))
+    (is (= #{[:s1 0 3] [:s2 6 10] [:cow 6 8] [:co 6 8]} (extents tokens)))))
