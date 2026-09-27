@@ -25,7 +25,7 @@ import { bareMediaType, extensionForMediaType } from '../domain/media/mediaTypes
 import { exportedVocabFields } from '../domain/vocabFields.js';
 import { discoverExportLayers, intersectSelection } from './exportLayers.js';
 import { serializeDocumentPlain } from './plainTextDoc.js';
-import { interlinearTextXml, flextextEnvelope } from './flextext.js';
+import { interlinearTextXml, flextextEnvelope, countXmlDropped } from './flextext.js';
 import { buildLiftLexicon, collectExampleRefs } from './lift.js';
 import { buildItemNumbers, exampleKey } from '../domain/vocabDictionary.js';
 import { buildContextRows } from '../components/projects/search/searchRunner.js';
@@ -49,6 +49,14 @@ export class ExportCancelled extends Error {
 }
 
 const toJson = (obj) => JSON.stringify(obj, null, 2);
+
+// An XML writer drops the control characters XML cannot hold (xmlEscape), and
+// the export names where it did.
+const serializeXmlCounted = (serialize, onDropped) => {
+  const { out, dropped } = countXmlDropped(serialize);
+  if (dropped > 0) onDropped();
+  return out;
+};
 
 function serializeDoc(igtDoc, preset, layers, context = {}) {
   // One <interlinear-text> block, not a whole file: the FLEx branch joins the
@@ -431,14 +439,18 @@ export async function runExport({
                   onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
                 }),
               )
-            : serializeDoc(igtDoc, preset, layers, {
-                exportedAt,
-                onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
-                // A bundled .eaf lands in documents/ and its media in
-                // media/, so the href that resolves climbs one level.
-                mediaHref: mediaFile ? `../${mediaFile}` : null,
-                mediaType,
-              }),
+            : serializeXmlCounted(
+                () =>
+                  serializeDoc(igtDoc, preset, layers, {
+                    exportedAt,
+                    onWarning: (msg) => warnings.push(`"${name}": ${msg}`),
+                    // A bundled .eaf lands in documents/ and its media in
+                    // media/, so the href that resolves climbs one level.
+                    mediaHref: mediaFile ? `../${mediaFile}` : null,
+                    mediaType,
+                  }),
+                () => warnings.push(`"${name}": invisible control characters left out`),
+              ),
         igtDoc,
         id: igtDoc.document?.id ?? docIds[i],
         docName: name,
@@ -493,12 +505,16 @@ export async function runExport({
   if (isFlex) {
     const flextext = flextextEnvelope(docFiles.map((f) => f.data));
     const lexicon = wantLexicon
-      ? buildLiftLexicon({
-          vocabularies: vocabs,
-          options: preset.options || {},
-          rangesHref: `${stem}.lift-ranges`,
-          exampleTexts,
-        })
+      ? serializeXmlCounted(
+          () =>
+            buildLiftLexicon({
+              vocabularies: vocabs,
+              options: preset.options || {},
+              rangesHref: `${stem}.lift-ranges`,
+              exampleTexts,
+            }),
+          () => warnings.push('Invisible control characters were left out of the .lift file.'),
+        )
       : null;
     // A project with no lexicon to speak of exports the texts alone rather
     // than an archive built around an empty .lift.

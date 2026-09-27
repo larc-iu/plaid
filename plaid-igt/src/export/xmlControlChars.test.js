@@ -5,7 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import { SaxesParser } from 'saxes';
 import { buildEafDocument } from './elan.js';
-import { buildFlextextDocument, xmlEscape } from './flextext.js';
+import { buildFlextextDocument, countXmlDropped, xmlEscape } from './flextext.js';
+import { runExport } from './runExport.js';
+import { discoverExportLayers } from './exportLayers.js';
+import { newPreset } from './presets.js';
 import { buildLiftLexicon } from './lift.js';
 import { makeFixtureDoc, FLEXTEXT_OPTIONS } from './testFixtures.js';
 
@@ -77,4 +80,103 @@ describe('XML 1.0 forbidden characters', () => {
       expect(wellFormed(lift.lift)).toEqual([]);
     });
   }
+});
+
+// The characters are dropped, and the export says so for the document or the
+// lexicon they were in, since a gloss or a form did change.
+describe('an export that drops forbidden characters says where', () => {
+  it('countXmlDropped counts what xmlEscape dropped during one call', () => {
+    const { out, dropped } = countXmlDropped(() => xmlEscape('a\u000Bb') + xmlEscape('c'));
+    expect(out).toBe('abc');
+    expect(dropped).toBe(1);
+    expect(countXmlDropped(() => xmlEscape('clean')).dropped).toBe(0);
+  });
+
+  const role = (r) => ({ plaid: { role: r } });
+  const PROJECT = {
+    id: 'p1',
+    name: 'P',
+    textLayers: [
+      {
+        config: role('baseline'),
+        tokenLayers: [
+          { config: role('word'), spanLayers: [] },
+          { config: role('sentence'), spanLayers: [] },
+        ],
+      },
+    ],
+    vocabs: [{ id: 'v1' }],
+  };
+  const rawDoc = (id, name, body) => ({
+    id,
+    name,
+    textLayers: [
+      {
+        config: role('baseline'),
+        text: { body },
+        tokenLayers: [
+          {
+            config: role('word'),
+            tokens: [{ id: 'w', begin: 0, end: [...body].length }],
+            spanLayers: [],
+          },
+          {
+            config: role('sentence'),
+            tokens: [{ id: 's', begin: 0, end: [...body].length }],
+            spanLayers: [],
+          },
+        ],
+      },
+    ],
+  });
+  const client = (body, form) => ({
+    guidelines: { list: async () => [] },
+    comments: { list: async () => [], listInVocab: async () => [] },
+    users: { get: async (id) => ({ id }) },
+    projects: { listDocuments: async () => [{ id: 'd1', name: 'Story' }] },
+    documents: { get: async () => rawDoc('d1', 'Story', body) },
+    vocabLayers: {
+      get: async () => ({
+        id: 'v1',
+        name: 'Lexicon',
+        config: {},
+        items: [{ id: 'i1', form, metadata: { gloss: 'dog' } }],
+        vocabLinks: [],
+      }),
+    },
+  });
+
+  for (const format of ['elan', 'flextext']) {
+    it(`${format}: a document holding one is named in the warnings`, async () => {
+      const result = await runExport({
+        client: client('ab\u000Bc', 'perro'),
+        project: PROJECT,
+        preset: newPreset(format, discoverExportLayers(PROJECT), 'x'),
+        scope: { type: 'document', id: 'd1' },
+      });
+      expect(result.warnings).toEqual(['"Story": invisible control characters left out']);
+    });
+  }
+
+  it('flextext: a lexicon entry holding one is named in the warnings', async () => {
+    const result = await runExport({
+      client: client('abc', 'per\u0001ro'),
+      project: PROJECT,
+      preset: newPreset('flextext', discoverExportLayers(PROJECT), 'x'),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.warnings).toEqual([
+      'Invisible control characters were left out of the .lift file.',
+    ]);
+  });
+
+  it('a clean export has no such warning', async () => {
+    const result = await runExport({
+      client: client('abc', 'perro'),
+      project: PROJECT,
+      preset: newPreset('elan', discoverExportLayers(PROJECT), 'x'),
+      scope: { type: 'document', id: 'd1' },
+    });
+    expect(result.warnings).toEqual([]);
+  });
 });
