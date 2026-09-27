@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EntryThreadIsland } from './EntryThreadIsland.js';
 import { CommentStore } from '@ui/domain/CommentStore';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // One vocabulary entry's thread. The thread itself is CommentThread's; what
 // this owns is the state around it — which entry is shown, whether the store
@@ -78,5 +79,69 @@ describe('the entry thread island', () => {
 
     island.setEntry({ entityId: 'i1', caption: 'the entry cat' });
     expect(host.querySelector('.igt-cmt__composer textarea').value).toBe('half a thought');
+  });
+});
+
+describe('what the server refuses', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  const typeInto = (el, v) => {
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const refusing = () => {
+    const store = new CommentStore({
+      client: {
+        comments: {
+          create: async () => {
+            throw new Error('HTTP 500');
+          },
+          update: async () => {
+            throw new Error('HTTP 500');
+          },
+        },
+      },
+      projectId: 'p1',
+      vocabId: 'v1',
+      currentUserId: ME,
+    });
+    store._loaded = true;
+    return store;
+  };
+
+  it('puts a refused comment back in the composer, and asks on leaving until then', async () => {
+    const store = refusing();
+    mount(store);
+    typeInto(host.querySelector('.igt-cmt__composer textarea'), 'a thought');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+    host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
+    await settle();
+    expect(host.querySelector('.igt-cmt__composer textarea').value).toBe('a thought');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+    island.destroy();
+    island = null;
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('opens the editor again on a refused edit', async () => {
+    const store = refusing();
+    const c = {
+      id: 'c1',
+      entityType: 'vocab-item',
+      entityId: 'i1',
+      authorId: ME,
+      body: 'before',
+      createdAt: '2026-09-01T00:00:00.000Z',
+    };
+    store._byId.set('c1', c);
+    store._byEntity.set('i1', [c]);
+    mount(store);
+    host.querySelector('[aria-label="Edit this comment"]').click();
+    typeInto(host.querySelector('textarea[aria-label="Edit your comment"]'), 'after');
+    host.querySelector('.igt-cmt__row--editing .igt-cmt__btn--primary').click();
+    await settle();
+    expect(host.querySelector('textarea[aria-label="Edit your comment"]').value).toBe('after');
+    expect(store.threadFor('i1')[0].body).toBe('before');
   });
 });

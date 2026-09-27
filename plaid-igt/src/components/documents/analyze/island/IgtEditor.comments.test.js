@@ -3,6 +3,7 @@ import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
 import { CommentStore } from '@ui/domain/CommentStore';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // Deleting a comment from the grid's popover. A comment is unaudited, so there
 // is no history entry and no restore: the delete is asked for first, the same
@@ -107,5 +108,53 @@ describe('deleting a comment from the grid', () => {
     await Promise.resolve();
 
     expect(store.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('a comment the server refuses, from the grid', () => {
+  const composer = () => host.querySelector('.igt-cmt-pop textarea[aria-label="Add a comment"]');
+  const typeInto = (el, v) => {
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it('comes back into the composer, and leaving asks until then', async () => {
+    const store = seededStore();
+    let refuse;
+    store._client = {
+      comments: {
+        create: () => new Promise((_, reject) => (refuse = () => reject(new Error('HTTP 500')))),
+      },
+    };
+    mount({ comments: store });
+    openThread();
+    typeInto(composer(), 'first thought');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+    host.querySelector('.igt-cmt__composer .igt-cmt__btn--primary').click();
+    await settle();
+    expect(composer().value).toBe('');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
+    refuse();
+    await settle();
+    expect(composer().value).toBe('first thought');
+    // Closing the popover keeps it, and so does reopening.
+    editor._closePopover();
+    openThread();
+    expect(composer().value).toBe('first thought');
+    // Leaving the tab takes the island, and the question, with it.
+    editor.destroy();
+    editor = null;
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('reads left to right in a right-to-left document, and the composer takes its own direction', () => {
+    const store = seededStore();
+    mount({ comments: store });
+    openThread();
+    expect(host.querySelector('.igt-cmt-pop').getAttribute('dir')).toBe('ltr');
+    expect(composer().getAttribute('dir')).toBe('auto');
   });
 });

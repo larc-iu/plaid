@@ -10,6 +10,8 @@
 // The comments themselves live in the CommentStore; this never holds one.
 
 import { render, nothing } from 'lit-html';
+import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
+import { withReturnedDraft } from '@ui/domain/CommentStore';
 import { commentThread } from './CommentThread.js';
 
 export class ThreadIslandBase {
@@ -31,6 +33,9 @@ export class ThreadIslandBase {
     this._editingId = null;
     this._editDraft = '';
     this._drafts = new Map(); // entityId -> composer draft
+    // Posts and edits on their way. What was typed is kept until the server
+    // has it, and leaving asks about it until then.
+    this._sending = 0;
 
     this._onStoreChange = () => this._render();
     this._unsubStore = store.subscribe(this._onStoreChange);
@@ -39,7 +44,25 @@ export class ThreadIslandBase {
   destroy() {
     this._unsubStore?.();
     this._unsubStore = null;
+    setUnsavedDraft(this, null);
     render(nothing, this.host);
+  }
+
+  // Tell the leave question whether anything typed here is unsaved: a
+  // composer with text in it, an edit that changes a comment, or a post or
+  // edit still on its way.
+  _syncUnsaved() {
+    if (!this._unsubStore) {
+      setUnsavedDraft(this, null);
+      return;
+    }
+    const editing = this._editingId && this._editDraft.trim();
+    const typed = [...this._drafts.values()].some((d) => d.trim());
+    setUnsavedDraft(
+      this,
+      this._sending || editing || typed ? 'The comment you have typed' : null,
+      'comments you have typed',
+    );
   }
 
   setPermissions({ canWrite, canDeleteAny }) {
@@ -59,6 +82,7 @@ export class ThreadIslandBase {
   _cancelEdit() {
     this._editingId = null;
     this._editDraft = '';
+    this._syncUnsaved();
     this._render();
   }
 
@@ -67,19 +91,37 @@ export class ThreadIslandBase {
     const draft = this._editDraft;
     if (!id || !draft.trim()) return;
     // Close the editor first: the store's update is optimistic, so leaving it
-    // open would show a textarea over an already-updated body.
+    // open would show a textarea over an already-updated body. A refused edit
+    // opens it again on what was typed, unless another edit is open by then.
+    this._sending += 1;
     this._cancelEdit();
-    await this.store.edit(id, draft);
+    const ok = await this.store.edit(id, draft);
+    this._sending -= 1;
+    if (!ok && !this._editingId && this._unsubStore) {
+      this._editingId = id;
+      this._editDraft = draft;
+      this._render();
+    }
+    this._syncUnsaved();
   }
 
   /** Post the composer draft for one thread. `caption` is what the comment is
-   * about, in words (see commentAnchors.anchorCaption). */
+   * about, in words (see commentAnchors.anchorCaption). A refused post puts
+   * the text back in the composer. */
   async _submit(entityType, entityId, caption) {
     const draft = (this._drafts.get(entityId) || '').trim();
     if (!draft) return;
     this._drafts.set(entityId, '');
+    this._sending += 1;
+    this._syncUnsaved();
     this._render();
-    await this.store.post(entityType, entityId, draft, caption);
+    const created = await this.store.post(entityType, entityId, draft, caption);
+    this._sending -= 1;
+    if (!created && this._unsubStore) {
+      this._drafts.set(entityId, withReturnedDraft(draft, this._drafts.get(entityId) || ''));
+      this._render();
+    }
+    this._syncUnsaved();
   }
 
   async _remove(comment) {
@@ -95,11 +137,13 @@ export class ThreadIslandBase {
       cancelEdit: () => this._cancelEdit(),
       changeEdit: (v) => {
         this._editDraft = v;
+        this._syncUnsaved();
       },
       saveEdit: () => this._saveEdit(),
       remove: (c) => this._remove(c),
       changeComposer: (v) => {
         this._drafts.set(entityId, v);
+        this._syncUnsaved();
       },
       submit: () => this._submit(entityType, entityId, caption),
     };

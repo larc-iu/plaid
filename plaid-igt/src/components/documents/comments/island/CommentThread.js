@@ -86,6 +86,7 @@ function commentRow(comment, ctx) {
       <li class="igt-cmt__row igt-cmt__row--editing">
         <textarea
           class="igt-cmt__input"
+          dir="auto"
           rows="3"
           maxlength=${MAX_BODY}
           aria-label="Edit your comment"
@@ -229,6 +230,7 @@ export function commentThread(opts) {
             <div class="igt-cmt__composer">
               <textarea
                 class="igt-cmt__input"
+                dir="auto"
                 rows="2"
                 maxlength=${MAX_BODY}
                 placeholder="Add a comment…"

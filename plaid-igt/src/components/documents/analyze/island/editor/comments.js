@@ -1,4 +1,6 @@
 import { html, nothing } from 'lit-html';
+import { withReturnedDraft } from '@ui/domain/CommentStore';
+import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import { commentThread } from '@/components/documents/comments/island/CommentThread.js';
 import { buildAnchorIndex, describeAnchor, anchorCaption } from '@/domain/commentAnchors';
 
@@ -74,12 +76,45 @@ export const comments = {
     this._popoverReturnId = `comment:${entityId}`;
     this._cmtEditingId = null;
     this._cmtEditDraft = '';
-    this._cmtDraft = '';
     this._popoverPos = this._computePopoverPos(anchorEl, 300, this._popWidth('comment'));
     this._render(true);
     this._focusPopover();
     // The thread's real height is rarely the 300px estimate above.
     this._fitPopover();
+  },
+
+  // What is typed into each thread's composer, by entity, kept when the
+  // popover closes so reopening it finds the text again.
+  _cmtDraftFor(entityId) {
+    return (this._cmtDrafts ||= new Map()).get(entityId) || '';
+  },
+
+  _cmtSetDraft(entityId, text) {
+    (this._cmtDrafts ||= new Map()).set(entityId, text);
+    this._cmtSyncUnsaved();
+  },
+
+  // Tell the leave question whether anything typed in a comment popover is
+  // unsaved: a composer's text (open or not), an edit being typed, or a post
+  // or edit still on its way. The island's own teardown unsubscribes from the
+  // store, so the registration is dropped there too (wrapped once, here).
+  _cmtSyncUnsaved() {
+    if (this._destroyed) return;
+    if (!this._cmtUnsavedHeld) {
+      this._cmtUnsavedHeld = true;
+      const unsubscribe = this._unsubComments;
+      this._unsubComments = () => {
+        unsubscribe?.();
+        setUnsavedDraft(this, null);
+      };
+    }
+    const typed = [...(this._cmtDrafts?.values() ?? [])].some((d) => d.trim());
+    const editing = this._cmtEditingId && this._cmtEditDraft.trim();
+    setUnsavedDraft(
+      this,
+      this._cmtSending || typed || editing ? 'The comment you have typed' : null,
+      'comments you have typed',
+    );
   },
 
   _commentPopover(entityType, entityId, label) {
@@ -91,6 +126,7 @@ export const comments = {
     return html`
       <div
         class="igt-cmt-pop"
+        dir="ltr"
         data-igt-pop
         style=${posStyle}
         role="dialog"
@@ -130,7 +166,7 @@ export const comments = {
           canDeleteAny: this.canDeleteAnyComment,
           editingId: this._cmtEditingId,
           editDraft: this._cmtEditDraft,
-          composerDraft: this._cmtDraft || '',
+          composerDraft: this._cmtDraftFor(entityId),
           on: {
             startEdit: (c) => {
               this._cmtEditingId = c.id;
@@ -140,19 +176,35 @@ export const comments = {
             cancelEdit: () => {
               this._cmtEditingId = null;
               this._cmtEditDraft = '';
+              this._cmtSyncUnsaved();
               this._render(true);
             },
             changeEdit: (v) => {
               this._cmtEditDraft = v;
+              this._cmtSyncUnsaved();
             },
             saveEdit: async () => {
               const id = this._cmtEditingId;
               const draft = this._cmtEditDraft;
               if (!id || !draft.trim()) return;
+              // Closed at once, since the body shows the edit. A refused edit
+              // opens it again on what was typed, while this thread is still
+              // the one open and no other edit has started.
               this._cmtEditingId = null;
               this._cmtEditDraft = '';
+              this._cmtSending = (this._cmtSending || 0) + 1;
+              this._cmtSyncUnsaved();
               this._render(true);
-              await store.edit(id, draft);
+              const ok = await store.edit(id, draft);
+              this._cmtSending -= 1;
+              const here =
+                this._popover?.variant === 'comment' && this._popover.entityId === entityId;
+              if (!ok && here && !this._cmtEditingId && !this._destroyed) {
+                this._cmtEditingId = id;
+                this._cmtEditDraft = draft;
+                this._render(true);
+              }
+              this._cmtSyncUnsaved();
             },
             remove: async (c) => {
               if (!this.confirmDeleteComment) return;
@@ -162,19 +214,28 @@ export const comments = {
               this._fitPopover();
             },
             changeComposer: (v) => {
-              this._cmtDraft = v;
+              this._cmtSetDraft(entityId, v);
             },
+            // The composer empties at once, and a refused post puts the text
+            // back in it, in front of anything typed since.
             submit: async () => {
-              const draft = (this._cmtDraft || '').trim();
+              const draft = this._cmtDraftFor(entityId).trim();
               if (!draft) return;
-              this._cmtDraft = '';
+              this._cmtSending = (this._cmtSending || 0) + 1;
+              this._cmtSetDraft(entityId, '');
               this._render(true);
-              await store.post(
+              const created = await store.post(
                 entityType,
                 entityId,
                 draft,
                 this._commentCaption(entityType, entityId),
               );
+              this._cmtSending -= 1;
+              if (!created && !this._destroyed) {
+                this._cmtSetDraft(entityId, withReturnedDraft(draft, this._cmtDraftFor(entityId)));
+                this._render(true);
+              }
+              this._cmtSyncUnsaved();
               // A new row makes the popover taller; keep it anchored.
               this._fitPopover();
             },
