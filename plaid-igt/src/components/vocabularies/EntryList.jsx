@@ -56,7 +56,7 @@ export const EntryList = ({
 
   return (
     <div
-      className="sticky top-4 flex max-h-[calc(100vh-14rem)] w-96 shrink-0 flex-col rounded-lg border bg-card"
+      className="flex max-h-[calc(100vh-14rem)] w-full shrink-0 flex-col rounded-lg border bg-card md:sticky md:top-4 md:w-96"
       style={maxHeight ? { maxHeight } : undefined}
     >
       <div className="flex flex-col gap-2 border-b p-3">

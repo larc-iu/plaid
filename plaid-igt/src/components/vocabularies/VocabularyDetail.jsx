@@ -1013,8 +1013,10 @@ export const VocabularyDetail = () => {
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
-            { label: 'Vocabularies', to: '/vocabularies' },
-            { label: isNewVocabulary ? 'New Vocabulary' : vocabulary?.name || 'Loading…' },
+            { label: 'Vocabularies', to: '/vocabularies', fixed: true },
+            isNewVocabulary
+              ? { label: 'New Vocabulary', fixed: true }
+              : { label: vocabulary?.name || 'Loading…' },
           ]}
         />
 

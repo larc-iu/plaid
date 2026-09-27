@@ -1159,7 +1159,7 @@ export const VocabularyItems = ({
   }
 
   return (
-    <div ref={paneWrapRef} className="flex items-start gap-4">
+    <div ref={paneWrapRef} className="flex flex-col gap-4 md:flex-row md:items-start">
       <EntryList
         list={list}
         scope={scope}
