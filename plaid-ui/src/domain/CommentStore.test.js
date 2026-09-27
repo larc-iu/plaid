@@ -239,6 +239,38 @@ describe('CommentStore writes', () => {
     expect(store.threadFor('t1')[0].edited).toBe(true);
   });
 
+  it('answers true for an edit to the text it already holds, without a write', async () => {
+    const client = fakeClient([comment({ id: 'c1', body: 'same' })]);
+    const store = makeStore(client);
+    await store.load();
+
+    expect(await store.edit('c1', ' same ')).toBe(true);
+    expect(client.comments.update).not.toHaveBeenCalled();
+  });
+
+  it('is saving while a post, an edit or a delete is on its way, refused or not', async () => {
+    const client = fakeClient([comment({ id: 'c1', body: 'before' })]);
+    const store = makeStore(client);
+    await store.load();
+    let release;
+    client.comments.create.mockImplementationOnce(
+      () => new Promise((_, reject) => (release = () => reject(new Error('offline')))),
+    );
+    const posted = store.post('token', 't1', 'hello');
+    expect(store.isSaving).toBe(true);
+    release();
+    expect(await posted).toBeNull();
+    expect(store.isSaving).toBe(false);
+
+    const edited = store.edit('c1', 'after');
+    expect(store.isSaving).toBe(true);
+    await edited;
+    const removed = store.remove('c1');
+    expect(store.isSaving).toBe(true);
+    await removed;
+    expect(store.isSaving).toBe(false);
+  });
+
   it('puts a deleted comment back when the delete fails', async () => {
     const client = fakeClient([
       comment({ id: 'a', createdAt: '2026-08-31T00:00:01.000Z' }),
@@ -511,6 +543,39 @@ describe('CommentStore live stream', () => {
     expect(store.isLive).toBe(false);
     // The rest of the store still works; a comment just will not arrive live.
     expect(() => release()).not.toThrow();
+  });
+
+  it('turns isLive false when the server closes the stream, and a later claim opens it again', () => {
+    vi.useFakeTimers();
+    try {
+      const client = liveClient();
+      const streams = [];
+      client.messages.listen = vi.fn(() => {
+        const stream = { readyState: 1, close: vi.fn() };
+        streams.push(stream);
+        return stream;
+      });
+      const store = makeStore(client);
+      const heard = vi.fn();
+      store.subscribe(heard);
+      const release = store.watchLive();
+      vi.advanceTimersByTime(10000);
+      expect(store.isLive).toBe(true);
+      // The reader lost access to the project: core closes the stream.
+      streams[0].readyState = 2;
+      vi.advanceTimersByTime(10000);
+      expect(store.isLive).toBe(false);
+      expect(heard).toHaveBeenCalled();
+      const again = store.watchLive();
+      expect(client.messages.listen).toHaveBeenCalledTimes(2);
+      expect(store.isLive).toBe(true);
+      release();
+      again();
+      expect(streams[1].close).toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is not opened by load: nothing is showing comments yet', async () => {

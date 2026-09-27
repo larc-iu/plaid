@@ -295,6 +295,9 @@ const uninstall = () => {
   });
 };
 
+// The app's confirm, as the last `useUnsavedGuard` to mount had it, or null.
+let appConfirm = null;
+
 /**
  * Ask before leaving, if there is anything to lose. Resolves true to go ahead,
  * with the history entry taken back out. Hand it to `Tabs` as `guard`, or
@@ -302,29 +305,50 @@ const uninstall = () => {
  */
 export const useUnsavedGuard = () => {
   const confirm = useConfirm();
-  return useCallback(async () => {
-    if (!hasUnsavedDraft()) return true;
-    const ok = await confirm(question());
-    if (!ok) return false;
-    // The drafts are NOT forgotten here. The answer is about one way out, and
-    // what ends a draft is the screen holding it going away: its own effect
-    // takes it out of the map on the way. A caller that asks and then does not
-    // leave (a navigation the app declines, a tab it refuses to change) leaves
-    // the text where it was, and the next way out asks about it again.
-    //
-    // The exit starts here: taking the entry out is itself a traversal, and
-    // the popstate it sends must not come back as the Back question. It ends a
-    // macrotask later, which is after the navigation the caller makes when
-    // this resolves and long before anyone can reach for Back. If the screen
-    // is still standing there by then, the entry goes back in front of it.
-    leaving += 1;
-    await dropStop();
-    setTimeout(() => {
-      leaving -= 1;
-      settle();
-    }, 0);
-    return true;
+  // The latest one mounted, for a draft held outside React to ask with.
+  useEffect(() => {
+    appConfirm = confirm;
   }, [confirm]);
+  return useCallback(() => askToLeave(confirm), [confirm]);
+};
+
+const askToLeave = async (confirm) => {
+  if (!hasUnsavedDraft()) return true;
+  const ok = await confirm(question());
+  if (!ok) return false;
+  // The drafts are NOT forgotten here. The answer is about one way out, and
+  // what ends a draft is the screen holding it going away: its own effect
+  // takes it out of the map on the way. A caller that asks and then does not
+  // leave (a navigation the app declines, a tab it refuses to change) leaves
+  // the text where it was, and the next way out asks about it again.
+  //
+  // The exit starts here: taking the entry out is itself a traversal, and
+  // the popstate it sends must not come back as the Back question. It ends a
+  // macrotask later, which is after the navigation the caller makes when
+  // this resolves and long before anyone can reach for Back. If the screen
+  // is still standing there by then, the entry goes back in front of it.
+  leaving += 1;
+  await dropStop();
+  setTimeout(() => {
+    leaving -= 1;
+    settle();
+  }, 0);
+  return true;
+};
+
+/**
+ * `useUnsavedDraft` for a screen that is not React (a lit-html island). Set
+ * what `token`, any object the caller keeps, has typed and not saved, or null
+ * once nothing is. Every way out asks about it as it does about a React
+ * draft, with the app's confirm.
+ */
+export const setUnsavedDraft = (token, what, plural = null) => {
+  if (what) {
+    drafts.set(token, { what, several: plural });
+    install(() => (appConfirm ? askToLeave(appConfirm) : true));
+    return;
+  }
+  if (drafts.delete(token)) uninstall();
 };
 
 /**

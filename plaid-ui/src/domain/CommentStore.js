@@ -20,9 +20,23 @@ const byCreated = (a, b) =>
 // so it can never collide with a server UUID, and so `pendingId?.startsWith`
 // is enough to recognize one.
 let tempSeq = 0;
+
+// How often an open live stream is checked for having been closed by the
+// server, and the `readyState` a closed one reports.
+const LIVE_CHECK_MS = 5000;
+const CLOSED = 2;
+
 const tempId = () => `pending:${++tempSeq}`;
 export const isPending = (comment) =>
   typeof comment?.id === 'string' && comment.id.startsWith('pending:');
+
+/**
+ * A composer's text after a refused post: what was posted, back in front of
+ * whatever was typed since, so neither is lost. Every host of a thread puts a
+ * refused post back through this.
+ */
+export const withReturnedDraft = (returned, current) =>
+  current.trim() ? `${returned}\n\n${current}` : returned;
 
 /**
  * Normalize an SSE comment notification into the camelCase shape the rest of
@@ -78,6 +92,8 @@ export class CommentStore {
     this._loaded = false;
     this._error = '';
     this._version = 0;
+    // Posts, edits and deletes on their way to the server.
+    this._writing = 0;
     this._listeners = new Set();
 
     // Optional sink for surfacing errors loudly (a toast). Framework-agnostic:
@@ -127,6 +143,24 @@ export class CommentStore {
 
   get currentUserId() {
     return this._currentUserId;
+  }
+
+  /** True while a post, edit or delete is on its way. With `subscribe`, the
+   * shape `useSavingGuard` watches, so closing the tab asks first. */
+  get isSaving() {
+    return this._writing > 0;
+  }
+
+  // Run one write, counted in `isSaving`. Emits when it starts and ends.
+  async _write(fn) {
+    this._writing += 1;
+    this._emit();
+    try {
+      return await fn();
+    } finally {
+      this._writing -= 1;
+      this._emit();
+    }
   }
 
   /** How many comments the document has in total. O(1) — the tab badge reads
@@ -295,11 +329,16 @@ export class CommentStore {
    * Post a comment. `anchorLabel` is what the comment is about, in words
    * (see commentAnchors.anchorCaption): a comment outlives its anchor, and
    * the caption is what it shows once the anchor has been edited away.
-   * Returns the created comment, or null if the write failed.
+   * Returns the created comment, or null if the write failed. A host keeps
+   * what was typed until this answers, and puts it back on null.
    */
-  async post(entityType, entityId, body, anchorLabel = null) {
+  post(entityType, entityId, body, anchorLabel = null) {
     const text = String(body ?? '').trim();
-    if (!text) return null;
+    if (!text) return Promise.resolve(null);
+    return this._write(() => this._post(entityType, entityId, text, anchorLabel));
+  }
+
+  async _post(entityType, entityId, text, anchorLabel) {
     const caption =
       String(anchorLabel ?? '')
         .trim()
@@ -348,12 +387,21 @@ export class CommentStore {
     }
   }
 
-  /** Edit a comment's body. Only its author may; the server enforces that. */
+  /**
+   * Edit a comment's body. Only its author may; the server enforces that.
+   * Resolves true when the comment holds the text (already, or now), false
+   * when the edit was refused or there is nothing to put it on. A host puts
+   * the edited text back on false.
+   */
   async edit(commentId, body) {
     const existing = this._byId.get(commentId);
     const text = String(body ?? '').trim();
-    if (!existing || !text || text === existing.body) return false;
+    if (!existing || !text) return false;
+    if (text === existing.body) return true;
+    return this._write(() => this._edit(existing, commentId, text));
+  }
 
+  async _edit(existing, commentId, text) {
     const before = { ...existing };
     Object.assign(existing, { body: text, edited: true });
     this._emit();
@@ -375,8 +423,10 @@ export class CommentStore {
   async remove(commentId) {
     const removed = this._forget(commentId);
     if (!removed) return false;
-    this._emit();
+    return this._write(() => this._remove(commentId, removed));
+  }
 
+  async _remove(commentId, removed) {
     try {
       await this._client.comments.delete(commentId);
       return true;
@@ -419,7 +469,9 @@ export class CommentStore {
   watchLive() {
     if (!this._projectId) return () => {};
     this._liveRefs = (this._liveRefs || 0) + 1;
-    if (this._liveRefs === 1) this._openLive();
+    // The first claim opens the stream, and so does a later one after the
+    // server closed it (see `_openLive`).
+    if (!this._connection) this._openLive();
     let released = false;
     return () => {
       if (released) return;
@@ -429,6 +481,10 @@ export class CommentStore {
     };
   }
 
+  // The server closes the stream itself when this reader loses access to the
+  // project, and the stream says so only through its `readyState` (2, closed),
+  // so it is looked at every few seconds while open. A closed stream is let go
+  // of, `isLive` turns false, and subscribers hear it.
   _openLive() {
     try {
       this._connection = this._client.messages.listen(this._projectId, (eventType, eventData) => {
@@ -439,10 +495,25 @@ export class CommentStore {
       // as of the last load, and reopening the document repairs them.
       console.error('Comment live updates unavailable:', err);
       this._connection = null;
+      return;
     }
+    const connection = this._connection;
+    this._liveCheck = setInterval(() => {
+      if (connection.readyState !== CLOSED) return;
+      this._stopLiveCheck();
+      if (this._connection !== connection) return;
+      this._connection = null;
+      this._emit();
+    }, LIVE_CHECK_MS);
+  }
+
+  _stopLiveCheck() {
+    clearInterval(this._liveCheck);
+    this._liveCheck = null;
   }
 
   _closeLive() {
+    this._stopLiveCheck();
     try {
       this._connection?.close();
     } catch {

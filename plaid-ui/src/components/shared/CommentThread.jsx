@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useConfirm } from './ConfirmProvider.jsx';
 import { Button } from '../ui/button.jsx';
@@ -6,7 +6,9 @@ import { Textarea } from '../ui/textarea.jsx';
 import { SafeMarkdown } from './markdown.jsx';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { initials } from '../../lib/initials.js';
-import { isPending } from '../../domain/CommentStore.js';
+import { isPending, withReturnedDraft } from '../../domain/CommentStore.js';
+import { useUnsavedDraft } from '../../hooks/useUnsavedDraft.js';
+import { useSavingGuard } from '../../hooks/useSavingGuard.js';
 
 // One thread: its comments oldest first, and a box to add to it.
 //
@@ -26,11 +28,34 @@ const onMetaEnter = (fn) => (event) => {
   }
 };
 
+// What leaving asks about while a comment is typed and not yet saved.
+const TYPED = 'The comment you have typed';
+const TYPED_SEVERAL = 'comments you have typed';
+
+// False once the component has unmounted, for a write that answers later.
+const useMounted = () => {
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return mounted;
+};
+
 const metaKeyLabel = () =>
   typeof navigator !== 'undefined' && navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl';
 
 const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
   const [draft, setDraft] = useState(null); // null = not editing
+  // An edit on its way: the text is kept until the server has it.
+  const [sending, setSending] = useState(false);
+  const mounted = useMounted();
+  useUnsavedDraft(
+    sending || (draft !== null && draft.trim() && draft.trim() !== comment.body) ? TYPED : null,
+    TYPED_SEVERAL,
+  );
   const pending = isPending(comment);
   const mine = comment.authorId === store.currentUserId;
   const name = store.authorName(comment.authorId);
@@ -56,10 +81,17 @@ const Comment = ({ comment, store, canDeleteAny, onEdit, onRemove }) => {
 
   if (draft !== null) {
     const unchanged = !draft.trim() || draft.trim() === comment.body;
-    const save = () => {
+    // The editor closes at once (the body shows the edit), and opens again
+    // with the text when the edit is refused.
+    const save = async () => {
       if (unchanged) return;
-      onEdit(comment, draft.trim());
+      const text = draft.trim();
       setDraft(null);
+      setSending(true);
+      const ok = await onEdit(comment, text);
+      if (!mounted.current) return;
+      setSending(false);
+      if (!ok) setDraft((current) => current ?? text);
     };
     return (
       <li className="border-b px-3 py-2 last:border-b-0">
@@ -155,15 +187,26 @@ export const CommentThread = ({
   autoFocusComposer = false,
 }) => {
   const [composer, setComposer] = useState('');
+  // Posts on their way. What was typed is kept until the server has it.
+  const [sending, setSending] = useState(0);
+  const mounted = useMounted();
+  useUnsavedDraft(composer.trim() || sending ? TYPED : null, TYPED_SEVERAL);
+  // Closing the tab asks while a post is on its way, even once this thread
+  // has left the screen.
+  useSavingGuard(store);
 
-  const submit = () => {
+  const submit = async () => {
     const body = composer.trim();
     if (!body) return;
     setComposer('');
+    setSending((n) => n + 1);
     // The caption is posted WITH the comment, because a comment outlives its
     // anchor: when the thing it was about is merged or retyped away, this is
     // what the thread has left to show.
-    store.post(entityType, entityId, body, anchorLabel);
+    const created = await store.post(entityType, entityId, body, anchorLabel);
+    if (!mounted.current) return;
+    setSending((n) => n - 1);
+    if (!created) setComposer((current) => withReturnedDraft(body, current));
   };
 
   return (
