@@ -154,7 +154,11 @@ export const useTimelineOperations = (mediaOps) => {
       const rect = timelineRef.current.getBoundingClientRect();
       const clickX = clientX - rect.left;
       const timeAtClick = clickX / mediaOps.pixelsPerSecond;
-      return Math.max(0, Math.min(mediaOps.duration, timeAtClick));
+      // No length yet (the metadata is still on its way) is not a recording
+      // 0 s long: pinned to 0 s, a press made before the length arrived and
+      // released after it read as a drag from the start.
+      const end = mediaOps.duration > 0 ? mediaOps.duration : Infinity;
+      return Math.max(0, Math.min(end, timeAtClick));
     },
     [mediaOps.pixelsPerSecond, mediaOps.duration],
   );

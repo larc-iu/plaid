@@ -107,6 +107,26 @@ describe('useTimelineOperations: the needle loop', () => {
     await h.unmount();
   });
 
+  it('a click pressed before the length of the recording is known is still a click', async () => {
+    // The length arrives with the recording's metadata, and a press on the
+    // timeline can come first. Read as a recording 0 s long, the press was
+    // pinned to 0 s, the release after the length arrived was not, and the
+    // click became a drag from the start: a selection, and a "New segment"
+    // popover that took the caret from the row the click was focusing.
+    const media = fakeMediaElement();
+    const before = makeOps({ duration: 0, mediaElement: media });
+    const h = await mount(before);
+
+    await mouse(h, 'mousedown', 50);
+    await h.setInputs({ args: [{ ...before, duration: 60 }] });
+    await mouse(h, 'mouseup', 50.5);
+
+    expect(before.setSelection).not.toHaveBeenCalled();
+    expect(before.setPopoverOpened).not.toHaveBeenCalledWith(true);
+    expect(media.currentTime).toBe(5);
+    await h.unmount();
+  });
+
   it('a drag makes a selection and leaves playback where it was', async () => {
     const media = fakeMediaElement({ currentTime: 2 });
     const ops = makeOps({ isPlaying: true, mediaElement: media });
