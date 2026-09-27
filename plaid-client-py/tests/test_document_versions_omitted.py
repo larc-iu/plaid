@@ -109,3 +109,37 @@ def test_a_client_not_in_strict_mode_reads_nothing_extra():
     client.spans.update('s1', 'Y')
     assert [c[0] for c in calls] == ['PATCH', 'PATCH']
     assert client.document_versions == {}
+
+
+def test_a_write_made_while_that_read_is_in_flight_waits_for_it_and_goes_out_stamped():
+    import threading
+    client = PlaidClient('http://plaid.test', 'tok')
+    client.enter_strict_mode('d1')
+    client.document_versions['d1'] = 7
+    calls = _stub_server(client, doc_version=42)
+    stub = client.session
+    read_started = threading.Event()
+    release_read = threading.Event()
+
+    class _Held:
+        def request(self, **kw):
+            if kw['method'] == 'GET':
+                read_started.set()
+                release_read.wait(5)
+            return stub.request(**kw)
+
+    client.session = _Held()
+    first = threading.Thread(target=lambda: client.spans.bulk_update([{'id': 's1', 'value': 'X'}]))
+    first.start()
+    assert read_started.wait(5)
+    second = threading.Thread(target=lambda: client.spans.update('s1', 'Y'))
+    second.start()
+    second.join(0.2)
+    release_read.set()
+    first.join(5)
+    second.join(5)
+    assert calls == [
+        ('PATCH', '/api/v1/spans/bulk', '7'),
+        ('GET', '/api/v1/documents/d1', None),
+        ('PATCH', '/api/v1/spans/s1', '42'),
+    ]

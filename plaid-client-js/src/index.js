@@ -556,7 +556,7 @@ class PlaidClient {
         }),
       /**
        * Update many relations in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The relations may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many relations were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -710,7 +710,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/spans/bulk", { auditMessage, body }),
       /**
        * Update many spans in a single operation: set values and/or patch metadata.
-       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, value?, metadata?}`. `value` is set only when the key is present (null sends JSON null); `metadata` is a list of metadata ops, as for patchMetadata. The spans may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many spans were updated.
        */
       bulkUpdate: (body, auditMessage) =>
@@ -2143,17 +2143,15 @@ class PlaidClient {
       iterDocuments: (id, { pageSize } = {}) =>
         iterPages(this, `/api/v1/projects/${id}/documents`, { pageSize }),
       /**
-       * Delete a project and everything in it. This is irrecoverable.
-       *
-       * For a large project this can take a long time, so the client's
-       * per-request timeout is DISABLED by default. Pass `{ timeout }` to
-       * impose a finite bound.
+       * Delete a project and everything in it. This is irrecoverable. The
+       * project is gone when this returns, and what it holds is removed on
+       * the server afterwards.
        * @param {string} id - The resource ID
        * @param {string} [auditMessage] - Custom audit-log message
        * @param {object} [options]
-       * @param {number} [options.timeout=0] - Per-request timeout in ms (0/null disables)
+       * @param {number} [options.timeout] - Per-request timeout in ms, the client's own by default (0/null disables)
        */
-      delete: (id, auditMessage, { timeout = 0 } = {}) =>
+      delete: (id, auditMessage, { timeout } = {}) =>
         this._request("DELETE", `/api/v1/projects/${id}`, {
           auditMessage,
           timeout,
@@ -2548,7 +2546,7 @@ class PlaidClient {
         this._request("DELETE", "/api/v1/tokens/bulk", { auditMessage, body }),
       /**
        * Update many tokens in a single operation: patch metadata.
-       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a list of metadata ops, as for patchMetadata. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions`. A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
+       * @param {Array} body - Objects of the shape `{id, metadata}`. `metadata` is a list of metadata ops, as for patchMetadata. The tokens may lie in several documents of one project; every document touched has its version bumped and every new version comes back in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A `document-version` precondition is accepted only when every entry lies in one document. An unknown id refuses the whole update.
        * @returns {Promise<{count: number}>} How many tokens were updated.
        */
       bulkUpdate: (body, auditMessage) =>

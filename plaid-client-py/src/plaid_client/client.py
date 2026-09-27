@@ -426,7 +426,9 @@ class RelationsResource(_Resource):
                 sends JSON null); ``metadata`` is a list of metadata ops, as for
                 ``patch_metadata``. The relations may lie in several documents of
                 one project. Every document touched has its version bumped, and
-                every new version comes back in ``X-Document-Versions``. A
+                every new version comes back in ``X-Document-Versions`` (past
+                fifty documents, only their number, in
+                ``X-Document-Versions-Omitted``). A
                 ``document-version`` precondition is accepted only when every
                 entry lies in one document. An unknown id refuses the whole
                 update.
@@ -626,7 +628,9 @@ class SpansResource(_Resource):
                 sends JSON null); ``metadata`` is a list of metadata ops, as for
                 ``patch_metadata``. The spans may lie in several documents of
                 one project. Every document touched has its version bumped, and
-                every new version comes back in ``X-Document-Versions``. A
+                every new version comes back in ``X-Document-Versions`` (past
+                fifty documents, only their number, in
+                ``X-Document-Versions-Omitted``). A
                 ``document-version`` precondition is accepted only when every
                 entry lies in one document. An unknown id refuses the whole
                 update.
@@ -2182,20 +2186,20 @@ class ProjectsResource(_Resource):
         """
         return self._request('GET', f'/api/v1/projects/{id}')
 
-    def delete(self, id: str, audit_message=None, timeout=None) -> Any:
-        """Delete a project and everything in it. This is irrecoverable.
-
-        For a large project this can take a long time, so the per-request
-        timeout is DISABLED by default. Pass ``timeout=<seconds>`` for a finite
-        bound.
+    def delete(self, id: str, audit_message=None, timeout=_UNSET) -> Any:
+        """Delete a project and everything in it. This is irrecoverable. The
+        project is gone when this returns, and what it holds is removed on
+        the server afterwards.
 
         Args:
             id: The resource ID
             audit_message: Custom audit-log message.
-            timeout: Per-request timeout in seconds; ``None`` (default) disables it.
+            timeout: Per-request timeout in seconds, the client's own by
+                default. ``None`` disables it.
         """
         return self._request('DELETE', f'/api/v1/projects/{id}',
-                              audit_message=audit_message, timeout=timeout)
+                              audit_message=audit_message,
+                              **_body_of(timeout=timeout))
 
     def update(self, id: str, name: str, audit_message=None) -> Any:
         """Update a project's name.
@@ -2767,7 +2771,8 @@ class TokensResource(_Resource):
                 ``metadata`` is a list of metadata ops, as for ``patch_metadata``. The
                 tokens may lie in several documents of one project. Every document
                 touched has its version bumped, and every new version comes back
-                in ``X-Document-Versions``. A ``document-version`` precondition is
+                in ``X-Document-Versions`` (past fifty documents, only their
+                number, in ``X-Document-Versions-Omitted``). A ``document-version`` precondition is
                 accepted only when every entry lies in one document. An unknown id
                 refuses the whole update.
 

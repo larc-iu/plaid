@@ -1071,7 +1071,7 @@ interface ProjectsBundle {
     opts?: { pageSize?: number },
   ): AsyncGenerator<any[]>;
   update(id: string, name: string, auditMessage?: string): Promise<any>;
-  /** A large project can take minutes, so the default is no timeout (0). */
+  /** The project is gone when this returns, and what it holds is removed on the server afterwards. The timeout defaults to the client's. */
   delete(
     id: string,
     auditMessage?: string,
@@ -1298,6 +1298,8 @@ export declare class PlaidClient {
   onAuthError: ((error: Error) => void) | null;
   /** The latest version seen for each document written through this client, keyed by document id. */
   documentVersions: Record<string, number>;
+  /** True once a response left its version list out (X-Document-Versions-Omitted, past fifty documents). Every version held was then forgotten, and the strict-mode document's is read again before the next write. */
+  documentVersionsOmitted?: boolean;
 
   // Batches.
   //

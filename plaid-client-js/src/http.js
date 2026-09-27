@@ -458,14 +458,20 @@ function omittedStrictDocument(client) {
  */
 async function learnOmittedVersion(client) {
   const docId = omittedStrictDocument(client);
-  // The read below is itself a response this hook runs after.
-  if (!docId || client._learningOmittedVersion) return;
-  client._learningOmittedVersion = true;
-  try {
-    await makeRequest(client, "GET", `/api/v1/documents/${docId}`);
-  } finally {
-    client._learningOmittedVersion = false;
+  if (!docId) return;
+  // One read at a time: a write made while it is in flight waits for it
+  // rather than going out unstamped.
+  if (!client._learningOmittedVersion) {
+    client._learningOmittedVersion = makeRequest(
+      client,
+      "GET",
+      `/api/v1/documents/${docId}`,
+      { learningOmittedVersion: true },
+    ).finally(() => {
+      client._learningOmittedVersion = null;
+    });
   }
+  await client._learningOmittedVersion;
 }
 
 async function learnOmittedVersionQuietly(client) {
@@ -549,6 +555,7 @@ export async function makeRequest(client, method, path, options = {}) {
     binaryResponse,
     timeout,
     onUploadProgress,
+    learningOmittedVersion,
   } = options;
   if (method !== "GET" && omittedStrictDocument(client)) {
     await learnOmittedVersion(client);
@@ -622,7 +629,7 @@ export async function makeRequest(client, method, path, options = {}) {
     // Binary response (getMedia)
     if (binaryResponse) {
       extractDocumentVersions(client, response.headers);
-      await learnOmittedVersionQuietly(client);
+      if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       return await response.arrayBuffer();
     }
 
@@ -633,14 +640,14 @@ export async function makeRequest(client, method, path, options = {}) {
       extractDocumentVersions(client, response.headers, data, {
         historical: /[?&]as-of=/.test(url),
       });
-      await learnOmittedVersionQuietly(client);
+      if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       if (skipResponseTransform) {
         return data;
       }
       return transformResponse(data);
     } else {
       extractDocumentVersions(client, response.headers);
-      await learnOmittedVersionQuietly(client);
+      if (!learningOmittedVersion) await learnOmittedVersionQuietly(client);
       return await response.text();
     }
   } catch (error) {

@@ -2,6 +2,7 @@ import itertools
 import json
 import logging
 import random
+import threading
 import time
 from urllib.parse import urlencode, quote
 
@@ -230,20 +231,23 @@ def _omitted_strict_document(client):
     return None
 
 
+_omitted_version_lock = threading.Lock()
+
+
 def _learn_omitted_version(client):
     """Read the strict-mode document once to learn the version a response
     left out. Done right after that response, so the client's own large
     write is not mistaken for somebody else's edit at the next save, and
-    again before a strict write when that read failed."""
-    doc_id = _omitted_strict_document(client)
-    # The read below is itself a response this hook runs after.
-    if not doc_id or getattr(client, '_learning_omitted_version', False):
+    again before a strict write when that read failed. One read at a time:
+    a write made on another thread while it is in flight waits for it rather
+    than going out unstamped."""
+    if not _omitted_strict_document(client):
         return
-    client._learning_omitted_version = True
-    try:
-        make_request(client, 'GET', f'/api/v1/documents/{doc_id}')
-    finally:
-        client._learning_omitted_version = False
+    with _omitted_version_lock:
+        doc_id = _omitted_strict_document(client)
+        if doc_id:
+            make_request(client, 'GET', f'/api/v1/documents/{doc_id}',
+                         _learning_omitted_version=True)
 
 
 def _learn_omitted_version_quietly(client):
@@ -531,7 +535,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
                  query_params=None, no_batch=False, out_of_band=False,
                  no_operation=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
-                 timeout=_UNSET, on_upload_progress=None):
+                 timeout=_UNSET, on_upload_progress=None,
+                 _learning_omitted_version=False):
     """Generic request method handling all HTTP logic.
 
     Args:
@@ -623,7 +628,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     # Binary response
     if binary_response:
         extract_document_versions(client, response.headers)
-        _learn_omitted_version_quietly(client)
+        if not _learning_omitted_version:
+            _learn_omitted_version_quietly(client)
         return response.content
 
     # JSON or text response
@@ -632,11 +638,13 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
         data = response.json()
         extract_document_versions(client, response.headers, data,
                                   historical=bool(query_params and query_params.get('as-of')))
-        _learn_omitted_version_quietly(client)
+        if not _learning_omitted_version:
+            _learn_omitted_version_quietly(client)
         if skip_response_transform:
             return data
         return transform_response(data)
     else:
         extract_document_versions(client, response.headers)
-        _learn_omitted_version_quietly(client)
+        if not _learning_omitted_version:
+            _learn_omitted_version_quietly(client)
         return response.text

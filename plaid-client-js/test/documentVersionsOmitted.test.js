@@ -123,3 +123,39 @@ test("a client not in strict mode does not read anything extra", async () => {
   assert.deepEqual(calls.map((c) => c.method), ["PATCH", "PATCH"]);
   assert.deepEqual(client.documentVersions, {});
 });
+
+test("a write made while that read is in flight waits for it and goes out stamped", async () => {
+  const client = new PlaidClient("http://plaid.test", "tok");
+  client.enterStrictMode("d1");
+  client.documentVersions = { d1: 7 };
+  const { calls, restore } = stubServer({ docVersion: 42 });
+  // Hold the document read until the second write has started.
+  const inner = globalThis.fetch;
+  let releaseRead;
+  const readHeld = new Promise((resolve) => (releaseRead = resolve));
+  globalThis.fetch = async (url, opts = {}) => {
+    if ((opts.method || "GET") === "GET") await readHeld;
+    return inner(url, opts);
+  };
+  try {
+    const first = client.spans.bulkUpdate([{ id: "s1", value: "X" }]);
+    while (!calls.some((c) => c.method === "PATCH")) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = client.spans.update("s1", "Y");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    releaseRead();
+    await Promise.all([first, second]);
+  } finally {
+    restore();
+  }
+  assert.deepEqual(
+    calls.map((c) => [c.method, c.path, c.version]),
+    [
+      ["PATCH", "/api/v1/spans/bulk", "7"],
+      ["GET", "/api/v1/documents/d1", null],
+      ["PATCH", "/api/v1/spans/s1", "42"],
+    ],
+  );
+});
