@@ -13,95 +13,154 @@
 (defn get-project-id [{params :parameters}]
   (-> params :path :id))
 
+(defn- still-entitled?
+  "Would the credential that opened this channel still be let in to open it
+  now? The same questions `wrap-read-jwt` and the route's privilege
+  middleware ask: the user exists and is active, an API token is not
+  revoked, a session token's password_changes claim still matches, and the
+  user holds `privilege` on the project (`:project/writers` for a service
+  channel, `:project/readers` for a /listen stream) or is an admin. The
+  project must also still exist, since the privilege check lets an admin in
+  on any project id, and an admin's channel has to close when its project
+  is deleted."
+  [{:keys [db project-id user-id token-id token-version]} privilege]
+  (let [account (user/get-internal db user-id)]
+    (boolean
+     (and account
+          (prj/get db project-id)
+          (nil? (:user/deactivated-at account))
+          (if token-id
+            (api-token/active? db token-id)
+            (= token-version (:user/password-changes account)))
+          (pra/privileged? {:db db
+                            :parameters {:path {:id project-id}}
+                            :jwt-data {:user/id user-id}
+                            :user/record (user/get db user-id)}
+                           privilege
+                           get-project-id)))))
+
+(defn- standing-holds?
+  "`still-entitled?` for one registry entry, where a check that cannot be
+  answered (a busy database) keeps the channel open rather than failing the
+  caller."
+  [entry privilege]
+  (try (still-entitled? entry privilege)
+       (catch Exception e
+         (log/warn e "Could not check the standing of a channel on project" (:project-id entry))
+         true)))
+
+(defn- close-listen-stream!
+  "Close a /listen stream whose holder lost the right to it."
+  [{:keys [channel project-id]}]
+  (events/cleanup-channel! channel)
+  (log/info "Closed a /listen stream on project" project-id
+            "because its credential no longer admits it"))
+
 (defn sse-handler
   "Handle SSE connections for project audit log events with manual heartbeat tracking"
-  [{{{:keys [id]} :path} :parameters :as req}]
-  (http-kit/as-channel req
-                       {:on-open
-                        (fn [channel]
-                          (let [client-chan (async/chan (async/sliding-buffer 100))
-                                stop-chan (async/chan)
+  [{{{:keys [id]} :path} :parameters user-id :user/id db :db :as req}]
+  (if (nil? (prj/get db id))
+    ;; The privilege check lets an admin in on any project id, so a project
+    ;; that does not exist is refused here, while a status can still be sent,
+    ;; with the same 403 a non-admin gets.
+    {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read project " id)}}
+    (http-kit/as-channel req
+                         {:on-open
+                          (fn [channel]
+                            (let [client-chan (async/chan (async/sliding-buffer 100))
+                                  stop-chan (async/chan)
                                 ;; Generate unique client ID for heartbeat tracking
-                                client-id (events/register-client-with-id! id client-chan)]
+                                  client-id (events/register-client-with-id! id client-chan)]
 
-                            (log/debug "New SSE client connected for project" id "with client-id" client-id
-                                       "- Total clients:" (events/get-client-count))
+                              (log/debug "New SSE client connected for project" id "with client-id" client-id
+                                         "- Total clients:" (events/get-client-count))
 
                             ;; Send SSE headers
-                            (http-kit/send! channel
-                                            {:status  200
-                                             :headers {"Content-Type"  "text/event-stream"
-                                                       "Cache-Control" "no-cache"
-                                                       "Connection"    "keep-alive"}}
-                                            false)                   ; don't close connection
+                              (http-kit/send! channel
+                                              {:status  200
+                                               :headers {"Content-Type"  "text/event-stream"
+                                                         "Cache-Control" "no-cache"
+                                                         "Connection"    "keep-alive"}}
+                                              false)                   ; don't close connection
 
                             ;; Send initial connection message with client ID
-                            (http-kit/send! channel
-                                            (str "event: connected\n"
-                                                 "data: " (json/write-str {:status    "connected"
-                                                                           :client-id client-id}) "\n\n")
-                                            false)
+                              (http-kit/send! channel
+                                              (str "event: connected\n"
+                                                   "data: " (json/write-str {:status    "connected"
+                                                                             :client-id client-id}) "\n\n")
+                                              false)
 
                             ;; Start heartbeat loop. This shouldn't be necessary, and for Python it isn't, but something about the
                             ;; JavaScript setup we have is causing channel closes to never happen.
-                            (async/go-loop [consecutive-misses 0
-                                            last-check-time (System/currentTimeMillis)]
-                              (let [hb-config (events/heartbeat-config)
-                                    interval-ms (:interval-ms hb-config)
-                                    max-misses (:max-consecutive-misses hb-config)
-                                    [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
-                                (if (= ch stop-chan)
-                                  nil  ; exit loop on stop signal
-                                  (do
+                              (async/go-loop [consecutive-misses 0
+                                              last-check-time (System/currentTimeMillis)]
+                                (let [hb-config (events/heartbeat-config)
+                                      interval-ms (:interval-ms hb-config)
+                                      max-misses (:max-consecutive-misses hb-config)
+                                      [_ ch] (async/alts! [(async/timeout interval-ms) stop-chan])]
+                                  (if (= ch stop-chan)
+                                    nil  ; exit loop on stop signal
+                                    (do
                                                  ;; Send heartbeat ping
-                                    (try
-                                      (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
-                                      (catch Exception e
-                                        (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
+                                      (try
+                                        (http-kit/send! channel "event: heartbeat\ndata: \"ping\"\n\n" false)
+                                        (catch Exception e
+                                          (log/warn "Heartbeat send failed for client" client-id ":" (.getMessage e))))
 
                                                  ;; Check if we received a confirmation since last check
-                                    (if-let [client-info (get @events/heartbeat-registry client-id)]
-                                      (let [last-heartbeat (:last-heartbeat client-info)]
-                                        (if (> last-heartbeat last-check-time)
+                                      (if-let [client-info (get @events/heartbeat-registry client-id)]
+                                        (let [last-heartbeat (:last-heartbeat client-info)]
+                                          (if (> last-heartbeat last-check-time)
                                                        ;; Got response since last check - reset miss counter
-                                          (recur 0 (System/currentTimeMillis))
+                                            (recur 0 (System/currentTimeMillis))
                                                        ;; No response since last check - count as miss
-                                          (let [new-misses (inc consecutive-misses)]
-                                            (if (>= new-misses max-misses)
-                                              (do
-                                                (log/debug "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
-                                                (events/cleanup-channel! channel)
-                                                nil)  ; exit loop
-                                              (recur new-misses (System/currentTimeMillis))))))
-                                      (do
-                                        (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
-                                        (events/cleanup-channel! channel)
-                                        nil))))))
+                                            (let [new-misses (inc consecutive-misses)]
+                                              (if (>= new-misses max-misses)
+                                                (do
+                                                  (log/debug "Client" client-id "disconnected after" new-misses "consecutive missed heartbeats")
+                                                  (events/cleanup-channel! channel)
+                                                  nil)  ; exit loop
+                                                (recur new-misses (System/currentTimeMillis))))))
+                                        (do
+                                          (log/warn "Client" client-id "not found in heartbeat registry, disconnecting")
+                                          (events/cleanup-channel! channel)
+                                          nil))))))
 
                             ;; Main event loop
-                            (async/go-loop []
-                              (let [[event ch] (async/alts! [client-chan stop-chan])]
-                                (cond
-                                  (= ch stop-chan) nil  ; exit loop on stop signal
-                                  event (do
-                                          (try
-                                            (let [payload (events/wire-payload event)
-                                                  event-str (str "event: " (:type payload) "\n"
-                                                                 "data: " (json/write-str payload) "\n\n")]
-                                              (http-kit/send! channel event-str false))
-                                            (catch Exception e
-                                              (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
-                                          (recur))
-                                  :else nil)))  ; channel closed, exit
+                              (async/go-loop []
+                                (let [[event ch] (async/alts! [client-chan stop-chan])]
+                                  (cond
+                                    (= ch stop-chan) nil  ; exit loop on stop signal
+                                    event (do
+                                            (try
+                                              (let [payload (events/wire-payload event)
+                                                    event-str (str "event: " (:type payload) "\n"
+                                                                   "data: " (json/write-str payload) "\n\n")]
+                                                (http-kit/send! channel event-str false))
+                                              (catch Exception e
+                                                (log/warn "Event send failed for client" client-id ":" (.getMessage e))))
+                                            (recur))
+                                    :else nil)))  ; channel closed, exit
 
-                            ;; Store mapping for cleanup using the channel itself as key
-                            (events/register-channel-mapping! channel client-chan id stop-chan client-id)))
+                            ;; Store mapping for cleanup using the channel itself as key,
+                            ;; with what opened the stream, so it closes the moment that
+                            ;; credential or its user's role no longer would.
+                              (let [opener {:user-id user-id
+                                            :token-id (:api-token/id req)
+                                            :token-version (-> req :jwt-data :version)
+                                            :db db}]
+                                (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
+                              ;; The credential was admitted by the middleware, before this
+                              ;; stream registered. A write that took it away in between
+                              ;; found no stream to close, so ask again now that there is one.
+                                (when-not (standing-holds? (assoc opener :project-id id) :project/readers)
+                                  (close-listen-stream! {:channel channel :project-id id})))))
 
-                        :on-close
-                        (fn [channel _]
-                          (log/debug "Connection closed, cleaning up channel for project" id)
-                          (events/cleanup-channel! channel)
-                          (log/debug "After cleanup - Total clients:" (events/get-client-count)))}))
+                          :on-close
+                          (fn [channel _]
+                            (log/debug "Connection closed, cleaning up channel for project" id)
+                            (events/cleanup-channel! channel)
+                            (log/debug "After cleanup - Total clients:" (events/get-client-count)))})))
 
 ;; =============================================================================
 ;; Server-mediated service RPC (addressed; off the broadcast bus)
@@ -155,31 +214,6 @@
       (try (http-kit/send! ch (sse-event event data) false) (catch Exception _))
       (try (http-kit/close ch) (catch Exception _)))))
 
-(defn- still-entitled?
-  "Would the credential that opened this service channel still be let in to
-  open it now? The same questions `wrap-read-jwt` and the route's
-  writer-required middleware ask: the user exists and is active, an API
-  token is not revoked, a session token's password_changes claim still
-  matches, and the user is a writer on the project or an admin. The project
-  must also still exist, since the privilege check lets an admin in on any
-  project id, and an admin's channel has to close when its project is
-  deleted."
-  [{:keys [db project-id user-id token-id token-version]}]
-  (let [account (user/get-internal db user-id)]
-    (boolean
-     (and account
-          (prj/get db project-id)
-          (nil? (:user/deactivated-at account))
-          (if token-id
-            (api-token/active? db token-id)
-            (= token-version (:user/password-changes account)))
-          (pra/privileged? {:db db
-                            :parameters {:path {:id project-id}}
-                            :jwt-data {:user/id user-id}
-                            :user/record (user/get db user-id)}
-                           :project/writers
-                           get-project-id)))))
-
 (defn- drop-service-channel!
   "Deregister a service channel whose holder lost the right to it, fail the
   requests routed to it, and close it."
@@ -198,27 +232,33 @@
   (log/info "Closed service channel" service-id "on project" project-id
             "because its credential no longer admits it"))
 
-(defn- standing-holds?
-  "`still-entitled?` for one registry entry, where a check that cannot be
-  answered (a busy database) keeps the channel open rather than failing the
-  caller."
-  [entry]
-  (try (still-entitled? entry)
-       (catch Exception e
-         (log/warn e "Could not check service channel" (:service-id entry)
-                   "on project" (:project-id entry))
-         true)))
-
 (defn close-lapsed-service-channels!
   "Close every live service channel whose opener would no longer be let in.
   Runs after each write that can take that right away (see
   `events/standing-op-types`), before the write's response goes out."
   []
   (doseq [entry (events/live-service-entries)]
-    (when-not (standing-holds? entry)
+    (when-not (standing-holds? entry :project/writers)
       (drop-service-channel! entry))))
 
-(events/on-standing-change! close-lapsed-service-channels!)
+(defn close-lapsed-listen-streams!
+  "Close every open /listen stream whose opener could no longer open it, as
+  `close-lapsed-service-channels!` does for service channels, so a reader
+  who lost the right stops receiving the project's events at once rather
+  than when their heartbeats next go unanswered."
+  []
+  (doseq [entry (events/live-listen-entries)]
+    (when-not (standing-holds? entry :project/readers)
+      (close-listen-stream! entry))))
+
+(events/on-standing-change!
+ (fn []
+   ;; Each kind is checked on its own, so a failure closing one never
+   ;; leaves the other open.
+   (doseq [close! [close-lapsed-service-channels! close-lapsed-listen-streams!]]
+     (try (close!)
+          (catch Exception e
+            (log/error e "Could not re-check the open channels after a change of standing"))))))
 
 (defn service-channel-handler
   "SSE stream a service opens to RECEIVE work requests (server -> service).
@@ -273,7 +313,8 @@
               ;; one. Either order of the write and the registration then
               ;; ends closed.
              (not (standing-holds? (assoc info :project-id id :service-id service-id
-                                          :user-id user-id)))
+                                          :user-id user-id)
+                                   :project/writers))
               (drop-service-channel! (assoc info :project-id id :service-id service-id
                                             :channel channel))
               (do
@@ -394,7 +435,7 @@
       ;; A write that took the channel's right away closes it at once
       ;; (`close-lapsed-service-channels!`). Asked again here because a
       ;; request carries the requester's own token to the service.
-      (not (still-entitled? (assoc entry :project-id id)))
+      (not (still-entitled? (assoc entry :project-id id) :project/writers))
       (do (drop-service-channel! (assoc entry :project-id id))
           {:status 503 :body {:error (str "No live service '" service-id "' on this project")}})
 

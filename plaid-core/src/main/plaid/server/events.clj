@@ -47,8 +47,9 @@
   :start (atom {})
   :stop (reset! client-registry {}))
 
-;; Channel mappings for lifecycle management  
-;; Maps http-kit-channel -> {:client-chan chan :project-id id :stop-chan chan :client-id id}
+;; Channel mappings for lifecycle management
+;; Maps http-kit-channel -> {:client-chan chan :project-id id :stop-chan chan :client-id id
+;; :user-id :token-id :token-version :db}, the last four being the opener's credential
 ;; This allows us to clean up resources when an SSE connection closes
 (defstate channel-mappings
   :start (atom {})
@@ -157,13 +158,24 @@
 (defn register-channel-mapping!
   "Register the relationship between an http-kit channel and its associated
    client channel, project, stop channel, and client ID. This enables proper cleanup
-   when the SSE connection closes."
-  [http-channel client-chan project-id stop-chan client-id]
-  (swap! channel-mappings assoc http-channel {:client-chan client-chan
-                                              :project-id  project-id
-                                              :stop-chan   stop-chan
-                                              :client-id   client-id})
+   when the SSE connection closes. `opener` is the credential the stream was
+   opened with, {:user-id :token-id :token-version :db}, as a service
+   channel records it, so the stream closes the moment its opener could no
+   longer open it (see `on-standing-change!`)."
+  [http-channel client-chan project-id stop-chan client-id opener]
+  (swap! channel-mappings assoc http-channel
+         (merge (select-keys opener [:user-id :token-id :token-version :db])
+                {:client-chan client-chan
+                 :project-id  project-id
+                 :stop-chan   stop-chan
+                 :client-id   client-id}))
   (log/debug "Registered channel mapping for client" client-id "on project" project-id))
+
+(defn live-listen-entries
+  "Every open /listen stream's mapping, each with its http-kit `:channel`."
+  []
+  (for [[http-channel entry] @channel-mappings]
+    (assoc entry :channel http-channel)))
 
 (defn cleanup-channel!
   "Clean up all resources associated with a closed SSE connection.
@@ -284,17 +296,18 @@
         [_ entry] svcs]
     (assoc entry :project-id project-id)))
 
-;; Who may hold a service channel can change while it is open: its API token
-;; is revoked, its user is deactivated, logs out or changes password, or loses
-;; their role on the project. The channel was admitted when it opened and is
-;; never asked again by `wrap-read-jwt`, so each of those writes has to close
-;; it. `publish-audit-event!` sees every committed operation, and calls the
-;; listener `plaid.rest-api.v1.message` installs here whenever one of these
-;; types commits. The listener re-asks the opening question of every live
-;; channel and closes the ones that no longer pass.
+;; Who may hold a service channel or a /listen stream can change while it is
+;; open: its API token is revoked, its user is deactivated, logs out or
+;; changes password, or loses their role on the project. The channel was
+;; admitted when it opened and is never asked again by `wrap-read-jwt`, so
+;; each of those writes has to close it. `publish-audit-event!` sees every
+;; committed operation, and calls the listener `plaid.rest-api.v1.message`
+;; installs here whenever one of these types commits. The listener re-asks
+;; the opening question of every live channel and stream and closes the ones
+;; that no longer pass.
 (def standing-op-types
   "The operations that can take away someone's right to hold a service
-  channel."
+  channel or a /listen stream."
   #{:api-token/revoke
     :user/update :user/deactivate :user/logout
     :invite/redeem
@@ -316,7 +329,7 @@
     (when (some #(standing-op-types (:op/type %)) operations)
       (try (f)
            (catch Exception e
-             (log/error e "Could not re-check the service channels after a change of standing"))))))
+             (log/error e "Could not re-check the open channels after a change of standing"))))))
 
 (defn get-service-channel
   "The open inbound channel for a service, or nil if none is connected."
@@ -591,7 +604,7 @@
    
    Returns true if event was successfully published, false otherwise.
 
-   It also closes the service channels an operation took the right to hold
+   It also closes the service channels and /listen streams an operation took the right to hold
    away from (`check-standing!`), before the write's response goes out."
   [audit-entry operations user-id]
   (check-standing! operations)
