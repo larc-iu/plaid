@@ -172,7 +172,7 @@ test('a document changed between preview and apply is refused and left alone', a
   await applyAll(page, 3);
   await expect(
     page.getByText(
-      'Stopped at rewrite-doc: it changed since the preview. Applied to 0 sentences in 0 documents.',
+      'Stopped at rewrite-doc: it changed since the preview. rewrite-doc is unchanged.',
     ),
   ).toBeVisible();
   const after = await fetchDoc();
