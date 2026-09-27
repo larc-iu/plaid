@@ -109,9 +109,8 @@
 ;; A request that reads at one time can resolve the bound once and hand the
 ;; result to every read it makes. The document GET does: its permission
 ;; check reconstructs a deleted document's project at T, and the handler
-;; then reads the document at the same T. The batch clamp's first query
-;; scans `operations` by ts, which has no index led by ts, so paying it
-;; twice doubled the cost of the request.
+;; then reads the document at the same T. The batch clamp's queries are a
+;; seek on `idx_operations_ts` now, but there is no reason to pay them twice.
 (defrecord ^:private ResolvedTime [bound])
 
 (defn resolve-time
@@ -178,14 +177,23 @@
   "ALL layer-table audit rows at-or-before the bound. Layers are
   low-cardinality (a project has tens of layers; layer config edits are
   rare), so wholesale reconstruction is cheap and needs no extra
-  scoping column. Uses the (target_table, target_id) index prefix."
+  scoping column. Uses the (target_table, target_id) index prefix.
+
+  One query per table, not one `IN` over all four: the target index is
+  partial, an OR of one equality per table it covers, and SQLite uses it
+  only when the query names one of those tables with `=`. The fold keys
+  entities by table, so reading the tables one after another folds the
+  same as reading them interleaved."
   [db bound]
-  (psc/q db {:select audit-cols
-             :from [:audit_writes]
-             :where [:and
-                     [:in :target_table layer-target-tables]
-                     (ts-clause bound)]
-             :order-by [:ts :seq]}))
+  (into []
+        (mapcat (fn [table]
+                  (psc/q db {:select audit-cols
+                             :from [:audit_writes]
+                             :where [:and
+                                     [:= :target_table table]
+                                     (ts-clause bound)]
+                             :order-by [:ts :seq]})))
+        layer-target-tables))
 
 (defn- q-target-rows
   "Audit rows for specific entities of one table (vocab items/layers,
@@ -399,3 +407,93 @@
           :vocab-links vl-rows
           :vocab-items vi-rows
           :vocab-layers vlayer-rows})))))
+
+;; ============================================================
+;; Vocabularies
+;;
+;; A vocabulary's rows (the vocabulary itself and every entry in it) carry
+;; `audit_writes.vocab_layer_id`, so its history is one index range, the
+;; way a document's is. The same fold rebuilds it. Its links are not part
+;; of it: a link is annotation on a document, and comes back with the
+;; document's own history.
+;; ============================================================
+
+(defn- q-vocab-rows
+  [db vocab-id bound]
+  (psc/q db {:select audit-cols
+             :from [:audit_writes]
+             :where [:and [:= :vocab_layer_id vocab-id] (ts-clause bound)]
+             :order-by [:ts :seq]}))
+
+(defn- insertion-order
+  "`{[table id-string] n}`: where each entity's latest insert falls in
+  `rows`. The live entry list is in rowid order, which is the order the
+  rows were inserted, and an entry put back after a delete takes a new
+  rowid, so it is the LATEST insert that places an entity."
+  [rows]
+  (into {}
+        (keep-indexed (fn [i {:keys [target_table target_id change_type]}]
+                        (when (= change_type "insert")
+                          [[target_table (str target_id)] i])))
+        rows))
+
+(defn vocab-rows-at
+  "The vocabulary `vocab-id` at time `ts`, as the audit log folds it:
+  `{:vocab-layer row :vocab-items [row ...]}`, the layer row with its
+  `:maintainers` fold, each entry row with its `:metadata` fold where it
+  had any, entries in the order the live list gives them. nil when the
+  vocabulary did not exist at `ts`."
+  [db vocab-id ts]
+  (let [bound (bound-at db ts)
+        rows (q-vocab-rows db vocab-id bound)
+        folded (fold-rows rows)
+        layer (some-> (clojure.core/get folded ["vocab_layers" (str vocab-id)])
+                      coerce-entity)]
+    (when layer
+      (let [order (insertion-order rows)]
+        {:vocab-layer layer
+         :vocab-items (->> folded
+                           (keep (fn [[[t id] m]]
+                                   (when (= t "vocab_items")
+                                     [(clojure.core/get order [t id] -1) m])))
+                           (sort-by first)
+                           (mapv (comp coerce-entity second)))}))))
+
+(defn- build-vocab-item
+  "The shape of `plaid.sql.vocab-item/get` from a folded entry row."
+  [entity]
+  (attach-meta {:vocab-item/id (:id entity)
+                :vocab-item/layer (:vocab_layer_id entity)
+                :vocab-item/form (:form entity)}
+               entity))
+
+(defn get-vocab-at
+  "Shape of `plaid.sql.vocab-layer/get` at time `ts`, with `:vocab/items`
+  when `include-items?`. nil when the vocabulary did not exist at `ts`."
+  [db vocab-id ts include-items?]
+  (when-let [{:keys [vocab-layer vocab-items]} (vocab-rows-at db vocab-id ts)]
+    (cond-> {:vocab/id (:id vocab-layer)
+             :vocab/name (:name vocab-layer)
+             :vocab/time-created (:created_at vocab-layer)
+             :vocab/time-modified (:modified_at vocab-layer)
+             :config (psc/parse-config (:config vocab-layer))
+             :vocab/maintainers (vec (:maintainers vocab-layer))}
+      include-items? (assoc :vocab/items (mapv build-vocab-item vocab-items)))))
+
+(defn vocab-item-row-at
+  "The folded row of entry `item-id` of vocabulary `vocab-id` at time `ts`,
+  with its `:metadata` fold where it had any, or nil when the entry did not
+  exist then, or was in another vocabulary."
+  [db vocab-id item-id ts]
+  (let [bound (bound-at db ts)
+        entity (some-> (fold-rows (q-target-rows db "vocab_items" [item-id] bound))
+                       (clojure.core/get ["vocab_items" (str item-id)])
+                       coerce-entity)]
+    (when (and entity (= (str vocab-id) (str (:vocab_layer_id entity))))
+      entity)))
+
+(defn get-vocab-item-at
+  "Shape of `plaid.sql.vocab-item/get` at time `ts`, or nil (see
+  `vocab-item-row-at`)."
+  [db vocab-id item-id ts]
+  (some-> (vocab-item-row-at db vocab-id item-id ts) build-vocab-item))

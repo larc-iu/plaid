@@ -135,8 +135,8 @@
 ;; ----------------------------------------------------------------
 
 ;; The batched INSERT specifies 9 columns per row (every audit
-;; column), so each row contributes 9
-;; placeholders. Chunk at 3000 rows (27000 params) to stay under SQLite's
+;; column but the integer key, which SQLite assigns), so each row
+;; contributes 9 placeholders. Chunk at 3000 rows (27000 params) to stay under SQLite's
 ;; SQLITE_MAX_VARIABLE_NUMBER (32766). (`plaid.sql.common/bulk-chunk-size`,
 ;; the general 4000, is sized for ~7-column rows.)
 (def ^:private audit-bulk-chunk-size 3000)
@@ -167,8 +167,7 @@
   `document_id` stamp for `:delete` rows (whose post-image is nil). The
   table has no pre-image column."
   [op seq-n target-table target-id change-type pre-image post-image]
-  {:id (psc/new-uuid)
-   :op_id (:id op)
+  {:op_id (:id op)
    :seq seq-n
    :target_table (name target-table)
    :target_id target-id
@@ -185,6 +184,16 @@
                     (:document_id pre-image)
                     (when (= (name target-table) "documents")
                       target-id))
+   ;; The vocabulary a row belongs to, which is what a vocabulary's history
+   ;; is read by: its own id on a `vocab_layers` row, the entry's vocabulary
+   ;; on a `vocab_items` row (from the pre-image on a delete, as above).
+   ;; Links are left out. A link is annotation on a document, and its
+   ;; history is the document's.
+   :vocab_layer_id (case (name target-table)
+                     "vocab_layers" target-id
+                     "vocab_items" (or (:vocab_layer_id post-image)
+                                       (:vocab_layer_id pre-image))
+                     nil)
    :ts (:ts op)})
 
 (defn record-audit-write!
