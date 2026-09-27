@@ -2007,7 +2007,9 @@ class MessagesResource(_Resource):
             extras: Optional additional service metadata
             on_status: Optional callback (event, project_id, detail) for
                 connection-state transitions ('registered', 'reconnected',
-                'disconnected', 'waiting'), one call per transition
+                'disconnected', 'waiting', and 'stopped' when the server
+                refuses the channel for good, which ends the registration), one
+                call per transition
 
         Returns:
             Service registration object with .stop(), .is_running() and

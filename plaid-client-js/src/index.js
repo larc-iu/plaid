@@ -2646,7 +2646,9 @@ class PlaidClient {
        * @param {function} onServiceRequest - Callback (data, responseHelper)
        * @param {Object} [extras] - Optional additional service metadata
        * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
-       *   connection transitions: 'registered', 'reconnected', 'disconnected'
+       *   connection transitions: 'registered', 'reconnected', 'disconnected',
+       *   and 'stopped' when the server refuses the channel for good, which
+       *   ends the registration
        * @returns {Object} Service registration with .stop(), .isRunning(), .isConnected()
        */
       serve: (projectId, serviceInfo, onServiceRequest, extras, onStatus) =>
