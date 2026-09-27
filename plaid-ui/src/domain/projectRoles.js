@@ -92,12 +92,25 @@ export const setProjectRole = async ({
   notifySuccess('Permissions updated', 'Success');
 };
 
-/** `setProjectRole`, with its failure described rather than thrown. */
+/**
+ * `setProjectRole`, with its failure described rather than thrown. A refused
+ * change says why, and the project is read again, since a role change is a
+ * remove then an add and the remove may be the half that landed. A refetch
+ * that fails after the change landed is not the change failing: it is logged.
+ */
 export const setProjectRoleReporting = async (args) => {
+  const refetch = async () => {
+    try {
+      await args.onDataUpdate();
+    } catch (err) {
+      console.error('Error refreshing the project:', err);
+    }
+  };
   try {
-    await setProjectRole(args);
+    await setProjectRole({ ...args, onDataUpdate: refetch });
   } catch (err) {
     console.error('Error updating role:', err);
-    notifyError('Failed to update permissions', 'Error');
+    notifyError(err, 'Failed to update permissions');
+    await refetch();
   }
 };
