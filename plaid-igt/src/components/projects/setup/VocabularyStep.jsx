@@ -1,6 +1,9 @@
 import { VocabularyManager } from '../settings/VocabularyManager.jsx';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 export const VocabularyStep = ({ data, onDataChange, client }) => {
+  const { user } = useAuth();
   // Load vocabularies from API on mount
   const handleLoadData = async () => {
     try {
@@ -14,6 +17,9 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
         id: vocab.id,
         enabled: false, // Default to disabled
         isCustom: false, // Existing vocabs from API
+        // Setup links the ticked ones at the end, and only a maintainer of a
+        // vocabulary may link it, so the others cannot be ticked here.
+        canLink: canManageVocabulary(vocab, user),
       }));
 
       return { vocabularies: initialVocabs };
