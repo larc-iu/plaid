@@ -94,7 +94,15 @@ describe('a thread header', () => {
     const view = await renderComponent(
       browse({
         anchors: new Map([
-          ['s1', { label: 'Sentence 1', detail: 'قرأ الولد الكتاب.', jumpId: 's1' }],
+          [
+            's1',
+            {
+              label: 'Sentence 1',
+              detail: 'قرأ الولد الكتاب.',
+              excerpt: 'قرأ الولد الكتاب.',
+              jumpId: 's1',
+            },
+          ],
         ]),
       }),
     );
@@ -115,7 +123,11 @@ describe('a thread header', () => {
       ['قال he would come tomorrow.', 'ltr'],
     ]) {
       const view = await renderComponent(
-        browse({ anchors: new Map([['s1', { label: 'Sentence 1', detail, jumpId: 's1' }]]) }),
+        browse({
+          anchors: new Map([
+            ['s1', { label: 'Sentence 1', detail, excerpt: detail, jumpId: 's1' }],
+          ]),
+        }),
       );
       const excerpt = [...view.container.querySelectorAll('span')].find(
         (s) => s.textContent === detail,
@@ -123,5 +135,68 @@ describe('a thread header', () => {
       expect(excerpt?.getAttribute('dir')).toBe(dir);
       await view.unmount();
     }
+  });
+
+  // What the letters are counted over is the excerpt alone. ud writes a
+  // sentence that has a sent_id as "Sentence 4 · “…”", and the English
+  // prefix counted too: a short Arabic sentence came out left to right, and a
+  // longer one put "Sentence 4" at the right-hand end and split the quote.
+  const headerOf = async (descriptor) => {
+    const view = await renderComponent(
+      browse({ anchors: new Map([['s1', { label: 'x1', jumpId: 's1', ...descriptor }]]) }),
+    );
+    const detail = view.container.querySelector('button.min-w-0 > span > span:nth-child(2)');
+    return { view, detail };
+  };
+
+  it('counts the letters of the quoted sentence only, not the words around it', async () => {
+    const { view, detail } = await headerOf({
+      detail: 'Sentence 5 · “قرأ الولد.”',
+      excerpt: 'قرأ الولد.',
+    });
+    expect(detail.textContent).toBe('Sentence 5 · “قرأ الولد.”');
+    // The words around the quote are the app's and read left to right.
+    expect(detail.getAttribute('dir')).toBe('auto');
+    const quoted = detail.querySelector('bdi');
+    expect(quoted?.textContent).toBe('قرأ الولد.');
+    expect(quoted?.getAttribute('dir')).toBe('rtl');
+    await view.unmount();
+  });
+
+  it('isolates a longer sentence so the prefix stays at the start', async () => {
+    const { view, detail } = await headerOf({
+      detail: 'Sentence 2 · “CNN قالت إن الاقتصاد ينمو.”',
+      excerpt: 'CNN قالت إن الاقتصاد ينمو.',
+    });
+    expect(detail.getAttribute('dir')).toBe('auto');
+    expect(detail.querySelector('bdi')?.getAttribute('dir')).toBe('rtl');
+    expect(detail.firstChild.textContent).toBe('Sentence 2 · “');
+    await view.unmount();
+  });
+
+  it('leaves a place such as "in <word>, sentence 4" to the browser', async () => {
+    // A locator is the app's own words around a short value, not an excerpt.
+    const { view, detail } = await headerOf({ detail: 'in الاستقلالية, sentence 4' });
+    expect(detail.getAttribute('dir')).toBe('auto');
+    expect(detail.querySelector('bdi')).toBe(null);
+    await view.unmount();
+  });
+
+  it('gives an empty, a digits-only and an evenly mixed excerpt a direction', async () => {
+    for (const [excerpt, dir] of [
+      ['2020', 'ltr'],
+      ['ab قل', 'ltr'],
+      ['abc قلب', 'ltr'],
+    ]) {
+      const { view, detail } = await headerOf({ detail: `Sentence 1 · “${excerpt}”`, excerpt });
+      expect(detail.querySelector('bdi')?.getAttribute('dir')).toBe(dir);
+      await view.unmount();
+    }
+    // An empty excerpt marks nothing.
+    const { view, detail } = await headerOf({ detail: 'Sentence 1', excerpt: '' });
+    expect(detail.textContent).toBe('Sentence 1');
+    expect(detail.getAttribute('dir')).toBe('auto');
+    expect(detail.querySelector('bdi')).toBe(null);
+    await view.unmount();
   });
 });

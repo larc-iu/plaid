@@ -18,13 +18,17 @@ export { anchorCaption } from '@ui/domain/commentAnchors';
 
 const QUOTE_LIMIT = 60;
 
-const quote = (text) => {
+// The sentence as a thread shows it: one line, cut short. It is also the
+// descriptor's `excerpt`, so the Comments tab gives it its own direction apart
+// from the words around it.
+const excerptOf = (text) => {
   const clean = String(text || '')
     .replace(/\s+/gu, ' ')
     .trim();
-  if (!clean) return '';
-  return clean.length > QUOTE_LIMIT ? `“${clean.slice(0, QUOTE_LIMIT - 1)}…”` : `“${clean}”`;
+  return clean.length > QUOTE_LIMIT ? `${clean.slice(0, QUOTE_LIMIT - 1)}…` : clean;
 };
+
+const quote = (excerpt) => (excerpt ? `“${excerpt}”` : '');
 
 /**
  * The anchor index for one document: its own thread, and one per sentence.
@@ -54,10 +58,12 @@ export function buildAnchorIndex(doc) {
   (doc.sentences || []).forEach((sentence, index_) => {
     const sentId = sentence.sentenceToken?.metadata?.sent_id;
     const position = `Sentence ${index_ + 1}`;
+    const excerpt = excerptOf(sentence.text);
     index.set(sentence.id, {
       kind: 'sentence',
       label: sentId ? String(sentId) : position,
-      detail: sentId ? `${position} · ${quote(sentence.text)}` : quote(sentence.text),
+      detail: sentId ? `${position} · ${quote(excerpt)}` : quote(excerpt),
+      excerpt,
       sentenceIndex: index_,
       sentenceId: sentence.id,
       jumpId: sentence.id,

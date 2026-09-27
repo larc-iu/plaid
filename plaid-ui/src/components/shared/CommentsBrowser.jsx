@@ -21,6 +21,39 @@ import { CommentThread } from './CommentThread.jsx';
 // A thread is collapsed to its latest comment and opens on click. A document's
 // worth of threads is a list to scan, not a conversation to read end to end.
 
+// The line under a thread's label: where it sits ("sentence 4", "in ktab,
+// sentence 4"), and where the anchor carries one, an `excerpt` of the text
+// inside it. The excerpt is a sentence, so it reads the way most of its
+// letters do, since its first word may be a Latin name. Only the excerpt is
+// counted and isolated: the app's own words around it ("Sentence 4 · “")
+// would otherwise vote, and a right-to-left line would move them to its end.
+const AnchorDetail = ({ detail, excerpt }) => {
+  const at = excerpt ? detail.indexOf(excerpt) : -1;
+  const className = 'font-normal text-muted-foreground';
+  if (at < 0) {
+    return (
+      <span dir="auto" className={className}>
+        {detail}
+      </span>
+    );
+  }
+  const dir = detectDirection(excerpt);
+  if (detail === excerpt) {
+    return (
+      <span dir={dir} className={className}>
+        {detail}
+      </span>
+    );
+  }
+  return (
+    <span dir="auto" className={className}>
+      {detail.slice(0, at)}
+      <bdi dir={dir}>{excerpt}</bdi>
+      {detail.slice(at + excerpt.length)}
+    </span>
+  );
+};
+
 const ThreadRow = ({
   thread,
   store,
@@ -33,7 +66,7 @@ const ThreadRow = ({
 }) => {
   const latest = thread.comments[thread.comments.length - 1];
   const more = thread.comments.length - 1;
-  const { label, detail, jumpId } = thread.anchor;
+  const { label, detail, excerpt, jumpId } = thread.anchor;
   return (
     <li className="border-b last:border-b-0">
       <div className="flex items-start gap-2 px-3 py-2">
@@ -50,13 +83,7 @@ const ThreadRow = ({
           <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
             {/* The word, value or entry this thread is about. */}
             <span dir="auto">{label}</span>
-            {/* An excerpt of the text, so it takes its own direction, by
-                letter count since its first word may be a Latin name. */}
-            {detail && (
-              <span dir={detectDirection(detail)} className="font-normal text-muted-foreground">
-                {detail}
-              </span>
-            )}
+            {detail && <AnchorDetail detail={detail} excerpt={excerpt} />}
             {thread.outdated && (
               <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">
                 outdated

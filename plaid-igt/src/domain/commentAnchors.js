@@ -30,6 +30,8 @@ const quote = (s) => {
  *
  * `kind` is one of document | text | sentence | word | morpheme | annotation.
  * `label` is the short heading; `detail` is the sentence context, or ''.
+ * `excerpt`, on a sentence and on a sentence's value, is the text `detail`
+ * quotes, which the Comments tab lays out in its own direction.
  * `jumpId` is what a "show me" link navigates to (the sentence), or null.
  * `order` is the anchor's place in the text as an array compared entry by
  * entry: sentence, word, morpheme, then the thing itself before its values.
@@ -75,6 +77,7 @@ export function buildAnchorIndex(doc) {
       kind: 'sentence',
       label: `Sentence ${sIdx + 1}`,
       detail: quote(sentenceText(sentence)),
+      excerpt: quote(sentenceText(sentence)),
       ...at,
       order: [sIdx, -1, -1, 0],
     });
@@ -85,6 +88,7 @@ export function buildAnchorIndex(doc) {
           kind: 'annotation',
           label: `${field} of sentence ${sIdx + 1}`,
           detail: quote(span.value),
+          excerpt: quote(span.value),
           ...at,
           order: [sIdx, -1, -1, 1],
         });

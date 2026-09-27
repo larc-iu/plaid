@@ -38,6 +38,10 @@ describe('buildAnchorIndex', () => {
       sentenceId: sentence.id,
     });
     expect(index.get(sentence.id).detail).toContain('the cat');
+    // The Comments tab gives the sentence its own direction by its letters.
+    expect(index.get(sentence.id).excerpt).toBe(index.get(sentence.id).detail);
+    // A word's place ("sentence 1") is the app's words, not an excerpt.
+    expect(index.get(sentence.tokens[0].id).excerpt).toBeUndefined();
   });
 
   it('names a word by its form and places it in its sentence', () => {
