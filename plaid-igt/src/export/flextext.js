@@ -50,8 +50,16 @@ import { userMetadata } from '@ui/domain/textDirection.js';
 
 // Shared with the .eaf exporter (src/export/elan.js). The two XML formats
 // escape identically, and one copy keeps them from drifting.
+//
+// XML 1.0 has no escape for the C0 controls other than tab, newline and
+// carriage return, nor for U+FFFE and U+FFFF, so those are dropped. One
+// vertical tab from a Word paste would otherwise make the whole file one
+// that ELAN and FLEx refuse to open.
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+
 export const xmlEscape = (s) =>
   String(s ?? '')
+    .replace(XML_FORBIDDEN, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
