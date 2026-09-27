@@ -129,9 +129,7 @@ export const ProjectValidation = () => {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Problems in this project&apos;s UMR annotation, one row each. An import, a service or
-              the API can store annotation the checks refuse, which is why it arrives here rather
-              than being blocked.
+              Problems in this project&apos;s UMR annotation, one row each.
             </p>
           </div>
           <Button variant="outline" onClick={scan} disabled={busy || !configured}>

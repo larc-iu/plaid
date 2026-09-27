@@ -211,7 +211,7 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'error',
         code: 'non-unique-node-id',
-        message: `The node id (variable) '${variable}' is not unique in the document.`,
+        message: `Variable '${variable}' is used twice in the document.`,
         var: variable,
       });
     }
@@ -227,7 +227,7 @@ function checkGraph(sentence, findings, options) {
       findings.push({
         level: 'warning',
         code: 'invalid-variable',
-        message: `The node id (variable) '${variable}' does not follow the sNx convention.`,
+        message: `Variable '${variable}' is not of the form sNx.`,
         var: variable,
       });
     }
@@ -237,7 +237,7 @@ function checkGraph(sentence, findings, options) {
         const code = previous.has(child.value) ? 'cross-sentence-reference' : 'unknown-node-id';
         const message = previous.has(child.value)
           ? `Sentence level graph cannot contain nodes from other sentences: '${child.value}'.`
-          : `The node id (variable) '${child.value}' is unknown. No such node is defined in this sentence.`;
+          : `Variable '${child.value}' is not defined in this sentence.`;
         findings.push({ level: 'error', code, message, var: variable });
         return;
       }
@@ -302,7 +302,7 @@ function checkAlignment(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'invalid-token-index',
-          message: `Alignment of '${variable}': ${begin}-${end} is out of range; there are ${words.length} words.`,
+          message: `Alignment of '${variable}': ${begin}-${end} is out of range. There are ${words.length} words.`,
           var: variable,
         });
         continue;
@@ -379,7 +379,7 @@ function checkDocGraph(sentence, findings, options) {
         findings.push({
           level: 'error',
           code: 'unknown-node-id',
-          message: `The node id (variable) '${[a, b][i]}' is unknown. No such node has been defined so far.`,
+          message: `Variable '${[a, b][i]}' is not defined so far.`,
           var: [a, b][i],
         });
       });
@@ -451,7 +451,7 @@ function checkContents(sentence, findings, options) {
           findings.push({
             level: 'error',
             code: 'unexpected-value',
-            message: `Expected a child node because '${child.rel}' is a relation; found the ${child.kind} '${child.value}'.`,
+            message: `Expected a child node because '${child.rel}' is a relation. Found the ${child.kind} '${child.value}'.`,
             var: variable,
           });
         }
@@ -624,7 +624,7 @@ function checkEvents(sentence, findings, options) {
         findings.push({
           level: 'warning',
           code: 'sentence-level-modal-strength',
-          message: `':modal-strength' on '${variable}' is deprecated; modal annotation belongs in the document graph.`,
+          message: `':modal-strength' on '${variable}' is deprecated. Modal annotation belongs in the document graph.`,
           var: variable,
         });
         if (strength.kind !== 'atom') {

@@ -92,7 +92,7 @@ export function PenmanEditor({ initial, typed = null, onApply, onCancel, plan, a
           {problem
             ? `${problem.message}${problem.line ? ` (line ${problem.line})` : ''}`
             : dirty
-              ? `Changed. Apply writes it as one operation.${renameNote(rename)}${lossNote(losses)}`
+              ? `Changed. Apply saves it.${renameNote(rename)}${lossNote(losses)}`
               : 'As stored.'}
         </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onCancel(dirty)}>

@@ -406,7 +406,7 @@ function parseSentence(chunk, index, warn, error) {
     });
   }
   if (snt === null) {
-    warn('missing-sent-id', 'No sentence id line; the position in the file is used instead.');
+    warn('missing-sent-id', 'No sentence id line. The position in the file is used instead.');
     snt = index;
   }
   const words = ilg.find((line) => line.key === 'words')?.items ?? [];
