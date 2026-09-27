@@ -591,6 +591,28 @@ describe('runExport — native plaid-igt-json', () => {
     expect(Object.keys(entries).some((p) => p.endsWith('.tsv'))).toBe(false);
   });
 
+  it('archives a project with no documents, since its lexicon is the content', async () => {
+    const client = stubClient({ docs: [] });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'project' },
+    });
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries).sort()).toEqual(['project.json', 'vocabularies/Lexicon.json']);
+    const manifest = JSON.parse(new TextDecoder().decode(entries['project.json']));
+    expect(manifest.documents).toEqual([]);
+  });
+
+  it('still refuses an archive when every document asked for failed', async () => {
+    const docs = [rawDoc('d1', 'Bad', 'hi')];
+    const client = stubClient({ docs, failIds: ['d1'] });
+    await expect(
+      runExport({ client, project: PROJECT, preset: nativePreset(), scope: { type: 'project' } }),
+    ).rejects.toThrow(/Nothing exported/);
+  });
+
   it('embeds media via the injected fetcher, named by the fetched content type', async () => {
     // Server mediaUrls carry no filename — the extension must come from the fetch.
     const docs = [rawDoc('d1', 'A', 'hi', '/api/v1/documents/d1/media')];

@@ -469,7 +469,10 @@ export async function runExport({
   // A single .eaf that came with media becomes a zip, so its RELATIVE_MEDIA_URL
   // resolves to a file that is actually there.
   if (!wantZip && mediaEntries.length) wantZip = true;
-  if (!docFiles.length) {
+  // The native archive of a project with no documents still holds the
+  // project: its vocabularies, settings and guidelines. Every other format
+  // is its documents.
+  if (!docFiles.length && !(isNative && !docIds.length)) {
     throw new Error(
       warnings.length ? `Nothing exported. ${warnings.join('; ')}` : 'Nothing to export',
     );
