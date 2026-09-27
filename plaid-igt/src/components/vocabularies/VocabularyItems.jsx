@@ -17,6 +17,7 @@ import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useTabParam } from '@/hooks/useTabParam';
 import { notifySuccess, notifyError, notifyWarning, isPermissionError } from '@/utils/feedback';
+import { reportNotSent } from './vocabWriteQueue.js';
 import {
   fieldLabel,
   groupFieldsForForm,
@@ -383,7 +384,8 @@ export const VocabularyItems = ({
   // A read waits for the entry writes still queued, and reads again when one
   // is made while it is on the wire, so the list never drops an edit the
   // server is still to get. `inTurn` is the refused write's own refetch, which
-  // the queue is waiting on.
+  // the queue is waiting on. It throws when it fails, so the queue tries it
+  // again.
   const fetchItems = async ({ quiet = false, inTurn = false } = {}) => {
     try {
       if (!quiet) setLoading(true);
@@ -400,6 +402,7 @@ export const VocabularyItems = ({
       repairRefs(fetched); // not awaited
       return fetched;
     } catch (err) {
+      if (inTurn) throw err;
       setError('Failed to load entries');
       console.error('Error fetching vocabulary items:', err);
       return null;
@@ -511,14 +514,16 @@ export const VocabularyItems = ({
   const unseedUnlessTyped = () => {
     if (!typedRef.current) dispatch({ type: 'draft/unseed' });
   };
+  const resync = () => fetchItems({ quiet: true, inTurn: true });
   const sendInTurn = (label, write, failure, { refused } = {}) =>
     writes.push(() => client.withOperation(label, write), {
-      refused: async (err) => {
+      refused: (err) => {
         console.error(`${label}:`, err);
         notifyError(err, failure);
         (refused || unseedUnlessTyped)();
-        await fetchItems({ quiet: true, inTurn: true });
       },
+      resync,
+      notSent: reportNotSent,
     });
 
   // Bulk Add and Replace: a run of writes planned against the entries as
@@ -530,11 +535,12 @@ export const VocabularyItems = ({
   const sendPlanned = async (label, write) => {
     let error = null;
     const landed = await writes.push(() => client.withOperation(label, write), {
-      refused: async (err) => {
+      refused: (err) => {
         error = err;
         unseedUnlessTyped();
-        await fetchItems({ quiet: true, inTurn: true });
       },
+      resync,
+      notSent: reportNotSent,
     });
     return { landed, error };
   };

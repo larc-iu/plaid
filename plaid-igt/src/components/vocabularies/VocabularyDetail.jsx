@@ -67,7 +67,7 @@ import { useConfirm } from '@ui/components/shared/ConfirmProvider';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
-import { WriteQueue } from '@ui/domain/WriteQueue.js';
+import { vocabWriteQueue, reportNotSent } from './vocabWriteQueue.js';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
@@ -136,7 +136,7 @@ export const VocabularyDetail = () => {
   // from another tab waits for them, and closing the browser tab asks while
   // either is still sending.
   const writes = useMemo(
-    () => ({ schema: new WriteQueue(), entries: new WriteQueue() }),
+    () => ({ schema: vocabWriteQueue(), entries: vocabWriteQueue() }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [vocabularyId],
   );
@@ -266,7 +266,8 @@ export const VocabularyDetail = () => {
 
   // Read the vocabulary again without the loading state. A read from outside
   // the schema queue waits for it (see WriteQueue.js). `inTurn` is a refused
-  // schema write's own refetch, which the queue is waiting on.
+  // schema write's own refetch, which the queue is waiting on. It throws when
+  // it fails, so the queue tries it again.
   const updateVocabulary = async ({ inTurn = false } = {}) => {
     if (isNewVocabulary) return;
     const token = live.current;
@@ -286,10 +287,13 @@ export const VocabularyDetail = () => {
       setVocabulary(vocabularyData);
       setFields(normalizeVocabFields(readVocabFields(vocabularyData.config)));
     } catch (err) {
+      if (inTurn) throw err;
       console.error('Error updating vocabulary:', err);
       notifyError('Failed to update vocabulary data', 'Error');
     }
   };
+  // A refused schema write's refetch, which puts back what the screen showed.
+  const resyncSchema = () => updateVocabulary({ inTurn: true });
 
   useEffect(() => {
     const token = { cancelled: false };
@@ -364,11 +368,12 @@ export const VocabularyDetail = () => {
           setVocabulary((v) => ({ ...v, name }));
           writes.schema
             .push(() => client.vocabLayers.update(vocabularyId, name), {
-              refused: async (err) => {
+              refused: (err) => {
                 console.error('Error renaming vocabulary:', err);
                 notifyError('Failed to save vocabulary', 'Error');
-                await updateVocabulary({ inTurn: true });
               },
+              resync: resyncSchema,
+              notSent: reportNotSent,
             })
             .then((landed) => {
               if (landed) notifySuccess('Vocabulary name updated successfully', 'Success');
@@ -466,11 +471,12 @@ export const VocabularyDetail = () => {
         if (!quiet) notifySuccess('Fields updated successfully', 'Success');
       },
       {
-        refused: async (err) => {
+        refused: (err) => {
           console.error('Error saving custom fields:', err);
           notifyError('Failed to save fields', 'Error');
-          await updateVocabulary({ inTurn: true });
         },
+        resync: resyncSchema,
+        notSent: reportNotSent,
       },
     );
   };
@@ -645,12 +651,13 @@ export const VocabularyDetail = () => {
     const tagsetsLanded = writes.schema.push(
       () => client.vocabLayers.setConfig(vocabularyId, IGT_NAMESPACE, 'tagsets', next),
       {
-        refused: async (err) => {
+        refused: (err) => {
           console.error('Failed to save tagsets:', err);
           notifyError('Failed to save tagsets', 'Save Error');
           setDraftTagsets(null);
-          await updateVocabulary({ inTurn: true });
         },
+        resync: resyncSchema,
+        notSent: reportNotSent,
       },
     );
     const renamed = meta?.renamed;

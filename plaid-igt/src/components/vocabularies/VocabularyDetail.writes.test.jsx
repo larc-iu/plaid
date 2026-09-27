@@ -51,13 +51,16 @@ const auth = vi.hoisted(() => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
 
 const { VocabularyDetail } = await import('./VocabularyDetail.jsx');
+const feedback = await import('@/utils/feedback');
 
 const deferred = () => {
   let resolve;
-  const promise = new Promise((res) => {
+  let reject;
+  const promise = new Promise((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 // A server holding vocabulary A. `holds` is a list of deferreds the next
@@ -199,6 +202,62 @@ describe('the vocabulary screen', () => {
       await settle();
     });
     expect(calls).toEqual(['setConfig', 'update']);
+    await view.unmount();
+  });
+
+  it('reads the vocabulary again after a refused rename until the read lands', async () => {
+    const { client, holds } = stub();
+    const refused = deferred();
+    holds.push(refused);
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    const get = client.vocabLayers.get;
+    let reads = 0;
+    client.vocabLayers.get = async (...args) => {
+      reads += 1;
+      if (reads === 1) throw new TypeError('Failed to fetch');
+      return get(...args);
+    };
+    await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
+    await view.step(async () => {
+      button('Save').click();
+      await settle();
+    });
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    // The read failed and waits its turn to be tried again.
+    expect(reads).toBe(1);
+    expect(asks()).toBe(true);
+    await view.step(async () => {
+      await new Promise((r) => setTimeout(r, 1100));
+      await settle();
+    });
+    expect(reads).toBe(2);
+    expect(asks()).toBe(false);
+    expect(document.body.textContent).toContain('Ayvale lexicon');
+    expect(document.body.textContent).not.toContain('Beeworth lexicon');
+    await view.unmount();
+  });
+
+  it('says how many schema writes queued behind a refused one were not sent', async () => {
+    const { client, calls, holds } = stub();
+    const refused = deferred();
+    holds.push(refused);
+    feedback.notifyError.mockClear();
+    const view = await mount(client, '/vocabularies/A?tab=settings');
+    await view.step(() => firstInlineSwitch().click());
+    await view.step(() => setValue(nameInput(), 'Beeworth lexicon'));
+    await view.step(async () => {
+      button('Save').click();
+      await settle();
+    });
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    expect(calls).toEqual(['setConfig']);
+    expect(feedback.notifyError).toHaveBeenCalledWith('1 later edit was not saved.', 'Not saved');
     await view.unmount();
   });
 

@@ -85,7 +85,7 @@ const stub = (items) => {
   };
 };
 
-const mount = async (client, at) => {
+const mount = async (client, at, writes = new WriteQueue()) => {
   auth.client = client;
   const view = await renderComponent(
     <MemoryRouter initialEntries={[at]}>
@@ -94,7 +94,7 @@ const mount = async (client, at) => {
         vocabulary={{ id: 'v1' }}
         client={client}
         fields={FIELDS}
-        writes={new WriteQueue()}
+        writes={writes}
       />
     </MemoryRouter>,
   );
@@ -475,6 +475,60 @@ describe('a refused entry write', () => {
     });
     expect(calls.map(([kind]) => kind)).toEqual(['create', 'create']);
     expect(feedback.notifySuccess).toHaveBeenCalledWith('Entry created', 'Success');
+  });
+
+  it('reads the entries again until the read lands, and asks before the tab closes until then', async () => {
+    const { client, holds } = stub([{ id: 'a', form: 'uno' }]);
+    const refused = deferred();
+    holds.push(refused);
+    const writes = new WriteQueue({ retryDelay: () => 0 });
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=a', writes));
+    const get = client.vocabLayers.get;
+    let reads = 0;
+    const offline = deferred();
+    client.vocabLayers.get = async (...args) => {
+      reads += 1;
+      if (reads === 1) throw new TypeError('Failed to fetch');
+      if (reads === 2) await offline.promise;
+      return get(...args);
+    };
+    await view.step(() => setValue(formInput(), 'uno-EDIT'));
+    await view.step(() => button('Save').click());
+    expect(listed()).toEqual(['uno-EDIT']);
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    // The first read failed, the second is on the wire: still saving.
+    expect(reads).toBe(2);
+    expect(writes.isSaving).toBe(true);
+    expect(listed()).toEqual(['uno-EDIT']);
+    await view.step(async () => {
+      offline.resolve();
+      await settle();
+    });
+    expect(writes.isSaving).toBe(false);
+    expect(listed()).toEqual(['uno']);
+  });
+
+  it('says how many saves queued behind a refused one were not sent', async () => {
+    const { client, holds } = stub([
+      { id: 'a', form: 'uno' },
+      { id: 'b', form: 'dos' },
+    ]);
+    const refused = deferred();
+    holds.push(refused);
+    const view = (mounted = await mount(client, '/vocabularies/v1?item=a'));
+    await view.step(() => setValue(formInput(), 'uno-EDIT'));
+    await view.step(() => button('Save').click());
+    await view.step(() => link('dos').click());
+    await view.step(() => setValue(formInput(), 'dos-EDIT'));
+    await view.step(() => button('Save').click());
+    await view.step(async () => {
+      refused.reject(new Error('refused'));
+      await settle();
+    });
+    expect(feedback.notifyError).toHaveBeenCalledWith('1 later edit was not saved.', 'Not saved');
   });
 });
 
