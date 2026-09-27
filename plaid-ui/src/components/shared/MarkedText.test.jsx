@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderComponent } from '@ui/test/renderComponent.jsx';
+import { renderComponent } from '../../test/renderComponent.jsx';
 import { MarkedText } from './MarkedText.jsx';
 
 // An excerpt sits in an English row beside "#1" and the document's name, so

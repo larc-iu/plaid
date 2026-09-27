@@ -1,10 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Info } from 'lucide-react';
+import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { pageSlice, TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
 import { ListPager } from '@ui/components/shared/list-search';
 import { detectDirection } from '@ui/domain/textDirection.js';
-import { segmentize } from './grewToHighlight.js';
 
 // Renders grouped sentence matches. `groups` come from groupResults():
 // [{ docId, sentenceId, text, highlights }]. Each sentence is a real link to
@@ -44,14 +45,13 @@ export const SearchResults = ({
   return (
     <div className="flex flex-col gap-4">
       {warnings?.length > 0 && (
-        <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+        <Notice tone="warning" icon={Info}>
           <div className="flex flex-col gap-0.5">
             {warnings.map((w, i) => (
               <span key={i}>{w}</span>
             ))}
           </div>
-        </div>
+        </Notice>
       )}
 
       {searched && (
@@ -78,15 +78,10 @@ export const SearchResults = ({
                 dir={detectDirection(s.text)}
                 className={`block p-4 text-sm leading-relaxed hover:bg-muted/50 ${idx ? 'border-t' : ''}`}
               >
-                {segmentize(s.text, s.highlights).map((seg, i) =>
-                  seg.hl ? (
-                    <mark key={i} className="rounded-sm bg-yellow-200 px-0.5 text-foreground">
-                      {seg.text}
-                    </mark>
-                  ) : (
-                    <span key={i}>{seg.text}</span>
-                  ),
-                )}
+                <MarkedText
+                  text={s.text}
+                  marks={s.highlights.map((h) => ({ begin: h.start, end: h.end }))}
+                />
               </Link>
             ))}
           </div>
