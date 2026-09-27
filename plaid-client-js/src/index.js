@@ -917,6 +917,7 @@ class PlaidClient {
        * One page of the same log, newest-first with `order: "desc"`. Use this
        * rather than audit() wherever the caller wants the recent end of a log
        * that may be long: audit() walks every page before it resolves.
+       * @param {string} userId - The user ID
        * @param {object} [opts]
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
@@ -1120,7 +1121,7 @@ class PlaidClient {
         ),
       /**
        * Create or replace one private data entry. `value` is any JSON (up to
-       * 1 MB), stored as sent. Not audited, not batchable.
+       * 1 MB). Not audited, not batchable.
        *
        * The server stores it verbatim, but this client recases object keys on
        * the way out and back like any other body (`myKey` <-> `my-key`), so a
@@ -1689,8 +1690,8 @@ class PlaidClient {
        * NOT re-entrant: nesting two `locked()` blocks on one document would
        * release on the inner exit and leave the outer unprotected. Lock at
        * exactly one level per call path. A lost lock is recorded on the
-       * CLIENT, like batch and strict mode, so it stops every write the client
-       * makes and not only the ones this block makes.
+       * CLIENT, like strict mode, so it stops every write the client makes
+       * (on any batch of it too) and not only the ones this block makes.
        * @param {string} documentId - The document ID
        * @param {(lock: DocumentLock) => any} fn - The work to run while holding it
        * @param {object} [options] - `{ keepAlive }`: renew on a timer (default true)
@@ -1789,6 +1790,7 @@ class PlaidClient {
        * One page of the same log, newest-first with `order: "desc"`. Use this
        * rather than audit() wherever the caller wants the recent end of a log
        * that may be long: audit() walks every page before it resolves.
+       * @param {string} documentId - The document ID
        * @param {object} [opts]
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
@@ -2009,6 +2011,7 @@ class PlaidClient {
        * One page of the same log, newest-first with `order: "desc"`. Use this
        * rather than audit() wherever the caller wants the recent end of a log
        * that may be long: audit() walks every page before it resolves.
+       * @param {string} projectId - The project ID
        * @param {object} [opts]
        * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
@@ -3206,7 +3209,9 @@ class PlaidClient {
    * Open a batch: a view of this client with the same bundles, on which every
    * write of project data queues instead of going out. `submit()` sends the
    * queued operations as ONE atomic request (larger than the server's cap,
-   * as consecutive requests with the results concatenated in queue order) and
+   * as consecutive requests with the results concatenated in queue order,
+   * each atomic on its own, so a failure in a later one leaves the earlier
+   * ones committed) and
    * resolves to one result per operation; `abort()` drops them. A call made
    * on the client itself is never touched by an open batch, and a read or an
    * out-of-band signal made on the batch goes over the wire now (see the note
@@ -3310,8 +3315,9 @@ class PlaidClient {
   }
 
   /**
-   * Run `fn` with a batch, then submit all queued ops as ONE atomic request,
-   * or abort the batch if `fn` throws. `fn` receives the batch and makes its
+   * Run `fn` with a batch, then submit all queued ops as `submit()` does (ONE
+   * atomic request up to MAX_BATCH_OPS operations, consecutive requests past
+   * it), or abort the batch if `fn` throws. `fn` receives the batch and makes its
    * writes on it; it must NOT call `submit()` itself. Resolves to the batch
    * results array (`[]` if `fn` queued nothing).
    *
@@ -3336,15 +3342,6 @@ class PlaidClient {
     return batch.submit();
   }
 
-  /**
-   * Authenticate and return a new client instance with token. This is the
-   * single auth entry point — there is no `client.login` resource.
-   * @param {string} baseUrl - The base URL for the API
-   * @param {string} userId - User ID for authentication
-   * @param {string} password - Password for authentication
-   * @param {object} [options] - Client options forwarded to the constructor (e.g. { timeout })
-   * @returns {Promise<PlaidClient>} - Authenticated client instance
-   */
   /**
    * Liveness, version and database size, with NO authentication and no client
    * instance — for a launcher or status page checking whether a server is up
@@ -3439,6 +3436,15 @@ class PlaidClient {
     };
   }
 
+  /**
+   * Authenticate and return a new client instance with token. This is the
+   * single auth entry point — there is no `client.login` resource.
+   * @param {string} baseUrl - The base URL for the API
+   * @param {string} userId - User ID for authentication
+   * @param {string} password - Password for authentication
+   * @param {object} [options] - Client options forwarded to the constructor (e.g. { timeout })
+   * @returns {Promise<PlaidClient>} - Authenticated client instance
+   */
   static async login(baseUrl, userId, password, options = {}) {
     baseUrl = baseUrl.replace(/\/$/, "");
     const url = `${baseUrl}/api/v1/login`;

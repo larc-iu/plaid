@@ -1646,9 +1646,9 @@ class DocumentsResource(_Resource):
         - NOT re-entrant: nesting two ``locked(same_doc)`` blocks would release
           on the inner exit and leave the outer unprotected. Lock at exactly one
           level per call path.
-        - A lost lock is recorded on the CLIENT, like batch and strict mode, so
-          it stops every write the client makes and not only the ones this
-          block makes.
+        - A lost lock is recorded on the CLIENT, like strict mode, so it stops
+          every write the client makes (on any batch of it too) and not only
+          the ones this block makes.
         """
         try:
             info = self.acquire_lock(document_id)
@@ -3334,7 +3334,9 @@ class PlaidClient:
         which every write of project data queues instead of going out.
         ``submit()`` sends the queued operations as ONE atomic request (larger
         than the server's cap, as consecutive requests with the results
-        concatenated in queue order) and returns one result per operation;
+        concatenated in queue order, each atomic on its own, so a failure in a
+        later one leaves the earlier ones committed) and returns one result
+        per operation;
         ``abort()`` drops them. A call made on the client itself is never
         touched by an open batch, and a read or an out-of-band signal made on
         the batch goes over the wire now (see the note at the top of
@@ -3425,8 +3427,10 @@ class PlaidClient:
 
     @contextmanager
     def batched(self):
-        """Run the block with a batch, then submit all queued ops as ONE atomic
-        request, or abort the batch if the block raises. The block makes its
+        """Run the block with a batch, then submit all queued ops as
+        :meth:`PlaidBatch.submit` does (ONE atomic request up to MAX_BATCH_OPS
+        operations, consecutive requests past it), or abort the batch if the
+        block raises. The block makes its
         writes on the yielded batch; the results land on its ``.results`` (a
         context manager can't return a value)::
 
@@ -3665,8 +3669,11 @@ class PlaidBatch:
         raise PlaidAPIError('A batch is not nestable: queue on the batch you have')
 
     def submit(self) -> list[Any]:
-        """Send the queued operations as one atomic request and return one
-        result per operation, in order (also kept on ``.results``)."""
+        """Send the queued operations and return one result per operation, in
+        order (also kept on ``.results``). Up to MAX_BATCH_OPS operations go
+        as one atomic request. A larger batch goes as consecutive requests,
+        each atomic on its own, so a failure in a later one leaves the earlier
+        ones committed."""
         if not self.open:
             raise PlaidAPIError('This batch was already submitted or aborted')
         self.open = False

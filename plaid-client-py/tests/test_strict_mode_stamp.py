@@ -1,5 +1,6 @@
-"""Strict mode stamps ``?document-version=`` on writes. Inside a batch it stamps
-the FIRST QUEUED write only, which gives the whole batch one OCC check.
+"""Strict mode stamps ``?document-version=`` on writes, every queued write of a
+batch included. The server checks the first one of a batch request that names
+the document, which gives the whole request one OCC check.
 
 The bug this guards: the stamp used to be spent by any non-GET that reached
 the request layer while a batch was open, including a call that went over the

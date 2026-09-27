@@ -142,7 +142,7 @@ class BaseService(ABC):
         # see :meth:`run`). The lock makes the instance single-flight ACROSS all
         # of them — each project has its own SSE reader thread, so without it two
         # projects' requests could enter :meth:`process_request` (and the shared
-        # client's batch state) concurrently.
+        # client's strict-mode and operation state) concurrently.
         self.service_registrations: List[Any] = []
         # Serve-all bookkeeping: which project each registration covers, so the
         # periodic sync pass can diff against the live project list. Failed
@@ -241,9 +241,10 @@ class BaseService(ABC):
     #: Handle requests concurrently (each on its own thread) instead of
     #: single-flight. Right for an I/O-bound service such as a chat assistant
     #: waiting on a remote model; wrong for a GPU-bound one. A concurrent
-    #: service must not touch shared mutable state (including batch/operation
-    #: state on ``self.client``) from :meth:`process_request`; a delegating one
-    #: naturally works through the per-request ``requester_client``.
+    #: service must not touch shared mutable state (including the strict-mode
+    #: and operation state on ``self.client``) from :meth:`process_request`;
+    #: a delegating one naturally works through the per-request
+    #: ``requester_client``.
     CONCURRENT = False
 
     def handle_service_request(self, request_data: Dict[str, Any], response_helper) -> None:
