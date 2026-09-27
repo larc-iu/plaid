@@ -25,11 +25,18 @@ test('integrity toast shows on the document and leaves with it', async ({ page }
     },
   ]);
   try {
+    // The toast says one generic line (7d1a7f9d), and the finding itself goes
+    // to the console and to Copy details.
+    const logged = [];
+    page.on('console', (msg) => logged.push(msg.text()));
     await seedAuth(page);
     await page.goto(`/#/projects/${projectId}/documents/${documentId}?tab=analyze`);
     const toast = page.getByText('Data integrity issue detected');
     await expect(toast).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText(/end time \(1\) before start time \(3\)/)).toBeVisible();
+    await expect(
+      page.getByText('This document has problems that could not be repaired.', { exact: false }),
+    ).toBeVisible();
+    expect(logged.some((line) => /end time \(1\) before start time \(3\)/.test(line))).toBe(true);
     await expect(page.getByRole('button', { name: 'Copy details' })).toBeVisible();
 
     await page.goto('/#/projects');
