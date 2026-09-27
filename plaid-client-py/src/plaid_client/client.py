@@ -142,7 +142,7 @@ class VocabLinksResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, id: str, audit_message=None) -> Any:
         """Remove all metadata from a vocab link.
@@ -151,7 +151,7 @@ class VocabLinksResource(_Resource):
             id: The resource ID
         """
         return self._request('DELETE', f'/api/v1/vocab-links/{id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a vocab link with a list of ops applied in order.
@@ -168,7 +168,7 @@ class VocabLinksResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def get(self, id: str, *, as_of: str | None = None) -> Any:
         """Get a vocab link by ID.
@@ -315,7 +315,7 @@ class RelationsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, relation_id: str, audit_message=None) -> Any:
         """Remove all metadata from a relation.
@@ -324,7 +324,7 @@ class RelationsResource(_Resource):
             relation_id: The relation ID
         """
         return self._request('DELETE', f'/api/v1/relations/{relation_id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, relation_id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a relation with a list of ops applied in order.
@@ -341,7 +341,7 @@ class RelationsResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/relations/{relation_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def set_target(self, relation_id: str, span_id: str, audit_message=None) -> Any:
         """Update the target span of a relation.
@@ -531,7 +531,7 @@ class SpansResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, span_id: str, audit_message=None) -> Any:
         """Remove all metadata from a span.
@@ -540,7 +540,7 @@ class SpansResource(_Resource):
             span_id: The span ID
         """
         return self._request('DELETE', f'/api/v1/spans/{span_id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, span_id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a span with a list of ops applied in order.
@@ -557,7 +557,7 @@ class SpansResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/spans/{span_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def set_tokens(self, span_id: str, tokens: list, audit_message=None) -> Any:
         """Replace the tokens associated with a span.
@@ -711,7 +711,7 @@ class TextsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, text_id: str, audit_message=None) -> Any:
         """Remove all metadata from a text.
@@ -720,7 +720,7 @@ class TextsResource(_Resource):
             text_id: The text ID
         """
         return self._request('DELETE', f'/api/v1/texts/{text_id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, text_id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a text with a list of ops applied in order.
@@ -737,7 +737,7 @@ class TextsResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/texts/{text_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
 
 class UsersResource(_Resource):
@@ -1821,7 +1821,7 @@ class DocumentsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, document_id: str, audit_message=None) -> Any:
         """Remove all metadata from a document.
@@ -1830,7 +1830,7 @@ class DocumentsResource(_Resource):
             document_id: The document ID
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, document_id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a document with a list of ops applied in order.
@@ -1847,7 +1847,7 @@ class DocumentsResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/documents/{document_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
               end_time: str | None = None, as_of: str | None = None,
@@ -2555,7 +2555,7 @@ class VocabItemsResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, id: str, audit_message=None) -> Any:
         """Remove all metadata from a vocab item.
@@ -2564,7 +2564,7 @@ class VocabItemsResource(_Resource):
             id: The resource ID
         """
         return self._request('DELETE', f'/api/v1/vocab-items/{id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a vocab item with a list of ops applied in order.
@@ -2581,7 +2581,7 @@ class VocabItemsResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/vocab-items/{id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
 
 class RelationLayersResource(_Resource):
@@ -2666,7 +2666,7 @@ class TokensResource(_Resource):
             body: The request body
         """
         return self._request('PUT', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def delete_metadata(self, token_id: str, audit_message=None) -> Any:
         """Remove all metadata from a token.
@@ -2675,7 +2675,7 @@ class TokensResource(_Resource):
             token_id: The token ID
         """
         return self._request('DELETE', f'/api/v1/tokens/{token_id}/metadata',
-                             skip_response_transform=True, audit_message=audit_message)
+                             audit_message=audit_message)
 
     def patch_metadata(self, token_id: str, body: Any, audit_message=None) -> Any:
         """Edit metadata for a token with a list of ops applied in order.
@@ -2692,7 +2692,7 @@ class TokensResource(_Resource):
             body: The metadata ops
         """
         return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
-                             raw_body=body, skip_response_transform=True, audit_message=audit_message)
+                             raw_body=body, audit_message=audit_message)
 
     def get(self, token_id: str, *, as_of: str | None = None) -> Any:
         """Get a token.

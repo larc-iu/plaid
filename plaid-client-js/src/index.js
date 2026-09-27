@@ -282,7 +282,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/vocab-links/${id}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a vocab link.
@@ -291,7 +290,6 @@ class PlaidClient {
       deleteMetadata: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-links/${id}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a vocab link with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -302,7 +300,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/vocab-links/${id}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Get a vocab link by ID
@@ -449,7 +446,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/relations/${relationId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a relation.
@@ -458,7 +454,6 @@ class PlaidClient {
       deleteMetadata: (relationId, auditMessage) =>
         this._request("DELETE", `/api/v1/relations/${relationId}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a relation with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -469,7 +464,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/relations/${relationId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Update the target span of a relation.
@@ -734,7 +728,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/spans/${spanId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a span.
@@ -743,7 +736,6 @@ class PlaidClient {
       deleteMetadata: (spanId, auditMessage) =>
         this._request("DELETE", `/api/v1/spans/${spanId}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a span with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -754,7 +746,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/spans/${spanId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
     };
 
@@ -800,7 +791,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/texts/${textId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a text.
@@ -809,7 +799,6 @@ class PlaidClient {
       deleteMetadata: (textId, auditMessage) =>
         this._request("DELETE", `/api/v1/texts/${textId}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a text with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -820,7 +809,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/texts/${textId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Create a new text in a document's text layer. A text is a container for
@@ -1796,7 +1784,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/documents/${documentId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a document.
@@ -1805,7 +1792,6 @@ class PlaidClient {
       deleteMetadata: (documentId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a document with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -1816,7 +1802,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/documents/${documentId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Get audit log for a document. Transparently follows pagination cursors
@@ -2325,7 +2310,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/vocab-items/${id}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a vocab item.
@@ -2334,7 +2318,6 @@ class PlaidClient {
       deleteMetadata: (id, auditMessage) =>
         this._request("DELETE", `/api/v1/vocab-items/${id}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a vocab item with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -2345,7 +2328,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/vocab-items/${id}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Create a new vocab item
@@ -2645,7 +2627,6 @@ class PlaidClient {
         this._request("PUT", `/api/v1/tokens/${tokenId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
       /**
        * Remove all metadata from a token.
@@ -2654,7 +2635,6 @@ class PlaidClient {
       deleteMetadata: (tokenId, auditMessage) =>
         this._request("DELETE", `/api/v1/tokens/${tokenId}/metadata`, {
           auditMessage,
-          skipResponseTransform: true,
         }),
       /**
        * Edit metadata for a token with a list of ops applied in order, in one operation. `{op: 'set', path, value}` writes value at path, creating missing objects along it; `{op: 'delete', path}` removes the key at path (a no-op when absent). A path is a non-empty array of keys, the first a top-level key. A path through a non-object is refused (400). See metadataOps and applyMetadataOps.
@@ -2665,7 +2645,6 @@ class PlaidClient {
         this._request("PATCH", `/api/v1/tokens/${tokenId}/metadata`, {
           auditMessage,
           rawBody: body,
-          skipResponseTransform: true,
         }),
     };
 

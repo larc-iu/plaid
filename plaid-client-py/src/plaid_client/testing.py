@@ -216,6 +216,23 @@ def _root(writer):
     return getattr(writer, 'client', writer)
 
 
+def _find_entity(tree, entity_id):
+    """The first dict anywhere in the fixture ``tree`` whose ``id`` is
+    ``entity_id``, as it was given (the fake never writes the fixture), or
+    None."""
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if node.get('id') == entity_id:
+                return node
+            # Not into metadata: an id there is user data, not an entity.
+            stack.extend(reversed([v for k, v in node.items() if k != 'metadata']))
+        elif isinstance(node, (list, tuple)):
+            stack.extend(reversed(node))
+    return None
+
+
 def _refusal(root, status, text, method, path):
     """An error spelled as the real client spells one the server sent."""
     url = f'{root.base_url}{path}'
@@ -403,7 +420,12 @@ class Resource:
     keywords. A metadata patch, direct or in a bulk update entry, must be a
     list of ops, and a bulk update entry may carry only the keys the server
     keeps (``_BULK_UPDATE_KEYS``). A bulk create or bulk update of no
-    entries, or a bulk update naming one id twice, is the server's 400."""
+    entries, or a bulk update naming one id twice, is the server's 400.
+
+    A metadata write answers the entity as the fixture holds it, with the
+    metadata the write leaves (just ``{'id', 'metadata'}`` for an id the
+    fixture does not hold). A copy or a split answers a new ``{'id'}``, as a
+    create does."""
 
     def __init__(self, client, name):
         self._client = client
@@ -466,8 +488,19 @@ class Resource:
             return items, {'body': {'count': len(items)}}, {'count': len(items)}
         if method == 'bulk_delete':
             return list(arguments['body']), {'body': {}}, None
-        if method == 'patch_metadata':
-            return (first, checked_ops(arguments['body'])), {'body': {}}, None
+        if method in ('set_metadata', 'patch_metadata', 'delete_metadata'):
+            entity = _find_entity(_root(self._client)._documents, first) or {'id': first}
+            if method == 'patch_metadata':
+                payload = (first, checked_ops(arguments['body']))
+                metadata = apply_metadata_ops(entity.get('metadata') or {}, arguments['body'])
+            else:
+                payload = _payload(args, kwargs)
+                metadata = dict(arguments['body']) if method == 'set_metadata' else {}
+            answer = {**entity, 'metadata': metadata}
+            return payload, {'body': answer}, answer
+        if method in ('copy', 'split'):
+            new = writer.new_id(self._name)
+            return _payload(args, kwargs), {'body': {'id': new}}, {'id': new}
         return _payload(args, kwargs), {'body': {}}, {}
 
     def _check_bulk_update(self, items, sent):
@@ -490,18 +523,21 @@ class Resource:
 
 
 class _Operation:
-    """What ``with client.operation(...) as op`` yields: ``op.message`` is the
-    label the audit log ends up with, refined by ``set_message`` only on the
-    outermost operation, as the real client does."""
+    """What ``with client.operation(...) as op`` yields: an ``id`` and
+    ``set_message``, which refines the label only on the outermost operation,
+    as the real client's handle does and nothing more. The label the audit
+    log ends up with is the client's ``operation_labels`` entry."""
+    __slots__ = ('id', '_labels', '_index', '_outermost')
 
-    def __init__(self, op_id, message, outermost):
+    def __init__(self, op_id, labels, index, outermost):
         self.id = op_id
-        self.message = message
+        self._labels = labels
+        self._index = index
         self._outermost = outermost
 
     def set_message(self, message):
         if self._outermost:
-            self.message = message
+            self._labels[self._index] = message
 
 
 def _layer_ids(doc):
@@ -614,9 +650,12 @@ class FakeClient:
         self.reads = []
         #: {'order', 'start_time'} per paged audit read
         self.audit_pages = []
-        #: the label each operation was begun with (see ``_Operation`` for the
-        #: label it ends with)
+        #: the label each operation was begun with
         self.operations = []
+        #: the label each operation ends with, index for index with
+        #: ``operations``: the one it was begun with, or what the outermost
+        #: operation's ``set_message`` refined it to
+        self.operation_labels = []
         #: {'tokens.bulk_create': <exception>} -- raised when that call is made.
         self.fails = dict(fails or {})
         self.project = project
@@ -702,8 +741,10 @@ class FakeClient:
     @contextlib.contextmanager
     def operation(self, message):
         self.operations.append(message)
+        self.operation_labels.append(message)
         self.record('operation', message)
-        op = _Operation(f'op-{len(self.operations)}', message, self._operation_depth == 0)
+        op = _Operation(f'op-{len(self.operations)}', self.operation_labels,
+                        len(self.operations) - 1, self._operation_depth == 0)
         self._operation_depth += 1
         try:
             yield op

@@ -537,7 +537,7 @@ def test_the_smaller_shapes_match_the_real_client():
         op.set_message('Merged 3')
         with c.operation('inner') as inner:
             inner.set_message('ignored')  # only the outermost label is refined
-    assert op.message == 'Merged 3' and op.id
+    assert c.operation_labels == ['Merged 3', 'inner'] and op.id
     with c.documents.locked('d', keep_alive=False) as lock:
         assert lock.lost is None
         lock.raise_if_lost()
@@ -590,3 +590,48 @@ def test_a_single_delete_of_an_id_bulk_deleted_earlier_in_the_batch_refuses_it()
         b.spans.delete('s2')
         b.spans.bulk_delete(['s1', 's2'])
     assert len(c.writes) == 2
+
+
+def test_a_metadata_write_answers_the_entity_as_the_real_one_does():
+    """The real client answers a metadata write with the entity, recased,
+    alone or as a batch result's body. The fake answers the fixture's entity
+    with the metadata the write leaves."""
+    c = testing.FakeClient({'d': {'id': 'd', 'text_layers': [{'id': 'tl', 'token_layers': [
+        {'id': 'kl', 'tokens': [{'id': 't1', 'begin': 0, 'end': 2,
+                                 'metadata': {'a': 1, 'b': 2}}]}]}]}})
+    assert c.tokens.patch_metadata('t1', [{'op': 'set', 'path': ['c'], 'value': 3}]) == {
+        'id': 't1', 'begin': 0, 'end': 2, 'metadata': {'a': 1, 'b': 2, 'c': 3}}
+    assert c.tokens.set_metadata('t1', {'z': 1}) == {
+        'id': 't1', 'begin': 0, 'end': 2, 'metadata': {'z': 1}}
+    assert c.tokens.delete_metadata('t1') == {'id': 't1', 'begin': 0, 'end': 2, 'metadata': {}}
+    # An entity the fixture does not hold still answers its id and metadata.
+    assert c.spans.set_metadata('s9', {'k': 'v'}) == {'id': 's9', 'metadata': {'k': 'v'}}
+    with c.batched() as b:
+        assert b.tokens.patch_metadata('t1', [{'op': 'delete', 'path': ['a']}]) == {'batched': True}
+    assert b.results == [{'body': {'id': 't1', 'begin': 0, 'end': 2, 'metadata': {'b': 2}}}]
+    # What was recorded is unchanged: the fixture is never written.
+    assert c.patches('tokens')[0] == ('t1', [{'op': 'set', 'path': ['c'], 'value': 3}])
+    assert c.document('d')['text_layers'][0]['token_layers'][0]['tokens'][0]['metadata'] == \
+        {'a': 1, 'b': 2}
+
+
+def test_a_copy_and_a_split_answer_the_new_id_as_the_real_ones_do():
+    c = _project_client()
+    copied = c.documents.copy('d', 'D copy')
+    split = c.tokens.split('t1', 2)
+    assert set(copied) == {'id'} and set(split) == {'id'}
+    assert copied['id'] != split['id']
+    with c.batched() as b:
+        b.tokens.split('t1', 1)
+    assert set(b.results[0]['body']) == {'id'}
+
+
+def test_the_operation_handle_is_the_real_one_and_the_label_is_read_off_the_client():
+    c = _project_client()
+    with c.operation('Merge') as op:
+        op.set_message('Merged 3')
+        with c.operation('inner') as inner:
+            inner.set_message('ignored')
+    assert not hasattr(op, 'message')
+    assert c.operations == ['Merge', 'inner']
+    assert c.operation_labels == ['Merged 3', 'inner']
