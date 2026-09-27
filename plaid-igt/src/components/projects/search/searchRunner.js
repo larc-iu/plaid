@@ -12,6 +12,7 @@ import { morphemeGlossReading } from '@/domain/tagsets';
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { buildMatchSpec, hitsQueries, hitsByDocQueries, freqQueries } from './searchQueries.js';
 import { buildItemNumbers } from '@/domain/vocabDictionary';
+import { readVocabulary } from '@/domain/vocabCache';
 
 const MAX_DOCS = 12;
 const MAX_FREQ_ROWS = 200;
@@ -283,7 +284,7 @@ export async function runFreqSearch(client, domain, queryText, matchType) {
     const vocabOfName = new Map(); // name -> the vocabularies that have an entry so named
     await Promise.all(
       domain.vocabIds.map(async (vid) => {
-        const layer = await client.vocabLayers.get(vid, true);
+        const layer = await readVocabulary(client, vid);
         const numbers = buildItemNumbers(layer.items || []);
         for (const it of layer.items || []) {
           const n = numbers.get(it.id);

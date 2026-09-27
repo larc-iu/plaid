@@ -293,9 +293,9 @@ export async function runExport({
   const wantEntries = isFlex && preset.options?.citationForms !== false;
   let vocabs = [];
   if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon || wantEntries) {
-    // A vocabulary read has no as-of form, so a historical export carries
-    // today's vocabularies beside the document as it was.
-    const loaded = await loadProjectVocabularies(client, project);
+    // A historical export carries the vocabularies as they were at the same
+    // time as the documents.
+    const loaded = await loadProjectVocabularies(client, project, asOf);
     // Every document of the export is handed these entry lists, so each index
     // over them is built once for the run rather than once per document.
     vocabs = Object.values(shareVocabularies(loaded.vocabularies));

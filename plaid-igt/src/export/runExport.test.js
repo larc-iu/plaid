@@ -64,6 +64,7 @@ const VOCAB = {
 function stubClient({
   docs,
   vocab = VOCAB,
+  vocabThen = null,
   failIds = [],
   vocabFails = false,
   comments = {},
@@ -123,13 +124,14 @@ function stubClient({
       },
     },
     vocabLayers: {
-      get: async (id, includeItems, ...rest) => {
-        calls.push(['vocabLayers.get', id]);
-        // The server takes ?as-of= on a document read only and 400s it here.
-        if (rest[0] !== undefined)
-          throw new Error('HTTP 400 as-of is not supported on this endpoint');
+      get: async (id, includeItems, asOf) => {
+        // A read without the entries is the vocabulary's time, which the
+        // copy kept between reads is checked against (vocabCache.js). Only
+        // the reads of the entries are counted.
+        if (!includeItems) return { id, timeModified: null };
+        calls.push(asOf ? ['vocabLayers.get', id, asOf] : ['vocabLayers.get', id]);
         if (vocabFails) throw new Error('vocab boom');
-        return JSON.parse(JSON.stringify(vocab));
+        return JSON.parse(JSON.stringify(asOf && vocabThen ? vocabThen : vocab));
       },
     },
   };
@@ -752,18 +754,27 @@ describe('runExport — native plaid-igt-json', () => {
     expect(client.calls.some((c) => c[0].startsWith('comments.'))).toBe(false);
   });
 
-  it("reads today's vocabularies for a historical export, which is all a vocabulary read offers", async () => {
-    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+  it('reads the vocabularies as they were at the time of a historical export', async () => {
+    const then = {
+      ...VOCAB,
+      items: [{ id: 'i1', form: 'perro', metadata: { gloss: 'hound' } }],
+    };
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')], vocabThen: then });
+    const at = '2026-01-01T00:00:00Z';
     const result = await runExport({
       client,
       project: PROJECT,
       preset: nativePreset(),
       scope: { type: 'document', id: 'd1' },
-      asOf: '2026-01-01T00:00:00Z',
+      asOf: at,
     });
     expect(result.warnings).toEqual([]);
+    expect(client.calls.filter(([m]) => m === 'vocabLayers.get')).toEqual([
+      ['vocabLayers.get', 'v1', at],
+    ]);
     const entries = await unzipBlob(result.blob);
-    expect(Object.keys(entries)).toContain('vocabularies/Lexicon.json');
+    const lexicon = JSON.parse(new TextDecoder().decode(entries['vocabularies/Lexicon.json']));
+    expect(lexicon.items.map((it) => it.metadata.gloss)).toEqual(['hound']);
   });
 
   it("carries the project's annotation manual", async () => {

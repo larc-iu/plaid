@@ -98,6 +98,9 @@ const mount = async (client, at, writes = new WriteQueue()) => {
       />
     </MemoryRouter>,
   );
+  // The entries are read in two steps: the vocabulary's time, then the entries
+  // (vocabCache.js).
+  await view.step(async () => {});
   await view.step(async () => {});
   await view.step(async () => {});
   return view;
@@ -145,8 +148,9 @@ describe('the entry form', () => {
     const updates = calls.filter(([kind]) => kind === 'bulkUpdate');
     expect(updates).toHaveLength(2);
     expect(updates[1][1]).toEqual([{ id: 'b', form: 'dos-EDIT' }]);
-    // The refusal's read, then the one that shows the save sent behind it.
-    expect(get).toHaveBeenCalledTimes(2);
+    // The refusal's read, then the one that shows the save sent behind it,
+    // each the vocabulary's time and then its entries.
+    expect(get.mock.calls.filter((args) => args[1] === true)).toHaveLength(2);
     expect(feedback.notifyError).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
@@ -250,8 +254,9 @@ describe('the entry form', () => {
     // A server that applies the save once it lands.
     const server = [{ id: 'a', form: 'uno' }];
     const gets = [];
-    client.vocabLayers.get = async () => {
-      gets.push(calls.length);
+    // Only the reads of the entries count, not the vocabulary's time.
+    client.vocabLayers.get = async (_id, withItems) => {
+      if (withItems) gets.push(calls.length);
       return { id: 'v1', name: 'Lexicon', config: {}, items: structuredClone(server) };
     };
     const held = deferred();
@@ -561,6 +566,7 @@ describe('a refused entry write', () => {
     let reads = 0;
     const offline = deferred();
     client.vocabLayers.get = async (...args) => {
+      if (!args[1]) return get(...args);
       reads += 1;
       if (reads === 1) throw new TypeError('Failed to fetch');
       if (reads === 2) await offline.promise;

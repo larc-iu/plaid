@@ -90,6 +90,7 @@ import { useWideEnoughToDock } from '@ui/components/assistant/useDock.js';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
+import { readVocabulary } from '@/domain/vocabCache';
 
 // The Entries screen of a vocabulary. This component owns the data (the
 // entries, their usage counts) and every write, sent through `writes`, the
@@ -394,7 +395,9 @@ export const VocabularyItems = ({
       if (!vocabularyId || vocabularyId === 'undefined' || vocabularyId === 'new') {
         throw new Error('Invalid vocabulary ID');
       }
-      const read = () => client.vocabLayers.get(vocabularyId, true);
+      // The copy kept since the last read when the vocabulary has not changed
+      // (vocabCache.js): a document opened just before read the same entries.
+      const read = () => readVocabulary(client, vocabularyId);
       const vocabularyData = await (inTurn ? read() : writes.readWhenIdle(read));
       const fetched = vocabularyData.items || [];
       setItems(fetched);

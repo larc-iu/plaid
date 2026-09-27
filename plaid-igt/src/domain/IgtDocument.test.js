@@ -1044,10 +1044,10 @@ describe('atAsOf (time-travel)', () => {
     ],
   });
 
-  // Time-travel used to re-run the whole four-request load. atAsOf re-reads only
-  // the document, so the vocabulary ITEMS must be carried over from the live doc
-  // while the LINKS must come from the snapshot being loaded.
-  it('reads only the document and reuses project, vocab items and item levels', async () => {
+  // A past state reads the document and every project vocabulary at the same
+  // time (audit-past-doc-dictionary, ruled b), so an entry's gloss reads as it
+  // did then. The project is carried over: it has no past state.
+  it('reads the document and its vocabularies at the same time, and reuses the project', async () => {
     const liveRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-live', 'NOW')] });
     const snapRaw = buildRawDoc({ wordVocabs: [linkOn('w-1', 'lk-old', 'THEN')] });
 
@@ -1056,8 +1056,14 @@ describe('atAsOf (time-travel)', () => {
     client.documents = {
       ...client.documents,
       get: async (id, includeBody, at) => {
-        asked.push({ id, includeBody, at });
+        asked.push(['documents.get', id, includeBody, at]);
         return snapRaw;
+      },
+    };
+    client.vocabLayers = {
+      get: async (id, includeItems, at) => {
+        asked.push(['vocabLayers.get', id, includeItems, at]);
+        return { id, name: 'Lexicon', items: [{ id: 'vi-1', form: 'THEN' }] };
       },
     };
     const doc = new IgtDocument({
@@ -1075,17 +1081,48 @@ describe('atAsOf (time-travel)', () => {
     const at = '2026-08-28T13:46:43Z';
     const next = await doc.atAsOf(at);
 
-    // Exactly one request, and it carries the as-of.
-    expect(asked).toEqual([{ id: liveRaw.id, includeBody: true, at }]);
+    // The document and the one vocabulary, both at the same time.
+    expect(asked).toEqual([
+      ['documents.get', liveRaw.id, true, at],
+      ['vocabLayers.get', 'v1', true, at],
+    ]);
     expect(next.asOf).toBe(at);
     // The screen's error handler rides along: the snapshot reports to it too.
     expect(next.onError).toBe(onError);
-    // Snapshot-independent state is carried over, not refetched.
     expect(next.project).toBe(project);
-    expect(next.vocabularies.v1.items).toEqual([{ id: 'vi-1', form: 'NOW' }]);
+    expect(next.vocabularies.v1.items).toEqual([{ id: 'vi-1', form: 'THEN' }]);
     // The ORIGINAL doc is untouched, so the caller can keep rendering it.
     expect(doc.asOf).toBeNull();
+    expect(doc.vocabularies.v1.items).toEqual([{ id: 'vi-1', form: 'NOW' }]);
     expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('NOW');
+  });
+
+  it('leaves out a vocabulary that did not exist yet, and keeps the copy on screen for one that fails', async () => {
+    const twoVocabs = { ...project, vocabs: [{ id: 'v1' }, { id: 'v2' }] };
+    const client = makeFakeClient();
+    client.documents = { ...client.documents, get: async () => buildRawDoc() };
+    client.vocabLayers = {
+      get: async (id) => {
+        if (id === 'v1') throw Object.assign(new Error('HTTP 404'), { status: 404 });
+        throw Object.assign(new Error('HTTP 500'), { status: 500 });
+      },
+    };
+    const doc = new IgtDocument({
+      raw: buildRawDoc(),
+      project: twoVocabs,
+      vocabularies: {
+        v1: { id: 'v1', name: 'New', items: [{ id: 'n' }], vocabLinks: [] },
+        v2: { id: 'v2', name: 'Old', items: [{ id: 'o' }], vocabLinks: [] },
+      },
+      client,
+      projectId: 'proj-1',
+    });
+    const errors = [];
+    doc.onError = (msg) => errors.push(msg);
+    const next = await doc.atAsOf('2026-08-28T13:46:43Z');
+    expect(next.vocabularies.v1).toBeUndefined();
+    expect(next.vocabularies.v2.items).toEqual([{ id: 'o' }]);
+    expect(errors).toHaveLength(1);
   });
 
   it("shows the snapshot's vocab links, not the live document's", async () => {

@@ -15,6 +15,8 @@ import { followIds, pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { newHalfMetadata, survivorPatch } from './tokenReshape.js';
 import { getIgtLayerInfo } from './layerInfo.js';
 import { readSpeakers, IGT_NAMESPACE } from './igtConfig.js';
+import { readVocabulary } from './vocabCache.js';
+import { statusOf } from '@ui/lib/errors.js';
 import {
   planMorphemeReconcile,
   planSpanDedup,
@@ -110,40 +112,55 @@ export class IgtDocument extends DocumentModel {
   // read-only viewing; omit/null for the live document.
   static async load(client, projectId, documentId, asOf = null, { user = null } = {}) {
     const at = asOf || undefined;
-    // Time-travel (as-of) is supported ONLY on document GETs server-side; passing
-    // an as-of to the project or vocab GETs 400s ("not supported on this endpoint")
-    // and dead-ends the editor. Load the document AT the snapshot, but project
-    // config + vocab live (layer structure is immutable; live vocab is fine for a
-    // read-only historical view).
+    // A past state reads the document and its vocabularies at the same time,
+    // so a gloss shows as it read then. The project has no past state (a
+    // project read refuses as-of), and its layers never change.
     // The vocabularies need only the project, so they download alongside the
     // document instead of after it (a large document is seconds of transfer).
     const projectP = client.projects.get(projectId);
     const [raw, project, { vocabularies }] = await Promise.all([
       client.documents.get(documentId, true, at),
       projectP,
-      projectP.then((project) => loadProjectVocabularies(client, project)),
+      projectP.then((project) => loadProjectVocabularies(client, project, asOf)),
     ]);
     return new IgtDocument({ raw, project, vocabularies, client, projectId, asOf, user });
   }
 
-  // Re-read ONLY the document at `asOf`, reusing the project and vocabulary
-  // items already in memory. Returns a NEW IgtDocument; `this` is left
-  // untouched so the caller can keep rendering it until it swaps.
+  // The document as it was at `asOf`, beside its vocabularies as they were
+  // then (a gloss changed since reads as it did), reusing the project already
+  // in memory, since a project's layers never change. The two reads go out
+  // together. Returns a NEW IgtDocument. `this` is left untouched so the
+  // caller can keep rendering it until it swaps.
   //
-  // Time-travel used to be a single `documents.get` with an as-of. Unifying the
-  // editor on IgtDocument (0ca1cbb) turned every history-rail click into a full
-  // four-request `load` — project, document, item-level query, and every vocab
-  // layer — measured at ~1.4s against a real project, most of it the vocab
-  // fetch. Only the document is snapshot-dependent: `load` deliberately reads
-  // project config and vocab LIVE even for a historical view (layer structure is
-  // immutable), so re-fetching those per click could not return anything new.
-  _snapshot(raw, asOf) {
+  // A vocabulary that did not exist at `asOf` is left out: nothing in the
+  // document could link to it then. One that could not be read keeps the copy
+  // on screen now, and says so, rather than showing the words unlinked.
+  async atAsOf(asOf) {
+    if (!asOf) return super.atAsOf(asOf);
+    const [raw, { vocabularies, failed }] = await Promise.all([
+      this._client.documents.get(this.id, true, asOf),
+      loadProjectVocabularies(this._client, this._project, asOf),
+    ]);
+    const now = rebaseVocabLinks(this._vocabularies);
+    for (const id of failed) if (now[id]) vocabularies[id] = now[id];
+    const next = this._snapshot(raw, asOf, vocabularies);
+    // The error handler is the screen's, not this instance's: carry it.
+    next.onError = this.onError;
+    if (failed.length && next.onError) {
+      next.onError(
+        `${failed.length} ${failed.length === 1 ? 'vocabulary' : 'vocabularies'} could not be read as of that time. Entries show as they are now.`,
+      );
+    }
+    return next;
+  }
+
+  _snapshot(raw, asOf, vocabularies = rebaseVocabLinks(this._vocabularies)) {
     return new IgtDocument({
       raw,
       project: this._project,
       // The constructor folds the document's links into whatever it is handed,
-      // so hand it the items with the PREVIOUS snapshot's links stripped.
-      vocabularies: rebaseVocabLinks(this._vocabularies),
+      // so it is handed the entries with no links folded in yet.
+      vocabularies,
       client: this._client,
       projectId: this._projectId,
       asOf,
@@ -322,7 +339,7 @@ export class IgtDocument extends DocumentModel {
     const current = this._vocabularies?.[vocabId];
     if (!current || this._asOf) return false;
     try {
-      const fresh = await this._client.vocabLayers.get?.(vocabId, true);
+      const fresh = await readVocabulary(this._client, vocabId);
       // Only a read that actually brought entries back replaces them: a stub
       // or a half-answer must not empty the list the editor is showing.
       if (!fresh || !Array.isArray(fresh.items)) return false;
@@ -665,28 +682,34 @@ export class IgtDocument extends DocumentModel {
 // Per-vocab fetch failures don't reject — the rest of the table still loads —
 // but they're COUNTED so callers can surface "your vocab data is incomplete"
 // instead of silently rendering a partial table. Returns
-// { vocabularies, failedCount }. Exported for callers that construct
-// IgtDocuments from pre-fetched parts (e.g. export/runExport.js).
-export async function loadProjectVocabularies(client, project) {
+// { vocabularies, failedCount, failed } (`failed` the ids). Exported for
+// callers that construct IgtDocuments from pre-fetched parts (e.g.
+// export/runExport.js).
+//
+// Read live, a vocabulary unchanged since the last read is the copy kept then
+// (vocabCache.js). With `asOf`, every vocabulary is read as it was at that
+// time, and one that did not exist then (a 404) is simply absent, not failed.
+export async function loadProjectVocabularies(client, project, asOf = null) {
   const vocabIds = (project?.vocabs || []).map((v) => v.id);
-  if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0 };
+  if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0, failed: [] };
   const results = await Promise.all(
     vocabIds.map(async (id) => {
       try {
-        return await client.vocabLayers.get(id, true);
+        return { id, vocab: await readVocabulary(client, id, asOf) };
       } catch (err) {
+        if (asOf && statusOf(err) === 404) return { id, vocab: null, absent: true };
         console.warn(`Error fetching vocab ${id}:`, err);
-        return null;
+        return { id, vocab: null };
       }
     }),
   );
   const vocabularies = {};
-  let failedCount = 0;
-  results.forEach((v) => {
-    if (v) vocabularies[v.id] = v;
-    else failedCount++;
+  const failed = [];
+  results.forEach(({ id, vocab, absent }) => {
+    if (vocab) vocabularies[vocab.id] = vocab;
+    else if (!absent) failed.push(id);
   });
-  return { vocabularies, failedCount };
+  return { vocabularies, failedCount: failed.length, failed };
 }
 
 // ----- helper: fold document-embedded vocab-links into loaded vocabularies -----
