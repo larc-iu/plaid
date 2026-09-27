@@ -37,7 +37,9 @@ export const ProjectGeneralPage = ({ project, onSaved, language = null, children
   useEffect(() => setName(project.name ?? ''), [project.name]);
 
   const trimmedName = name.trim();
-  const nameChanged = trimmedName !== (project.name ?? '');
+  // Against the stored name trimmed too: an imported name with a trailing space
+  // is not a change waiting to be saved.
+  const nameChanged = trimmedName !== (project.name ?? '').trim();
   const nameValid = trimmedName.length > 0;
 
   const handleRename = async (event) => {

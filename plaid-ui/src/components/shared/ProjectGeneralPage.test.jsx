@@ -95,6 +95,18 @@ describe('ProjectGeneralPage', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the name Save disabled at rest when the stored name has surrounding space', async () => {
+    await mount({ project: { id: 'p1', name: ' Texts  ' } });
+    const [save] = saves(view.container);
+    const field = view.container.querySelector('#project-name');
+    expect(field.value).toBe(' Texts  ');
+    expect(save.disabled).toBe(true);
+    await view.step(() => typeInto(field, 'Texts'));
+    expect(save.disabled).toBe(true);
+    await view.step(() => typeInto(field, 'Texts 2'));
+    expect(save.disabled).toBe(false);
+  });
+
   it('enables the language Save only once the tag differs, and hands the tag to the app', async () => {
     const onSaved = vi.fn();
     const save = vi.fn(async () => {});

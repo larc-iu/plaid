@@ -10,6 +10,7 @@ import { MediaUpload } from './MediaUpload.jsx';
 import { TranscribeDialog } from './TranscribeDialog.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@ui/components/ui/button';
+import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { DeleteSegmentsDialog } from './DeleteSegmentsDialog.jsx';
 
 export function DocumentMedia() {
@@ -72,6 +73,7 @@ export function DocumentMedia() {
               <TranscribeDialog mediaOps={mediaOps} readOnly={readOnly} />
               <Button
                 variant="outline"
+                className={DELETE_BUTTON_CLASS}
                 onClick={() => setDeleteOpen(true)}
                 disabled={
                   mediaOps.isProcessing ||
