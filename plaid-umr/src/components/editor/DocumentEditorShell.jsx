@@ -183,6 +183,9 @@ export const DocumentEditorShell = () => {
   // has left for another screen (the write queue outlives this one). A graph
   // typed in text mode and not applied asks through its own unsaved draft.
   useSavingGuard(doc);
+  // Once the reader has left, a refetch after a refused edit has nothing left
+  // to put right, and stops (DocumentModel.hold).
+  useEffect(() => doc?.hold(), [doc]);
   // A comment post, edit or delete on its way asks the same way.
   useSavingGuard(comments);
 
