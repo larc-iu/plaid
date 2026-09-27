@@ -25,12 +25,16 @@ export class ImportCancelled extends Error {
   }
 }
 
-/** A document's metadata with the import's marks on it. */
-export const importStamp = (metadata, sourceId, done = false) => ({
-  ...(metadata || {}),
-  [SOURCE_KEY]: String(sourceId),
-  ...(done ? { [DONE_KEY]: true } : {}),
-});
+/**
+ * A document's metadata with the import's marks on it. A done mark the
+ * source's own metadata carries is dropped (a CLDF column, an ELAN property
+ * or an archive may name a key `importDone`), since it would say the document
+ * was finished before this import had made any of it.
+ */
+export const importStamp = (metadata, sourceId, done = false) => {
+  const { [DONE_KEY]: _, ...rest } = metadata || {};
+  return { ...rest, [SOURCE_KEY]: String(sourceId), ...(done ? { [DONE_KEY]: true } : {}) };
+};
 
 /**
  * What an earlier run left in the project, keyed by source id. One read per
