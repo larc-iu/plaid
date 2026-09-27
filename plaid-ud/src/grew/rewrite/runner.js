@@ -309,9 +309,16 @@ async function applyToDocument(client, docId, doc, rows) {
   await client.documents.locked(docId, async () => {
     let created = [];
     if (lemmas.length) {
-      const results = await client.batched(async (b) => {
-        lemmas.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
-      });
+      let results;
+      try {
+        results = await client.batched(async (b) => {
+          lemmas.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
+        });
+      } catch (e) {
+        // Past MAX_BATCH_OPS the requests before the refused one landed.
+        if (lemmas.length > MAX_BATCH_OPS) e.partial = true;
+        throw e;
+      }
       created = lemmas.map((w, i) => createdId(results[i]));
       lemmas.forEach((w, i) => lemmaOf.set(w.node, created[i]));
     }
