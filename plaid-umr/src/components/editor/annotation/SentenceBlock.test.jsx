@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CommentStore } from '@ui/domain/CommentStore.js';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
+import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider.jsx';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { keys } from '../../../lib/keymap.js';
 
@@ -238,6 +239,7 @@ describe('SentenceBlock text mode', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       penmanOf: () => '(s1l / leave-02)',
       planPenman: () => ({ changes: 1 }),
       applyPenman: () =>
@@ -281,6 +283,7 @@ describe('SentenceBlock review', () => {
     const doc = (open) => ({
       graph: {},
       canConfirmSentence: () => open,
+      canDiscardSentence: () => false,
       confirmSentence: async (i) => confirmed.push(i),
     });
     const r = await renderComponent(
@@ -309,6 +312,72 @@ describe('SentenceBlock review', () => {
   });
 });
 
+describe('SentenceBlock discard', () => {
+  const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const dialog = () => document.querySelector('[role="alertdialog"]');
+
+  const setup = async ({ readOnly = false, open = true } = {}) => {
+    const { sentence, nodesById } = fixture();
+    const discarded = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => open,
+      confirmSentence: async () => true,
+      canDiscardSentence: () => open,
+      discardPlan: () => ({ nodes: sentence.nodes.slice(0, 2), relations: sentence.edges }),
+      discardSentence: async (i) => discarded.push(i),
+    };
+    const r = await renderComponent(
+      <ConfirmProvider>
+        <SentenceBlock
+          doc={doc}
+          sentence={sentence}
+          nodesById={nodesById}
+          dataVersion={1}
+          readOnly={readOnly}
+        />
+      </ConfirmProvider>,
+    );
+    return { r, discarded };
+  };
+
+  it('offers Discard graph beside Accept graph, in the red outline, and asks first', async () => {
+    const { r, discarded } = await setup();
+    const discard = button(r.container, 'Discard graph');
+    expect(discard.classList).toContain('plaid-review--discard');
+    expect(discard.previousElementSibling.textContent.trim()).toBe('Accept graph');
+    await r.step(() => discard.click());
+    await r.step(() => wait(50));
+    expect(dialog()).not.toBeNull();
+    expect(dialog().querySelector('h2').textContent.trim()).toBe('Discard the drafted graph?');
+    expect(dialog().textContent).toContain('2 nodes and 3 relations. Restorable from History.');
+    expect(discarded).toEqual([]);
+    await r.step(() => button(dialog(), 'Discard').click());
+    await r.step(() => wait(50));
+    expect(discarded).toEqual([1]);
+    await r.unmount();
+  });
+
+  it('discards nothing when the question is cancelled', async () => {
+    const { r, discarded } = await setup();
+    await r.step(() => button(r.container, 'Discard graph').click());
+    await r.step(() => wait(50));
+    await r.step(() => button(dialog(), 'Cancel').click());
+    await r.step(() => wait(50));
+    expect(discarded).toEqual([]);
+    await r.unmount();
+  });
+
+  it('is not offered to a reader, at a past state, or with nothing drafted', async () => {
+    for (const opts of [{ readOnly: true }, { open: false }]) {
+      const { r } = await setup(opts);
+      expect(button(r.container, 'Discard graph')).toBeUndefined();
+      await r.unmount();
+    }
+  });
+});
+
 describe('SentenceBlock node menu', () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const nodeEl = (root, concept) =>
@@ -327,6 +396,7 @@ describe('SentenceBlock node menu', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       canConfirm: () => false,
       orphanedBy: () => [],
       deleteNode: (id) => deleted.push(id),
@@ -386,6 +456,7 @@ describe('SentenceBlock node menu, the last node', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       canConfirm: () => false,
       orphanedBy: () => [],
       deleteNode: (id) => deleted.push(id),
@@ -427,6 +498,7 @@ describe('SentenceBlock moving a node among its siblings', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       canConfirm: () => false,
       shiftEdge: (edgeId, step) => shifted.push([edgeId, step]),
     };
@@ -474,6 +546,7 @@ describe('SentenceBlock moving a node among its siblings, rebound', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       canConfirm: () => false,
       shiftEdge: (edgeId, step) => shifted.push([edgeId, step]),
     };
@@ -528,6 +601,7 @@ describe('SentenceBlock moving a node among its siblings, rebound', () => {
     const doc = {
       graph: {},
       canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
       canConfirm: () => false,
       setRoot: (id) => roots.push(id),
     };
@@ -564,7 +638,12 @@ describe('SentenceBlock moving a node among its siblings, rebound', () => {
 describe('SentenceBlock node menu, the move keys', () => {
   const rows = async (direction) => {
     const { sentence, nodesById } = fixture();
-    const doc = { graph: {}, canConfirmSentence: () => false, canConfirm: () => false };
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+    };
     const r = await renderComponent(
       <SentenceBlock
         doc={doc}
@@ -676,7 +755,12 @@ describe('SentenceBlock comments', () => {
   // editor (and was prevented, so the thread never opened).
   it("leaves the header's buttons their own keys while a node is focused", async () => {
     const store = await makeStore();
-    const doc = { canConfirmSentence: () => false, canConfirm: () => false, graph: {} };
+    const doc = {
+      canConfirmSentence: () => false,
+      canDiscardSentence: () => false,
+      canConfirm: () => false,
+      graph: {},
+    };
     const r = await mount({ comments: store, canComment: true, readOnly: false, doc });
     const node = r.container.querySelector('.umr-node');
     await r.step(() => node.focus());

@@ -47,12 +47,15 @@ function drafted(raw) {
   return raw;
 }
 
-const load = ({ machine = false, user = null, project = null } = {}) => {
+// `edit`, when given, changes the raw document before it loads.
+const load = ({ machine = false, user = null, project = null, edit = null } = {}) => {
   const plan = planImport(parseUmrFile(fs.readFileSync(FIXTURE, 'utf8')).sentences, []);
   const raw = rawFromPlan(plan);
+  if (machine) drafted(raw);
+  if (edit) edit(raw);
   const { client, calls } = recordingClient();
   const doc = new UmrDocument({
-    raw: machine ? drafted(raw) : raw,
+    raw,
     client,
     project,
     user,
@@ -342,4 +345,122 @@ test("a contributor's confirm is a contribution, never a verification", async ()
   const country = byVar(doc, 's1c');
   assert.equal(await doc.confirmNode(country.id), true);
   assert.equal(provState(doc.node(country.id).metadata), PROV_STATES.CONTRIBUTED);
+});
+
+// Discard graph: the sentence's drafted material goes, and what a person
+// made or accepted stays.
+const rawLayers = (raw) => {
+  const nodes = raw.textLayers[0].tokenLayers.find((l) => l.config?.umr?.nodes);
+  const concepts = nodes.spanLayers[0];
+  return {
+    spans: concepts.spans,
+    relations: concepts.relationLayers.flatMap((l) => l.relations || []),
+  };
+};
+const rawByVar = (raw, v) => rawLayers(raw).spans.find((s) => s.metadata?.umr?.var === v);
+const nodesOf = (doc, i) =>
+  doc
+    .sentence(i)
+    .nodes.map((n) => n.var)
+    .sort();
+const operations = (calls) => calls.filter((c) => c.name === 'operation').map((c) => c.args[0]);
+
+test("discarding a sentence's draft removes its drafted nodes and relations and nothing else", async () => {
+  const { doc, calls } = load({ machine: true });
+  const s2 = nodesOf(doc, 2);
+  const s1Triples = doc.sentence(1).triples.length;
+  assert.ok(s1Triples > 0, 'the fixture has triples in the first block');
+  assert.equal(doc.canDiscardSentence(1), true);
+  const plan = doc.discardPlan(1);
+  assert.equal(plan.nodes.length, doc.sentence(1).nodes.length);
+  assert.equal(await doc.discardSentence(1), true);
+  assert.deepEqual(operations(calls), ['Discard the drafted graph of sentence 1']);
+  assert.deepEqual(nodesOf(doc, 1), []);
+  assert.equal(doc.sentence(1).edges.length, 0);
+  // All but `root :modal author`, which every sentence's block writes, so
+  // it is not this sentence's alone to discard.
+  const left = doc.sentence(1).triples;
+  assert.deepEqual(
+    left.map((t) => [doc.node(t.source).var, t.rel, doc.node(t.target).var]),
+    [['root', ':modal', 'author']],
+  );
+  assert.ok(doc.sentence(2).triples.includes(left[0]));
+  // The next sentence keeps every node, and loses only the drafted
+  // coreference onto the first sentence's nodes.
+  assert.deepEqual(nodesOf(doc, 2), s2);
+  assert.ok(
+    doc.sentence(2).triples.every((t) => doc.node(t.source) && doc.node(t.target)),
+    'no triple is left hanging',
+  );
+  // The anchors go in one bulk delete, whose cascade takes the spans and
+  // every relation on them.
+  const deleted = calls.find((c) => c.name === 'tokens.bulkDelete').args[0];
+  assert.equal(deleted.length, plan.nodes.flatMap((n) => n.pieces).length);
+  // Nothing is left to discard.
+  assert.equal(doc.canDiscardSentence(1), false);
+  const before = calls.length;
+  assert.equal(await doc.discardSentence(1), false);
+  assert.equal(calls.length, before);
+});
+
+test('discarding keeps an accepted node, and the node its accepted relation needs', async () => {
+  const { doc } = load({ machine: true });
+  const country = byVar(doc, 's1c');
+  // Accepts s1c and its :place edge from the root s1p.
+  assert.equal(await doc.confirmNode(country.id), true);
+  assert.equal(await doc.discardSentence(1), true);
+  // s1l stays, still drafted, since the accepted :place hangs from it.
+  assert.deepEqual(nodesOf(doc, 1), ['s1c', 's1l']);
+  assert.deepEqual(
+    doc.sentence(1).edges.map((e) => e.role),
+    [':place'],
+  );
+  assert.equal(provState(byVar(doc, 's1l').metadata), PROV_STATES.MACHINE);
+  // What stays drafted is kept for Accept graph, and Discard has nothing left.
+  assert.equal(doc.canConfirmSentence(1), true);
+  assert.equal(doc.canDiscardSentence(1), false);
+});
+
+test("discarding keeps a person's node, a contributor's node, and a node a person's triple needs", async () => {
+  const { doc, calls } = load({
+    machine: true,
+    edit: (raw) => {
+      // s1d a person's own, s1f a contributor's.
+      const human = rawByVar(raw, 's1d');
+      delete human.metadata[PROV.key];
+      delete human.metadata[PROV.sourceKey];
+      Object.assign(rawByVar(raw, 's1f').metadata, {
+        [PROV.key]: PROV.CONTRIBUTED,
+        [PROV.sourceKey]: `user:${CONTRIBUTOR}`,
+      });
+      // A person wrote sentence 3's coreference onto s1m, accepted.
+      const m = rawByVar(raw, 's1m');
+      const triple = rawLayers(raw).relations.find(
+        (r) => r.value === ':same-event' && (r.source === m.id || r.target === m.id),
+      );
+      assert.ok(triple, 'the fixture corefers s1m with sentence 3');
+      triple.metadata[PROV.confirmedKey] = true;
+    },
+  });
+  assert.equal(await doc.discardSentence(1), true);
+  assert.deepEqual(nodesOf(doc, 1), ['s1d', 's1f', 's1m']);
+  // The drafted edges among what stays go too, so the kept nodes stand alone.
+  assert.equal(doc.sentence(1).edges.length, 0);
+  assert.ok(calls.some((c) => c.name === 'relations.delete'));
+  const m = byVar(doc, 's1m');
+  assert.deepEqual(
+    [...m.docIn, ...m.docOut].map((t) => t.rel),
+    [':same-event'],
+  );
+});
+
+test('discarding writes nothing at a past state', async () => {
+  const { doc } = load({ machine: true });
+  const past = doc._snapshot(doc._raw, '2026-01-01T00:00:00Z');
+  const errors = [];
+  past.onError = (msg) => errors.push(msg);
+  const nodes = past.sentence(1).nodes.length;
+  assert.equal(await past.discardSentence(1), false);
+  assert.equal(past.sentence(1).nodes.length, nodes);
+  assert.equal(errors.length, 1);
 });

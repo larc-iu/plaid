@@ -129,6 +129,10 @@ A node with no anchor (`person`, `name`, a `-91` roleset) is drawn hollow and si
 A node a service drafted has a dashed violet border, and one made by a member whose work the project reviews a dashed amber one. The mark goes when you edit the node, which records it as yours.
 To accept a node as it stands, choose **Accept** on its menu or press Ctrl+Enter (Cmd+Enter). That accepts the node and its relation to its parent. **Accept graph** beside a sentence accepts every node and relation of it.
 An accepted node is kept when a draft overwrites the sentence.
+**Discard graph** beside it deletes the drafted nodes and relations of the sentence that nobody has accepted, after asking.
+It keeps what a person made, what a member whose work the project reviews made, and what was accepted, and a drafted node that one of those relations hangs from or points to.
+A drafted relation between two nodes that stay is deleted, and so is one another sentence has onto a deleted node.
+History lists it as one change.
 The root's concept is underlined.
 
 == Edges

@@ -11,6 +11,8 @@ import {
   isReviewed,
   mergeMetadata,
   metadataOps,
+  provState,
+  PROV_STATES,
   writerPolicy,
 } from '@larc-iu/plaid-client';
 import { DocumentModel } from '../../../plaid-ui/src/domain/DocumentModel.js';
@@ -1141,6 +1143,84 @@ export class UmrDocument extends DocumentModel {
       sentence.nodes,
       'Failed to accept the graph',
       `Accept the graph of sentence ${sentenceIndex}`,
+    );
+  }
+
+  // What discarding a sentence's draft removes. Drafted means machine-made
+  // and not accepted (provState MACHINE): a person's own work, a
+  // contributor's, and anything accepted all stay. The sentence's drafted
+  // edges and the drafted triples its block writes go. A drafted node goes
+  // unless a relation that stays is on it: a person's edge or triple onto
+  // it, from this sentence or another, keeps the node it needs. The
+  // relations on a node that goes are then all drafted ones, another
+  // sentence's included, and the server's cascade takes them with it.
+  _discardPlan(sentence) {
+    const drafted = (x) => provState(x.metadata) === PROV_STATES.MACHINE;
+    const others = this.sentences.filter((s) => s !== sentence);
+    const ownTriples = sentence.triples.filter((t) => !others.some((s) => s.triples.includes(t)));
+    const relations = new Map();
+    [...sentence.edges, ...ownTriples].filter(drafted).forEach((r) => relations.set(r.id, r));
+    const nodes = sentence.nodes.filter(
+      (n) =>
+        !n.constant && drafted(n) && [...n.in, ...n.out, ...n.docIn, ...n.docOut].every(drafted),
+    );
+    const doomed = new Set(nodes.map((n) => n.id));
+    nodes.forEach((n) =>
+      [...n.in, ...n.out, ...n.docIn, ...n.docOut].forEach((r) => relations.set(r.id, r)),
+    );
+    // Deleted one by one only where both ends stay. The rest go with a node.
+    const explicit = [...relations.values()].filter(
+      (r) => !doomed.has(r.source) && !doomed.has(r.target),
+    );
+    return { nodes, relations: [...relations.values()], explicit };
+  }
+
+  /**
+   * What Discard graph would remove from a sentence: `{ nodes, relations }`,
+   * both empty when there is nothing drafted to discard.
+   */
+  discardPlan(sentenceIndex) {
+    const sentence = this.sentence(sentenceIndex);
+    if (!sentence) return { nodes: [], relations: [] };
+    const { nodes, relations } = this._discardPlan(sentence);
+    return { nodes, relations };
+  }
+
+  /** Whether discarding this sentence's draft would remove anything. */
+  canDiscardSentence(sentenceIndex) {
+    const { nodes, relations } = this.discardPlan(sentenceIndex);
+    return nodes.length > 0 || relations.length > 0;
+  }
+
+  /**
+   * Remove a sentence's drafted graph, keeping what a person made or
+   * accepted (see `_discardPlan`). One operation. Resolves false when there
+   * was nothing to discard.
+   */
+  discardSentence(sentenceIndex) {
+    const sentence = this.sentence(sentenceIndex);
+    if (!sentence) return Promise.resolve(false);
+    const { nodes, relations, explicit } = this._discardPlan(sentence);
+    if (!nodes.length && !relations.length) return Promise.resolve(false);
+    const label = 'Failed to discard the drafted graph';
+    if (!this._canWrite(label)) return Promise.resolve(false);
+    const spanIds = nodes.map((n) => n.id);
+    const tokenIds = nodes.flatMap((n) => n.pieces.map((p) => p.id));
+    const relationIds = new Set(explicit.map((r) => r.id));
+    this._applyRawPatch((next, infoNext) => {
+      const L = this._layers(infoNext);
+      infoNext.relationLayer.relations = L.relations.filter((r) => !relationIds.has(r.id));
+      infoNext.documentGraphLayer.relations = L.triples.filter((r) => !relationIds.has(r.id));
+      if (spanIds.length) this._dropSpans(infoNext, spanIds);
+    });
+    return this._queueWrite(
+      label,
+      () =>
+        this._client.batched(async (b) => {
+          explicit.forEach((r) => b.relations.delete(settledId(r.id)));
+          if (tokenIds.length) b.tokens.bulkDelete(tokenIds.map(settledId));
+        }),
+      `Discard the drafted graph of sentence ${sentenceIndex}`,
     );
   }
 

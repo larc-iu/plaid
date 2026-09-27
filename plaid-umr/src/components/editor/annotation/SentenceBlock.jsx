@@ -703,8 +703,8 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       const n = doomed.length;
       const ok = await confirm({
         title: edge
-          ? `Delete ${edge.role} and ${n} node${n === 1 ? '' : 's'}`
-          : `Delete ${n} nodes`,
+          ? `Delete ${edge.role} and ${n} node${n === 1 ? '' : 's'}?`
+          : `Delete ${n} nodes?`,
         description: `${doomed.map((d) => d.concept).join(', ')}. Restorable from History.`,
         confirmLabel: 'Delete',
         destructive: true,
@@ -734,6 +734,37 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const unfocus = () => {
     takeFocus(null);
     sectionRef.current?.focus({ preventScroll: true });
+  };
+
+  // Discard graph: the sentence's drafted nodes and relations go, after a
+  // question. What stays takes focus, since the button goes with the draft.
+  const discardRef = useRef(null);
+  const discardDraft = async () => {
+    const { nodes, relations } = doc.discardPlan(sentence.index);
+    if (!nodes.length && !relations.length) return;
+    const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+    const ok = await confirm({
+      title: 'Discard the drafted graph?',
+      description: `${[
+        nodes.length ? count(nodes.length, 'node') : null,
+        relations.length ? count(relations.length, 'relation') : null,
+      ]
+        .filter(Boolean)
+        .join(' and ')}. Restorable from History.`,
+      confirmLabel: 'Discard',
+      destructive: true,
+    });
+    if (!ok) {
+      requestAnimationFrame(() => discardRef.current?.focus());
+      return;
+    }
+    const gone = new Set(nodes.map((n) => n.id));
+    doc.discardSentence(sentence.index);
+    const left = sentence.nodes.find((n) => !gone.has(n.id));
+    requestAnimationFrame(() => {
+      if (left) focusNode(left.id);
+      else unfocus();
+    });
   };
 
   // ----- keys -----
@@ -1237,6 +1268,16 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             Accept graph
           </button>
         )}
+        {!readOnly && !textMode && doc?.canDiscardSentence(sentence.index) && (
+          <button
+            type="button"
+            ref={discardRef}
+            className="umr-text-toggle plaid-review plaid-review--discard"
+            onClick={discardDraft}
+          >
+            Discard graph
+          </button>
+        )}
         {!readOnly && (
           <button
             type="button"
@@ -1306,7 +1347,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
           onCancel={async (dirty) => {
             if (dirty) {
               const ok = await confirm({
-                title: 'Leave the text unapplied',
+                title: 'Leave the text unapplied?',
                 description: 'What was typed is not stored.',
                 confirmLabel: 'Leave',
                 destructive: true,

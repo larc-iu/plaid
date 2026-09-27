@@ -635,6 +635,77 @@ test.describe('editing', () => {
     }
   });
 
+  // Discard graph takes the drafted nodes and relations off a sentence, after
+  // a question, and keeps what was accepted with the node it hangs from.
+  test('Discard graph removes the draft and keeps what was accepted', async ({ page }) => {
+    const own = await makeDocument();
+    try {
+      const d = await own.client.documents.get(own.documentId, true);
+      const concepts = d.textLayers[0].tokenLayers.find((t) => t.name === 'UMR nodes')
+        .spanLayers[0];
+      const drafted = [
+        { op: 'set', path: ['prov'], value: 'inferred' },
+        { op: 'set', path: ['provSource'], value: 'service:e2e' },
+      ];
+      const eat = concepts.spans.find((s) => s.value === 'eat-01');
+      const purpose = concepts.relationLayers
+        .flatMap((l) => l.relations || [])
+        .find((r) => r.value === ':purpose');
+      const accepted = new Set([eat.id, purpose.id]);
+      const stamp = (id) =>
+        accepted.has(id)
+          ? [...drafted, { op: 'set', path: ['provConfirmed'], value: true }]
+          : drafted;
+      for (const s of concepts.spans) await own.client.spans.patchMetadata(s.id, stamp(s.id));
+      for (const r of concepts.relationLayers.flatMap((l) => l.relations || [])) {
+        await own.client.relations.patchMetadata(r.id, stamp(r.id));
+      }
+      const diag = collectClientErrors(page);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
+      const block = page.locator('.umr-block').first();
+      await expect(block.locator('.umr-edge-label').first()).toBeVisible();
+      await expect(block.locator('.umr-node')).toHaveCount(4);
+
+      const discard = block.getByRole('button', { name: 'Discard graph' });
+      await expect(discard).toHaveCSS('color', 'rgb(220, 38, 38)');
+      // Keyboard: the button takes focus and Enter asks.
+      await discard.focus();
+      await page.keyboard.press('Enter');
+      const dialog = page.getByRole('alertdialog', { name: 'Discard the drafted graph?' });
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toContainText('2 nodes and 5 relations. Restorable from History.');
+      await dialog.getByRole('button', { name: 'Discard' }).click();
+
+      // leave-02 stays, still drafted, for the accepted :purpose under it.
+      await expect(block.locator('.umr-node')).toHaveCount(2);
+      await expect(nodeByConcept(page, 'eat-01')).toBeVisible();
+      await expect(nodeByConcept(page, 'leave-02')).toHaveClass(/umr-node--machine/);
+      await expect(discard).toHaveCount(0);
+      await expect(block.getByRole('button', { name: 'Accept graph' })).toBeVisible();
+      await expect
+        .poll(async () => {
+          const after = await own.client.documents.get(own.documentId, true);
+          const layer = after.textLayers[0].tokenLayers.find((t) => t.name === 'UMR nodes')
+            .spanLayers[0];
+          return {
+            concepts: layer.spans
+              .filter((s) => !s.metadata?.umr?.constant)
+              .map((s) => s.value)
+              .sort(),
+            relations: layer.relationLayers.flatMap((l) => l.relations || []).map((r) => r.value),
+          };
+        })
+        .toEqual({ concepts: ['eat-01', 'leave-02'], relations: [':purpose'] });
+
+      const clean = cleanDiagnostics(diag);
+      expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+      expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+    } finally {
+      await own.client.documents.delete(own.documentId);
+    }
+  });
+
   // Text mode shows every node of the sentence: a part the root does not
   // reach is a graph of its own after the root's, applying the text as shown
   // changes nothing, and a node taken out of the text goes. A role UMR does
