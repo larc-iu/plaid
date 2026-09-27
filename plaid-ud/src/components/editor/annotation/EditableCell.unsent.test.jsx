@@ -3,6 +3,7 @@ import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { type, focus, blur } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // A value that was not saved (refused, or queued behind a refused edit and so
 // never sent) comes back into its cell, stays there while the stored value is
@@ -75,5 +76,27 @@ describe('a value that was not saved', () => {
     await rerender(cellWith(s, 'cat'));
     expect(input.value).toBe('cat');
     await unmount();
+  });
+
+  it('makes leaving ask while it sits in the cell, until the cell is taken up again', async () => {
+    const { input, rerender, step, s, unmount } = await refused({ refetchFirst: true });
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    await rerender(cellWith(s, ''));
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    // Taken up again, leaving the cell sends it: nothing is left to ask about.
+    await step(async () => focus(input));
+    expect(hasUnsavedDraft()).toBe(null);
+    await unmount();
+  });
+
+  it('stops asking when the stored value moves on, or the cell goes', async () => {
+    const first = await refused({ refetchFirst: true });
+    await first.rerender(cellWith(first.s, 'cat'));
+    expect(hasUnsavedDraft()).toBe(null);
+    await first.unmount();
+    const second = await refused({ refetchFirst: false });
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    await second.unmount();
+    expect(hasUnsavedDraft()).toBe(null);
   });
 });

@@ -19,6 +19,7 @@ import { tagsetEnforces, validateValue } from '@/domain/tagsets';
 import { handleComposeBeforeInput } from '@/lib/composeInput';
 import { isVirtualMorphemeId, virtualMorphemeWordId } from '@/domain/virtualMorpheme.js';
 import { precedentFetchedAt } from '@/domain/precedentCache';
+import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 import {
   cellTier,
   PRECEDENT_REFRESH_MIN_MS,
@@ -194,6 +195,11 @@ export class IgtEditor {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', this._onBeforeUnload);
+    // The cells holding a value put back unsent, each registered with the
+    // leave question (_syncUnsentDrafts). Focusing one takes it up again.
+    this._unsentDrafts = new Set();
+    this._onFocusIn = () => queueMicrotask(() => this._syncUnsentDrafts());
+    this.container.addEventListener('focusin', this._onFocusIn);
     this._onAssistantFocus = this._onAssistantFocus.bind(this);
     window.addEventListener('igt:focus-sentence', this._onAssistantFocus);
     this._onDockWidth = this._onDockWidth.bind(this);
@@ -382,6 +388,8 @@ export class IgtEditor {
     window.removeEventListener('scroll', this._onWinChange, true);
     window.removeEventListener('resize', this._onWinChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
+    this.container.removeEventListener('focusin', this._onFocusIn);
+    this._syncUnsentDrafts();
     window.removeEventListener('igt:focus-sentence', this._onAssistantFocus);
     window.removeEventListener('resize', this._onDockWidth);
     document.removeEventListener('visibilitychange', this._onVisibility);
@@ -415,6 +423,31 @@ export class IgtEditor {
     const el = document.activeElement;
     if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
     return (el.value ?? '') !== (el.dataset.orig ?? '');
+  }
+
+  // Every cell holding a value put back unsent (cells.js _restoreUnsent),
+  // unfocused, is a draft for the leave question, so an in-app link or Back
+  // asks about it as closing the tab does. One registration per cell, so the
+  // question counts them. A cell drops out when it is focused (leaving it
+  // sends the value), when the stored value moves on (uncontrolledValue), when
+  // it is no longer drawn, and with the island.
+  _syncUnsentDrafts() {
+    const now = new Set();
+    if (!this._destroyed) {
+      for (const cell of this.container.querySelectorAll('.igt-field')) {
+        if (cell.igtUnsent) now.add(cell);
+      }
+    }
+    for (const cell of this._unsentDrafts) {
+      if (now.has(cell)) continue;
+      this._unsentDrafts.delete(cell);
+      setUnsavedDraft(cell, null);
+    }
+    for (const cell of now) {
+      if (this._unsentDrafts.has(cell)) continue;
+      this._unsentDrafts.add(cell);
+      setUnsavedDraft(cell, 'An annotation you have typed', 'annotations you have typed');
+    }
   }
 
   _scheduleRender() {
@@ -486,6 +519,7 @@ export class IgtEditor {
       Object.keys(this.doc.vocabularies || {}).length > 0,
     );
     render(this._template(), this.container);
+    this._syncUnsentDrafts();
     // The pill lives in a nested root the template above does not write, so a
     // fresh toolbar comes back empty until this puts it back.
     this._paintStatus();
@@ -776,6 +810,14 @@ Object.assign(
   grid,
   vocabPopover,
 );
+
+// A value put back unsent is a draft the leave question asks about. The put-back
+// is the cells mixin's, and the leave question's wiring is the editor's.
+const { _restoreUnsent } = cells;
+IgtEditor.prototype._restoreUnsent = function restoreUnsent(...args) {
+  _restoreUnsent.apply(this, args);
+  this._syncUnsentDrafts();
+};
 
 // ---------------------------------------------------------------------------
 // Hot reload

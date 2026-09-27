@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { IgtEditor } from './IgtEditor.js';
 import { IgtDocument } from '@/domain/IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from '@/domain/test-helpers.js';
+import { hasUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // Values put back into their cells after they were not saved (a refusal, or
 // an edit queued behind one): what keeps them on screen, and what counts them
@@ -119,6 +120,42 @@ describe('the island asks before the tab closes', () => {
     const e = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
+  });
+});
+
+describe('an in-app way out asks', () => {
+  it('while a value put back unsaved sits in a cell without focus, until the cell is taken up again', async () => {
+    const { doc, client } = mount();
+    const b = cell('ma:m-2:Gloss');
+    const { c } = await refuseFirst(doc, client, async () => {
+      focus(b);
+      type(b, 'BBB');
+    });
+    type(c, c.dataset.orig ?? '');
+    expect(b.value).toBe('BBB');
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    // A later render with the stored value unchanged keeps the question.
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
+    await settle();
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    // Taken up again, leaving the cell sends it, so there is nothing to ask.
+    focus(b);
+    await settle();
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('no longer once the island is gone', async () => {
+    const { doc, client } = mount();
+    const b = cell('ma:m-2:Gloss');
+    const { c } = await refuseFirst(doc, client, async () => {
+      focus(b);
+      type(b, 'BBB');
+    });
+    type(c, c.dataset.orig ?? '');
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    editor.destroy();
+    editor = null;
+    expect(hasUnsavedDraft()).toBe(null);
   });
 });
 

@@ -12,6 +12,7 @@ import { NO_OPTIONS, tabTooSoon } from './cellInput.js';
 import { useEditorSession, controlledField } from './editorSession.js';
 import { caretAtArrowEdge } from '@ui/lib/bidi.js';
 import { textIncludes } from '@ui/domain/collation.js';
+import { useUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
 // Editable cell component for annotation fields
 export const EditableCell = React.memo(
@@ -92,6 +93,13 @@ export const EditableCell = React.memo(
     isEditingRef.current = isEditing;
     // A value put back after it was not saved, `{ typed, saved }` (`putBack`).
     const unsentRef = useRef(null);
+    // While one sits in the cell unfocused, leaving the document asks first.
+    // Focusing the cell takes it up again, and leaving the cell then sends it.
+    const [unsentShown, setUnsentShown] = useState(false);
+    useUnsavedDraft(
+      unsentShown ? 'An annotation you have typed' : null,
+      'annotations you have typed',
+    );
 
     // Sync localValue ONLY when the external `value` prop actually changes (e.g.
     // the server-confirmed optimistic patch, a reload, or another annotator).
@@ -107,6 +115,7 @@ export const EditableCell = React.memo(
       if (unsent) {
         if ((value || '') === unsent.saved) return;
         unsentRef.current = null;
+        setUnsentShown(false);
       }
       if (!isEditingRef.current) {
         valueRef.current = value || '';
@@ -125,6 +134,7 @@ export const EditableCell = React.memo(
       if (isEditingRef.current && typedRef.current) return;
       unsentRef.current = { typed, saved: unsentRef.current?.saved ?? saved };
       setValue(typed);
+      setUnsentShown(!isEditingRef.current);
     };
 
     const handleChange = (e) => {
@@ -163,6 +173,7 @@ export const EditableCell = React.memo(
       setIsEditing(false);
       setPrecedent(null);
       unsentRef.current = null;
+      setUnsentShown(false);
       if (cancelledRef.current) {
         cancelledRef.current = false;
         setValue(value || '');
@@ -317,6 +328,7 @@ export const EditableCell = React.memo(
       swappingRef.current = false;
       reentryRef.current = false;
       setIsEditing(true);
+      setUnsentShown(false);
       setPristine(true);
       if (arriving) typedRef.current = false;
       selectOnArrival();
