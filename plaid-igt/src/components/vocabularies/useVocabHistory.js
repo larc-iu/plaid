@@ -8,14 +8,19 @@ import { notifyError } from '@/utils/feedback';
 // own log (`vocabLayers.audit`) and its as-of read (`vocabLayers.get` with a
 // time), which a document's hook cannot reach.
 //
-// The rail lists every change to the vocabulary and its entries. Links are not
-// in it: a link is annotation, and shows in its document's history.
+// The rail lists every change to the vocabulary and its entries, or, opened
+// from one entry (`openHistory(itemId)`), only the changes that wrote that
+// entry. Links are not in it: a link is annotation, and shows in its
+// document's history.
 //
 // `selected` flips the moment an entry is picked, so the screen goes read-only
 // at once. `past` (`{ time, vocabulary }`) is what is on screen, and lands when
 // its read does. A read overtaken by a later pick is dropped.
 export function useVocabHistory({ client, vocabularyId, onExpired }) {
   const [open, setOpen] = useState(false);
+  // The entry whose changes the rail lists, or null for the whole vocabulary.
+  const [itemId, setItemId] = useState(null);
+  const scopeRef = useRef(null);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +42,8 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     pickRef.current += 1;
     loadedRef.current = false;
     shownRef.current = null;
+    scopeRef.current = null;
+    setItemId(null);
     setOpen(false);
     setEntries([]);
     setError('');
@@ -57,7 +64,13 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     const mine = ++readRef.current;
     if (!loadedRef.current) setLoading(true);
     try {
-      const list = await client.vocabLayers.audit(vocabularyId);
+      const list = await client.vocabLayers.audit(
+        vocabularyId,
+        undefined,
+        undefined,
+        undefined,
+        scopeRef.current ?? undefined,
+      );
       if (mine !== readRef.current) return;
       loadedRef.current = true;
       setEntries(list || []);
@@ -71,7 +84,17 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     }
   }, [client, vocabularyId]);
 
-  const openHistory = () => {
+  // `id` is an entry's, or anything else (a click event) for the whole
+  // vocabulary. A new scope starts from an empty list.
+  const openHistory = (id) => {
+    const scope = typeof id === 'string' ? id : null;
+    if (scope !== scopeRef.current) {
+      scopeRef.current = scope;
+      loadedRef.current = false;
+      setEntries([]);
+      setError('');
+    }
+    setItemId(scope);
     setOpen(true);
     readLog();
   };
@@ -103,6 +126,9 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
 
   const closeHistory = () => {
     setOpen(false);
+    scopeRef.current = null;
+    loadedRef.current = false;
+    setItemId(null);
     if (selected) select(null);
   };
 
@@ -115,6 +141,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
 
   return {
     open,
+    itemId,
     openHistory,
     closeHistory,
     entries,

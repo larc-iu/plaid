@@ -1030,8 +1030,8 @@ export const VocabularyDetail = () => {
                 variant="outline"
                 size="sm"
                 className="shrink-0 gap-1.5"
-                onClick={history.openHistory}
-                disabled={history.open}
+                onClick={() => history.openHistory()}
+                disabled={history.open && !history.itemId}
               >
                 <History className="h-4 w-4" /> History
               </Button>
@@ -1102,6 +1102,7 @@ export const VocabularyDetail = () => {
                 canRestore={canManageVocabulary(vocabulary, user)}
                 onRestored={history.backToNow}
                 onOpenHistory={history.openHistory}
+                historyItemId={history.itemId}
               />
             </TabsContent>
 

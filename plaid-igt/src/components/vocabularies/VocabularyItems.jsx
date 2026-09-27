@@ -118,6 +118,7 @@ export const VocabularyItems = ({
   canRestore = false,
   onRestored = null,
   onOpenHistory = null,
+  historyItemId = null,
 }) => {
   // Re-render on comment changes, so the per-entry counts stay in step.
   useCommentStore(comments);
@@ -348,6 +349,14 @@ export const VocabularyItems = ({
   // Ask sets a focus and the SHELL opens the panel on it, so in a window with
   // no room for a panel the button did nothing at all when pressed.
   const wideEnoughForAssistant = useWideEnoughToDock();
+
+  // A rail opened from one entry lists that entry's changes, and follows the
+  // entry the reader opens next.
+  const followId =
+    historyItemId && selectedItem && selectedItem.id !== historyItemId ? selectedItem.id : null;
+  useEffect(() => {
+    if (followId && onOpenHistory) onOpenHistory(followId);
+  }, [followId, onOpenHistory]);
 
   const askAssistant = useAskAssistant();
   const askAboutEntry = () => {
@@ -1236,7 +1245,7 @@ export const VocabularyItems = ({
                     variant="ghost"
                     size="sm"
                     className="gap-1.5"
-                    onClick={onOpenHistory}
+                    onClick={() => onOpenHistory(selectedItem.id)}
                   >
                     <History className="h-3.5 w-3.5" /> History
                   </Button>

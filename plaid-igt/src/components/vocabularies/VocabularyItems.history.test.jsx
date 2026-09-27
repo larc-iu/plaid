@@ -242,3 +242,26 @@ describe('the Entries tab at a past state', () => {
     await view.unmount();
   });
 });
+
+describe("an entry's History", () => {
+  it('opens the rail on the entry, and follows the entry opened next', async () => {
+    const client = makeClient();
+    const opened = [];
+    const view = await mount(client, '/vocabularies/v1?item=a', {
+      past: null,
+      onOpenHistory: (id) => opened.push(id),
+    });
+    await view.step(() => button('History').click());
+    expect(opened).toEqual(['a']);
+    await view.unmount();
+
+    const followed = [];
+    const again = await mount(client, '/vocabularies/v1?item=a', {
+      past: null,
+      historyItemId: 'b',
+      onOpenHistory: (id) => followed.push(id),
+    });
+    expect(followed).toEqual(['a']);
+    await again.unmount();
+  });
+});

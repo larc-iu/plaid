@@ -985,7 +985,8 @@ It lists every change to the vocabulary and to its entries: an entry added, edit
 Links are not in it: linking a word is annotation, and shows in the document's history.
 
 Selecting a history entry shows the vocabulary's entries as they were right after that change, read-only on the **Entries** tab, entries deleted since included.
-**History** on an open entry opens the same list with that entry kept open, so each state you select shows that entry as it was then.
+**History** on an open entry lists only the changes to that entry, and keeps it open, so each state you select shows that entry as it was then.
+Opening another entry lists that entry's changes instead, and **History** beside the vocabulary's name lists every change again.
 
 To put one entry back as it was, open it in the past state and click **Restore**.
 A dialog lists what changes: the form and each field set back, or, for an entry deleted since, the whole entry.

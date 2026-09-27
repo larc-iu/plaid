@@ -56,17 +56,22 @@ const client = {
         ...(asOf ? { items: [{ id: 'a', form: 'kai' }] } : {}),
       };
     },
-    audit: async () => [
-      {
-        id: 'op1',
-        time: THEN,
-        endTime: THEN,
-        message: 'Edit entry "kai"',
-        ops: [{ id: 'op1', time: THEN, description: 'Update vocab item x' }],
-      },
-    ],
+    audit: async (...args) => {
+      audits.push(args);
+      return log;
+    },
   },
 };
+const audits = [];
+const log = [
+  {
+    id: 'op1',
+    time: THEN,
+    endTime: THEN,
+    message: 'Edit entry "kai"',
+    ops: [{ id: 'op1', time: THEN, description: 'Update vocab item x' }],
+  },
+];
 
 const settle = async (view) => {
   for (let i = 0; i < 4; i++) await view.step(async () => {});
@@ -138,6 +143,29 @@ describe('the vocabulary History', () => {
     expect(shown.props.vocabularyId).toBe('B');
     expect(shown.props.past).toBeNull();
     expect(document.body.textContent).not.toContain('Read-only. This is the vocabulary as of');
+    await view.unmount();
+  });
+
+  it("lists one entry's changes from the entry's History, and every change from the vocabulary's", async () => {
+    auth.client = client;
+    audits.length = 0;
+    const view = await renderComponent(
+      <MemoryRouter initialEntries={['/vocabularies/A']}>
+        <Routes>
+          <Route path="/vocabularies/:vocabularyId" element={<VocabularyDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await settle(view);
+    await view.step(() => shown.props.onOpenHistory('a'));
+    await settle(view);
+    expect(audits.at(-1)).toEqual(['A', undefined, undefined, undefined, 'a']);
+    expect(shown.props.historyItemId).toBe('a');
+    // The vocabulary's own button widens the rail to every change.
+    await view.step(() => button('History').click());
+    await settle(view);
+    expect(audits.at(-1)).toEqual(['A', undefined, undefined, undefined, undefined]);
+    expect(shown.props.historyItemId).toBeNull();
     await view.unmount();
   });
 });
