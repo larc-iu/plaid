@@ -232,7 +232,7 @@ export const AdminAssistant = ({ client }) => {
             avatarHash={r.user?.avatarHash}
             className="h-6 w-6"
           />
-          <span>{r.userName}</span>
+          <span className="whitespace-nowrap">{r.userName}</span>
         </div>
       ),
     },
@@ -250,7 +250,9 @@ export const AdminAssistant = ({ client }) => {
       // belong to an app whose routes this one does not know.
       render: (r) =>
         !r.projectExists ? (
-          <Badge variant="outline">Deleted project</Badge>
+          <Badge variant="outline" className="whitespace-nowrap">
+            Deleted project
+          </Badge>
         ) : r.app === OWN_APP ? (
           <Link to={`/projects/${r.projectId}`} className="hover:underline">
             {r.projectName}
@@ -279,7 +281,7 @@ export const AdminAssistant = ({ client }) => {
       key: 'updated',
       label: 'Updated',
       sort: (r) => (r.updatedAt ? new Date(r.updatedAt).getTime() : null),
-      className: 'text-muted-foreground',
+      className: 'whitespace-nowrap text-muted-foreground',
       render: (r) => <span title={fullTimestamp(r.updatedAt)}>{timeAgo(r.updatedAt)}</span>,
     },
   ];
