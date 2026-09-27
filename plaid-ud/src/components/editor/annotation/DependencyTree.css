@@ -140,6 +140,12 @@
   cursor: pointer;
   font-family: sans-serif;
   outline: none;
+  /* A halo in the page colour, so a line crossing the label (a root line or a
+     leg in a non-projective tree) stops at its letters. */
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .tree-deprel-text--focused {
@@ -188,6 +194,10 @@
   font-family: sans-serif;
   text-anchor: middle;
   fill: currentColor;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* An arc for the enhanced graph, drawn under the words from the start of the
