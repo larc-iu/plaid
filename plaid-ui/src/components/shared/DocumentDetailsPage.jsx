@@ -112,7 +112,7 @@ export const DocumentDetailsPage = ({ metadata: Metadata = null, context = null 
   const handleDelete = async () => {
     const label = doc.name || 'this document';
     const ok = await confirm({
-      title: `Delete “${label}”`,
+      title: doc.name ? `Delete “${doc.name}”?` : 'Delete document?',
       description: 'This cannot be undone.',
       confirmLabel: 'Delete',
       destructive: true,

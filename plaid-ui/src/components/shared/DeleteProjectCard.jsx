@@ -83,7 +83,7 @@ export const DeleteProjectCard = ({ project }) => {
         onOpenChange={(next) => {
           if (!next && !deleting) setOpen(false);
         }}
-        title="Delete project"
+        title="Delete project?"
         confirmLabel={deleting ? 'Deleting…' : 'Delete project'}
         confirmDisabled={!matches}
         busy={deleting}

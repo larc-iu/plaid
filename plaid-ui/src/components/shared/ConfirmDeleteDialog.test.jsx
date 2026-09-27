@@ -12,7 +12,7 @@ const button = (text) =>
 
 const mount = (props = {}) =>
   renderComponent(
-    <ConfirmDeleteDialog open onOpenChange={() => {}} title="Delete field “Gloss”" {...props}>
+    <ConfirmDeleteDialog open onOpenChange={() => {}} title="Delete field “Gloss”?" {...props}>
       <p>12 annotations.</p>
     </ConfirmDeleteDialog>,
   );
@@ -22,7 +22,7 @@ describe('ConfirmDeleteDialog', () => {
     const view = await mount();
     const box = dialog();
     const title = box.querySelector('h2');
-    expect(title.textContent).toBe('Delete field “Gloss”');
+    expect(title.textContent).toBe('Delete field “Gloss”?');
     expect(title.querySelector('svg.lucide-triangle-alert, svg.lucide-alert-triangle')).not.toBe(
       null,
     );

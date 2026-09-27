@@ -142,7 +142,7 @@ export const TextEditor = () => {
     // clear cascades into that app's tokens/annotations, so warn explicitly.
     const shared = hasForeignSubstrateParticipants(doc.layerInfo);
     const ok = await confirm({
-      title: 'Clear all tokens',
+      title: 'Clear all tokens?',
       description: shared
         ? 'These tokens are shared with another app on this project, such as interlinear ' +
           "glossing. Clearing them here also deletes that app's annotations on this " +
@@ -187,7 +187,7 @@ export const TextEditor = () => {
       .filter(Boolean)
       .join(' and ');
     const ok = await confirm({
-      title: 'Delete token',
+      title: 'Delete token?',
       description:
         `Deleting “${surface}” also deletes ${losses} from another app on this ` +
         'project, such as interlinear glossing, which are not visible in this editor. ' +

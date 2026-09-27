@@ -112,7 +112,7 @@ describe('revoking a token', () => {
 
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        description: expect.stringContaining('Stanza parser'),
+        title: 'Revoke “Stanza parser”?',
         destructive: true,
       }),
     );

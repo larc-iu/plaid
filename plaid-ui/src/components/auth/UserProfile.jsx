@@ -144,8 +144,8 @@ export const UserProfile = ({ className, children }) => {
 
   const handleRevokeToken = async (token) => {
     const ok = await confirm({
-      title: 'Revoke API token',
-      description: `Revoke ${token.name}? Any service using it loses access immediately. This cannot be undone.`,
+      title: `Revoke “${token.name}”?`,
+      description: 'Any service using this token loses access immediately. This cannot be undone.',
       confirmLabel: 'Revoke',
       destructive: true,
     });

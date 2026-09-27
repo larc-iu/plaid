@@ -206,7 +206,7 @@ export const UserAdminDialogs = ({ controller }) => {
         onOpenChange={(o) => {
           if (!o && !deactivating) setDeactivateTarget(null);
         }}
-        title="Deactivate user"
+        title="Deactivate user?"
         confirmLabel={deactivating ? 'Deactivating…' : 'Deactivate'}
         busy={deactivating}
         onConfirm={(e) => {

@@ -65,7 +65,7 @@ export const RewritePreview = ({ rows, selected, onSelect, hrefFor, canApply, bu
 
   const confirmApply = async () => {
     const ok = await confirm({
-      title: 'Apply changes',
+      title: 'Apply changes?',
       description: `${plural(chosen.length, 'sentence')} in ${plural(chosenDocs.size, 'document')}.`,
       confirmLabel: 'Apply',
     });

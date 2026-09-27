@@ -238,7 +238,7 @@ describe('the document details screen', () => {
     expect(deleteDocument).toHaveBeenCalledWith('d1');
     // One question, the delete's own: there is nothing left to rename.
     expect(confirm).toHaveBeenCalledTimes(1);
-    expect(confirm.mock.calls[0][0].title).toBe('Delete “One”');
+    expect(confirm.mock.calls[0][0].title).toBe('Delete “One”?');
     expect(path).toBe('/projects/p1/documents');
     await tick();
     expect(idx()).toBe(0);
