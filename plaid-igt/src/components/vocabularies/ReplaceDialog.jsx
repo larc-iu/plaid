@@ -180,7 +180,7 @@ export const ReplaceDialog = ({
             error,
             `Replaced ${done.toLocaleString()} of ${writes.length.toLocaleString()}.`,
           ),
-          'Replace failed',
+          'Failed to replace',
         );
       }
     } finally {
@@ -193,7 +193,7 @@ export const ReplaceDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Find and Replace</DialogTitle>
+          <DialogTitle>Find and replace</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">

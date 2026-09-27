@@ -54,10 +54,10 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
       await client.vocabLayers.addMaintainer(vocabularyId, userId);
       await onDataUpdate();
       search.setQuery('');
-      notifySuccess('User has been added as a maintainer', 'Maintainer added');
+      notifySuccess('Maintainer added');
     } catch (err) {
       console.error('Error adding maintainer:', err);
-      notifyError('Failed to add maintainer', 'Error');
+      notifyError(err, 'Failed to add the maintainer');
     } finally {
       setUpdatingUser(null);
     }
@@ -65,20 +65,17 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
 
   const handleRemoveMaintainer = async (userId) => {
     if (userId === user.id) {
-      notifyError(
-        'You cannot remove yourself as a maintainer of the vocabulary',
-        'Cannot remove own permissions',
-      );
+      notifyError('You cannot remove yourself as a maintainer of the vocabulary.', 'Not removed');
       return;
     }
     try {
       setUpdatingUser(userId);
       await client.vocabLayers.removeMaintainer(vocabularyId, userId);
       await onDataUpdate();
-      notifySuccess('User has been removed as a maintainer', 'Maintainer removed');
+      notifySuccess('Maintainer removed');
     } catch (err) {
       console.error('Error removing maintainer:', err);
-      notifyError('Failed to remove maintainer', 'Error');
+      notifyError(err, 'Failed to remove the maintainer');
     } finally {
       setUpdatingUser(null);
     }
@@ -90,9 +87,9 @@ export const VocabularyMaintainers = ({ vocabulary, user, vocabularyId, client, 
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="text-sm">
-            <p className="font-medium">Access Denied</p>
+            <p className="font-medium">No access</p>
             <p className="mt-1 text-muted-foreground">
-              You need maintainer permissions to manage vocabulary access.
+              Only this vocabulary's maintainers can change who maintains it.
             </p>
           </div>
         </div>

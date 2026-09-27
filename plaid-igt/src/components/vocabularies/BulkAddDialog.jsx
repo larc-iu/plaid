@@ -53,9 +53,9 @@ const NO_TAGSETS = () => null;
 // The three steps a person walks. `running` is an outcome, not a step, so it
 // carries its own title and no counter.
 const STEPS = {
-  source: { title: 'Bulk Add Entries', n: 1 },
-  columns: { title: 'Map Columns', n: 2 },
-  review: { title: 'Review Changes', n: 3 },
+  source: { title: 'Bulk Add entries', n: 1 },
+  columns: { title: 'Map columns', n: 2 },
+  review: { title: 'Review changes', n: 3 },
 };
 const WIZARD_STEPS = Object.keys(STEPS).length;
 
@@ -426,7 +426,7 @@ export const BulkAddDialog = ({
       console.error('Could not read the file:', err);
       notifyError(
         err instanceof NotUtf8FileError ? err.message : 'That file could not be read.',
-        'Import',
+        'Failed to read the file',
       );
     }
   };
@@ -501,7 +501,7 @@ export const BulkAddDialog = ({
         ]
           .filter(Boolean)
           .join(', ') || 'Nothing to change',
-        'Bulk Add Complete',
+        'Bulk Add complete',
       );
       close();
       return;
@@ -887,7 +887,7 @@ export const BulkAddDialog = ({
       <DialogContent className={step === 'review' ? 'max-w-4xl' : 'max-w-2xl'}>
         <DialogHeader>
           <DialogTitle>
-            {step === 'running' ? (failure ? 'Import Stopped' : 'Importing') : STEPS[step].title}
+            {step === 'running' ? (failure ? 'Import stopped' : 'Importing') : STEPS[step].title}
             {STEPS[step] && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 Step {STEPS[step].n} of {WIZARD_STEPS}

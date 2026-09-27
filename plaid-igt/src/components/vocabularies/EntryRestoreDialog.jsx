@@ -161,7 +161,7 @@ export const EntryRestoreDialog = ({
       await onRestored?.();
     } catch (err) {
       console.error('Entry restore failed:', err);
-      notifyError(humanizeError(err, 'The restore was not applied.'), 'Restore failed');
+      notifyError(humanizeError(err, 'The restore was not applied.'), 'Failed to restore');
     } finally {
       setBusy(false);
     }

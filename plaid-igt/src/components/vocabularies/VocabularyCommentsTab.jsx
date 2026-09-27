@@ -26,7 +26,7 @@ export const VocabularyCommentsTab = ({
       })
       .catch((err) => {
         if (!alive) return;
-        notifyError('Failed to load entries', err);
+        notifyError('Failed to load the entries', err);
         setItems([]);
       });
     return () => {

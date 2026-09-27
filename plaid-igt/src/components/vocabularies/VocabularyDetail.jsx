@@ -112,7 +112,7 @@ export const VocabularyDetail = () => {
 
   const [vocabulary, setVocabulary] = useState(null);
   // New vocab: a fixed label; existing: the loaded name (null while loading).
-  useDocumentTitle(isNewVocabulary ? 'New Vocabulary' : vocabulary?.name);
+  useDocumentTitle(isNewVocabulary ? 'New vocabulary' : vocabulary?.name);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -316,7 +316,7 @@ export const VocabularyDetail = () => {
     } catch (err) {
       if (inTurn) throw err;
       console.error('Error updating vocabulary:', err);
-      notifyError('Failed to update vocabulary data', 'Error');
+      notifyError(err, 'Failed to load the vocabulary');
     }
   };
   // A refused schema write's refetch, which puts back what the screen showed.
@@ -335,7 +335,7 @@ export const VocabularyDetail = () => {
 
   const handleSave = async () => {
     if (!editedName.trim()) {
-      notifyError('Vocabulary name cannot be empty', 'Invalid Name');
+      notifyError('Vocabulary name cannot be empty', 'Invalid name');
       return;
     }
     // A second click while a create is on its way would read createdRef before
@@ -396,7 +396,7 @@ export const VocabularyDetail = () => {
         });
 
         navigate(`/vocabularies/${savedVocabulary.id}`, { replace: true });
-        notifySuccess('Vocabulary created successfully', 'Success');
+        notifySuccess('Vocabulary created');
       } else {
         // A new name shows at once and takes its turn in the schema queue. A
         // refused one reloads the vocabulary, which puts the old name back,
@@ -405,24 +405,20 @@ export const VocabularyDetail = () => {
         setEditedName(name);
         if (name !== vocabulary.name) {
           setVocabulary((v) => ({ ...v, name }));
-          writes.schema
-            .push(() => client.vocabLayers.update(vocabularyId, name), {
-              refused: (err) => {
-                console.error('Error renaming vocabulary:', err);
-                notifyError('Failed to save vocabulary', 'Error');
-              },
-              resync: resyncSchema,
-            })
-            .then((landed) => {
-              if (landed) notifySuccess('Vocabulary name updated successfully', 'Success');
-            });
+          writes.schema.push(() => client.vocabLayers.update(vocabularyId, name), {
+            refused: (err) => {
+              console.error('Error renaming vocabulary:', err);
+              notifyError(err, 'Failed to rename the vocabulary');
+            },
+            resync: resyncSchema,
+          });
         }
       }
 
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving vocabulary:', err);
-      notifyError(err, 'Failed to save vocabulary');
+      notifyError(err, 'Failed to save the vocabulary');
     } finally {
       setSaving(false);
     }
@@ -431,7 +427,7 @@ export const VocabularyDetail = () => {
   const handleAddField = async () => {
     const trimmedName = newFieldName.trim();
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid Field Name');
+      notifyError('Field name cannot be empty', 'Invalid field name');
       return;
     }
 
@@ -439,14 +435,14 @@ export const VocabularyDetail = () => {
     if (isReservedFieldName(trimmedName)) {
       notifyError(
         `Field name "${trimmedName}" is reserved and cannot be used`,
-        'Reserved Field Name',
+        'Reserved field name',
       );
       return;
     }
 
     // Check for duplicate names (case insensitive)
     if (fields.some((f) => f.name.toLowerCase() === trimmedName.toLowerCase())) {
-      notifyError('A field with this name already exists', 'Duplicate Field Name');
+      notifyError('A field with this name already exists', 'Duplicate field name');
       return;
     }
 
@@ -495,7 +491,7 @@ export const VocabularyDetail = () => {
   // Write the schema. The table shows it at once and the write takes its turn
   // in the schema queue. A refused write says so and reloads the vocabulary,
   // which puts back what the table showed. Resolves to whether it landed.
-  const saveFields = (updatedFields, { quiet = false } = {}) => {
+  const saveFields = (updatedFields) => {
     setFields(updatedFields);
     if (isNewVocabulary) return Promise.resolve(true);
     return writes.schema.push(
@@ -506,12 +502,11 @@ export const VocabularyDetail = () => {
           'fields',
           fieldsToConfig(updatedFields),
         );
-        if (!quiet) notifySuccess('Fields updated successfully', 'Success');
       },
       {
         refused: (err) => {
           console.error('Error saving custom fields:', err);
-          notifyError('Failed to save fields', 'Error');
+          notifyError(err, 'Failed to save the fields');
         },
         resync: resyncSchema,
       },
@@ -690,7 +685,7 @@ export const VocabularyDetail = () => {
       {
         refused: (err) => {
           console.error('Failed to save tagsets:', err);
-          notifyError('Failed to save tagsets', 'Save Error');
+          notifyError(err, 'Failed to save the tagsets');
           setDraftTagsets(null);
         },
         resync: resyncSchema,
@@ -701,7 +696,6 @@ export const VocabularyDetail = () => {
       renamed && fields.some((f) => f.tagset === renamed.from)
         ? saveFields(
             fields.map((f) => (f.tagset === renamed.from ? { ...f, tagset: renamed.to } : f)),
-            { quiet: true },
           )
         : true;
     const tagsetsSaved = await tagsetsLanded;
@@ -739,7 +733,7 @@ export const VocabularyDetail = () => {
 
   const handleDelete = async () => {
     if (confirmDeleteName !== vocabulary.name) {
-      notifyError('The entered name does not match the vocabulary name', 'Name Mismatch');
+      notifyError('The entered name does not match the vocabulary name', 'Name does not match');
       return;
     }
 
@@ -747,10 +741,10 @@ export const VocabularyDetail = () => {
       await client.vocabLayers.delete(vocabularyId);
       closeDeleteModal();
       navigate('/vocabularies');
-      notifySuccess('Vocabulary deleted successfully', 'Success');
+      notifySuccess('Vocabulary deleted');
     } catch (err) {
       console.error('Error deleting vocabulary:', err);
-      notifyError('Failed to delete vocabulary', 'Error');
+      notifyError(err, 'Failed to delete the vocabulary');
     }
   };
 
@@ -961,7 +955,7 @@ export const VocabularyDetail = () => {
           }}
         />
         <Button onClick={handleAddField} disabled={!newFieldName.trim()}>
-          <Plus className="h-4 w-4" /> Add Field
+          <Plus className="h-4 w-4" /> Add field
         </Button>
       </div>
     </>
@@ -974,7 +968,7 @@ export const VocabularyDetail = () => {
   if (error) {
     return (
       <Notice tone="error">
-        <p className="font-medium">Error</p>
+        <p className="font-medium">Failed to load the vocabulary</p>
         <p>{error}</p>
       </Notice>
     );
@@ -1015,7 +1009,7 @@ export const VocabularyDetail = () => {
           items={[
             { label: 'Vocabularies', to: '/vocabularies', fixed: true },
             isNewVocabulary
-              ? { label: 'New Vocabulary', fixed: true }
+              ? { label: 'New vocabulary', fixed: true }
               : { label: vocabulary?.name || 'Loading…' },
           ]}
         />
@@ -1147,11 +1141,11 @@ export const VocabularyDetail = () => {
                   </p>
                   <div className="rounded-lg border bg-card p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Basic Settings</h3>
+                      <h3 className="text-base font-semibold">Settings</h3>
 
                       <div className="flex items-end gap-2">
                         <div className="flex flex-1 flex-col gap-1.5">
-                          <Label>Vocabulary Name</Label>
+                          <Label>Vocabulary name</Label>
                           <Input
                             placeholder="Enter vocabulary name"
                             value={editedName}
@@ -1209,7 +1203,7 @@ export const VocabularyDetail = () => {
 
                   <div className="rounded-lg border border-destructive/40 p-4">
                     <div className="flex flex-col gap-4">
-                      <h3 className="text-base font-semibold">Danger Zone</h3>
+                      <h3 className="text-base font-semibold">Danger zone</h3>
                       <p className="text-sm text-muted-foreground">
                         Delete this vocabulary permanently. This action cannot be undone.
                       </p>
@@ -1219,7 +1213,7 @@ export const VocabularyDetail = () => {
                           className={DELETE_BUTTON_CLASS}
                           onClick={openDeleteModal}
                         >
-                          <Trash2 className="h-4 w-4" /> Delete Vocabulary
+                          <Trash2 className="h-4 w-4" /> Delete vocabulary
                         </Button>
                       </div>
                     </div>
@@ -1232,12 +1226,12 @@ export const VocabularyDetail = () => {
 
         {isNewVocabulary && (
           <div className="flex flex-col gap-6">
-            <h2 className="text-lg font-semibold">Create New Vocabulary</h2>
+            <h2 className="text-lg font-semibold">New vocabulary</h2>
 
             <div className="rounded-lg border bg-card p-4">
               <div className="flex flex-col gap-1.5">
                 <Label>
-                  Vocabulary Name <span className="text-destructive">*</span>
+                  Vocabulary name <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   placeholder="Enter vocabulary name"
@@ -1273,7 +1267,7 @@ export const VocabularyDetail = () => {
                 Cancel
               </Button>
               <Button onClick={handleSave} disabled={!editedName.trim() || saving}>
-                Create Vocabulary
+                Create vocabulary
               </Button>
             </div>
           </div>
@@ -1289,7 +1283,7 @@ export const VocabularyDetail = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete Vocabulary</DialogTitle>
+            <DialogTitle>Delete vocabulary</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
@@ -1297,20 +1291,16 @@ export const VocabularyDetail = () => {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                 <div className="text-sm">
-                  <p className="font-medium text-destructive">Warning</p>
-                  <p className="mt-1 text-muted-foreground">
-                    You are about to permanently delete the vocabulary{' '}
-                    <strong>"{vocabulary?.name}"</strong>.
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    This action cannot be undone and will remove all entries and their links.
+                  <p className="text-muted-foreground">
+                    Deletes <strong>“{vocabulary?.name}”</strong> with all its entries and their
+                    links. This cannot be undone.
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label>To confirm, type "{vocabulary?.name}" below:</Label>
+              <Label>Type “{vocabulary?.name}” to confirm</Label>
               <Input
                 placeholder="Enter vocabulary name"
                 value={confirmDeleteName}
@@ -1334,7 +1324,7 @@ export const VocabularyDetail = () => {
               onClick={handleDelete}
               disabled={confirmDeleteName !== vocabulary?.name}
             >
-              <Trash2 className="h-4 w-4" /> Delete Vocabulary
+              <Trash2 className="h-4 w-4" /> Delete vocabulary
             </Button>
           </DialogFooter>
         </DialogContent>

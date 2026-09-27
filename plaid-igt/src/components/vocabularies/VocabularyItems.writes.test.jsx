@@ -632,7 +632,7 @@ describe('usage counts', () => {
     client.query = vi.fn(async () => ({ results: [] }));
     const view = await mount(client, '/vocabularies/v1?item=a');
     expect(concordanceQueries(client)).toHaveLength(0);
-    expect(document.body.textContent).not.toContain('Could not load usage examples.');
+    expect(document.body.textContent).not.toContain('Failed to load the usage examples.');
     await view.unmount();
   });
 

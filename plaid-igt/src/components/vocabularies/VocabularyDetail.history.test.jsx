@@ -93,7 +93,7 @@ describe('the vocabulary History', () => {
 
     await view.step(() => button('History').click());
     await settle(view);
-    const row = all(document.body, 'p').find((p) => p.textContent === 'Edit entry "kai"');
+    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
     expect(row).toBeTruthy();
 
     await view.step(() => row.click());
@@ -133,7 +133,7 @@ describe('the vocabulary History', () => {
     await settle(view);
     await view.step(() => button('History').click());
     await settle(view);
-    const row = all(document.body, 'p').find((p) => p.textContent === 'Edit entry "kai"');
+    const row = all(document.body, 'span').find((s) => s.textContent === 'Edit entry "kai"');
     await view.step(() => row.click());
     await settle(view);
     expect(shown.props.past).not.toBeNull();

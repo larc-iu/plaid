@@ -148,7 +148,7 @@ export const VocabularyList = () => {
       title="Vocabularies"
       action={
         <NewLinkButton to="/vocabularies/new">
-          <Plus className="h-4 w-4" /> New Vocabulary
+          <Plus className="h-4 w-4" /> New vocabulary
         </NewLinkButton>
       }
       href={(v) => `/vocabularies/${v.id}`}
@@ -158,7 +158,7 @@ export const VocabularyList = () => {
       error={error}
       empty={{
         title: 'No vocabularies found',
-        hint: 'Create one with New Vocabulary.',
+        hint: 'Create one with New vocabulary.',
       }}
       tableId="vocabularies"
       noun="vocabulary"

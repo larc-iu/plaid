@@ -117,7 +117,7 @@ export function useVocabHistory({ client, vocabularyId, onExpired }) {
     } catch (err) {
       if (mine !== pickRef.current || expired(err)) return;
       console.error('Error reading the vocabulary at a past time:', err);
-      notifyError(err, 'That state could not be loaded');
+      notifyError(err, 'Failed to load that state');
       setSelected(shownRef.current);
     } finally {
       if (mine === pickRef.current) setLoadingPast(false);

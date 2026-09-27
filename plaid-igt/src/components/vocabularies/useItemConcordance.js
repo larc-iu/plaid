@@ -65,7 +65,7 @@ export function useItemConcordance({ client, vocabularyId, selectedId, skipId, l
       .catch((err) => {
         if (concReq.current !== my) return;
         console.error('Concordance failed:', err);
-        setConcError('Could not load usage examples.');
+        setConcError('Failed to load the usage examples.');
         setConcLoading(false);
       });
     // Runs once per selection; the client is read fresh.

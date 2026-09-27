@@ -780,7 +780,7 @@ export const VocabularyItems = ({
 
   const handleSave = async () => {
     if (!draft.form.trim()) {
-      notifyError('The form cannot be empty', 'Invalid Form');
+      notifyError('The form cannot be empty', 'Invalid form');
       return;
     }
     if (rolesetRefused) {
