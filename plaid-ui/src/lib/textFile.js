@@ -25,11 +25,18 @@ const encodingOf = (bytes) => {
 /**
  * The text of a file's bytes: UTF-16 when a byte order mark says so, UTF-8
  * otherwise, with the mark dropped. Throws NotUtf8FileError, naming `name`
- * when given, for text holding a NUL.
+ * when given, for text holding a NUL, and with `fatal` also for bytes that
+ * are not valid in the encoding (instead of a U+FFFD standing in for them).
  */
-export function decodeText(bytes, name = null) {
+export function decodeText(bytes, name = null, { fatal = false } = {}) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  const text = new TextDecoder(encodingOf(view)).decode(view);
+  let text;
+  try {
+    text = new TextDecoder(encodingOf(view), { fatal }).decode(view);
+  } catch (e) {
+    if (e instanceof TypeError) throw new NotUtf8FileError(name);
+    throw e;
+  }
   if (text.includes('\u0000')) throw new NotUtf8FileError(name);
   return text;
 }

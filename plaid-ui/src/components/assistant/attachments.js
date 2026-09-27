@@ -19,6 +19,8 @@
 // conversation the message actually goes to rather than whichever one was open
 // when the paperclip was clicked.
 
+import { decodeText, NotUtf8FileError } from '../../lib/textFile.js';
+
 // What can be attached. Text, in the sense that a person could open it in an
 // editor and read it: the assistant reads a table as rows and everything else
 // as lines, and neither can do anything with bytes it cannot decode.
@@ -189,14 +191,16 @@ export class NotUtf8Error extends Error {
   }
 }
 
-// `fatal: true` throws on the first byte that is not UTF-8 rather than
-// standing a replacement character in for it. A UTF-8 BOM is still stripped
-// (`ignoreBOM` is false by default), which is what the service does too.
-const decodeUtf8 = (buffer, name) => {
+// The shared reader, strict: a byte that is not valid in the file's encoding
+// refuses the file rather than standing a replacement character in for it. A
+// UTF-16 file is read by its byte order mark, a UTF-8 mark is stripped (which
+// is what the service does too), and a NUL (UTF-16 with no mark) refuses it.
+const decodeFile = (buffer, name) => {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-  } catch {
-    throw new NotUtf8Error(name || 'That file');
+    return decodeText(buffer, name, { fatal: true });
+  } catch (e) {
+    if (e instanceof NotUtf8FileError) throw new NotUtf8Error(name || 'That file');
+    throw e;
   }
 };
 
@@ -204,7 +208,7 @@ const decodeUtf8 = (buffer, name) => {
 // It holds the TEXT, which is what makes it pending: nothing of it is stored
 // until the message is sent.
 export const readAttachment = async (file, budget = VALUE_BYTES - HEADROOM) => {
-  const text = decodeUtf8(await file.arrayBuffer(), file.name);
+  const text = decodeFile(await file.arrayBuffer(), file.name);
   return {
     id: newId(),
     name: file.name,

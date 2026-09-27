@@ -38,6 +38,16 @@ describe('decodeText', () => {
     );
   });
 
+  it('refuses a byte the encoding cannot hold only when fatal', () => {
+    // "café" in cp1252: 0xE9 is not UTF-8.
+    const cp1252 = new Uint8Array([0x63, 0x61, 0x66, 0xe9]);
+    expect(decodeText(cp1252)).toBe('caf\uFFFD');
+    expect(() => decodeText(cp1252, 'w.csv', { fatal: true })).toThrow(
+      'w.csv is not UTF-8. Save it as UTF-8 and import it again.',
+    );
+    expect(decodeText(utf16le('kai'), null, { fatal: true })).toBe('kai');
+  });
+
   it('takes an ArrayBuffer as well as bytes', () => {
     expect(decodeText(utf8('kai').buffer)).toBe('kai');
   });

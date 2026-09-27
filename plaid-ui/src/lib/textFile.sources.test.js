@@ -10,8 +10,6 @@ import { APPS, repoRoot } from '../test/apps.js';
 const ALLOWED = new Map([
   // The native archive is written by the export itself, always UTF-8 JSON.
   ['plaid-igt/src/import/native/readArchive.js', 'own archive'],
-  // An assistant attachment, not an import: a strict UTF-8 read of its own.
-  ['plaid-ui/src/components/assistant/attachments.js', 'attachment'],
 ]);
 
 const sources = (dir) =>
@@ -22,8 +20,8 @@ const sources = (dir) =>
   });
 
 // A text read of a file: FileReader, a decoder, or Blob.text() on a name that
-// holds a file (a fetch response's .text() is not a file).
-const READ = /readAsText\(|new TextDecoder\(|\b(file|f|picked|blob)\.text\(\)/;
+// holds a file, `files[0]` included (a fetch response's .text() is not a file).
+const READ = /readAsText\(|new TextDecoder\(|\b(file|f|picked|blob|files\[[^\]]*\])\.text\(\)/;
 
 describe('importers read text through textFile.js', () => {
   it('has no other text read of a file in any app or in the package', () => {

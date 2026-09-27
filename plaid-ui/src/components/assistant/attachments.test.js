@@ -130,6 +130,24 @@ describe('what may be attached', () => {
     expect(pending.text).toBe('café');
   });
 
+  // Windows "Unicode text" is UTF-16. With its byte order mark it is read as
+  // what it is. Without one every ASCII letter is followed by a NUL byte,
+  // which is valid UTF-8 and would reach the service as text full of NULs.
+  it('reads a UTF-16 file by its byte order mark', async () => {
+    const file = bytesFile('w.txt', [0xff, 0xfe, 0x63, 0, 0x61, 0, 0x66, 0, 0xe9, 0]);
+    expect((await readAttachment(file)).text).toBe('café');
+  });
+
+  it('refuses UTF-16 with no byte order mark, and any NUL, by name', async () => {
+    const noMark = bytesFile('w.txt', [0x6b, 0, 0x61, 0, 0x69, 0, 0x0a, 0]);
+    await expect(readAttachment(noMark)).rejects.toBeInstanceOf(NotUtf8Error);
+    await expect(readAttachment(noMark)).rejects.toThrow(
+      'w.txt is not UTF-8 text. Save it as UTF-8 and attach it again.',
+    );
+    const nul = bytesFile('n.csv', [0x61, 0, 0x0a]);
+    await expect(readAttachment(nul)).rejects.toThrow(/n\.csv is not UTF-8 text/);
+  });
+
   it('counts the lines a person would, and not a last empty one', () => {
     expect(lineCount('a\nb\n')).toBe(2);
     expect(lineCount('a\nb')).toBe(2);
