@@ -460,15 +460,17 @@ def test_the_fake_methods_take_the_real_signatures():
     from plaid_client import client as real
 
     def shape(fn):
-        return [(p.name, p.kind, p.default is inspect.Parameter.empty)
-                for p in inspect.signature(fn).parameters.values()]
+        # The default too: a fake that defaults keep_alive or dry_run the
+        # other way runs a caller's omitted argument as the client does not.
+        return [(p.name, p.kind, p.default) for p in inspect.signature(fn).parameters.values()]
 
     pairs = [(testing.FakeClient._Documents, real.DocumentsResource),
              (testing.FakeClient._Projects, real.ProjectsResource),
              (testing.FakeClient._Comments, real.CommentsResource),
              (testing.FakeClient._Guidelines, real.GuidelinesResource),
              (testing.FakeClient._UserData, real.UserDataResource),
-             (testing._BatchUserData, real.UserDataResource)]
+             (testing._BatchUserData, real.UserDataResource),
+             (testing._Operation, real._OperationContext)]
     for fake, real_cls in pairs:
         own = [n for n, v in vars(fake).items() if callable(v) and not n.startswith('_')]
         assert own, fake
@@ -550,3 +552,41 @@ def test_the_smaller_shapes_match_the_real_client():
         c.documents.get('nope')
     assert str(e.value).startswith('HTTP 404 ') and e.value.method == 'GET'
     assert e.value.url.endswith('/api/v1/documents/nope')
+
+
+def test_an_empty_or_repeating_bulk_write_is_refused_as_the_server_refuses_it():
+    # Measured on a dev core (REV-FAKE, 2026-09-27): every bulk create and
+    # bulk update of an empty list is a 400, and so is a bulk update naming
+    # one id twice. A bulk delete of an empty list is accepted.
+    c = _project_client()
+    ops = [{'op': 'set', 'path': ['k'], 'value': 1}]
+    for resource in ('tokens', 'spans', 'relations', 'vocab_links', 'vocab_items'):
+        with pytest.raises(PlaidAPIError) as e:
+            getattr(c, resource).bulk_create([])
+        assert e.value.status == 400, resource
+        getattr(c, resource).bulk_delete([])
+    for resource in ('tokens', 'spans', 'relations', 'vocab_items'):
+        with pytest.raises(PlaidAPIError) as e:
+            getattr(c, resource).bulk_update([])
+        assert e.value.status == 400, resource
+    with pytest.raises(PlaidAPIError) as e:
+        c.tokens.bulk_update([{'id': 't', 'metadata': ops}, {'id': 't', 'metadata': ops}])
+    assert e.value.status == 400
+    assert [k for k, _ in c.writes] == ['tokens.bulk_delete', 'spans.bulk_delete',
+                                        'relations.bulk_delete', 'vocab_links.bulk_delete',
+                                        'vocab_items.bulk_delete']
+
+
+def test_a_single_delete_of_an_id_bulk_deleted_earlier_in_the_batch_refuses_it():
+    # Measured on a dev core: the single delete finds the row gone and 404s
+    # the batch. The other order is fine, a bulk delete of a gone id is not.
+    c = _project_client()
+    with pytest.raises(PlaidAPIError) as e:
+        with c.batched() as b:
+            b.spans.bulk_delete(['s1', 's2'])
+            b.spans.delete('s2')
+    assert e.value.status == 404 and c.writes == []
+    with c.batched() as b:
+        b.spans.delete('s2')
+        b.spans.bulk_delete(['s1', 's2'])
+    assert len(c.writes) == 2

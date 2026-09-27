@@ -262,8 +262,9 @@ class _Batch:
 
     It refuses what the real ``PlaidBatch`` refuses: a write once it has been
     submitted or aborted, a second submit, nesting, a user-data write. A
-    batch holding two single deletes of one id fails its submit with the 404
-    the server answers, and nothing in it is recorded. A guideline written on
+    batch holding a single delete of an id an earlier delete in it already
+    took, single or bulk, fails its submit with the 404 the server answers,
+    and nothing in it is recorded. A guideline written on
     it changes the rows only when it submits, and an ``expected_updated_at``
     that no longer matches refuses the whole batch then."""
 
@@ -273,7 +274,7 @@ class _Batch:
         self.results = []
         self.open = True
         self._effects = []
-        self._single_deletes = set()
+        self._deleted = set()
         self._refused = None
         for name in client.RESOURCES:
             setattr(self, name, Resource(self, name))
@@ -315,13 +316,17 @@ class _Batch:
         """Run ``effect`` when the batch submits, where the server would."""
         self._effects.append(effect)
 
-    def note_single_delete(self, resource, entity_id):
-        key = (resource, entity_id)
-        if key in self._single_deletes and self._refused is None:
-            self._refused = _refusal(self.client, 404,
-                                     f'{resource} {entity_id} was already deleted in this batch',
-                                     'POST', '/api/v1/batch')
-        self._single_deletes.add(key)
+    def note_deletes(self, resource, entity_ids, single):
+        """A single delete finds its row gone when an earlier delete in this
+        batch took it, and the server 404s the batch. A bulk delete of a gone
+        id is accepted."""
+        for entity_id in entity_ids:
+            key = (resource, entity_id)
+            if single and key in self._deleted and self._refused is None:
+                self._refused = _refusal(self.client, 404,
+                                         f'{resource} {entity_id} was already deleted in this batch',
+                                         'POST', '/api/v1/batch')
+            self._deleted.add(key)
 
     def submit(self):
         if not self.open:
@@ -397,7 +402,8 @@ class Resource:
     bare, several as a tuple, or ``{'args', 'kwargs'}`` when it was given
     keywords. A metadata patch, direct or in a bulk update entry, must be a
     list of ops, and a bulk update entry may carry only the keys the server
-    keeps (``_BULK_UPDATE_KEYS``)."""
+    keeps (``_BULK_UPDATE_KEYS``). A bulk create or bulk update of no
+    entries, or a bulk update naming one id twice, is the server's 400."""
 
     def __init__(self, client, name):
         self._client = client
@@ -436,7 +442,9 @@ class Resource:
         writer.fail_if_asked(kind)
         writer.record(kind, payload, result)
         if on_batch and method == 'delete':
-            writer.note_single_delete(self._name, first)
+            writer.note_deletes(self._name, [first], single=True)
+        elif on_batch and method == 'bulk_delete':
+            writer.note_deletes(self._name, payload, single=False)
         return {'batched': True} if on_batch else answer
 
     def _shape(self, writer, method, args, kwargs, arguments, first, sent):
@@ -447,6 +455,9 @@ class Resource:
             return {'args': args, 'kwargs': kwargs}, {'body': {'id': new}}, {'id': new}
         if method == 'bulk_create':
             ops = list(arguments['body'])
+            if not ops:
+                raise _refusal(_root(self._client), 400, f'A {self._name} bulk create needs '
+                               'at least one entry', sent.method, sent.path)
             ids = [writer.new_id(self._name) for _ in ops]
             return ops, {'body': {'ids': ids}}, {'ids': ids}
         if method == 'bulk_update':
@@ -461,6 +472,10 @@ class Resource:
 
     def _check_bulk_update(self, items, sent):
         allowed, required = _BULK_UPDATE_KEYS[self._name]
+        ids = [item.get('id') for item in items]
+        if not items or len(ids) != len(set(ids)):
+            raise _refusal(_root(self._client), 400, f'A {self._name} bulk update needs at least '
+                           'one entry, and names each id once', sent.method, sent.path)
         for item in items:
             missing = sorted(required - set(item))
             extra = sorted(set(item) - allowed)
