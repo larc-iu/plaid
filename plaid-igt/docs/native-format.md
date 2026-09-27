@@ -347,6 +347,9 @@ they behave unlike everything else here.
   (`plaid.sql.comment`), so there is no state at `asOf` to read; today's comments
   in a time-travelled archive would carry today's dates and could anchor to
   entities that did not yet exist.
+- **A historical (`asOf`) export carries today's vocabularies.** A vocabulary
+  read has no `as-of` form, so the documents are as they were at `asOf` and the
+  vocabulary files are as they are now.
 
 ### Attribution does not survive re-import
 
