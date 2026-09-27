@@ -5,6 +5,7 @@ import {
   compensatePartition,
   applyTextEditsLocally,
   removeTokensLocally,
+  leadingMarks,
 } from './textEdits.js';
 
 // These cases are the server's own (plaid.algos.text/apply-text-edit and
@@ -36,6 +37,35 @@ describe('applyInsertToTokens', () => {
 
   it('a zero-width token at the insert point stays pinned', () => {
     expect(applyInsertToTokens([tok('z', 3, 3)], 3, 2)).toEqual([tok('z', 3, 3)]);
+  });
+
+  it('combining marks at the start of the insert join a token ending there', () => {
+    // "cafe" + acute + "!" at 4: the word takes the accent, a zero-width token
+    // there moves past it, and a token beginning there moves past everything.
+    const tokens = [tok('cafe', 0, 4), tok('z', 4, 4), tok('bang', 4, 5)];
+    expect(applyInsertToTokens(tokens, 4, 2, 1)).toEqual([
+      tok('cafe', 0, 5),
+      tok('z', 5, 5),
+      tok('bang', 6, 7),
+    ]);
+  });
+
+  it('at index 0 a combining mark joins nothing', () => {
+    expect(applyInsertToTokens([tok('z', 0, 0), tok('a', 0, 2)], 0, 1, 1)).toEqual([
+      tok('z', 0, 0),
+      tok('a', 1, 3),
+    ]);
+  });
+});
+
+describe('leadingMarks', () => {
+  it('counts the combining marks (Mn, Mc, Me) a value starts with, in code points', () => {
+    expect(leadingMarks('\u0301\u0308x')).toBe(2);
+    expect(leadingMarks('\u093E')).toBe(1);
+    expect(leadingMarks('\u20DD')).toBe(1);
+    expect(leadingMarks('\u{1D167}a')).toBe(1);
+    expect(leadingMarks('a\u0301')).toBe(0);
+    expect(leadingMarks('')).toBe(0);
   });
 });
 
@@ -117,6 +147,15 @@ describe('applyTextEditsLocally', () => {
     expect(raw.textLayers[0].text.body).toBe('the cat sat now');
     expect(sent.tokens).toEqual([tok('s1', 0, 8), tok('s2', 8, 15)]);
     expect(word.tokens).toEqual([tok('w1', 0, 3), tok('w2', 4, 7), tok('w3', 8, 11)]);
+  });
+
+  it('a combining mark typed at a word end joins the word', () => {
+    const raw = rawDoc();
+    applyTextEditsLocally(raw, 't', [{ type: 'insert', index: 7, value: '\u0301' }]);
+    const [sent, word, align] = raw.textLayers[0].tokenLayers;
+    expect(sent.tokens).toEqual([tok('s1', 0, 9), tok('s2', 9, 12)]);
+    expect(word.tokens).toEqual([tok('w1', 0, 3), tok('w2', 4, 8), tok('w3', 9, 12)]);
+    expect(align.tokens).toEqual([tok('a1', 4, 8)]);
   });
 
   it('replacing a stretch deletes the tokens inside it, their spans and links, and shifts the rest', () => {

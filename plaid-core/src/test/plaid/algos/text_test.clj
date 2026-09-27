@@ -1068,6 +1068,52 @@
     (is (= [:w] deleted))
     (is (= #{[:s1 0 3] [:s2 6 10] [:cow 6 8] [:co 6 8]} (extents tokens)))))
 
+(deftest an-analyzed-word-replaced-by-one-that-shares-its-first-letter-drops-its-morphemes
+  ;; The shared first letter is trimmed off the diff, so the edits reach only
+  ;; one end of the word. Applied as they are, `cow` (`co` + `w`) to `cab`
+  ;; left `co` on the `c`, deleted `w`, and put `ab` in no morpheme.
+  (doseq [[old new tokens expected deleted]
+          [["cat cow" "cat cab" [(tok :cat 0 3) (tok :cow 4 7) (tok :co 4 6) (tok :w 6 7)]
+            #{[:cat 0 3] [:cow 4 7]} #{:co :w}]
+           ;; the last letters replaced, precomposed é included
+           ["x caf\u00E9 y" "x cab y" [(tok :cafe 2 6) (tok :caf 2 5) (tok :e 5 6)]
+            #{[:cafe 2 5]} #{:caf :e}]
+           ;; the first letters replaced, the last one kept
+           ["x cow y" "x baw y" [(tok :cow 2 5) (tok :c 2 3) (tok :ow 3 5)]
+            #{[:cow 2 5]} #{:c :ow}]]]
+    (let [{:keys [text tokens] :as r} (body-edit old new tokens)]
+      (is (= new (:text/body text)))
+      (is (= deleted (set (:deleted r))) (str (pr-str old) " -> " (pr-str new)))
+      (is (= expected (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))
+  (testing "an edit that leaves every letter of the word in a morpheme keeps them"
+    (doseq [[new expected gone]
+            [;; a morpheme deleted whole
+             ["cat co" #{[:cow 4 6] [:co 4 6]} [:w]]
+             ;; a letter respelled inside a morpheme
+             ["cat caw" #{[:cow 4 7] [:co 4 6] [:w 6 7]} []]
+             ;; letters typed at the word's end stay outside it
+             ["cat cows" #{[:cow 4 7] [:co 4 6] [:w 6 7]} []]
+             ;; a letter typed where two morphemes meet takes nothing out
+             ["cat coxw" #{[:cow 4 8] [:co 4 6] [:w 7 8]} []]]]
+      (let [{:keys [tokens deleted]} (body-edit "cat cow" new [(tok :cow 4 7) (tok :co 4 6) (tok :w 6 7)])]
+        (is (= gone (vec deleted)) new)
+        (is (= expected (extents tokens)) new)))))
+
+(deftest a-word-typed-before-a-word-that-starts-with-its-letter-leaves-the-marker-on-the-word
+  ;; `a ` typed before `abc` and ` a` typed after `tot` give the same text.
+  ;; The first leaves the zero-width token at `abc`'s start in front of the
+  ;; new `a`, so the second is taken, though the letter after the marker is
+  ;; the same in both.
+  (let [tokens [(assoc (tok :tot 0 3) :token/layer :w) (assoc (tok :abc 4 7) :token/layer :w)
+                (assoc (tok :z 4 4) :token/layer :z)]
+        {:keys [tokens]} (body-edit "tot abc" "tot a abc" tokens)]
+    (is (= #{[:tot 0 3] [:abc 6 9] [:z 6 6]} (extents tokens))))
+  (testing "at the start of the text, a word typed in front stays out of the word after it"
+    (let [tokens [(assoc (tok :s 0 3) :token/layer :s) (assoc (tok :tot 0 3) :token/layer :w)
+                  (assoc (tok :z 0 0) :token/layer :z)]
+          {:keys [tokens]} (body-edit "tot" "tat tot" tokens #{:s})]
+      (is (= [4 7] ((juxt :token/begin :token/end) (first (filter #(= :tot (:token/id %)) tokens))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; apply-text-edits applies ops that stand in order in one pass. It must give
 ;; what applying them one at a time gives, 400s included.

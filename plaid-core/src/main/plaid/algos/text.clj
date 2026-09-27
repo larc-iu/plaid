@@ -528,8 +528,10 @@
   glossed as `a` + `a`, would otherwise go between the two morphemes, inside
   the word but in neither. A zero-width token where a token begins and no
   token of a layer that is not a partition ends marks that token's start, and
-  text inserted there comes between the two, so it is disturbed when the
-  letter after it changes.
+  text inserted there comes between the two, whatever its first letter:
+  `a ` typed before `abc` leaves the marker on the new `a`, where ` a` typed
+  after the word before leaves it on `abc`. It counts half, so it settles
+  ties and never outweighs a token the text would go inside.
 
   A layer in `partitioning` has no gaps, so text inserted where two of its
   tokens meet goes into the one that ends there (and at the start of the
@@ -585,12 +587,15 @@
                   #{}
                   (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
         (+ (count met)
+           ;; A zero-width token stays in front of text inserted where it
+           ;; stands, which parts it from the token it marks the start of. It
+           ;; counts half, so it settles a tie and never puts the text inside
+           ;; a word instead: at the start of the text nothing can go in front
+           ;; of a word but after its marker.
+           (/ (count (filter (fn [{:token/keys [begin end]}] (and (= begin end a) start-mark?)) tokens)) 2)
            (count (filter (fn [{:token/keys [begin end layer]}]
                             (cond
-                              ;; A zero-width token stays in front of text
-                              ;; inserted where it stands, which parts it
-                              ;; from the token it marks the start of.
-                              (= begin end) (and (= begin a) new-after? start-mark?)
+                              (= begin end) false
                               (< begin a end) true
                               (partitioning layer) (cond
                                                      (= end a) true
@@ -936,7 +941,12 @@
   off the new text or cut or delete a token inside it, and it lands on one
   new word: the word moves onto the new one and the tokens inside are
   deleted (ruled 2026-09-27, `cow` analyzed `co` + `w` replaced by `abc`
-  left the word and `co` on the `c`). Edits over two words never lie within one
+  left the word and `co` on the `c`). So is such a word whose edits do not
+  reach both its ends, when they take letters out and would leave some of
+  its letters outside the tokens of a layer that held them all, and every
+  token inside it is on such a layer: `cow` to `cab` is `ow` replaced by
+  `ab`, since the shared `c` is trimmed off the diff, and left `co` on the
+  `c` and `ab` in no morpheme. Edits over two words never lie within one
   word's extent, and a token over both has the words inside it, so they stay
   as they are. Inserts alone (`a` to `tat`) stay too: text typed at a word's
   edge stays outside it. So does a whole word typed beside the replaced
@@ -1063,6 +1073,76 @@
                                       (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
                                                 (split-off-new-words o @near (as-replace g b e))))))
                     g)))
+        ;; Whether every letter of [b e) lies in one of `ts`.
+        covered? (fn [ts b e]
+                   (loop [p b
+                          spans (sort (keep (fn [{tb :token/begin te :token/end}]
+                                              (when (< tb te) [tb te]))
+                                            ts))]
+                     (cond
+                       (>= p e) true
+                       (empty? spans) false
+                       (> (ffirst spans) p) false
+                       :else (recur (max p (second (first spans))) (rest spans)))))
+        ;; Whether the edits of `g`, applied as they are, would leave letters
+        ;; of the token over [b e) outside the tokens inside it, on a layer
+        ;; whose tokens held every letter: `cow` (`co` + `w`) to `cab` is `ow`
+        ;; replaced by `ab`, which leaves `co` on the `c` and `ab` in no
+        ;; morpheme. Every token inside must be such a part, since the fold
+        ;; deletes them all and these edits reach only some of them.
+        analysis-lost? (fn [g b e]
+                         (let [inner (parts b e)
+                               layers (group-by :token/layer inner)]
+                           (and (seq inner)
+                                (every? (fn [{tb :token/begin te :token/end}] (< tb te)) inner)
+                                (every? #(covered? % b e) (vals layers))
+                                (let [at-b (fn [t] (-> t (update :token/begin - b) (update :token/end - b)))
+                                      w {:token/id ::whole :token/begin 0 :token/end (- e b)}
+                                      shifted (mapv (fn [x] (cond-> x
+                                                              (:start x) (update :start - b)
+                                                              (:end x) (update :end - b)
+                                                              (:at x) (update :at - b)))
+                                                    g)
+                                      {:keys [tokens]} (apply-text-edits (edits->ops shifted)
+                                                                         {:text/body (old-text b e)}
+                                                                         (into [w] (map at-b) inner))
+                                      w' (first (filter #(= ::whole (:token/id %)) tokens))
+                                      after (group-by :token/layer (remove #(= ::whole (:token/id %)) tokens))]
+                                  (and w'
+                                       (some #(not (covered? (get after %) (:token/begin w') (:token/end w')))
+                                             (keys layers)))))))
+        ;; The edits from i on that lie within [b e) of a word with tokens
+        ;; inside it (its morphemes), when they do not reach both its ends,
+        ;; take out some of its letters and would leave the rest of its
+        ;; analysis short of the word. Such a word was replaced outright
+        ;; although a letter at its edge came through, and it folds as one
+        ;; whose edits reach both ends does.
+        partial-group (fn [i b e]
+                        (let [j (loop [j i]
+                                  (if (and (< j (count edits)) (<= (reach-of (edits j)) e)
+                                           (>= (start-of (edits j)) b))
+                                    (recur (inc j))
+                                    j))
+                              g (subvec edits i j)]
+                          (when (and (seq g)
+                                     (or (= j (count edits)) (> (start-of (edits j)) e))
+                                     (some #(and (:end %) (< (:start %) (:end %))) g)
+                                     (not-any? #(ws? (aget o %)) (range b e))
+                                     (analysis-lost? g b e)
+                                     (not-any? #(and (= :replace (:kind %)) (has-ws? (:value %)))
+                                               (split-off-new-words o @near (as-replace g b e))))
+                            g)))
+        ;; The tokens without whitespace that hold the whole of `e0`.
+        holding (fn [e0]
+                  (let [p (start-of e0)
+                        q (reach-of e0)
+                        B (loop [k p] (if (and (pos? k) (not (ws? (aget o (dec k))))) (recur (dec k)) k))
+                        E (loop [k q] (if (and (< k whole) (not (ws? (aget o k)))) (recur (inc k)) k))]
+                    (->> (@near B E)
+                         (filter (fn [{tb :token/begin te :token/end}]
+                                   (and (< tb te) (<= B tb p) (<= q te E)
+                                        (not (and (zero? tb) (= te whole))))))
+                         (sort-by :token/begin))))
         ;; Tokens without whitespace that an edit giving one a space falls
         ;; strictly inside: `NY` to `New York` is `ew ` typed inside it and
         ;; `ork` after it.
@@ -1085,7 +1165,11 @@
                     (or (some (fn [e] (when-let [g (group i b e)] [g b e])) (ends-at b))
                         (some (fn [{tb :token/begin te :token/end}]
                                 (when-let [g (group i tb te)] [g tb te]))
-                              (around lo e0))))]
+                              (around lo e0))
+                        (some (fn [{tb :token/begin te :token/end}]
+                                (when (or (nil? prev) (< (reach-of prev) tb))
+                                  (when-let [g (partial-group i tb te)] [g tb te])))
+                              (holding e0))))]
           (if-let [[g b e] g-e]
             (recur (+ i (count g))
                    (conj out (as-replace g b e))

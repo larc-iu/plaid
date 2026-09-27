@@ -15,13 +15,30 @@
 
 import { cpLength, cpSlice } from '@larc-iu/plaid-client';
 
-/** Token extents after inserting `count` code points at `index`. */
-export function applyInsertToTokens(tokens, index, count) {
+/**
+ * Token extents after inserting `count` code points at `index`, the first
+ * `marks` of them combining marks (Unicode Mn, Mc, Me). Those belong to the
+ * letter before them, so a token ending at `index` takes them and a zero-width
+ * token there moves past them. At index 0 there is no letter before.
+ */
+export function applyInsertToTokens(tokens, index, count, marks = 0) {
+  const joined = index > 0 ? marks : 0;
   return tokens.map((t) => {
-    if (t.end <= index) return t; // opens and closes before the insert
-    if (t.begin < index && index < t.end) return { ...t, end: t.end + count }; // straddles it: grows
+    if (t.end < index) return t; // opens and closes before the insert
+    if (t.end === index) {
+      if (joined === 0) return t;
+      if (t.begin < index) return { ...t, end: t.end + joined }; // takes the marks
+      return { ...t, begin: t.begin + joined, end: t.end + joined }; // zero-width: moves past them
+    }
+    if (t.begin < index) return { ...t, end: t.end + count }; // straddles it: grows
     return { ...t, begin: t.begin + count, end: t.end + count }; // after it: shifts
   });
+}
+
+/** How many code points at the start of `value` are combining marks. */
+export function leadingMarks(value) {
+  const m = /^\p{M}+/u.exec(value);
+  return m ? cpLength(m[0]) : 0;
 }
 
 /**
@@ -98,7 +115,12 @@ export function applyTextEditsLocally(raw, textId, ops, vocabs = null) {
     for (const layer of tokenLayers) {
       const tokens = layer.tokens || [];
       if (op.type === 'insert') {
-        layer.tokens = applyInsertToTokens(tokens, op.index, cpLength(op.value));
+        layer.tokens = applyInsertToTokens(
+          tokens,
+          op.index,
+          cpLength(op.value),
+          leadingMarks(op.value),
+        );
       } else {
         const result = applyDeleteToTokens(tokens, op.index, op.value);
         layer.tokens = result.tokens;
