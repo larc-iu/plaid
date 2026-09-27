@@ -5,6 +5,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { readCldfDataset } from './readDataset.js';
 import { buildCldfDocuments, customColumnChoices, groupingChoices } from './buildDocuments.js';
 import { buildCldfDataset } from '../../export/cldf.js';
+import { alignSurfaces } from '../align.js';
 import { makeFixtureDoc, makeSentence } from '../../export/testFixtures.js';
 
 const OPTIONS = {
@@ -127,5 +128,21 @@ describe('words that share a whitespace run', () => {
     const { dataset } = exportThenRead([d], { ...OPTIONS, primaryText: 'Translit' });
     const columns = dataset.components.ExampleTable.columns.map((c) => c.name);
     expect(columns).not.toContain('Surface_Word');
+  });
+});
+
+describe('alignSurfaces', () => {
+  it('matches a space in a surface against the line break the word spans', () => {
+    const body = 'ab 1\n23 uno';
+    expect(alignSurfaces(body, 0, body.length, ['ab', '1 23', 'uno']).spans).toEqual([
+      { beginU16: 0, endU16: 2 },
+      { beginU16: 3, endU16: 7 },
+      { beginU16: 8, endU16: 11 },
+    ]);
+  });
+
+  it('gives up when a word is not there in order, so the caller aligns by position', () => {
+    expect(alignSurfaces('uno dos', 0, 7, ['dos', 'uno'])).toBeNull();
+    expect(alignSurfaces('uno dos', 0, 3, ['uno', 'dos'])).toBeNull();
   });
 });

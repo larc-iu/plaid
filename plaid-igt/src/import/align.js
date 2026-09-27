@@ -294,10 +294,25 @@ export function alignSurfaces(body, begin, end, surfaces) {
   let at = begin;
   for (const surface of surfaces) {
     if (surface === '') return null;
-    const found = body.indexOf(surface, at);
-    if (found < 0 || found + surface.length > end) return null;
-    spans.push({ beginU16: found, endU16: found + surface.length });
-    at = found + surface.length;
+    const found = findSurface(body, surface, at);
+    if (!found || found.endU16 > end) return null;
+    spans.push(found);
+    at = found.endU16;
   }
   return { spans, warnings: [] };
+}
+
+// A list cell cannot hold a tab, so the export writes each run of tabs and
+// line breaks inside a word as one space. A space in a surface therefore matches any
+// run of whitespace in the text.
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function findSurface(body, surface, at) {
+  if (!surface.includes(' ')) {
+    const i = body.indexOf(surface, at);
+    return i < 0 ? null : { beginU16: i, endU16: i + surface.length };
+  }
+  const re = new RegExp(surface.split(/ +/).map(escapeRegex).join('\\s+'), 'g');
+  re.lastIndex = at;
+  const m = re.exec(body);
+  return m ? { beginU16: m.index, endU16: m.index + m[0].length } : null;
 }
