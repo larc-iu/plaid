@@ -348,7 +348,8 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
     if extras:
         params['extras'] = json.dumps(transform_request(extras))
     query = urllib.parse.urlencode({k: v for k, v in params.items() if v})
-    channel_path = f'/api/v1/projects/{project_id}/services/{service_id}/requests'
+    channel_path = (f'/api/v1/projects/{project_id}/services/'
+                    f'{urllib.parse.quote(service_id, safe="")}/requests')
     if query:
         channel_path = f'{channel_path}?{query}'
 
@@ -608,7 +609,8 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     instead of starting another. Errors that leave the request alive carry
     ``pending = True``; an error without it is the end of the request.
     """
-    url = f'{client.base_url}/api/v1/projects/{project_id}/services/{service_id}/requests'
+    url = (f'{client.base_url}/api/v1/projects/{project_id}/services/'
+           f'{urllib.parse.quote(service_id, safe="")}/requests')
     if request_id:
         url += '?' + urllib.parse.urlencode({'request-id': request_id})
     # Propagate an open logical operation (client.begin_operation) to the

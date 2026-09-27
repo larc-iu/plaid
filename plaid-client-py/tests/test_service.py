@@ -698,6 +698,43 @@ def test_request_id_rides_the_url_and_accepted_reaches_the_caller(monkeypatch):
     assert calls[-1] == ('GET', 'http://plaid.test/api/v1/projects/p1/service-requests/abc')
 
 
+def test_a_service_id_is_one_path_segment_however_it_is_spelled(monkeypatch):
+    """An operator's ``--service-id`` may hold a slash, a question mark or a
+    hash. Unquoted, the channel registers and a request goes at another path."""
+    from plaid_client import services as svc_mod
+    odd = 'team/parser?v=2#x'
+    segment = 'team%2Fparser%3Fv%3D2%23x'
+    paths = []
+
+    class Messages:
+        def listen(self, project_id, on_event, path=None):
+            paths.append(path)
+            return _OpenConnection()
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+        messages = Messages()
+
+    reg = svc_mod.serve(Client(), 'p1', {'service_id': odd, 'service_name': 'S'},
+                        lambda data, helper: None)
+    reg.stop()
+    assert paths[0].startswith(f'/api/v1/projects/p1/services/{segment}/requests?')
+
+    class Busy:
+        status_code = 503
+
+        def close(self):
+            pass
+
+    posted = []
+    monkeypatch.setattr(svc_mod.requests, 'post',
+                        lambda url, **kw: posted.append(url) or Busy())
+    with pytest.raises(RuntimeError):
+        svc_mod.request_service(Client(), 'p1', odd, {'a': 1}, timeout=5)
+    assert posted == [f'http://plaid.test/api/v1/projects/p1/services/{segment}/requests']
+
+
 def test_attach_to_an_unknown_request_raises_404(monkeypatch):
     from plaid_client import services as svc_mod
 
