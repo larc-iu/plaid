@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { humanizeError, isUnknownOutcome } from '@ui/lib/errors.js';
+import { findLostCreate } from '@ui/lib/lostCreate.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -12,7 +14,7 @@ import {
   DialogFooter,
 } from '@ui/components/ui/dialog';
 
-export const DocumentForm = ({ projectId, isOpen, onClose }) => {
+export const DocumentForm = ({ projectId, documents, isOpen, onClose }) => {
   const [documentName, setDocumentName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -33,14 +35,26 @@ export const DocumentForm = ({ projectId, isOpen, onClose }) => {
 
     try {
       const client = getClient();
-      const created = await client.documents.create(projectId, name);
+      let created;
+      try {
+        created = await client.documents.create(projectId, name);
+      } catch (err) {
+        // The answer was lost: open the document the create made, if it made
+        // one, so Create cannot make a second.
+        created = await findLostCreate(err, {
+          before: documents,
+          reread: () => client.projects.listDocuments(projectId),
+          isIt: (d) => d.name === name,
+        });
+        if (!created) throw err;
+      }
       // A new document has no tokens yet, so the Annotate tab would just say
       // "tokenize first" — open it directly in the Text Editor instead. We stay
       // in the loading state through navigation: this list route (and the dialog
       // with it) unmounts, so there's no need to reset it.
       navigate(`/projects/${projectId}/documents/${created.id}/edit`);
     } catch (err) {
-      setError('Failed to create document');
+      setError(isUnknownOutcome(err) ? humanizeError(err) : 'Failed to create document');
       console.error('Error creating document:', err);
       setLoading(false);
     }

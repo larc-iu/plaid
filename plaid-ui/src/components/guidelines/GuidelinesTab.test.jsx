@@ -175,6 +175,28 @@ describe('a writer', () => {
     await unmount();
   });
 
+  // A create whose answer was lost may have made the guideline. The list is
+  // read again, and the one it made is opened, so Save cannot make a second.
+  it('opens the guideline a create made when its answer was lost', async () => {
+    const lost = Object.assign(new Error('Request timed out at http://x/api/v1/guidelines'), {
+      status: 0,
+      method: 'POST',
+    });
+    const made = { id: 'g9', title: 'Glossing', pinned: false, bodyChars: 0 };
+    const client = fakeClient({ create: vi.fn().mockRejectedValueOnce(lost) });
+    const { container, step, unmount } = await mount({ canWrite: true, client });
+    await step(() => byText(container, 'button', 'New').click());
+    await step(() => typeInto(container.querySelector('#guideline-title'), 'Glossing'));
+    client.guidelines.list.mockResolvedValue([...INDEX, made]);
+    await step(() => byText(container, 'button', 'Save').click());
+
+    expect(client.guidelines.create).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('#guideline-title')).toBe(null);
+    expect(rowTitles(container)).toContain('Glossing');
+    expect(client.guidelines.get).toHaveBeenCalledWith('g9');
+    await unmount();
+  });
+
   it('sends what the draft was opened against, so a second writer cannot overwrite blind', async () => {
     const { container, client, step, unmount } = await mount({ canWrite: true });
     await step(() => byText(container, 'button', 'Alpha').click());

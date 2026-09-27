@@ -195,8 +195,12 @@ export const ProjectImportExport = () => {
       setResults([...acc]);
     };
     let existingDocs = [];
+    // The documents there before each import, for a create whose answer was
+    // lost to find the one it made. Unknown when the list could not be read.
+    let before = null;
     try {
       existingDocs = await client.projects.listDocuments(projectId);
+      before = [...existingDocs];
     } catch (err) {
       console.error('Could not list the documents before importing:', err);
     }
@@ -243,14 +247,14 @@ export const ProjectImportExport = () => {
         let result;
         try {
           result = await client.withOperation(`Import UMR document "${name}"`, () =>
-            importUmrDocument(client, projectId, name, text, layerInfo, { into }),
+            importUmrDocument(client, projectId, name, text, layerInfo, { into, before }),
           );
         } catch (err) {
           // Words that differ from the document of that name: the file is a
           // document of its own, and the row says why.
           if (!into || !/differs|sentences and the document/.test(err?.message || '')) throw err;
           result = await client.withOperation(`Import UMR document "${name}"`, () =>
-            importUmrDocument(client, projectId, name, text, layerInfo),
+            importUmrDocument(client, projectId, name, text, layerInfo, { before }),
           );
           result.warnings = [
             `Imported as a new document: ${err.message}`,
@@ -258,6 +262,7 @@ export const ProjectImportExport = () => {
           ];
         }
         const { warnings, attached } = result;
+        if (before && !attached) before.push(result.document);
         push({
           key: `${i}`,
           file: file.name,

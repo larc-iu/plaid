@@ -177,6 +177,7 @@ export const DocumentList = () => {
 
         <DocumentForm
           projectId={projectId}
+          documents={documents}
           isOpen={showCreateForm}
           onClose={() => setShowCreateForm(false)}
         />

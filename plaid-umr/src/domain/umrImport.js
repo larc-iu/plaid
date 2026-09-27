@@ -8,6 +8,7 @@ import { UMR_NAMESPACE, missingUmrLayerLabels, getUmrLayerInfo } from '../utils/
 import { parseUmrFile } from './format/umrFile.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { buildDocumentGraph, wordForFile } from './sentenceGraph.js';
+import { findLostCreate } from '../../../plaid-ui/src/lib/lostCreate.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -19,7 +20,8 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
  * @param {object} layerInfo from getUmrLayerInfo(project), configured
  * @param {object} [options] `into`: an existing document's id to annotate,
  *   whose words must match the file's sentence by sentence; it must hold no
- *   UMR nodes yet
+ *   UMR nodes yet. `before`: the project's documents before this import,
+ *   so a create whose answer was lost can find the document it made
  * @returns {Promise<{ document: { id: string, name: string }, warnings: string[], attached: boolean }>}
  */
 export async function importUmrDocument(client, projectId, name, text, layerInfo, options = {}) {
@@ -71,7 +73,19 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
     if (existing) {
       textId = existing.info.textLayer.text.id;
     } else {
-      const created = await client.documents.create(projectId, name);
+      let created;
+      try {
+        created = await client.documents.create(projectId, name);
+      } catch (err) {
+        // The answer was lost: go on with the document the create made, if it
+        // made one, so a retry cannot make a second.
+        created = await findLostCreate(err, {
+          before: options.before,
+          reread: () => client.projects.listDocuments(projectId),
+          isIt: (d) => d.name === name,
+        });
+        if (!created) throw err;
+      }
       documentId = created.id;
       const textResponse = await client.texts.create(layerInfo.textLayer.id, documentId, plan.body);
       textId = textResponse.id;

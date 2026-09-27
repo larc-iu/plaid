@@ -16,6 +16,8 @@ import {
 } from '@ui/components/ui/dialog';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
+import { isUnknownOutcome } from '@ui/lib/errors.js';
+import { findLostCreate } from '@ui/lib/lostCreate.js';
 
 export const DocumentList = ({
   documents,
@@ -41,23 +43,45 @@ export const DocumentList = ({
       return;
     }
     setIsCreating(true);
+    const name = documentName.trim();
     try {
       if (!client) throw new Error('Authentication required');
-      const newDocument = await client.documents.create(projectId, documentName.trim());
+      let newDocument;
+      try {
+        newDocument = await client.documents.create(projectId, name);
+      } catch (error) {
+        // The answer was lost: go on with the document the create made, if it
+        // made one, so Create cannot make a second.
+        newDocument = await findLostCreate(error, {
+          before: documents,
+          reread: () => client.projects.listDocuments(projectId),
+          isIt: (d) => d.name === name,
+        });
+        if (!newDocument) throw error;
+      }
       const projectData = await client.projects.get(projectId);
       const primaryTextLayer = findBaselineTextLayer(projectData?.textLayers);
       if (primaryTextLayer) {
-        await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
+        try {
+          await client.texts.create(primaryTextLayer.id, newDocument.id, '', {});
+        } catch (error) {
+          // The document is made either way, and saving its Baseline makes a
+          // text it lacks.
+          if (!isUnknownOutcome(error)) throw error;
+        }
       }
       notifySuccess(`Document "${documentName}" created`, 'Success');
       setDocumentName('');
       setOpen(false);
-      if (onDocumentCreated) onDocumentCreated({ ...newDocument, name: documentName.trim() });
+      if (onDocumentCreated) onDocumentCreated({ ...newDocument, name });
       // A new document is empty, so the next thing to do is type its text.
       navigate(`/projects/${projectId}/documents/${newDocument.id}?tab=baseline`);
     } catch (error) {
       console.error('Failed to create document:', error);
-      notifyError(humanizeError(error, 'Could not create the document.'), 'Error');
+      notifyError(
+        isUnknownOutcome(error) ? error : humanizeError(error, 'Could not create the document.'),
+        'Error',
+      );
     } finally {
       setIsCreating(false);
     }

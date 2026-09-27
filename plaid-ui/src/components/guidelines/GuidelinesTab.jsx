@@ -11,7 +11,8 @@ import { useUnsavedDraft, useUnsavedGuard } from '../../hooks/useUnsavedDraft.js
 import { useLatestCall } from '../../hooks/useLatestCall.js';
 import { pageKey, LIST_PAGE_SIZE, usePagedList } from '../../hooks/usePagedList.js';
 import { collationKey, compareText, textIncludes } from '../../domain/collation.js';
-import { humanizeError, statusOf } from '../../lib/errors.js';
+import { humanizeError, isUnknownOutcome, statusOf } from '../../lib/errors.js';
+import { findLostCreate } from '../../lib/lostCreate.js';
 import { lazyNamed } from '../../lib/lazyNamed.js';
 import { notifyError, notifySuccess } from '../../lib/notify.js';
 import { useGuidelineCaps } from './guidelineCaps.js';
@@ -202,11 +203,23 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           expectedUpdatedAt: overwrite ? undefined : draft.updatedAt,
         });
       } else {
-        const { id } = await client.guidelines.create(projectId, title, {
-          body: draft.body,
-          pinned: draft.pinned,
-        });
-        setSelectedId(id);
+        let created;
+        try {
+          created = await client.guidelines.create(projectId, title, {
+            body: draft.body,
+            pinned: draft.pinned,
+          });
+        } catch (error) {
+          // The answer was lost: open the guideline the create made, if it
+          // made one, so Save cannot make a second.
+          created = await findLostCreate(error, {
+            before: entries,
+            reread: () => client.guidelines.list(projectId),
+            isIt: (g) => g.title === title,
+          });
+          if (!created) throw error;
+        }
+        setSelectedId(created.id);
       }
       setDraft(null);
       setOverwrite(false);
@@ -226,7 +239,9 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
           'Someone else changed this guideline after you opened it. Save again to overwrite it.',
         );
       } else {
-        notifyError(humanizeError(error, 'Could not save the guideline.'));
+        notifyError(
+          isUnknownOutcome(error) ? error : humanizeError(error, 'Could not save the guideline.'),
+        );
       }
     } finally {
       setSaving(false);

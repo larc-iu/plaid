@@ -55,7 +55,7 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@ui/components/ui/dialog';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 import { VocabularyItems } from './VocabularyItems';
 import { VocabularyMaintainers } from './VocabularyMaintainers';
 import { VocabularyCommentsTab } from './VocabularyCommentsTab';
@@ -68,6 +68,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { useSavingGuard } from '@ui/hooks/useSavingGuard.js';
 import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
 import { vocabWriteQueue } from './vocabWriteQueue.js';
+import { findLostCreate } from '@ui/lib/lostCreate.js';
 import { useTabParam } from '@/hooks/useTabParam';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
@@ -214,8 +215,7 @@ export const VocabularyDetail = () => {
   useCommentStore(comments);
   useEffect(() => {
     if (!comments) return undefined;
-    comments.onError = (msg, err, label) =>
-      notifyError(err ? `${label}: ${humanizeError(err)}` : humanizeError(msg, msg));
+    comments.onError = (msg, err, label) => notifyError(err ?? msg, label);
     comments.load();
   }, [comments]);
 
@@ -340,7 +340,19 @@ export const VocabularyDetail = () => {
               createdRef.current = { ...savedVocabulary, name };
             }
           } else {
-            savedVocabulary = await client.vocabLayers.create(name);
+            const before = await client.vocabLayers.list();
+            try {
+              savedVocabulary = await client.vocabLayers.create(name);
+            } catch (err) {
+              // The answer was lost: finish the vocabulary the create made, if
+              // it made one, so Create cannot make a second.
+              savedVocabulary = await findLostCreate(err, {
+                before,
+                reread: () => client.vocabLayers.list(),
+                isIt: (v) => v.name === name,
+              });
+              if (!savedVocabulary) throw err;
+            }
             createdRef.current = { ...savedVocabulary, name };
           }
           if (needsStatusTagset) {
@@ -383,7 +395,7 @@ export const VocabularyDetail = () => {
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving vocabulary:', err);
-      notifyError('Failed to save vocabulary', 'Error');
+      notifyError(err, 'Failed to save vocabulary');
     } finally {
       setSaving(false);
     }
