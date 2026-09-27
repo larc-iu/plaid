@@ -14,9 +14,11 @@ describe('notifyError', () => {
     notifyError(
       'HTTP 400 :value has an invalid regex: Unclosed group near index 1 ( at http://localhost:5174/api/v1/query',
     );
-    expect(toast.error).toHaveBeenCalledWith('Error', {
-      description: ':value has an invalid regex: Unclosed group near index 1 (',
-    });
+    // With no title, the humanized message is the title.
+    expect(toast.error).toHaveBeenCalledWith(
+      ':value has an invalid regex: Unclosed group near index 1 (',
+      {},
+    );
   });
   it('leaves an ordinary message alone', () => {
     notifyError('Failed to create user: name taken', 'Oops');
@@ -26,20 +28,20 @@ describe('notifyError', () => {
   });
   it('says what a locked document means, not "Locked"', () => {
     notifyError({ status: 423, message: 'HTTP 423 Locked at http://localhost:5174/api/v1/spans' });
-    expect(toast.error).toHaveBeenCalledWith('Error', {
-      description:
-        'This document is being edited right now (by another user or a service). Try again in a moment.',
-    });
+    expect(toast.error).toHaveBeenCalledWith(
+      'This document is being edited right now (by another user or a service). Try again in a moment.',
+      {},
+    );
   });
   it('reads a status off a bare message too', () => {
     notifyError('HTTP 423 Locked');
-    expect(toast.error.mock.calls[0][1].description).toMatch(/being edited right now/);
+    expect(toast.error.mock.calls[0][0]).toMatch(/being edited right now/);
   });
 });
 
 describe('humanizeError', () => {
   it('explains an unreachable server in one way', () => {
-    const want = /Could not reach the server/;
+    const want = /Failed to reach the server/;
     expect(humanizeError({ status: 0, message: 'Failed to fetch' })).toMatch(want);
     expect(
       humanizeError({ status: 503, message: 'HTTP 503 Service Unavailable at http://x' }),

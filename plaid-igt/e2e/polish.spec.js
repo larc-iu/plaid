@@ -131,7 +131,7 @@ test('a failed save keeps the typed value in the cell and the focus on it', asyn
   // the toast is a few seconds out on a quiet machine and longer under a full
   // suite.
   await expect(
-    page.locator('[data-sonner-toast]').filter({ hasText: /Could not reach the server/ }),
+    page.locator('[data-sonner-toast]').filter({ hasText: /Failed to reach the server/ }),
   ).toBeVisible({ timeout: 15000 });
   await expect(cell).toHaveValue('OFFLINE');
   await expect(cell).toBeFocused();
