@@ -136,6 +136,53 @@ describe('Turn and the other projects', () => {
     expect(view.container.querySelector('[data-card="{{here}}"]').dataset.project).toBe('pA');
     await view.unmount();
   });
+
+  // Two projects may each hold a "Text 1", so a card and a link into another
+  // project say which. Every app titles a citation from its document's name.
+  const titledAdapter = {
+    ...adapter,
+    citationTitle: (c) => `${c.documentName}, sentence ${c.sentence}`,
+    ExampleCard: ({ c }) => (
+      <div data-card={c.key}>{`${c.documentName}, sentence ${c.sentence}`}</div>
+    ),
+  };
+  const isolates = /[\u2068\u2069]/g;
+  const titled = [
+    { key: '{{here}}', documentName: 'Text 1', sentence: 3 },
+    { key: '{{there}}', documentName: 'Text 1', sentence: 3, projectId: 'pB' },
+  ];
+
+  it('names the other project before the title of a card and a link into it', async () => {
+    const view = await draw(
+      {
+        kind: 'assistant',
+        text: '{{there}}\n\nCompare {{here}} and {{there}}.',
+        citations: titled,
+      },
+      { adapter: titledAdapter, citeNames: new Map([['pB', 'Lamkang B']]) },
+    );
+    const card = (key) =>
+      view.container.querySelector(`[data-card="${key}"]`).textContent.replace(isolates, '');
+    expect(card('{{there}}')).toBe('Lamkang B: Text 1, sentence 3');
+    const links = all(view.container, 'a').map((a) => a.textContent.replace(isolates, ''));
+    expect(links).toEqual(['Text 1, sentence 3', 'Lamkang B: Text 1, sentence 3']);
+    await view.step(() => byText(view.container, 'button', 'cited example').click());
+    expect(card('{{here}}')).toBe('Text 1, sentence 3');
+    await view.unmount();
+  });
+
+  it('draws a one-project reply exactly as before', async () => {
+    const item = { kind: 'assistant', text: 'See {{here}}.', citations: [titled[0]] };
+    const before = await draw(item, { adapter: titledAdapter });
+    // The mark's clip-path id is React's own, one per mount.
+    const markup = (v) => v.container.innerHTML.replace(/_r_\w+_/g, 'ID');
+    const html = markup(before);
+    await before.unmount();
+    const after = await draw(item, { adapter: titledAdapter, citeNames: new Map() });
+    expect(markup(after)).toBe(html);
+    expect(html).not.toMatch(isolates);
+    await after.unmount();
+  });
 });
 
 // A project's name is data, in whatever script it was written in. Each name is

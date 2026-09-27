@@ -1,16 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
   atProjectCap,
+  chipRemoveLabels,
   couldNotOpen,
   lastProjects,
+  namedCitations,
   projectCandidates,
+  projectNamesAt,
   projectsToSend,
   reachChanged,
   servedThere,
   withProjects,
 } from './projectReach.js';
 import { rewindForRetry } from './resume.js';
-import { linkifyCitations } from './citations.js';
+import { linkLabel, linkifyCitations } from './citations.js';
 import { conversationToMarkdown } from './exportMarkdown.js';
 
 // A conversation reads its home project and whichever others the reader added.
@@ -220,5 +223,123 @@ describe('the export', () => {
   it('escapes a project name', () => {
     const conv = { display: [user([{ id: 'x', name: 'a*b [c]' }])] };
     expect(conversationToMarkdown(conv, null, ctx)).toContain('*With a\\*b \\[c\\]*');
+  });
+});
+
+// A citation into another project is titled with that project's name, the
+// name the conversation's messages carried as of that turn. Every app titles a
+// citation from its document's name, so that is where the project goes.
+describe('namedCitations', () => {
+  const FSI = String.fromCharCode(0x2068);
+  const PDI = String.fromCharCode(0x2069);
+  const home = { key: 'h', documentName: 'Text 1', sentence: 3 };
+  const there = { key: 't', documentName: 'Text 1', sentence: 3, projectId: 'pB' };
+
+  it('names the project a foreign citation is in, and leaves a home one alone', () => {
+    const [h, t] = namedCitations([home, there], 'pA', new Map([['pB', 'Lamkang B']]));
+    expect(h).toBe(home);
+    expect(t.documentName).toBe(`${FSI}Lamkang B${PDI}: Text 1`);
+    expect(t.key).toBe('t');
+    expect(there.documentName).toBe('Text 1');
+  });
+
+  it('leaves a citation that carries the home project id alone', () => {
+    const own = { ...home, projectId: 'pA' };
+    expect(namedCitations([own], 'pA', new Map([['pA', 'Lamkang A']]))[0]).toBe(own);
+  });
+
+  it('changes nothing in a thread that reads one project', () => {
+    const cites = [home];
+    expect(namedCitations(cites, 'pA', new Map())).toBe(cites);
+    expect(namedCitations(undefined, 'pA', new Map([['pB', 'B']]))).toBeUndefined();
+  });
+
+  it('takes each project’s name as of the turn, not a later one', () => {
+    const display = [
+      user([B], 'one'),
+      reply,
+      user([{ id: 'pB', name: 'Lamkang North' }], 'two'),
+      reply,
+    ];
+    expect(projectNamesAt(display, 1).get('pB')).toBe('Lamkang B');
+    expect(projectNamesAt(display, 3).get('pB')).toBe('Lamkang North');
+    expect(projectNamesAt(display, 99).get('pB')).toBe('Lamkang North');
+    expect(projectNamesAt([], 0).size).toBe(0);
+  });
+});
+
+describe('the export of a citation into another project', () => {
+  const titled = {
+    CITE_RE: /\{\{[^}]*\}\}/g,
+    citationTitle: (c) => `${c.documentName}, sentence ${c.sentence}`,
+    citationHref: (origin, projectId, c) => `${origin}/p/${projectId}/${c.documentId}`,
+    citationToMarkdown: (c, { origin, projectId }) =>
+      `**[${linkLabel(`${c.documentName}, sentence ${c.sentence}`)}](${origin}/p/${projectId}/${c.documentId})**`,
+  };
+  const ctx = { origin: 'o', projectId: 'pA', adapter: titled };
+  const home = { key: '{{here}}', documentName: 'Text 1', sentence: 3, documentId: 'd1' };
+  const there = { ...home, key: '{{there}}', documentId: 'd9', projectId: 'pB' };
+  const strip = (md) => md.replace(/[\u2068\u2069]/g, '');
+
+  it('names the project before the title, in the card and the inline link', () => {
+    const conv = {
+      display: [
+        user([B]),
+        {
+          kind: 'assistant',
+          text: '{{there}}\nand {{here}} and {{there}}',
+          citations: [home, there],
+        },
+      ],
+    };
+    const md = strip(conversationToMarkdown(conv, null, ctx));
+    expect(md).toContain('**[Lamkang B: Text 1, sentence 3](o/p/pB/d9)**');
+    expect(md).toContain('[Lamkang B: Text 1, sentence 3](o/p/pB/d9)');
+    expect(md).toContain('**[Text 1, sentence 3](o/p/pA/d1)**');
+    expect(md).not.toContain('Lamkang B: Text 1, sentence 3](o/p/pA');
+  });
+
+  it('writes a one-project thread exactly as before', () => {
+    const conv = {
+      display: [user(null), { kind: 'assistant', text: '{{here}}', citations: [home] }],
+    };
+    const md = conversationToMarkdown(conv, null, ctx);
+    expect(md).toBe(
+      '# Conversation\n\n## You\n\nq\n\n## Assistant\n\n**[Text 1, sentence 3](o/p/pA/d1)**\n',
+    );
+  });
+
+  it('escapes the project name inside the link label', () => {
+    const odd = { id: 'pB', name: 'B](javascript:alert(1))\n# H' };
+    const conv = {
+      display: [user([odd]), { kind: 'assistant', text: '{{there}}', citations: [there] }],
+    };
+    const md = strip(conversationToMarkdown(conv, null, ctx));
+    expect(md).toContain(
+      '**[B\\]\\(javascript:alert\\(1)) \\# H: Text 1, sentence 3](o/p/pB/d9)**',
+    );
+    expect(md).not.toMatch(/^# H/m);
+  });
+});
+
+// Two projects may share a name. Their chips' remove buttons are numbered
+// only then, so each still has a name of its own.
+describe('chipRemoveLabels', () => {
+  it('says the name alone where names differ', () => {
+    expect(chipRemoveLabels([B, C])).toEqual(['Remove Lamkang B', 'Remove Lamkang C']);
+  });
+
+  it('numbers the ones that share a name, in the order shown', () => {
+    const twin = { id: 'pB2', name: 'Lamkang B' };
+    expect(chipRemoveLabels([B, C, twin])).toEqual([
+      'Remove Lamkang B (1)',
+      'Remove Lamkang C',
+      'Remove Lamkang B (2)',
+    ]);
+    expect(new Set(chipRemoveLabels([B, twin])).size).toBe(2);
+  });
+
+  it('gives nothing for no chips', () => {
+    expect(chipRemoveLabels([])).toEqual([]);
   });
 });

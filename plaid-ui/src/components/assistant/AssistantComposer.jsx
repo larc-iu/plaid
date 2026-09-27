@@ -9,6 +9,7 @@ import { AddProject, ProjectChip } from './ProjectChips.jsx';
 import { AssistantPicker } from './ConversationList.jsx';
 import { MentionList } from './MentionList.jsx';
 import { NEARLY_FULL, fullness } from './usage.js';
+import { chipRemoveLabels } from './projectReach.js';
 import { useMentions } from './useMentions.js';
 
 // The foot of the chat: what has to be read before the next message is typed,
@@ -60,6 +61,7 @@ export const AssistantComposer = ({
   compact = false,
 }) => {
   const { service } = choice;
+  const removeLabels = chipRemoveLabels(projects);
   const mentions = useMentions({
     client,
     projectId,
@@ -160,8 +162,13 @@ export const AssistantComposer = ({
           and the composer is never far from the caret anyway. */}
       {(attachments.length > 0 || projects.length > 0) && (
         <div className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center gap-1.5">
-          {projects.map((p) => (
-            <ProjectChip key={p.id} project={p} onRemove={onRemoveProject} />
+          {projects.map((p, k) => (
+            <ProjectChip
+              key={p.id}
+              project={p}
+              label={removeLabels[k]}
+              onRemove={onRemoveProject}
+            />
           ))}
           {attachments.map((f) => (
             <AttachmentChip key={f.id} file={f} onRemove={onRemoveAttachment} />

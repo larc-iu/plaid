@@ -13,6 +13,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
+import { namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 
 // One turn of a conversation as drawn: the reply with its citations, the
@@ -128,6 +129,9 @@ export const Turn = ({
   fromAnotherModel,
   movedHere,
   reachChanged = false,
+  // The other projects' names as of this turn (`projectNamesAt`), so a
+  // citation into one of them is titled with it.
+  citeNames = null,
   canWrite,
   contributor,
   busy,
@@ -239,7 +243,7 @@ export const Turn = ({
         {item.text ? (
           <CitedMarkdown
             text={item.text}
-            citations={item.citations}
+            citations={namedCitations(item.citations, projectId, citeNames)}
             projectId={projectId}
             adapter={adapter}
           />

@@ -4,7 +4,13 @@
 // one line per reply. Pure: no DOM, so it is unit-tested.
 
 import { linkifyCitations, markdownText } from './citations.js';
-import { couldNotOpen, reachChanged, withProjects } from './projectReach.js';
+import {
+  couldNotOpen,
+  namedCitations,
+  projectNamesAt,
+  reachChanged,
+  withProjects,
+} from './projectReach.js';
 
 // A citation's card, linked into the project it cites: another project the
 // conversation reads, or its own.
@@ -73,7 +79,11 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
       if (d.contextNote) out.push(`*${d.contextNote}*`, '');
       if (d.unavailableProjects?.length)
         out.push(`*${markdownText(couldNotOpen(d.unavailableProjects))}*`, '');
-      if (d.text) out.push(replyToMarkdown(d.text, d.citations, ctx), '');
+      if (d.text) {
+        // A citation into another project is titled with that project's name.
+        const cited = namedCitations(d.citations, projectId, projectNamesAt(display, i));
+        out.push(replyToMarkdown(d.text, cited, ctx), '');
+      }
       if (d.plan) out.push(planToMarkdown(d.plan, d.status, !!d.interrupted), '');
     }
   });

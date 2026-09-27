@@ -9,8 +9,10 @@ import { atProjectCap, projectCandidates } from './projectReach.js';
 // The other projects a conversation reads (see projectReach.js): one chip each
 // in the composer, and the button beside the paperclip that adds one.
 
-// One project the conversation reads besides its own, removable.
-export const ProjectChip = ({ project, onRemove }) => (
+// One project the conversation reads besides its own, removable. `label` is
+// its remove button's accessible name, numbered where two chips share a name
+// (`chipRemoveLabels`).
+export const ProjectChip = ({ project, onRemove, label = `Remove ${project.name}` }) => (
   <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-muted/50 py-1 pl-2.5 pr-1 text-xs">
     <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
     <span dir="auto" className="truncate font-medium">
@@ -20,7 +22,7 @@ export const ProjectChip = ({ project, onRemove }) => (
       type="button"
       onClick={() => onRemove(project.id)}
       title="Remove"
-      aria-label={`Remove ${project.name}`}
+      aria-label={label}
       className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
     >
       <X className="h-3 w-3" />

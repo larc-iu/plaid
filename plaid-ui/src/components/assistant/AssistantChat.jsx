@@ -12,6 +12,7 @@ import {
   atProjectCap,
   lastProjects,
   notServedThere,
+  projectNamesAt,
   projectsToSend,
   reachChanged,
   servedThere,
@@ -232,11 +233,84 @@ export const AssistantChat = ({
   // whatever the conversation's last message carried, so opening a thread
   // brings its projects back and a new one starts with none.
   const [reachEdit, setReachEdit] = useState({ convId: null, projects: [] });
-  const reach = !maxProjects
-    ? []
-    : reachEdit.convId === active?.id
-      ? reachEdit.projects
-      : lastProjects(active?.display);
+  // Each other project's name as the project list gives it now, read when a
+  // conversation that reads some is opened. A chip shows it and the next
+  // message carries it, while the messages already sent keep the names they
+  // were sent with. A project that is gone keeps its chip under its last name,
+  // and the reply then says it could not be opened.
+  const [liveNames, setLiveNames] = useState(() => new Map());
+  const edited = reachEdit.convId === active?.id;
+  const reach = (
+    !maxProjects ? [] : edited ? reachEdit.projects : lastProjects(active?.display)
+  ).map((p) => {
+    const now = liveNames.get(p.id);
+    return now && now !== p.name ? { ...p, name: now } : p;
+  });
+  const namesWanted = !!maxProjects && lastProjects(active?.display).length > 0;
+  useEffect(() => {
+    if (!namesWanted) return undefined;
+    let alive = true;
+    client.projects
+      .list()
+      .then((all) => {
+        if (!alive) return;
+        setLiveNames(
+          new Map((all || []).filter((p) => p?.id && p.name).map((p) => [p.id, p.name])),
+        );
+      })
+      .catch((e) => console.warn('[Assistant] could not read the project names', e));
+    return () => {
+      alive = false;
+    };
+  }, [client, active?.id, namesWanted]);
+  const reachRef = useRef(reach);
+  reachRef.current = reach;
+  // The assistant answering now and how many projects it reads, for an
+  // answer that arrives after the reader chose another one.
+  const serviceIdRef = useRef(null);
+  serviceIdRef.current = service?.serviceId ?? null;
+  const maxProjectsRef = useRef(maxProjects);
+  maxProjectsRef.current = maxProjects;
+  // Chips the reader added were checked against the assistant answering at
+  // the time. When another one takes over in the same conversation (chosen in
+  // a new thread, or standing in for one that went offline), each is checked
+  // again against it, and one it does not run on is taken off and said so.
+  const checkedWith = useRef({ convId: undefined, serviceId: null });
+  const answeringId = service?.serviceId ?? null;
+  useEffect(() => {
+    const convId = active?.id;
+    const was = checkedWith.current;
+    if (!answeringId) return;
+    checkedWith.current = { convId, serviceId: answeringId };
+    if (was.convId !== convId || !was.serviceId || was.serviceId === answeringId) return;
+    // Chips brought back from the record went with the conversation's own
+    // assistant, and are checked by the service on every turn.
+    if (!edited) return;
+    const toCheck = reachRef.current;
+    if (!toCheck.length) return;
+    Promise.all(
+      toCheck.map((p) =>
+        client.messages
+          .discoverServices(p.id)
+          .then((found) => servedThere(found, answeringId))
+          .catch(() => false),
+      ),
+    ).then((served) => {
+      if (activeRef.current?.id !== convId || serviceIdRef.current !== answeringId) return;
+      const gone = toCheck.filter((_p, k) => !served[k]);
+      if (!gone.length) return;
+      for (const p of gone) notifyError(notServedThere(p.name));
+      const ids = new Set(gone.map((p) => p.id));
+      setReachEdit((prev) => {
+        const now =
+          prev.convId === convId ? prev.projects : lastProjects(activeRef.current?.display);
+        return { convId, projects: now.filter((p) => !ids.has(p.id)) };
+      });
+    });
+    // `edited` is read as it stands when the assistant changes, not a reason
+    // to check again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [answeringId, active?.id, client]);
   const [busy, setBusy] = useState(null); // null | 'turn' | 'apply'
   const [progress, setProgress] = useState('');
   const [liveSteps, setLiveSteps] = useState([]); // progress messages so far
@@ -559,7 +633,6 @@ export const AssistantChat = ({
   // there is nothing to show before the answer. Answers whether it joined.
   const addProject = async (p) => {
     const at = activeRef.current?.id;
-    const serviceId = service?.serviceId;
     let found;
     try {
       found = await client.messages.discoverServices(p.id);
@@ -567,7 +640,9 @@ export const AssistantChat = ({
       notifyError(humanizeError(e, notServedThere(p.name)));
       return false;
     }
-    if (!servedThere(found, serviceId)) {
+    // Asked of the assistant answering NOW: the reader may have chosen
+    // another one while this was being looked up.
+    if (!servedThere(found, serviceIdRef.current)) {
       notifyError(notServedThere(p.name));
       return false;
     }
@@ -575,7 +650,7 @@ export const AssistantChat = ({
     if (activeRef.current?.id !== at) return false;
     setReachEdit((prev) => {
       const now = prev.convId === at ? prev.projects : lastProjects(activeRef.current?.display);
-      if (now.some((q) => q.id === p.id) || atProjectCap(now, maxProjects)) return prev;
+      if (now.some((q) => q.id === p.id) || atProjectCap(now, maxProjectsRef.current)) return prev;
       return { convId: at, projects: [...now, { id: p.id, name: p.name }] };
     });
     return true;
@@ -797,6 +872,7 @@ export const AssistantChat = ({
                 }
                 movedHere={movedHere(display, i)}
                 reachChanged={reachChanged(display, i)}
+                citeNames={d.citations?.length ? projectNamesAt(display, i) : null}
                 canWrite={canWrite}
                 contributor={contributor}
                 busy={!!busy}

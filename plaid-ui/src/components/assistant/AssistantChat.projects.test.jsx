@@ -278,3 +278,159 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 });
+
+// A project may be renamed or deleted after it was added. The chip and the
+// next message take the name the project list gives now, the messages already
+// sent keep theirs, and a project that is gone keeps its chip.
+describe('AssistantChat and the names of other projects', () => {
+  it('shows a renamed project under its name now, and sends that name', async () => {
+    const client = fakeClient();
+    client.projects.list.mockResolvedValue([{ id: 'pB', name: 'Lamkang North' }, C]);
+    const m = await mount(client);
+    await flush(m);
+    expect(client.projects.list).toHaveBeenCalled();
+    expect(chip(m, 'Lamkang North')).not.toBeNull();
+    expect(chip(m, 'Lamkang B')).toBeNull();
+    await typeAndSend(m, 'and now?');
+    await flush(m, 8);
+    const display = client.records.get('igt:assistant:p1:conv:c1').display;
+    expect(display[0].projects).toEqual([B]);
+    expect(lastAsked(client).projects).toEqual([{ id: 'pB', name: 'Lamkang North' }]);
+    await m.unmount();
+  });
+
+  it('keeps the chip of a project that no longer exists, under its last name', async () => {
+    const client = fakeClient();
+    client.projects.list.mockResolvedValue([C]);
+    const m = await mount(client);
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    await typeAndSend(m, 'still?');
+    await flush(m, 8);
+    expect(lastAsked(client).projects).toEqual([B]);
+    await m.unmount();
+  });
+
+  it('keeps the names it has when the project list cannot be read', async () => {
+    const client = fakeClient();
+    client.projects.list.mockRejectedValue(new Error('offline'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const m = await mount(client);
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    warn.mockRestore();
+    await m.unmount();
+  });
+
+  it('numbers the remove buttons of two projects with one name', async () => {
+    const twin = { id: 'pB2', name: 'Lamkang B' };
+    const client = fakeClient({
+      conv: { messages: [], display: [{ kind: 'user', text: 'q', projects: [B, twin] }] },
+    });
+    client.projects.list.mockResolvedValue([B, twin]);
+    const m = await mount(client);
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).toBeNull();
+    await m.step(() => chip(m, 'Lamkang B (2)').click());
+    await typeAndSend(m, 'one of them');
+    await flush(m, 8);
+    expect(lastAsked(client).projects).toEqual([B]);
+    await m.unmount();
+  });
+});
+
+// In a new thread the reader may add projects and then choose a different
+// assistant. Each chip was checked against the first, so each is checked again
+// against the one now answering, and one it does not run on is taken off.
+describe('AssistantChat when another assistant takes over', () => {
+  const TWO = { ...SERVICE, serviceId: 'igt:assist:two', serviceName: 'Assistant two' };
+  const both = { pB: [SERVICE, TWO], pC: [SERVICE] };
+  const mountNew = (client) =>
+    renderComponent(
+      <MemoryRouter initialEntries={['/projects/p1']}>
+        <AssistantChat
+          projectId="p1"
+          client={client}
+          userId="u1"
+          canWrite
+          adapter={ADAPTER}
+          conversationId={null}
+          renderEmpty={({ choice }) => (
+            <div>
+              {choice.assistants.map((s) => (
+                <button key={s.serviceId} type="button" onClick={() => choice.choose(s.serviceId)}>
+                  {`Use ${s.serviceName}`}
+                </button>
+              ))}
+            </div>
+          )}
+        />
+      </MemoryRouter>,
+    );
+  const twoClient = () => {
+    const client = fakeClient({ where: both });
+    client.messages.discoverServices.mockImplementation(async (pid) =>
+      pid === 'p1' ? [SERVICE, TWO] : (both[pid] ?? []),
+    );
+    return client;
+  };
+
+  it('takes off the chips the newly chosen assistant does not run on, and says so', async () => {
+    const client = twoClient();
+    const m = await mountNew(client);
+    await flush(m);
+    await pick(m, 'Lamkang B');
+    await pick(m, 'Lamkang C');
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    expect(chip(m, 'Lamkang C')).not.toBeNull();
+    notifyError.mockClear();
+    await m.step(() => byText(m.container, 'button', 'Use Assistant two').click());
+    await flush(m, 8);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    await m.unmount();
+  });
+
+  it('keeps every chip when the new assistant runs on each', async () => {
+    const client = twoClient();
+    const m = await mountNew(client);
+    await flush(m);
+    await pick(m, 'Lamkang B');
+    notifyError.mockClear();
+    await m.step(() => byText(m.container, 'button', 'Use Assistant two').click());
+    await flush(m, 8);
+    expect(chip(m, 'Lamkang B')).not.toBeNull();
+    expect(notifyError).not.toHaveBeenCalled();
+    await m.unmount();
+  });
+
+  it('checks a pick again when the assistant changes while it is being checked', async () => {
+    const client = twoClient();
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    const m = await mountNew(client);
+    await flush(m);
+    client.messages.discoverServices.mockImplementation(async (pid) => {
+      if (pid === 'p1') return [SERVICE, TWO];
+      if (pid === 'pC' && release) {
+        await held;
+        release = null;
+      }
+      return both[pid] ?? [];
+    });
+    await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
+    await flush(m);
+    const option = all(document.body, '[role="option"]').find((n) => n.textContent === 'Lamkang C');
+    await m.step(() => option.click());
+    await m.step(() => byText(m.container, 'button', 'Use Assistant two').click());
+    await m.step(() => release());
+    await flush(m, 8);
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    expect(notifyError).toHaveBeenCalledWith('The assistant is not available in Lamkang C.');
+    await m.unmount();
+  });
+});

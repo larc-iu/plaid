@@ -82,3 +82,48 @@ export const notServedThere = (name) => `The assistant is not available in ${nam
 // The line under a reply for projects the assistant could not read.
 export const couldNotOpen = (projects) =>
   projects.map((p) => `${p.name || p.id} could not be opened.`).join(' ');
+
+// The name each other project had as of the message at `i`: the latest one a
+// message up to there carried. A later rename leaves an earlier turn alone.
+export const projectNamesAt = (display, i) => {
+  const names = new Map();
+  const end = Math.min(i, (display?.length ?? 0) - 1);
+  for (let k = 0; k <= end; k++) {
+    if (display[k].kind !== 'user') continue;
+    for (const p of display[k].projects || []) if (p?.id) names.set(p.id, p.name || p.id);
+  }
+  return names;
+};
+
+// Unicode isolates around a name, so a right-to-left project name and the
+// document name after it are not read as one run.
+const FSI = String.fromCharCode(0x2068);
+const PDI = String.fromCharCode(0x2069);
+
+// A citation into another project, named with that project where the
+// document is ("Lamkang B: Text 1, sentence 3"): two projects may each hold a
+// "Text 1". Every app titles a citation from `documentName`, so the card, the
+// link and the export all say it. A citation into the home project, or into
+// one no message named, is left exactly as it was.
+export const namedCitations = (citations, homeId, names) => {
+  if (!citations?.length || !names?.size) return citations;
+  return citations.map((c) => {
+    const name = c?.projectId && c.projectId !== homeId ? names.get(c.projectId) : null;
+    return name ? { ...c, documentName: `${FSI}${name}${PDI}: ${c.documentName ?? ''}` } : c;
+  });
+};
+
+// The accessible name of each chip's remove button. Two projects may share a
+// name, and two buttons both called "Remove Lamkang" cannot be told apart, so
+// only where names collide each is numbered in the order the chips show.
+export const chipRemoveLabels = (projects) => {
+  const count = new Map();
+  for (const p of projects || []) count.set(p.name, (count.get(p.name) ?? 0) + 1);
+  const seen = new Map();
+  return (projects || []).map((p) => {
+    if (count.get(p.name) < 2) return `Remove ${p.name}`;
+    const n = (seen.get(p.name) ?? 0) + 1;
+    seen.set(p.name, n);
+    return `Remove ${p.name} (${n})`;
+  });
+};
