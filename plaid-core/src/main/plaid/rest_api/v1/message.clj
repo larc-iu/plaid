@@ -61,9 +61,10 @@
   [{{{:keys [id]} :path} :parameters user-id :user/id db :db :as req}]
   (if (nil? (prj/get db id))
     ;; The privilege check lets an admin in on any project id, so a project
-    ;; that does not exist is refused here, while a status can still be sent,
-    ;; with the same 403 a non-admin gets.
-    {:status 403 :body {:error (str "User " user-id " lacks sufficient privileges to read project " id)}}
+    ;; that does not exist is refused here, while a status can still be sent.
+    ;; Only an admin gets this far, and an unknown id answers an admin 404
+    ;; (a non-member already had the middleware's 403).
+    {:status 404 :body {:error "Project not found"}}
     (http-kit/as-channel req
                          {:on-open
                           (fn [channel]

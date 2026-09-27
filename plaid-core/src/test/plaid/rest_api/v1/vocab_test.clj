@@ -1396,6 +1396,17 @@
                                                   :body [(link-op other-vocab)]}))
       (assert-status 403 (get-vocab-item user1-request item)))
 
+    (testing "nor can one who writes the vocabulary through another project it is granted to"
+      (let [other-proj (create-test-project admin-request "LinkGateOther")]
+        (assert-no-content (link-vocab-to-project admin-request other-proj other-vocab))
+        (assert-no-content (api-call admin-request {:method :post
+                                                    :path (str "/api/v1/projects/" other-proj "/writers/user1@example.com")}))
+        (assert-ok (get-vocab-item user1-request item))
+        (assert-status 403 (link-vocab-to-project user1-request proj other-vocab))
+        (assert-no-content (api-call admin-request {:method :delete
+                                                    :path (str "/api/v1/projects/" other-proj "/writers/user1@example.com")}))
+        (assert-status 403 (get-vocab-item user1-request item))))
+
     (testing "an unknown vocabulary id answers 403 to a non-admin"
       (assert-status 403 (link-vocab-to-project user1-request proj (random-uuid))))
 

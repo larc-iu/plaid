@@ -185,11 +185,61 @@
 (deftest an-admin-listening-on-a-missing-project-is-refused
   ;; The privilege check lets an admin in on any project id, so the route
   ;; refuses a project that does not exist before the SSE headers go out,
-  ;; rather than opening a stream that the standing check would close.
+  ;; rather than opening a stream that the standing check would close. An
+  ;; unknown id answers 404 to an admin and 403 to anyone else, as on every
+  ;; other route (the 2026-09-14 ruling).
   (events/reset-state!)
   (let [opened (atom false)
         missing (str (java.util.UUID/randomUUID))]
     (with-redefs [http-kit/as-channel (fn [_ _] (reset! opened true) {:status 200 :body ""})]
       (let [resp (fix/rest-handler (admin-request :get (str "/api/v1/projects/" missing "/listen")))]
+        (is (= 404 (:status resp)))
+        (is (not @opened)))
+      (create-user! "lis-a@example.com" false)
+      (let [resp (fix/rest-handler ((token-req-fn (session-of "lis-a@example.com"))
+                                    :get (str "/api/v1/projects/" missing "/listen")))]
         (is (= 403 (:status resp)))
         (is (not @opened))))))
+
+(deftest a-change-that-leaves-the-right-standing-keeps-the-stream
+  (events/reset-state!)
+  (let [p1 (create-project!)
+        p2 (create-project!)]
+    (testing "a reader of two projects removed from one keeps the other's stream"
+      (let [session (member! p1 "readers" "lis-a@example.com")
+            _ (grant! p2 "readers" "lis-a@example.com")
+            on-p1 (open! session p1)
+            on-p2 (open! session p2)]
+        (api-call admin-request {:method :delete
+                                 :path (str "/api/v1/projects/" p2 "/readers/lis-a@example.com")})
+        (is @on-p2)
+        (is (not @on-p1))))
+    (testing "a maintainer demoted to reader keeps it"
+      (let [closed (open! (member! p1 "maintainers" "lis-b@example.com") p1)]
+        (grant! p1 "readers" "lis-b@example.com")
+        (is (not @closed))))
+    (testing "an admin with no role keeps it through someone else's role change"
+      (create-user! "lis-admin@example.com" true)
+      (let [closed (open! (session-of "lis-admin@example.com") p1)]
+        (member! p1 "readers" "lis-c@example.com")
+        (api-call admin-request {:method :delete
+                                 :path (str "/api/v1/projects/" p1 "/readers/lis-c@example.com")})
+        (is (not @closed))))
+    (testing "a user updated without losing standing keeps it"
+      (let [closed (open! (member! p1 "readers" "lis-d@example.com") p1)]
+        (api-call admin-request {:method :patch :path "/api/v1/users/lis-d@example.com"
+                                 :body {:display-name "Listener D"}})
+        (is (not @closed))))))
+
+(deftest a-closed-stream-leaves-nothing-registered
+  (events/reset-state!)
+  (let [pid (create-project!)
+        closed (open! (member! pid "readers" "lis-a@example.com") pid)]
+    (is (= 1 (count (events/get-project-clients pid))))
+    (is (= 1 (count @events/heartbeat-registry)))
+    (api-call admin-request {:method :delete
+                             :path (str "/api/v1/projects/" pid "/readers/lis-a@example.com")})
+    (is @closed)
+    (is (empty? @events/channel-mappings))
+    (is (empty? (events/get-project-clients pid)))
+    (is (empty? @events/heartbeat-registry))))
