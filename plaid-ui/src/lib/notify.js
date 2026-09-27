@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { humanizeError } from './errors.js';
+import { humanizeError, isUnknownOutcome, UNKNOWN_OUTCOME_TITLE } from './errors.js';
 
 // The package's own toast primitives, for the screens that live here and for
 // both apps, whose `utils/feedback` modules re-export them. No domain class
@@ -12,9 +12,14 @@ export const notifySuccess = (message, title, options) =>
 // Callers hand over either a client error or a message. `humanizeError` reads
 // the status off the object where there is one, and parses it back out of the
 // message where there is not, so a status reads as one sentence in every app
-// and no toast shows an internal URL or a bare id.
+// and no toast shows an internal URL or a bare id. A write whose answer was
+// lost did not fail as far as anyone knows, so its title says so instead of
+// the caller's "Failed to ...".
 export const notifyError = (message, title = 'Error', options) =>
-  toast.error(title, { description: humanizeError(message), ...options });
+  toast.error(isUnknownOutcome(message) ? UNKNOWN_OUTCOME_TITLE : title, {
+    description: humanizeError(message),
+    ...options,
+  });
 
 export const notifyWarning = (message, title = 'Warning', options) =>
   toast.warning(title, { description: message, ...options });

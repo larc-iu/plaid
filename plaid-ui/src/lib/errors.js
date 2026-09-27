@@ -38,6 +38,22 @@ export const isUnreachable = (error) => {
   return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
 };
 
+// A write whose answer never came back: the connection dropped, the answer
+// was garbled, or the server took longer than the client waits (a gateway
+// timeout included). The server may have made the change, so it is not the
+// network's "could not reach" but its own case. The client puts the request's
+// `method` on the error, and a read changes nothing either way.
+export const isUnknownOutcome = (error) => {
+  const method = String((error && error.method) || '').toUpperCase();
+  if (!method || method === 'GET' || method === 'HEAD') return false;
+  const s = statusOf(error);
+  return s === 0 || s === 504 || (s === null && isUnreachable(error));
+};
+
+export const UNKNOWN_OUTCOME_TITLE = 'Not confirmed';
+const UNKNOWN_OUTCOME =
+  'The server did not answer in time. This change may or may not have been saved.';
+
 // A message that names a record by its id was written for a developer. A
 // sentence with the id swapped for a stand-in word reads broken ("Vocab item
 // this item not found"), so such a message is replaced whole: a missing
@@ -54,6 +70,7 @@ const isLockLost = (error) =>
   /\block on document \S+ lapsed\b/i.test(String((error && error.message) || error || ''));
 
 export const humanizeError = (error, fallback = 'Something went wrong.') => {
+  if (isUnknownOutcome(error)) return UNKNOWN_OUTCOME;
   if (isUnreachable(error)) return UNREACHABLE;
   if (isLockLost(error)) return 'The lock on this document lapsed.';
   switch (statusOf(error)) {

@@ -36,4 +36,17 @@ describe('notifyError', () => {
       description: 'Failed to create user: name taken',
     });
   });
+
+  it('titles a write whose answer was lost "Not confirmed", whatever the caller called it', () => {
+    notifyError(
+      Object.assign(new Error('Request timed out at http://x/api/v1/vocab-items'), {
+        status: 0,
+        method: 'POST',
+      }),
+      'Failed to save the entry',
+    );
+    expect(toast.error).toHaveBeenCalledWith('Not confirmed', {
+      description: 'The server did not answer in time. This change may or may not have been saved.',
+    });
+  });
 });

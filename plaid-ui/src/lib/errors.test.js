@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { humanizeError, isPermissionError, signInError, statusOf } from './errors.js';
+import {
+  humanizeError,
+  isPermissionError,
+  isUnknownOutcome,
+  signInError,
+  statusOf,
+} from './errors.js';
 
 // The one place a status becomes a sentence. What it has to hold: a client
 // error's raw message carries the request URL and the ids it was given, and
@@ -126,5 +132,34 @@ describe('a failed sign-in', () => {
     for (const status of [400, 401, 403, 500, 503]) {
       expect(signInError(httpError(status))).not.toMatch(/http/);
     }
+  });
+});
+
+// A write whose answer never came back may have landed: the connection
+// dropped, the answer was garbled, or the server took longer than the client
+// waits. The client says which request it was (`method`).
+describe('a write whose answer was lost', () => {
+  const lost = (method, message = 'Network error: Failed to fetch at http://x/api/v1/spans') =>
+    Object.assign(new Error(message), { status: 0, method });
+  const MAYBE = 'The server did not answer in time. This change may or may not have been saved.';
+
+  it('is told apart from a read that could not reach the server', () => {
+    expect(isUnknownOutcome(lost('POST'))).toBe(true);
+    expect(isUnknownOutcome(lost('PATCH', 'Request timed out at http://x/api/v1/spans'))).toBe(
+      true,
+    );
+    expect(isUnknownOutcome(lost('DELETE', 'Network error: Unexpected token < at http://x'))).toBe(
+      true,
+    );
+    expect(isUnknownOutcome(Object.assign(httpError(504), { method: 'PUT' }))).toBe(true);
+    expect(isUnknownOutcome(lost('GET'))).toBe(false);
+    expect(isUnknownOutcome(new TypeError('Failed to fetch'))).toBe(false);
+    expect(isUnknownOutcome(Object.assign(httpError(500), { method: 'POST' }))).toBe(false);
+    expect(isUnknownOutcome(Object.assign(httpError(503), { method: 'POST' }))).toBe(false);
+  });
+
+  it('says it may or may not have been saved', () => {
+    expect(humanizeError(lost('POST'))).toBe(MAYBE);
+    expect(humanizeError(lost('get'))).toMatch(/Could not reach the server/);
   });
 });
