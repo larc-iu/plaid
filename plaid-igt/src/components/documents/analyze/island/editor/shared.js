@@ -32,6 +32,12 @@ class UncontrolledValueDirective extends Directive {
   update(part, [value]) {
     const el = part.element;
     const v = value ?? '';
+    // A value put back after it was not saved (cells.js _restoreUnsent) stays
+    // on screen until the stored value moves on from the one it was typed over.
+    if (el?.igtUnsent) {
+      if (v === el.igtUnsent.saved) return this.render(value);
+      el.igtUnsent = null;
+    }
     if (el && el.value !== v) {
       if (document.activeElement !== el) {
         el.value = v;

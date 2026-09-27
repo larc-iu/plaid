@@ -18,7 +18,7 @@ import { keys } from '@/lib/keymap.js';
 export const cells = {
   _onFieldFocus(e) {
     this._rememberForTokenize(e.target);
-    e.target.dataset.orig = e.target.value;
+    this._stampOrig(e.target);
     e.target.igtPick = null; // a pick belongs to the edit it was made in
     try {
       e.target.select();
@@ -38,11 +38,20 @@ export const cells = {
     this._skipAltsOnFocus = false;
   },
 
+  // What a cell's edit is measured against from here on: the value it was
+  // focused with, or for a value put back unsent (see _restoreUnsent) the
+  // stored value under it, so that leaving the cell sends it again and Escape
+  // takes it back.
+  _stampOrig(el) {
+    el.dataset.orig = el.igtUnsent ? el.igtUnsent.saved : el.value;
+    el.igtUnsent = null;
+  },
+
   // Morpheme form fields must NOT select-all on focus: the split handler reads
   // the caret position, and a select-all would make a stray '-' split at offset
   // 0 (empty left morpheme) — review M3. Just record the pristine value.
   _onMorphFormFocus(e) {
-    e.target.dataset.orig = e.target.value;
+    this._stampOrig(e.target);
     // Select, like an annotation cell does. A morpheme cell starts out holding
     // the whole word and the entire job is retyping it segmented, so landing a
     // caret inside the value means the next keystroke corrupts it: clicking
@@ -430,15 +439,18 @@ export const cells = {
 
   // Run a cell commit; when it FAILS (server unreachable, conflict…) the doc
   // reloads and re-renders, which used to drop focus to <body> and leave the
-  // user to click back. Put the typed value back into the same cell and
-  // refocus it so Enter retries (E2: focus is never lost).
+  // user to click back. Put the typed value back into the same cell, so
+  // nothing typed is lost. The same holds for an edit that was not sent
+  // because one before it was refused: the refetch took it off the screen,
+  // and it comes back here.
   //
-  // Only when that loses nothing: focus still in this cell, dropped to the
-  // body, or resting in another cell that holds nothing typed (where Enter or
-  // Tab put it). A cell with typed text keeps focus, since taking focus from it
-  // commits it, and two cells whose saves keep failing (or whose sends were
-  // skipped behind a failure) would take focus from each other and resend
-  // forever.
+  // The cell is refocused, so Enter retries (E2: focus is never lost), only
+  // when that loses nothing: focus still in this cell, dropped to the body, or
+  // resting in another cell that holds nothing typed (where Enter or Tab put
+  // it). A cell with typed text keeps focus, since taking focus from it
+  // commits it, and two cells whose saves keep failing would take focus from
+  // each other and resend forever. Otherwise the value goes back without
+  // focus (_restoreUnsent).
   _runKeepingFocus(el, typed, fn) {
     const key = el.dataset.cellKey;
     // The stored value as of this commit: what Escape must revert to and what
@@ -452,7 +464,10 @@ export const cells = {
       const active = document.activeElement;
       const untouchedCell =
         active?.dataset?.cellKey && active.value === (active.dataset.orig ?? '');
-      if (active && active !== document.body && active !== cell && !untouchedCell) return;
+      if (active && active !== document.body && active !== cell && !untouchedCell) {
+        this._restoreUnsent(cell, typed, saved);
+        return;
+      }
       // Focus first (the focus handler stamps dataset.orig from whatever the
       // reload put in the cell), then restore what was typed over it.
       cell.focus();
@@ -460,6 +475,17 @@ export const cells = {
       cell.dataset.orig = saved;
       this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
     });
+  },
+
+  // Put a value that was not saved back into a cell that does not have focus.
+  // `igtUnsent` keeps it there through later renders while the stored value
+  // is still `saved` (uncontrolledValue in shared.js), and makes focusing the
+  // cell measure the edit against `saved` (_stampOrig), so leaving it sends
+  // the value again.
+  _restoreUnsent(cell, typed, saved) {
+    cell.igtUnsent = { typed, saved };
+    cell.value = typed;
+    this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
   },
 
   /**

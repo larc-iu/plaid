@@ -782,6 +782,59 @@ describe('saves that keep failing', () => {
   });
 });
 
+describe('edits not saved behind a refused one', () => {
+  it('come back into their cells, stay through a render, and are sent again on leaving', async () => {
+    // Gloss a (refused after a moment), then b while a is on its way. The
+    // refusal's refetch takes both off the screen, and b is never sent. Both
+    // values come back, b without focus, since focus is in a cell with typed
+    // text.
+    const { doc, client } = mount();
+    // The server has neither gloss, so the refetch takes both off the screen.
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
+    const create = client.spans.create;
+    let hold;
+    client.spans.create = async (...args) => {
+      await new Promise((r) => (hold = r));
+      throw new Error('refused');
+    };
+    const a = cell('ma:m-1:Gloss');
+    const b = cell('ma:m-2:Gloss');
+    const c = [...host.querySelectorAll('[data-cell-key]')].find(
+      (el) => !el.dataset.cellKey.startsWith('ma:'),
+    );
+    focus(a);
+    type(a, 'AAA');
+    focus(b);
+    type(b, 'BBB');
+    focus(c);
+    type(c, 'CCC');
+    await settle();
+    hold();
+    await settle(30);
+    client.spans.create = create;
+    expect(document.activeElement).toBe(c);
+    expect(a.value).toBe('AAA');
+    expect(b.value).toBe('BBB');
+    const glossOn = (id) =>
+      doc.sentences[0].tokens.flatMap((t) => t.morphemes).find((m) => m.id === id).annotations
+        .Gloss;
+    expect(glossOn('m-2')).toBeFalsy();
+    // Another edit re-renders the grid. The values put back stay.
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', null);
+    await settle();
+    expect(b.value).toBe('BBB');
+    // a's stored value moved on (PL), so the cell shows it.
+    expect(a.value).toBe('PL');
+    // Focusing b and leaving it sends BBB.
+    focus(b);
+    expect(b.dataset.orig).toBe('');
+    b.blur();
+    await settle(30);
+    expect(glossOn('m-2').value).toBe('BBB');
+  });
+});
+
 describe('a cell that is focused but untouched', () => {
   it('shows a value that changed underneath it, and takes it as the new baseline', async () => {
     // What a whole-word accept does to the very cell it was pressed in: the
