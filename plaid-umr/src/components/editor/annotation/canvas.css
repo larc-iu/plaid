@@ -211,6 +211,16 @@
   border-style: dashed;
   border-color: var(--plaid-contributed);
 }
+/* Focus cannot take a drafted or contributed node's border, so it is a solid
+   blue ring hugging that border. The pale halo alone was all but invisible. */
+.umr-node.umr-node--machine:is(.umr-node--focused, :focus-visible),
+.umr-node.umr-node--contributed:is(.umr-node--focused, :focus-visible) {
+  box-shadow: 0 0 0 2px var(--umr-edge-lit);
+}
+/* A problem's ring steps out past the focus ring, so both show. */
+.umr-node:has(> .umr-node-mark):is(.umr-node--focused, :focus-visible) {
+  outline-offset: 4px;
+}
 
 .umr-node-head {
   display: flex;
@@ -596,7 +606,6 @@
   font-size: 0.72rem;
   line-height: 1.25rem;
   color: inherit;
-  opacity: 1;
   flex-shrink: 0;
   white-space: nowrap;
 }

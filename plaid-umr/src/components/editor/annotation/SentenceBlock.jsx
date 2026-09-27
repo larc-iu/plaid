@@ -750,6 +750,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     if (e.target.closest?.('input, textarea, [contenteditable="true"]')) return;
     // Shift+Tab is the way out of the block for a keyboard.
     if (e.key === 'Tab' && e.shiftKey) return;
+    // The header's buttons (Accept graph, Text, Comment) keep their own keys:
+    // with a node focused, Enter on Comment opened that node's concept editor.
+    // Escape still leaves a mode from there.
+    if (e.key !== 'Escape' && e.target.closest?.('.umr-block-header')) return;
     if (e.key === 'Escape') {
       if (mode) {
         e.preventDefault();

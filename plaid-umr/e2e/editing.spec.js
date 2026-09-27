@@ -594,6 +594,23 @@ test.describe('editing', () => {
         );
       for (const f of flagged) expect(f).toEqual({ color: 'rgb(109, 40, 217)', outline: 'solid' });
 
+      // Focus keeps the violet border too, so it shows as a solid blue ring
+      // hugging it, and a problem's ring steps out past that.
+      const ring = 'rgb(36, 99, 235) 0px 0px 0px 2px';
+      await plain.focus();
+      await expect(plain).toHaveCSS('box-shadow', ring);
+      await expect(plain).toHaveCSS('border-top-color', 'rgb(109, 40, 217)');
+      const flaggedNode = block
+        .locator('.umr-node--machine')
+        .filter({ has: page.locator('.umr-node-mark') })
+        .first();
+      if (await flaggedNode.count()) {
+        await flaggedNode.focus();
+        await expect(flaggedNode).toHaveCSS('box-shadow', ring);
+        await expect(flaggedNode).toHaveCSS('border-top-color', 'rgb(109, 40, 217)');
+        await expect(flaggedNode).toHaveCSS('outline-offset', '4px');
+      }
+
       const accept = block.getByRole('button', { name: 'Accept graph' });
       await expect(accept).toHaveCSS('color', 'rgb(109, 40, 217)');
       // Full strength at rest: the quiet look is the outline, not opacity.

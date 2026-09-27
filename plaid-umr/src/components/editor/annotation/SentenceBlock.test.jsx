@@ -673,6 +673,28 @@ describe('SentenceBlock comments', () => {
     await r2.unmount();
   });
 
+  // The header sits inside the block, so its buttons' keys bubbled into the
+  // graph's: with a node focused, Enter on Comment opened the node's concept
+  // editor (and was prevented, so the thread never opened).
+  it("leaves the header's buttons their own keys while a node is focused", async () => {
+    const store = await makeStore();
+    const doc = { canConfirmSentence: () => false, canConfirm: () => false, graph: {} };
+    const r = await mount({ comments: store, canComment: true, readOnly: false, doc });
+    const node = r.container.querySelector('.umr-node');
+    await r.step(() => node.focus());
+    for (const selector of ['.umr-comment-toggle', '.umr-text-toggle']) {
+      const button = r.container.querySelector(`.umr-block-header ${selector}`);
+      await r.step(() => button.focus());
+      for (const key of ['Enter', 'ArrowDown', 'Tab']) {
+        const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        await r.step(() => button.dispatchEvent(ev));
+        expect([selector, key, ev.defaultPrevented]).toEqual([selector, key, false]);
+      }
+    }
+    expect(document.querySelector('.umr-inline-editor')).toBeNull();
+    await r.unmount();
+  });
+
   it('draws no Comment action without a store (a past state)', async () => {
     const r = await mount({ comments: null, canComment: true });
     expect(r.container.querySelector('.umr-comment-toggle')).toBeNull();

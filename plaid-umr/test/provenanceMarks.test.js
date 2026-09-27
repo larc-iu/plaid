@@ -53,3 +53,18 @@ test("a problem rings the node and leaves the provenance border's colour alone",
   assert.ok(drafted > css.indexOf('.umr-node:hover {'));
   assert.ok(drafted > css.indexOf('.umr-node:focus-visible {'));
 });
+
+// Focus cannot take a drafted or contributed node's border, which says who made
+// it, so it is a solid blue ring hugging that border. The pale halo alone
+// measured 1.3:1 on white, and a problem's ring painted over it. A problem's
+// ring steps out past the focus ring.
+test('a focused drafted or contributed node wears a solid ring, clear of a problem ring', () => {
+  const focus = block(
+    '.umr-node.umr-node--machine:is(.umr-node--focused, :focus-visible),\n.umr-node.umr-node--contributed:is(.umr-node--focused, :focus-visible)',
+  );
+  assert.match(focus, /box-shadow:\s*0 0 0 2px var\(--umr-edge-lit\)/);
+  assert.doesNotMatch(focus, /border-color/);
+  const stepped = block('.umr-node:has(> .umr-node-mark):is(.umr-node--focused, :focus-visible)');
+  const offset = Number(stepped.match(/outline-offset:\s*(\d+)px/)[1]);
+  assert.ok(offset > 3, `the problem ring clears the 3px focus ring (offset ${offset})`);
+});
