@@ -6,10 +6,12 @@
 // beside the live document. What a document MEANS (its layers, rows, and every
 // mutation) is the subclass's.
 //
-// Imports three siblings with no imports of their own, and nothing else:
-// plaid-ud's node suite reaches this file by relative path, where no alias and
-// no package resolves. Errors leave through `onError`.
+// Imports three siblings with no imports of their own, and lib/errors.js, which
+// has none either, and nothing else: plaid-ud's node suite reaches this file by
+// relative path, where no alias and no package resolves. Errors leave through
+// `onError`.
 
+import { statusOf } from '../lib/errors.js';
 import {
   AUTO,
   LTR,
@@ -27,6 +29,13 @@ const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 // The audit label every heal write of a reconcile pass folds under, until the
 // pass names what it changed (see `describeReconcile`).
 const RECONCILE_LABEL = 'Reconcile layers on open';
+
+// What an edit planned on an out-of-date document is refused with, unsent: the
+// conflict the edit before it met, so every screen words it the same way.
+const conflictError = () =>
+  Object.assign(new Error('HTTP 409 The document has changed since this edit was made.'), {
+    status: 409,
+  });
 
 // "Failed to create relation" is the error label; "Create relation" is the
 // operation the audit log shows for it.
@@ -70,6 +79,13 @@ export class DocumentModel {
       onOutOfStep: (err) => this._reportOutOfStep(err),
       onOfflineChange: () => this._emit(),
     });
+    // The patches an edit showed, until its send starts (`_queueWrite`), so a
+    // refetch can show them again on top of what it read (`_showUnsent`).
+    // `_patches` holds the ones applied since the last write was queued. A
+    // patch no write claims in the same turn (a send settling its ids) is
+    // dropped, since what it shows is on the server already.
+    this._patches = [];
+    this._unsent = [];
     // How many screens show this document right now (`hold`).
     this._holds = 0;
     // The screen's error channel, `(message, err, label)`: the label is what
@@ -362,16 +378,28 @@ export class DocumentModel {
   ) {
     // A caller that patches first has asked `_canWrite` already. One whose
     // send does all its work is refused here instead.
+    const unsent = { patches: this._patches, stale: false };
+    this._patches = [];
     if (!this._canWrite(label)) return Promise.resolve(false);
+    this._unsent.push(unsent);
+    let conflict = false;
     return this._writes.push(
       async () => {
+        this._unsent = this._unsent.filter((u) => u !== unsent);
+        // Planned on a document that turned out to have changed elsewhere
+        // (`_reloadAfterFailure`): refused like the edit that found it out,
+        // without being sent, and already off the screen.
+        if (unsent.stale) throw conflictError();
         await this._client.withOperation(operation, send);
         if (reload) this._writes.reloadWhenDrained = true;
       },
       {
         shown,
-        refused: (err) => this._writeFailed(label, err),
-        resync: () => this._reloadAfterFailure(),
+        refused: (err) => {
+          conflict = statusOf(err) === 409;
+          this._writeFailed(label, err);
+        },
+        resync: () => (unsent.stale ? undefined : this._reloadAfterFailure(conflict)),
       },
     );
   }
@@ -395,13 +423,43 @@ export class DocumentModel {
   // with a version bump and a notify, which is the invariant every derived
   // value relies on.
   _applyRawPatch(producer) {
-    const next = cloneRaw(this._raw);
+    this._raw = this._patched(this._raw, producer);
+    this._dataVersion++;
+    this._emit();
+    if (this._patches.length === 0) {
+      queueMicrotask(() => {
+        this._patches = [];
+      });
+    }
+    this._patches.push(producer);
+  }
+
+  // `raw` with `producer` applied to a clone of it.
+  _patched(raw, producer) {
+    const next = cloneRaw(raw);
     const context = this._patchContext(next);
     producer(next, ...context);
     this._afterPatch(next, context);
-    this._raw = next;
-    this._dataVersion++;
-    this._emit();
+    return next;
+  }
+
+  // Put `updated`, just read from the server, on screen with the edits still
+  // waiting to be sent shown on top of it, each as it was shown when it was
+  // made. A patch that no longer applies (it named something the refetch
+  // does not hold) is left out: its send is refused in turn, or the refetch
+  // once the queue has drained shows what landed.
+  _showUnsent(updated) {
+    let raw = updated;
+    for (const { patches } of this._unsent) {
+      for (const producer of patches) {
+        try {
+          raw = this._patched(raw, producer);
+        } catch (err) {
+          console.error('An edit waiting to be sent could not be shown again:', err);
+        }
+      }
+    }
+    this._swapRaw(raw);
   }
 
   // Put the server's ids in place of the pending ones an edit showed
@@ -472,23 +530,39 @@ export class DocumentModel {
   }
 
   // From inside a send. The edits queued behind it are not on the server yet,
-  // so the refetch takes them off the screen, but they are still sent: a
-  // refetch once the queue has drained puts the screen back in step with the
-  // server.
+  // so they are shown again on top of what the refetch read, and a refetch
+  // once the queue has drained puts the screen in step with the server.
   async _reloadInSend() {
     if (!this._client || !this.id) return;
-    await this._fetchAndAdopt();
+    const updated = await this._fetch();
+    await this._adoptReload(updated);
+    this._showUnsent(updated);
     if (this._writes.queued > 1) this._writes.reloadWhenDrained = true;
   }
 
-  // After a refused send. The screen still holds the refused edit and the
-  // edits planned on top of it, so the refetch takes them all back. The ones
-  // queued behind it (an edit made while this fetch was on the wire included)
-  // are still sent, and `_reloadDrained` shows them once they have landed. A
-  // failure throws, and the queue tries again.
-  async _reloadAfterFailure() {
+  // After a refused send. The refetch takes the refused edit off the screen.
+  // The edits queued behind it (an edit made while this fetch was on the wire
+  // included) stay on screen and are still sent, and `_reloadDrained` shows
+  // what landed once they have. A failure throws, and the queue tries again.
+  //
+  // After a conflict (409) in strict mode, those edits were planned on the
+  // same out-of-date document. Sent now, they would carry the version this
+  // fetch has just learned, get past the check that refused the first, and
+  // could make a second value where someone else has made one. They are
+  // refused as well, without being sent, and taken off the screen with it.
+  async _reloadAfterFailure(conflict = false) {
     if (!this._client || !this.id) return;
-    await this._fetchAndAdopt();
+    const updated = await this._fetch();
+    await this._adoptReload(updated);
+    if (conflict && this._client.strictModeDocumentId === this.id) {
+      this._unsent.forEach((u) => {
+        u.stale = true;
+      });
+      this._unsent = [];
+      this._swapRaw(updated);
+      return;
+    }
+    this._showUnsent(updated);
   }
 
   // The last send has landed and one before it asked for the server's view.
@@ -511,12 +585,6 @@ export class DocumentModel {
 
   _fetch() {
     return this._client.documents.get(this.id, true, this._asOf || undefined);
-  }
-
-  async _fetchAndAdopt() {
-    const updated = await this._fetch();
-    await this._adoptReload(updated);
-    this._swapRaw(updated);
   }
 
   _swapRaw(updated) {

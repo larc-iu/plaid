@@ -5,11 +5,12 @@
 // its send waits its turn.
 //
 // A refused send runs the caller's `refused`, which reports it, and then its
-// `resync`, the refetch that takes the refused edit back off the screen. That
-// refetch takes the edits queued behind it off the screen as well, but they
-// are still sent, each in its turn, and once the last has landed the screen
-// is refetched again to show them (`_behindRefusal`). One that fails the same
-// way is refused and reported in its own turn.
+// `resync`, the refetch that takes the refused edit back off the screen. The
+// edits queued behind it are still sent, each in its turn, and once the last
+// has landed the screen is refetched again (`_behindRefusal`). One that fails
+// the same way is refused and reported in its own turn. DocumentModel's
+// refetch shows them on top of what it read. A caller whose refetch cannot
+// (the vocabulary screens) has them off the screen until that last refetch.
 //
 // A `resync` that fails is tried again until it lands, with the queue held
 // (`isSaving` stays true) all the while: until then the screen shows an edit
