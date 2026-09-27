@@ -50,9 +50,11 @@ export const ProjectMembers = ({
   // Review marks are one list in the project config. They are sent one at a
   // time, and each write is worked out when its turn comes, from the project
   // as it stands then and the marks still shown, so a refused one is not
-  // carried by the next.
+  // carried by the next. `reviewMarks` counts each row's clicks, so a refusal
+  // takes back only its own mark and not one made after it.
   const reviewTail = useRef(Promise.resolve());
   const pendingReview = useRef(new Map());
+  const reviewMarks = useRef(new Map());
   const projectRef = useRef(project);
   projectRef.current = project;
 
@@ -177,6 +179,8 @@ export const ProjectMembers = ({
 
   const setReviewed = (userId, on) => {
     showReview(userId, on);
+    const mark = (reviewMarks.current.get(userId) || 0) + 1;
+    reviewMarks.current.set(userId, mark);
     const send = async () => {
       // The stored list with every mark still shown over it.
       let next = projectRef.current?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY];
@@ -185,7 +189,8 @@ export const ProjectMembers = ({
         await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
       } catch (err) {
         console.error('Error updating review:', err);
-        showReview(userId, undefined);
+        // A later click on this row is still shown and still to be sent.
+        if (reviewMarks.current.get(userId) === mark) showReview(userId, undefined);
         notifyError(err, 'Failed to update review');
         return;
       }

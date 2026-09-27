@@ -263,6 +263,46 @@ describe('ProjectMembers', () => {
     await unmount();
   });
 
+  it('takes back only the refused mark when the same member was toggled again after it', async () => {
+    const client = makeClient();
+    const sent = [];
+    let refuse;
+    let calls = 0;
+    client.projects.setConfig = vi.fn((_p, _ns, _key, value) => {
+      calls += 1;
+      if (calls === 1) {
+        return new Promise((_, reject) => (refuse = () => reject(new Error('HTTP 500 boom'))));
+      }
+      sent.push(value);
+      return Promise.resolve();
+    });
+    const { container, step, unmount } = await mount({ client });
+    const box = () => container.querySelector('input[aria-label="Review Ada\'s work"]');
+    // On (sent, then refused), off, on again, the last two made while the
+    // first is on its way.
+    await step(async () => {
+      box().click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await step(async () => {
+      box().click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await step(async () => {
+      box().click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(box().checked).toBe(true);
+    await step(async () => {
+      refuse();
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(box().checked).toBe(true);
+    expect(JSON.stringify(sent[sent.length - 1])).toContain('ada@example.com');
+    expect(toast.error).toHaveBeenCalledWith('Failed to update review', expect.anything());
+    await unmount();
+  });
+
   it('cannot unmark someone whose whole role is reviewed', async () => {
     const project = { ...PROJECT, config: { plaid: { review: { roles: ['writer'] } } } };
     const { container, unmount } = await mount({ project });
