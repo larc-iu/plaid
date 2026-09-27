@@ -13,12 +13,14 @@
   Nothing is merged or rewritten in storage — `audit_writes` drives `?as-of=`
   reconstruction and is never touched; the fold is purely read-time.
 
-  Pagination is keyset by the unit's HEAD (`(min ts, unit)` — the ts of its
-  first member), so a unit never straddles a page boundary: a page is N
-  units, each carrying its full membership (within the requested scope +
-  time window). A long-open group can therefore hold members later than a
-  subsequent unit's head; it displays under the operation that STARTED
-  first, and its slot in the ordering is stable as it grows.
+  A page walks the scope's operations from its edge in the direction asked
+  for and stops once it holds N units (see `audit-page`), so a unit never
+  straddles a page boundary: a page is N units, each carrying its full
+  membership (within the requested scope and time window). A unit takes its
+  place from the first of its members the walk meets, its newest member
+  when paging newest-first and its oldest when paging oldest-first. So a
+  long-open group sits under its first operation in an oldest-first read,
+  and under its latest one in a newest-first read.
 
   A group is NOT a transaction: members that committed before a failing
   step stay in the log under the group. If a step needs all-or-nothing,
@@ -166,20 +168,25 @@
   `ts` is stored with nine fraction digits and compared as a string, so each
   bound is rendered in that same fixed width first. A shorter rendering
   sorts wrong: `...59.313Z` sorts AFTER `...59.313199571Z`, which dropped the
-  very entry whose time a caller resumed from."
-  [start-time end-time]
-  (let [->iso (fn [x]
-                (cond
-                  (nil? x) nil
-                  (string? x) (psc/instant->iso (java.time.Instant/parse x))
-                  (instance? java.time.Instant x) (psc/instant->iso x)
-                  :else (throw (ex-info (str "Cannot use as an audit time bound: " (pr-str x))
-                                        {:value x}))))
-        from (->iso start-time)
-        to   (->iso end-time)]
-    (cond-> []
-      from (conj [:>= :ts from])
-      to   (conj [:<= :ts to]))))
+  very entry whose time a caller resumed from.
+
+  `ts-col` is the column expression to compare, `:ts` unless a caller has
+  reason to keep SQLite off the `ts` index (see `unit-members`)."
+  ([start-time end-time]
+   (ts-where start-time end-time :ts))
+  ([start-time end-time ts-col]
+   (let [->iso (fn [x]
+                 (cond
+                   (nil? x) nil
+                   (string? x) (psc/instant->iso (java.time.Instant/parse x))
+                   (instance? java.time.Instant x) (psc/instant->iso x)
+                   :else (throw (ex-info (str "Cannot use as an audit time bound: " (pr-str x))
+                                         {:value x}))))
+         from (->iso start-time)
+         to   (->iso end-time)]
+     (cond-> []
+       from (conj [:>= ts-col from])
+       to   (conj [:<= ts-col to])))))
 
 (defn- op-type-where
   "Restrict to operations whose `op_type` is one of `op-types` (the same
@@ -193,76 +200,127 @@
     1 (first clauses)
     (into [:and] clauses)))
 
-(defn- query-units
-  "One keyset page of units, ordered by (head_ts, unit). The inner
-  aggregate scans the scoped operations (index-friendly for every scope:
-  `idx_operations_{project,document,user}_ts` or the document UNION
-  subquery) and folds by `unit-key`; the outer select applies the seek so
-  the page starts strictly after the previous page's last unit.
+(defn- no-index
+  "`col` written `+col`, which SQLite never serves from an index. The
+  members of a unit are found through the unit's own column (group, batch,
+  or id); a scope or time term on an indexed column would otherwise tempt
+  the planner into walking the whole scope instead (the statistics of a
+  mostly NULL group or batch column make a unit look large)."
+  [col]
+  [:raw (str "+" (name col))])
 
-  - `from-spec`   — HoneySQL `:from` value. Either `[:operations]` (project /
-                    user scopes, narrowed by `scope-where`) or a subquery that
-                    already encodes the scope (the document UNION below).
-  - `scope-where` — clause ANDed into WHERE to scope the operations table, or
-                    nil when `from-spec` already encodes the scope.
-  - `time-range`  — `[start end]` ISO-string range; either may be nil. Applies
-                    to MEMBER ops (a member outside the window is excluded and
-                    the head is the earliest in-window member).
-  - `op-types`    — seq of `entity/verb` strings, or nil for no filter. Like
-                    the time window, this scopes MEMBERS: a unit surfaces iff
-                    some member matches, carrying only its matching members.
-  - `eff-limit`   — already-clamped page size (in units).
-  - `cursor-vals` — `[head_ts unit]` of the LAST unit on the previous page
-                    (or nil for the first page).
-  - `order`       — `:desc` to page newest-first, anything else oldest-first.
-                    The seek flips with it, so a cursor is only ever valid
-                    for the direction that produced it."
-  [db from-spec scope-where time-range op-types eff-limit cursor-vals order]
-  (let [scope (conj-where (cond-> (ts-where (first time-range) (second time-range))
-                            scope-where (conj scope-where)
-                            (seq op-types) (conj (op-type-where op-types))))
-        inner (cond-> {:select [[unit-key :unit] [[:min :ts] :head_ts]]
-                       :from from-spec
-                       :group-by [unit-key]}
-                scope (assoc :where scope))
-        desc? (= order :desc)
-        seek (pagination/keyset-where [:head_ts :unit] cursor-vals (if desc? :desc :asc))]
-    (psc/q db (cond-> {:select [:unit :head_ts]
-                       :from [[inner :u]]
-                       :order-by (if desc?
-                                   [[:head_ts :desc] [:unit :desc]]
-                                   [:head_ts :unit])
-                       :limit eff-limit}
-                seek (assoc :where seek))
-           {:uuid-cols [:unit]})))
+;; ============================================================
+;; Paging: walk the scope from the page's edge
+;; ============================================================
 
-(defn- query-members
-  "Every scoped (and in-window, and op-type-matching) operations row belonging
-  to `units`, oldest first."
-  [db from-spec scope-where time-range op-types units]
+;; A scope says where a read finds its operations. `:source` and `:where`
+;; are what the walk reads: a HoneySQL `:from` value (the operations table,
+;; or a subquery that already encodes the scope) and a clause that narrows
+;; it, or nil. `:member?` is the same scope as a condition on one row of
+;; `operations`, or nil for the whole server, which is how a unit's other
+;; members are checked once the unit is found.
+
+(def walk-chunk
+  "Operations read per step of the walk. A page of N entries usually needs
+  about N operations, a page of batches or groups fewer steps than that.
+  Public so a test can shrink it and put step boundaries inside units."
+  250)
+
+(defn- walk-ops
+  "Up to `n` of the scope's operations that pass `filters`, strictly beyond
+  `edge` (a ts, or nil for the start), in walk order. Each scope has an index
+  led by its own column and `ts` (the unscoped feed has one on `ts` alone),
+  so this is a seek and a short range, however long the history."
+  [db {:keys [source where]} filters edge desc? n]
+  (let [clause (conj-where (cond-> filters
+                             where (conj where)
+                             edge (conj [(if desc? :< :>) :ts edge])))]
+    (psc/q db (cond-> {:select [:*]
+                       :from source
+                       :order-by [[:ts (if desc? :desc :asc)]]
+                       :limit n}
+                clause (assoc :where clause)))))
+
+(defn- unit-members
+  "Every operation of `units` in the scope that passes the time window and
+  `op-types`, oldest first. A unit is found through the column its key came
+  from (group, batch, or the op itself), each indexed, and a row counts only
+  when its own unit is one of `units`: an op in both a group and a batch
+  belongs to the group."
+  [db {:keys [member?]} [start-time end-time] op-types units]
   (if (empty? units)
     []
-    (psc/q db {:select [:*]
-               :from from-spec
-               :where (conj-where (cond-> [[:in unit-key (mapv str units)]]
-                                    scope-where (conj scope-where)
-                                    (seq op-types) (conj (op-type-where op-types))
-                                    :always (into (ts-where (first time-range) (second time-range)))))
-               :order-by [:ts :id]})))
+    (let [wanted (set units)
+          ids (mapv str units)
+          filters (cond-> (ts-where start-time end-time (no-index :ts))
+                    (seq op-types) (conj (op-type-where op-types))
+                    member? (conj member?))
+          branch (fn [col]
+                   {:select [:*]
+                    :from [:operations]
+                    :where (conj-where (conj filters [:in col ids]))})]
+      (->> (psc/q db {:union [(branch :group_id) (branch :batch_id) (branch :id)]
+                      :order-by [:ts :id]})
+           (filterv #(contains? wanted (row-unit %)))))))
+
+(defn- ts-max [a b] (if (pos? (compare a b)) a b))
+(defn- ts-min [a b] (if (neg? (compare a b)) a b))
 
 (defn- audit-page
-  "Fetch + enrich one keyset page of units into the uniform envelope
-  `{:entries [...] :next-cursor [head_ts unit]-or-nil}`. `opts` carries
-  `{:limit n :cursor-vals [head_ts unit] :op-types [...] :order :asc|:desc}`;
-  the audit log is always paginated (default page 100 units, max 1000)."
-  [db from-spec scope-where time-range {:keys [limit cursor-vals op-types order]}]
+  "One page of units in the uniform envelope `{:entries [...] :next-cursor
+  [position unit]-or-nil}`. `opts` carries `{:limit n :cursor-vals
+  [position unit] :op-types [...] :order :asc|:desc}`; the audit log is
+  always paginated (default page 100 units, max 1000).
+
+  The page walks the scope's operations from its edge (the previous page's
+  last unit, or the start) and stops once it holds `limit` units, so a page
+  costs about its own size, not the project's whole history. A unit takes
+  its place in the order from the first of its members the walk meets: its
+  newest member walking newest-first, its oldest walking oldest-first. A
+  unit met again on a later page, through an older member of a long-running
+  group, already had its place and is skipped, which the walk can tell
+  because that unit has a member beyond the page's edge.
+
+  Every operation has a ts of its own (stamped under the write lock,
+  strictly increasing), so the position alone orders units. The cursor
+  keeps the unit beside it all the same."
+  [db scope time-range {:keys [limit cursor-vals op-types order]}]
   (let [eff (pagination/clamp-limit limit)
-        units (query-units db from-spec scope-where time-range op-types eff cursor-vals order)
-        members (query-members db from-spec scope-where time-range op-types (mapv :unit units))
-        next-cursor (when (= (count units) eff)
-                      (let [u (peek (vec units))] [(:head_ts u) (str (:unit u))]))]
-    {:entries (enrich-units db units members)
-     :next-cursor next-cursor}))
+        desc? (= order :desc)
+        filters (cond-> (ts-where (first time-range) (second time-range))
+                  (seq op-types) (conj (op-type-where op-types)))
+        page-edge (first cursor-vals)
+        beyond-page-edge? (fn [ts] (and page-edge
+                                        (if desc?
+                                          (not (neg? (compare ts page-edge)))
+                                          (not (pos? (compare ts page-edge))))))
+        position (fn [members] (reduce (if desc? ts-max ts-min) (map :ts members)))]
+    (loop [edge page-edge
+           seen #{}
+           picked []
+           members-of {}]
+      (let [chunk (when (< (count picked) eff)
+                    (walk-ops db scope filters edge desc? walk-chunk))
+            fresh (->> chunk (map row-unit) (remove seen) distinct vec)
+            by-unit (group-by row-unit (unit-members db scope time-range op-types fresh))
+            placed (for [u fresh
+                         :let [p (position (by-unit u))]
+                         :when (not (beyond-page-edge? p))]
+                     {:unit u :position p})
+            picked (into picked placed)
+            members-of (merge members-of (select-keys by-unit (map :unit placed)))]
+        (if (and (seq chunk) (= (count chunk) walk-chunk) (< (count picked) eff))
+          (recur (:ts (last chunk)) (into seen fresh) picked members-of)
+          ;; The page is full, or the scope ends here.
+          (let [units (vec (take eff picked))]
+            {:entries (enrich-units db
+                                    (mapv (fn [{:keys [unit]}]
+                                            {:unit unit
+                                             :head_ts (:ts (first (members-of unit)))})
+                                          units)
+                                    (mapcat (comp members-of :unit) units))
+             :next-cursor (when (= (count units) eff)
+                            (let [u (peek units)] [(:position u) (str (:unit u))]))}))))))
 
 (defn get-project-audit-log
   ([db project-id]
@@ -270,7 +328,10 @@
   ([db project-id start-time end-time]
    (get-project-audit-log db project-id start-time end-time nil))
   ([db project-id start-time end-time opts]
-   (audit-page db [:operations] [:= :project_id project-id] [start-time end-time] opts)))
+   (audit-page db {:source [:operations]
+                   :where [:= :project_id project-id]
+                   :member? [:= (no-index :project_id) project-id]}
+               [start-time end-time] opts)))
 
 (defn- document-ops-source
   "A UNION subquery yielding every operations row that affects `document-id`,
@@ -317,7 +378,47 @@
   ([db document-id start-time end-time]
    (get-document-audit-log db document-id start-time end-time nil))
   ([db document-id start-time end-time opts]
-   (audit-page db (document-ops-source document-id) nil [start-time end-time] opts)))
+   (audit-page db {:source (document-ops-source document-id)
+                   :member? [:or
+                             [:= (no-index :document_id) document-id]
+                             [:exists {:select [1]
+                                       :from [:audit_writes]
+                                       :where [:and
+                                               [:= :audit_writes.op_id :operations.id]
+                                               [:= :target_table "documents"]
+                                               [:= :target_id document-id]]}]]}
+               [start-time end-time] opts)))
+
+(defn- vocab-ops-source
+  "A subquery yielding every operations row that wrote a row of vocabulary
+  `vocab-id`: the vocabulary itself (name, configuration, maintainers) or
+  one of its entries. Found through `audit_writes.vocab_layer_id`, so an op
+  that ran with no project and no document, as every vocabulary write does,
+  is still found. Links are not rows of the vocabulary: linking a word is
+  annotation, and shows in the document's history."
+  [vocab-id]
+  [[{:select [:o.*]
+     :from [[:operations :o]]
+     :where [:in :o.id {:select [:op_id]
+                        :from [:audit_writes]
+                        :where [:= :vocab_layer_id vocab-id]}]}
+    :ops]])
+
+(defn get-vocab-audit-log
+  "Audit entries that changed vocabulary `vocab-id` or its entries, with the
+  same fold, window, `:op-types` filter and paging as the document read. A
+  unit that also wrote elsewhere (a batch that renamed an entry and edited a
+  document) shows here with only its members that wrote the vocabulary."
+  ([db vocab-id]
+   (get-vocab-audit-log db vocab-id nil nil nil))
+  ([db vocab-id start-time end-time opts]
+   (audit-page db {:source (vocab-ops-source vocab-id)
+                   :member? [:exists {:select [1]
+                                      :from [:audit_writes]
+                                      :where [:and
+                                              [:= :audit_writes.op_id :operations.id]
+                                              [:= :vocab_layer_id vocab-id]]}]}
+               [start-time end-time] opts)))
 
 (defn get-user-audit-log
   ([db user-id]
@@ -325,7 +426,10 @@
   ([db user-id start-time end-time]
    (get-user-audit-log db user-id start-time end-time nil))
   ([db user-id start-time end-time opts]
-   (audit-page db [:operations] [:= :user_id user-id] [start-time end-time] opts)))
+   (audit-page db {:source [:operations]
+                   :where [:= :user_id user-id]
+                   :member? [:= (no-index :user_id) user-id]}
+               [start-time end-time] opts)))
 
 (defn last-edits-in-project
   "`{document-id -> ts}`: when `user-id` last wrote to each document in
@@ -353,18 +457,13 @@
 
 (defn get-audit-log
   "Every operation on the server, unscoped. Same fold, window and `:op-types`
-  filter as the per-project read — only the entity scope is dropped, so the
-  page is `eff-limit` units drawn from `operations` in head order.
-
-  No index narrows this one: `query-units` groups over the whole table. That
-  is the honest cost of an unscoped feed and the reason the route is
-  admin-only. In practice a page is bounded by `limit` and the `[start end]`
-  window, and a dashboard asks for the newest few hundred units of the last
-  week, not the whole log."
+  filter as the per-project read, only the entity scope is dropped. The walk
+  goes through `idx_operations_ts`, so a page costs about its own size here
+  too. The route is admin-only."
   ([db] (get-audit-log db nil nil nil))
   ([db start-time end-time] (get-audit-log db start-time end-time nil))
   ([db start-time end-time opts]
-   (audit-page db [:operations] nil [start-time end-time] opts)))
+   (audit-page db {:source [:operations]} [start-time end-time] opts)))
 
 (defn- tally-scope
   "WHERE for the aggregate reads: an optional project scope plus the window."
