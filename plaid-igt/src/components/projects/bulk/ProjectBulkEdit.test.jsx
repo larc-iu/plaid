@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
-import { ProjectBulkEdit } from './ProjectBulkEdit.jsx';
+
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
+const { ProjectBulkEdit } = await import('./ProjectBulkEdit.jsx');
 
 // The activity rides in `?op=` beside `?tab=bulk`, and the triggers are real
 // links, so each one's href has to reproduce the page it lands on.

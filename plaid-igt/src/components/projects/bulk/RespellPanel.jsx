@@ -6,6 +6,8 @@ import { buildReplacer, chainText } from './bulkPlan.js';
 import { planRespell, applyRespell } from './bulkRunner.js';
 import { plural, useRun } from './bulkShared.js';
 import { scopeTextClass } from '@/domain/scopeColors';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   ApplyBar,
   Change,
@@ -46,6 +48,10 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
   const [includeMorphemes, setIncludeMorphemes] = useState(true);
   const [includeLexicon, setIncludeLexicon] = useState(true);
   const r = useRun();
+  // Respelling an entry renames it, which only its vocabulary's maintainers
+  // may do (core refuses anyone else). The others are listed, not ticked.
+  const { user } = useAuth();
+  const canRespellIn = (vocab) => canManageVocabulary(vocab, user);
 
   const { apply, error } = useMemo(
     () => buildReplacer(find, matchType, repl),
@@ -57,17 +63,26 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
     const plan = await r.run(
       'Preview',
       (onProgress) =>
-        planRespell(client, project, layerInfo, { find, matchType, apply }, onProgress),
+        planRespell(
+          client,
+          project,
+          layerInfo,
+          { find, matchType, apply, canRespellIn },
+          onProgress,
+        ),
       { reset: true },
     );
     if (!plan) return;
     r.setPlan({ ...plan, find, repl });
-    r.setSelected(new Set([...plan.rows, ...plan.lexiconRows].map((x) => x.id)));
+    r.setSelected(
+      new Set([...plan.rows, ...plan.lexiconRows.filter((x) => !x.locked)].map((x) => x.id)),
+    );
   };
 
   const plan = r.plan;
   const selectedRows = plan ? plan.rows.filter((x) => r.selected.has(x.id)) : [];
-  const selectedLex = plan ? plan.lexiconRows.filter((x) => r.selected.has(x.id)) : [];
+  const openLex = plan ? plan.lexiconRows.filter((x) => !x.locked) : [];
+  const selectedLex = openLex.filter((x) => r.selected.has(x.id));
   const morphCount = includeMorphemes
     ? selectedRows.reduce((a, x) => a + x.morphemes.length, 0)
     : 0;
@@ -160,15 +175,15 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
             <div className={cn('rounded-lg border bg-card', !includeLexicon && 'opacity-60')}>
               <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
                 <Checkbox
-                  checked={selectedLex.length === plan.lexiconRows.length}
+                  checked={openLex.length > 0 && selectedLex.length === openLex.length}
                   indeterminate={selectedLex.length > 0}
                   onChange={(v) =>
                     r.toggleMany(
-                      plan.lexiconRows.map((x) => x.id),
+                      openLex.map((x) => x.id),
                       v,
                     )
                   }
-                  disabled={!includeLexicon}
+                  disabled={!includeLexicon || openLex.length === 0}
                 />
                 <span className="text-sm font-medium">Lexicon entries</span>
                 <span className="text-xs text-muted-foreground">
@@ -180,12 +195,15 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
                 {plan.lexiconRows.map((x) => (
                   <div key={x.id} className="flex items-center gap-3 px-3 py-2">
                     <Checkbox
-                      checked={r.selected.has(x.id)}
+                      checked={!x.locked && r.selected.has(x.id)}
                       onChange={(v) => r.toggle(x.id, v)}
-                      disabled={!includeLexicon}
+                      disabled={!includeLexicon || x.locked}
                     />
                     <Change from={x.old} to={x.new} />
-                    <span className="text-xs text-muted-foreground">{x.vocabName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {x.vocabName}
+                      {x.locked && ' · maintainers only'}
+                    </span>
                   </div>
                 ))}
               </div>

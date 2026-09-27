@@ -188,6 +188,24 @@ describe('applyRespell', () => {
     // a once, then b refused, then b again. Never a second time.
     expect(texts).toEqual(['t-a', 't-b', 't-b']);
   });
+
+  it('never renames an entry of a vocabulary the person does not maintain', async () => {
+    const client = makeFakeClient();
+    const lexiconRows = [
+      { id: 'i1', kind: 'lexicon', old: 'kat', new: 'cat' },
+      { id: 'i2', kind: 'lexicon', old: 'kit', new: 'cit', locked: true },
+    ];
+    const out = await applyRespell(
+      client,
+      { rows: [], lexiconRows },
+      { includeLexicon: true, label: 'Respell' },
+    );
+    expect(out.entriesChanged).toBe(1);
+    const sent = client.calls
+      .filter((c) => c.kind === 'vocabItems.bulkUpdate')
+      .flatMap((c) => c.args[0].map((u) => u.id));
+    expect(sent).toEqual(['i1']);
+  });
 });
 
 // A preview reads every document a change touches. Each read names only the

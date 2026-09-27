@@ -80,7 +80,7 @@ export async function planRespell(
   client,
   project,
   layerInfo,
-  { find, matchType, apply },
+  { find, matchType, apply, canRespellIn },
   onProgress,
 ) {
   const domain = { kind: 'token', layerId: layerInfo.primaryTokenLayer.id };
@@ -92,7 +92,7 @@ export async function planRespell(
   const layers = readLayerIds(project, { spans: [] });
   const docs = await loadDocs(client, project, docEntries, {}, onProgress, layers);
   const rows = docs.flatMap((doc) => collectRespellRows(doc, apply));
-  const lexiconRows = collectLexiconRows(vocabularies, apply);
+  const lexiconRows = collectLexiconRows(vocabularies, apply, canRespellIn);
   return { rows, lexiconRows, docs };
 }
 
@@ -138,7 +138,7 @@ export async function applyRespell(
       out.morphemesChanged += morphPatches.length;
     }
     if (includeLexicon) {
-      for (const part of chunk(lexiconRows.filter((r) => !r.applied))) {
+      for (const part of chunk(lexiconRows.filter((r) => !r.applied && !r.locked))) {
         await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
         part.forEach((r) => (r.applied = true));
         out.entriesChanged += part.length;

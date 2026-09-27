@@ -131,9 +131,12 @@ export function chainText(chain, includeMorphemes) {
 
 // Lexicon entries whose form changes under `apply`. `vocabularies` is the
 // { [vocabId]: { id, name, items } } table IgtDocument uses.
-export function collectLexiconRows(vocabularies, apply) {
+export function collectLexiconRows(vocabularies, apply, canRespellIn = () => true) {
   const rows = [];
   for (const vocab of Object.values(vocabularies || {})) {
+    // Renaming an entry needs its vocabulary's maintainer. The entries of
+    // another's vocabulary are still listed, as a match nobody here can apply.
+    const locked = !canRespellIn(vocab);
     for (const it of vocab.items || []) {
       const next = apply(it.form);
       if (next == null) continue;
@@ -144,6 +147,7 @@ export function collectLexiconRows(vocabularies, apply) {
         vocabName: vocab.name,
         old: it.form,
         new: next,
+        ...(locked ? { locked: true } : {}),
       });
     }
   }

@@ -26,6 +26,10 @@ import { planMerge, applyMerge } from './bulkRunner.js';
 import { plural, useRun } from './bulkShared.js';
 import { ApplyBar, Checkbox, Progress } from './parts.jsx';
 import { textIncludes } from '@ui/domain/collation.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { useAuth } from '@/contexts/AuthContext';
+import { readVocabulary } from '@/domain/vocabCache';
 
 // Merge entries: fold one lexicon entry into another, relinking its uses.
 // Provenance keys are bookkeeping rather than content. The structural keys
@@ -102,6 +106,10 @@ export const MergePanel = ({ project, client }) => {
   const [vocabId, setVocabId] = useState(vocabs[0]?.id ?? '');
   const [items, setItems] = useState(null);
   const [fields, setFields] = useState([]);
+  // A merge deletes the merged entries, which only the vocabulary's
+  // maintainers may do (core refuses anyone else).
+  const { user } = useAuth();
+  const [canMerge, setCanMerge] = useState(false);
   const [filter, setFilter] = useState('');
   const [chosen, setChosen] = useState(() => new Set());
   const [survivor, setSurvivor] = useState(null);
@@ -113,11 +121,12 @@ export const MergePanel = ({ project, client }) => {
     setChosen(new Set());
     setSurvivor(null);
     r.setPlan(null);
+    setCanMerge(false);
     if (!vocabId) return undefined;
-    client.vocabLayers
-      .get(vocabId, true)
+    readVocabulary(client, vocabId)
       .then((layer) => {
         if (cancelled) return;
+        setCanMerge(canManageVocabulary(layer, user));
         setItems(layer.items || []);
         setFields(normalizeVocabFields(readVocabFields(layer.config)));
       })
@@ -156,7 +165,7 @@ export const MergePanel = ({ project, client }) => {
   const losers = [...chosen].filter((id) => id !== survivor);
 
   const preview = async () => {
-    if (!survivor || losers.length === 0) return;
+    if (!canMerge || !survivor || losers.length === 0) return;
     const plan = await r.run(
       'Preview',
       (onProgress) =>
@@ -177,6 +186,7 @@ export const MergePanel = ({ project, client }) => {
       .join(' · ');
 
   const doApply = async () => {
+    if (!canMerge) return;
     const survivorItem = itemById.get(survivor);
     // The vocabulary's own references to the losers (senses, reference
     // fields) follow the links to the survivor. planMergeRefs returns the
@@ -267,6 +277,11 @@ export const MergePanel = ({ project, client }) => {
           the others is re-linked to the survivor. The survivor’s fields are kept and the other
           entries are deleted.
         </p>
+        {items && !canMerge && (
+          <Notice tone="warning">
+            Only a maintainer of this vocabulary can merge its entries.
+          </Notice>
+        )}
       </div>
 
       {items && (
@@ -345,7 +360,7 @@ export const MergePanel = ({ project, client }) => {
             className="ml-auto"
             variant="outline"
             onClick={preview}
-            disabled={r.busy || !survivor || losers.length === 0}
+            disabled={!canMerge || r.busy || !survivor || losers.length === 0}
           >
             {r.busy && !plan ? 'Counting links…' : 'Preview'}
           </Button>

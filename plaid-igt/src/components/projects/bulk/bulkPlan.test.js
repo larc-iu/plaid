@@ -147,6 +147,22 @@ describe('collectRespellRows / respellOps', () => {
       { id: 'i3', kind: 'lexicon', vocabId: 'v2', vocabName: 'Other', old: 'kaka', new: 'caca' },
     ]);
   });
+
+  // Renaming an entry needs a maintainer of its vocabulary (acl-shared-vocab-
+  // writers, ruled b). The entries of a vocabulary the person does not
+  // maintain are still listed, locked, and never sent.
+  it('locks the rows of a vocabulary the person cannot rename entries in', () => {
+    const vocabs = {
+      v1: { id: 'v1', name: 'Lex', maintainers: ['me'], items: [{ id: 'i1', form: 'kat' }] },
+      v2: { id: 'v2', name: 'Other', maintainers: [], items: [{ id: 'i3', form: 'kaka' }] },
+    };
+    const { apply } = buildReplacer('k', 'contains', 'c');
+    const rows = collectLexiconRows(vocabs, apply, (v) => v.maintainers.includes('me'));
+    expect(rows.map((r) => [r.id, !!r.locked])).toEqual([
+      ['i1', false],
+      ['i3', true],
+    ]);
+  });
 });
 
 describe('collectFieldRows', () => {
