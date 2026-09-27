@@ -195,6 +195,21 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
+  it('puts the caret back in the message box when a chip is removed', async () => {
+    // The remove button goes with its chip, and focus would otherwise fall to
+    // the page, where a keyboard reader has to find the composer again.
+    const m = await mount(fakeClient());
+    await flush(m);
+    await m.step(() => {
+      chip(m, 'Lamkang B').focus();
+      chip(m, 'Lamkang B').click();
+    });
+    await flush(m);
+    expect(chip(m, 'Lamkang B')).toBeNull();
+    expect(document.activeElement).toBe(m.container.querySelector('textarea'));
+    await m.unmount();
+  });
+
   it('adds a project where the same assistant is online', async () => {
     const client = fakeClient({ where: { pC: [SERVICE] } });
     const m = await mount(client);

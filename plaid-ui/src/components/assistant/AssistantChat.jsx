@@ -547,7 +547,12 @@ export const AssistantChat = ({
     }
   };
 
-  const removeAttachment = (id) => setAttachments((prev) => prev.filter((a) => a.id !== id));
+  // A chip's remove button goes with the chip, so the caret goes back to the
+  // message box rather than falling to the page.
+  const removeAttachment = (id) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+    inputRef.current?.focus();
+  };
 
   // A project joins only where the assistant answering this conversation runs
   // too. That is asked here, before the chip appears: a read, and no write, so
@@ -576,8 +581,10 @@ export const AssistantChat = ({
     return true;
   };
 
-  const removeProject = (id) =>
+  const removeProject = (id) => {
     setReachEdit({ convId: active?.id, projects: reach.filter((p) => p.id !== id) });
+    inputRef.current?.focus();
+  };
 
   // Files left behind by a send that stored them and then could not write the
   // record, which is the only way one is made. Once per project, and only once
