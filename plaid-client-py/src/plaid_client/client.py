@@ -170,15 +170,13 @@ class VocabLinksResource(_Resource):
         return self._request('PATCH', f'/api/v1/vocab-links/{id}/metadata',
                              raw_body=body, audit_message=audit_message)
 
-    def get(self, id: str, *, as_of: str | None = None) -> Any:
+    def get(self, id: str) -> Any:
         """Get a vocab link by ID.
 
         Args:
             id: The resource ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/vocab-links/{id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/vocab-links/{id}')
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab link.
@@ -190,16 +188,15 @@ class VocabLinksResource(_Resource):
 
 
 class VocabLayersResource(_Resource):
-    def get(self, id: str, *, include_items: bool | None = None, as_of: str | None = None) -> Any:
+    def get(self, id: str, *, include_items: bool | None = None) -> Any:
         """Get a vocab layer by ID.
 
         Args:
             id: The resource ID
             include_items: Include vocab items
-            as_of: Temporal query timestamp
         """
         return self._request('GET', f'/api/v1/vocab-layers/{id}',
-                             query_params={'include-items': include_items, 'as-of': as_of})
+                             query_params={'include-items': include_items})
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab layer.
@@ -242,39 +239,32 @@ class VocabLayersResource(_Resource):
         return self._request('DELETE', f'/api/v1/vocab-layers/{id}/config/{namespace}/{config_key}',
                              skip_response_transform=True, audit_message=audit_message)
 
-    def list(self, *, as_of: str | None = None) -> Any:
+    def list(self) -> Any:
         """List all vocab layers accessible to the current user.
 
         Transparently follows server-side pagination cursors and returns the
         full flat list.
-
-        Args:
-            as_of: Temporal query timestamp
         """
-        return list_all(self._client, '/api/v1/vocab-layers',
-                        query={'as-of': as_of})
+        return list_all(self._client, '/api/v1/vocab-layers')
 
-    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
-                  as_of: str | None = None) -> Any:
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None) -> Any:
         """List one page of vocab layers.
 
         Args:
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
-            as_of: Temporal query timestamp
         """
         return list_page(self._client, '/api/v1/vocab-layers',
-                         limit=limit, cursor=cursor, query={'as-of': as_of})
+                         limit=limit, cursor=cursor)
 
-    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+    def iter_pages(self, *, page_size: int = 1000):
         """Iterate over pages of vocab layers, yielding each page's entries list.
 
         Args:
             page_size: Page size (1..1000)
-            as_of: Temporal query timestamp
         """
         return iter_pages(self._client, '/api/v1/vocab-layers',
-                          page_size=page_size, query={'as-of': as_of})
+                          page_size=page_size)
 
     def create(self, name: str, audit_message=None) -> Any:
         """Create a new vocab layer.
@@ -363,15 +353,13 @@ class RelationsResource(_Resource):
         return self._request('PUT', f'/api/v1/relations/{relation_id}/source',
                              body=_body_of(span_id=span_id), audit_message=audit_message)
 
-    def get(self, relation_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, relation_id: str) -> Any:
         """Get a relation by ID.
 
         Args:
             relation_id: The relation ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/relations/{relation_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/relations/{relation_id}')
 
     def delete(self, relation_id: str, audit_message=None) -> Any:
         """Delete a relation.
@@ -450,15 +438,13 @@ class RelationsResource(_Resource):
 
 
 class SpanLayersResource(_Resource):
-    def get(self, span_layer_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, span_layer_id: str) -> Any:
         """Get a span layer by ID.
 
         Args:
             span_layer_id: The span layer ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/span-layers/{span_layer_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/span-layers/{span_layer_id}')
 
     def delete(self, span_layer_id: str, audit_message=None) -> Any:
         """Delete a span layer.
@@ -569,15 +555,13 @@ class SpansResource(_Resource):
         return self._request('PUT', f'/api/v1/spans/{span_id}/tokens',
                              body=_body_of(tokens=tokens), audit_message=audit_message)
 
-    def get(self, span_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, span_id: str) -> Any:
         """Get a span by ID.
 
         Args:
             span_id: The span ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/spans/{span_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/spans/{span_id}')
 
     def delete(self, span_id: str, audit_message=None) -> Any:
         """Delete a span.
@@ -671,15 +655,13 @@ class TextsResource(_Resource):
                              body=_body_of(text_layer_id=text_layer_id, document_id=document_id,
                                            body=body, metadata=metadata), audit_message=audit_message)
 
-    def get(self, text_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, text_id: str) -> Any:
         """Get a text.
 
         Args:
             text_id: The text ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/texts/{text_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/texts/{text_id}')
 
     def delete(self, text_id: str, audit_message=None) -> Any:
         """Delete a text and all dependent data.
@@ -741,7 +723,7 @@ class TextsResource(_Resource):
 
 
 class UsersResource(_Resource):
-    def list(self, *, q: str | None = None, as_of: str | None = None) -> Any:
+    def list(self, *, q: str | None = None) -> Any:
         """List (or search) users. Admin-or-maintainer only.
 
         Transparently follows server-side pagination cursors and returns the
@@ -749,35 +731,31 @@ class UsersResource(_Resource):
 
         Args:
             q: Filter to users whose display name or email contains this text (case-insensitive)
-            as_of: Temporal query timestamp
         """
         return list_all(self._client, '/api/v1/users',
-                        query={'q': q, 'as-of': as_of})
+                        query={'q': q})
 
     def list_page(self, *, q: str | None = None, limit: int | None = None,
-                  cursor: str | None = None, as_of: str | None = None) -> Any:
+                  cursor: str | None = None) -> Any:
         """List one page of users (optionally filtered by ``q``).
 
         Args:
             q: Filter to users whose display name or email contains this text (case-insensitive)
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
-            as_of: Temporal query timestamp
         """
         return list_page(self._client, '/api/v1/users',
-                         limit=limit, cursor=cursor, query={'q': q, 'as-of': as_of})
+                         limit=limit, cursor=cursor, query={'q': q})
 
-    def iter_pages(self, *, q: str | None = None, page_size: int = 1000,
-                   as_of: str | None = None):
+    def iter_pages(self, *, q: str | None = None, page_size: int = 1000):
         """Iterate over pages of users, yielding each page's entries list.
 
         Args:
             q: Filter to users whose display name or email contains this text (case-insensitive)
             page_size: Page size (1..1000)
-            as_of: Temporal query timestamp
         """
         return iter_pages(self._client, '/api/v1/users',
-                          page_size=page_size, query={'q': q, 'as-of': as_of})
+                          page_size=page_size, query={'q': q})
 
     def create(self, email: str, password: str, is_admin: bool,
                display_name: str | None = None, audit_message=None) -> Any:
@@ -795,15 +773,13 @@ class UsersResource(_Resource):
                              body=_body_of(email=email, password=password, is_admin=is_admin,
                                            display_name=display_name), audit_message=audit_message)
 
-    def get(self, id: str, *, as_of: str | None = None) -> Any:
+    def get(self, id: str) -> Any:
         """Get a user by ID.
 
         Args:
             id: The resource ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/users/{id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/users/{id}')
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Deactivate a user.
@@ -855,7 +831,7 @@ class UsersResource(_Resource):
                                            is_admin=is_admin), audit_message=audit_message)
 
     def audit(self, user_id: str, *, start_time: str | None = None,
-              end_time: str | None = None, as_of: str | None = None,
+              end_time: str | None = None,
               op_types=None) -> Any:
         """Get audit log for a user's actions.
 
@@ -866,7 +842,6 @@ class UsersResource(_Resource):
             user_id: The user ID
             start_time: Start of time range
             end_time: End of time range
-            as_of: Temporal query timestamp
             op_types: Only return operations of these types, spelled as in an
                 entry's ``op/type`` (e.g.
                 ``['span-layer/create', 'span-layer/delete']``). An entry
@@ -875,10 +850,10 @@ class UsersResource(_Resource):
         """
         return list_all(self._client, f'/api/v1/users/{user_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types)})
 
     def audit_page(self, user_id: str, *, start_time: str | None = None,
-                   end_time: str | None = None, as_of: str | None = None,
+                   end_time: str | None = None,
                    op_types: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
@@ -894,7 +869,7 @@ class UsersResource(_Resource):
         """
         return list_page(self._client, f'/api/v1/users/{user_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
-                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'op-types': _op_types_param(op_types),
                                 'order': order})
 
     def get_avatar(self, id: str) -> bytes:
@@ -1251,6 +1226,19 @@ class CommentsResource(_Resource):
         return list_page(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
                          limit=limit, cursor=cursor, query={'entity-id': entity_id})
 
+    def iter_in_vocab_pages(self, vocab_id: str, *, entity_id: str | None = None,
+                            page_size: int = 1000):
+        """Iterate over pages of a vocabulary's comments, oldest first,
+        yielding each page's entries list.
+
+        Args:
+            vocab_id: The vocab layer to read
+            entity_id: Only this entry's thread
+            page_size: Page size (1..1000)
+        """
+        return iter_pages(self._client, f'/api/v1/vocab-layers/{vocab_id}/comments',
+                          page_size=page_size, query={'entity-id': entity_id})
+
     def counts_in_vocab(self, vocab_id: str, *, entity_id: str | None = None) -> Any:
         """Comment counts per entry of a vocabulary, as an ``{entry_id: n}`` dict.
 
@@ -1485,15 +1473,13 @@ class InvitesResource(_Resource):
 
 
 class TokenLayersResource(_Resource):
-    def get(self, token_layer_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, token_layer_id: str) -> Any:
         """Get a token layer by ID.
 
         Args:
             token_layer_id: The token layer ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/token-layers/{token_layer_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/token-layers/{token_layer_id}')
 
     def delete(self, token_layer_id: str, audit_message=None) -> Any:
         """Delete a token layer.
@@ -1581,15 +1567,13 @@ class TokenLayersResource(_Resource):
 
 
 class DocumentsResource(_Resource):
-    def check_lock(self, document_id: str, *, as_of: str | None = None) -> Any:
+    def check_lock(self, document_id: str) -> Any:
         """Get information about a document lock.
 
         Args:
             document_id: The document ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/documents/{document_id}/lock',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/documents/{document_id}/lock')
 
     def acquire_lock(self, document_id: str, audit_message=None) -> Any:
         """Acquire or refresh a document lock.
@@ -1850,7 +1834,7 @@ class DocumentsResource(_Resource):
                              raw_body=body, audit_message=audit_message)
 
     def audit(self, document_id: str, *, start_time: str | None = None,
-              end_time: str | None = None, as_of: str | None = None,
+              end_time: str | None = None,
               op_types=None) -> Any:
         """Get audit log for a document.
 
@@ -1861,7 +1845,6 @@ class DocumentsResource(_Resource):
             document_id: The document ID
             start_time: Start of time range
             end_time: End of time range
-            as_of: Temporal query timestamp
             op_types: Only return operations of these types, spelled as in an
                 entry's ``op/type`` (e.g.
                 ``['span-layer/create', 'span-layer/delete']``). An entry
@@ -1870,10 +1853,10 @@ class DocumentsResource(_Resource):
         """
         return list_all(self._client, f'/api/v1/documents/{document_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types)})
 
     def audit_page(self, document_id: str, *, start_time: str | None = None,
-                   end_time: str | None = None, as_of: str | None = None,
+                   end_time: str | None = None,
                    op_types: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
@@ -1889,7 +1872,7 @@ class DocumentsResource(_Resource):
         """
         return list_page(self._client, f'/api/v1/documents/{document_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
-                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'op-types': _op_types_param(op_types),
                                 'order': order})
 
     def restore(self, document_id: str, as_of: str, *, dry_run: bool = False,
@@ -2107,39 +2090,32 @@ class ProjectsResource(_Resource):
         return self._request('POST', '/api/v1/projects',
                              body=_body_of(name=name), audit_message=audit_message)
 
-    def list(self, *, as_of: str | None = None) -> Any:
+    def list(self) -> Any:
         """List all projects accessible to the current user.
 
         Transparently follows server-side pagination cursors and returns the
         full flat list.
-
-        Args:
-            as_of: Temporal query timestamp
         """
-        return list_all(self._client, '/api/v1/projects',
-                        query={'as-of': as_of})
+        return list_all(self._client, '/api/v1/projects')
 
-    def list_page(self, *, limit: int | None = None, cursor: str | None = None,
-                  as_of: str | None = None) -> Any:
+    def list_page(self, *, limit: int | None = None, cursor: str | None = None) -> Any:
         """List one page of projects.
 
         Args:
             limit: Page size (1..1000)
             cursor: Opaque cursor from a previous page's ``next_cursor``
-            as_of: Temporal query timestamp
         """
         return list_page(self._client, '/api/v1/projects',
-                         limit=limit, cursor=cursor, query={'as-of': as_of})
+                         limit=limit, cursor=cursor)
 
-    def iter_pages(self, *, page_size: int = 1000, as_of: str | None = None):
+    def iter_pages(self, *, page_size: int = 1000):
         """Iterate over pages of projects, yielding each page's entries list.
 
         Args:
             page_size: Page size (1..1000)
-            as_of: Temporal query timestamp
         """
         return iter_pages(self._client, '/api/v1/projects',
-                          page_size=page_size, query={'as-of': as_of})
+                          page_size=page_size)
 
     def list_documents(self, id: str) -> Any:
         """List all documents (IDs and names) in a project.
@@ -2184,7 +2160,7 @@ class ProjectsResource(_Resource):
         return iter_pages(self._client, f'/api/v1/projects/{id}/documents',
                           page_size=page_size)
 
-    def get(self, id: str, *, as_of: str | None = None) -> Any:
+    def get(self, id: str) -> Any:
         """Get a project by ID.
 
         To fetch the project's document IDs and names, use ``list_documents``
@@ -2192,10 +2168,8 @@ class ProjectsResource(_Resource):
 
         Args:
             id: The resource ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/projects/{id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/projects/{id}')
 
     def delete(self, id: str, audit_message=None, timeout=None) -> Any:
         """Delete a project and everything in it. This is irrecoverable.
@@ -2300,7 +2274,7 @@ class ProjectsResource(_Resource):
                              skip_response_transform=True, audit_message=audit_message)
 
     def audit(self, project_id: str, *, start_time: str | None = None,
-              end_time: str | None = None, as_of: str | None = None,
+              end_time: str | None = None,
               op_types=None) -> Any:
         """Get audit log for a project.
 
@@ -2311,7 +2285,6 @@ class ProjectsResource(_Resource):
             project_id: The project ID
             start_time: Start of time range
             end_time: End of time range
-            as_of: Temporal query timestamp
             op_types: Only return operations of these types, spelled as in an
                 entry's ``op/type`` (e.g.
                 ``['span-layer/create', 'span-layer/delete']``). An entry
@@ -2320,10 +2293,10 @@ class ProjectsResource(_Resource):
         """
         return list_all(self._client, f'/api/v1/projects/{project_id}/audit',
                         query={'start-time': start_time, 'end-time': end_time,
-                               'as-of': as_of, 'op-types': _op_types_param(op_types)})
+                               'op-types': _op_types_param(op_types)})
 
     def audit_page(self, project_id: str, *, start_time: str | None = None,
-                   end_time: str | None = None, as_of: str | None = None,
+                   end_time: str | None = None,
                    op_types: Any = None, order: str | None = None,
                    limit: int | None = None, cursor: str | None = None) -> Any:
         """One page of the same log, newest-first with ``order='desc'``.
@@ -2339,7 +2312,7 @@ class ProjectsResource(_Resource):
         """
         return list_page(self._client, f'/api/v1/projects/{project_id}/audit', limit=limit, cursor=cursor,
                          query={'start-time': start_time, 'end-time': end_time,
-                                'as-of': as_of, 'op-types': _op_types_param(op_types),
+                                'op-types': _op_types_param(op_types),
                                 'order': order})
 
     def my_last_edits(self, project_id: str) -> Any:
@@ -2378,15 +2351,13 @@ class ProjectsResource(_Resource):
 
 
 class TextLayersResource(_Resource):
-    def get(self, text_layer_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, text_layer_id: str) -> Any:
         """Get a text layer by ID.
 
         Args:
             text_layer_id: The text layer ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/text-layers/{text_layer_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/text-layers/{text_layer_id}')
 
     def delete(self, text_layer_id: str, audit_message=None) -> Any:
         """Delete a text layer.
@@ -2512,15 +2483,13 @@ class VocabItemsResource(_Resource):
         """
         return self._request('DELETE', '/api/v1/vocab-items/bulk', body=body, audit_message=audit_message)
 
-    def get(self, id: str, *, as_of: str | None = None) -> Any:
+    def get(self, id: str) -> Any:
         """Get a vocab item by ID.
 
         Args:
             id: The resource ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/vocab-items/{id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/vocab-items/{id}')
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab item, and every link to it.
@@ -2585,15 +2554,13 @@ class VocabItemsResource(_Resource):
 
 
 class RelationLayersResource(_Resource):
-    def get(self, relation_layer_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, relation_layer_id: str) -> Any:
         """Get a relation layer by ID.
 
         Args:
             relation_layer_id: The relation layer ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/relation-layers/{relation_layer_id}')
 
     def delete(self, relation_layer_id: str, audit_message=None) -> Any:
         """Delete a relation layer.
@@ -2694,15 +2661,13 @@ class TokensResource(_Resource):
         return self._request('PATCH', f'/api/v1/tokens/{token_id}/metadata',
                              raw_body=body, audit_message=audit_message)
 
-    def get(self, token_id: str, *, as_of: str | None = None) -> Any:
+    def get(self, token_id: str) -> Any:
         """Get a token.
 
         Args:
             token_id: The token ID
-            as_of: Temporal query timestamp
         """
-        return self._request('GET', f'/api/v1/tokens/{token_id}',
-                             query_params={'as-of': as_of})
+        return self._request('GET', f'/api/v1/tokens/{token_id}')
 
     def delete(self, token_id: str, audit_message=None) -> Any:
         """Delete a token and remove it from any spans.
@@ -3157,7 +3122,7 @@ def _install_resources(target):
 
 class PlaidClient:
     def __init__(self, base_url: str, token: str, timeout: float | None = DEFAULT_TIMEOUT_S,
-                 batch_timeout: float | None = None):
+                 batch_timeout: float | None = _UNSET):
         """Create a new PlaidClient instance.
 
         Args:
@@ -3165,16 +3130,16 @@ class PlaidClient:
             token: The authentication token
             timeout: Per-request timeout in seconds (default 30; ``None`` disables
                 it). Also bounds media up/downloads — raise it for large files.
-            batch_timeout: Timeout for batch submissions in seconds (default 180).
-                Batches get their own, longer budget: aborting one does NOT stop
-                the server, which keeps running the transaction and holding the
-                single SQLite write lock. Defaults to ``timeout`` when that was
-                given explicitly and this was not.
+            batch_timeout: Timeout for batch submissions in seconds (default 180;
+                ``None`` disables it). Batches get their own, longer budget:
+                aborting one does NOT stop the server, which keeps running the
+                transaction and holding the single SQLite write lock. Defaults
+                to ``timeout`` when that was given explicitly and this was not.
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
         self.timeout = timeout
-        if batch_timeout is not None:
+        if batch_timeout is not _UNSET:
             self.batch_timeout = batch_timeout
         elif timeout is not DEFAULT_TIMEOUT_S:
             self.batch_timeout = timeout
@@ -3232,8 +3197,9 @@ class PlaidClient:
 
         Returns:
             For 'ids'/'entities': {columns, results, count, truncated}. For
-            'count': {return: 'count', count}. Entity cells are full entity
-            dicts (same shape as the GET endpoints).
+            'count': {return: 'count', count, truncated}, where ``truncated``
+            says the count stopped at the server's cap. Entity cells are full
+            entity dicts (same shape as the GET endpoints).
         """
         # out_of_band: a query is a read that travels as a POST (see the note
         # at the top of http.py). Made on a batch it goes over the wire like
@@ -3507,6 +3473,38 @@ class PlaidClient:
         """
         base = re.sub(r'#.*$', '', app_url).rstrip('/')
         return f'{base}/#/invite/{quote(code, safe="")}'
+
+    @classmethod
+    def health(cls, base_url: str, timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """Liveness, version and database size, with NO authentication and no
+        client instance: for a launcher or status page checking whether a
+        server is up before anyone logs in. ``client.server.health()`` is the
+        same read from a client."""
+        return cls._anonymous_get(base_url, '/health', timeout=timeout)
+
+    @classmethod
+    def info(cls, base_url: str, timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """The version and the limits this server enforces, with NO
+        authentication and no client instance. ``client.server.info()`` is the
+        same read from a client, cached."""
+        return cls._anonymous_get(base_url, '/api/v1/info', timeout=timeout)
+
+    @classmethod
+    def _anonymous_get(cls, base_url: str, path: str,
+                       timeout: float | None = DEFAULT_TIMEOUT_S) -> Any:
+        """GET a path that takes no Authorization header."""
+        url = f'{base_url.rstrip("/")}{path}'
+        try:
+            response = req_lib.get(url, timeout=timeout)
+        except Exception as e:
+            if type(e).__name__ in ('Timeout', 'ConnectTimeout', 'ReadTimeout'):
+                raise PlaidAPIError(f'Request timed out at {url}', url=url, method='GET',
+                                    original_error=e)
+            raise PlaidAPIError(f'Network error: {e} at {url}', url=url, method='GET',
+                                original_error=e)
+        if not response.ok:
+            raise build_api_error(response, url, 'GET')
+        return transform_response(response.json())
 
     @classmethod
     def _anonymous_post(cls, base_url: str, path: str, body: dict,

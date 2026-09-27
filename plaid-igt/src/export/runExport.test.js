@@ -116,8 +116,11 @@ function stubClient({
       },
     },
     vocabLayers: {
-      get: async (id) => {
+      get: async (id, includeItems, ...rest) => {
         calls.push(['vocabLayers.get', id]);
+        // The server takes ?as-of= on a document read only and 400s it here.
+        if (rest[0] !== undefined)
+          throw new Error('HTTP 400 as-of is not supported on this endpoint');
         if (vocabFails) throw new Error('vocab boom');
         return JSON.parse(JSON.stringify(vocab));
       },
@@ -671,6 +674,20 @@ describe('runExport — native plaid-igt-json', () => {
     const doc = JSON.parse(new TextDecoder().decode(entries['documents/A.json']));
     expect(doc).not.toHaveProperty('comments');
     expect(client.calls.some((c) => c[0].startsWith('comments.'))).toBe(false);
+  });
+
+  it("reads today's vocabularies for a historical export, which is all a vocabulary read offers", async () => {
+    const client = stubClient({ docs: [rawDoc('d1', 'A', 'hi')] });
+    const result = await runExport({
+      client,
+      project: PROJECT,
+      preset: nativePreset(),
+      scope: { type: 'document', id: 'd1' },
+      asOf: '2026-01-01T00:00:00Z',
+    });
+    expect(result.warnings).toEqual([]);
+    const entries = await unzipBlob(result.blob);
+    expect(Object.keys(entries)).toContain('vocabularies/Lexicon.json');
   });
 
   it("carries the project's annotation manual", async () => {

@@ -639,13 +639,13 @@ export class IgtDocument extends DocumentModel {
 // instead of silently rendering a partial table. Returns
 // { vocabularies, failedCount }. Exported for callers that construct
 // IgtDocuments from pre-fetched parts (e.g. export/runExport.js).
-export async function loadProjectVocabularies(client, project, asOf) {
+export async function loadProjectVocabularies(client, project) {
   const vocabIds = (project?.vocabs || []).map((v) => v.id);
   if (vocabIds.length === 0) return { vocabularies: {}, failedCount: 0 };
   const results = await Promise.all(
     vocabIds.map(async (id) => {
       try {
-        return await client.vocabLayers.get(id, true, asOf || undefined);
+        return await client.vocabLayers.get(id, true);
       } catch (err) {
         console.warn(`Error fetching vocab ${id}:`, err);
         return null;

@@ -296,7 +296,9 @@ export async function runExport({
   const wantEntries = isFlex && preset.options?.citationForms !== false;
   let vocabs = [];
   if (wantVocabTsvs || isNative || wantCldfDictionary || wantLexicon || wantEntries) {
-    const loaded = await loadProjectVocabularies(client, project, asOf);
+    // A vocabulary read has no as-of form, so a historical export carries
+    // today's vocabularies beside the document as it was.
+    const loaded = await loadProjectVocabularies(client, project);
     vocabs = Object.values(loaded.vocabularies);
     if (loaded.failedCount) {
       warnings.push(

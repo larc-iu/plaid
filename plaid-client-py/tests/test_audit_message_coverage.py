@@ -66,7 +66,6 @@ def test_every_write_method_threads_audit_message():
             for mname, fn in inspect.getmembers(res, inspect.ismethod):
                 if not mname.startswith('_'):
                     probe(f'{name}.{mname}', fn)
-    if hasattr(client, 'query'):
-        probe('query', client.query)
+    # ``query`` is a read that travels as a POST, so it takes no audit message.
 
     assert len(checked) >= 105, f'expected ~109 write methods, only checked {len(checked)}'

@@ -57,6 +57,6 @@ test('every CRUD write method threads a per-call auditMessage', async () => {
       if (typeof fn === 'function') await probe(`${b}.${m}`, fn);
     }
   }
-  await probe('query', client.query);
+  // `query` is a read that travels as a POST, so it takes no audit message.
   assert.ok(checked.length >= 105, `expected ~109 write methods, only checked ${checked.length}`);
 });

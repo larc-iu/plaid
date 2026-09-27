@@ -587,14 +587,10 @@ def _pruned(doc, named):
     return {**doc, 'text_layers': [x for x in map(text_layer, doc.get('text_layers') or []) if x]}
 
 
-def _audit_filter(root, entries, path, start_time, end_time, as_of, op_types):
+def _audit_filter(entries, start_time, end_time, op_types):
     """An audit read's filters, as the server applies them: the time range is
     inclusive at both ends, and ``op_types`` keeps an entry one of whose
-    operations matches, carrying only the ones that do. ``as_of`` is refused
-    on an audit route, as the server refuses it."""
-    if as_of is not None:
-        raise _refusal(root, 400, 'as-of query parameter is not supported on this endpoint',
-                       'GET', path)
+    operations matches, carrying only the ones that do."""
     out = [e for e in entries
            if (not start_time or (e.get('time') or '') >= start_time)
            and (not end_time or (e.get('time') or '') <= end_time)]
@@ -808,17 +804,15 @@ class FakeClient:
             finally:
                 self._root.calls.append(('unlock', document_id))
 
-        def audit(self, document_id, *, start_time=None, end_time=None, as_of=None,
-                  op_types=None):
+        def audit(self, document_id, *, start_time=None, end_time=None, op_types=None):
             entries = [e for e in self._root.audit
                        if any(d['id'] == document_id for d in e.get('documents', []))]
-            return _audit_filter(self._root, entries, f'/api/v1/documents/{document_id}/audit',
-                                 start_time, end_time, as_of, op_types)
+            return _audit_filter(entries, start_time, end_time, op_types)
 
-        def audit_page(self, document_id, *, start_time=None, end_time=None, as_of=None,
+        def audit_page(self, document_id, *, start_time=None, end_time=None,
                        op_types=None, order=None, limit=None, cursor=None):
             entries = self.audit(document_id, start_time=start_time, end_time=end_time,
-                                 as_of=as_of, op_types=op_types)
+                                 op_types=op_types)
             return self._root._audit_page(entries, order, limit, cursor, start_time)
 
         def restore(self, document_id, as_of, *, dry_run=False, audit_message=None):
@@ -843,19 +837,16 @@ class FakeClient:
         def __init__(self, client):
             self._client = client
 
-        def get(self, id, *, as_of=None):
+        def get(self, id):
             return self._client.project
 
-        def audit(self, project_id, *, start_time=None, end_time=None, as_of=None,
-                  op_types=None):
-            return _audit_filter(self._client, self._client.audit,
-                                 f'/api/v1/projects/{project_id}/audit',
-                                 start_time, end_time, as_of, op_types)
+        def audit(self, project_id, *, start_time=None, end_time=None, op_types=None):
+            return _audit_filter(self._client.audit, start_time, end_time, op_types)
 
-        def audit_page(self, project_id, *, start_time=None, end_time=None, as_of=None,
+        def audit_page(self, project_id, *, start_time=None, end_time=None,
                        op_types=None, order=None, limit=None, cursor=None):
             entries = self.audit(project_id, start_time=start_time, end_time=end_time,
-                                 as_of=as_of, op_types=op_types)
+                                 op_types=op_types)
             return self._client._audit_page(entries, order, limit, cursor, start_time)
 
         def list_documents(self, id):

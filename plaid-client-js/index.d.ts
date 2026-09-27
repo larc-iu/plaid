@@ -130,12 +130,12 @@ interface VocabLinksBundle {
   setMetadata(id: string, body: any, auditMessage?: string): Promise<any>;
   deleteMetadata(id: string, auditMessage?: string): Promise<any>;
   patchMetadata(id: string, body: MetadataOp[], auditMessage?: string): Promise<any>;
-  get(id: string, asOf?: string): Promise<any>;
+  get(id: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
 }
 
 interface VocabLayersBundle {
-  get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
+  get(id: string, includeItems?: boolean): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, name: string, auditMessage?: string): Promise<any>;
   setConfig(
@@ -151,13 +151,9 @@ interface VocabLayersBundle {
     configKey: string,
     auditMessage?: string,
   ): Promise<any>;
-  list(asOf?: string): Promise<any[]>;
-  listPage(opts?: {
-    limit?: number;
-    cursor?: string;
-    asOf?: string;
-  }): Promise<Page>;
-  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
+  list(): Promise<any[]>;
+  listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
+  iterPages(opts?: { pageSize?: number }): AsyncGenerator<any[]>;
   create(name: string, auditMessage?: string): Promise<any>;
   addMaintainer(
     id: string,
@@ -188,7 +184,7 @@ interface RelationsBundle {
     spanId: string,
     auditMessage?: string,
   ): Promise<any>;
-  get(relationId: string, asOf?: string): Promise<any>;
+  get(relationId: string): Promise<any>;
   delete(relationId: string, auditMessage?: string): Promise<any>;
   update(relationId: string, value: any, auditMessage?: string): Promise<any>;
   setSource(
@@ -223,7 +219,7 @@ interface SpanLayersBundle {
     configKey: string,
     auditMessage?: string,
   ): Promise<any>;
-  get(spanLayerId: string, asOf?: string): Promise<any>;
+  get(spanLayerId: string): Promise<any>;
   delete(spanLayerId: string, auditMessage?: string): Promise<any>;
   update(
     spanLayerId: string,
@@ -251,7 +247,7 @@ interface SpansBundle {
     metadata?: any,
     auditMessage?: string,
   ): Promise<any>;
-  get(spanId: string, asOf?: string): Promise<any>;
+  get(spanId: string): Promise<any>;
   delete(spanId: string, auditMessage?: string): Promise<any>;
   update(spanId: string, value: any, auditMessage?: string): Promise<any>;
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
@@ -273,19 +269,16 @@ interface TextsBundle {
     metadata?: any,
     auditMessage?: string,
   ): Promise<any>;
-  get(textId: string, asOf?: string): Promise<any>;
+  get(textId: string): Promise<any>;
   delete(textId: string, auditMessage?: string): Promise<any>;
   update(textId: string, body: any, auditMessage?: string): Promise<any>;
 }
 
 interface UsersBundle {
-  list(asOf?: string): Promise<any[]>;
-  listPage(opts?: {
-    limit?: number;
-    cursor?: string;
-    asOf?: string;
-  }): Promise<Page>;
-  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
+  /** `q` narrows to users whose id or display name contains it (admin or maintainer). */
+  list(opts?: { q?: string }): Promise<any[]>;
+  listPage(opts?: { q?: string; limit?: number; cursor?: string }): Promise<Page>;
+  iterPages(opts?: { q?: string; pageSize?: number }): AsyncGenerator<any[]>;
   create(
     email: string,
     password: string,
@@ -297,10 +290,10 @@ interface UsersBundle {
     userId: string,
     startTime?: string,
     endTime?: string,
-    asOf?: string,
+    opTypes?: string[] | string,
   ): Promise<any[]>;
   auditPage(userId: string, opts?: AuditPageOptions): Promise<Page>;
-  get(id: string, asOf?: string): Promise<any>;
+  get(id: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   activate(id: string, auditMessage?: string): Promise<any>;
   update(
@@ -473,6 +466,10 @@ interface CommentsBundle {
     vocabId: string,
     opts?: { entityId?: string; limit?: number; cursor?: string },
   ): Promise<Page<Comment>>;
+  iterInVocabPages(
+    vocabId: string,
+    opts?: { entityId?: string; pageSize?: number },
+  ): AsyncGenerator<Comment[]>;
   /** `{entryId: count}` over a vocabulary; keys are raw entry ids. */
   countsInVocab(
     vocabId: string,
@@ -567,7 +564,8 @@ interface ServerHealth {
   audit: { dbSizeMb?: number; auditRows?: number; error?: string };
 }
 
-interface DocumentLock {
+/** A document lock as the admin lock listing reports it. */
+interface DocumentLockInfo {
   documentId: string;
   userId: string;
   expiresAt: number;
@@ -637,7 +635,7 @@ interface ServerBundle {
 interface AdminBundle {
   server(): Promise<ServerReport>;
   backup(): Promise<BackupStatus>;
-  locks(): Promise<{ entries: DocumentLock[] }>;
+  locks(): Promise<{ entries: DocumentLockInfo[] }>;
   releaseLock(documentId: string): Promise<{ result: string }>;
   rateLimits(): Promise<RateLimitSnapshot>;
   clearRateLimits(opts?: {
@@ -741,7 +739,6 @@ type AdminUserDataEntry = UserDataEntry & { userId: string };
 interface AuditPageOptions {
   startTime?: string;
   endTime?: string;
-  asOf?: string;
   opTypes?: string[] | string;
   /** "desc" pages newest-first; a cursor belongs to the direction that made it. */
   order?: "asc" | "desc";
@@ -833,7 +830,7 @@ interface TokenLayersBundle {
     configKey: string,
     auditMessage?: string,
   ): Promise<any>;
-  get(tokenLayerId: string, asOf?: string): Promise<any>;
+  get(tokenLayerId: string): Promise<any>;
   delete(tokenLayerId: string, auditMessage?: string): Promise<any>;
   update(
     tokenLayerId: string,
@@ -862,7 +859,7 @@ export declare class DocumentLockLost extends Error {
 export const DOCUMENT_LOCK_TTL_MS: 60000;
 
 interface DocumentsBundle {
-  checkLock(documentId: string, asOf?: string): Promise<any>;
+  checkLock(documentId: string): Promise<any>;
   acquireLock(documentId: string, auditMessage?: string): Promise<any>;
   releaseLock(documentId: string, auditMessage?: string): Promise<any>;
   /**
@@ -901,10 +898,19 @@ interface DocumentsBundle {
     documentId: string,
     startTime?: string,
     endTime?: string,
-    asOf?: string,
+    opTypes?: string[] | string,
   ): Promise<any[]>;
   auditPage(documentId: string, opts?: AuditPageOptions): Promise<Page>;
-  get(documentId: string, includeBody?: boolean, asOf?: string): Promise<any>;
+  /**
+   * `asOf` reads the document as it was at that instant. `layers` narrows a
+   * body read to the named layers (ids of any kind), and needs `includeBody`.
+   */
+  get(
+    documentId: string,
+    includeBody?: boolean,
+    asOf?: string,
+    layers?: string[] | string,
+  ): Promise<any>;
   delete(documentId: string, auditMessage?: string): Promise<any>;
   update(documentId: string, name: string, auditMessage?: string): Promise<any>;
   create(
@@ -1029,7 +1035,7 @@ interface ProjectsBundle {
     projectId: string,
     startTime?: string,
     endTime?: string,
-    asOf?: string,
+    opTypes?: string[] | string,
   ): Promise<any[]>;
   auditPage(projectId: string, opts?: AuditPageOptions): Promise<Page>;
   /**
@@ -1040,7 +1046,7 @@ interface ProjectsBundle {
   myLastEdits(projectId: string): Promise<Record<string, string>>;
   linkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
   unlinkVocab(id: string, vocabId: string, auditMessage?: string): Promise<any>;
-  get(id: string, asOf?: string): Promise<any>;
+  get(id: string): Promise<any>;
   listDocuments(id: string): Promise<any[]>;
   listDocumentsPage(
     id: string,
@@ -1050,15 +1056,16 @@ interface ProjectsBundle {
     id: string,
     opts?: { pageSize?: number },
   ): AsyncGenerator<any[]>;
-  delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, name: string, auditMessage?: string): Promise<any>;
-  list(asOf?: string): Promise<any[]>;
-  listPage(opts?: {
-    limit?: number;
-    cursor?: string;
-    asOf?: string;
-  }): Promise<Page>;
-  iterPages(opts?: { pageSize?: number; asOf?: string }): AsyncGenerator<any[]>;
+  /** A large project can take minutes, so the default is no timeout (0). */
+  delete(
+    id: string,
+    auditMessage?: string,
+    options?: { timeout?: number | null },
+  ): Promise<any>;
+  list(): Promise<any[]>;
+  listPage(opts?: { limit?: number; cursor?: string }): Promise<Page>;
+  iterPages(opts?: { pageSize?: number }): AsyncGenerator<any[]>;
   create(name: string, auditMessage?: string): Promise<any>;
 }
 
@@ -1076,7 +1083,7 @@ interface TextLayersBundle {
     configKey: string,
     auditMessage?: string,
   ): Promise<any>;
-  get(textLayerId: string, asOf?: string): Promise<any>;
+  get(textLayerId: string): Promise<any>;
   delete(textLayerId: string, auditMessage?: string): Promise<any>;
   update(
     textLayerId: string,
@@ -1104,7 +1111,7 @@ interface VocabItemsBundle {
   bulkCreate(body: any[], auditMessage?: string): Promise<{ ids: string[] }>;
   bulkDelete(body: any[], auditMessage?: string): Promise<void>;
   bulkUpdate(body: any[], auditMessage?: string): Promise<{ count: number }>;
-  get(id: string, asOf?: string): Promise<any>;
+  get(id: string): Promise<any>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, form: string, auditMessage?: string): Promise<any>;
 }
@@ -1133,7 +1140,7 @@ interface RelationLayersBundle {
     configKey: string,
     auditMessage?: string,
   ): Promise<any>;
-  get(relationLayerId: string, asOf?: string): Promise<any>;
+  get(relationLayerId: string): Promise<any>;
   delete(relationLayerId: string, auditMessage?: string): Promise<any>;
   update(
     relationLayerId: string,
@@ -1152,7 +1159,7 @@ interface TokensBundle {
     metadata?: any,
     auditMessage?: string,
   ): Promise<any>;
-  get(tokenId: string, asOf?: string): Promise<any>;
+  get(tokenId: string): Promise<any>;
   delete(tokenId: string, auditMessage?: string): Promise<any>;
   update(
     tokenId: string,
@@ -1217,7 +1224,12 @@ export interface PlaidBatch extends PlaidClient {
   readonly client: PlaidClient;
   /** The queued operations, in order. */
   readonly operations: Array<{ path: string; method: string; body?: any }>;
-  /** Send the queued operations as one atomic request; one result per operation. */
+  /**
+   * Send the queued operations and resolve to one result per operation, in
+   * order. Up to MAX_BATCH_OPS operations go as one atomic request. A larger
+   * batch goes as consecutive requests, each atomic on its own, so a failure
+   * in a later one leaves the earlier ones committed.
+   */
   submit(): Promise<any[]>;
   /** Drop the queued operations without sending them. */
   abort(): void;
@@ -1225,6 +1237,16 @@ export interface PlaidBatch extends PlaidClient {
 
 export declare class PlaidClient {
   constructor(baseUrl: string, token: string, options?: PlaidClientOptions);
+  /** Liveness, version and database size, with no authentication. */
+  static health(
+    baseUrl: string,
+    options?: { timeout?: number | null },
+  ): Promise<ServerHealth>;
+  /** The limits this server enforces, with no authentication. */
+  static info(
+    baseUrl: string,
+    options?: { timeout?: number | null },
+  ): Promise<{ limits: ServerLimits }>;
   static login(
     baseUrl: string,
     userId: string,
@@ -1254,7 +1276,7 @@ export declare class PlaidClient {
   batchTimeout: number | null;
   /** The document strict mode is entered for, or null. */
   readonly strictModeDocumentId: string | null;
-  /** The DocumentLockLost of the most recent `locked()` block that lost its lock, or null. */
+  /** The DocumentLockLost of the open `locked()` block whose lock lapsed, or null. Cleared when that block exits. */
   documentLockLost: DocumentLockLost | null;
   /** Fired once on HTTP 401 (see PlaidClientOptions.onAuthError). */
   onAuthError: ((error: Error) => void) | null;
@@ -1271,9 +1293,9 @@ export declare class PlaidClient {
   // reporting its progress, taking and dropping a document lock, the admin
   // actions on the server itself), goes over the wire even when made on the
   // batch.
-  /** Open a batch. Queue writes on it, then `submit()` them as one atomic request, or `abort()`. Not nestable. */
+  /** Open a batch. Queue writes on it, then `submit()` them (one atomic request up to MAX_BATCH_OPS operations), or `abort()`. Not nestable. */
   batch(): PlaidBatch;
-  /** Run `fn` with a batch, then submit atomically (or abort if `fn` throws). Resolves to the results array, one entry per queued write. */
+  /** Run `fn` with a batch, then submit it as `submit()` does (or abort if `fn` throws). Resolves to the results array, one entry per queued write. */
   batched(fn: (batch: PlaidBatch) => void | Promise<void>): Promise<any[]>;
 
   // Strict mode methods
@@ -1293,7 +1315,7 @@ export declare class PlaidClient {
   operationGroups: OperationGroupsBundle;
 
   // Query
-  query(body: any, auditMessage?: string): Promise<any>;
+  query(body: any): Promise<any>;
 
   vocabLinks: VocabLinksBundle;
   vocabLayers: VocabLayersBundle;

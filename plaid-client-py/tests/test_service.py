@@ -211,7 +211,7 @@ def _make_sync_service(serve=None):
                 raise self.error
             return self.current
 
-        def list_page(self, *, limit=None, cursor=None, as_of=None):
+        def list_page(self, *, limit=None, cursor=None):
             if self.fail:
                 raise self.error
             return {'entries': self.current[:limit], 'next_cursor': None}

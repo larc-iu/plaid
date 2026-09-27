@@ -304,12 +304,9 @@ class PlaidClient {
       /**
        * Get a vocab link by ID
        * @param {string} id - The resource ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, asOf) =>
-        this._request("GET", `/api/v1/vocab-links/${id}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (id) =>
+        this._request("GET", `/api/v1/vocab-links/${id}`),
       /**
        * Delete a vocab link
        * @param {string} id - The resource ID
@@ -323,11 +320,10 @@ class PlaidClient {
        * Get a vocab layer by ID
        * @param {string} id - The resource ID
        * @param {boolean} [includeItems] - Include vocab items
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, includeItems, asOf) =>
+      get: (id, includeItems) =>
         this._request("GET", `/api/v1/vocab-layers/${id}`, {
-          queryParams: { "include-items": includeItems, "as-of": asOf },
+          queryParams: { "include-items": includeItems },
         }),
       /**
        * Delete a vocab layer.
@@ -373,35 +369,29 @@ class PlaidClient {
       /**
        * List all vocab layers accessible to user. Transparently follows
        * pagination cursors and returns the full flat array.
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      list: (asOf) =>
-        listAll(this, "/api/v1/vocab-layers", { query: { "as-of": asOf } }),
+      list: () => listAll(this, "/api/v1/vocab-layers"),
       /**
        * Fetch a single page of vocab layers.
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ limit, cursor, asOf } = {}) =>
+      listPage: ({ limit, cursor } = {}) =>
         listPage(this, "/api/v1/vocab-layers", {
           limit,
           cursor,
-          query: { "as-of": asOf },
         }),
       /**
        * Async-iterate vocab layers page by page; yields each page's entries array.
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: ({ pageSize, asOf } = {}) =>
+      iterPages: ({ pageSize } = {}) =>
         iterPages(this, "/api/v1/vocab-layers", {
           pageSize,
-          query: { "as-of": asOf },
         }),
       /**
        * Create a new vocab layer. Note: this also registers the user as a maintainer.
@@ -478,12 +468,9 @@ class PlaidClient {
       /**
        * Get a relation by ID.
        * @param {string} relationId - The relation ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (relationId, asOf) =>
-        this._request("GET", `/api/v1/relations/${relationId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (relationId) =>
+        this._request("GET", `/api/v1/relations/${relationId}`),
       /**
        * Delete a relation.
        * @param {string} relationId - The relation ID
@@ -596,12 +583,9 @@ class PlaidClient {
       /**
        * Get a span layer by ID.
        * @param {string} spanLayerId - The span layer ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (spanLayerId, asOf) =>
-        this._request("GET", `/api/v1/span-layers/${spanLayerId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (spanLayerId) =>
+        this._request("GET", `/api/v1/span-layers/${spanLayerId}`),
       /**
        * Delete a span layer.
        * @param {string} spanLayerId - The span layer ID
@@ -674,12 +658,9 @@ class PlaidClient {
       /**
        * Get a span by ID.
        * @param {string} spanId - The span ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (spanId, asOf) =>
-        this._request("GET", `/api/v1/spans/${spanId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (spanId) =>
+        this._request("GET", `/api/v1/spans/${spanId}`),
       /**
        * Delete a span.
        * @param {string} spanId - The span ID
@@ -831,12 +812,9 @@ class PlaidClient {
       /**
        * Get a text.
        * @param {string} textId - The text ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (textId, asOf) =>
-        this._request("GET", `/api/v1/texts/${textId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (textId) =>
+        this._request("GET", `/api/v1/texts/${textId}`),
       /**
        * Delete a text and all dependent data.
        * @param {string} textId - The text ID
@@ -868,37 +846,34 @@ class PlaidClient {
        * returns the full flat array. Admin-or-maintainer only.
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
-       * @param {string} [opts.asOf] - Temporal query timestamp
        */
-      list: ({ q, asOf } = {}) =>
-        listAll(this, "/api/v1/users", { query: { q, "as-of": asOf } }),
+      list: ({ q } = {}) =>
+        listAll(this, "/api/v1/users", { query: { q } }),
       /**
        * Fetch a single page of users (optionally filtered by `q`).
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ q, limit, cursor, asOf } = {}) =>
+      listPage: ({ q, limit, cursor } = {}) =>
         listPage(this, "/api/v1/users", {
           limit,
           cursor,
-          query: { q, "as-of": asOf },
+          query: { q },
         }),
       /**
        * Async-iterate users page by page; yields each page's entries array.
        * @param {object} [opts]
        * @param {string} [opts.q] - Filter to users whose display name or email contains this text (case-insensitive)
        * @param {number} [opts.pageSize] - Per-request page size
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: ({ q, pageSize, asOf } = {}) =>
+      iterPages: ({ q, pageSize } = {}) =>
         iterPages(this, "/api/v1/users", {
           pageSize,
-          query: { q, "as-of": asOf },
+          query: { q },
         }),
       /**
        * Create a new user.
@@ -925,18 +900,16 @@ class PlaidClient {
        * @param {string} userId - The user ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
-       * @param {string} [asOf] - Temporal query timestamp
        * @param {string[]|string} [opTypes] - Only return operations of these
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (userId, startTime, endTime, asOf, opTypes) =>
+      audit: (userId, startTime, endTime, opTypes) =>
         listAll(this, `/api/v1/users/${userId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
           },
         }),
@@ -952,7 +925,7 @@ class PlaidClient {
        */
       auditPage: (
         userId,
-        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/users/${userId}/audit`, {
           limit,
@@ -960,7 +933,6 @@ class PlaidClient {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
             order,
           },
@@ -968,12 +940,9 @@ class PlaidClient {
       /**
        * Get a user by ID
        * @param {string} id - The resource ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, asOf) =>
-        this._request("GET", `/api/v1/users/${id}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (id) =>
+        this._request("GET", `/api/v1/users/${id}`),
       /**
        * Deactivate a user. Users are never hard-deleted: deactivation
        * rejects their logins and tokens, strips their project memberships
@@ -1635,12 +1604,9 @@ class PlaidClient {
       /**
        * Get a token layer by ID.
        * @param {string} tokenLayerId - The token layer ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (tokenLayerId, asOf) =>
-        this._request("GET", `/api/v1/token-layers/${tokenLayerId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (tokenLayerId) =>
+        this._request("GET", `/api/v1/token-layers/${tokenLayerId}`),
       /**
        * Delete a token layer.
        * @param {string} tokenLayerId - The token layer ID
@@ -1665,12 +1631,9 @@ class PlaidClient {
       /**
        * Check the lock status of a document.
        * @param {string} documentId - The document ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      checkLock: (documentId, asOf) =>
-        this._request("GET", `/api/v1/documents/${documentId}/lock`, {
-          queryParams: { "as-of": asOf },
-        }),
+      checkLock: (documentId) =>
+        this._request("GET", `/api/v1/documents/${documentId}/lock`),
       /**
        * Acquire or refresh a document lock.
        *
@@ -1809,18 +1772,16 @@ class PlaidClient {
        * @param {string} documentId - The document ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
-       * @param {string} [asOf] - Temporal query timestamp
        * @param {string[]|string} [opTypes] - Only return operations of these
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (documentId, startTime, endTime, asOf, opTypes) =>
+      audit: (documentId, startTime, endTime, opTypes) =>
         listAll(this, `/api/v1/documents/${documentId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
           },
         }),
@@ -1836,7 +1797,7 @@ class PlaidClient {
        */
       auditPage: (
         documentId,
-        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/documents/${documentId}/audit`, {
           limit,
@@ -1844,7 +1805,6 @@ class PlaidClient {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
             order,
           },
@@ -2032,18 +1992,16 @@ class PlaidClient {
        * @param {string} projectId - The project ID
        * @param {string} [startTime] - Start of time range
        * @param {string} [endTime] - End of time range
-       * @param {string} [asOf] - Temporal query timestamp
        * @param {string[]|string} [opTypes] - Only return operations of these
        *   types, spelled as in an entry's `op/type` (e.g.
        *   `['span-layer/create', 'span-layer/delete']`). An entry appears when
        *   one of its operations matches, carrying only the ones that did.
        */
-      audit: (projectId, startTime, endTime, asOf, opTypes) =>
+      audit: (projectId, startTime, endTime, opTypes) =>
         listAll(this, `/api/v1/projects/${projectId}/audit`, {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
           },
         }),
@@ -2059,7 +2017,7 @@ class PlaidClient {
        */
       auditPage: (
         projectId,
-        { startTime, endTime, asOf, opTypes, order, limit, cursor } = {},
+        { startTime, endTime, opTypes, order, limit, cursor } = {},
       ) =>
         listPage(this, `/api/v1/projects/${projectId}/audit`, {
           limit,
@@ -2067,7 +2025,6 @@ class PlaidClient {
           query: {
             "start-time": startTime,
             "end-time": endTime,
-            "as-of": asOf,
             "op-types": opTypesParam(opTypes),
             order,
           },
@@ -2108,12 +2065,9 @@ class PlaidClient {
        * Get a project by ID. To fetch the project's documents, use
        * listDocuments(id) — the include-documents flag has been removed.
        * @param {string} id - The resource ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, asOf) =>
-        this._request("GET", `/api/v1/projects/${id}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (id) =>
+        this._request("GET", `/api/v1/projects/${id}`),
       /**
        * List all documents in a project. Transparently follows pagination
        * cursors and returns the full flat array.
@@ -2178,35 +2132,29 @@ class PlaidClient {
       /**
        * List all projects accessible to user. Transparently follows pagination
        * cursors and returns the full flat array.
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      list: (asOf) =>
-        listAll(this, "/api/v1/projects", { query: { "as-of": asOf } }),
+      list: () => listAll(this, "/api/v1/projects"),
       /**
        * Fetch a single page of projects.
        * @param {object} [opts]
        * @param {number} [opts.limit] - Page size (1..1000; server default 100)
        * @param {string} [opts.cursor] - Opaque cursor from a previous page
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
        */
-      listPage: ({ limit, cursor, asOf } = {}) =>
+      listPage: ({ limit, cursor } = {}) =>
         listPage(this, "/api/v1/projects", {
           limit,
           cursor,
-          query: { "as-of": asOf },
         }),
       /**
        * Async-iterate projects page by page; yields each page's entries array.
        * @param {object} [opts]
        * @param {number} [opts.pageSize] - Per-request page size
-       * @param {string} [opts.asOf] - Temporal query timestamp
        * @returns {AsyncGenerator<Array>}
        */
-      iterPages: ({ pageSize, asOf } = {}) =>
+      iterPages: ({ pageSize } = {}) =>
         iterPages(this, "/api/v1/projects", {
           pageSize,
-          query: { "as-of": asOf },
         }),
       /**
        * Create a new project. Note: this also registers the user as a maintainer.
@@ -2254,12 +2202,9 @@ class PlaidClient {
       /**
        * Get a text layer by ID.
        * @param {string} textLayerId - The text layer ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (textLayerId, asOf) =>
-        this._request("GET", `/api/v1/text-layers/${textLayerId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (textLayerId) =>
+        this._request("GET", `/api/v1/text-layers/${textLayerId}`),
       /**
        * Delete a text layer.
        * @param {string} textLayerId - The text layer ID
@@ -2377,12 +2322,9 @@ class PlaidClient {
       /**
        * Get a vocab item by ID
        * @param {string} id - The resource ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (id, asOf) =>
-        this._request("GET", `/api/v1/vocab-items/${id}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (id) =>
+        this._request("GET", `/api/v1/vocab-items/${id}`),
       /**
        * Delete a vocab item, and every link to it. Every document holding one
        * of those links has its version bumped, and a strict-mode client picks
@@ -2462,12 +2404,9 @@ class PlaidClient {
       /**
        * Get a relation layer by ID.
        * @param {string} relationLayerId - The relation layer ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (relationLayerId, asOf) =>
-        this._request("GET", `/api/v1/relation-layers/${relationLayerId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (relationLayerId) =>
+        this._request("GET", `/api/v1/relation-layers/${relationLayerId}`),
       /**
        * Delete a relation layer.
        * @param {string} relationLayerId - The relation layer ID
@@ -2530,12 +2469,9 @@ class PlaidClient {
       /**
        * Get a token.
        * @param {string} tokenId - The token ID
-       * @param {string} [asOf] - Temporal query timestamp
        */
-      get: (tokenId, asOf) =>
-        this._request("GET", `/api/v1/tokens/${tokenId}`, {
-          queryParams: { "as-of": asOf },
-        }),
+      get: (tokenId) =>
+        this._request("GET", `/api/v1/tokens/${tokenId}`),
       /**
        * Delete a token and remove it from any spans. If this causes a span to
        * have no remaining tokens, the span will also be deleted.
@@ -2827,18 +2763,15 @@ class PlaidClient {
      * @param {Object} body - The query AST ({find, where, scope?, limit?, orderBy?,
      *   return?, bindings?}).
      * @returns {Promise<Object>} For 'ids'/'entities': {columns, results, count, truncated}.
-     *   For 'count': {return: 'count', count}. Entity cells are full entity objects
-     *   (same shape as the GET endpoints).
+     *   For 'count': {return: 'count', count, truncated}, where `truncated` says
+     *   the count stopped at the server's cap. Entity cells are full entity
+     *   objects (same shape as the GET endpoints).
      */
     // outOfBand: a query is a read that travels as a POST (see the note at
     // the top of http.js). Made on a batch it goes over the wire like any
     // read, and it never joins a logical operation.
-    this.query = (body, auditMessage) =>
-      this._request("POST", "/api/v1/query", {
-        auditMessage,
-        body,
-        outOfBand: true,
-      });
+    this.query = (body) =>
+      this._request("POST", "/api/v1/query", { body, outOfBand: true });
 
     // Logical-operation groups (audit-log grouping). There is no create: a
     // group row is made lazily by the first write carrying `?group-id=`
@@ -3013,6 +2946,20 @@ class PlaidClient {
         listPage(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
           limit,
           cursor,
+          query: { "entity-id": entityId },
+        }),
+      /**
+       * Async-iterate a vocabulary's comments page by page, oldest first;
+       * yields each page's entries array.
+       * @param {string} vocabId - The vocab layer to read
+       * @param {object} [opts]
+       * @param {string} [opts.entityId] - One entry's thread
+       * @param {number} [opts.pageSize] - Per-request page size
+       * @returns {AsyncGenerator<Array>}
+       */
+      iterInVocabPages: (vocabId, { entityId, pageSize } = {}) =>
+        iterPages(this, `/api/v1/vocab-layers/${vocabId}/comments`, {
+          pageSize,
           query: { "entity-id": entityId },
         }),
       /**
