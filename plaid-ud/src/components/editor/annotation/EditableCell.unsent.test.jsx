@@ -100,3 +100,35 @@ describe('a value that was not saved', () => {
     expect(hasUnsavedDraft()).toBe(null);
   });
 });
+
+describe('closing the tab', () => {
+  const closeAsks = () => {
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  it('asks while the cell holding a value that was not saved has focus, and not once it is sent', async () => {
+    const { input, step, onAnnotationUpdate, unmount } = await refused({ refetchFirst: true });
+    await step(async () => focus(input));
+    expect(input.value).toBe('wolf');
+    // Focused, the leave question stands down (leaving the cell sends the
+    // value), but closing the tab would lose it.
+    expect(hasUnsavedDraft()).toBe(null);
+    expect(closeAsks()).toBe(true);
+    // Typed back to the stored value, there is nothing left to lose.
+    await step(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(closeAsks()).toBe(false);
+    await step(async () => type(input, 'wolf'));
+    expect(closeAsks()).toBe(true);
+    onAnnotationUpdate.mockImplementation(() => Promise.resolve(true));
+    await step(async () => blur(input));
+    expect(closeAsks()).toBe(false);
+    await unmount();
+    expect(closeAsks()).toBe(false);
+  });
+});

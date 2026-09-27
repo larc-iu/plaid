@@ -100,6 +100,20 @@ export const EditableCell = React.memo(
       unsentShown ? 'An annotation you have typed' : null,
       'annotations you have typed',
     );
+    // Taken up again, an in-app way out blurs the cell first, which sends it.
+    // Closing the tab does not, so while the cell still shows something other
+    // than the value it was typed over, closing asks.
+    useEffect(() => {
+      if (!isEditing) return undefined;
+      const onBeforeUnload = (e) => {
+        const unsent = unsentRef.current;
+        if (!unsent || valueRef.current.trim() === unsent.saved) return;
+        e.preventDefault();
+        e.returnValue = '';
+      };
+      window.addEventListener('beforeunload', onBeforeUnload);
+      return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [isEditing]);
 
     // Sync localValue ONLY when the external `value` prop actually changes (e.g.
     // the server-confirmed optimistic patch, a reload, or another annotator).
