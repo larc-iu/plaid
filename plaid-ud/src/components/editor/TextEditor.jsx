@@ -10,6 +10,8 @@ import {
   foreignAnnotationLossForWord,
 } from '../../utils/udLayerUtils.js';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
 import { canEditProject } from '@ui/domain/permissions.js';
 import { TokenVisualizer } from './TokenVisualizer.jsx';
 import { useDocumentEditor } from '@ui/hooks/useDocumentEditor.js';
@@ -262,22 +264,20 @@ export const TextEditor = () => {
   return (
     <div>
       {!canEdit && (
-        <div className="mb-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
-          Read-only. You have reader access to this project.
-        </div>
+        <Notice className="mb-3">Read-only. You have reader access to this project.</Notice>
       )}
 
       {missingLayerLabels.length > 0 && (
-        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+        <Notice tone="warning" className="mb-3">
           Project configuration incomplete: {missingLayerLabels.join(', ')}.
-        </div>
+        </Notice>
       )}
 
       {layersMisconfigured && (
-        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+        <Notice tone="warning" className="mb-3">
           This project is set up incompletely. Tokens can still be made. Recreate the project to fix
           it.
-        </div>
+        </Notice>
       )}
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -297,9 +297,8 @@ export const TextEditor = () => {
           <div className="flex items-center gap-3">
             {!readOnly && (
               <Button
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
                 onClick={handleSaveText}
-                disabled={saving || !textContent.trim()}
+                disabled={saving || !textContent.trim() || textContent === seeded}
               >
                 Save
               </Button>
@@ -331,8 +330,13 @@ export const TextEditor = () => {
               />
             )}
 
-            {!readOnly && hasTokens && (
-              <Button variant="destructive" onClick={handleClearTokens} disabled={saving}>
+            {!readOnly && (
+              <Button
+                variant="outline"
+                className={DELETE_BUTTON_CLASS}
+                onClick={handleClearTokens}
+                disabled={saving || !hasTokens}
+              >
                 Clear tokens
               </Button>
             )}
@@ -347,10 +351,10 @@ export const TextEditor = () => {
             {/* Offline, the shell's save status says so, over every tab. */}
             {saving && !doc.isOffline && <span className="italic text-blue-600">Saving…</span>}
             {!saving && lastSaved && (
-              <span className="text-emerald-600">Saved: {lastSaved.toLocaleTimeString()}</span>
+              <span className="text-success">Saved: {lastSaved.toLocaleTimeString()}</span>
             )}
             {!saving && !lastSaved && textContent && isTextDirty && (
-              <span className="italic text-amber-700">Unsaved changes</span>
+              <span className="italic text-warning-foreground">Unsaved changes</span>
             )}
           </p>
         </div>

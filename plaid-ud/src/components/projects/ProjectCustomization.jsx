@@ -25,9 +25,57 @@ import { DescriptionList } from '../common/DescriptionList.jsx';
 import { MODES, cleanDescriptions } from '../../utils/udVocabMode.js';
 import { UPOS_DESCRIPTIONS, DEPREL_DESCRIPTIONS } from '../../utils/udVocabDescriptions.js';
 import { ColorField } from '../common/ColorField.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
+
+// What the tab shows for a project, read from its layer and project config.
+const seedFrom = (project) => {
+  const info = getUdLayerInfo(project);
+  return {
+    uposVocab: info.vocab.upos || [],
+    xposVocab: info.vocab.xpos || [],
+    deprelVocab: info.vocab.deprel || [],
+    deprelColors: info.colors.deprel || {},
+    uposColors: info.colors.upos || {},
+    featureInventory: info.vocab.featureInventory.list.map((e) => ({
+      key: e.key,
+      values: [...e.values],
+    })),
+    modes: { ...info.modes },
+    descriptions: {
+      upos: { ...info.descriptions.upos },
+      xpos: { ...info.descriptions.xpos },
+      deprel: { ...info.descriptions.deprel },
+      feats: { ...info.descriptions.feats },
+    },
+    // These two are on the PROJECT, not on a layer: they describe the document
+    // and the sentence, neither of which belongs to an annotation layer.
+    documentFields: readMetadataFields(project.config, 'document'),
+    sentenceFields: readMetadataFields(project.config, 'sentence'),
+  };
+};
+
+// The tab's state as one comparable value, its keys in one fixed order.
+// Colours and descriptions go through the cleaning Save applies, so a field
+// typed into and cleared again is no change.
+const snapshot = (state) =>
+  JSON.stringify({
+    uposVocab: state.uposVocab,
+    xposVocab: state.xposVocab,
+    deprelVocab: state.deprelVocab,
+    featureInventory: state.featureInventory,
+    modes: state.modes,
+    documentFields: state.documentFields,
+    sentenceFields: state.sentenceFields,
+    deprelColors: cleanColorMap(state.deprelColors),
+    uposColors: cleanColorMap(state.uposColors),
+    descriptions: Object.fromEntries(
+      Object.entries(state.descriptions).map(([k, v]) => [k, cleanDescriptions(v || {})]),
+    ),
+  });
 
 // "UD Customization" tab: project-specific controlled vocabularies, colors, and
 // the feature inventory. Everything here is local state until you press Save —
@@ -64,29 +112,37 @@ export const ProjectCustomization = () => {
   const [modes, setModes] = useState({});
   const [descriptions, setDescriptions] = useState({ upos: {}, xpos: {}, deprel: {}, feats: {} });
 
+  // Save waits until something on the tab differs from what the project has.
+  const baseline = useMemo(() => (project ? snapshot(seedFrom(project)) : null), [project]);
+  const dirty =
+    baseline !== null &&
+    snapshot({
+      uposVocab,
+      xposVocab,
+      deprelVocab,
+      deprelColors,
+      uposColors,
+      featureInventory,
+      documentFields,
+      sentenceFields,
+      modes,
+      descriptions,
+    }) !== baseline;
+
   // Seed the editors from the project's current layer config.
   useEffect(() => {
     if (!project) return;
-    const info = getUdLayerInfo(project);
-    setUposVocab(info.vocab.upos || []);
-    setXposVocab(info.vocab.xpos || []);
-    setDeprelVocab(info.vocab.deprel || []);
-    setDeprelColors(info.colors.deprel || {});
-    setUposColors(info.colors.upos || {});
-    setFeatureInventory(
-      info.vocab.featureInventory.list.map((e) => ({ key: e.key, values: [...e.values] })),
-    );
-    // These two are on the PROJECT, not on a layer: they describe the document
-    // and the sentence, neither of which belongs to an annotation layer.
-    setModes({ ...info.modes });
-    setDescriptions({
-      upos: { ...info.descriptions.upos },
-      xpos: { ...info.descriptions.xpos },
-      deprel: { ...info.descriptions.deprel },
-      feats: { ...info.descriptions.feats },
-    });
-    setDocumentFields(readMetadataFields(project.config, 'document'));
-    setSentenceFields(readMetadataFields(project.config, 'sentence'));
+    const seed = seedFrom(project);
+    setUposVocab(seed.uposVocab);
+    setXposVocab(seed.xposVocab);
+    setDeprelVocab(seed.deprelVocab);
+    setDeprelColors(seed.deprelColors);
+    setUposColors(seed.uposColors);
+    setFeatureInventory(seed.featureInventory);
+    setModes(seed.modes);
+    setDescriptions(seed.descriptions);
+    setDocumentFields(seed.documentFields);
+    setSentenceFields(seed.sentenceFields);
   }, [project]);
 
   const setMode = (field) => (closed) =>
@@ -238,7 +294,7 @@ export const ProjectCustomization = () => {
   };
 
   if (loading) {
-    return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+    return <Loading />;
   }
 
   if (!project || !canConfigure) {
@@ -442,7 +498,7 @@ export const ProjectCustomization = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 shrink-0 text-destructive"
+                className={`h-9 w-9 shrink-0 ${ROW_DELETE_CLASS}`}
                 aria-label={`Remove ${entry.key || 'feature'}`}
                 onClick={() => setFeatureInventory((prev) => prev.filter((_, j) => j !== i))}
               >
@@ -518,7 +574,7 @@ export const ProjectCustomization = () => {
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={!dirty || saving}>
           {saving ? 'Saving…' : 'Save customization'}
         </Button>
       </div>

@@ -85,3 +85,38 @@ describe('the Text Editor', () => {
     await view.unmount();
   });
 });
+
+// One rule for Save in every app: the default button, disabled until there is
+// something to save. Clear tokens is a labelled destructive button at rest, so
+// it is outline with red text, shown whether or not there is anything to clear.
+describe('the Text Editor buttons', () => {
+  const button = (root, text) =>
+    [...root.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+
+  it('keeps Save disabled until the text differs from the saved text', async () => {
+    setup('The saved text.');
+    const view = await mount();
+    const save = button(view.container, 'Save');
+    expect(save.disabled).toBe(true);
+    expect(save.className).toContain('bg-primary');
+    expect(save.className).not.toContain('emerald');
+    const box = view.container.querySelector('textarea');
+    await view.step(() => typeInto(box, 'The saved text. And more.'));
+    expect(save.disabled).toBe(false);
+    await view.step(() => typeInto(box, 'The saved text.'));
+    expect(save.disabled).toBe(true);
+    await view.unmount();
+  });
+
+  it('shows Clear tokens as an outline red button, disabled with no tokens', async () => {
+    setup('The saved text.');
+    const view = await mount();
+    const clear = button(view.container, 'Clear tokens');
+    expect(clear).toBeTruthy();
+    expect(clear.disabled).toBe(true);
+    const classes = clear.className.split(/\s+/);
+    expect(classes).toContain('text-destructive');
+    expect(classes).not.toContain('bg-destructive');
+    await view.unmount();
+  });
+});
