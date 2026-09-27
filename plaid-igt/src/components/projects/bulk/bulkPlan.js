@@ -291,12 +291,18 @@ export function analysisLabel(analysis, itemFormById = new Map()) {
 
 // Vocab links (from documents' embedded link tables) that point at any of
 // `loserIds`. Each is enough to recreate the link on the survivor.
-export function collectLinksToMove(doc, loserIds) {
+export function collectLinksToMove(doc, loserIds, survivorId = null) {
   const losers = new Set(loserIds);
   const out = [];
+  const wordsOf = (l) => JSON.stringify([...(l.tokens || [])].sort());
   for (const vocab of Object.values(doc.vocabularies || {})) {
+    // Words the survivor is linked to already (a merge that stopped partway
+    // left them so): moving a loser's link there would link them twice.
+    const survivorHas = new Set(
+      (vocab.vocabLinks || []).filter((l) => l?.vocabItem?.id === survivorId).map(wordsOf),
+    );
     for (const l of vocab.vocabLinks || []) {
-      if (l?.vocabItem?.id && losers.has(l.vocabItem.id)) {
+      if (l?.vocabItem?.id && losers.has(l.vocabItem.id) && !survivorHas.has(wordsOf(l))) {
         out.push({
           id: l.id,
           itemId: l.vocabItem.id,

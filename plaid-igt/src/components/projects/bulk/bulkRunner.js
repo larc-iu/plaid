@@ -13,7 +13,7 @@
 
 import { IgtDocument, loadProjectVocabularies, rebaseVocabLinks } from '@/domain/IgtDocument';
 import { readIgnoredTokens } from '@/domain/igtConfig';
-import { chunk } from '@/domain/bulk';
+import { chunk, CHUNK } from '@/domain/bulk';
 import { dropPrecedent } from '@/domain/precedentCache';
 import { buildMatchSpec, hitsByDocQueries } from '../search/searchQueries.js';
 import {
@@ -234,7 +234,14 @@ export async function applyReanalyze(client, { rows, docs }, { analysis, label, 
 // Every vocab link pointing at a losing entry, harvested from the documents
 // that carry them (links are embedded in document GETs, and the query
 // language addresses linked tokens rather than link ids).
-export async function planMerge(client, project, vocabId, loserIds, onProgress) {
+export async function planMerge(
+  client,
+  project,
+  vocabId,
+  loserIds,
+  onProgress,
+  { survivorId = null } = {},
+) {
   const docCounts = new Map();
   for (const itemId of loserIds) {
     const r = await client.query({
@@ -251,19 +258,25 @@ export async function planMerge(client, project, vocabId, loserIds, onProgress) 
   }
   const docEntries = [...docCounts.entries()].sort((a, b) => b[1] - a[1]);
   const docs = await loadDocs(client, project, docEntries, {}, onProgress);
-  const links = docs.flatMap((doc) => collectLinksToMove(doc, loserIds));
+  const links = docs.flatMap((doc) => collectLinksToMove(doc, loserIds, survivorId));
   return { links, docs };
 }
 
 // Recreate each link on the survivor, repoint every entry that referred to a
 // loser (a dictionary's senses and reference fields, see planMergeRefs),
 // then delete the losing entries (their old links cascade away server-side).
-// Under one operation, and as ONE batch: a refusal anywhere leaves the words
-// linked to the losers alone, so the plan on screen is still what a retry
-// needs. Written as separate requests, a refused delete left each word linked
-// to both entries and a retry linked it to the survivor twice. `refUpdates`
-// is `[{id, metadata}]` where the metadata is a list of metadata ops, as
-// `metadataUpdates` builds it from planMergeRefs' whole maps.
+// Under one operation. `refUpdates` is `[{id, metadata}]` where the metadata
+// is a list of metadata ops, as `metadataUpdates` builds it from planMergeRefs'
+// whole maps.
+//
+// A merge of up to one chunk of entities is ONE batch: a refusal anywhere
+// leaves the words linked to the losers alone, so the plan on screen is still
+// what a retry needs. A larger one cannot be: a batch is one transaction
+// holding the server's only write lock, and past MAX_BATCH_OPS the client
+// splits it anyway. So it goes a chunk at a time, document by document, then
+// the references, then the delete. A link that landed is marked `applied` and
+// Apply again skips it, so a retry after a refusal partway never links a word
+// to the survivor twice (and planMerge leaves out a word the survivor has).
 //
 // Link creates go per document: a bulk vocab-link create takes tokens from
 // one document, and a merge harvests links from every document that used the
@@ -273,28 +286,39 @@ export async function applyMerge(
   { links, refUpdates = [] },
   { survivorId, loserIds, label },
 ) {
+  const pending = links.filter((l) => !l.applied);
   const byDoc = new Map();
-  for (const l of links) {
+  for (const l of pending) {
     if (!byDoc.has(l.docId)) byDoc.set(l.docId, []);
     byDoc.get(l.docId).push(l);
   }
-  await writeAcrossDocuments(client, label, () =>
-    client.batched((b) => {
+  const specs = (part) =>
+    part.map((l) => ({
+      vocabItem: survivorId,
+      tokens: l.tokens,
+      ...(l.metadata ? { metadata: l.metadata } : {}),
+    }));
+  if (pending.length + refUpdates.length <= CHUNK) {
+    await writeAcrossDocuments(client, label, () =>
+      client.batched((b) => {
+        for (const docLinks of byDoc.values()) b.vocabLinks.bulkCreate(specs(docLinks));
+        if (refUpdates.length) b.vocabItems.bulkUpdate(refUpdates);
+        b.vocabItems.bulkDelete(loserIds);
+      }),
+    );
+    pending.forEach((l) => (l.applied = true));
+  } else {
+    await writeAcrossDocuments(client, label, async () => {
       for (const docLinks of byDoc.values()) {
         for (const part of chunk(docLinks)) {
-          b.vocabLinks.bulkCreate(
-            part.map((l) => ({
-              vocabItem: survivorId,
-              tokens: l.tokens,
-              ...(l.metadata ? { metadata: l.metadata } : {}),
-            })),
-          );
+          await client.vocabLinks.bulkCreate(specs(part));
+          part.forEach((l) => (l.applied = true));
         }
       }
-      for (const part of chunk(refUpdates)) b.vocabItems.bulkUpdate(part);
-      b.vocabItems.bulkDelete(loserIds);
-    }),
-  );
+      for (const part of chunk(refUpdates)) await client.vocabItems.bulkUpdate(part);
+      await client.vocabItems.bulkDelete(loserIds);
+    });
+  }
   return {
     linksMoved: links.length,
     entriesRemoved: loserIds.length,

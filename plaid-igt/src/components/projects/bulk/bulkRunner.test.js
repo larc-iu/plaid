@@ -111,6 +111,36 @@ describe('applyMerge', () => {
     ]);
     expect(client.calls[1].args[0]).toEqual([{ vocabItem: 'k2', tokens: ['w1'] }]);
   });
+
+  // One batch is one transaction holding the server's only write lock, and a
+  // batch past MAX_BATCH_OPS is split anyway. A merge larger than one chunk goes
+  // document by document, and Apply again sends only the links that did not land.
+  it('past one chunk goes by document, and a retry does not link a word twice', async () => {
+    const client = makeFakeClient();
+    const links = [];
+    for (const docId of ['a', 'b'])
+      for (let i = 0; i < 300; i++) links.push({ docId, tokens: [`${docId}-${i}`] });
+    const create = client.vocabLinks.bulkCreate;
+    let refuse = true;
+    client.vocabLinks.bulkCreate = async (specs) => {
+      if (refuse && specs[0].tokens[0].startsWith('b-')) {
+        refuse = false;
+        throw Object.assign(new Error('HTTP 500'), { status: 500 });
+      }
+      return create(specs);
+    };
+    const run = () =>
+      applyMerge(client, { links }, { survivorId: 'k2', loserIds: ['k1'], label: 'Merge' });
+    await expect(run()).rejects.toThrow('HTTP 500');
+    await run();
+    // Every link create that was sent, on the client or in a batch.
+    const created = client.calls
+      .filter((c) => c.kind === 'vocabLinks.bulkCreate')
+      .flatMap((c) => c.args[0].map((spec) => spec.tokens[0]));
+    expect(created).toHaveLength(600);
+    expect(new Set(created).size).toBe(600);
+    expect(client.calls.some((c) => c.kind === 'vocabItems.bulkDelete')).toBe(true);
+  });
 });
 
 // A text replace names offsets in the text the preview read. Apply again

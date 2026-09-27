@@ -159,7 +159,8 @@ export const MergePanel = ({ project, client }) => {
     if (!survivor || losers.length === 0) return;
     const plan = await r.run(
       'Preview',
-      (onProgress) => planMerge(client, project, vocabId, losers, onProgress),
+      (onProgress) =>
+        planMerge(client, project, vocabId, losers, onProgress, { survivorId: survivor }),
       { reset: true },
     );
     if (plan) r.setPlan(plan);
