@@ -79,7 +79,7 @@
   :stop (reset! service-channels {}))
 
 ;; Server-mediated RPC requests, in flight or recently finished: request-id ->
-;; {:requesters #{<http-kit channel>} :project-id :service-id :user-id
+;; {:requesters #{<http-kit channel>} :project-id :service-id :user-id :service-user-id
 ;;  :last-progress <payload|nil> :result <{:event "result"|"error" :data <map>}|nil>
 ;;  :finished-at <ms|nil> :cancelled <bool>}.
 ;;
@@ -377,20 +377,25 @@
 
 (defn track-request!
   "Record a new RPC request, with the channel that submitted it as its first
-  requester, so the service's reply events can be routed back."
-  [request-id requester-channel project-id service-id user-id]
-  (swap! inflight-requests
-         (fn [reqs]
-           (assoc (sweep-finished reqs (System/currentTimeMillis)) request-id
-                  {:requesters (if requester-channel #{requester-channel} #{})
-                   :project-id project-id
-                   :service-id service-id
-                   :user-id user-id
-                   :last-progress nil
-                   :result nil
-                   :finished-at nil
-                   :cancelled false})))
-  nil)
+  requester, so the service's reply events can be routed back.
+  `service-user-id` is the account holding the service channel the request
+  is sent down: only that account may report its progress or result."
+  ([request-id requester-channel project-id service-id user-id]
+   (track-request! request-id requester-channel project-id service-id user-id nil))
+  ([request-id requester-channel project-id service-id user-id service-user-id]
+   (swap! inflight-requests
+          (fn [reqs]
+            (assoc (sweep-finished reqs (System/currentTimeMillis)) request-id
+                   {:requesters (if requester-channel #{requester-channel} #{})
+                    :project-id project-id
+                    :service-id service-id
+                    :user-id user-id
+                    :service-user-id service-user-id
+                    :last-progress nil
+                    :result nil
+                    :finished-at nil
+                    :cancelled false})))
+   nil))
 
 (defn get-request
   "The entry for `request-id`, in flight or recently finished, or nil."

@@ -304,6 +304,15 @@
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
     (cond
+      ;; A delegated token speaks for whoever asked an assistant for
+      ;; something, and its holder is whoever runs that assistant. Opening a
+      ;; channel with it would put a service in front of the requester's
+      ;; co-members under the requester's name, and hand its holder their
+      ;; tokens in turn. No service needs to: a service opens its channel
+      ;; with its own credential.
+      (:auth/token-scope req)
+      {:status 403 :body {:error "A delegated token cannot open a service channel."}}
+
       ;; The privilege check lets an admin in on any project id, so a project
       ;; that does not exist is refused here, while a status can still be
       ;; sent. The same 403 a non-admin gets.
@@ -505,12 +514,13 @@
          {:on-open
           (fn [requester]
             (http-kit/send! requester {:status 200 :headers sse-response-headers} false)
-            (events/track-request! request-id requester id service-id user-id)
-            (http-kit/send! requester (sse-event "accepted" {:request-id request-id}) false)
-            (start-keepalive! requester)
             ;; Re-fetch the channel at push time — it may have dropped since the
-            ;; pre-check above.
-            (let [service-ch (events/get-service-channel id service-id)]
+            ;; pre-check above. The account holding it is the one that may
+            ;; answer the request.
+            (let [{service-ch :channel service-user-id :user-id} (events/get-service-entry id service-id)]
+              (events/track-request! request-id requester id service-id user-id service-user-id)
+              (http-kit/send! requester (sse-event "accepted" {:request-id request-id}) false)
+              (start-keepalive! requester)
               (when-not (and service-ch
                              (http-kit/send! service-ch (sse-event "service_request" event) false))
                 (events/forget-request! request-id)
@@ -551,12 +561,25 @@
 (defn reply-handler
   "Service POSTs progress/result/error for an in-flight request; the server
   relays it to every connection watching the request, stores the terminal
-  event for a requester that comes back later, and closes the watchers."
+  event for a requester that comes back later, and closes the watchers.
+
+  Only the account that holds the service channel the request was sent down
+  may report on it. Any other writer on the project, the requester and an
+  admin included, is refused, so nobody who learns a request id can answer
+  in the service's place. A service whose channel drops and reopens under
+  the same account (another of its tokens, say) still answers what it was
+  sent."
   [{{{:keys [id request-id]} :path
      {:keys [status progress data]} :body} :parameters :as req}]
-  (let [{:keys [project-id result]} (events/get-request request-id)]
-    (if-not (and project-id (= project-id id) (nil? result))
+  (let [{:keys [project-id result service-user-id]} (events/get-request request-id)]
+    (cond
+      (not (and project-id (= project-id id) (nil? result)))
       {:status 404 :body {:error "Unknown or already-completed request"}}
+
+      (not= service-user-id (pra/->user-id req))
+      {:status 403 :body {:error "Only the service a request was sent to can report on it."}}
+
+      :else
       (do
         (case status
           "progress"  (doseq [ch (events/record-progress! request-id progress)]

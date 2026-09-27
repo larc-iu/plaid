@@ -1,8 +1,9 @@
 (ns plaid.rest-api.v1.delegated-token-lifetime-test
   "A delegated token lasts its hour and no longer. It cannot renew itself by
-  submitting to a delegating service (its own, say), and a service channel
-  opened with it closes when it expires, so the channel cannot go on
-  receiving other members' tokens afterwards.
+  submitting to a delegating service (its own, say). A delegated token cannot
+  open a service channel at all (`service-channel-owner-test`), and a channel
+  opened with any token that expires closes when it does, so the channel
+  cannot go on receiving other members' tokens afterwards.
 
   ring-mock cannot hold an SSE channel, so `http-kit/as-channel` is redefined
   to open the REAL handler onto a stub channel, as in `service-standing-test`."
@@ -110,11 +111,16 @@
       (is (< (- (auth/delegated-token-ttl-seconds) 5)
              (- (:exp (claims (handed-token sent))) (quot (System/currentTimeMillis) 1000)))))))
 
-(deftest a-channel-opened-with-a-delegated-token-closes-when-it-expires
+(defn- short-session
+  "A session token for the admin that expires in `seconds`."
+  [seconds]
+  (with-redefs [auth/jwt-ttl-seconds (constantly seconds)]
+    (auth/issue-session-token! fix/db "fake-secret" "admin@example.com")))
+
+(deftest a-channel-closes-when-the-token-that-opened-it-expires
   (events/reset-state!)
   (let [pid (h/create-test-project admin-request "Lifetime Q")
-        short-lived (with-redefs [auth/delegated-token-ttl-seconds (constantly 2)]
-                      (auth/issue-delegated-token! fix/db "fake-secret" "admin@example.com" [pid]))
+        short-lived (short-session 2)
         {:keys [closed]} (open-service! short-lived pid "trap")]
     (is (some? (events/get-service-channel pid "trap")) "the channel opened while the token was good")
     (let [deadline (+ (System/currentTimeMillis) 6000)]
@@ -129,8 +135,7 @@
   ;; Should the timer not have fired yet, the submit asks again.
   (events/reset-state!)
   (let [pid (h/create-test-project admin-request "Lifetime R")
-        short-lived (with-redefs [auth/delegated-token-ttl-seconds (constantly 1)]
-                      (auth/issue-delegated-token! fix/db "fake-secret" "admin@example.com" [pid]))
+        short-lived (short-session 1)
         {:keys [closed sent]} (with-redefs [plaid.rest-api.v1.message/close-at-expiry! (fn [& _])]
                                 (open-service! short-lived pid "trap"))]
     (Thread/sleep 2100)
