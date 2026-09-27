@@ -325,15 +325,13 @@ export const ProjectImportExport = () => {
 
       setSkipped(skippedAcc);
       if (used.size === 0) {
-        notifyError('No documents could be exported (all empty or unconfigured).');
+        notifyError('No documents could be exported. All are empty.');
         return;
       }
       const blob = await zip.generateAsync({ type: 'blob' });
       downloadBlob(blob, `${sanitize(project?.name)}.zip`);
       if (skippedAcc.length > 0) {
-        notifyWarning(
-          `Exported ${used.size}. ${skippedAcc.length} skipped (empty or unconfigured).`,
-        );
+        notifyWarning(`Exported ${used.size}. ${skippedAcc.length} skipped (empty).`);
       } else {
         notifySuccess(`Exported ${used.size} document${used.size === 1 ? '' : 's'}.`);
       }

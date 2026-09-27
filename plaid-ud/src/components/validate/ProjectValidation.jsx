@@ -230,9 +230,8 @@ export const ProjectValidation = () => {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Values stored in this project that its vocabularies do not list. A parser, an import
-              or the API can write one whatever the list says, which is why they arrive here rather
-              than being refused.
+              Values in this project that its lists do not include. Parsers, imports and the API are
+              not held to the lists.
             </p>
           </div>
           <Button variant="outline" onClick={scan} disabled={busy || !configured}>

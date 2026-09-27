@@ -202,20 +202,9 @@ export const ProjectGeneral = ({ onProjectUpdate }) => {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Language tag used for word tokenization (<code>Intl.Segmenter</code>). It drives
-            script-specific segmentation, especially <code>ja</code>, <code>zh</code> and{' '}
-            <code>th</code>, which are segmented by dictionary lookup when given the locale. Leave
-            it empty to use the project language.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            <a
-              className="underline underline-offset-4"
-              href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Segmenter"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Further information about <code>Intl.Segmenter</code>
-            </a>
+            Language tag for splitting text into tokens. It matters most for <code>ja</code>,{' '}
+            <code>zh</code> and <code>th</code>, which are split by dictionary lookup. Leave empty
+            to use the project language.
           </p>
           {info.textLayer ? (
             <div className="flex items-end gap-2">

@@ -440,7 +440,7 @@ export const AnnotationEditor = () => {
   ) : !canEdit ? (
     <div className="mt-4 flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
       <Info className="h-4 w-4 shrink-0" />
-      Read-only. You have viewer access to this project.
+      Read-only. You have reader access to this project.
     </div>
   ) : null;
 

@@ -93,7 +93,7 @@ export const ProjectConfiguration = () => {
       <div className="flex flex-col items-start gap-3 p-4">
         <p className="text-sm text-muted-foreground">
           {project
-            ? "Setting up a project for UD is a maintainer's job."
+            ? 'Only a project maintainer can set a project up for UD.'
             : 'This project could not be loaded.'}
         </p>
         <Button variant="outline" size="sm" asChild>

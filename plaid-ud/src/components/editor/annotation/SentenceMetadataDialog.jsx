@@ -44,8 +44,8 @@ export const SentenceMetadataDialog = ({
           <DialogDescription>
             {readOnly
               ? `The CoNLL-U comment lines on ${label}.`
-              : `The CoNLL-U comment lines on ${label}. Each field saves as you leave it; ` +
-                'clearing one removes it.'}
+              : `The CoNLL-U comment lines on ${label}. Each field saves as you leave it. ` +
+                'Clearing one removes it.'}
           </DialogDescription>
         </DialogHeader>
 

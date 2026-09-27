@@ -263,7 +263,7 @@ export const TextEditor = () => {
     <div>
       {!canEdit && (
         <div className="mb-3 rounded-md border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-900">
-          Read-only. You have viewer access to this project.
+          Read-only. You have reader access to this project.
         </div>
       )}
 
@@ -275,8 +275,8 @@ export const TextEditor = () => {
 
       {layersMisconfigured && (
         <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
-          This project&rsquo;s token layers have no overlap mode or parent set. Tokenizing still
-          works, server-enforced nesting and partitioning do not. Recreate the project to fix it.
+          This project is set up incompletely. Tokens can still be made. Recreate the project to fix
+          it.
         </div>
       )}
 
@@ -289,11 +289,7 @@ export const TextEditor = () => {
             spellCheck={false}
             onChange={handleTextChange}
             readOnly={readOnly}
-            placeholder={`Enter your text here. Use newlines to separate sentences.
-
-Example:
-The quick brown fox jumps over the lazy dog.
-This is a second sentence for testing.`}
+            placeholder="Type or paste the text. One sentence per line."
             rows={12}
             className="resize-none overflow-hidden leading-relaxed"
           />
@@ -359,7 +355,7 @@ This is a second sentence for testing.`}
         </div>
 
         <div className="rounded-md border bg-muted/40 p-4">
-          <h4 className="mb-4 text-base font-semibold">Token Visualization</h4>
+          <h4 className="mb-4 text-base font-semibold">Tokens</h4>
           <TokenVisualizer
             text={textContent}
             originalText={originalTokenizedText}

@@ -19,7 +19,7 @@ const TOKENIZE_BUILTINS = [
   {
     name: BUILTIN_TOKENIZE_SEGMENTER,
     label: 'Unicode segmentation (this browser)',
-    description: "sentences and words by the project's tokenizer locale",
+    description: "sentences, tokens and words, by the project's tokenizer locale",
   },
 ];
 
