@@ -35,10 +35,10 @@ export const AnalyzeIsland = () => {
     [],
   );
 
-  // Vocab-entry creation needs vocab-maintainer rights (linking needs less);
-  // the island hides its "+ Create" row for vocabs this user can't add to.
+  // A linked entry's type is the vocabulary's maintainers' to change. Adding
+  // an entry and linking a word need only write access to the document.
   const { user } = useAuth();
-  const canWriteVocab = (vocab) => canManageVocabulary(vocab, user);
+  const canManageVocab = (vocab) => canManageVocabulary(vocab, user);
 
   // The island is built once, so the confirm it holds reads through a ref and
   // its identity never has to change. Same dialog the entry panel asks with:
@@ -54,7 +54,7 @@ export const AnalyzeIsland = () => {
       // Not `!readOnly`: an Auto-analyze run takes the document read-only for
       // as long as it writes, and its button carries the run's progress.
       canAutoAnalyze: canWrite,
-      canWriteVocab,
+      canManageVocab,
       // The SAME store the Comments tab renders from, so a comment posted on a
       // word is already there when you switch tabs.
       comments,

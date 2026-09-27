@@ -39,8 +39,9 @@ export const canReadProject = (project, user) =>
 
 // A vocabulary carries its own maintainer list, and nothing else. Its
 // maintainers (or an admin) change its settings and maintainers, link it to a
-// project (core refuses anyone else), and add entries from the Analyze tab.
-// Linking a word to one of its existing entries needs only write access to the
-// word's project.
+// project (core refuses anyone else), and rename or delete its entries. Adding
+// an entry and linking a word to one need only write access to the word's
+// project (acl-shared-vocab-writers b). igt's Entries screen and Bulk Add stay
+// with the maintainers all the same.
 export const canManageVocabulary = (vocabulary, user) =>
   !!(user?.isAdmin || inList(vocabulary?.maintainers, user?.id));

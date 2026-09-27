@@ -283,12 +283,11 @@ export const vocabPopover = {
     // punctuation trimmed by the project's own ignored-tokens rule
     // (`derechos.` → `derechos`; user decision 2026-08-26).
     const createForm = trimIgnoredEdges(formText || '', this._ignoredCfg);
-    // A single "+ Create" row, into the active vocab, when there's a form AND
-    // this user may add entries to it. Item creation needs vocab-maintainer
-    // rights while linking needs only project-writer + vocab-reader, so a
-    // writer who can link may still not create — hide the row instead of
-    // letting it 403.
-    const canCreate = !!(createForm && activeVocab && this.canWriteVocab(activeVocab));
+    // A single "+ Create" row, into the active vocab, when there's a form.
+    // Adding an entry needs only write access to the document, like linking
+    // (acl-shared-vocab-writers b). Renaming and deleting are the
+    // vocabulary's maintainers', and the popover offers neither.
+    const canCreate = !!(createForm && activeVocab && !this.readOnly);
     // While the row is being edited the entry's form is whatever is typed.
     const editingCreate = canCreate && this._popoverCreateEdit != null;
     const effectiveForm = editingCreate ? this._popoverCreateEdit.trim() : createForm;
@@ -808,7 +807,7 @@ export const vocabPopover = {
       ? this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id)
       : null;
     const current = (linked ? fromItem : morph?.metadata?.morphType) ?? '';
-    const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
+    const canEditEntry = linked && !!vocab && this.canManageVocab(vocab);
     const disabled = this.readOnly || (linked && !canEditEntry);
     const title = linked
       ? canEditEntry

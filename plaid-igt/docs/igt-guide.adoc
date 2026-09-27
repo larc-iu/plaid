@@ -364,6 +364,8 @@ A link you made or confirmed puts its entry's gloss ahead of anything the projec
 An auto-made link you have not confirmed yet ranks behind it, in the grid and in the Alt/Option+Down list alike.
 Because a vocabulary is shared, editing an entry updates every document linked to it.
 In the link popover, the linked entry's form is itself a link: click it to open the entry in its vocabulary.
+When no entry fits, **Create** in the popover adds one with the word's or morpheme's form and links it. For words gathered into a multi-word expression, it adds a multi-word expression entry and links the words to it.
+Anyone who can edit the document can add an entry this way, in any vocabulary the project draws on.
 
 An entry can carry a morpheme **type**: stem, prefix, suffix, enclitic, and so on, following the FieldWorks inventory.
 A linked morpheme takes its type from the entry, and the type decides how it attaches to its neighbours in the grid and in exports (`=` for clitics, `-` otherwise).
@@ -398,7 +400,8 @@ Each entry it would change is listed with its old and new value, and only the ti
 A value the field's tagset refuses is listed but never written.
 **Export** downloads the table as a tab-separated file that opens in any spreadsheet.
 
-A vocabulary's maintainers edit its entries and fields, while a project's members link to them.
+A vocabulary's maintainers edit its entries and fields here.
+A project's writers link words to its entries and add new ones from the link popover, but only a maintainer renames or deletes an entry.
 Each entry carries a comment thread (see <<_comments>>).
 
 == Entry fields

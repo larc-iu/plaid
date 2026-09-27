@@ -492,7 +492,7 @@ export const mwe = {
     const current = linked
       ? (this._vocabMemoFor(currentItem.vocabId).morphTypeOf(currentItem.id) ?? '')
       : preset;
-    const canEditEntry = linked && !!vocab && this.canWriteVocab(vocab);
+    const canEditEntry = linked && !!vocab && this.canManageVocab(vocab);
     const title = linked
       ? canEditEntry
         ? 'Type of the linked lexicon entry'

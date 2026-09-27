@@ -49,7 +49,7 @@ export class IgtEditor {
     {
       readOnly = false,
       canAutoAnalyze = false,
-      canWriteVocab = null,
+      canManageVocab = null,
       comments = null,
       canComment = false,
       canDeleteAnyComment = false,
@@ -95,10 +95,11 @@ export class IgtEditor {
     // (editor/comments.js).
     this._cmtEditingId = null;
     this._cmtEditDraft = '';
-    // May the current user add entries to a vocab (needs vocab-maintainer
-    // rights on the server)? Linking needs less, so the popover hides its
-    // "+ Create" row when this says no. Default: assume yes (dev/tests).
-    this.canWriteVocab = typeof canWriteVocab === 'function' ? canWriteVocab : () => true;
+    // Does the current user maintain a vocab? Only a maintainer (or an
+    // admin) changes a linked entry's type from the popover. Adding an entry
+    // and linking need only write access to the document. Default: assume
+    // yes (dev/tests).
+    this.canManageVocab = typeof canManageVocab === 'function' ? canManageVocab : () => true;
     this.container = container;
     // The alternatives popup renders into its OWN root, not into the grid
     // template. It is position:fixed, so it does not need to be a sibling of
