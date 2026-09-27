@@ -475,7 +475,10 @@ export async function runExport({
                   }),
                 () => warnings.push(`"${name}": invisible control characters left out`),
               ),
-        igtDoc,
+        // Only CLDF reads the documents again, all at once. Every other
+        // format is done with each one here, and 400 of them held to the
+        // end were 400 MB.
+        igtDoc: isCldf ? igtDoc : null,
         id: igtDoc.document?.id ?? docIds[i],
         docName: name,
         mediaFile,
