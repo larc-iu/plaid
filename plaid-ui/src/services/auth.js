@@ -65,11 +65,15 @@ function getUserIdFromToken(token) {
 
 // ---- a sign-in that stops working ----------------------------------------
 //
-// Tokens do not expire, so a 401 means the token was revoked or the account
-// deactivated. With nothing unsent it signs out as before. With a write
+// A 401 means the token expired, was revoked, or outlived a password change
+// or a deactivated account. With nothing unsent it signs out as before. With a write
 // refused, a draft typed, or a document still sending, the page stays: a
 // notice offers sign-in in a new tab, and when that tab signs the same user
 // in, every client this tab made takes the new token and carries on.
+
+// The token this tab signed in with. localStorage holds whatever tab signed
+// in last, which need not be this tab's user.
+const sessionToken = () => authService.getClient()?.token || null;
 
 // Every client this session made, held weakly: an editor makes one per
 // document it opens.
@@ -112,7 +116,9 @@ const onAuthError = (error) => {
       window.open(signInUrl(), '_blank', 'noopener');
     },
   });
-  signInLost = { user: getUserIdFromToken(localStorage.getItem('token') || ''), toastId };
+  // This tab's user, from its own client: localStorage is shared by every tab
+  // of the origin, and another tab may have signed someone else in already.
+  signInLost = { user: getUserIdFromToken(sessionToken() || ''), toastId };
 };
 
 // Another tab signing the same user in hands this one its token.
@@ -278,7 +284,8 @@ export const authService = {
 
   // A client of its own on the session's token, for a screen that needs one
   // (an editor's strict-mode client). It answers a 401 as every other does.
-  newClient(token = localStorage.getItem('token')) {
+  // The token is this tab's, never one another tab signed a different user in with.
+  newClient(token = sessionToken()) {
     return track(new PlaidClient(BASE_URL, token, { onAuthError }));
   },
 };

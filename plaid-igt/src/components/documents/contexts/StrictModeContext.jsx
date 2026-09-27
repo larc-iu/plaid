@@ -26,17 +26,20 @@ const StrictModeContext = createContext(null);
 export const StrictModeProvider = ({ children }) => {
   const { documentId } = useParams();
 
-  const token = localStorage.getItem('token');
+  // This tab's session. localStorage's token belongs to whichever tab signed in
+  // last, which may be another user, so it is never read here.
+  const session = authService.getClient();
 
   // Per-document client, in strict mode (document-version OCC) — see the note
-  // above. The session makes it, so a 401 on it is answered the way every
-  // other client's is (a refused write keeps the page, see services/auth.js).
+  // above. The session makes it, on the session's token, so a 401 on it is
+  // answered the way every other client's is (a refused write keeps the page,
+  // see services/auth.js).
   const documentClient = useMemo(() => {
-    if (!token || !documentId) return null;
-    const c = authService.newClient(token);
+    if (!session || !documentId) return null;
+    const c = authService.newClient();
     c.enterStrictMode(documentId);
     return c;
-  }, [token, documentId]);
+  }, [session, documentId]);
 
   return <StrictModeContext.Provider value={documentClient}>{children}</StrictModeContext.Provider>;
 };

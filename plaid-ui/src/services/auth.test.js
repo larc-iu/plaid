@@ -159,7 +159,7 @@ describe('authService', () => {
   });
 });
 
-// Tokens do not expire, so a 401 is a revoked token or a deactivated account.
+// A 401 is an expired or revoked token, or a deactivated account.
 // With something unsent the page stays and says so, and a sign-in in another
 // tab hands this one its token. Without, it signs out as it always did.
 describe('a 401', () => {
@@ -213,6 +213,39 @@ describe('a 401', () => {
     expect(other.token).toBe(fresh);
     expect(c._authErrorFired).toBe(false);
     expect(dismiss).toHaveBeenCalledWith('toast-1');
+  });
+
+  // localStorage is shared by every tab of the origin, so once another tab
+  // signs someone else in it holds THEIR token. This tab is still its own user.
+  const anotherTabSignsInAs = (userId) => {
+    localStorage.setItem('token', tokenFor(userId));
+    localStorage.setItem('userId', userId);
+  };
+  const freshSession = (userId) => {
+    authService.logout();
+    window.location.hash = '#/projects/p1';
+    localStorage.setItem('token', tokenFor(userId));
+    localStorage.setItem('userId', userId);
+    return authService.getClient();
+  };
+
+  it("makes a new client on this tab's token after another tab signs someone else in", () => {
+    freshSession('ada@example.com');
+    anotherTabSignsInAs('bob@example.com');
+    expect(authService.newClient().token).toBe(tokenFor('ada@example.com'));
+  });
+
+  it("waits for this tab's user, not whoever another tab signed in before the 401", () => {
+    const c = freshSession('ada@example.com');
+    anotherTabSignsInAs('bob@example.com');
+    refuse(c, 'PATCH');
+    expect(notify.withAction).toHaveBeenCalledTimes(1);
+    otherTabSignsIn(`${tokenFor('bob@example.com')}4`);
+    expect(c.token).toBe(tokenFor('ada@example.com'));
+    expect(dismiss).not.toHaveBeenCalled();
+    // Ada signing in again elsewhere is what this tab waits for.
+    otherTabSignsIn(`${tokenFor('ada@example.com')}4`);
+    expect(c.token).toBe(`${tokenFor('ada@example.com')}4`);
   });
 
   it('on a read keeps the page while something typed is unsaved', () => {
