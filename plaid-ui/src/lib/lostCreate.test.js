@@ -60,3 +60,14 @@ describe('findLostCreate', () => {
     expect(made).toBe(null);
   });
 });
+
+describe('findLostCreate without the list from before', () => {
+  it('does not guess, since a row of that name may have been there already', async () => {
+    const made = await findLostCreate(lost(), {
+      before: null,
+      reread: async () => [{ id: 'a', name: 'Story' }],
+      isIt: (row) => row.name === 'Story',
+    });
+    expect(made).toBe(null);
+  });
+});

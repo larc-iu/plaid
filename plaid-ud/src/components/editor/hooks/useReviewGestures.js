@@ -157,7 +157,7 @@ export function useReviewGestures({ sentences, doc, readOnly, visibleFields, rev
         // Nothing to accept: hold position. A hop with no visible change reads
         // exactly like a confirmation that never happened.
         if (!wordHasMaterial(sentences, tokenId, doc.writer.reviewable)) return;
-        // A confirm that did not land (refused, or skipped behind a refusal)
+        // A confirm that did not land (refused, or after a conflict refused unsent)
         // resolves false, and hopping anyway carries the reader past a word
         // that was never confirmed. During a held-down sweep that is every
         // second word.

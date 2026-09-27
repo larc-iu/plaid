@@ -121,7 +121,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const textModeRef = useRef(false);
   textModeRef.current = textMode;
   // Text typed and applied, back in text mode because the apply did not
-  // land: refused, or skipped behind an earlier edit that was.
+  // land: refused, or after a conflict refused unsent.
   const [unapplied, setUnapplied] = useState(null);
   // Out of text mode, focus goes to the graph: the node focused before, else
   // the root. The textarea it was in is gone.

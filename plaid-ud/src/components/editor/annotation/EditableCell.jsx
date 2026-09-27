@@ -262,9 +262,9 @@ export const EditableCell = React.memo(
           setValue(value || '');
           return;
         }
-        // An edit that was not saved: refused, or queued behind a refused
-        // edit and never sent. The refetch after the refusal takes it off the
-        // screen, so it is put back, measured against `saved`, the value it
+        // An edit that was not saved: refused, or after a conflict refused
+        // unsent, made on the same out-of-date document. The refetch takes it
+        // off the screen, so it is put back, measured against `saved`, the value it
         // was typed over, so leaving the cell sends it again and Escape takes
         // it back. The cell may be paged away by then, so it goes to the
         // grid's `unsent`, which hands it to the cell if one is drawn.

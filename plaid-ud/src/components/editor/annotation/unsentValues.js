@@ -1,7 +1,7 @@
 import { setUnsavedDraft } from '@ui/hooks/useUnsavedDraft.js';
 
-// Values put back after they were not saved (refused, or queued behind a
-// refused edit and never sent), `{ typed, saved }` by token and field, held
+// Values put back after they were not saved (refused, or after a conflict
+// refused unsent), `{ typed, saved }` by token and field, held
 // for the whole annotation grid rather than by the cell showing one.
 //
 // The grid pages its sentences, and a cell on a page the reader has left is
