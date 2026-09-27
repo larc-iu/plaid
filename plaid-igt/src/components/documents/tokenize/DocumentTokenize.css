@@ -50,10 +50,13 @@
 
 .sentence-content {
   flex: 1;
-  padding-left: 70px;
+  padding-inline-start: 70px;
   white-space: pre-wrap;
 }
 
+/* A row carries the document's direction, and everything inside it is
+   logical. Its own margin undoes the container's left padding, which is
+   outside the row and does not mirror, so that one stays physical. */
 .sentence-row {
   position: relative;
   display: flex;
@@ -71,16 +74,16 @@
 
 .sentence-number {
   position: absolute;
-  left: 22px;
+  inset-inline-start: 22px;
   top: 10px;
   font-family: monospace;
   user-select: none;
   width: 20px;
-  text-align: right;
+  text-align: end;
 }
 .merge-button {
   position: absolute;
-  left: 48px;
+  inset-inline-start: 48px;
   top: 9px;
   z-index: 10;
 }

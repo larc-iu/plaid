@@ -276,6 +276,7 @@ export function DocumentTokenize() {
                 setDrag={setDrag}
                 dragRef={dragRef}
                 readOnly={readOnly}
+                dir={doc.textDirection}
               />
             ))}
           </div>
@@ -430,7 +431,18 @@ export function DocumentTokenize() {
   );
 }
 
-function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readOnly = false }) {
+// The row takes the document's direction, so an Arabic sentence reads from
+// the right with its number and merge button at its start.
+function SentenceComponent({
+  sentence,
+  ops,
+  index,
+  drag,
+  setDrag,
+  dragRef,
+  readOnly = false,
+  dir,
+}) {
   const handleMerge = async () => {
     await ops.mergeSentence(sentence.id);
   };
@@ -442,7 +454,12 @@ function SentenceComponent({ sentence, ops, index, drag, setDrag, dragRef, readO
     </div>
   );
   return (
-    <Lazy className="sentence-row" contentPreview={preview} data-sentence-id={sentence.id}>
+    <Lazy
+      className="sentence-row"
+      contentPreview={preview}
+      data-sentence-id={sentence.id}
+      dir={dir}
+    >
       <div>
         {/* Sentence number */}
         <div className="text-xs text-muted-foreground sentence-number">{index + 1}</div>

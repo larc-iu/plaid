@@ -50,6 +50,20 @@ const MIRRORED = [
     ],
   },
   {
+    // plaid-igt's Tokenize tab. Each sentence row carries the document's
+    // direction. `.sentence-row` itself is absent: its margin cancels the
+    // container's padding, which sits outside the row and does not mirror.
+    file: 'plaid-igt/src/components/documents/tokenize/DocumentTokenize.css',
+    prefixes: [
+      '.sentence-content',
+      '.sentence-number',
+      '.merge-',
+      '.token',
+      '.untokenized',
+      '.splitter-',
+    ],
+  },
+  {
     // plaid-umr's canvas. Only the WORD ROW mirrors: the graph above it is
     // placed at measured pixel offsets from the stage's left edge, and the
     // stage says `direction: ltr` so that axis and the constants lane drawn
