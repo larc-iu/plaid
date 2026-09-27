@@ -131,7 +131,7 @@ export function makeNativeRaw() {
     id: 'doc1',
     name: 'Doc One',
     version: 7,
-    metadata: { Source: 'notes', importDone: true, custom: { k: 1 } }, // trap (a)
+    metadata: { Source: 'notes', importDone: true, custom: { k: 1 } }, // trap (a), and an import's mark the archive leaves out
     textLayers: [
       {
         id: 'tl1',

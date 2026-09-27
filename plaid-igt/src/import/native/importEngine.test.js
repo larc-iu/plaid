@@ -788,6 +788,169 @@ describe('runNativeImport (full archive)', () => {
   });
 });
 
+describe('runNativeImport, what the archive holds comes back as it was', () => {
+  // An archive of one document, written by the real exporter from `raw`.
+  const archiveOf = (raw, { comments = [] } = {}) => {
+    const project = makeNativeProject();
+    const igtDoc = new IgtDocument({ raw, project, vocabularies: {} });
+    const data = serializeDocumentNative(igtDoc, { comments });
+    const row = { id: raw.id, name: raw.name, file: 'documents/D.json', mediaFile: null };
+    const vocabRow = { id: 'vocab1', name: 'Lex', file: 'vocabularies/Lex.json' };
+    return {
+      manifest: buildProjectFile({
+        project,
+        documents: [row],
+        vocabularies: [vocabRow],
+        exportedAt: '2026-09-27T00:00:00.000Z',
+      }),
+      vocabularies: [{ ...vocabRow, data: serializeVocabularyNative(VOCAB) }],
+      documents: [{ ...row, data, mediaBytes: null }],
+    };
+  };
+  const importOf = async (archive) => {
+    const client = stubClient();
+    const result = await runNativeImport({ client, projectId: 'newp', archive });
+    const byLayer = Object.fromEntries(
+      callsOf(client, 'tokens.bulkCreate').map(([, specs]) => [specs[0].tokenLayerId, specs]),
+    );
+    return { client, result, byLayer };
+  };
+  const layerOf = (raw, role) =>
+    raw.textLayers[0].tokenLayers.find((tl) => tl.config.plaid.role === role);
+
+  it('makes the whole of an annotation over two words, one of which shows another', async () => {
+    const raw = makeNativeRaw();
+    layerOf(raw, 'word').spanLayers[1].spans.unshift({ id: 'spOne', tokens: ['w1'], value: 'N' });
+    const { client } = await importOf(archiveOf(raw));
+    const spans = callsOf(client, 'spans.bulkCreate').flatMap(([, specs]) => specs);
+    const words = callsOf(client, 'tokens.bulkCreate').find(([, specs]) =>
+      specs[0].tokenLayerId.endsWith('wl'),
+    ).result.ids;
+    expect(spans.find((s) => s.value === 'NP').tokens).toEqual([words[0], words[1]]);
+    expect(spans.find((s) => s.value === 'N').tokens).toEqual([words[0]]);
+  });
+
+  it('makes the text of a document whose baseline was cleared, with its metadata and comments', async () => {
+    const raw = makeNativeRaw();
+    raw.textLayers[0].text = { id: 'text1', body: '', metadata: { lang: 'es' } };
+    for (const tl of raw.textLayers[0].tokenLayers) {
+      tl.tokens = [];
+      for (const sl of tl.spanLayers || []) sl.spans = [];
+      for (const v of tl.vocabs || []) v.vocabLinks = [];
+    }
+    const comment = {
+      id: 'c1',
+      entityType: 'text',
+      entityId: 'text1',
+      author: { id: 'a@b.com', name: 'A' },
+      body: 'The recording has more.',
+    };
+    const { client, result } = await importOf(archiveOf(raw, { comments: [comment] }));
+    const [, , , body, metadata] = callsOf(client, 'texts.create')[0];
+    expect(body).toBe('');
+    expect(metadata).toEqual({ lang: 'es' });
+    const posted = callsOf(client, 'comments.create');
+    expect(posted).toHaveLength(1);
+    expect(posted[0].slice(1, 3)).toEqual(['text', callsOf(client, 'texts.create')[0].result.id]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('gives each token the precedence it had, and none to one that had none', async () => {
+    const raw = makeNativeRaw();
+    layerOf(raw, 'word').tokens[0].precedence = 3;
+    layerOf(raw, 'word').tokens[2].precedence = 4; // the orphan word
+    layerOf(raw, 'sentence').tokens[0].precedence = 2;
+    layerOf(raw, 'time-alignment').tokens[0].precedence = 5;
+    delete layerOf(raw, 'morpheme').tokens.find((t) => t.id === 'm3').precedence;
+    const { byLayer } = await importOf(archiveOf(raw));
+    expect(byLayer['new-sl'][0].precedence).toBe(2);
+    expect(byLayer['new-wl'].map((t) => t.precedence ?? null)).toEqual([3, null, 4]);
+    expect(byLayer['new-ml'].map((t) => t.precedence ?? null)).toEqual([1, 2, null, 1]);
+    expect('precedence' in byLayer['new-ml'][2]).toBe(false);
+    expect(byLayer['new-al'][0].precedence).toBe(5);
+  });
+
+  it('gives a segment no times when it had none', async () => {
+    const raw = makeNativeRaw();
+    layerOf(raw, 'time-alignment').tokens[0].metadata = { speaker: 'Ada' };
+    const { byLayer } = await importOf(archiveOf(raw));
+    expect(byLayer['new-al'][0].metadata).toEqual({ speaker: 'Ada' });
+  });
+
+  it("never carries an import's marks from the archive into the new document", async () => {
+    // An archive written before the exporter left them out, or edited by hand:
+    // a document created already marked done would be skipped by a resume
+    // however little of it had been made.
+    const archive = archiveOf(makeNativeRaw());
+    archive.documents[0].data.metadata = {
+      Source: 'notes',
+      importSource: 'elsewhere',
+      importDone: true,
+    };
+    const { client } = await importOf(archive);
+    expect(callsOf(client, 'documents.create')[0][3]).toEqual({
+      Source: 'notes',
+      importSource: 'doc1',
+    });
+    expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toEqual({
+      Source: 'notes',
+      importSource: 'doc1',
+      importDone: true,
+    });
+  });
+
+  it('imports a document at the metadata key cap unmarked, and says a resume would repeat it', async () => {
+    const raw = makeNativeRaw();
+    raw.metadata = Object.fromEntries(Array.from({ length: 499 }, (_, i) => [`k${i}`, i]));
+    const { client, result } = await importOf(archiveOf(raw));
+    expect(callsOf(client, 'documents.create')[0][3]).toEqual(raw.metadata);
+    expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toEqual(raw.metadata);
+    expect(result.warnings).toEqual([
+      '"Doc One": its metadata is too large to be marked, so a resumed import would bring it in again',
+    ]);
+  });
+
+  it('marks a document that has room for both marks, nested keys counted', async () => {
+    const raw = makeNativeRaw();
+    // 497 keys at the top and one nested: 498, and the two marks make 500.
+    raw.metadata = Object.fromEntries(Array.from({ length: 496 }, (_, i) => [`k${i}`, i]));
+    raw.metadata.nested = { inner: 1 };
+    const { client, result } = await importOf(archiveOf(raw));
+    expect(callsOf(client, 'documents.setMetadata').at(-1)[2]).toMatchObject({
+      importSource: 'doc1',
+      importDone: true,
+    });
+    expect(result.warnings).toEqual([]);
+  });
+});
+
+describe('importVocabulary at the metadata key cap', () => {
+  it('creates an entry that has no room for the mark without it, and says so', async () => {
+    const full = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [`k${i}`, i]));
+    const client = stubClient();
+    const warnings = [];
+    const map = await importVocabulary({
+      client,
+      vocabId: 'newvocab',
+      vocabData: {
+        name: 'Lex',
+        items: [
+          { id: 'i1', form: 'full', metadata: full },
+          { id: 'i2', form: 'dog', metadata: { gloss: 'dog' } },
+        ],
+      },
+      warnings,
+    });
+    const [first, second] = createdItems(client);
+    expect(first.metadata).toEqual(full);
+    expect(second.metadata).toEqual({ gloss: 'dog', nativeImportId: 'i2' });
+    expect(map.size).toBe(2);
+    expect(warnings).toEqual([
+      '"Lex": 1 entry holds too much metadata to be marked, so a resumed import would create it again',
+    ]);
+  });
+});
+
 describe('rebuildTokenMap', () => {
   it('maps a finished document by what its tokens are, not by creation order', async () => {
     // What a resume has to work from: the archive's document, and the server's

@@ -46,6 +46,7 @@ import {
   parentsFirst,
 } from '../domain/otherLayers.js';
 import { discoverExportLayers } from './exportLayers.js';
+import { IMPORT_STAMP_KEYS } from '../import/resume.js';
 
 export const NATIVE_FORMAT_VERSION = 1;
 const NATIVE_FORMAT_NAME = 'plaid-igt';
@@ -61,6 +62,12 @@ const withoutImportKeys = (metadata) => {
   if (!metadata || !IMPORT_KEYS.some((k) => k in metadata)) return metadata;
   const out = { ...metadata };
   for (const k of IMPORT_KEYS) delete out[k];
+  return out;
+};
+
+const withoutStampKeys = (metadata) => {
+  const out = { ...(metadata || {}) };
+  for (const k of IMPORT_STAMP_KEYS) delete out[k];
   return out;
 };
 
@@ -357,15 +364,26 @@ const orderOf = (order, id) => {
   return at == null ? {} : { order: at };
 };
 
-const fieldEntries = (annotations, emittedSpanIds, order) => {
+// The entries shown on one token. Each span is recorded with the token it was
+// written under, since the tree holds a span only where it is the annotation
+// the editor shows: a span over two words that loses that place on one of them
+// is in the tree under the other alone, and the sweep below has to know.
+const fieldEntries = (annotations, tokenId, ctx) => {
   const out = {};
   for (const [name, span] of Object.entries(annotations || {})) {
     if (!span) continue;
-    out[name] = fieldEntry(span, order);
-    if (span.id != null) emittedSpanIds.add(span.id);
+    out[name] = fieldEntry(span, ctx.order);
+    if (span.id == null) continue;
+    let under = ctx.emittedSpans.get(span.id);
+    if (!under) ctx.emittedSpans.set(span.id, (under = new Set()));
+    under.add(tokenId);
   }
   return out;
 };
+
+// A token's own precedence, as stored. The derived view reads an unset one as
+// 1, which the archive must not: it records what the project holds.
+const withPrecedence = (node, precedence) => (precedence == null ? node : { ...node, precedence });
 
 // Walk the raw embedded vocab links once. A link is a candidate for inlining
 // on its word/morpheme node when it targets exactly one token and carries an
@@ -455,10 +473,7 @@ function morphemeNode(m, linkIndex, ctx) {
   ctx.emittedTokenIds.add(m.id);
   const metadata = { ...(m.metadata || {}) };
   const node = {
-    id: m.id,
-    begin: m.begin,
-    end: m.end,
-    precedence: m.precedence ?? 1,
+    ...withPrecedence({ id: m.id, begin: m.begin, end: m.end }, ctx.precedenceOf.get(m.id)),
     text: m.content ?? '',
   };
   // form '' is meaningful (present-but-empty) — lift only when the key exists,
@@ -472,7 +487,7 @@ function morphemeNode(m, linkIndex, ctx) {
     delete metadata.morphType;
   }
   const out = withMetadata(node, metadata);
-  out.fields = fieldEntries(m.annotations, ctx.emittedSpanIds, ctx.order);
+  out.fields = fieldEntries(m.annotations, m.id, ctx);
   const vocab = linkIndex.consume(m.id);
   if (vocab) out.vocab = vocab;
   return out;
@@ -482,10 +497,17 @@ function wordNode(token, orthographyNames, linkIndex, ctx) {
   ctx.emittedTokenIds.add(token.id);
   const { orthographies, rest } = splitOrthographies(token.metadata, orthographyNames);
   const node = withMetadata(
-    { id: token.id, begin: token.begin, end: token.end, text: token.content ?? '', orthographies },
+    {
+      ...withPrecedence(
+        { id: token.id, begin: token.begin, end: token.end },
+        ctx.precedenceOf.get(token.id),
+      ),
+      text: token.content ?? '',
+      orthographies,
+    },
     rest,
   );
-  node.fields = fieldEntries(token.annotations, ctx.emittedSpanIds, ctx.order);
+  node.fields = fieldEntries(token.annotations, token.id, ctx);
   const vocab = linkIndex.consume(token.id);
   if (vocab) node.vocab = vocab;
   // The archive records what is STORED. A word nobody has segmented shows a
@@ -502,11 +524,12 @@ function wordNode(token, orthographyNames, linkIndex, ctx) {
 
 // Everything in the raw substrate that the sentence tree missed: tokens
 // outside every sentence extent (or morphemes matching no word), spans beyond
-// the first per layer+token, AND spans the tree did emit whose token list
-// reaches outside the tree — field entries carry no token list, so a span
-// over [tree token, orphan token] needs its full record here for the
-// membership to survive (the spec makes the extraSpans record authoritative
-// when its id also appears as a field entry). Sweeps ALL span layers on all
+// the first per layer+token, AND spans the tree did emit under fewer tokens
+// than they cover — field entries carry no token list, so a span over [tree
+// token, orphan token], or over two words one of which shows another
+// annotation, needs its full record here for the membership to survive (the
+// spec makes the extraSpans record authoritative when its id also appears as
+// a field entry). Sweeps ALL span layers on all
 // four token layers — including unscoped layers and the alignment layer's,
 // which the derived view ignores entirely. layerInfo references the same
 // live raw objects.
@@ -534,8 +557,8 @@ function completenessSweep(layerInfo, ctx) {
       const scope = readScope(sl.config);
       for (const s of sl.spans || []) {
         const tokens = s.tokens || [];
-        const inTree = ctx.emittedSpanIds.has(s.id);
-        if (inTree && tokens.every((t) => ctx.emittedTokenIds.has(t))) continue;
+        const under = ctx.emittedSpans.get(s.id);
+        if (under && tokens.every((t) => under.has(t))) continue;
         extraSpans.push(
           withMetadata(
             {
@@ -614,6 +637,9 @@ function otherLayerData(layerInfo) {
   return { data: empty ? null : { tokens, spans, relations }, ids };
 }
 
+// A time the segment does not hold is left out rather than written as null,
+// so a segment nobody has timed yet comes back without the keys.
+const has = (obj, key) => obj != null && Object.prototype.hasOwnProperty.call(obj, key);
 const alignmentNodes = (alignmentTokens) =>
   (alignmentTokens || []).map((t) => {
     const metadata = { ...(t.metadata || {}) };
@@ -621,11 +647,9 @@ const alignmentNodes = (alignmentTokens) =>
     delete metadata.timeEnd;
     return withMetadata(
       {
-        id: t.id,
-        begin: t.begin,
-        end: t.end,
-        timeBegin: t.metadata?.timeBegin ?? null,
-        timeEnd: t.metadata?.timeEnd ?? null,
+        ...withPrecedence({ id: t.id, begin: t.begin, end: t.end }, t.precedence),
+        ...(has(t.metadata, 'timeBegin') ? { timeBegin: t.metadata.timeBegin } : {}),
+        ...(has(t.metadata, 'timeEnd') ? { timeEnd: t.metadata.timeEnd } : {}),
       },
       metadata,
     );
@@ -684,12 +708,19 @@ export function serializeDocumentNative(
     .filter((n) => typeof n === 'string' && n !== '');
   const order = serverOrder(raw);
   const linkIndex = linkIndexFromRaw(raw, order);
-  const ctx = { emittedTokenIds: new Set(), emittedSpanIds: new Set(), order };
+  const precedenceOf = new Map();
+  for (const tl of [layerInfo.primaryTokenLayer, layerInfo.morphemeTokenLayer]) {
+    for (const t of tl?.tokens || []) precedenceOf.set(t.id, t.precedence);
+  }
+  const ctx = { emittedTokenIds: new Set(), emittedSpans: new Map(), order, precedenceOf };
 
   const sentences = (igtDoc.sortedSentences || []).map((s) => {
     ctx.emittedTokenIds.add(s.id);
-    const node = withMetadata({ id: s.id, begin: s.begin, end: s.end }, s.sentenceToken?.metadata);
-    node.fields = fieldEntries(s.annotations, ctx.emittedSpanIds, ctx.order);
+    const node = withMetadata(
+      withPrecedence({ id: s.id, begin: s.begin, end: s.end }, s.sentenceToken?.precedence),
+      s.sentenceToken?.metadata,
+    );
+    node.fields = fieldEntries(s.annotations, s.id, ctx);
     node.words = (s.tokens || []).map((t) => wordNode(t, orthographyNames, linkIndex, ctx));
     return node;
   });
@@ -720,7 +751,7 @@ export function serializeDocumentNative(
   // dropped (see commentNodes).
   const tokenIds = new Set([...ctx.emittedTokenIds, ...other.ids.token]);
   for (const t of orphanTokens) tokenIds.add(t.id);
-  const spanIds = new Set([...ctx.emittedSpanIds, ...other.ids.span]);
+  const spanIds = new Set([...ctx.emittedSpans.keys(), ...other.ids.span]);
   for (const sp of extraSpans) spanIds.add(sp.id);
   const archived = (type, id) => {
     switch (type) {
@@ -751,7 +782,11 @@ export function serializeDocumentNative(
     name: raw.name ?? null,
     version: raw.version ?? null,
     mediaFile,
-    metadata: raw.metadata || {}, // wholesale — the derived view filters this
+    // Wholesale, since the derived view filters this, except for an import's
+    // own marks: a document carrying `importDone` into another import is
+    // marked finished from the moment it exists, and a resume would skip it
+    // half made.
+    metadata: withoutStampKeys(raw.metadata),
     baseline: withMetadata({ textId: text?.id ?? null, body: text?.body ?? '' }, text?.metadata),
     sentences,
     alignment: alignmentNodes(igtDoc.alignmentTokens),

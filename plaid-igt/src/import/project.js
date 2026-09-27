@@ -132,7 +132,9 @@ export function resolveIgtTargets(project, fields = []) {
  * One document's shell: the document row, its baseline text, and the sentence
  * partition over it. Everything else a document holds hangs off what this
  * returns (`{documentId, textId, sentenceIds}`); a document with an empty
- * body gets no text and no sentences.
+ * body gets no text and no sentences, unless `keepEmptyText` asks for the text
+ * row anyway (the archive does, for a document whose text was cleared: the
+ * row is still there and may hold metadata and comments).
  *
  * `metadata` is the caller's, already stamped. `textMetadata` is the baseline
  * text's, if the source carries one; as a function it is called once the
@@ -153,6 +155,7 @@ export async function createDocumentShell({
   body,
   sentences,
   textMetadata = undefined,
+  keepEmptyText = false,
   onDocument = null,
   onText = null,
   createTokens = null,
@@ -163,14 +166,14 @@ export async function createDocumentShell({
   const created = await client.documents.create(projectId, name, metadata);
   const documentId = created.id ?? created;
   onDocument?.(documentId);
-  if (!body?.length) return { documentId, textId: null, sentenceIds: [] };
+  if (!body?.length && !keepEmptyText) return { documentId, textId: null, sentenceIds: [] };
 
   check();
   progress('Creating text');
   const text = await client.texts.create(
     targets.textLayerId,
     documentId,
-    body,
+    body ?? '',
     typeof textMetadata === 'function' ? textMetadata() : textMetadata,
   );
   const textId = text.id ?? text;
@@ -188,6 +191,7 @@ export async function createDocumentShell({
     text: textId,
     begin: s.begin,
     end: s.end,
+    ...(s.precedence != null ? { precedence: s.precedence } : {}),
     ...(s.metadata && Object.keys(s.metadata).length ? { metadata: s.metadata } : {}),
   }));
   const sentenceIds = !specs.length

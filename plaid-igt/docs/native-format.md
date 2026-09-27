@@ -56,6 +56,9 @@ the upload's media type is validated from its filename.
 - Every id in the archive is a **correlation key**, not a value to write back: a
   re-importer creates fresh entities and maps old ids to new ones. That includes
   an id another app keeps inside metadata (see References in metadata).
+- A document's `id` is required and unique within the archive. A resume finds
+  what an earlier run made by it, so a reader refuses an archive in which one is
+  missing or repeated.
 
 ## project.json
 
@@ -147,7 +150,10 @@ the upload's media type is validated from its filename.
 
 Top level: `id`, `name`, `version` (debugging only), `mediaFile` (archive path or
 null), `metadata` (**the raw document metadata, wholesale** — including keys not in
-`schema.documentMetadata`, e.g. `flexImported`), `baseline` (`{textId, body, metadata?}`),
+`schema.documentMetadata`, e.g. `flexImported` — except an import's own marks,
+`importSource` and `importDone`, which are left out), `baseline` (`{textId, body, metadata?}`,
+where `textId` is null when the document has no text row and set for a text whose
+body is empty),
 `sentences`, `alignment`, three completeness sections (below), and `otherLayers` when
 the document holds anything of another app's (see Other apps' layers).
 
@@ -175,6 +181,10 @@ same way.
 - `text` is the surface slice — informative; `baseline.body` + offsets are authoritative.
 - **Morphemes are full-width**: they share their word's extent and are ordered by
   1-based `precedence`; the segment text lives in `form`.
+- **`precedence`** is written on a sentence, word, morpheme or segment only when
+  the stored token has one, and a re-importer writes it only when present. A
+  morpheme without one is read as 1 by the editor, but it is stored as unset
+  and comes back unset.
 - **`form` present-vs-absent matters**: the key is omitted when the morpheme has no
   stored form (display falls back to the surface text); `"form": ""` means a stored,
   deliberately empty form. `morphType` is likewise omitted when absent.
@@ -207,7 +217,8 @@ same way.
 Time-alignment spans: character extent over the baseline plus times in seconds.
 Alignment extents are independent of the sentence partition. Residual alignment
 token metadata (anything besides `timeBegin`/`timeEnd`) rides in `metadata`.
-`timeBegin`/`timeEnd` are `null` when the stored token lacks them.
+`timeBegin`/`timeEnd` are omitted when the stored token lacks them, and a
+re-importer writes only the ones present.
 
 ### Completeness sections
 
@@ -413,8 +424,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    `vocabLinks.create(itemId, tokens, metadata)` for inline and extra links →
    `comments.create` per archived comment (anchors resolved through the same
    old→new maps; see Comments) → upload media from `mediaFile`. A document is
-   marked done
-   (`metadata.nativeImported`) only after every write succeeded; resume skips
+   marked (`metadata.importSource`, the archive document id, at creation) and
+   marked done (`metadata.importDone`) only after every write succeeded, and any
+   such key the archive's own metadata holds is dropped first; resume skips
    done documents and deletes + redoes half-imported ones. Other apps' layers are
    made once per project, not per document, so a resume finds the ones an earlier
    run made rather than making them again: setup makes only this app's layers, so
@@ -432,6 +444,9 @@ Implemented by `src/import/native/importEngine.js` (UI: Projects → New Project
    metadata that names an entry or a document of the archive is rewritten too
    (see References in metadata), `nativeImportId` excepted.
 5. All offsets are code points; never re-derive them from UTF-16 indices.
+   An entry or document whose metadata is at core's key cap (500 keys, counted
+   at every level) has no room for the import's marks. It is created unmarked
+   with a warning, and a resume would create it a second time.
 6. References in metadata are rewritten throughout (below).
 
 ### References in metadata

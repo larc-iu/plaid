@@ -23,7 +23,9 @@ describe('serializeDocumentNative', () => {
     expect(out.id).toBe('doc1');
     expect(out.version).toBe(7);
     expect(out.mediaFile).toBe('media/Doc One.wav');
-    expect(out.metadata).toEqual({ Source: 'notes', importDone: true, custom: { k: 1 } });
+    // Everything but an import's marks, which are bookkeeping of the run that
+    // made the document (see the archive bookkeeping tests).
+    expect(out.metadata).toEqual({ Source: 'notes', custom: { k: 1 } });
     expect(out.baseline).toEqual({
       textId: 'text1',
       body: 'perros corren. extra',
@@ -600,6 +602,54 @@ describe('archive bookkeeping', () => {
     expect(out.items[1].metadata).toEqual({ gloss: 'cat' });
     // The entry is still identified, which is what dedup matches on.
     expect(out.items.map((i) => i.id)).toEqual(['i1', 'i2']);
+  });
+});
+
+describe('the archive records what is stored, exactly', () => {
+  it('keeps the whole of an annotation over two words, one of which shows another', () => {
+    // The editor shows the first annotation of a field on each word. `spOne`
+    // on perros came first, so the two-word `sp2` shows on corren only, and
+    // the tree holds it there alone.
+    const raw = buildRaw();
+    const phrase = raw.textLayers[0].tokenLayers[0].spanLayers[1];
+    phrase.spans.unshift({ id: 'spOne', tokens: ['w1'], value: 'N' });
+    const o = serializeDocumentNative(makeDoc(raw));
+    const [w1, w2] = o.sentences[0].words;
+    expect(w1.fields.Phrase.id).toBe('spOne');
+    expect(w2.fields.Phrase.id).toBe('sp2');
+    expect(o.extraSpans.find((s) => s.id === 'sp2')).toMatchObject({ tokens: ['w1', 'w2'] });
+    expect(o.extraSpans.find((s) => s.id === 'spOne')).toBeUndefined();
+  });
+
+  it('writes a precedence only where a token has one, on every kind of token', () => {
+    const raw = buildRaw();
+    const layer = (role) =>
+      raw.textLayers[0].tokenLayers.find((tl) => tl.config.plaid.role === role);
+    layer('word').tokens[0].precedence = 3;
+    layer('sentence').tokens[0].precedence = 2;
+    layer('time-alignment').tokens[0].precedence = 5;
+    delete layer('morpheme').tokens.find((t) => t.id === 'm3').precedence;
+    const o = serializeDocumentNative(makeDoc(raw));
+    const [w1, w2] = o.sentences[0].words;
+    expect(o.sentences[0].precedence).toBe(2);
+    expect(w1.precedence).toBe(3);
+    expect('precedence' in w2).toBe(false);
+    expect(w1.morphemes.map((m) => m.precedence)).toEqual([1, 2]);
+    expect('precedence' in w2.morphemes[0]).toBe(false);
+    expect(o.alignment[0].precedence).toBe(5);
+  });
+
+  it('leaves out the times of a segment that has none', () => {
+    const raw = buildRaw();
+    raw.textLayers[0].tokenLayers[3].tokens[0].metadata = { speaker: 'Ada' };
+    const o = serializeDocumentNative(makeDoc(raw));
+    expect(o.alignment).toEqual([{ id: 'a1', begin: 0, end: 14, metadata: { speaker: 'Ada' } }]);
+  });
+
+  it("leaves an import's marks out of the document's metadata", () => {
+    const raw = buildRaw();
+    raw.metadata = { Source: 'notes', importSource: 'flex-guid', importDone: true };
+    expect(serializeDocumentNative(makeDoc(raw)).metadata).toEqual({ Source: 'notes' });
   });
 });
 

@@ -19,7 +19,7 @@
 // (./references.js, REFERENCE_KINDS).
 //
 // Resumability (same scheme as FLEx): a document is marked done
-// (metadata.nativeImported) only after every write succeeded; on resume, done
+// (metadata.importDone, see ../resume.js) only after every write succeeded; on resume, done
 // documents are skipped and half-imported ones are deleted and redone. Vocab
 // items are deduped by metadata.nativeImportId (the archive item id, stamped
 // at creation — it doubles as provenance back to the source archive).
@@ -162,6 +162,20 @@ export async function importVocabulary({
   }
 
   const pending = (vocabData.items || []).filter((it) => !itemIdMap.has(it.id));
+  // An entry whose metadata is at the cap is made without the mark, which a
+  // resume would then not recognize.
+  const unmarked = pending.filter(
+    (it) => !fitsCap({ ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id }),
+  ).length;
+  if (unmarked) {
+    warnings.push(
+      `"${vocabData.name}": ${unmarked} ${unmarked === 1 ? 'entry holds' : 'entries hold'} too much metadata to be marked, so a resumed import would create ${unmarked === 1 ? 'it' : 'them'} again`,
+    );
+  }
+  const stamped = (it) => {
+    const metadata = { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id };
+    return fitsCap(metadata) ? metadata : { ...(it.metadata || {}) };
+  };
   let done = 0;
   for (let i = 0; i < pending.length; i += CHUNK) {
     check();
@@ -175,7 +189,7 @@ export async function importVocabulary({
         chunk.map((it) => ({
           vocabLayerId: vocabId,
           form: it.form,
-          metadata: { ...(it.metadata || {}), [ITEM_SOURCE_KEY]: it.id },
+          metadata: stamped(it),
         })),
       ),
     );
@@ -291,6 +305,29 @@ const morphemeMetadata = (node) => ({
 });
 
 const maybeMetadata = (metadata) => (Object.keys(metadata).length ? { metadata } : {});
+// A token's precedence as the archive holds it: written only when set, since
+// an unset one is data too.
+const maybePrecedence = (node) => (node.precedence != null ? { precedence: node.precedence } : {});
+
+// Core refuses a metadata map holding more than this many keys, counted at
+// every level of nesting (plaid.sql.metadata/max-metadata-key-count). An
+// entity already at the cap has no room for the import's marks.
+const MAX_METADATA_KEYS = 500;
+const keyCount = (v) => {
+  if (Array.isArray(v)) return v.reduce((n, x) => n + keyCount(x), 0);
+  if (v == null || typeof v !== 'object') return 0;
+  return Object.values(v).reduce((n, x) => n + 1 + keyCount(x), 0);
+};
+const fitsCap = (metadata) => keyCount(metadata) <= MAX_METADATA_KEYS;
+
+// A document's metadata as the archive holds it, less any import's marks: an
+// archive this app writes carries none, and one that did would say the
+// document was finished before this import had made any of it.
+const withoutStamps = (metadata) => {
+  const out = { ...(metadata || {}) };
+  for (const k of IMPORT_STAMP_KEYS) delete out[k];
+  return out;
+};
 // The steps one document goes through, in order, so progress can report how
 // far into a document it is and not just which document.
 const DOCUMENT_STEPS = [
@@ -377,19 +414,31 @@ async function importNativeDocument({
   // partitioning rejects later singles.
   const sentenceNodes = [...sentences, ...orphansBy('sentence')];
   let textMetadata = null;
+  // The import's marks go on only when both fit under the cap, so a document
+  // is never marked as begun with no room to be marked done.
+  const docMetadata = withoutStamps(docData.metadata);
+  const marked = fitsCap(importStamp(docMetadata, docData.id, true));
+  if (!marked) {
+    warnings.push(
+      `"${docData.name}": its metadata is too large to be marked, so a resumed import would bring it in again`,
+    );
+  }
+  const stamp = (metadata, done = false) =>
+    marked ? importStamp(metadata, docData.id, done) : metadata;
   const shell = await createDocumentShell({
     client,
     projectId,
     targets,
     name: docData.name,
-    metadata: importStamp(
-      rewriteReferences(docData.metadata, (id) => docIdMap.get(id)),
-      docData.id,
-    ),
+    metadata: stamp(rewriteReferences(docMetadata, (id) => docIdMap.get(id))),
     body,
+    // A text the archive names is made even when its body is empty: it may
+    // hold metadata and comments of its own.
+    keepEmptyText: docData.baseline?.textId != null,
     sentences: sentenceNodes.map((s) => ({
       begin: s.begin,
       end: s.end,
+      precedence: s.precedence,
       metadata: { ...(s.metadata || {}) },
     })),
     textMetadata: () => (textMetadata = refs.prepare(docData.baseline?.metadata || {})).metadata,
@@ -423,6 +472,7 @@ async function importNativeDocument({
         text: textId,
         begin: node.begin,
         end: node.end,
+        ...maybePrecedence(node),
         ...maybeMetadata(spec),
       })),
       wordNodes.map(({ node }) => node.id),
@@ -442,7 +492,7 @@ async function importNativeDocument({
         text: textId,
         begin: node.begin,
         end: node.end,
-        precedence: node.precedence ?? 1,
+        ...maybePrecedence(node),
         ...maybeMetadata(spec),
       })),
       morphemeNodes.map(({ node }) => node.id),
@@ -460,7 +510,13 @@ async function importNativeDocument({
             text: textId,
             begin: a.begin,
             end: a.end,
-            metadata: { timeBegin: a.timeBegin, timeEnd: a.timeEnd, ...(a.metadata || {}) },
+            ...maybePrecedence(a),
+            // Only the times the segment has: one not timed yet has neither.
+            ...maybeMetadata({
+              ...('timeBegin' in a ? { timeBegin: a.timeBegin } : {}),
+              ...('timeEnd' in a ? { timeEnd: a.timeEnd } : {}),
+              ...(a.metadata || {}),
+            }),
           })),
           alignment.map((a) => a.id),
         );
@@ -753,10 +809,7 @@ async function importNativeDocument({
   // The metadata goes again whole, now that what it names in the document
   // itself exists. From here on another document's reference to it resolves.
   if (!mediaFailed) {
-    await client.documents.setMetadata(
-      docId,
-      importStamp(rewriteReferences(docData.metadata, lookup), docData.id, true),
-    );
+    await client.documents.setMetadata(docId, stamp(rewriteReferences(docMetadata, lookup), true));
     if (docData.id != null) docIdMap.set(docData.id, docId);
   }
   return docId;
@@ -1014,7 +1067,9 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
     if (!kind) continue;
     for (const t of tl.tokens || []) {
       const key =
-        kind === 'm' ? `m:${t.begin}:${t.end}:${t.precedence ?? 1}` : `${kind}:${t.begin}:${t.end}`;
+        kind === 'm'
+          ? `m:${t.begin}:${t.end}:${t.precedence ?? null}`
+          : `${kind}:${t.begin}:${t.end}`;
       if (!byKey.has(key)) byKey.set(key, t.id);
     }
   }
@@ -1027,7 +1082,7 @@ export async function rebuildTokenMap({ client, docId, docData, targets }) {
       const wordId = byKey.get(`w:${w.begin}:${w.end}`);
       if (wordId) map.set(w.id, wordId);
       for (const m of w.morphemes || []) {
-        const morphId = byKey.get(`m:${m.begin}:${m.end}:${m.precedence ?? 1}`);
+        const morphId = byKey.get(`m:${m.begin}:${m.end}:${m.precedence ?? null}`);
         if (morphId) map.set(m.id, morphId);
       }
     }
