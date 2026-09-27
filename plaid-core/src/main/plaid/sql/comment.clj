@@ -61,6 +61,7 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.pagination :as pg]
+            [plaid.util.codepoint :as cp]
             [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get list update]))
 
@@ -249,15 +250,17 @@
 
 (defn- normalize-anchor-label!
   "The caption to store: trimmed, nil when absent or blank, a 400 when it is
-  not a string or runs past the ceiling."
+  not a string, runs past the ceiling (in code points, as every length a
+  client computes), or holds what a text column cannot store."
   [label]
   (cond
     (nil? label) nil
     (not (string? label)) (throw (ex-info "Comment anchor label must be a string" {:code 400}))
-    (> (count label) max-anchor-label-length)
+    (> (cp/cp-count label) max-anchor-label-length)
     (throw (ex-info (str "Comment anchor label exceeds " max-anchor-label-length " characters")
-                    {:code 400 :length (count label)}))
-    :else (let [t (clojure.string/trim label)] (when (seq t) t))))
+                    {:code 400 :length (cp/cp-count label)}))
+    :else (do (storable/assert-storable! "Comment anchor label" label)
+              (let [t (clojure.string/trim label)] (when (seq t) t)))))
 
 (defn create!
   "Post a comment on `(entity-type, entity-id)` as `author-id`, with an

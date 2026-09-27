@@ -11,7 +11,8 @@
        not have been had from `entity_metadata`, so it gets the most tests.
     4. A comment OUTLIVES its anchor and dies only with its owner; a comment
        on a vocabulary entry is owned by the vocab layer and takes its gates."
-  (:require [clojure.set]
+  (:require [clojure.data.json :as json]
+            [clojure.set]
             [clojure.string]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
@@ -62,6 +63,16 @@
                   :path "/api/v1/comments"
                   :body (cond-> {:entity-type entity-type :entity-id entity-id :body body}
                           anchor-label (assoc :anchor-label anchor-label))})))
+
+(defn- post-raw-label
+  "Post a comment whose anchor label goes out as JSON with every non-ASCII
+  character escaped, so a lone surrogate reaches the server as it is.
+  Answers the status."
+  [entity-type entity-id label]
+  (:status (rest-handler (-> (admin-request :post "/api/v1/comments")
+                             (mock/content-type "application/json")
+                             (mock/body (json/write-str {:entity-type entity-type :entity-id entity-id
+                                                         :body "hi" :anchor-label label}))))))
 
 (defn- status-of
   "Run a request and return ONLY its status. `api-call` slurps the response
@@ -143,7 +154,16 @@
       (is (nil? (-> (post-comment admin-request "span" span "blank label" "   ") :body :comment/anchor-label))
           "a blank caption is stored as none")
       (assert-status 400 (post-comment admin-request "span" span "too long" (apply str (repeat 201 \x))))
-      (assert-status 201 (post-comment admin-request "span" span "at the ceiling" (apply str (repeat 200 \x)))))))
+      (assert-status 201 (post-comment admin-request "span" span "at the ceiling" (apply str (repeat 200 \x))))
+      (testing "the ceiling counts code points, as a client does"
+        (let [emoji (apply str (repeat 200 "😀"))]
+          (assert-status 201 (post-comment admin-request "span" span "astral ceiling" emoji))
+          (assert-status 400 (post-comment admin-request "span" span "astral past" (str emoji "x")))))
+      (testing "a label a text column cannot store is refused"
+        (doseq [bad [(str "a" (char 0) "z") (str "a" (char 0xD83D)) (str (char 0xDE00) "z")]]
+          (let [before (comment-count-rows)]
+            (is (= 400 (post-raw-label "span" span bad)))
+            (is (= before (comment-count-rows)) "nothing was written")))))))
 
 (deftest comment-on-missing-anchor-does-not-create
   (testing "an anchor id that resolves to no project fails closed"
