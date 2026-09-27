@@ -290,3 +290,27 @@
       (testing "and the ops that touched it are still in the log"
         (is (some (fn [e] (some #(= :document/delete (:op/type %)) (:audit/ops e)))
                   entries))))))
+
+(deftest audit-window-bounds-include-an-entry-given-its-own-time
+  ;; An entry's time has nanosecond digits, the route's coercion keeps
+  ;; milliseconds. Resuming a read from an entry's time must include that
+  ;; entry, and ending a read at it must too.
+  (let [proj (create-test-project admin-request "AuditBounds")
+        _ (Thread/sleep 5)
+        _ (create-test-document admin-request proj "One")
+        _ (Thread/sleep 5)
+        _ (create-test-document admin-request proj "Two")
+        _ (Thread/sleep 5)
+        _ (create-test-document admin-request proj "Three")
+        entries (-> (get-project-audit admin-request proj) :body :entries)
+        t (:audit/time (nth entries 2))
+        ids (fn [r] (mapv :audit/id (-> r :body :entries)))]
+    (is (= 4 (count entries)))
+    (testing "start-time at an entry's time starts at that entry"
+      (let [r (get-project-audit admin-request proj {:start-time t})]
+        (assert-ok r)
+        (is (= (mapv :audit/id (drop 2 entries)) (ids r)))))
+    (testing "end-time at an entry's time ends at that entry"
+      (let [r (get-project-audit admin-request proj {:end-time t})]
+        (assert-ok r)
+        (is (= (mapv :audit/id (take 3 entries)) (ids r)))))))

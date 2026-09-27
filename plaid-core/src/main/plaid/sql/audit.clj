@@ -155,19 +155,30 @@
           units)))
 
 (defn- ts-where
-  "Build a HoneySQL conjunction for an optional :ts time range. Times are
-  ISO-8601 strings; callers may pass Instants which we render here."
+  "Build a HoneySQL conjunction for an optional, inclusive :ts time range.
+  Callers pass Instants, Dates, ZonedDateTimes or ISO-8601 strings.
+
+  `ts` is stored with nine fraction digits and compared as a string, so each
+  bound is rendered in that same fixed width first. A shorter rendering
+  sorts wrong: `...59.313Z` sorts AFTER `...59.313199571Z`, which dropped the
+  very entry whose time a caller resumed from.
+
+  A Date (what the routes' `inst?` coercion yields) holds milliseconds only,
+  so it names that whole millisecond: an end bound reaches its last
+  nanosecond, and ending a read at an entry's own time keeps the entry."
   [start-time end-time]
-  (let [->iso (fn [x]
-                (cond
-                  (nil? x) nil
-                  (string? x) x
-                  (instance? java.time.Instant x) (.toString x)
-                  (instance? java.util.Date x) (.toString (.toInstant ^java.util.Date x))
-                  (instance? java.time.ZonedDateTime x) (.toString (.toInstant ^java.time.ZonedDateTime x))
-                  :else (str x)))
-        from (->iso start-time)
-        to   (->iso end-time)]
+  (let [->instant (fn [x]
+                    (cond
+                      (nil? x) nil
+                      (string? x) (java.time.Instant/parse x)
+                      (instance? java.time.Instant x) x
+                      (instance? java.util.Date x) (.toInstant ^java.util.Date x)
+                      (instance? java.time.ZonedDateTime x) (.toInstant ^java.time.ZonedDateTime x)
+                      :else (throw (ex-info (str "Cannot use as an audit time bound: " (pr-str x))
+                                            {:value x}))))
+        from (some-> start-time ->instant psc/instant->iso)
+        to   (when-let [^java.time.Instant i (->instant end-time)]
+               (psc/instant->iso (if (instance? java.util.Date end-time) (.plusNanos i 999999) i)))]
     (cond-> []
       from (conj [:>= :ts from])
       to   (conj [:<= :ts to]))))
