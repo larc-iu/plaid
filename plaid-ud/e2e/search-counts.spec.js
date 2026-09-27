@@ -55,7 +55,9 @@ test.afterAll(async () => {
 const openSearch = async (page) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${S.projectId}/search`);
-  await expect(page.getByRole('heading', { name: /^Search / })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Search', exact: true })).toBeVisible({
+    timeout: 15000,
+  });
 };
 
 const quickSearch = async (page, field, match, text) => {

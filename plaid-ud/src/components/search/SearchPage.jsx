@@ -257,7 +257,7 @@ export const SearchPage = () => {
       <ProjectTabs projectId={projectId} project={project} />
 
       <div className="flex flex-col gap-6">
-        <h2 className="text-2xl font-semibold tracking-tight">Search {project?.name}</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Search</h2>
 
         {!layerInfo.isConfigured ? (
           <Notice tone="warning">

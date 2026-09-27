@@ -57,7 +57,7 @@ test('the button sets the project up and the document list appears', async ({ pa
   try {
     await page.goto(`/#/projects/${project.id}/documents`);
     await page.getByRole('button', { name: 'Set up for UD' }).click();
-    await expect(page.getByRole('heading', { name: `Documents in ${name}` })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
     const configured = await client.projects.get(project.id);
     const textLayer = configured.textLayers[0];
     expect(textLayer.config.plaid.role).toBe('baseline');

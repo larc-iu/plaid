@@ -121,7 +121,7 @@ describe('the document list', () => {
     const view = await mount(project('reader'));
     const link = view.container.querySelector('tbody tr a');
     expect(link.getAttribute('href')).toMatch(/^\/p\/p1\/d\/d\d$/);
-    expect(view.container.querySelector('h2').textContent).toBe('Documents in Ay');
+    expect(view.container.querySelector('h2').textContent).toBe('Documents');
     expect(view.container.querySelector('h1')).toBe(null);
     await view.unmount();
   });

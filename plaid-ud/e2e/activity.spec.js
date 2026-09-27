@@ -94,7 +94,7 @@ test('a writer is not, and the route gives them nothing', async ({ page }) => {
   await page.goto(`/#/projects/${S.projectId}/documents`);
   // They are in the project and can see its documents, so the tab's absence
   // below is the gate and not a failed load.
-  await expect(page.getByRole('heading', { name: /^Documents in/ })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible({
     timeout: 15000,
   });
   await expect(page.getByRole('tab', { name: 'Activity' })).toHaveCount(0);

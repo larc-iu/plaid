@@ -167,7 +167,7 @@ export const ProjectDocumentsPage = ({
 
       <div>
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold tracking-tight">Documents in {project.name}</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">Documents</h2>
           {canEdit && NewDocument && <NewDocument projectId={projectId} documents={documents} />}
         </div>
 

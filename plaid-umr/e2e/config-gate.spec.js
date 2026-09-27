@@ -48,7 +48,7 @@ test('a project with a substrate is set up from the door, on a click', async ({ 
     expect(untouched.textLayers[0].tokenLayers).toHaveLength(2);
 
     await page.getByRole('button', { name: 'Set up for UMR' }).click();
-    await expect(page.getByRole('heading', { name: `Documents in ${name}` })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Documents', exact: true })).toBeVisible();
     const configured = await client.projects.get(project.id);
     const nodes = configured.textLayers[0].tokenLayers.find((t) => t.config?.umr?.nodes === true);
     expect(nodes).toBeTruthy();
