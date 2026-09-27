@@ -538,19 +538,24 @@
        :body {:error (str "User " user-id " lacks write access to vocab layer(s) " unwritable)}})))
 
 (defn wrap-vocab-maintainer-required
-  "Requires that the user is a maintainer of the vocab layer or an admin."
-  [handler get-vocab-id]
-  (fn [{db :db :as request}]
-    (let [user-id (->user-id request)
-          vocab-id (get-vocab-id {:parameters (:parameters request)
-                                  :db db})
-          admin? (user/admin? (:user/record request))
-          maintainer? (and vocab-id
-                           (vocab/maintainer? db vocab-id user-id))]
-      (if-not (or admin? maintainer?)
-        {:status 403
-         :body {:error (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id)}}
-        (handler request)))))
+  "Requires that the user is a maintainer of the vocab layer or an admin.
+  `refusal`, when given, is the 403's message in place of the generic one,
+  for a route whose refusal a client shows as it stands."
+  ([handler get-vocab-id]
+   (wrap-vocab-maintainer-required handler get-vocab-id nil))
+  ([handler get-vocab-id refusal]
+   (fn [{db :db :as request}]
+     (let [user-id (->user-id request)
+           vocab-id (get-vocab-id {:parameters (:parameters request)
+                                   :db db})
+           admin? (user/admin? (:user/record request))
+           maintainer? (and vocab-id
+                            (vocab/maintainer? db vocab-id user-id))]
+       (if-not (or admin? maintainer?)
+         {:status 403
+          :body {:error (or refusal
+                            (str "User " user-id " lacks maintainer privileges for vocab layer " vocab-id))}}
+         (handler request))))))
 
 (defn wrap-vocab-reader-required
   "Requires that the user has read access to the vocab layer through a project or is a maintainer/admin."

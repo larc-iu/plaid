@@ -165,7 +165,14 @@
    ["/:id"
     {:middleware [[pra/wrap-maintainer-required get-project-id]]}
     ["/vocabs/:vocab-id"
-     {:post {:summary "Link a vocabulary to a project."
+     {:post {:summary "Link a vocabulary to a project. Requires maintaining both the project and the vocabulary."
+             ;; The link grants every member of the project access to the
+             ;; vocabulary, so only someone who already controls who touches
+             ;; it may make one. Unlinking only withdraws that grant, so it
+             ;; stays with the project maintainer.
+             :middleware [[pra/wrap-vocab-maintainer-required
+                           (fn [{p :parameters}] (-> p :path :vocab-id))
+                           "Only a maintainer of this vocabulary can link it to a project."]]
              :parameters {:path [:map [:id :uuid] [:vocab-id :uuid]]}
              :handler (fn [{{{:keys [id vocab-id]} :path} :parameters db :db user-id :user/id :as req}]
                         (let [{:keys [success code error]} (prj/add-vocab db id vocab-id user-id)]

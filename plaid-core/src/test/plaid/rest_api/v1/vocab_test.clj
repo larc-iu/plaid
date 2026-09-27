@@ -1367,3 +1367,46 @@
           result (vl/batch-hydrate-vocab-layers db [])]
       (is (vector? result)
           "must return a vector (not a lazy seq)"))))
+
+(deftest linking-a-vocab-requires-maintaining-it
+  ;; A project maintainer who does not maintain a vocabulary must not be able
+  ;; to link it to their project, since the link grants every member of the
+  ;; project read and write over it. Unlinking only withdraws that grant, so it
+  ;; stays a project-maintainer act.
+  (let [proj (create-test-project admin-request "LinkGateProj")
+        other-vocab (-> (create-vocab-layer admin-request "NotUser1s") :body :id)
+        own-vocab (-> (create-vocab-layer admin-request "User1s") :body :id)
+        item (-> (create-vocab-item admin-request other-vocab "secret") :body :id)
+        link-op (fn [vocab-id] {:path (str "/api/v1/projects/" proj "/vocabs/" vocab-id)
+                                :method "POST"})]
+    (assert-no-content (api-call admin-request {:method :post
+                                                :path (str "/api/v1/projects/" proj "/maintainers/user1@example.com")}))
+    (assert-no-content (add-vocab-maintainer admin-request own-vocab "user1@example.com"))
+    (assert-no-content (add-vocab-maintainer admin-request other-vocab "user2@example.com"))
+
+    (testing "a project maintainer cannot link a vocabulary they do not maintain"
+      (let [r (link-vocab-to-project user1-request proj other-vocab)]
+        (assert-status 403 r)
+        (is (= "Only a maintainer of this vocabulary can link it to a project."
+               (-> r :body :error))))
+      (assert-status 403 (get-vocab-item user1-request item)))
+
+    (testing "nor through a batch"
+      (assert-status 403 (api-call user1-request {:method :post :path "/api/v1/batch"
+                                                  :body [(link-op other-vocab)]}))
+      (assert-status 403 (get-vocab-item user1-request item)))
+
+    (testing "an unknown vocabulary id answers 403 to a non-admin"
+      (assert-status 403 (link-vocab-to-project user1-request proj (random-uuid))))
+
+    (testing "a vocabulary maintainer who does not maintain the project cannot link it"
+      (assert-status 403 (link-vocab-to-project user2-request proj other-vocab)))
+
+    (testing "a project maintainer who maintains the vocabulary can link it"
+      (assert-no-content (link-vocab-to-project user1-request proj own-vocab)))
+
+    (testing "unlinking stays with the project maintainer"
+      (assert-no-content (link-vocab-to-project admin-request proj other-vocab))
+      (assert-ok (get-vocab-item user1-request item))
+      (assert-no-content (unlink-vocab-from-project user1-request proj other-vocab))
+      (assert-status 403 (get-vocab-item user1-request item)))))
