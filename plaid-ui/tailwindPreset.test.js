@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import resolveConfig from 'tailwindcss/resolveConfig.js';
 
 import igtConfig from '../plaid-igt/tailwind.config.js';
 import udConfig from '../plaid-ud/tailwind.config.js';
 import { PLAID_UI_CONTENT } from './tailwind.preset.js';
+import { repoRoot } from './src/test/apps.js';
 
 // What every app that mounts plaid-ui has to end up with once its Tailwind
 // config is resolved. Checked on the RESOLVED config, because that is where the
@@ -41,6 +44,14 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
     expect(resolved.theme.borderRadius.lg).toBe('var(--radius)');
   });
 
+  it('answers to the warning and success colours beside destructive', () => {
+    expect(resolved.theme.colors.destructive.DEFAULT).toBe('hsl(var(--destructive))');
+    expect(resolved.theme.colors.warning.DEFAULT).toBe('hsl(var(--warning))');
+    expect(resolved.theme.colors.warning.foreground).toBe('hsl(var(--warning-foreground))');
+    expect(resolved.theme.colors.success.DEFAULT).toBe('hsl(var(--success))');
+    expect(resolved.theme.colors.success.foreground).toBe('hsl(var(--success-foreground))');
+  });
+
   it('carries the accordion keyframes, which a shared component animates with', () => {
     expect(resolved.theme.keyframes['accordion-down']).toBeTruthy();
     expect(resolved.theme.animation['accordion-up']).toBeTruthy();
@@ -49,4 +60,18 @@ describe.each(APPS)('%s tailwind config', (_name, config) => {
   it('switches theme by class, so the three apps agree on what dark means', () => {
     expect(resolved.darkMode).toEqual(['class']);
   });
+});
+
+// The preset names `--warning` and `--success`, and no app defines them: the
+// package's stylesheet does, once for all. A name with no value is a
+// transparent banner and no error anywhere.
+describe("the package's stylesheet", () => {
+  const css = fs.readFileSync(path.join(repoRoot(), 'plaid-ui/src/index.css'), 'utf8');
+
+  it.each(['--warning', '--warning-foreground', '--success', '--success-foreground'])(
+    'defines %s',
+    (name) => {
+      expect(css).toMatch(new RegExp(`${name}:\\s*\\d`));
+    },
+  );
 });

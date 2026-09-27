@@ -1,5 +1,5 @@
-/* What the apps share in CSS: the provenance tokens, and the gutter the
-   assistant dock takes.
+/* What the apps share in CSS: the provenance tokens and marks, the warning
+   and success colours, and the gutter the assistant dock takes.
 
    The shadcn design tokens themselves stay per app (each app's own index.css),
    since a dictionary reader and an annotation editor are allowed to look
@@ -19,6 +19,43 @@
   --plaid-contributed: #b45309;
   --plaid-contributed-soft: #fcd34d;
   --plaid-contributed-fill: #fef3c7;
+
+  /* Warning and success, beside each app's destructive (Tailwind's
+     `warning` and `success`, from the preset). HSL parts like the shadcn
+     tokens, so an opacity modifier (`bg-warning/10`) works. The hue is for a
+     tint, a border or an icon, the foreground is the text on that tint. */
+  --warning: 38 92% 50%;
+  --warning-foreground: 22 78% 26%;
+  --success: 142 71% 35%;
+  --success-foreground: 144 61% 20%;
+}
+
+/* The dark pair, for the day an app turns on `.dark`. */
+.dark {
+  --warning: 38 92% 50%;
+  --warning-foreground: 48 96% 89%;
+  --success: 142 69% 45%;
+  --success-foreground: 141 84% 93%;
+}
+
+/* A value a machine proposed and no person has confirmed: violet italic with
+   a dashed underline, in every app (dotted means an opener in plaid-igt).
+   For inline text. */
+.plaid-prov--machine {
+  color: var(--plaid-machine);
+  font-style: italic;
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: var(--plaid-machine-soft);
+  text-underline-offset: 3px;
+}
+
+/* The same mark on a graph node, where an underline cannot sit: a dashed
+   violet border and no fill. Sets only the border style and colour, so
+   the node keeps its own width and background. */
+.plaid-prov-node--machine {
+  border-style: dashed;
+  border-color: var(--plaid-machine);
 }
 
 /* The assistant dock is fixed to the right edge of the window, and toasts are
