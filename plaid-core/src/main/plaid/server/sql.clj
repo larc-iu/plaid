@@ -20,9 +20,19 @@
    :migration-table-name "schema_migrations"
    :db {:datasource datasource}})
 
-(defn- run-migrations! [datasource]
+(declare checkpoint-wal!)
+
+(defn- run-migrations!
+  "Apply pending migrations, then empty the WAL. A migration runs in one
+  transaction, so a table rewrite puts every page it writes in the WAL
+  first (3.6 GB for the 2026-09-27 `audit_writes` rebuild on a 4.2 GB
+  copy). SQLite reuses the WAL after a checkpoint but never shrinks it, so
+  without the TRUNCATE checkpoint that disk stays taken until shutdown.
+  Nothing else holds a connection yet, so the checkpoint completes."
+  [datasource]
   (log/info "Running Migratus migrations...")
   (migratus/migrate (migratus-config datasource))
+  (checkpoint-wal! datasource)
   (log/info "Migrations complete."))
 
 (defn- read-line-secret []
@@ -257,8 +267,11 @@
   "Repeat `refresh-stale-statistics!` every `interval-ms`, first after one
    interval (startup already ran its own pass). Each pass waits for the
    startup pass to finish, so two never overlap, and a pass that fails is
-   logged and the next one runs as scheduled."
+   logged and the next one runs as scheduled. A schedule already running (a
+   re-entrant :start) is stopped first, since `:stop` knows only the latest."
   [datasource interval-ms]
+  (when-let [^java.util.concurrent.ScheduledExecutorService old @planner-stats-schedule]
+    (.shutdownNow old))
   (let [exec (java.util.concurrent.Executors/newSingleThreadScheduledExecutor
               (reify java.util.concurrent.ThreadFactory
                 (newThread [_ r]
