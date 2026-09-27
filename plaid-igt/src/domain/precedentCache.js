@@ -143,7 +143,11 @@ function entryFor(doc, create = true) {
 async function fetchRows(doc, docId = null) {
   const client = doc.client;
   const [links, values] = await Promise.all([
-    Promise.all(linkPrecedentQueries(vocabIdsOf(doc), { docId }).map((q) => client.query(q))),
+    Promise.all(
+      linkPrecedentQueries(vocabIdsOf(doc), { projectId: doc.projectId, docId }).map((q) =>
+        client.query(q),
+      ),
+    ),
     Promise.all(
       valuePrecedentQueries(doc.layerInfo, { docId }).map(({ kind, field, query }) =>
         client.query(query).then((results) => ({ kind, field, results })),

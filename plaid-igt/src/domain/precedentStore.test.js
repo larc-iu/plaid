@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 
 // Just enough of IndexedDB for the store: one database, one object store,
 // requests that answer on a later tick and a transaction that completes after.
@@ -25,6 +25,7 @@ function fakeIndexedDb() {
       later(() => later(() => tx.oncomplete?.()));
       return tx;
     },
+    objectStoreNames: { contains: () => false },
     createObjectStore: () => {},
   };
   return {
@@ -63,5 +64,64 @@ describe('precedentStore', () => {
     await store.writeStored('k', { login: 'a', results: 2 });
     expect(idb.data.size).toBe(0);
     expect(await store.readStored('k', 'a')).toBe(null);
+  });
+});
+
+// A database an earlier version of the store left behind, with a record in it.
+function fakeOldIndexedDb(version, records) {
+  const stores = new Map([['projects', new Map(records)]]);
+  let current = version;
+  const later = (fn) => setTimeout(fn, 0);
+  const db = {
+    objectStoreNames: { contains: (name) => stores.has(name) },
+    createObjectStore: (name) => stores.set(name, new Map()),
+    deleteObjectStore: (name) => stores.delete(name),
+    transaction: (name) => {
+      const data = stores.get(name);
+      const tx = {};
+      const request = (compute) => {
+        const req = {};
+        later(() => {
+          req.result = compute();
+          req.onsuccess?.();
+        });
+        return req;
+      };
+      tx.objectStore = () => ({
+        get: (key) => request(() => structuredClone(data.get(key))),
+        put: (value, key) => request(() => data.set(key, structuredClone(value)) && key),
+        clear: () => request(() => data.clear()),
+      });
+      later(() => later(() => tx.oncomplete?.()));
+      return tx;
+    },
+  };
+  return {
+    stores,
+    open: (name, v) => {
+      const req = { result: db };
+      later(() => {
+        if (v > current) {
+          current = v;
+          req.onupgradeneeded?.({ oldVersion: version, newVersion: v });
+        }
+        req.onsuccess?.();
+      });
+      return req;
+    },
+  };
+}
+
+describe('precedentStore after an upgrade', () => {
+  it('hands back nothing an earlier version kept: those counts took in other projects', async () => {
+    const old = fakeOldIndexedDb(1, [['k', { login: 'a', results: 'every project' }]]);
+    globalThis.indexedDB = old;
+    vi.resetModules();
+    const fresh = await import('./precedentStore.js');
+    expect(await fresh.readStored('k', 'a')).toBe(null);
+    expect(old.stores.get('projects').size).toBe(0);
+    // And the store still works.
+    await fresh.writeStored('k', { login: 'a', results: 1 });
+    expect(await fresh.readStored('k', 'a')).toEqual({ login: 'a', results: 1 });
   });
 });

@@ -12,6 +12,11 @@
 
 const DB_NAME = 'plaid-igt-precedent';
 const STORE = 'projects';
+// Raised whenever what is kept stops being what the app would count, and the
+// store is then emptied on the first open. 2: the counts cover the open
+// project only, where 1 counted the links of every project sharing its
+// vocabulary.
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -25,12 +30,21 @@ function openDb() {
     let req;
     try {
       if (typeof indexedDB === 'undefined') return resolve(null);
-      req = indexedDB.open(DB_NAME, 1);
+      req = indexedDB.open(DB_NAME, DB_VERSION);
     } catch {
       return resolve(null);
     }
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+      db.createObjectStore(STORE);
+    };
+    req.onsuccess = () => {
+      // A tab loaded after the next bump needs this one to let go, or its
+      // upgrade waits until every older tab is closed.
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
     req.onerror = () => resolve(null);
     req.onblocked = () => resolve(null);
   });

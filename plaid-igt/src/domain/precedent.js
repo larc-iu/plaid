@@ -30,7 +30,8 @@
 // same queries scoped to it) and the open document folded live from its
 // derived sentences instead, so a decision made a moment ago already counts
 // and nothing is counted twice. precedentCache.js holds the project rows for
-// every document opened in the project.
+// every document opened in the project. Only this project counts: a
+// vocabulary shared with other projects is counted from the links made here.
 //
 // KNOWN ASYMMETRY: the query engine exposes no vocab-link metadata, so link
 // rows from the project query carry no provenance and count as trusted;
@@ -106,8 +107,14 @@ const addLink = (tally, kind, form, itemId, n, machine) => {
 // (one per member word, since a link over several tokens joins once per
 // token) can be left out of a single word's precedent. With `docId`, the
 // same counts for that one document alone.
-export function linkPrecedentQueries(vocabIds, { docId = null } = {}) {
+//
+// A vocabulary can be linked to several projects, and without a `scope` the
+// query counts the links of every project the login can read. The counts are
+// this project's (ruling, 2026-09-27), so `projectId` is required.
+export function linkPrecedentQueries(vocabIds, { projectId, docId = null } = {}) {
+  if (!projectId) throw new Error('Link precedent is counted per project: projectId is required');
   return vocabIds.map((vid) => ({
+    scope: { projectIds: [projectId] },
     where: [
       ['vocab', '?v', { layer: vid }],
       ['vocab-link', '?t', '?v'],
@@ -131,7 +138,8 @@ export function linkPrecedentQueries(vocabIds, { docId = null } = {}) {
 // each (form, value) pairing was written, split by provenance state. Row
 // shape: [form, value, prov, provConfirmed, count] (prov keys null when
 // absent). Returns [{ kind, field, query }]. With `docId`, the same counts
-// for that one document alone.
+// for that one document alone. The layers are this project's, so the counts
+// are too.
 export function valuePrecedentQueries(layerInfo, { docId = null } = {}) {
   const inDoc = docId ? { doc: docId } : {};
   const out = [];

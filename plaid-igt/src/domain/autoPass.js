@@ -203,7 +203,8 @@ async function remoteTalliesFor(
 // by links since changed or entries since deleted. A failed query fails the
 // run: linking without the project's precedent would link by smallest id.
 async function linkPrecedentFor(doc, vocabIds, ignoredCfg) {
-  const results = await Promise.all(linkPrecedentQueries(vocabIds).map((q) => doc.client.query(q)));
+  const queries = linkPrecedentQueries(vocabIds, { projectId: doc.projectId });
+  const results = await Promise.all(queries.map((q) => doc.client.query(q)));
   return foldLinkRows(createTally(), results, ignoredCfg);
 }
 

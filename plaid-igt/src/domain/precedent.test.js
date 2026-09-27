@@ -97,7 +97,7 @@ describe('link precedent from project rows', () => {
 
 describe('queries', () => {
   it('link queries: one grouped query per vocab, optionally scoped to one document', () => {
-    const qs = linkPrecedentQueries(['v1', 'v2']);
+    const qs = linkPrecedentQueries(['v1', 'v2'], { projectId: 'p1' });
     expect(qs).toHaveLength(2);
     expect(qs[0].return.group).toEqual([
       '?v',
@@ -107,8 +107,20 @@ describe('queries', () => {
       '?v.metadata.morphType',
     ]);
     expect(qs[0].where).toContainEqual(['token', '?t', { layer: '?tl' }]);
-    const [q] = linkPrecedentQueries(['v1'], { docId: 'doc-1' });
+    const [q] = linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' });
     expect(q.where).toContainEqual(['token', '?t', { layer: '?tl', doc: 'doc-1' }]);
+  });
+
+  it('link queries count the links of this project only, never those of a project sharing the vocabulary', () => {
+    for (const q of [
+      ...linkPrecedentQueries(['v1', 'v2'], { projectId: 'p1' }),
+      ...linkPrecedentQueries(['v1'], { projectId: 'p1', docId: 'doc-1' }),
+    ]) {
+      expect(q.scope).toEqual({ projectIds: ['p1'] });
+    }
+    // Without the project the query would count every project the login reads.
+    expect(() => linkPrecedentQueries(['v1'])).toThrow();
+    expect(() => linkPrecedentQueries(['v1'], { docId: 'doc-1' })).toThrow();
   });
 
   it('value queries: one per word- and morpheme-scope field, grouped by form, value and provenance', () => {

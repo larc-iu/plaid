@@ -233,6 +233,28 @@ describe('runBuiltinAnalysis: link precedent', () => {
     expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai2']);
   });
 
+  it('follows the links made in this project, not in another project sharing the vocabulary', async () => {
+    const server = { a: ['kai1'], b: [] };
+    const doc = makeLinkDoc(server);
+    const inProject = doc.client.query;
+    // Project p2 links kai to kai2 three times over the same vocabulary.
+    doc.client.query = vi.fn(async (q) => {
+      const own = await inProject(q);
+      if (
+        q.scope?.projectIds?.includes('p2') === false ||
+        !q.where.some((c) => c[0] === 'vocab-link')
+      )
+        return own;
+      return { results: [...own.results, ['kai2', null, 'kai', 'word', null, 3]] };
+    });
+    const res = await runBuiltinAnalysis(doc, { copy: false, link: true });
+    expect(res.ok).toBe(true);
+    expect(doc.client.query.mock.calls.every(([q]) => q.scope?.projectIds?.join() === 'p1')).toBe(
+      true,
+    );
+    expect(doc.bulkLinkVocab.mock.calls[0][0].map((p) => p.vocabItemId)).toEqual(['kai1']);
+  });
+
   it('fails the run when the project cannot be asked, rather than linking without it', async () => {
     const server = { b: ['kai2', 'kai2'] };
     const doc = makeLinkDoc(server);

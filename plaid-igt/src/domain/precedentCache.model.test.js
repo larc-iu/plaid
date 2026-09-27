@@ -14,6 +14,11 @@ import { describe, it, expect, vi } from 'vitest';
 // PRECEDENT_SEEDS=200 runs more seeds (PRECEDENT_SEED_BASE to start
 // elsewhere), and PRECEDENT_COLLECT=1 lists every failing seed instead of
 // stopping at the first. A failure prints the steps that led to it.
+//
+// The project shares its vocabulary with a sister project, whose documents
+// link the same entries and are saved by someone else as the run goes. The
+// counts cover the open project only (ruling, 2026-09-27), so none of the
+// sister's links may show in the tally, and none of its saves need a recount.
 
 const world = vi.hoisted(() => ({
   records: new Map(),
@@ -74,6 +79,8 @@ const layerInfo = {
 const LEAVE_OPTS = { wordFields: ['Gloss'], morphFields: [] };
 const FORMS = ['kai', 'lo', 'mu'];
 const VALUES = ['go', 'eat', 'sit'];
+const ITEMS = ['kai1', 'kai2', 'lo1'];
+const VOCABULARIES = { voc: { id: 'voc', items: [] } };
 
 function makeRng(seed) {
   let s = seed >>> 0 || 1;
@@ -87,9 +94,10 @@ function makeRng(seed) {
 
 const sentencesOf = (content) => [
   {
-    tokens: content.map(([form, value]) => ({
+    tokens: content.map(([form, value, item]) => ({
       content: form,
       annotations: value ? { Gloss: { value, metadata: {} } } : {},
+      ...(item ? { vocabItem: { id: item, prov: null } } : {}),
       morphemes: [],
     })),
   },
@@ -113,12 +121,14 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
   world.storeFail = storeFail;
   const log = [];
 
-  // The server: documents with content and a version.
-  const server = { docs: new Map(), next: 0, queue: [] };
+  // The server: documents with content and a version, in project p1, and
+  // the sister project p2's documents, which link the same vocabulary.
+  const server = { docs: new Map(), sister: new Map(), next: 0, queue: [] };
   const newContent = () =>
     Array.from({ length: 1 + Math.floor(rand() * 3) }, () => [
       pick(FORMS),
       rand() < 0.8 ? pick(VALUES) : null,
+      rand() < 0.6 ? pick(ITEMS) : null,
     ]);
   const addDoc = () => {
     const id = `d${server.next++}`;
@@ -126,6 +136,8 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
     return id;
   };
   for (let i = 0; i < 4; i++) addDoc();
+  for (let i = 0; i < 3; i++) server.sister.set(`s${i}`, { content: newContent(), version: 1 });
+  const PROJECTS = { p1: server.docs, p2: server.sister };
 
   const request = (tab, fn, label) =>
     new Promise((resolve, reject) => server.queue.push({ tab, fn, resolve, reject, label }));
@@ -143,26 +155,39 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
             'list',
           ),
       },
-      query: (q) =>
-        request(
+      // Link rows over every project in the query's scope (every project
+      // this login reads when it names none, as the server does), value rows
+      // over p1's Gloss layer.
+      query: (q) => {
+        const links = q.where[0][0] === 'vocab';
+        const docId = (links ? q.where[2] : q.where[0])[2].doc;
+        return request(
           tab,
           () => {
-            const scope = q.where[0][2].doc;
             const counts = new Map();
-            for (const [id, d] of server.docs) {
-              if (scope && id !== scope) continue;
-              for (const [form, value] of d.content) {
-                if (!value) continue;
-                const k = `${form}\u0000${value}`;
-                counts.set(k, (counts.get(k) || 0) + 1);
+            for (const p of q.scope?.projectIds ?? Object.keys(PROJECTS)) {
+              if (!links && p !== 'p1') continue;
+              for (const [id, d] of PROJECTS[p] || []) {
+                if (docId && id !== docId) continue;
+                for (const [form, value, item] of d.content) {
+                  const k = links
+                    ? item && `${item}\u0000${form}`
+                    : value && `${form}\u0000${value}`;
+                  if (k) counts.set(k, (counts.get(k) || 0) + 1);
+                }
               }
             }
             return {
-              results: [...counts].map(([k, n]) => [...k.split('\u0000'), null, null, n]),
+              results: [...counts].map(([k, n]) =>
+                links
+                  ? [...k.split('\u0000'), null, 'word', 'stem', n]
+                  : [...k.split('\u0000'), null, null, n],
+              ),
             };
           },
-          `rows ${q.where[0][2].doc || 'project'}`,
-        ),
+          `${links ? 'links' : 'rows'} ${docId || 'project'}`,
+        );
+      },
     };
     return client;
   }
@@ -192,7 +217,7 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
       projectId: 'p1',
       client: clientFor(tab),
       layerInfo,
-      vocabularies: {},
+      vocabularies: VOCABULARIES,
       dataVersion: 0,
       content: structuredClone(d.content),
       sentences: sentencesOf(d.content),
@@ -217,7 +242,7 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
     const m = tab.open;
     if (!m || !server.docs.has(m.id)) return;
     const i = Math.floor(rand() * m.content.length);
-    m.content[i] = [m.content[i][0], pick(VALUES)];
+    m.content[i] = [m.content[i][0], pick(VALUES), m.content[i][2]];
     m.sentences = sentencesOf(m.content);
     m.dataVersion++;
     m.saving++;
@@ -387,6 +412,12 @@ function run(seed, { steps = 400, storeFail = 0 } = {}) {
         const t = await newTab(pick(['alice', 'alice', 'bob']));
         log.push(`new tab ${t.name} ${t.token}`);
         openDoc(t, pick([...server.docs.keys()]));
+      } else if (r < 0.64) {
+        const id = pick([...server.sister.keys()]);
+        const d = server.sister.get(id);
+        d.content = newContent();
+        d.version++;
+        log.push(`someone saves ${id} in the sister project`);
       } else if (r < 0.7) {
         const id = pick([...server.docs.keys()]);
         const d = server.docs.get(id);
