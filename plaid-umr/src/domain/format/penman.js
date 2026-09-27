@@ -219,7 +219,7 @@ export function parsePenman(text, { several = false } = {}) {
       return;
     }
     if (VARIABLE.test(token)) {
-      fail(`The node id (variable) '${token}' is unknown. No such node is defined.`, at);
+      fail(`Variable '${token}' is not defined.`, at);
       children.push({ rel, kind: 'node', value: token, inline: false });
       return;
     }
@@ -248,7 +248,7 @@ export function parsePenman(text, { several = false } = {}) {
     }
     const node = { var: variable, concept: concept ?? '', children: [] };
     if (nodes.has(variable)) {
-      fail(`The node id (variable) '${variable}' is not unique.`, open);
+      fail(`Variable '${variable}' is used twice.`, open);
     } else {
       nodes.set(variable, node);
     }

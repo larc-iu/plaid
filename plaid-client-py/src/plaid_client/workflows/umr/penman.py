@@ -235,7 +235,7 @@ def parse_penman(text: str) -> Graph:
             children.append(Child(rel, NODE, token, inline=False))
             return
         if is_variable(token):
-            fail(f"The node id (variable) '{token}' is unknown. No such node is defined.", at)
+            fail(f"Variable '{token}' is not defined.", at)
             children.append(Child(rel, NODE, token, inline=False))
             return
         children.append(Child(rel, ATOM, token))
@@ -259,7 +259,7 @@ def parse_penman(text: str) -> Graph:
             fail(f"Expected a concept string for '{variable}'.", sc.here())
         node = Node(var=variable, concept=concept or '')
         if variable in graph.nodes:
-            fail(f"The node id (variable) '{variable}' is not unique.", open_at)
+            fail(f"Variable '{variable}' is used twice.", open_at)
         else:
             graph.nodes[variable] = node
 

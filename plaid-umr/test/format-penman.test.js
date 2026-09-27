@@ -105,13 +105,13 @@ describe('parsePenman', () => {
     test('a duplicate variable definition', () => {
       const graph = parsePenman('(s1a / a :ARG0 (s1a / b))');
       assert.equal(graph.errors.length, 1);
-      assert.match(graph.errors[0].message, /is not unique/);
+      assert.match(graph.errors[0].message, /is used twice/);
     });
 
     test('a reference to a variable that is never defined', () => {
       const graph = parsePenman('(s1a / a :ARG0 s1z)');
       assert.equal(graph.errors.length, 1);
-      assert.match(graph.errors[0].message, /'s1z' is unknown/);
+      assert.match(graph.errors[0].message, /Variable 's1z' is not defined\./);
       assert.equal(child(graph, 's1a', 0).kind, 'node');
     });
 

@@ -482,7 +482,7 @@ def test_a_document_that_moved_while_the_model_ran_is_not_written_to():
     ('I am sorry, I cannot help with that.', 'opening bracket of the root node'),
     ('(v1 / bark-01 :ARG0 (v2 / dog)', 'without closing'),
     ('(v1 / )', 'Expected a concept'),
-    ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', 'No such node is defined'),
+    ('(v1 / bark-01 :ARG0 s9x9)\n\n# alignment:\nv1: 1-1\n', "Variable 's9x9' is not defined."),
     # An uppercase letter makes `s1Y` a value, not a variable, as the app
     # reads it, so the edge would land as an attribute.
     ('(v1 / bark-01 :ARG0 s1Y)\n\n# alignment:\nv1: 3-3\n', ':ARG0 takes a node'),
