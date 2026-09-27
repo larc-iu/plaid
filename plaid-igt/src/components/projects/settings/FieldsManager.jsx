@@ -161,7 +161,12 @@ export const FieldsManager = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
+  // Shown at once, and put back when the save is refused. Resolves to
+  // whether it landed.
   const saveChanges = async (newFields, newIgnoredTokens) => {
+    const before = { fields, ignoredTokens };
+    setFields(newFields);
+    setIgnoredTokens(newIgnoredTokens);
     try {
       if (onSaveChanges) {
         await onSaveChanges({
@@ -169,15 +174,17 @@ export const FieldsManager = ({
           ignoredTokens: newIgnoredTokens,
         });
       }
-      setFields(newFields);
-      setIgnoredTokens(newIgnoredTokens);
+      return true;
     } catch (error) {
       console.error('Failed to save fields configuration:', error);
+      setFields(before.fields);
+      setIgnoredTokens(before.ignoredTokens);
       if (onError) {
         onError(error);
       } else {
-        notifyError('Failed to save fields configuration', 'Save Error');
+        notifyError(error, 'Not saved');
       }
+      return false;
     }
   };
 
@@ -210,17 +217,21 @@ export const FieldsManager = ({
     };
 
     const updatedFields = [...fields, newField];
-    await saveChanges(updatedFields, ignoredTokens);
-
     setNewFieldName('');
     setNewFieldScope('Word');
-    notifySuccess(`"${trimmedName}" has been added with ${newFieldScope} scope`, 'Field Added');
+    if (!(await saveChanges(updatedFields, ignoredTokens))) {
+      // What was typed goes back in the box, to be added again.
+      setNewFieldName(trimmedName);
+      setNewFieldScope(newField.scope);
+      return;
+    }
+    notifySuccess(`"${trimmedName}" has been added with ${newField.scope} scope`, 'Field Added');
   };
 
   const handleDeleteField = async (key) => {
     const field = fields.find((f) => fieldKey(f) === key);
     const updatedFields = fields.filter((f) => fieldKey(f) !== key);
-    await saveChanges(updatedFields, ignoredTokens);
+    if (!(await saveChanges(updatedFields, ignoredTokens))) return;
 
     notifyInfo(`"${field?.name ?? key}" has been removed`, 'Field Removed');
   };
@@ -287,20 +298,24 @@ export const FieldsManager = ({
     const newIndex = neighborInScope(key, direction);
     if (currentIndex === -1 || newIndex === -1) return;
 
-    if (onMoveField) {
-      try {
-        await onMoveField(fields[currentIndex], direction);
-      } catch (error) {
-        console.error('Failed to move field:', error);
-        if (onError) onError(error);
-        else notifyError('Failed to move the field', 'Save Error');
-      }
-      return;
-    }
-
     const newFields = [...fields];
     const [movedField] = newFields.splice(currentIndex, 1);
     newFields.splice(newIndex, 0, movedField);
+
+    if (onMoveField) {
+      // Shown at once, the server's shift behind it, and put back if refused.
+      const before = fields;
+      setFields(newFields);
+      try {
+        await onMoveField(movedField, direction);
+      } catch (error) {
+        console.error('Failed to move field:', error);
+        setFields(before);
+        if (onError) onError(error);
+        else notifyError(error, 'Not moved');
+      }
+      return;
+    }
 
     await saveChanges(newFields, ignoredTokens);
   };

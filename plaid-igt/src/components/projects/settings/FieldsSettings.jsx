@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { useMemo } from 'react';
 import { FieldsManager } from './FieldsManager';
 import { fieldKey } from '@/domain/fieldNames';
 import { notifyError } from '@/utils/feedback';
@@ -80,7 +79,6 @@ export const FieldsSettings = ({
       ...new Set([l.object.tag, l.object.iso639P3, l.meta.tag, l.meta.iso639P3].filter(Boolean)),
     ];
   }, [project?.config]);
-  const [hasError, setHasError] = useState(false);
 
   // Read off the LIVE project rather than fetched once on mount, so the table
   // re-syncs whenever the project changes under it. The case that matters:
@@ -89,107 +87,111 @@ export const FieldsSettings = ({
   // its next save, undoing the rename.
   const initialData = useMemo(() => extractFields(project), [project]);
 
-  // Save changes to the API
+  // Save changes to the API. A new field's layer is made first, one request
+  // for the layer and one for its scope, since the rest needs its id. Every
+  // other write of the save is one batch, so it lands whole or not at all.
+  // A refusal is thrown to the manager, which puts the table back, and
+  // handleError reads the project again so the table shows what landed.
   const handleSaveChanges = async (data) => {
-    try {
-      setHasError(false);
+    if (!client) {
+      throw new Error('Not authenticated');
+    }
 
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
+    // Fresh from the server: this creates and deletes layers, so it has to
+    // see the ones that exist right now, not the ones the last render saw.
+    const layers = layersOf(await client.projects.get(projectId));
+    if (!layers) {
+      throw new Error('No baseline text layer found in project');
+    }
+    const { primary, sentence, morpheme, managed } = layers;
 
-      // Fresh from the server: this creates and deletes layers, so it has to
-      // see the ones that exist right now, not the ones the last render saw.
-      const layers = layersOf(await client.projects.get(projectId));
-      if (!layers) {
-        throw new Error('No baseline text layer found in project');
-      }
-      const { primary, sentence, morpheme, managed } = layers;
+    const currentFields = data.fields || [];
+    // (scope, name) -> span layer id, kept current through the creates and
+    // deletes below so the tagset sync at the end can find every field.
+    const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
 
-      // Save ignored tokens configuration to token layer
-      if (data.ignoredTokens) {
-        await client.tokenLayers.setConfig(
-          primary.id,
-          IGT_NAMESPACE,
-          'ignoredTokens',
-          storedIgnoredTokens(data.ignoredTokens),
+    // Create new span layers for new fields (identity = scope + name)
+    for (const field of currentFields) {
+      if (layerIds.has(fieldKey(field))) continue;
+      // Choose parent layer based on field scope (Morpheme fields used to
+      // be wrongly parented under the word layer, breaking annotation).
+      const parentLayerId =
+        field.scope === 'Sentence'
+          ? sentence?.id
+          : field.scope === 'Morpheme'
+            ? morpheme?.id
+            : primary.id;
+      if (!parentLayerId) {
+        throw new Error(
+          `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
         );
       }
+      const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
+      await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
+      layerIds.set(fieldKey(field), spanLayer.id);
+    }
 
-      const currentFields = data.fields || [];
-      // (scope, name) -> span layer id, kept current through the creates and
-      // deletes below so the tagset sync at the end can find every field.
-      const layerIds = new Map(managed.map((l) => [layerKey(l), l.id]));
+    await client.batched((b) => queueRest(b, data, layers, layerIds));
+    // The Tagsets section above reads which fields point at which tagset off
+    // the project, and that is what gates its "Add values used in this
+    // project" button. Without this, pointing a field at a tagset here left
+    // that button disabled until a page reload. The save has landed by now,
+    // so a reload that fails is not a failed save.
+    await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+      console.error('Failed to reload the project:', err),
+    );
+  };
 
-      // Create new span layers for new fields (identity = scope + name)
-      for (const field of currentFields) {
-        if (layerIds.has(fieldKey(field))) continue;
-        // Choose parent layer based on field scope (Morpheme fields used to
-        // be wrongly parented under the word layer, breaking annotation).
-        const parentLayerId =
-          field.scope === 'Sentence'
-            ? sentence?.id
-            : field.scope === 'Morpheme'
-              ? morpheme?.id
-              : primary.id;
-        if (!parentLayerId) {
-          throw new Error(
-            `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
-          );
-        }
-        const spanLayer = await client.spanLayers.create(parentLayerId, field.name);
-        await client.spanLayers.setConfig(spanLayer.id, IGT_NAMESPACE, 'scope', field.scope);
-        layerIds.set(fieldKey(field), spanLayer.id);
+  // Everything a save writes once each field has its layer: the ignored
+  // tokens, the removed fields' layers, and each field's tagset and language.
+  const queueRest = (b, data, { primary, managed }, layerIds) => {
+    const currentFields = data.fields || [];
+    if (data.ignoredTokens) {
+      b.tokenLayers.setConfig(
+        primary.id,
+        IGT_NAMESPACE,
+        'ignoredTokens',
+        storedIgnoredTokens(data.ignoredTokens),
+      );
+    }
+
+    // Delete span layers for removed fields
+    for (const existingLayer of managed) {
+      const stillExists = currentFields.find(
+        (field) => fieldKey(field) === layerKey(existingLayer),
+      );
+      if (!stillExists) {
+        b.spanLayers.delete(existingLayer.id);
+        layerIds.delete(layerKey(existingLayer));
       }
+    }
 
-      // Delete span layers for removed fields
-      for (const existingLayer of managed) {
-        const stillExists = currentFields.find(
-          (field) => fieldKey(field) === layerKey(existingLayer),
-        );
-        if (!stillExists) {
-          await client.spanLayers.delete(existingLayer.id);
-          layerIds.delete(layerKey(existingLayer));
-        }
-      }
-
-      // Sync each field's tagset reference. A field stores the tagset's NAME,
-      // never a copy of the list, so pointing two fields at one tagset is what
-      // makes them share it. Only write when it actually changed: this runs on
-      // every save of the section, including ones that only touched a name.
-      const storedTagset = new Map(managed.map((l) => [layerKey(l), readTagsetName(l.config)]));
-      for (const field of currentFields) {
-        const key = fieldKey(field);
-        const layerId = layerIds.get(key);
-        if (!layerId) continue;
-        const next = field.tagset ?? null;
-        // A layer created a moment ago has no stored tagset yet.
-        if (next === (storedTagset.get(key) ?? null)) continue;
-        if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
-        else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
-      }
-      // And each field's language, the same way: the record the exporters
-      // read, written only when it changed.
-      const storedLang = new Map(managed.map((l) => [layerKey(l), readFieldLang(l.config)]));
-      for (const field of currentFields) {
-        const key = fieldKey(field);
-        const layerId = layerIds.get(key);
-        if (!layerId) continue;
-        const next = field.lang || null;
-        if (next === (storedLang.get(key) ?? null)) continue;
-        if (next) await client.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'lang', next);
-        else await client.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'lang');
-      }
-
-      // The Tagsets section above reads which fields point at which tagset off
-      // the project, and that is what gates its "Add values used in this
-      // project" button. Without this, pointing a field at a tagset here left
-      // that button disabled until a page reload.
-      await onProjectUpdate?.();
-    } catch (error) {
-      console.error('Failed to save fields configuration:', error);
-      setHasError(true);
-      throw error;
+    // Sync each field's tagset reference. A field stores the tagset's NAME,
+    // never a copy of the list, so pointing two fields at one tagset is what
+    // makes them share it. Only write when it actually changed: this runs on
+    // every save of the section, including ones that only touched a name.
+    const storedTagset = new Map(managed.map((l) => [layerKey(l), readTagsetName(l.config)]));
+    for (const field of currentFields) {
+      const key = fieldKey(field);
+      const layerId = layerIds.get(key);
+      if (!layerId) continue;
+      const next = field.tagset ?? null;
+      // A layer created a moment ago has no stored tagset yet.
+      if (next === (storedTagset.get(key) ?? null)) continue;
+      if (next) b.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'tagset', next);
+      else b.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'tagset');
+    }
+    // And each field's language, the same way: the record the exporters
+    // read, written only when it changed.
+    const storedLang = new Map(managed.map((l) => [layerKey(l), readFieldLang(l.config)]));
+    for (const field of currentFields) {
+      const key = fieldKey(field);
+      const layerId = layerIds.get(key);
+      if (!layerId) continue;
+      const next = field.lang || null;
+      if (next === (storedLang.get(key) ?? null)) continue;
+      if (next) b.spanLayers.setConfig(layerId, IGT_NAMESPACE, 'lang', next);
+      else b.spanLayers.deleteConfig(layerId, IGT_NAMESPACE, 'lang');
     }
   };
 
@@ -201,7 +203,9 @@ export const FieldsSettings = ({
     const layer = (layersOf(project)?.managed || []).find((l) => layerKey(l) === fieldKey(field));
     if (!layer) return;
     await client.spanLayers.shift(layer.id, direction);
-    await onProjectUpdate?.();
+    await Promise.resolve(onProjectUpdate?.()).catch((err) =>
+      console.error('Failed to reload the project:', err),
+    );
   };
 
   // Count existing annotations in a field's span layer (one aggregate query).
@@ -219,27 +223,14 @@ export const FieldsSettings = ({
     return typeof n === 'number' ? n : null;
   };
 
-  // Handle errors
-  const handleError = () => {
-    setHasError(true);
-    notifyError('Failed to update fields configuration', 'Configuration Error');
-  };
-
-  if (hasError) {
-    return (
-      <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
-          <div>
-            <p className="text-sm font-medium text-destructive">Configuration Error</p>
-            <p className="text-sm text-muted-foreground">
-              Failed to load or save fields configuration. Please refresh the page and try again.
-            </p>
-          </div>
-        </div>
-      </div>
+  // A refused save or move: say why, and read the project again, so the
+  // table shows what the server holds rather than what was asked for.
+  const handleError = (error) => {
+    notifyError(error, 'Not saved');
+    Promise.resolve(onProjectUpdate?.()).catch((err) =>
+      console.error('Failed to reload the project:', err),
     );
-  }
+  };
 
   // The two cards (Annotation Fields + Ignored Tokens) come from the manager
   // itself, so this wrapper adds nothing but a root: no outer card.
