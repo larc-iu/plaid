@@ -389,9 +389,7 @@ export const UserProfile = ({ className, children }) => {
           {mintedToken && (
             <Notice tone="warning" className="p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
-              <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
-                Copy it now. It is not shown again.
-              </p>
+              <p className="mb-2 mt-0.5 text-xs">Copy it now. It is not shown again.</p>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all rounded bg-background px-2 py-1 text-xs">
                   {mintedToken.token}

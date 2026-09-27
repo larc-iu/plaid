@@ -117,7 +117,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
         <Notice tone="warning" className="p-3">
           <div>
             <p className="font-medium">This project has no language identity yet</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs">
               CLDF identifies data by language. Without a Glottocode this dataset cannot be linked
               to any other.{' '}
               <Link to={`/projects/${projectId}/settings`} className="underline underline-offset-2">

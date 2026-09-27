@@ -113,7 +113,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
       <div className="flex flex-col gap-6">
         <Notice tone="info" className="p-4">
           <p className="font-medium">This project already has a compatible text layer</p>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1">
             Plaid IGT will reuse the existing baseline text layer and automatically create any word,
             morpheme, sentence, and alignment layers it needs. There's nothing to configure here.
             Continue to the next step.

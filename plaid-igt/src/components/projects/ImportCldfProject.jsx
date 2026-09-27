@@ -378,7 +378,7 @@ export const ImportCldfProject = () => {
                       <p className="font-medium">
                         A dictionary without examples cannot be imported
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs">
                         This dataset has {plural(build.lexicon.length, 'entry', 'entries')} but no
                         ExampleTable, so it has no texts.
                       </p>
@@ -386,9 +386,7 @@ export const ImportCldfProject = () => {
                   ) : (
                     <>
                       <p className="font-medium">Nothing to import</p>
-                      <p className="text-xs text-muted-foreground">
-                        No examples were found in this dataset.
-                      </p>
+                      <p className="text-xs">No examples were found in this dataset.</p>
                     </>
                   )}
                 </div>

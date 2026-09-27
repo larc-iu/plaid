@@ -312,7 +312,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       <div className="flex flex-col gap-6">
         <Notice tone="success" className="p-4">
           <p className="font-medium">Setup Complete!</p>
-          <p className="mt-1 text-muted-foreground">
+          <p className="mt-1">
             Your project has been successfully configured with Plaid IGT. Redirecting to project...
           </p>
         </Notice>
