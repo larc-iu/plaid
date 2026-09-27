@@ -17,7 +17,12 @@ import { SentenceActions } from './SentenceActions.jsx';
 import { TokenColumn } from './TokenColumn.jsx';
 import { useEditorSession } from './editorSession.js';
 import { arrowStep } from '@ui/lib/bidi.js';
+import { multiWordTokens, widenForLabels, bracketWidth } from './multiWordTokens.js';
 import './SentenceRow.css';
+
+// A token column's inline padding on each side, and the space after it
+// (`.token-column` in SentenceRow.css).
+const COLUMN_GAP = 8;
 
 // One sentence: the dependency tree over it, the annotation grid under that,
 // and the row of actions under both. Its props are what only this row can say:
@@ -39,6 +44,9 @@ export const SentenceRow = React.memo(
 
     // Token data is already pre-processed in sentenceData
     const tokenData = sentenceData.tokens;
+
+    // The multi-word tokens among the words, for the bracket under their forms.
+    const mwts = useMemo(() => multiWordTokens(tokenData), [tokenData]);
 
     // Calculate column widths based on max content width
     const columnWidths = useMemo(() => {
@@ -69,8 +77,23 @@ export const SentenceRow = React.memo(
         return Math.max(...candidates);
       });
 
-      return widths;
-    }, [tokenData, visibleFields]);
+      return widenForLabels(widths, mwts, COLUMN_GAP);
+    }, [tokenData, visibleFields, mwts]);
+
+    // The bracket under each multi-word token's words, drawn by its first
+    // word's column across the rest (TokenColumn). Only the widths are needed
+    // to draw it, so it is laid out with the columns rather than measured.
+    const mwtByColumn = useMemo(() => {
+      const byColumn = new Map();
+      for (const g of mwts) {
+        byColumn.set(g.start, {
+          form: g.form,
+          width: bracketWidth(columnWidths, g.start, g.size, COLUMN_GAP),
+        });
+      }
+      return byColumn;
+    }, [mwts, columnWidths]);
+    const hasMwt = mwts.length > 0;
 
     // Calculate the maximum number of features across all tokens for row height
     const maxFeatures = Math.max(1, ...tokenData.map((data) => data.feats.length));
@@ -302,6 +325,7 @@ export const SentenceRow = React.memo(
               {lowerBand.bandHeight > 0 && (
                 <div className="lower-band-spacer" style={{ height: lowerBand.bandHeight }} />
               )}
+              {hasMwt && <div className="mwt-row" />}
 
               {/* Row headers — always visible, click to expand/collapse */}
               <RowLabelHeader
@@ -351,6 +375,8 @@ export const SentenceRow = React.memo(
                 onNavigate={onNavigate}
                 tokenRefs={tokenRefs}
                 lowerBandHeight={lowerBand.bandHeight}
+                mwtRow={hasMwt}
+                mwt={mwtByColumn.get(index)}
                 relationInferred={inferredRelTokenIds.has(data.token.id)}
               />
             ))}

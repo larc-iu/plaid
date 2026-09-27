@@ -477,3 +477,42 @@
   color: #2563eb;
   font-weight: 500;
 }
+
+/* A multi-word token's bracket (TokenColumn). The row is held open in every
+   column of a sentence that has one, like the band above it, and a bracket
+   hangs from its first word's column across the rest. It opens upward, toward
+   the forms it groups, and carries the token's written form on its line.
+
+   Gray and upright: it states a fact about the text, not something waiting on
+   anyone, so it takes neither provenance hue nor italic. */
+.mwt-row {
+  flex: none;
+  height: 20px;
+  position: relative;
+}
+
+.mwt-bracket {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 0;
+  height: 9px;
+  border: 1px solid #9ca3af;
+  border-top: none;
+  border-end-start-radius: 2px;
+  border-end-end-radius: 2px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.mwt-bracket__form {
+  position: relative;
+  top: 0;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #4b5563;
+  background-color: #fff;
+  pointer-events: auto;
+}

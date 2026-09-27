@@ -18,6 +18,8 @@ export const TokenColumn = React.memo(
     onNavigate,
     tokenRefs,
     lowerBandHeight = 0,
+    mwtRow = false,
+    mwt,
     relationInferred,
   }) => {
     const session = useEditorSession();
@@ -117,6 +119,23 @@ export const TokenColumn = React.memo(
             drawn over these spacers by the sentence row). */}
         {lowerBandHeight > 0 && (
           <div className="lower-band-spacer" style={{ height: lowerBandHeight }} aria-hidden />
+        )}
+
+        {/* The row that holds multi-word tokens' brackets, in every column of a
+            sentence that has one. A token's bracket belongs to its first word
+            and reaches across the rest, from the start of the first form to
+            the end of the last, in whichever direction the sentence runs.
+            Nothing in it takes focus, so the arrow keys never meet it. */}
+        {mwtRow && (
+          <div className="mwt-row">
+            {mwt && (
+              <div className="mwt-bracket" style={{ width: `${mwt.width}px` }}>
+                <span className="mwt-bracket__form" dir="auto" title="Multi-word token">
+                  {mwt.form}
+                </span>
+              </div>
+            )}
+          </div>
         )}
 
         {/* LEMMA */}
