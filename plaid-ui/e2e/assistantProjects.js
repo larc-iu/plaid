@@ -134,9 +134,13 @@ export const assistantProjectsTests = ({
 
     // The list stays open after a refusal, for another pick. (Closing it and
     // pressing the button again would click through the refusal's toast, which
-    // sits over the button at this width.)
-    await page.getByRole('combobox', { name: 'Project' }).fill(B.name);
-    await page.getByRole('option', { name: B.name, exact: true }).click();
+    // sits over the button at this width.) The second pick is by keyboard: the
+    // toast sits over the right half of the list too when the list opens below
+    // the box, and a click on the option's middle then lands on the toast.
+    const picker = page.getByRole('combobox', { name: 'Project' });
+    await picker.fill(B.name);
+    await expect(page.getByRole('option', { name: B.name, exact: true })).toBeVisible();
+    await picker.press('Enter');
     await expect(page.getByRole('button', { name: `Remove ${B.name}` })).toBeVisible();
 
     // Sent, the set is on the message, where the service reads it.
