@@ -71,17 +71,20 @@ export function readNativeArchive(bytes) {
     mediaBytes: row.mediaFile ? (entries[row.mediaFile] ?? null) : null,
   }));
   // A resume finds what an earlier run made by each document's id, so an id
-  // missing or repeated would have it take one document for another.
+  // missing or repeated would have it take one document for another. It marks
+  // a document with the id as a string, so ids are compared as strings.
   const docIds = new Set();
   for (const doc of documents) {
     const id = doc.data?.id;
     if (id == null || id === '') {
       throw new ArchiveError(`The document in ${doc.file} has no id.`);
     }
-    if (docIds.has(id)) {
-      throw new ArchiveError(`Two documents in the archive have the id ${JSON.stringify(id)}.`);
+    if (docIds.has(String(id))) {
+      throw new ArchiveError(
+        `Two documents in the archive have the id ${JSON.stringify(String(id))}.`,
+      );
     }
-    docIds.add(id);
+    docIds.add(String(id));
   }
   return { manifest, vocabularies, documents };
 }

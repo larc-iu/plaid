@@ -83,6 +83,10 @@ describe('readNativeArchive', () => {
       'The document in documents/B.json has no id.',
     );
     expect(() => readNativeArchive(archive({ id: 'd1' }, { id: '' }))).toThrow(ArchiveError);
+    // A resume marks a document with its id as a string, so 7 and "7" are one.
+    expect(() => readNativeArchive(archive({ id: 7 }, { id: '7' }))).toThrow(
+      'Two documents in the archive have the id "7".',
+    );
     expect(readNativeArchive(archive({ id: 'd1' }, { id: 'd2' })).documents).toHaveLength(2);
   });
 
