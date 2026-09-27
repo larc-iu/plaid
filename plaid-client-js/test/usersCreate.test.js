@@ -36,6 +36,15 @@ test("create without a display name leaves it out", async () => {
   ]);
 });
 
+test("a null display name is left out too, as Python leaves out None", async () => {
+  const sent = await bodiesOf((c) =>
+    c.users.create("ana@example.com", "pw", false, null),
+  );
+  assert.deepEqual(sent, [
+    { email: "ana@example.com", password: "pw", "is-admin": false },
+  ]);
+});
+
 test("create with a display name sends it", async () => {
   const sent = await bodiesOf((c) =>
     c.users.create("ana@example.com", "pw", false, "Ana"),

@@ -1020,7 +1020,9 @@ class PlaidClient {
             email,
             password,
             "is-admin": isAdmin,
-            "display-name": displayName,
+            // Left out when not given (null too), so core gives the user the
+            // local part of the email. Core refuses a null display name.
+            "display-name": displayName ?? undefined,
           }),
         }),
       /**
