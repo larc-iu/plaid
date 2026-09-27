@@ -171,6 +171,42 @@
               (throw cause))))
         (finally (future-cancel watchdog))))))
 
+;; --- The heavy-query queue ------------------------------------------------
+;; A counting query (an aggregate, or `return count`) walks everything its
+;; scope matches: igt's project-wide suggestion counts take 4 to 8 s each on a
+;; corpus of 374k words, and each holds one of the pool's connections for its
+;; whole run. Four people opening a document at once started twelve of them,
+;; and a 5 ms request for a project's name waited 11.6 s for a connection. So
+;; at most `heavy-query-permits` run at once and the rest wait their turn
+;; here, BEFORE taking a connection, which leaves the rest of the pool to
+;; ordinary reads and saves. The queued ones finish no later than they would
+;; have: twelve CPU-bound scans of one SQLite file do not run faster side by
+;; side.
+
+(def ^:private heavy-query-permits 3)
+
+(defonce ^:private ^java.util.concurrent.Semaphore heavy-queries
+  ;; fair, so a query waits behind the ones that arrived before it
+  (java.util.concurrent.Semaphore. heavy-query-permits true))
+
+(def ^:dynamic *heavy-query-wait-ms*
+  "How long a counting query waits for its turn before the server gives up on
+  it with a 503. Past the client's own 30 s timeout nobody is waiting for the
+  answer any more. Dynamic so tests can shorten it."
+  30000)
+
+(defn- run-heavy
+  "`run-bounded`, after waiting for one of the `heavy-query-permits`. A query
+  that does not get one within `*heavy-query-wait-ms*` is refused with 503,
+  which both clients retry."
+  [db f]
+  (if (.tryAcquire heavy-queries (long *heavy-query-wait-ms*) java.util.concurrent.TimeUnit/MILLISECONDS)
+    (try
+      (run-bounded db f)
+      (finally (.release heavy-queries)))
+    (throw (ex-info "The server is busy with other large queries. Try again in a moment."
+                    {:code 503 :query-error/stage :queue}))))
+
 (defn- find-cols
   "Column names for the result envelope: `:find` var names without the `?`."
   [find-vars]
@@ -267,7 +303,7 @@
       (let [plan (qc/aggregate-plan (first hqs))
             lim (min (or (:limit head) agg-group-cap) agg-group-cap)
             {:keys [hq read-kws labels]} (aggregate-query hqs plan (inc lim))
-            rows (run-bounded db (fn [conn] (psc/q conn hq)))
+            rows (run-heavy db (fn [conn] (psc/q conn hq)))
             truncated? (> (count rows) lim)
             rows (vec (take lim rows))]
         {:return :aggregate
@@ -277,7 +313,7 @@
          :truncated truncated?})
 
       (= return-type :count)
-      (let [n (:n (run-bounded db (fn [conn] (psc/q1 conn (count-query hqs)))))]
+      (let [n (:n (run-heavy db (fn [conn] (psc/q1 conn (count-query hqs)))))]
         {:return :count
          :count (min n count-cap)
          :truncated (> n count-cap)})

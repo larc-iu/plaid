@@ -22,10 +22,11 @@
                          {:status 200 :body (qe/run db user-id body)}
                          (catch clojure.lang.ExceptionInfo e
                            (let [code (or (:code (ex-data e)) 500)]
-                             ;; author-facing codes (400 bad query, 408 timeout)
-                             ;; carry a helpful message and are NOT server bugs;
+                             ;; author-facing codes (400 bad query, 408 timeout,
+                             ;; 503 no turn in the heavy-query queue) carry a
+                             ;; helpful message and are NOT server bugs;
                              ;; anything else is logged and returned opaque.
-                             (if (#{400 408} code)
+                             (if (#{400 408 503} code)
                                {:status code :body {:error (ex-message e)}}
                                (do (log/error e "Query failed for user" user-id)
                                    {:status code :body {:error "Internal query error"}}))))
