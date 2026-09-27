@@ -90,6 +90,8 @@ export const EditableCell = React.memo(
     // value without listing `isEditing` in its deps (see below).
     const isEditingRef = useRef(false);
     isEditingRef.current = isEditing;
+    // A value put back after it was not saved, `{ typed, saved }` (`putBack`).
+    const unsentRef = useRef(null);
 
     // Sync localValue ONLY when the external `value` prop actually changes (e.g.
     // the server-confirmed optimistic patch, a reload, or another annotator).
@@ -97,12 +99,33 @@ export const EditableCell = React.memo(
     // momentarily reset the input to the stale prop value during the save round
     // trip, flashing the previous value before the new one lands. handleBlur
     // already commits-or-reverts explicitly, so no blur-time reset is needed.
+    //
+    // A value put back after it was not saved (`putBack`) is not synced over
+    // while the stored value is still the one it was typed over.
     useEffect(() => {
+      const unsent = unsentRef.current;
+      if (unsent) {
+        if ((value || '') === unsent.saved) return;
+        unsentRef.current = null;
+      }
       if (!isEditingRef.current) {
         valueRef.current = value || '';
         setLocalValue(value || '');
       }
     }, [value]);
+
+    // An edit that was not saved: refused, or queued behind a refused edit and
+    // never sent. The refetch after the refusal takes it off the screen, so it
+    // is put back here, measured against `saved`, the value it was typed over,
+    // so leaving the cell sends it again and Escape takes it back. For a cell
+    // edited twice behind the refusal the first edit's `saved` stands, since
+    // the second was typed over a value the server never had. Text typed into
+    // the cell since is newer and is left alone.
+    const putBack = (typed, saved) => {
+      if (isEditingRef.current && typedRef.current) return;
+      unsentRef.current = { typed, saved: unsentRef.current?.saved ?? saved };
+      setValue(typed);
+    };
 
     const handleChange = (e) => {
       selectPendingRef.current = false;
@@ -139,6 +162,7 @@ export const EditableCell = React.memo(
       if (swappingRef.current) return;
       setIsEditing(false);
       setPrecedent(null);
+      unsentRef.current = null;
       if (cancelledRef.current) {
         cancelledRef.current = false;
         setValue(value || '');
@@ -174,11 +198,17 @@ export const EditableCell = React.memo(
           setValue(value || '');
           return;
         }
-        onUpdate(tokenId, field, newValue || null).catch((error) => {
-          console.error(`Failed to update ${field}:`, error);
-          // Revert to original value on error
-          setValue(value || '');
-        });
+        const saved = value || '';
+        onUpdate(tokenId, field, newValue || null).then(
+          (ok) => {
+            if (ok === false) putBack(newValue, saved);
+          },
+          (error) => {
+            console.error(`Failed to update ${field}:`, error);
+            // Revert to original value on error
+            setValue(value || '');
+          },
+        );
       } else {
         // Revert to original if unchanged
         setValue(value || '');
