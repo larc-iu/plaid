@@ -13,7 +13,7 @@ import {
   looksLikeGrs,
   GrewError,
 } from '../../grew/index.js';
-import { planRewrite, applyRewrite } from '../../grew/rewrite/runner.js';
+import { planRewrite, applyRewrite, applySummary } from '../../grew/rewrite/runner.js';
 import { groupResults } from './grewToHighlight.js';
 import { GrewQueryInput } from './GrewQueryInput.jsx';
 import { GrewHelp } from './GrewHelp.jsx';
@@ -224,14 +224,9 @@ export const SearchPage = () => {
         { rows, docs: plan.docs, label: `Rewrite: ${names}` },
         setProgress,
       );
-      const applied = `${out.sentencesChanged} sentence${out.sentencesChanged === 1 ? '' : 's'} in ${out.docsChanged} document${out.docsChanged === 1 ? '' : 's'}`;
-      if (out.failed) {
-        const why =
-          out.failed.status === 409 ? 'it changed since the preview' : humanizeError(out.failed);
-        notifyError(`Stopped at ${out.failed.docName}: ${why}. Applied to ${applied}.`);
-      } else {
-        notifySuccess(`Changed ${applied}.`);
-      }
+      const summary = applySummary(out, (failed) => humanizeError(failed));
+      if (out.failed) notifyError(summary);
+      else notifySuccess(summary);
       // Show what the rules would still change now that these are applied.
       await runPreview();
     } catch (err) {

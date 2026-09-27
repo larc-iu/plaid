@@ -2,14 +2,15 @@
 // a rule could match (the server search, uncapped, by document), load each
 // one, rewrite every sentence locally (engine.js), and turn the differences
 // into preview rows (diff.js). Applying the selected rows writes each
-// document's changes in atomic batches under ONE client operation, so the
-// History drawer shows a single revertable entry per document.
+// document's changes in one atomic batch where it can (see applyToDocument),
+// all under ONE client operation, so the History drawer shows a single
+// revertable entry per document.
 //
 // The server search is only discovery: the local matcher decides what a
 // sentence matches after every application, and a rule whose pattern the
 // query language cannot express visits every document instead.
 
-import { metadataOps, createdId } from '@larc-iu/plaid-client';
+import { metadataOps, createdId, MAX_BATCH_OPS } from '@larc-iu/plaid-client';
 import { ConlluDocument } from '../../domain/ConlluDocument.js';
 import { compileGrew } from '../compile.js';
 import { GrewRuntimeError, GrewUnsupportedError } from '../errors.js';
@@ -18,11 +19,6 @@ import { rewriteSentence } from './engine.js';
 import { diffGraphs } from './diff.js';
 import { bareLabel } from '../edgeLabel.js';
 import { makeValidators } from '../../utils/udVocabMode.js';
-
-// Ops per atomic batch. A batch is one server transaction holding the single
-// write lock until it commits, so this bounds how long a concurrent writer
-// waits, not just the number of round trips.
-const BATCH_CHUNK = 200;
 
 // Document GETs in flight at once. Measured on a 1172-document project: four
 // in flight load about three times faster than one at a time, and eight or
@@ -215,19 +211,14 @@ function mapPool(items, limit, fn) {
   return resolvers;
 }
 
-const chunk = (arr, n) => {
-  const out = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-};
-
 // Apply the selected rows, document by document, under one operation. Each
 // document is written in the client's strict mode, so every batch carries the
 // document version the preview loaded: a document someone changed since then
 // is refused by the server (409) before anything in it is touched. The run
 // stops at the first document that fails; the ones before it stay applied.
 // Returns { docsChanged, sentencesChanged, failed }, where `failed` is
-// { docId, docName, status, message } or null.
+// { docId, docName, status, message, partial } or null. `partial` is true
+// when some of that document's writes landed and could not be taken back.
 export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   const byDoc = new Map();
   for (const r of rows) {
@@ -242,13 +233,14 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
       onProgress?.(`Applying to document ${done + 1} of ${byDoc.size}…`);
       client.enterStrictMode(docId);
       try {
-        await applyToDocument(client, docs.get(docId), docRows);
+        await applyToDocument(client, docId, docs.get(docId), docRows);
       } catch (e) {
         out.failed = {
           docId,
           docName: docRows[0].docName,
           status: e?.status ?? null,
           message: e?.message || String(e),
+          partial: Boolean(e?.partial),
         };
         break;
       } finally {
@@ -263,7 +255,33 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   return out;
 }
 
-async function applyToDocument(client, doc, rows) {
+// The toast after an apply. `reason` turns the failure into a sentence, and
+// its own full stop is dropped so the sentence can end here.
+export function applySummary(out, reason) {
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const applied = `${plural(out.sentencesChanged, 'sentence')} in ${plural(out.docsChanged, 'document')}`;
+  if (!out.failed) return `Changed ${applied}.`;
+  const { docName, status, partial } = out.failed;
+  const why = (status === 409 ? 'it changed since the preview' : reason(out.failed))
+    .trim()
+    .replace(/\.+$/, '');
+  const parts = [`Stopped at ${docName}: ${why}.`];
+  parts.push(partial ? `${docName} is partly changed.` : `${docName} is unchanged.`);
+  if (out.docsChanged) parts.push(`Changed ${applied} before it.`);
+  return parts.join(' ');
+}
+
+// A document's writes go as ONE batch whenever they can: the words deleted
+// first, then every span and relation write, in one transaction, so a refusal
+// leaves the document as it was. Two cases cannot be one transaction. A
+// relation that needs a lemma span created for it names that span's id, which
+// only the server hands out, so the lemma spans go first in a batch of their
+// own. And a batch past MAX_BATCH_OPS is sent as consecutive requests. Either
+// way the document lock is held across the requests so no one else writes in
+// between, and when the second batch is refused whole, the lemma spans the
+// first created are deleted again. A refusal that leaves writes behind is
+// thrown with `partial` set.
+async function applyToDocument(client, docId, doc, rows) {
   const writer = doc.writer;
   const createStamp = writer.createStamp || undefined;
   // Word → lemma span id, from the sentence graphs plus the spans created below.
@@ -271,72 +289,98 @@ async function applyToDocument(client, doc, rows) {
   for (const r of rows)
     for (const n of r.nodes.values()) if (n.spanIds.lemma) lemmaOf.set(n.id, n.spanIds.lemma);
 
-  // 1. Deleted words (their spans and relations cascade server-side).
   const tokens = rows.flatMap((r) => r.writes.tokens);
-  for (const part of chunk(tokens, BATCH_CHUNK)) {
-    await client.batched(async (b) => {
-      part.forEach((w) => b.tokens.delete(w.id));
-    });
-  }
-
-  // 2. Lemma spans the relations below hang on.
   const lemmas = rows.flatMap((r) => r.writes.lemmaCreates);
-  for (const part of chunk(lemmas, BATCH_CHUNK)) {
-    const results = await client.batched(async (b) => {
-      part.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
-    });
-    part.forEach((w, i) => lemmaOf.set(w.node, createdId(results[i])));
+  const main = rows.flatMap((r) => r.writes.main);
+
+  const queueChanges = (b) => {
+    // Deleted words first (their spans and relations cascade server-side).
+    tokens.forEach((w) => b.tokens.delete(w.id));
+    queueMain(b, main, writer, createStamp, lemmaOf);
+  };
+
+  // An update may carry a stamp beside it, so a main write is at most two ops.
+  const changeOps = tokens.length + 2 * main.length;
+  if (!lemmas.length && changeOps <= MAX_BATCH_OPS) {
+    await client.batched(queueChanges);
+    return;
   }
 
-  // 3. Everything else. A person's edit of a machine or contributed value
-  // carries the writer's stamp, in the same batch as the value.
-  const main = rows.flatMap((r) => r.writes.main);
-  for (const part of chunk(main, BATCH_CHUNK)) {
-    await client.batched(async (b) => {
-      for (const w of part) {
-        switch (w.op) {
-          case 'updateSpan': {
-            b.spans.update(w.id, w.value);
-            const stamp = writer.editStamp(w.metadata);
-            if (stamp) b.spans.patchMetadata(w.id, metadataOps(stamp));
-            break;
-          }
-          case 'createSpan':
-            b.spans.create(w.layer, w.tokens, w.value, createStamp);
-            break;
-          case 'deleteSpan':
-            b.spans.delete(w.id);
-            break;
-          case 'updateRelation': {
-            b.relations.update(w.id, w.value);
-            const stamp = writer.editStamp(w.metadata);
-            if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
-            break;
-          }
-          case 'setSource':
-            b.relations.setSource(w.id, lemmaOf.get(w.node));
-            break;
-          case 'setTarget':
-            b.relations.setTarget(w.id, lemmaOf.get(w.node));
-            break;
-          case 'deleteRelation':
-            b.relations.delete(w.id);
-            break;
-          case 'createRelation':
-            b.relations.create(
-              w.layer,
-              lemmaOf.get(w.src),
-              lemmaOf.get(w.tgt),
-              w.value,
-              // A suppressor is a statement about the graph and carries its
-              // own metadata, never a provenance stamp.
-              'metadata' in w ? w.metadata : createStamp,
-            );
-            break;
-          default:
-            throw new Error(`Unknown write ${w.op}`);
+  await client.documents.locked(docId, async () => {
+    let created = [];
+    if (lemmas.length) {
+      const results = await client.batched(async (b) => {
+        lemmas.forEach((w) => b.spans.create(w.layer, w.tokens, w.value, createStamp));
+      });
+      created = lemmas.map((w, i) => createdId(results[i]));
+      lemmas.forEach((w, i) => lemmaOf.set(w.node, created[i]));
+    }
+    try {
+      await client.batched(queueChanges);
+    } catch (e) {
+      // Past MAX_BATCH_OPS some of the requests may have landed, and the
+      // lemma spans cannot be taken back from under them.
+      let partial = changeOps > MAX_BATCH_OPS;
+      if (!partial && created.length) {
+        try {
+          await client.batched(async (b) => {
+            created.forEach((id) => b.spans.delete(id));
+          });
+        } catch {
+          partial = true;
         }
       }
-    });
+      if (partial) e.partial = true;
+      throw e;
+    }
+  });
+}
+
+// Every span and relation write. A person's edit of a machine or contributed
+// value carries the writer's stamp, in the same batch as the value.
+function queueMain(b, main, writer, createStamp, lemmaOf) {
+  for (const w of main) {
+    switch (w.op) {
+      case 'updateSpan': {
+        b.spans.update(w.id, w.value);
+        const stamp = writer.editStamp(w.metadata);
+        if (stamp) b.spans.patchMetadata(w.id, metadataOps(stamp));
+        break;
+      }
+      case 'createSpan':
+        b.spans.create(w.layer, w.tokens, w.value, createStamp);
+        break;
+      case 'deleteSpan':
+        b.spans.delete(w.id);
+        break;
+      case 'updateRelation': {
+        b.relations.update(w.id, w.value);
+        const stamp = writer.editStamp(w.metadata);
+        if (stamp) b.relations.patchMetadata(w.id, metadataOps(stamp));
+        break;
+      }
+      case 'setSource':
+        b.relations.setSource(w.id, lemmaOf.get(w.node));
+        break;
+      case 'setTarget':
+        b.relations.setTarget(w.id, lemmaOf.get(w.node));
+        break;
+      case 'deleteRelation':
+        b.relations.delete(w.id);
+        break;
+      case 'createRelation':
+        b.relations.create(
+          w.layer,
+          lemmaOf.get(w.src),
+          lemmaOf.get(w.tgt),
+          w.value,
+          // A suppressor is a statement about the graph and carries its
+          // own metadata, never a provenance stamp.
+          'metadata' in w ? w.metadata : createStamp,
+        );
+        break;
+      default:
+        throw new Error(`Unknown write ${w.op}`);
+    }
   }
 }

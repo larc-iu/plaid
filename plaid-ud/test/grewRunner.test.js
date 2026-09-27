@@ -5,7 +5,7 @@ import { rawDocFromConllu } from './helpers/rawDoc.js';
 import { withOps, batchOf } from './helpers/stubClient.js';
 import { getUdLayerInfo } from '../src/utils/udLayerUtils.js';
 import { parseGrs } from '../src/grew/parser.js';
-import { planRewrite, applyRewrite } from '../src/grew/rewrite/runner.js';
+import { planRewrite, applyRewrite, applySummary } from '../src/grew/rewrite/runner.js';
 
 // "loudly" has no LEMMA and no place in the tree, so the import gives it no
 // Lemma span at all: a rule that hands IT an edge needs one created first. (A
@@ -30,8 +30,22 @@ function stubClient(...raws) {
     calls: [],
     strict: [],
     failOn: null,
+    // Ops of every batch that went out, and a hook to refuse one (a 500).
+    batches: [],
+    refuse: null,
+    locks: [],
     query: async () => ({ results: raws.map((r) => [r.id, 1]) }),
-    documents: { get: async (id) => structuredClone(raws.find((r) => r.id === id)) },
+    documents: {
+      get: async (id) => structuredClone(raws.find((r) => r.id === id)),
+      locked: async (id, fn) => {
+        c.locks.push(['lock', id]);
+        try {
+          return await fn();
+        } finally {
+          c.locks.push(['unlock', id]);
+        }
+      },
+    },
     projects: { listDocuments: async () => raws.map((r) => ({ id: r.id })) },
     enterStrictMode: (id) => {
       c.strict.push(['enter', id]);
@@ -54,6 +68,11 @@ function stubClient(...raws) {
         throw Object.assign(new Error('document version mismatch'), { status: 409 });
       }
       const ops = b.operations.map((o) => o.op);
+      if (c.refuse?.(ops)) {
+        b.abort();
+        throw Object.assign(new Error('HTTP 500 boom'), { status: 500 });
+      }
+      c.batches.push(ops);
       await b.submit();
       return ops.map((op, i) => ({ status: 200, body: { id: `${op}-${i}` } }));
     },
@@ -148,7 +167,7 @@ test('apply: updates carry the verifier stamp, all under one operation', async (
   assert.deepEqual(client.calls[2].args[1], [{ op: 'set', path: ['provConfirmed'], value: true }]);
 });
 
-test('apply: phases in order — token deletes, lemma creates, then relations on the new span', async () => {
+test('apply: lemma spans first, then token deletes and relations in one batch, under the lock', async () => {
   const { client, project, layerInfo } = setup();
   // "loudly" has no lemma and no place in the tree, so it has no Lemma span
   // for a relation to hang on; give it the advmod and drop "the".
@@ -160,11 +179,12 @@ test('apply: phases in order — token deletes, lemma creates, then relations on
     ['the: word deleted', 'saw → loudly: advmod added', 'loudly: lemma loudly added'],
   );
   await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
-  assert.deepEqual(
-    client.calls.map((c) => c.op),
-    ['tokens.delete', 'spans.create', 'relations.create'],
-  );
-  const lemmaCreate = client.calls[1];
+  assert.deepEqual(client.batches, [['spans.create'], ['tokens.delete', 'relations.create']]);
+  assert.deepEqual(client.locks, [
+    ['lock', 'doc1-id'],
+    ['unlock', 'doc1-id'],
+  ]);
+  const lemmaCreate = client.calls[0];
   assert.equal(lemmaCreate.args[2], 'loudly');
   const relCreate = client.calls[2];
   // The TARGET is the word that needed the span, so it is the id the batch
@@ -173,7 +193,7 @@ test('apply: phases in order — token deletes, lemma creates, then relations on
   assert.equal(relCreate.args[3], 'advmod');
   // The surface token of a one-word token is what gets deleted.
   const theWord = plan.rows[0].nodes.get([...plan.rows[0].nodes.keys()][1]); // [0] is the anchor
-  assert.equal(client.calls[0].args[0], theWord.wordId);
+  assert.equal(client.calls[1].args[0], theWord.wordId);
 });
 
 test('apply: a document changed since the preview stops the run after the ones before it', async () => {
@@ -205,6 +225,7 @@ test('apply: a document changed since the preview stops the run after the ones b
     docName: 'doc2',
     status: 409,
     message: 'document version mismatch',
+    partial: false,
   });
   assert.deepEqual(client.strict, [['enter', 'doc1-id'], ['exit'], ['enter', 'doc2-id'], ['exit']]);
   // The operation was still closed.
@@ -304,4 +325,84 @@ test('plan: a rule that applies and leaves nothing to write yields no row', asyn
     grs,
   });
   assert.deepEqual(plan.rows, []);
+});
+
+// "the" deleted and "loudly" given an edge it needs a lemma span for: the
+// lemma spans go first, the rest in one batch after.
+const LEMMA_AND_DELETE = `pattern { V [upos=VERB]; A [upos=ADV]; D [form="the"] }
+  commands { add_edge V -[advmod]-> A; del_node D } strat main { rule }`;
+
+test('apply: a document with no lemma to create is one batch, with no lock', async () => {
+  const { client, project, layerInfo } = setup();
+  const grs = parseGrs(`pattern { D [form="the"]; X [upos=DET, form="a"] }
+    commands { del_node D; X.upos = PRON } strat main { rule }`);
+  const plan = await planRewrite(client, { project, user: null, layerInfo, grs });
+  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.equal(out.failed, null);
+  assert.equal(client.batches.length, 1);
+  assert.equal(client.batches[0][0], 'tokens.delete');
+  assert.ok(client.batches[0].includes('spans.update'));
+  assert.deepEqual(client.locks, []);
+});
+
+test('apply: a refused change batch writes nothing of it and takes the lemma spans back', async () => {
+  const { client, project, layerInfo } = setup();
+  const plan = await planRewrite(client, {
+    project,
+    user: null,
+    layerInfo,
+    grs: parseGrs(LEMMA_AND_DELETE),
+  });
+  client.refuse = (ops) => ops.includes('tokens.delete');
+  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.equal(out.docsChanged, 0);
+  assert.equal(out.failed.status, 500);
+  assert.equal(out.failed.partial, false);
+  // The lemma span created for "loudly" is deleted again, and no token went.
+  assert.deepEqual(client.batches, [['spans.create'], ['spans.delete']]);
+  assert.equal(client.calls[1].args[0], 'spans.create-0');
+  assert.deepEqual(client.locks, [
+    ['lock', 'doc1-id'],
+    ['unlock', 'doc1-id'],
+  ]);
+});
+
+test('apply: a document whose lemma spans cannot be taken back is reported partly changed', async () => {
+  const { client, project, layerInfo } = setup();
+  const plan = await planRewrite(client, {
+    project,
+    user: null,
+    layerInfo,
+    grs: parseGrs(LEMMA_AND_DELETE),
+  });
+  client.refuse = (ops) => ops.includes('tokens.delete') || ops.includes('spans.delete');
+  const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+  assert.equal(out.failed.partial, true);
+});
+
+test('applySummary: the reason ends in one full stop, and a first-document refusal names no count', () => {
+  const reason = () => 'The server hit an unexpected error. Try again in a moment.';
+  const failed = { docId: 'd', docName: 'doc1', status: 500, message: 'x', partial: false };
+  assert.equal(
+    applySummary({ docsChanged: 0, sentencesChanged: 0, failed }, reason),
+    'Stopped at doc1: The server hit an unexpected error. Try again in a moment. doc1 is unchanged.',
+  );
+  assert.equal(
+    applySummary(
+      { docsChanged: 2, sentencesChanged: 3, failed: { ...failed, partial: true } },
+      reason,
+    ),
+    'Stopped at doc1: The server hit an unexpected error. Try again in a moment. doc1 is partly changed. Changed 3 sentences in 2 documents before it.',
+  );
+  assert.equal(
+    applySummary(
+      { docsChanged: 0, sentencesChanged: 0, failed: { ...failed, status: 409 } },
+      reason,
+    ),
+    'Stopped at doc1: it changed since the preview. doc1 is unchanged.',
+  );
+  assert.equal(
+    applySummary({ docsChanged: 1, sentencesChanged: 1, failed: null }, reason),
+    'Changed 1 sentence in 1 document.',
+  );
 });
