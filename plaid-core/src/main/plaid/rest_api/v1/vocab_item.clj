@@ -31,9 +31,15 @@
 
 (defn- maintainer-refusal
   "The 403 when the caller is neither an admin nor a maintainer of every
-  vocabulary in `layer-ids`, or nil."
-  [db layer-ids {user-id :user/id record :user/record}]
+  vocabulary in `layer-ids`, or nil. Every caller has already passed the
+  writer gate on these vocabularies. Under a delegated token the user
+  record comes without admin, and an admin counts as a maintainer on a
+  vocabulary the scope reaches, as `pra/wrap-vocab-maintainer-required`
+  counts it for a single delete. The writer gate before this one is what
+  checked the reach."
+  [db layer-ids {user-id :user/id record :user/record scope :auth/token-scope}]
   (when-not (or (user/admin? record)
+                (:admin? scope)
                 (every? #(vocab-layer/maintainer? db % user-id) (distinct layer-ids)))
     {:status 403 :body {:error maintainers-only}}))
 
