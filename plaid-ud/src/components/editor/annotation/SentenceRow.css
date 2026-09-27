@@ -55,17 +55,11 @@
 /* The four standing actions under a sentence: edit its metadata, edit its
    text, ask the assistant, comment. One treatment for all of them, because
    none is the thing you came to the sentence to do and a difference in weight
-   between them would be claiming otherwise. Dimmed at rest, full strength on
-   hover or focus. */
+   between them would be claiming otherwise. Quiet by weight and by having no
+   outline or fill, never by opacity: dimmed, the gray fell under 3:1. */
 .sentence-confirm .sentence-action {
-  opacity: 0.55;
   font-weight: 400;
   color: #374151;
-  transition: opacity 120ms ease;
-}
-.sentence-confirm .sentence-action:hover,
-.sentence-confirm .sentence-action:focus-visible {
-  opacity: 1;
 }
 /* The sentence's number in the document, at the top-left of its block and
    aligned with the row labels below it. Gray and small because it is how you

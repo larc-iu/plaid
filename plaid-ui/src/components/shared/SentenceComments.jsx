@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { Popover, PopoverAnchor, PopoverContent } from '../ui/popover.jsx';
 import { CommentThread } from './CommentThread.jsx';
@@ -36,6 +36,10 @@ export const SentenceComments = ({
   className,
 }) => {
   const [open, setOpen] = useState(false);
+  const buttonRef = useRef(null);
+  // Whether the thread closed because the reader clicked elsewhere, where
+  // focus belongs to what they clicked.
+  const leftOutside = useRef(false);
   useCommentStore(store);
 
   useEffect(() => {
@@ -56,9 +60,10 @@ export const SentenceComments = ({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <button
+          ref={buttonRef}
           type="button"
           className={cn(
-            'sentence-comments inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-transparent bg-transparent px-2 text-xs text-gray-700 opacity-60 transition-opacity hover:bg-gray-100 hover:text-gray-900 hover:opacity-100 focus-visible:opacity-100',
+            'sentence-comments inline-flex h-6 cursor-pointer items-center gap-1 rounded border border-transparent bg-transparent px-2 text-xs text-gray-700 hover:bg-gray-100 hover:text-gray-900',
             className,
           )}
           data-count={count}
@@ -77,6 +82,22 @@ export const SentenceComments = ({
         // The grid is a measured layout and a click inside the thread must not
         // reach the cell underneath.
         onClick={(event) => event.stopPropagation()}
+        // Nor a key: the thread is portaled, but React bubbles its events
+        // through the host's grid or canvas, where Enter means something else.
+        onKeyDown={(event) => event.stopPropagation()}
+        // The popover hangs off an anchor, not a Radix trigger, so Radix has
+        // nowhere to put focus back: Escape would leave the reader on the page's
+        // body, out of the grid or the canvas.
+        onOpenAutoFocus={() => {
+          leftOutside.current = false;
+        }}
+        onInteractOutside={() => {
+          leftOutside.current = true;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (!leftOutside.current) buttonRef.current?.focus();
+        }}
       >
         <div className="border-b px-3 py-2 text-sm font-medium" dir="auto">
           {anchorLabel}

@@ -10,7 +10,7 @@ import { useEditorSession } from './editorSession.js';
 // the first token so it reads as belonging to this sentence. Two kinds, told
 // apart by weight rather than by position: Accept and Discard are outlined and
 // only appear when they have something to do, while the four standing actions
-// are one dimmed icon-and-label treatment apiece (`sentence-action`) because
+// are one plain icon-and-label treatment apiece (`sentence-action`) because
 // none of them is the thing you came to the sentence to do. The metadata
 // disclosure is one of the four: it used to be a bold SENTENCE heading on its
 // own line, which made housekeeping the loudest thing under the grid.

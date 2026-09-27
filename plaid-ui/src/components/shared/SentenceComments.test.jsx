@@ -73,6 +73,13 @@ describe('SentenceComments', () => {
     expect(button.dataset.count).toBe('0');
   });
 
+  // Dimmed to 0.6, the gray label measured under 3:1 on white. Quiet comes
+  // from the missing border and fill, never from opacity.
+  it('is at full strength at rest', async () => {
+    const button = await mount({ store: await makeStore(), canWrite: true });
+    expect(button.className).not.toMatch(/(^|\s)(hover:|focus-visible:)?opacity-/);
+  });
+
   it('shows a reader the count of what is there, and only this sentence’s', async () => {
     const store = await makeStore([row('c1', 's1'), row('c2', 's1'), row('c3', 's2')]);
     const button = await mount({ store, canWrite: false });
@@ -98,5 +105,48 @@ describe('SentenceComments', () => {
 
     await view.step(() => button.click());
     expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  // The thread is portaled, but React bubbles its keys through the component
+  // tree into the grid or canvas around the button, where Enter on a thread's
+  // button meant "edit the focused node".
+  it("keeps the thread's keys from the host around it", async () => {
+    const host = vi.fn();
+    const store = await makeStore([row('c1', 's1')]);
+    view = await renderComponent(
+      <div onKeyDown={host}>
+        <SentenceComments sentenceId="s1" anchorLabel="Sentence 1" store={store} canWrite />
+      </div>,
+    );
+    const button = view.container.querySelector('button');
+    await view.step(() => button.click());
+    const inside = document.body.querySelector('[data-radix-popper-content-wrapper] textarea');
+    await view.step(() =>
+      inside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+    );
+    expect(host).not.toHaveBeenCalled();
+    // The button itself is the host's, and its keys still reach it.
+    await view.step(() =>
+      button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })),
+    );
+    expect(host).toHaveBeenCalledTimes(1);
+  });
+
+  // The popover hangs off an anchor, not a Radix trigger, so Radix had nowhere
+  // to put focus back and Escape left a keyboard reader on the page's body,
+  // out of the grid or the canvas.
+  it('hands focus back to the button when Escape closes the thread', async () => {
+    const button = await mount({ store: await makeStore([row('c1', 's1')]), canWrite: true });
+    await view.step(() => button.click());
+    const inside = document.body.querySelector('[data-radix-popper-content-wrapper] textarea');
+    expect(inside).toBeTruthy();
+    await view.step(() => inside.focus());
+    await view.step(() =>
+      inside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
+    );
+    // Radix hands focus on from a timeout once the popover has unmounted.
+    await view.step(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(document.body.querySelector('[data-radix-popper-content-wrapper]')).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 });

@@ -104,6 +104,16 @@ test('the review pair is at full strength at rest', () => {
   assert.doesNotMatch(uiCss.match(/\.plaid-review[^{]*\{[^}]*\}/g).join('\n'), /opacity/);
 });
 
+// The standing actions under a sentence (Edit metadata, Edit text, Ask,
+// Comment) are quiet by weight and by having no outline, not by opacity:
+// dimmed to 0.55, their gray measured 2.96:1 on white.
+test('the standing sentence actions are at full strength at rest', () => {
+  const action = rule(rowCss, '.sentence-confirm .sentence-action');
+  assert.ok(action, 'the rule exists');
+  assert.doesNotMatch(action, /opacity/);
+  assert.doesNotMatch(rowCss, /\.sentence-action[^{]*\{[^}]*opacity/);
+});
+
 // A flash that lands on a sentence, and the multi-word token chip, are not
 // provenance, so neither wears amber (or orange beside it) nor violet.
 test('the hand-off flash and the multi-word token chip use no violet and no amber', async () => {
