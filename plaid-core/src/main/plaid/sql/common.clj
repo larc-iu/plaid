@@ -13,7 +13,8 @@
             [next.jdbc :as jdbc]
             [next.jdbc.result-set :as rs]
             [taoensso.timbre :as log]
-            [plaid.server.config :refer [config]])
+            [plaid.server.config :refer [config]]
+            [plaid.util.storable-text :as storable])
   (:import (java.security SecureRandom)
            (java.time Instant)
            (java.util UUID)
@@ -334,7 +335,7 @@
       (throw (ex-info (str "Name is too short: minimum is " min-l ", got " (count s))
                       {:code 400 :length (count s) :min-length min-l}))
 
-      :else true)))
+      :else (do (storable/assert-storable! "Name" s) true))))
 
 (defn err-msg-not-found [kind id]
   (str kind " not found with id `" id "`"))

@@ -58,7 +58,8 @@
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
-            [plaid.sql.operation :refer [submit-operation!]])
+            [plaid.sql.operation :refer [submit-operation!]]
+            [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get]))
 
 (def ^:private valid-entity-types
@@ -103,7 +104,8 @@
 (defn valid-metadata-key?
   "True iff `k` is acceptable as a metadata key. Rejects empty strings,
   whitespace-only strings, strings longer than `max-metadata-key-length`,
-  and any string containing an ASCII control character. Keywords are
+  any string containing an ASCII control character, and one holding an
+  unpaired surrogate, which the column would store as `?`. Keywords are
   coerced to their name before validation so callers can pass either
   shape (matches `raw-insert-metadata!`'s tolerant input handling).
   Task #100 V5."
@@ -114,7 +116,8 @@
             :else        (str k))]
     (and (not (clojure.string/blank? s))
          (<= (count s) max-metadata-key-length)
-         (not-any? control-char? s))))
+         (not-any? control-char? s)
+         (nil? (storable/problem s)))))
 
 (defn- validate-metadata-keys!
   "Throw 400 on the first invalid key in `m`. Called by `insert-metadata!`

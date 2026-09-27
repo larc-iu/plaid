@@ -60,7 +60,8 @@
   (:require [clojure.string]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
-            [plaid.sql.pagination :as pg])
+            [plaid.sql.pagination :as pg]
+            [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get list update]))
 
 (def commentable-types
@@ -243,7 +244,8 @@
     (throw (ex-info "Comment body cannot be blank" {:code 400})))
   (when (> (count body) max-body-length)
     (throw (ex-info (str "Comment body exceeds " max-body-length " characters")
-                    {:code 400 :length (count body)}))))
+                    {:code 400 :length (count body)})))
+  (storable/assert-storable! "Comment body" body))
 
 (defn- normalize-anchor-label!
   "The caption to store: trimmed, nil when absent or blank, a 400 when it is

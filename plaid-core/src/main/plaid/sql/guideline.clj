@@ -20,7 +20,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
-            [plaid.sql.pagination :as pagination])
+            [plaid.sql.pagination :as pagination]
+            [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get list merge]))
 
 (def attr-keys [:guideline/id
@@ -100,7 +101,8 @@
     (throw (ex-info (str what " cannot be blank") {:code 400})))
   (when (> (count v) ceiling)
     (throw (ex-info (str what " exceeds " ceiling " characters")
-                    {:code 400 :length (count v)}))))
+                    {:code 400 :length (count v)})))
+  (storable/assert-storable! what v))
 
 (defn- validate-body!
   "A body may be empty (a guideline can be created from its title and written
@@ -110,7 +112,8 @@
     (throw (ex-info "Guideline body must be a string" {:code 400})))
   (when (> (count body) max-body-length)
     (throw (ex-info (str "Guideline body exceeds " max-body-length " characters")
-                    {:code 400 :length (count body)}))))
+                    {:code 400 :length (count body)})))
+  (storable/assert-storable! "Guideline body" body))
 
 ;; ============================================================
 ;; Mutations

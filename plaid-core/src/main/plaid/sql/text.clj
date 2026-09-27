@@ -32,7 +32,8 @@
             [plaid.sql.crud :as crud]
             [plaid.sql.metadata :as metadata]
             [plaid.sql.operation :as op :refer [submit-operation!]]
-            [plaid.util.codepoint :as cp])
+            [plaid.util.codepoint :as cp]
+            [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get]))
 
 (def attr-keys [:text/id
@@ -145,6 +146,7 @@
       ;; caller input; `body-str` is the validated string used for INSERT.
       (when-not (or (nil? body) (string? body))
         (throw (ex-info "Text body must be a string." {:body body :code 400})))
+      (storable/assert-storable! "Text body" body-str)
       (let [doc-row (psc/fetch-by-id tx :documents document)
             txtl-row (psc/fetch-by-id tx :text_layers layer)]
         (when (nil? doc-row)
@@ -253,6 +255,9 @@
              {new-text :text new-tokens :tokens deleted-ids :deleted}
              (ta/apply-text-edits ops text-map tokens)
              new-body (:text/body new-text)
+             ;; Checked on the result, so explicit ops' inserted text is
+             ;; covered as well as a whole new body.
+             _ (storable/assert-storable! "Text body" new-body)
              ;; Code-point length: feeds compensate-partition-layers! /
              ;; validate-partition!, which compare it against (code-point)
              ;; token offsets, so the unit must match.

@@ -9,7 +9,8 @@
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
             [plaid.sql.operation :as op :refer [submit-operation!]]
-            [plaid.sql.metadata :as metadata])
+            [plaid.sql.metadata :as metadata]
+            [plaid.util.storable-text :as storable])
   (:refer-clojure :exclude [get merge]))
 
 (def attr-keys [:vocab-item/id
@@ -111,6 +112,7 @@
                                 :document nil
                                 :description (str "Create vocab item '" form "'")
                                 :user user-id}]
+                        (storable/assert-storable! "Form" form)
                         (when (nil? (psc/fetch-by-id tx :vocab_layers layer))
                           (throw (ex-info (psc/err-msg-not-found "Vocab layer" layer)
                                           {:code 400 :id layer})))
@@ -147,6 +149,7 @@
                        (when (nil? existing)
                          (throw (ex-info (psc/err-msg-not-found "Vocab item" eid)
                                          {:code 404 :id eid})))
+                       (storable/assert-storable! "Form" (:vocab-item/form m))
                        (let [attrs (cond-> {}
                                      (some? (:vocab-item/form m))
                                      (assoc :form (:vocab-item/form m)))
@@ -241,6 +244,7 @@
                      ;; ExceptionInfo to a structured 4xx response.
                      (when (empty? attrs-vec)
                        (throw (ex-info "Bulk create requires at least one vocab item" {:code 400})))
+                     (doseq [a attrs-vec] (storable/assert-storable! "Form" (:vocab-item/form a)))
                      (let [layer-ids (->> attrs-vec (map :vocab-item/layer) distinct vec)
                            existing-layers (set (->> (psc/fetch-ids tx :vocab_layers layer-ids)
                                                      (map :id)))]
@@ -310,6 +314,7 @@
                        (when (not= (count ids) (count (distinct ids)))
                          (throw (ex-info "A vocab item may appear only once in a bulk update"
                                          {:code 400})))
+                       (doseq [it items] (storable/assert-storable! "Form" (:vocab-item/form it)))
                        (let [rows (psc/fetch-ids tx :vocab_items ids)
                              by-id (into {} (map (juxt :id identity)) rows)
                              missing (remove by-id ids)]
