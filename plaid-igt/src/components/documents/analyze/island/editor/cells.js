@@ -462,17 +462,26 @@ export const cells = {
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       if (!cell) return;
       const active = document.activeElement;
+      // What the server holds under the cell now. The refetch has drawn it
+      // into a cell without focus, unless a value put back earlier is still
+      // standing there. `saved` alone is not it when the cell was edited twice
+      // behind the refusal: the second edit was made over the first, which
+      // the server never got. A cell still showing the typed value was not
+      // redrawn (a refetch that gave up), and `saved` stands.
+      let stored = saved;
+      if (cell.igtUnsent) stored = cell.igtUnsent.saved;
+      else if (active !== cell && cell.value !== typed) stored = cell.value;
       const untouchedCell =
         active?.dataset?.cellKey && active.value === (active.dataset.orig ?? '');
       if (active && active !== document.body && active !== cell && !untouchedCell) {
-        this._restoreUnsent(cell, typed, saved);
+        this._restoreUnsent(cell, typed, stored);
         return;
       }
       // Focus first (the focus handler stamps dataset.orig from whatever the
       // reload put in the cell), then restore what was typed over it.
       cell.focus();
       cell.value = typed;
-      cell.dataset.orig = saved;
+      cell.dataset.orig = stored;
       this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
     });
   },

@@ -89,11 +89,11 @@ export class IgtEditor {
     // here so the first paint is right, and kept current by a resize listener
     // below, which is the only thing that repaints this island for the window.
     this._dockFits = wideEnoughToDock();
-    // Transient comment-popover state: which comment is being edited, its
-    // draft, and the composer's draft. Cleared on every open.
+    // Transient comment-popover state: which comment is being edited and its
+    // draft, cleared on every open. Composer drafts are kept per thread
+    // (editor/comments.js).
     this._cmtEditingId = null;
     this._cmtEditDraft = '';
-    this._cmtDraft = '';
     // May the current user add entries to a vocab (needs vocab-maintainer
     // rights on the server)? Linking needs less, so the popover hides its
     // "+ Create" row when this says no. Default: assume yes (dev/tests).
@@ -404,9 +404,14 @@ export class IgtEditor {
   }
 
   // A focused cell whose value differs from what it was focused with (typed
-  // but not yet committed by blur or Enter). A save still on its way is
-  // useSavingGuard's question, which DocumentDetail asks for the document.
+  // but not yet committed by blur or Enter), or any cell holding a value put
+  // back after it was not saved (cells.js _restoreUnsent). A save still on its
+  // way is useSavingGuard's question, which DocumentDetail asks for the
+  // document.
   _hasUnsavedWork() {
+    for (const cell of this.container.querySelectorAll('.igt-field')) {
+      if (cell.igtUnsent) return true;
+    }
     const el = document.activeElement;
     if (!el || !this.container.contains(el) || !el.classList?.contains('igt-field')) return false;
     return (el.value ?? '') !== (el.dataset.orig ?? '');
