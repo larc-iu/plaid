@@ -549,6 +549,33 @@ describe('buildElanDocuments', () => {
     expect(build.documents[0].body).toBe(body);
   });
 
+  it('reads back its own export of a document with no text as an empty document', () => {
+    const doc = {
+      document: { id: 'd1', name: 'Empty', mediaUrl: null, metadata: { Genre: 'notes' } },
+      body: '',
+      sortedSentences: [],
+      alignmentTokens: [],
+    };
+    const xml = buildEafDocument(
+      doc,
+      {
+        orthographies: [],
+        wordFields: [],
+        morphFields: [],
+        sentFields: [],
+        segmentMorphemes: false,
+      },
+      { exportedAt: '2026-01-01T00:00:00Z' },
+    );
+    const parsed = [readEaf(xml, 'Empty.eaf')];
+    const { nodes } = compareSchemas(parsed);
+    const roles = suggestRoles(nodes);
+    expect(validateRoles(nodes, roles)).toEqual([]);
+    const { build } = buildFrom([[xml, 'Empty.eaf']]);
+    expect(build.documents).toHaveLength(1);
+    expect(build.documents[0].body).toBe('');
+  });
+
   it('tokenizes on whitespace when the corpus has no word tier', () => {
     const xml = eafXml({
       types: { u: null, ft: 'Symbolic_Association' },

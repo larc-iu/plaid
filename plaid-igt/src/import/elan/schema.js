@@ -364,11 +364,16 @@ export function suggestRoles(nodes) {
   // phrases Included_In it, and taking it gave a document of nothing. Such a
   // tier stands aside for its time-aligned children that do hold text.
   const tops = nodes.filter((n) => !n.parentKey && n.alignable);
-  const candidates = tops.flatMap((n) =>
+  const withText = tops.flatMap((n) =>
     n.filledCount > 0
       ? [n]
       : childrenOf(n.key).filter((c) => c.alignable && c.stereotype && c.filledCount > 0),
   );
+  // A batch in which no tier holds any annotation at all, such as our own
+  // export of documents that have no text yet, still has a sentence tier: the
+  // empty one. Its documents come back empty, as they were. A tier of blank
+  // annotations is not empty in this sense, and still stands aside.
+  const candidates = withText.length ? withText : tops.filter((n) => n.annotationCount === 0);
   const roots = rankRoots(candidates);
   if (!roots.length) return roles;
 
