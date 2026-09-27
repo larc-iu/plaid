@@ -35,7 +35,8 @@
   submit-operation! and is audited. It exists only as a deliberate,
   greppable escape hatch for a future write that genuinely must not be
   audited; think hard before becoming its first caller (the audit log
-  is the history replica's replay source)."
+  is the time-travel source: `plaid.history.read` reconstructs every
+  as-of read from it)."
   nil)
 
 (def ^:dynamic *expected-document-version*
@@ -111,10 +112,9 @@
 ;; POST-IMAGE ONLY: an audit row stores the full post-image of the
 ;; touched row and NOT a pre-image. The prior post-image of the same
 ;; entity IS its pre-image, so storing both was pure redundancy — it
-;; only existed for the (since-removed) XTDB ETL replica. `pre_image`
-;; is therefore left NULL on every row written after this change
-;; (the column is retained for back-compat / forensic spelunking of
-;; old rows; new rows don't populate it). The as-of reader uses only
+;; only existed for the (since-removed) XTDB ETL replica. The
+;; `pre_image` column was dropped (migration
+;; 20260616120000-drop-audit-pre-image). The as-of reader uses only
 ;; post-images (`plaid.history.read`). A `:delete` row consequently
 ;; carries NO image at all (post is nil): the as-of fold treats a
 ;; delete as "entity absent at T", which needs no image. Callers
@@ -134,8 +134,8 @@
 ;; no fold — the deletion implies the junction state is gone.
 ;; ----------------------------------------------------------------
 
-;; The batched INSERT specifies 9 columns per row (every audit column
-;; except the never-written `pre_image`), so each row contributes 9
+;; The batched INSERT specifies 9 columns per row (every audit
+;; column), so each row contributes 9
 ;; placeholders. Chunk at 3000 rows (27000 params) to stay under SQLite's
 ;; SQLITE_MAX_VARIABLE_NUMBER (32766). (`plaid.sql.common/bulk-chunk-size`,
 ;; the general 4000, is sized for ~7-column rows.)
@@ -165,7 +165,7 @@
   comment block above). It is still passed in because callers compute it for
   no-op detection (skip when pre == post) and because it supplies the
   `document_id` stamp for `:delete` rows (whose post-image is nil). The
-  `pre_image` table column is left to default NULL."
+  table has no pre-image column."
   [op seq-n target-table target-id change-type pre-image post-image]
   {:id (psc/new-uuid)
    :op_id (:id op)
