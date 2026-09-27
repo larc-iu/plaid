@@ -6,7 +6,7 @@
 // fields when they already exist.
 
 import { useState } from 'react';
-import { AlertTriangle, CircleHelp } from 'lucide-react';
+import { CircleHelp } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import {
@@ -49,7 +49,7 @@ const ROLE_GROUPS = [
 ];
 
 export const SchemaMismatch = ({ comparison, onReset }) => (
-  <Panel tone="error" icon={AlertTriangle} title="These files do not share one tier structure">
+  <Panel tone="error" title="These files do not share one tier structure">
     <p className="mt-1 text-xs">
       Import each structure separately, or make the tiers match in ELAN first.
     </p>
@@ -83,8 +83,7 @@ export const SchemaMismatch = ({ comparison, onReset }) => (
 
 const NearMisses = ({ groups, choices, undecided, editable, onChoose }) => (
   <Panel
-    tone={undecided.length ? 'error' : 'warn'}
-    icon={AlertTriangle}
+    tone={undecided.length ? 'error' : 'warning'}
     title={`${groups.length} pair${groups.length === 1 ? '' : 's'} of tier names read alike`}
   >
     <p className="mt-1 text-xs">
@@ -261,9 +260,7 @@ export const ElanTierReview = ({
                 return note ? (
                   <p
                     className={`pe-[11.5rem] text-end text-xs ${
-                      note.tone === 'warn'
-                        ? 'text-amber-700 dark:text-amber-500'
-                        : 'text-muted-foreground'
+                      note.tone === 'warn' ? 'text-warning-foreground' : 'text-muted-foreground'
                     }`}
                   >
                     {note.text}
@@ -294,7 +291,7 @@ export const ElanProblems = ({ batch }) => {
   return (
     <>
       {problems.length > 0 && (
-        <Panel tone="warn" icon={AlertTriangle} title="Finish the mapping">
+        <Panel tone="warning" title="Finish the mapping">
           <ul className="mt-1 list-inside list-disc text-xs">
             {problems.map((p) => (
               <li key={p}>{p}</li>
@@ -305,8 +302,7 @@ export const ElanProblems = ({ batch }) => {
 
       {build && build.warnings.length > 0 && (
         <Panel
-          tone="warn"
-          icon={AlertTriangle}
+          tone="warning"
           title={`${build.warnings.length} warning${build.warnings.length === 1 ? '' : 's'}`}
         >
           <ul className="mt-1 list-inside list-disc text-xs">
@@ -319,8 +315,7 @@ export const ElanProblems = ({ batch }) => {
 
       {build && build.stats.skipped.length > 0 && (
         <Panel
-          tone="warn"
-          icon={AlertTriangle}
+          tone="warning"
           title={(() => {
             const values = build.stats.skipped.reduce((n, s) => n + s.values, 0);
             const tiers = build.stats.skipped.length;

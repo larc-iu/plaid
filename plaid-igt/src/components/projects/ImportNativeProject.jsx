@@ -10,9 +10,12 @@
 
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Check, RefreshCw } from 'lucide-react';
+import { Upload, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readNativeArchive } from '../../import/native/readArchive';
@@ -103,17 +106,13 @@ export const ImportNativeProject = () => {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">
-            New Project
-          </Link>
-          <span>/</span>
-          <span>Import archive</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects' },
+            { label: 'New Project', to: '/projects/new' },
+            { label: 'Import archive' },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">Import a Plaid IGT archive</h1>
@@ -156,9 +155,8 @@ export const ImportNativeProject = () => {
         )}
 
         {stage === 'parsing' && (
-          <div className="flex items-center justify-center gap-3 rounded-lg border bg-card p-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">Reading archive…</p>
+          <div className="rounded-lg border bg-card p-12 text-center">
+            <Loading label="Reading archive…" className="p-0" />
           </div>
         )}
 
@@ -206,9 +204,9 @@ export const ImportNativeProject = () => {
             />
 
             {stage === 'done' && results && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-                <p className="flex items-center gap-2 font-medium">
-                  <Check className="h-4 w-4" /> Imported {results.imported} document
+              <Notice tone="success" className="p-4">
+                <p className="font-medium">
+                  Imported {results.imported} document
                   {results.imported === 1 ? '' : 's'}
                   {results.skipped ? ` (${results.skipped} already done)` : ''}
                   {results.redone ? ` (${results.redone} redone)` : ''}
@@ -223,7 +221,7 @@ export const ImportNativeProject = () => {
                     )}
                   </ul>
                 )}
-              </div>
+              </Notice>
             )}
 
             <div className="flex justify-end gap-2">

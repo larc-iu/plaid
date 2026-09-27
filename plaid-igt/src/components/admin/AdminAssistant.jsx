@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifyError, humanizeError } from '@/utils/feedback';
@@ -123,7 +124,7 @@ const ConversationDetail = ({ client, row, onBack }) => {
       {error ? (
         <p className="text-sm text-muted-foreground">{error}</p>
       ) : markdown === null ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <Loading className="p-0" />
       ) : (
         <div className="rounded-lg border bg-card p-4">
           <AssistantMarkdown>{markdown}</AssistantMarkdown>

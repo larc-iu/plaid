@@ -8,25 +8,38 @@
 // progress bar and three did not, and the same failure was reported in four
 // wordings.
 
-import { AlertTriangle, Square } from 'lucide-react';
+import { Square } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { notifySuccess } from '@/utils/feedback';
 
-export const Panel = ({ tone = 'muted', icon: Icon, title, children }) => {
-  const tones = {
-    muted: 'border-border bg-muted/40',
-    warn: 'border-amber-500/40 bg-amber-500/10',
-    error: 'border-destructive/40 bg-destructive/10',
-  };
+/**
+ * The boxed notice every wizard step uses: a title line and what goes under
+ * it. `tone` is a shared Notice tone (`warning`, `error`, `success`, `info`),
+ * or `muted` for a plain grey box that asks nothing of the reader. `icon`
+ * replaces the tone's own.
+ */
+export const Panel = ({ tone = 'muted', icon, title, children }) => {
+  const body = (
+    <>
+      {title && <p className="font-medium">{title}</p>}
+      {children}
+    </>
+  );
+  if (tone !== 'muted') {
+    return (
+      <Notice tone={tone} icon={icon} className="p-3">
+        {body}
+      </Notice>
+    );
+  }
+  const Icon = icon;
   return (
-    <div className={`flex items-start gap-2 rounded-md border p-3 text-sm ${tones[tone]}`}>
+    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
       {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0" />}
-      <div className="min-w-0 flex-1">
-        {title && <p className="font-medium">{title}</p>}
-        {children}
-      </div>
+      <div className="min-w-0 flex-1">{body}</div>
     </div>
   );
 };
@@ -52,11 +65,7 @@ export const WarningLog = ({ log }) => {
   // what is readable, not about what was recorded.
   const asText = () => log.map((e) => `${e.document ?? 'Corpus'}\t${e.text}`).join('\n');
   return (
-    <Panel
-      tone="warn"
-      icon={AlertTriangle}
-      title={`${log.length} warning${log.length === 1 ? '' : 's'}`}
-    >
+    <Panel tone="warning" title={`${log.length} warning${log.length === 1 ? '' : 's'}`}>
       <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-background/60 p-2">
         {groups.map((g, gi) => (
           <div key={gi} className={gi ? 'mt-2' : ''}>
@@ -144,7 +153,7 @@ export const ImportRunPanel = ({
 }) => (
   <>
     {runError && stage !== 'running' && (
-      <Panel tone="error" icon={AlertTriangle} title={stopped ? 'Import stopped' : 'Import failed'}>
+      <Panel tone="error" title={stopped ? 'Import stopped' : 'Import failed'}>
         {!stopped && <p className="mt-1 text-xs">{runError}</p>}
         <p className="mt-1 text-xs">Retry continues where it left off.</p>
       </Panel>

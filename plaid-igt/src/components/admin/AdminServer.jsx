@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { formatBytes } from '@/utils/formatBytes';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
@@ -128,7 +129,7 @@ export const AdminServer = ({ client }) => {
     ],
     [rateLimits],
   );
-  if (loading && !report) return <p className="py-8 text-sm text-muted-foreground">Loading…</p>;
+  if (loading && !report) return <Loading className="px-0 py-8" />;
   if (!report) return null;
 
   const { jvm, database, media, backup, settings } = report;

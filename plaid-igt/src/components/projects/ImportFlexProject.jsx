@@ -15,11 +15,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, FileUp, Check, RefreshCw } from 'lucide-react';
+import { Upload, FileUp, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Badge } from '@ui/components/ui/badge';
 import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { notifyError, humanizeError } from '@/utils/feedback';
 import { readFwbackup } from '../../import/flex/fwbackup';
@@ -383,17 +386,13 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">
-            New Project
-          </Link>
-          <span>/</span>
-          <span>{fmt.title}</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects' },
+            { label: 'New Project', to: '/projects/new' },
+            { label: fmt.title },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">{fmt.title}</h1>
@@ -440,9 +439,8 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         )}
 
         {stage === 'parsing' && (
-          <div className="flex items-center justify-center gap-3 rounded-lg border bg-card p-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">{fmt.reading}</p>
+          <div className="rounded-lg border bg-card p-12 text-center">
+            <Loading label={fmt.reading} className="p-0" />
           </div>
         )}
 
@@ -865,22 +863,17 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
             )}
 
             {stage === 'done' && (
-              <div className="rounded-md border border-border bg-muted p-4">
-                <div className="flex items-start gap-2">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-                  <div className="text-sm">
-                    <p className="font-medium">Import complete</p>
-                    <p className="mt-1 text-muted-foreground">
-                      {results?.imported ?? 0} imported
-                      {results?.skipped ? `, ${results.skipped} already present` : ''}
-                      {results?.redone ? `, ${results.redone} redone` : ''}.
-                    </p>
-                    <Button className="mt-3" asChild>
-                      <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <Notice tone="success" className="p-4">
+                <p className="font-medium">Import complete</p>
+                <p className="mt-1 text-muted-foreground">
+                  {results?.imported ?? 0} imported
+                  {results?.skipped ? `, ${results.skipped} already present` : ''}
+                  {results?.redone ? `, ${results.redone} redone` : ''}.
+                </p>
+                <Button className="mt-3" asChild>
+                  <Link to={`/projects/${projectIdRef.current}`}>Open project</Link>
+                </Button>
+              </Notice>
             )}
           </div>
         )}

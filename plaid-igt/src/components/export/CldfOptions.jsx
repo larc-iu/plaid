@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Circle, Minus } from 'lucide-react';
+import { ArrowRight, Circle, Minus } from 'lucide-react';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import {
   Select,
   SelectTrigger,
@@ -113,8 +114,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
   return (
     <div className="flex flex-col gap-4">
       {!languagesSet && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <Notice tone="warning" className="p-3">
           <div>
             <p className="font-medium">This project has no language identity yet</p>
             <p className="text-xs text-muted-foreground">
@@ -126,7 +126,7 @@ export const CldfOptions = ({ options, layers, languages, projectId, onChange })
               .
             </p>
           </div>
-        </div>
+        </Notice>
       )}
 
       <div className="flex flex-col gap-3">

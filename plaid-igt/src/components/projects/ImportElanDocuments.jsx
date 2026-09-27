@@ -26,7 +26,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Upload, Check, RefreshCw, Square, AlertTriangle } from 'lucide-react';
+import { Upload, RefreshCw, Square } from 'lucide-react';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { Panel, WarningLog } from './ImportPanels.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -326,7 +327,7 @@ export const ImportElanDocuments = () => {
   if (loadError) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <Panel tone="error" icon={AlertTriangle} title={loadError} />
+        <Panel tone="error" title={loadError} />
       </div>
     );
   }
@@ -346,17 +347,13 @@ export const ImportElanDocuments = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link to={projectHref} className="hover:text-foreground hover:underline">
-            {project?.name ?? 'Project'}
-          </Link>
-          <span>/</span>
-          <span>Add ELAN documents</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects' },
+            { label: project?.name ?? 'Project', to: projectHref },
+            { label: 'Add ELAN documents' },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">Add ELAN documents</h1>
@@ -442,7 +439,7 @@ export const ImportElanDocuments = () => {
                 <ElanProblems batch={batch} />
 
                 {runError && (
-                  <Panel tone="error" icon={AlertTriangle} title="Import failed">
+                  <Panel tone="error" title="Import failed">
                     <p className="mt-1 text-xs">{runError}</p>
                     <p className="mt-1 text-xs">
                       Retrying continues where it stopped: documents that finished are skipped, and
@@ -494,7 +491,7 @@ export const ImportElanDocuments = () => {
 
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
-            <Panel icon={Check} title="Import complete">
+            <Panel tone="success" title="Import complete">
               <p className="mt-1 text-xs">
                 {results.imported} added
                 {results.copied
@@ -516,8 +513,7 @@ export const ImportElanDocuments = () => {
             ) : (
               results.warnings.length > 0 && (
                 <Panel
-                  tone="warn"
-                  icon={AlertTriangle}
+                  tone="warning"
                   title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
                 >
                   <ul className="mt-1 list-inside list-disc text-xs">

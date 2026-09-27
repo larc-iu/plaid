@@ -10,9 +10,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Check, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Upload, RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { ImportRunPanel, ProjectNameField, ResumeBanner } from './ImportPanels';
 import {
   Select,
@@ -153,17 +156,13 @@ export const ImportCldfProject = () => {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">
-            New Project
-          </Link>
-          <span>/</span>
-          <span>Import CLDF</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects' },
+            { label: 'New Project', to: '/projects/new' },
+            { label: 'Import CLDF' },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">Import a CLDF dataset</h1>
@@ -215,9 +214,8 @@ export const ImportCldfProject = () => {
         )}
 
         {stage === 'parsing' && (
-          <div className="flex items-center justify-center gap-3 rounded-lg border bg-card p-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-            <p className="text-sm text-muted-foreground">Reading dataset…</p>
+          <div className="rounded-lg border bg-card p-12 text-center">
+            <Loading label="Reading dataset…" className="p-0" />
           </div>
         )}
 
@@ -373,8 +371,7 @@ export const ImportCldfProject = () => {
             )}
 
             {build.documents.length === 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <Notice tone="warning" className="p-3">
                 <div>
                   {build.lexicon.length > 0 ? (
                     <>
@@ -395,18 +392,17 @@ export const ImportCldfProject = () => {
                     </>
                   )}
                 </div>
-              </div>
+              </Notice>
             )}
 
             {build.warnings.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <ul className="flex list-disc flex-col gap-1 pl-4">
+              <Notice tone="warning" className="p-3">
+                <ul className="flex list-disc flex-col gap-1 ps-4">
                   {build.warnings.map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}
                 </ul>
-              </div>
+              </Notice>
             )}
 
             {build.stats.unalignedWords > 0 && (
@@ -426,9 +422,9 @@ export const ImportCldfProject = () => {
             />
 
             {stage === 'done' && results && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-                <p className="flex items-center gap-2 font-medium">
-                  <Check className="h-4 w-4" /> Imported {results.imported} text
+              <Notice tone="success" className="p-4">
+                <p className="font-medium">
+                  Imported {results.imported} text
                   {results.imported === 1 ? '' : 's'}
                   {results.skipped ? ` (${results.skipped} already done)` : ''}
                   {results.redone ? ` (${results.redone} redone)` : ''}
@@ -443,7 +439,7 @@ export const ImportCldfProject = () => {
                     )}
                   </ul>
                 )}
-              </div>
+              </Notice>
             )}
 
             <div className="flex justify-end gap-2">

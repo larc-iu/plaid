@@ -5,6 +5,7 @@ import { Textarea } from '@ui/components/ui/textarea';
 import { Input } from '@ui/components/ui/input';
 import { Button } from '@ui/components/ui/button';
 import { Label } from '@ui/components/ui/label';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { cn } from '@ui/lib/utils';
 import { notifySuccess } from '@/utils/feedback';
 import { useDocumentCtx } from '../contexts/DocumentContext.jsx';
@@ -205,12 +206,12 @@ export const TimeAlignmentPopover = ({
           </div>
 
           {mode === 'align' && !canAlign() ? (
-            <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3">
-              <p className="text-sm">
+            <Notice tone="warning" className="p-3">
+              <p>
                 No unaligned text is available for this time range. Everything between the
                 neighboring segments already belongs to a segment.
               </p>
-            </div>
+            </Notice>
           ) : (
             <>
               <div className="flex flex-col gap-1.5">

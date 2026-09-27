@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Info, Check } from 'lucide-react';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import {
   Select,
   SelectContent,
@@ -93,25 +94,15 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
   };
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center gap-6">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-        <p className="text-sm">Loading project layers...</p>
-      </div>
-    );
+    return <Loading label="Loading project layers..." className="p-0 text-center" />;
   }
 
   if (error) {
     return (
-      <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">
-        <div className="flex items-start gap-2">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <div className="text-sm">
-            <p className="font-medium text-destructive">Error</p>
-            <p className="mt-1 text-muted-foreground">{error}</p>
-          </div>
-        </div>
-      </div>
+      <Notice tone="error" className="p-4">
+        <p className="font-medium">Error</p>
+        <p className="mt-1 text-muted-foreground">{error}</p>
+      </Notice>
     );
   }
 
@@ -120,19 +111,14 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
   if (adoptedBaseline) {
     return (
       <div className="flex flex-col gap-6">
-        <div className="rounded-md border border-border bg-muted p-4">
-          <div className="flex items-start gap-2">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-            <div className="text-sm">
-              <p className="font-medium">This project already has a compatible text layer</p>
-              <p className="mt-1 text-muted-foreground">
-                Plaid IGT will reuse the existing baseline text layer and automatically create any
-                word, morpheme, sentence, and alignment layers it needs. There's nothing to
-                configure here. Continue to the next step.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Notice tone="info" className="p-4">
+          <p className="font-medium">This project already has a compatible text layer</p>
+          <p className="mt-1 text-muted-foreground">
+            Plaid IGT will reuse the existing baseline text layer and automatically create any word,
+            morpheme, sentence, and alignment layers it needs. There's nothing to configure here.
+            Continue to the next step.
+          </p>
+        </Notice>
       </div>
     );
   }

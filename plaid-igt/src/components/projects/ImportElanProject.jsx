@@ -20,7 +20,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Upload, Check, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Upload, RefreshCw } from 'lucide-react';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import {
   ImportRunPanel,
   Panel,
@@ -151,17 +152,13 @@ export const ImportElanProject = () => {
         }}
       />
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <Link to="/projects/new" className="hover:text-foreground hover:underline">
-            New Project
-          </Link>
-          <span>/</span>
-          <span>Import ELAN</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: '/projects' },
+            { label: 'New Project', to: '/projects/new' },
+            { label: 'Import ELAN' },
+          ]}
+        />
 
         <div>
           <h1 className="text-2xl font-bold">Import an ELAN corpus</h1>
@@ -289,7 +286,7 @@ export const ImportElanProject = () => {
 
         {stage === 'done' && results && (
           <div className="flex flex-col gap-4">
-            <Panel icon={Check} title="Import complete">
+            <Panel tone="success" title="Import complete">
               <p className="mt-1 text-xs">
                 {results.imported} imported
                 {results.skipped ? `, ${results.skipped} already done` : ''}
@@ -301,8 +298,7 @@ export const ImportElanProject = () => {
             ) : (
               results.warnings.length > 0 && (
                 <Panel
-                  tone="warn"
-                  icon={AlertTriangle}
+                  tone="warning"
                   title={`${results.warnings.length} warning${results.warnings.length === 1 ? '' : 's'}`}
                 >
                   <ul className="mt-1 list-inside list-disc text-xs">

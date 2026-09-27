@@ -1,7 +1,7 @@
-import { AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
 import { Switch } from '@ui/components/ui/switch';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { resolveFieldLang } from '@/domain/fieldNames';
 import {
   Select,
@@ -124,16 +124,12 @@ const FieldMapGroup = ({
         </div>
       ))}
       {clashes(fields, map, langs, scope).map((c) => (
-        <div
-          key={`${c.label}-${c.lang}`}
-          className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        <Notice key={`${c.label}-${c.lang}`} tone="warning" className="p-2 text-xs">
           <span>
             {c.fields.join(' and ')} both go out as {c.label} in <code>{c.lang}</code>. FLEx keeps
             one value per writing system. Give one of them its own tag.
           </span>
-        </div>
+        </Notice>
       ))}
     </div>
   );

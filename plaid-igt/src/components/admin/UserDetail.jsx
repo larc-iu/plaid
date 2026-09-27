@@ -5,6 +5,7 @@ import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { UserAvatar } from '@ui/components/shared/UserAvatar';
 import { DataTable } from '@ui/components/shared/data-table';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { timeAgo, fullTimestamp } from '@ui/lib/formatTime.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -88,7 +89,7 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
       </Button>
 
       {loading && !user ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <Loading className="p-0" />
       ) : !user ? null : (
         <>
           <div className="flex items-center gap-3">
@@ -187,7 +188,12 @@ export const UserDetail = ({ client, userId, onBack, onEdit, dialogs }) => {
                 headerClassName: 'w-24',
                 align: 'right',
                 render: (t) => (
-                  <Button size="sm" variant="ghost" onClick={() => revokeToken(t)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => revokeToken(t)}
+                  >
                     Revoke
                   </Button>
                 ),

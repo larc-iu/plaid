@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Info, Layers, FileText, Languages, List, BookOpen, Check } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { cn } from '@ui/lib/utils';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 
 // Step components
 import { BasicInfoStep } from './setup/BasicInfoStep';
@@ -139,23 +140,17 @@ export const ProjectSetup = () => {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="flex flex-col gap-8">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          {isNewProject ? (
-            <>
-              <Link to="/projects/new" className="hover:text-foreground hover:underline">
-                New Project
-              </Link>
-              <span>/</span>
-              <span>Start from scratch</span>
-            </>
-          ) : (
-            <span>Project Setup</span>
-          )}
-        </nav>
+        <Breadcrumb
+          items={
+            isNewProject
+              ? [
+                  { label: 'Projects', to: '/projects' },
+                  { label: 'New Project', to: '/projects/new' },
+                  { label: 'Start from scratch' },
+                ]
+              : [{ label: 'Projects', to: '/projects' }, { label: 'Project Setup' }]
+          }
+        />
 
         <div>
           <h1 className="text-2xl font-bold">

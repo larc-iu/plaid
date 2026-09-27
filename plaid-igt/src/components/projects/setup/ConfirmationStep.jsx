@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, X, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { executeProjectSetup } from './executeSetup';
 import { IGNORED_TOKEN_MODES } from '@/domain/igtConfig';
@@ -124,13 +126,13 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">Token Layer:</p>
-              <Badge className="border-transparent bg-green-100 text-green-700">
+              <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Tokens
               </Badge>
             </div>
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">Morpheme Layer:</p>
-              <Badge className="border-transparent bg-green-100 text-green-700">
+              <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Morphemes
               </Badge>
             </div>
@@ -156,7 +158,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
                 Existing: {layerData.selectedTextLayerId}
               </Badge>
             ) : layerData.textLayerType === 'new' ? (
-              <Badge className="border-transparent bg-green-100 text-green-700">
+              <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Text
               </Badge>
             ) : (
@@ -165,11 +167,15 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
           </div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Token Layer:</p>
-            <Badge className="border-transparent bg-green-100 text-green-700">Main Tokens</Badge>
+            <Badge className="border-transparent bg-success/15 text-success-foreground">
+              Main Tokens
+            </Badge>
           </div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium">Morpheme Layer:</p>
-            <Badge className="border-transparent bg-green-100 text-green-700">Main Morphemes</Badge>
+            <Badge className="border-transparent bg-success/15 text-success-foreground">
+              Main Morphemes
+            </Badge>
           </div>
         </div>
       </div>
@@ -304,18 +310,12 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
   if (isComplete) {
     return (
       <div className="flex flex-col gap-6">
-        <div className="rounded-md border border-border bg-muted p-4">
-          <div className="flex items-start gap-2">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600" />
-            <div className="text-sm">
-              <p className="font-medium">Setup Complete!</p>
-              <p className="mt-1 text-muted-foreground">
-                Your project has been successfully configured with Plaid IGT. Redirecting to
-                project...
-              </p>
-            </div>
-          </div>
-        </div>
+        <Notice tone="success" className="p-4">
+          <p className="font-medium">Setup Complete!</p>
+          <p className="mt-1 text-muted-foreground">
+            Your project has been successfully configured with Plaid IGT. Redirecting to project...
+          </p>
+        </Notice>
         <div className="rounded-lg border bg-card p-4">
           <p className="mb-2 font-medium">Setup Summary</p>
           <div className="flex flex-col gap-2">
@@ -353,10 +353,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             )}
           </div>
         </div>
-        <div className="flex items-center justify-center gap-2">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-          <p className="text-sm text-muted-foreground">Redirecting to project...</p>
-        </div>
+        <Loading label="Redirecting to project..." className="p-0 text-center" />
       </div>
     );
   }
@@ -391,30 +388,22 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       <hr className="border-border" />
 
       {errors.length > 0 && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/5 p-4">
-          <div className="flex items-start gap-2">
-            <X className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <div className="text-sm">
-              <p className="font-medium text-destructive">Setup Errors</p>
-              <div className="mt-1 flex flex-col gap-2">
-                {errors.map((error, index) => (
-                  <p key={index} className="text-muted-foreground">
-                    {error}
-                  </p>
-                ))}
-              </div>
-            </div>
+        <Notice tone="error" className="p-4">
+          <p className="font-medium">Setup Errors</p>
+          <div className="mt-1 flex flex-col gap-2">
+            {errors.map((error, index) => (
+              <p key={index} className="text-muted-foreground">
+                {error}
+              </p>
+            ))}
           </div>
-        </div>
+        </Notice>
       )}
 
       {isExecuting && (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-foreground" />
-              <p className="font-medium">Executing Setup...</p>
-            </div>
+            <p className="font-medium">Executing Setup...</p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
             </div>

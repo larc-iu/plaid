@@ -4,6 +4,7 @@
 
 import { Link } from 'react-router-dom';
 import { PenLine, FileUp, FileText, Archive, Table2, AudioLines, ChevronRight } from 'lucide-react';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 
 const OPTIONS = [
@@ -55,13 +56,7 @@ export const NewProjectChooser = () => {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="flex flex-col gap-6">
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground hover:underline">
-            Projects
-          </Link>
-          <span>/</span>
-          <span>New Project</span>
-        </nav>
+        <Breadcrumb items={[{ label: 'Projects', to: '/projects' }, { label: 'New Project' }]} />
 
         <div>
           <h1 className="text-2xl font-bold">New Project</h1>

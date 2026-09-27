@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, AudioLines, FileText, Film, Plus, X } from 'lucide-react';
+import { AudioLines, FileText, Film, Plus, X } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Progress } from '@ui/components/ui/progress';
 import { formatBytes } from '@/utils/formatBytes';
@@ -25,7 +25,7 @@ const convertedBytes = (seconds) =>
   Number.isFinite(seconds) && seconds > 0 ? estimateMp3Bytes(seconds) : null;
 
 const TONES = {
-  warn: 'text-amber-700 dark:text-amber-500',
+  warn: 'text-warning-foreground',
   error: 'text-destructive',
   muted: 'text-muted-foreground',
 };
@@ -255,8 +255,7 @@ export const ElanFiles = ({
 
       {importedCount > 0 && onPriorMode && (
         <Panel
-          tone="warn"
-          icon={AlertTriangle}
+          tone="warning"
           title={`${importedCount} of these ${importedCount === 1 ? 'files was' : 'files were'} imported before`}
         >
           <div role="radiogroup" className="mt-2 flex flex-col gap-1 text-xs">
