@@ -333,6 +333,7 @@ test('B3-01/04: arrows move the highlight and clamp; Tab stays in the search box
   // Below the create row a word's popover offers the multi-word expression
   // row; the highlight clamps on that last row.
   const mweRow = page.locator('.igt-vocab-pop__mwe').last();
+  await expect(mweRow).toHaveText('Gather into a multi-word expression');
   for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
   await expect(mweRow).toHaveClass(/is-active/);
   await expect(createRow(page)).not.toHaveClass(/is-active/);

@@ -334,7 +334,7 @@ export const vocabPopover = {
       if (sentence) {
         extraRows.push({
           kind: 'start',
-          label: 'Part of a multi-word expression…',
+          label: 'Gather into a multi-word expression',
           title: 'Gather this word with others into one multi-word expression',
           onSelect: () => this._startMweSelection(sentence.id, tokenId),
         });
