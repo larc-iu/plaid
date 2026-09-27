@@ -259,6 +259,9 @@ const DocumentEditor = () => {
   // another screen (the queue outlives this one). The Analyze grid asks as
   // well, for a cell typed in and not yet left.
   useSavingGuard(liveDoc);
+  // Once the reader has left, a refetch after a refused edit has nothing left
+  // to put right, and stops (DocumentModel.hold).
+  useEffect(() => liveDoc?.hold(), [liveDoc]);
   // A comment post, edit or delete on its way, from any thread (the grid's
   // popover among them), asks the same way.
   useSavingGuard(comments);

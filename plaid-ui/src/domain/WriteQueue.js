@@ -17,6 +17,17 @@
 // the server does not have, and closing the tab must still ask. A caller that
 // passes no `resync` refetches inside `refused` and gets one try.
 //
+// Only the network is waited out that way. A refetch that fails for any other
+// reason (the server's error, a bug in the refetch itself) is given a few
+// tries and then given up, and `onOutOfStep(err)` says the screen no longer
+// matches the server. Retrying that forever would keep "Saving" and the
+// close-tab question on for good.
+//
+// Once the screen showing the queue's work has gone (`letGo`), nothing is
+// left for a refetch to put right. The queue still sends what it holds, but
+// refetches nothing, and a retry waiting its turn stops at once. `hold` says
+// whether a refetch was left undone meanwhile, for a screen that comes back.
+//
 // `shown: false` is for a write that put nothing on screen (a copy). Nothing
 // was planned on it, so a refusal ahead of it does not skip it, and its own
 // failure takes nothing back and skips nothing behind it.
@@ -39,6 +50,21 @@ const FINAL_STATUSES = new Set([401, 403, 404]);
 // How long to wait before retrying a refetch: 1 s, 2 s, 4 s, then every 15 s.
 const backoff = (attempt) => Math.min(1000 * 2 ** attempt, 15000);
 
+// How many tries a refetch gets when it fails for a reason other than the
+// network.
+const TRIES = 4;
+
+// A failure that is the network's, and passes once it is back: the client's
+// status 0, a gateway that cannot reach the server, fetch's own TypeError.
+// The same test as `isUnreachable` in lib/errors.js, which this file cannot
+// import.
+const isUnreachable = (err) => {
+  const status = err?.status;
+  if (status === 0 || status === 502 || status === 503 || status === 504) return true;
+  const msg = String(err?.message || err || '');
+  return /Failed to fetch|NetworkError|timed out|Unable to read error response/i.test(msg);
+};
+
 export class WriteQueue {
   /**
    * `onSavingChange(saving)` runs when the queue starts and when it drains.
@@ -46,9 +72,16 @@ export class WriteQueue {
    * asked for the server's view with `reloadWhenDrained`. It runs before the
    * queue reports itself drained, so `isSaving` holds through it, and like a
    * `resync` it is tried again until it lands. `retryDelay(attempt)` is the
-   * wait in milliseconds before each retry.
+   * wait in milliseconds before each retry. `onOutOfStep(err)` runs when a
+   * refetch is given up for good, the screen still showing what the server
+   * may not have.
    */
-  constructor({ onSavingChange = null, reloadDrained = null, retryDelay = backoff } = {}) {
+  constructor({
+    onSavingChange = null,
+    reloadDrained = null,
+    retryDelay = backoff,
+    onOutOfStep = null,
+  } = {}) {
     this._tail = Promise.resolve();
     // Sends waiting or in flight.
     this._count = 0;
@@ -62,7 +95,34 @@ export class WriteQueue {
     this._onSavingChange = onSavingChange;
     this._reloadDrained = reloadDrained;
     this._retryDelay = retryDelay;
+    this._onOutOfStep = onOutOfStep;
     this._listeners = new Set();
+    // Whether the screen showing this queue's work has gone (`letGo`), and
+    // whether a refetch was left undone since.
+    this._letGo = false;
+    this._missed = false;
+    // Ends the wait before a retry early.
+    this._wake = null;
+  }
+
+  /**
+   * The screen showing this queue's work has gone. What is queued is still
+   * sent, but nothing is refetched, and a refetch being retried stops.
+   */
+  letGo() {
+    this._letGo = true;
+    if (this._wake) this._wake();
+  }
+
+  /**
+   * A screen shows this queue's work again. True when a refetch was left
+   * undone while it was let go, so the caller refetches.
+   */
+  hold() {
+    this._letGo = false;
+    const missed = this._missed;
+    this._missed = false;
+    return missed;
   }
 
   get isSaving() {
@@ -117,13 +177,13 @@ export class WriteQueue {
           console.error('Reload after a refused write also failed:', refetchErr);
         }
         if (!shown) return false;
-        if (resync) await this._untilLanded(resync, 'Reload after a refused write');
+        if (resync) await this._refetch(resync, 'Reload after a refused write');
         const behind = this._behindRefusal();
         if (behind > 0 && notSent) notSent(behind);
         return false;
       } finally {
         if (this._count === 1 && this.reloadWhenDrained && this._reloadDrained) {
-          await this._untilLanded(this._reloadDrained, 'Reload after a write');
+          await this._refetch(this._reloadDrained, 'Reload after a write');
         }
         this._count -= 1;
         if (this._count === 0) this._savingChanged(false);
@@ -152,19 +212,44 @@ export class WriteQueue {
     return behind;
   }
 
-  // Run `fn` until it lands, waiting longer after each failure. Gives up only
-  // on an answer no retry can change.
-  async _untilLanded(fn, what) {
+  // Run the refetch `fn` until it lands, waiting longer after each failure.
+  // Stops on an answer no retry can change, after a few tries for a failure
+  // that is not the network's (and says so), and as soon as the queue is let
+  // go.
+  async _refetch(fn, what) {
     for (let attempt = 0; ; attempt += 1) {
+      if (this._letGo) {
+        this._missed = true;
+        this.reloadWhenDrained = false;
+        return;
+      }
       try {
         await fn();
         return;
       } catch (err) {
         console.error(`${what} failed:`, err);
         if (FINAL_STATUSES.has(err?.status)) return;
-        await new Promise((resolve) => setTimeout(resolve, this._retryDelay(attempt)));
+        if (!isUnreachable(err) && attempt + 1 >= TRIES) {
+          if (this._onOutOfStep) this._onOutOfStep(err);
+          return;
+        }
+        await this._sleep(this._retryDelay(attempt));
       }
     }
+  }
+
+  // Wait `ms`, or less when the queue is let go meanwhile.
+  _sleep(ms) {
+    if (this._letGo) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        this._wake = null;
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
+      this._wake = done;
+    });
   }
 
   /** Resolves once nothing is queued. Never call it from inside a send. */

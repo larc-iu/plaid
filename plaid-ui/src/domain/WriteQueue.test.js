@@ -14,6 +14,8 @@ const deferred = () => {
   });
   return { promise, resolve, reject };
 };
+// What the client throws when the server cannot be reached.
+const offline = () => Object.assign(new Error('Network error: Failed to fetch'), { status: 0 });
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 };
@@ -86,7 +88,7 @@ describe('WriteQueue', () => {
     const q = new WriteQueue({ retryDelay: () => 20 });
     let fails = 3;
     const resync = vi.fn(async () => {
-      if (fails-- > 0) throw new Error('offline');
+      if (fails-- > 0) throw offline();
     });
     const a = q.push(
       async () => {
@@ -226,7 +228,7 @@ describe('WriteQueue', () => {
   it('tries a failed refetch once drained again until it lands', async () => {
     let fails = 2;
     const reloadDrained = vi.fn(async () => {
-      if (fails-- > 0) throw new Error('offline');
+      if (fails-- > 0) throw offline();
     });
     const q = new WriteQueue({ reloadDrained, retryDelay: () => 0 });
     await q.push(async () => {
@@ -234,6 +236,134 @@ describe('WriteQueue', () => {
     });
     await q.whenIdle();
     expect(reloadDrained).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps retrying a resync while the server cannot be reached, however long that is', async () => {
+    const outOfStep = vi.fn();
+    const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+    let fails = 9;
+    const resync = vi.fn(async () => {
+      if (fails-- > 0) throw offline();
+    });
+    const a = q.push(
+      async () => {
+        throw offline();
+      },
+      { resync },
+    );
+    expect(await a).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(10);
+    expect(outOfStep).not.toHaveBeenCalled();
+  });
+
+  it('gives up on a resync the server keeps failing, says the screen is out of step, and still reports what was not sent', async () => {
+    const outOfStep = vi.fn();
+    const notSent = vi.fn();
+    const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+    const boom = Object.assign(new Error('HTTP 500 boom'), { status: 500 });
+    const resync = vi.fn(async () => {
+      throw boom;
+    });
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync, notSent },
+    );
+    const b = q.push(async () => {});
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(4);
+    expect(outOfStep).toHaveBeenCalledTimes(1);
+    expect(outOfStep).toHaveBeenCalledWith(boom);
+    expect(notSent).toHaveBeenCalledWith(1);
+    expect(q.isSaving).toBe(false);
+  });
+
+  it('gives up on a resync that fails with a bug of its own', async () => {
+    const outOfStep = vi.fn();
+    const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+    const resync = vi.fn(async () => {
+      throw new TypeError("Cannot read properties of undefined (reading 'layers')");
+    });
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    expect(await a).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(4);
+    expect(outOfStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up on a refetch once drained that the server keeps failing', async () => {
+    const outOfStep = vi.fn();
+    const reloadDrained = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 500 boom'), { status: 500 });
+    });
+    const q = new WriteQueue({ reloadDrained, retryDelay: () => 0, onOutOfStep: outOfStep });
+    await q.push(async () => {
+      q.reloadWhenDrained = true;
+    });
+    await q.whenIdle();
+    expect(reloadDrained).toHaveBeenCalledTimes(4);
+    expect(outOfStep).toHaveBeenCalledTimes(1);
+    expect(q.isSaving).toBe(false);
+  });
+
+  it('stops retrying a resync once let go, and reports what it was holding', async () => {
+    const q = new WriteQueue({ retryDelay: () => 60000 });
+    const notSent = vi.fn();
+    const resync = vi.fn(async () => {
+      throw offline();
+    });
+    const a = q.push(
+      async () => {
+        throw offline();
+      },
+      { resync, notSent },
+    );
+    const b = q.push(async () => {});
+    await flush();
+    expect(q.isSaving).toBe(true);
+    q.letGo();
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(1);
+    expect(notSent).toHaveBeenCalledWith(1);
+    expect(q.isSaving).toBe(false);
+    // Held again, the queue says a refetch was left undone.
+    expect(q.hold()).toBe(true);
+    expect(q.hold()).toBe(false);
+  });
+
+  it('once let go, still sends what is queued and does not refetch for a screen that is gone', async () => {
+    const reloadDrained = vi.fn(async () => {});
+    const q = new WriteQueue({ reloadDrained });
+    const resync = vi.fn(async () => {});
+    const sent = [];
+    const held = deferred();
+    const a = q.push(async () => {
+      await held.promise;
+      sent.push('a');
+      q.reloadWhenDrained = true;
+    });
+    const b = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    q.letGo();
+    held.resolve();
+    expect(await a).toBe(true);
+    expect(await b).toBe(false);
+    await q.whenIdle();
+    expect(sent).toEqual(['a']);
+    expect(resync).not.toHaveBeenCalled();
+    expect(reloadDrained).not.toHaveBeenCalled();
+    expect(q.hold()).toBe(true);
   });
 
   it('is watched the way useSavingGuard watches a document', async () => {

@@ -66,7 +66,10 @@ export class DocumentModel {
         this._emit();
       },
       reloadDrained: () => this._reloadDrained(),
+      onOutOfStep: (err) => this._reportOutOfStep(err),
     });
+    // How many screens show this document right now (`hold`).
+    this._holds = 0;
     // The screen's error channel, `(message, err, label)`: the label is what
     // was being done and `err` the client's error, for the screen to word.
     // Null until the screen wires it. The domain layer shows nothing itself.
@@ -209,6 +212,37 @@ export class DocumentModel {
     return ok && created?.id ? { ...created, name: next } : null;
   }
 
+  /**
+   * Hold this document while a screen shows it. Returns the release.
+   *
+   * Once no screen holds it, a refetch has nothing left to put right: the
+   * queue still sends what it holds (useSavingGuard keeps the close-tab
+   * question on until it has), but a refetch after a refusal stops, even one
+   * retrying while offline, so the question does not stay on with nothing
+   * left to lose. The edits queued behind that refusal are reported as not
+   * saved at that point. With no `onError` to report them through, the
+   * document keeps going as if held.
+   *
+   * The release takes effect a moment later, so a screen that lets go and
+   * holds again at once (StrictMode, a remount) is not let go at all. Held
+   * again after a refetch was left undone, the document refetches.
+   */
+  hold() {
+    this._holds += 1;
+    if (this._writes.hold()) {
+      this._reload().catch((err) => console.error('Reload on coming back failed:', err));
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this._holds -= 1;
+      setTimeout(() => {
+        if (this._holds === 0 && this.onError) this._writes.letGo();
+      }, 0);
+    };
+  }
+
   // ----- subscription bridge (useSyncExternalStore-compatible) -----
   // Arrow-field properties so identities stay stable across renders of the
   // same instance.
@@ -284,6 +318,14 @@ export class DocumentModel {
     const message =
       count === 1 ? '1 later edit was not saved.' : `${count} later edits were not saved.`;
     if (this.onError) this.onError(message, null, 'Not saved');
+  }
+
+  // A refetch was given up (WriteQueue's `onOutOfStep`): the server failed it
+  // time after time, for a reason other than the network. The screen still
+  // shows what was typed, and may show what the server does not have.
+  _reportOutOfStep(err) {
+    console.error('The document could not be refetched:', err);
+    if (this.onError) this.onError('Reload the page to see what is saved.', null, 'Out of date');
   }
 
   // An optimistic write in two halves. The caller has already shown the edit
