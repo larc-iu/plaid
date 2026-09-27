@@ -45,7 +45,9 @@
 // Any other version, a document added or a document gone, is a save made
 // somewhere else (another person, another tab, a script, an import), and
 // the project is counted again. The question is asked when a document is
-// opened and when the tab comes back into view. Every write to a document's
+// opened, when the tab comes back into view, and every few minutes while a
+// document stays open and is being worked in (the editor asks on each
+// render). Every write to a document's
 // content bumps its version, deleting or respelling an entry included, so
 // the versions see every change the counts can show. An entry's own fields
 // changing does not bump a document, and does not change the counts either.
@@ -63,6 +65,10 @@ import {
   valuePrecedentQueries,
 } from './precedent.js';
 import { clearStored, loginHash, readStored, writeStored } from './precedentStore.js';
+
+// While a document stays open, whether the project changed is asked again
+// after this long. The question is one list read, the count is not.
+const CHECK_EVERY_MS = 5 * 60_000;
 
 // A read that failed is asked again after this, and not before: the editor
 // asks on every render, and a server that is failing should not hear about
@@ -364,7 +370,9 @@ export function openPrecedent(doc, { check = false } = {}) {
     rec.opened = baselineOf(doc);
     if (!project.promise && !rec.promise) return checkProject(entry, doc);
   }
-  if (check && !project.promise) return checkProject(entry, doc);
+  if ((check || Date.now() - project.checkedAt > CHECK_EVERY_MS) && !project.promise) {
+    return checkProject(entry, doc);
+  }
   return project.promise || rec.promise || entry.checking || null;
 }
 

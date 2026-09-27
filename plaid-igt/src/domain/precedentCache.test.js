@@ -251,6 +251,33 @@ describe('precedentCache', () => {
       expect(gloss(precedentBase(a))).toEqual(new Map([['eat', 1]]));
     });
 
+    it('asks again every few minutes while a document stays open', async () => {
+      const glossByDoc = { a: [], b: [['kai', 'go']] };
+      const versions = {};
+      const client = fakeClient(glossByDoc, versions);
+      const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      const a = docOf(client, 'a');
+      await openPrecedent(a);
+      const lists = client.projects.listDocuments.mock.calls.length;
+      // Renders within the few minutes ask nothing.
+      now.mockReturnValue(1_000_000 + 60_000);
+      expect(openPrecedent(a)).toBeNull();
+      expect(client.projects.listDocuments.mock.calls.length).toBe(lists);
+      // Past them, a render asks, and counts nothing when nothing changed.
+      now.mockReturnValue(1_000_000 + 6 * 60_000);
+      await openPrecedent(a);
+      expect(client.projects.listDocuments.mock.calls.length).toBe(lists + 1);
+      expect(projectQueries(client)).toHaveLength(1);
+      // Someone reglosses b: the next ask, minutes later, counts again.
+      glossByDoc.b = [['kai', 'eat']];
+      versions.b = 2;
+      now.mockReturnValue(1_000_000 + 12 * 60_000);
+      await openPrecedent(a);
+      now.mockRestore();
+      expect(projectQueries(client)).toHaveLength(2);
+      expect(gloss(precedentBase(a))).toEqual(new Map([['eat', 1]]));
+    });
+
     it('keeps what it holds when the question cannot be answered', async () => {
       const client = fakeClient({ a: [], b: [['kai', 'go']] });
       const a = docOf(client, 'a');
