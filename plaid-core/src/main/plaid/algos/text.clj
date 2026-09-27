@@ -1,5 +1,6 @@
 (ns plaid.algos.text
-  (:require [editscript.core :as e]
+  (:require [clojure.set :as set]
+            [editscript.core :as e]
             [plaid.util.codepoint :as cp]))
 
 (defn- editscript-diff
@@ -461,7 +462,11 @@
   point, and one an insert falls strictly inside of. It also disturbs a token
   whose neighbouring letter it changes: inserting `t ta` after the `ta` of
   `cat ta bad` leaves that token on the start of the new `tat`, where
-  inserting `tat ` before it leaves it between the same two spaces."
+  inserting `tat ` before it leaves it between the same two spaces. An
+  insert where two tokens of one layer meet disturbs both, even with the
+  same letters either side: an `a` typed at the end of `aa`, glossed as
+  `a` + `a`, would otherwise go between the two morphemes, inside the word
+  but in neither."
   [^ints o tokens edit]
   (let [n (alength o)
         ;; The edge of the text and a space both only separate, so a word
@@ -481,13 +486,26 @@
                            :else false))
                        tokens)))
       (let [a (:at edit)
-            v (.toArray (.codePoints ^String (:value edit)))]
-        (count (filter (fn [{:token/keys [begin end]}]
+            v (.toArray (.codePoints ^String (:value edit)))
+            ;; Two tokens of one layer that meet between two letters are
+            ;; pulled apart by whatever is put between them, even the letters
+            ;; they already had beside them. (Where a space or the edge of the
+            ;; text is on one side, as between two sentences of a partition,
+            ;; the neighbouring letters tell.)
+            layers-at (fn [k] (into #{} (comp (filter #(and (< (:token/begin %) (:token/end %))
+                                                            (= a (k %))))
+                                              (map :token/layer))
+                                    tokens))
+            met (if (or (= :apart (at (dec a))) (= :apart (at a)))
+                  #{}
+                  (set/intersection (layers-at :token/end) (layers-at :token/begin)))]
+        (count (filter (fn [{:token/keys [begin end layer]}]
                          (cond
                            (= begin end) false
                            (< begin a end) true
-                           (= end a) (not= (at a) (apart (aget v 0)))
-                           (= begin a) (not= (at (dec a)) (apart (aget v (dec (alength v)))))
+                           (= end a) (or (contains? met layer) (not= (at a) (apart (aget v 0))))
+                           (= begin a) (or (contains? met layer)
+                                           (not= (at (dec a)) (apart (aget v (dec (alength v))))))
                            :else false))
                        tokens))))))
 

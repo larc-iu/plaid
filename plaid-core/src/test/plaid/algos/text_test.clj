@@ -745,6 +745,25 @@
                     (str "seed " seed ": " (pr-str old) " -> " (pr-str new)))))))))
     (is (< 800 @cases))))
 
+(deftest a-letter-typed-where-two-morphemes-meet-joins-one-of-them
+  ;; Between two morphemes of one word the letters either side are the same
+  ;; as the one typed, so moving an edit there looked free, and the letter
+  ;; ended up inside the word but in neither morpheme.
+  (let [on (fn [layer t] (assoc t :token/layer layer))]
+    (testing "an `a` typed after `aa` (`a` + `a`) stays outside the word, as appending does"
+      (let [{:keys [tokens]} (body-edit "ab aa tat" "ab aaa tat"
+                                        [(on :w (tok :w 3 5)) (on :m (tok :m1 3 4)) (on :m (tok :m2 4 5))])]
+        (is (= #{[:w 3 5] [:m1 3 4] [:m2 4 5]} (extents tokens)))))
+    (testing "a `b` doubled in `ab` + `c` joins `ab`"
+      (let [{:keys [tokens]} (body-edit "at abc cat" "at abbc cat"
+                                        [(on :w (tok :w 3 6)) (on :m (tok :m1 3 5)) (on :m (tok :m2 5 6))])]
+        (is (= #{[:w 3 7] [:m1 3 6] [:m2 6 7]} (extents tokens)))))
+    (testing "two sentences meeting at a word's start do not keep a new word out of there"
+      (let [{:keys [tokens]} (body-edit "x.\nabc" "x.\nat abc"
+                                        [(on :s (tok :s1 0 3)) (on :s (tok :s2 3 6))
+                                         (on :w (tok :x 0 1)) (on :w (tok :abc 3 6))])]
+        (is (= [6 9] ((juxt :token/begin :token/end) (first (filter #(= :abc (:token/id %)) tokens)))))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.
