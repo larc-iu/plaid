@@ -112,3 +112,39 @@ describe('applyMerge', () => {
     expect(client.calls[1].args[0]).toEqual([{ vocabItem: 'k2', tokens: ['w1'] }]);
   });
 });
+
+// A text replace names offsets in the text the preview read. Apply again
+// after a refusal partway must not respell the documents that already landed.
+describe('applyRespell', () => {
+  const row = (docId, begin) => ({
+    docId,
+    textId: `t-${docId}`,
+    begin,
+    end: begin + 3,
+    new: 'kaat',
+    morphemes: [],
+  });
+
+  it('a retry after a refused document sends only what did not land', async () => {
+    const client = makeFakeClient();
+    let refuse = true;
+    client.batched = async (fn) => {
+      const b = client.batch();
+      await fn(b);
+      if (refuse && client.calls.at(-1).args[0] === 't-b') {
+        b.abort();
+        throw Object.assign(new Error('HTTP 500'), { status: 500 });
+      }
+      return b.submit();
+    };
+    const rows = [row('a', 0), row('b', 4)];
+    const opts = { includeMorphemes: true, includeLexicon: false, label: 'Respell' };
+    await expect(applyRespell(client, { rows, lexiconRows: [] }, opts)).rejects.toThrow();
+    refuse = false;
+    const out = await applyRespell(client, { rows, lexiconRows: [] }, opts);
+    expect(out.docsChanged).toBe(1);
+    const texts = client.calls.filter((c) => c.kind === 'texts.update').map((c) => c.args[0]);
+    // a once, then b refused, then b again. Never a second time.
+    expect(texts).toEqual(['t-a', 't-b', 't-b']);
+  });
+});

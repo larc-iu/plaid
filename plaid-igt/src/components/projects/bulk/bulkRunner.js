@@ -97,10 +97,15 @@ export async function planRespell(
 
 // Apply selected respell rows. Per document: one text update carrying every
 // selected whole-token replace, and the morpheme forms it renames, in one
-// atomic batch of two ops however many morphemes there are — the text edit
+// atomic batch however many morphemes there are — the text edit
 // and the forms that spell the same words must land together or the document
 // reads as half respelled. Lexicon entries follow in their own requests.
 // Returns { docsChanged, wordsChanged, morphemesChanged, entriesChanged }.
+//
+// A row that landed is marked `applied` and skipped by a later apply of the
+// same plan. A text replace names offsets in the text as the preview read it,
+// so Apply again after a refusal partway would otherwise respell the
+// documents before it a second time, over text that already changed.
 export async function applyRespell(
   client,
   { rows, lexiconRows },
@@ -108,6 +113,7 @@ export async function applyRespell(
 ) {
   const byDoc = new Map();
   for (const r of rows) {
+    if (r.applied) continue;
     if (!byDoc.has(r.docId)) byDoc.set(r.docId, []);
     byDoc.get(r.docId).push(r);
   }
@@ -119,22 +125,21 @@ export async function applyRespell(
     for (const docRows of byDoc.values()) {
       const textId = docRows[0].textId;
       const morphPatches = includeMorphemes ? docRows.flatMap((r) => r.morphemes) : [];
-      // A document with more morpheme forms than one request should carry
-      // sends the rest after: the first chunk is the one that has to be
-      // atomic with the text edit.
-      const [first, ...rest] = chunk(morphPatches);
+      // Every chunk of morpheme forms rides in the same batch as the text
+      // edit, so the document lands whole or not at all.
       await client.batched(async (b) => {
         b.texts.update(textId, respellOps(docRows));
-        if (first?.length) b.tokens.bulkUpdate(formPatches(first));
+        for (const part of chunk(morphPatches)) b.tokens.bulkUpdate(formPatches(part));
       });
-      for (const part of rest) await client.tokens.bulkUpdate(formPatches(part));
+      docRows.forEach((r) => (r.applied = true));
       out.docsChanged += 1;
       out.wordsChanged += docRows.length;
       out.morphemesChanged += morphPatches.length;
     }
     if (includeLexicon) {
-      for (const part of chunk(lexiconRows)) {
+      for (const part of chunk(lexiconRows.filter((r) => !r.applied))) {
         await client.vocabItems.bulkUpdate(part.map((r) => ({ id: r.id, form: r.new })));
+        part.forEach((r) => (r.applied = true));
         out.entriesChanged += part.length;
       }
     }
