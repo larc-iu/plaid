@@ -114,18 +114,23 @@ function columnCells(sentence, fields) {
   return cells;
 }
 
+// A line break or tab inside a value would break every copy format's
+// layout: the plain text's columns, a Leipzig word, a TSV row. Each becomes
+// one space here, once for all of them.
+const oneLine = (s) => String(s ?? '').replace(/[\t\n\v\f\r\u0085\u2028\u2029]+/g, ' ');
+
 function tiers(sentence, fields) {
   const cells = columnCells(sentence, fields);
-  const lines = [{ label: null, cells: cells.map((c) => c.segmented) }];
+  const lines = [{ label: null, cells: cells.map((c) => oneLine(c.segmented)) }];
   fields.morphFields.forEach((f, i) => {
     lines.push({
       label: f,
-      cells: cells.map((c) => c.morphLines[i]),
+      cells: cells.map((c) => oneLine(c.morphLines[i])),
       pieces: cells.map((c) => c.morphPieces[i]),
     });
   });
   fields.wordFields.forEach((f, i) => {
-    lines.push({ label: f, cells: cells.map((c) => c.wordLines[i]) });
+    lines.push({ label: f, cells: cells.map((c) => oneLine(c.wordLines[i])) });
   });
   return lines;
 }
@@ -176,6 +181,9 @@ const LATEX_SPECIALS = {
   '^': '\\textasciicircum{}',
 };
 const texEscape = (s) => [...(s ?? '')].map((ch) => LATEX_SPECIALS[ch] ?? ch).join('');
+// A macro argument cannot hold a paragraph break, so a value set in one is
+// one line with single spaces.
+const texLine = (s) => (s ?? '').replace(/\s+/gu, ' ').trim();
 
 // A gloss as a paper sets it: each grammatical abbreviation in small caps,
 // written in lowercase because \textsc only changes lowercase letters and
@@ -213,12 +221,14 @@ const texGloss = (s, pieces) => {
 
 // gb4e and ExPex split each line into words at spaces, so a cell is always one
 // word: a blank one is {} and one with a space inside ("look after") is braced.
+// ExPex also ends a line at the first //, so a cell holding one (a URL, a
+// gloss like PST//FUT) is braced too, where the delimiter cannot see it.
 // A run of whitespace becomes one space, since a blank line inside \gll or
 // \gla would end the paragraph.
 const texWord = (render) => (s) => {
-  const text = (s ?? '').replace(/\s+/gu, ' ').trim();
+  const text = texLine(s);
   if (text === '') return '{}';
-  return text.includes(' ') ? `{${render(text)}}` : render(text);
+  return text.includes(' ') || text.includes('//') ? `{${render(text)}}` : render(text);
 };
 const texCell = texWord(texEscape);
 // A gloss line's cells, each read by its morpheme pieces when it has them
@@ -239,7 +249,7 @@ export function formatGb4e(sentence, fields) {
     '\\ex',
     `\\gll ${forms}\\\\`,
     `     ${gloss}\\\\`,
-    `\\glt \`${texEscape(tr)}'`,
+    `\\glt \`${texEscape(texLine(tr))}'`,
     '\\end{exe}',
   ].join('\n');
 }
@@ -254,7 +264,8 @@ export function formatExpex(sentence, fields) {
     '\\begingl',
     `\\gla ${forms} //`,
     `\\glb ${gloss} //`,
-    `\\glft \`${texEscape(tr)}' //`,
+    // Braced, so a // in the translation is not the end of the line.
+    `\\glft {\`${texEscape(texLine(tr))}'} //`,
     '\\endgl',
     '\\xe',
   ].join('\n');

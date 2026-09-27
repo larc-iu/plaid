@@ -199,7 +199,7 @@ describe('formatExpex', () => {
     const out = formatExpex(SENT, FIELDS);
     expect(out).toContain('\\gla perro-s corr-en . //');
     expect(out).toContain('\\glb dog-\\textsc{pl} run-\\textsc{3pl} {} //');
-    expect(out).toContain("\\glft `The dogs run.' //");
+    expect(out).toContain("\\glft {`The dogs run.'} //");
     expect(out.startsWith('\\ex')).toBe(true);
     expect(out.endsWith('\\xe')).toBe(true);
   });
@@ -255,7 +255,7 @@ describe('LaTeX gloss small caps', () => {
     const out = formatExpex(glossed('NOM'), F);
     expect(out).toContain('\\gla NASA //');
     expect(out).toContain('\\glb \\textsc{nom} //');
-    expect(out).toContain("\\glft `I saw NASA.' //");
+    expect(out).toContain("\\glft {`I saw NASA.'} //");
   });
 });
 
