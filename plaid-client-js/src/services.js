@@ -246,11 +246,20 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
     const finished = () => cancelled.delete(requestId);
 
     // Every service is told who asked (`requesterId`), beside the payload
-    // when that is a plain object, and on the helper regardless.
+    // when that is a plain object, and on the helper regardless. A delegating
+    // service (extras `delegation: true`) also gets a short-lived token for the
+    // requesting user (`delegatedToken`) and the projects that token reaches
+    // (`delegatedProjects`, the request's own first), as the Python client
+    // hands them over.
     const requesterId = payload.requesterId || null;
+    const extra = {
+      ...(requesterId ? { requesterId } : {}),
+      ...(payload.delegatedToken ? { delegatedToken: payload.delegatedToken } : {}),
+      ...(payload.delegatedProjects ? { delegatedProjects: payload.delegatedProjects } : {}),
+    };
     const data =
-      requesterId && payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
-        ? { ...payload.data, requesterId }
+      Object.keys(extra).length && payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+        ? { ...payload.data, ...extra }
         : payload.data;
 
     const scope = createCancelScope(() => cancelled.get(requestId) === true);
@@ -390,6 +399,9 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
  * @param {Object} [opts]
  * @param {string} [opts.requestId] - A client-minted request id (UUID)
  * @param {function} [opts.onAccepted] - Called with the request id once the server has it
+ * @param {string[]} [opts.projectIds] - Other projects the request is about, beside
+ *   `projectId`. A delegating service's token is scoped to `projectId` and to those of
+ *   these the requester can read, and reaches nothing else
  * @returns {Promise<any>} The service's result
  */
 export function requestService(client, projectId, serviceId, data, timeout = 10000, onProgress, signal, opts = {}) {
@@ -403,7 +415,10 @@ export function requestService(client, projectId, serviceId, data, timeout = 100
     group && data && typeof data === 'object' && !Array.isArray(data)
       ? { ...data, operationGroup: { id: group.id, message: group.message } }
       : data;
-  const qs = opts.requestId ? `?request-id=${encodeURIComponent(opts.requestId)}` : '';
+  const query = new URLSearchParams();
+  if (opts.requestId) query.set('request-id', opts.requestId);
+  if (opts.projectIds?.length) query.set('project-ids', opts.projectIds.join(','));
+  const qs = String(query) ? `?${query}` : '';
   return streamServiceRequest(
     client,
     {

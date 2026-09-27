@@ -396,13 +396,17 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
         # A delegating service (extras ``delegation: True``) gets a short-lived
         # token for the REQUESTING user with each request; surface it beside
         # the payload so the handler can act as that user (BaseService turns it
-        # into ``request_data['requester_client']``). Every service is told
-        # who asked (``requester_id``), delegating or not.
+        # into ``request_data['requester_client']``), with the projects that
+        # token reaches (``delegated_projects``: the request's own project
+        # first, then the others the requester named and can read). Every
+        # service is told who asked (``requester_id``), delegating or not.
         delegated = event_data.get('delegated_token')
+        delegated_projects = event_data.get('delegated_projects')
         requester = event_data.get('requester_id')
         if isinstance(req_data, dict):
             req_data = {**req_data,
                         **({'delegated_token': delegated} if delegated else {}),
+                        **({'delegated_projects': delegated_projects} if delegated_projects is not None else {}),
                         **({'requester_id': requester} if requester else {})}
         cancel_flag = threading.Event()
         with cancels_lock:
@@ -600,7 +604,7 @@ class ServiceCancelled(BaseException):
 
 
 def request_service(client, project_id, service_id, data, timeout=10.0, on_progress=None,
-                    request_id=None, on_accepted=None):
+                    request_id=None, on_accepted=None, project_ids=None):
     """Submit work to a service and await its result.
 
     Streams the service's progress + result back over a single server-mediated
@@ -620,11 +624,20 @@ def request_service(client, project_id, service_id, data, timeout=10.0, on_progr
     submitting an id that names a request you already made rejoins it
     instead of starting another. Errors that leave the request alive carry
     ``pending = True``; an error without it is the end of the request.
+
+    ``project_ids`` names other projects the request is about, beside
+    ``project_id``. A delegating service's token is scoped to ``project_id``
+    and to those of them the requester can read, and reaches nothing else.
     """
     url = (f'{client.base_url}/api/v1/projects/{project_id}/services/'
            f'{urllib.parse.quote(service_id, safe="")}/requests')
+    query = {}
     if request_id:
-        url += '?' + urllib.parse.urlencode({'request-id': request_id})
+        query['request-id'] = request_id
+    if project_ids:
+        query['project-ids'] = ','.join(project_ids)
+    if query:
+        url += '?' + urllib.parse.urlencode(query)
     # Propagate an open logical operation (client.begin_operation) to the
     # service: its writes then fold under the requester's audit-log entry
     # (BaseService adopts the id around process_request).

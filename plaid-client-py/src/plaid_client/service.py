@@ -215,7 +215,9 @@ class BaseService(ABC):
                 same key you put in the schema, plus ``requester_id``, the user
                 who asked. For a delegating service it also
                 carries ``requester_client``, a ``PlaidClient`` authenticated as
-                the user who submitted the request.
+                the user who submitted the request, and ``delegated_projects``,
+                the projects that client may reach (the request's own first).
+                The server refuses it everywhere else.
             response_helper: ``.progress(percent, msg)`` / ``.complete(data)`` /
                 ``.error(msg)``; ``.cancelled`` turns True once the requester
                 asked for the request to stop (poll it between steps of long

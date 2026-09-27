@@ -2026,7 +2026,8 @@ class MessagesResource(_Resource):
 
     def request_service(self, project_id: str, service_id: str, data: Any,
                         timeout: float = 10.0, on_progress=None,
-                        request_id: str | None = None, on_accepted=None) -> Any:
+                        request_id: str | None = None, on_accepted=None,
+                        project_ids: list[str] | None = None) -> Any:
         """Request a service to perform work and await its result.
 
         Streams the service's progress + result back over a single
@@ -2048,13 +2049,16 @@ class MessagesResource(_Resource):
             on_progress: Optional callback invoked with each progress payload
             request_id: Optional client-minted request id (a UUID)
             on_accepted: Optional callback invoked with the request id
+            project_ids: Optional other projects the request is about. A
+                delegating service's token is scoped to project_id and to
+                those of these the requester can read, and nothing else.
 
         Returns:
             Service response
         """
         return svc.request_service(
             self._client, project_id, service_id, data, timeout, on_progress,
-            request_id=request_id, on_accepted=on_accepted)
+            request_id=request_id, on_accepted=on_accepted, project_ids=project_ids)
 
     def attach_service_request(self, project_id: str, request_id: str,
                                timeout: float = 10.0, on_progress=None) -> Any:

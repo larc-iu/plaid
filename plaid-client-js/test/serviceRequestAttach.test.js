@@ -154,3 +154,38 @@ test('a served request sees who asked and whether a stop was requested', async (
     registration.stop();
   }
 });
+
+test('the other projects a request is about ride the URL beside a minted id', async () => {
+  const urls = [];
+  for (const opts of [{ requestId: 'abc', projectIds: ['p2', 'p3'] }, { projectIds: [] }]) {
+    const client = fakeClient(['event: result\ndata: {"data":{"ok":true}}\n\n'], new Promise(() => {}));
+    await withFetch(client, () => requestService(client, 'p1', 's1', {}, 60000, undefined, undefined, opts));
+    urls.push(client.fetchCalls[0].url);
+  }
+  assert.match(urls[0], /\/services\/s1\/requests\?request-id=abc&project-ids=p2%2Cp3$/);
+  assert.match(urls[1], /\/services\/s1\/requests$/);
+});
+
+test('a delegating service is handed the token and the projects it reaches, as in Python', () => {
+  let onEvent;
+  const client = {
+    messages: { listen: (projectId, cb) => ((onEvent = cb), { readyState: 1, close() {} }) },
+    _request: () => Promise.resolve(),
+  };
+  const seen = [];
+  const registration = serve(client, 'p1', { serviceId: 's1', serviceName: 'S' }, (data) => seen.push(data));
+  try {
+    onEvent('service_request', {
+      requestId: 'r1',
+      requesterId: 'u@x.com',
+      delegatedToken: 'tok',
+      delegatedProjects: ['p1', 'p2'],
+      data: { q: 1 },
+    });
+    assert.deepEqual(seen, [
+      { q: 1, requesterId: 'u@x.com', delegatedToken: 'tok', delegatedProjects: ['p1', 'p2'] },
+    ]);
+  } finally {
+    registration.stop();
+  }
+});

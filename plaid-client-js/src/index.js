@@ -2710,7 +2710,7 @@ class PlaidClient {
        * @param {number} [timeout=10000] - Timeout in ms
        * @param {function} [onProgress] - Called with each progress payload {percent, message}
        * @param {AbortSignal} [signal] - Abort to stop waiting; rejects with an AbortError
-       * @param {Object} [opts] - {requestId, onAccepted}
+       * @param {Object} [opts] - {requestId, onAccepted, projectIds}
        * @returns {Promise<any>} The service's result
        */
       requestService: (

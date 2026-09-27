@@ -993,6 +993,8 @@ interface MessagesBundle {
       requestId?: string;
       /** Called with the request id as soon as the server has taken the request. */
       onAccepted?: (requestId: string) => void;
+      /** Other projects the request is about. A delegating service's token reaches `projectId` and those of these the requester can read, nothing else. */
+      projectIds?: string[];
     },
   ): Promise<any>;
   /**

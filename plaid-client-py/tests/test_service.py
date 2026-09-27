@@ -646,6 +646,45 @@ def test_served_request_sees_requester_and_cancel():
         reg.stop()
 
 
+def test_served_request_sees_the_projects_its_token_reaches():
+    seen = []
+    on_event, _, reg = _serve_with_capture(lambda data, helper: seen.append(data))
+    try:
+        on_event('service_request', {'request_id': 'r1', 'requester_id': 'u@x.com',
+                                     'delegated_token': 'tok',
+                                     'delegated_projects': ['p1', 'p2'], 'data': {'q': 1}})
+        assert seen == [{'q': 1, 'delegated_token': 'tok', 'delegated_projects': ['p1', 'p2'],
+                         'requester_id': 'u@x.com'}]
+    finally:
+        reg.stop()
+
+
+def test_project_ids_ride_the_url(monkeypatch):
+    from plaid_client import services as svc_mod
+
+    class Busy:
+        status_code = 503
+
+        def close(self):
+            pass
+
+    posted = []
+    monkeypatch.setattr(svc_mod.requests, 'post', lambda url, **kw: posted.append(url) or Busy())
+
+    class Client:
+        base_url = 'http://plaid.test'
+        token = 't'
+
+    for kw in ({'project_ids': ['p2', 'p3']}, {'project_ids': ['p2'], 'request_id': 'abc'}, {'project_ids': []}):
+        with pytest.raises(RuntimeError):
+            svc_mod.request_service(Client(), 'p1', 's1', {}, timeout=5, **kw)
+    assert posted == [
+        'http://plaid.test/api/v1/projects/p1/services/s1/requests?project-ids=p2%2Cp3',
+        'http://plaid.test/api/v1/projects/p1/services/s1/requests?request-id=abc&project-ids=p2',
+        'http://plaid.test/api/v1/projects/p1/services/s1/requests',
+    ]
+
+
 def test_request_id_rides_the_url_and_accepted_reaches_the_caller(monkeypatch):
     from plaid_client import services as svc_mod
 
