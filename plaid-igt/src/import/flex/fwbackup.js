@@ -3,6 +3,7 @@
 // don't need). Works in both the browser and Node (fflate + TextDecoder).
 
 import { unzipSync } from 'fflate';
+import { decodeText } from '@ui/lib/textFile.js';
 
 /**
  * Extract the .fwdata XML from a .fwbackup zip.
@@ -26,6 +27,6 @@ export function readFwbackup(bytes) {
   }
   return {
     name: fwdataName.replace(/\.fwdata$/i, ''),
-    xml: new TextDecoder('utf-8').decode(files[fwdataName]),
+    xml: decodeText(files[fwdataName], fwdataName),
   };
 }

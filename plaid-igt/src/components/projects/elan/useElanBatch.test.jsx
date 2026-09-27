@@ -42,8 +42,8 @@ const NEAR_MISS = [
   { id: 'phrase', anns: [['a2', 'adios', 200, 300]] },
 ];
 
-const picked = (tiers) => [{ name: 'corpus.eaf', text: async () => eaf(tiers) }];
-const pickedAs = (names, tiers) => names.map((name) => ({ name, text: async () => eaf(tiers) }));
+const picked = (tiers) => [new File([eaf(tiers)], 'corpus.eaf')];
+const pickedAs = (names, tiers) => names.map((name) => new File([eaf(tiers)], name));
 
 const Probe = ({ onReady }) => {
   const batch = useElanBatch();
@@ -178,6 +178,34 @@ describe('useElanBatch on a resume', () => {
     expect(batch.roles['gone:u']).toBeUndefined();
     expect(batch.fieldNames['gone:u']).toBeUndefined();
     expect(batch.roles[keyOf(batch, 'Ana')]).toBe(ROLES.UTTERANCE);
+    await v.unmount();
+  });
+});
+
+// ELAN saves UTF-8, but an .eaf passed through a Windows editor can come back
+// UTF-16. With its byte order mark it reads as what it is, and without one
+// it is refused by name before anything is written.
+describe('useElanBatch reading the files', () => {
+  const utf16le = (s, bom) => {
+    const out = bom ? [0xff, 0xfe] : [];
+    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xff, s.charCodeAt(i) >> 8);
+    return new Uint8Array(out);
+  };
+
+  it('reads an .eaf saved as UTF-16 with a byte order mark', async () => {
+    const v = await mount();
+    const file = new File([utf16le(eaf(TWO_SPEAKERS), true)], 'corpus.eaf');
+    await v.step(() => v.read().readFiles([file]));
+    expect(keyOf(v.read(), 'Ana')).toBeTruthy();
+    await v.unmount();
+  });
+
+  it('refuses an .eaf with a NUL in it, by name', async () => {
+    const v = await mount();
+    const file = new File([utf16le(eaf(TWO_SPEAKERS), false)], 'corpus.eaf');
+    await expect(v.read().readFiles([file])).rejects.toThrow(
+      'corpus.eaf is not UTF-8. Save it as UTF-8 and import it again.',
+    );
     await v.unmount();
   });
 });

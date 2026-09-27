@@ -8,6 +8,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { readEaf } from '@/import/elan/readEaf';
+import { readTextFile } from '@ui/lib/textFile.js';
 import {
   compareSchemas,
   suggestRoles,
@@ -192,7 +193,7 @@ export function useElanBatch({ skipEmptyTiers = false, namesFor = newFieldNames 
       throw new Error('Choose one or more .eaf files.');
     }
     const parsed = [];
-    for (const file of eafs) parsed.push(readEaf(await file.text(), file.name));
+    for (const file of eafs) parsed.push(readEaf(await readTextFile(file, file.name), file.name));
     adoptBatch(parsed, given);
     return true;
   };

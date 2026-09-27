@@ -14,6 +14,7 @@
 // allows them.
 
 import { unzipSync } from 'fflate';
+import { decodeText, NotUtf8FileError } from '@ui/lib/textFile.js';
 
 const TERMS = 'http://cldf.clld.org/v1.0/terms.rdf#';
 
@@ -191,7 +192,9 @@ const METADATA_FREE = {
 
 // ---- the reader -------------------------------------------------------------
 
-const decode = (bytes) => new TextDecoder('utf-8').decode(bytes);
+// UTF-8, or UTF-16 with a byte order mark (Excel's "Unicode text"). A file
+// holding a NUL is refused by name.
+const decode = (bytes, name) => decodeText(bytes, basename(name));
 const basename = (path) => path.split('/').at(-1);
 const dirname = (path) => {
   const i = path.lastIndexOf('/');
@@ -209,10 +212,11 @@ function findDescriptor(entries) {
     .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
   for (const path of candidates) {
     try {
-      const json = JSON.parse(decode(entries[path]));
+      const json = JSON.parse(decode(entries[path], path));
       const module = termOf(json['dc:conformsTo']);
       if (module) return { path, json, module };
-    } catch {
+    } catch (e) {
+      if (e instanceof NotUtf8FileError) throw e;
       // Not JSON, or not a descriptor: keep looking.
     }
   }
@@ -220,7 +224,7 @@ function findDescriptor(entries) {
 }
 
 function buildComponent({ url, conformsTo, columnSpecs, rows, delimiter }) {
-  const text = decode(rows);
+  const text = decode(rows, url);
   const { header, objects } = toObjects(parseCsv(text, delimiter));
   // Columns the descriptor declares, restricted to those the CSV actually has,
   // plus any extra CSV columns the descriptor never mentioned.

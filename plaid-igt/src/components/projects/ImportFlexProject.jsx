@@ -38,6 +38,7 @@ import { humanizeFieldName } from '@/domain/vocabFields';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 import { canManageVocabulary } from '@ui/domain/permissions.js';
 import { plural } from '@/utils/plural';
+import { readTextFile } from '@ui/lib/textFile.js';
 
 // What differs between the two FieldWorks formats, on screen and in the
 // import record (`kind`, which also names the route a resume comes back to).
@@ -125,7 +126,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
     const picked = files.filter((f) => /\.flextext$/i.test(f.name));
     if (!picked.length) throw new Error('No .flextext files among those chosen');
     const texts = await Promise.all(
-      picked.map(async (f) => ({ name: f.name, xml: await f.text() })),
+      picked.map(async (f) => ({ name: f.name, xml: await readTextFile(f, f.name) })),
     );
     await new Promise((r) => setTimeout(r, 50));
     const ir = parseFlextextFiles(texts);

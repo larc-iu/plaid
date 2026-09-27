@@ -25,6 +25,7 @@ import { followIds, settledId } from '@ui/domain/pendingIds.js';
 import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
 import { humanizeFieldName, fieldDescription, FIELD_TYPES } from '@/domain/vocabFields';
 import { downloadBlob, sanitizeFilename } from '@/export/files';
+import { NotUtf8FileError, readTextFile } from '@ui/lib/textFile.js';
 import {
   FORM,
   IGNORE,
@@ -418,11 +419,14 @@ export const BulkAddDialog = ({
   const handleFile = async (picked) => {
     if (!picked) return;
     try {
-      setFile({ name: picked.name, text: await picked.text() });
+      setFile({ name: picked.name, text: await readTextFile(picked) });
       setPasted('');
     } catch (err) {
       console.error('Could not read the file:', err);
-      notifyError('That file could not be read.', 'Import');
+      notifyError(
+        err instanceof NotUtf8FileError ? err.message : 'That file could not be read.',
+        'Import',
+      );
     }
   };
 

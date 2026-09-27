@@ -160,6 +160,36 @@ describe('readCldfDataset', () => {
     expect(ds.warnings.join(' ')).toMatch(/no cldf-metadata\.json/);
   });
 
+  // Excel's "Unicode text" is UTF-16 with a byte order mark. Read as UTF-8
+  // it put a NUL after every letter, which the server refuses mid-import.
+  it('reads a table saved as UTF-16 with a byte order mark', () => {
+    const csv = files['examples.csv'];
+    const utf16 = new Uint8Array(2 + csv.length * 2);
+    utf16.set([0xff, 0xfe]);
+    for (let i = 0; i < csv.length; i++) {
+      utf16[2 + 2 * i] = csv.charCodeAt(i) & 0xff;
+      utf16[3 + 2 * i] = csv.charCodeAt(i) >> 8;
+    }
+    const archive = zipSync({
+      'cldf-metadata.json': strToU8(files['cldf-metadata.json']),
+      'examples.csv': utf16,
+    });
+    const ex = readCldfDataset(archive).components.ExampleTable;
+    expect(cell(ex, ex.rows[0], 'primaryText')).toBe('perros corren.');
+  });
+
+  it('refuses a table holding a NUL, by its file name', () => {
+    const bad = { ...files, 'examples.csv': files['examples.csv'].replace('spa', 's\u0000pa') };
+    expect(() => readCldfDataset(zip(bad))).toThrow(
+      'examples.csv is not UTF-8. Save it as UTF-8 and import it again.',
+    );
+    const badDescriptor = {
+      ...files,
+      'cldf-metadata.json': `${files['cldf-metadata.json']}\u0000`,
+    };
+    expect(() => readCldfDataset(zip(badDescriptor))).toThrow(/cldf-metadata\.json is not UTF-8/);
+  });
+
   it('rejects an archive with nothing CLDF in it', () => {
     expect(() => readCldfDataset(zip({ 'readme.txt': 'hello' }))).toThrow(CldfError);
     expect(() => readCldfDataset(new Uint8Array([1, 2, 3]))).toThrow(/Not a zip archive/);

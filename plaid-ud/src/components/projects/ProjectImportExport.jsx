@@ -16,16 +16,9 @@ import { ensureEnhancedRelationLayer } from '../../domain/udProjectSetup.js';
 import { notifySuccess, notifyError, notifyWarning, humanizeError } from '../../utils/feedback.jsx';
 import { ProjectTabs } from './ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
+import { NotUtf8FileError, readTextFile } from '@ui/lib/textFile.js';
 
 // ---- helpers --------------------------------------------------------------
-
-const readText = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target.result);
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsText(file);
-  });
 
 const baseName = (name) => name.replace(/\.(conllu|txt)$/i, '') || name;
 
@@ -229,14 +222,14 @@ export const ProjectImportExport = () => {
       setImportProgress({ done: i, total: files.length, current: file.name });
       let text;
       try {
-        text = await readText(file);
-      } catch {
+        text = await readTextFile(file);
+      } catch (err) {
         push({
           key: `${i}-read`,
           file: file.name,
           name: baseName(file.name),
           status: 'rejected',
-          reason: 'Could not read file',
+          reason: err instanceof NotUtf8FileError ? err.message : 'Could not read file',
         });
         continue;
       }
