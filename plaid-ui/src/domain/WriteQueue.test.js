@@ -17,6 +17,7 @@ const deferred = () => {
 };
 // What the client throws when the server cannot be reached.
 const offline = () => Object.assign(new Error('Network error: Failed to fetch'), { status: 0 });
+const boom500 = () => Object.assign(new Error('HTTP 500 boom'), { status: 500 });
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 };
@@ -329,6 +330,25 @@ describe('WriteQueue', () => {
       expect(resync).toHaveBeenCalledTimes(1);
       expect(outOfStep).not.toHaveBeenCalled();
     }
+  });
+
+  it('counts only the server’s own failures against the tries, not the time the network was down', async () => {
+    const outOfStep = vi.fn();
+    const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
+    // Down for a while, then one error while the server comes back up.
+    const answers = [offline, offline, offline, offline, offline, () => boom500()];
+    const resync = vi.fn(async () => {
+      const next = answers.shift();
+      if (next) throw next();
+    });
+    await q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    expect(resync).toHaveBeenCalledTimes(7);
+    expect(outOfStep).not.toHaveBeenCalled();
   });
 
   it('gives up on a resync that fails with a bug of its own', async () => {

@@ -207,7 +207,12 @@ export class WriteQueue {
   // Stops on an answer no retry can change, after a few tries for a failure
   // that is not the network's (and says so), and as soon as the queue is let
   // go.
+  //
+  // Only the server's own failures count against the tries: a server coming
+  // back after a long outage may fail once while it starts, and that is its
+  // first failure, not its tenth.
   async _refetch(fn, what) {
+    let failed = 0;
     for (let attempt = 0; ; attempt += 1) {
       if (this._letGo) {
         this._missed = true;
@@ -222,7 +227,7 @@ export class WriteQueue {
         if (FINAL_STATUSES.has(statusOf(err))) return;
         // The network's failures (`isUnreachable`, the same test that words
         // them "Could not reach the server") are waited out.
-        if (!isUnreachable(err) && attempt + 1 >= TRIES) {
+        if (!isUnreachable(err) && ++failed >= TRIES) {
           if (this._onOutOfStep) this._onOutOfStep(err);
           return;
         }
