@@ -269,7 +269,7 @@ export const Setup = () => {
       navigate(dictionaryPath(record.slug));
     } catch (err) {
       console.error('Failed to save the dictionary record:', err);
-      notifyError(err?.message || 'Saving failed.');
+      notifyError(err || 'Saving failed.');
     } finally {
       setSaving(false);
     }
