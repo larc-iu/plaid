@@ -30,11 +30,12 @@
   transition: box-shadow 300ms ease;
 }
 
-/* The sentence a hand-off from Annotate landed on. Same amber ring the
-   annotation grid flashes, so arriving at a sentence looks the same in both
-   directions. */
+/* The sentence a hand-off from Annotate landed on. Same blue ring the
+   annotation grid flashes (and plaid-igt's search flash), so arriving at a
+   sentence looks the same in both directions. Never amber, which is a
+   contributor's value. */
 .sentence[data-flash='true'] {
-  box-shadow: 0 0 0 3px #fcd34d;
+  box-shadow: 0 0 0 2px #2563eb;
 }
 
 /* The text between tokens: present, but not the thing being edited. */
@@ -58,13 +59,14 @@
 .badge:hover {
   background: #bfdbfe;
 }
-/* A token split into more than one word (a multi-word token). */
+/* A token split into more than one word (a multi-word token): teal, clear of
+   the amber and violet that mark provenance. */
 .badge[data-mwt='true'] {
-  background: #ffedd5;
-  border-color: #fb923c;
+  background: #ccfbf1;
+  border-color: #14b8a6;
 }
 .badge[data-mwt='true']:hover {
-  background: #fed7aa;
+  background: #99f6e4;
 }
 .badge[data-sent-start='true'] {
   border-color: #22c55e;

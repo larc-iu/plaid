@@ -142,7 +142,7 @@ Where the tokens are shared with another Plaid app on the project, the confirmat
 After tokenizing, the text is shown with each token as a clickable chip:
 
 * A **green** left border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries.
-* An **orange** chip marks a **multi-word token** (a token that contains more than one word).
+* A **teal** chip marks a **multi-word token** (a token that contains more than one word).
 
 Hover over a token to open its panel, where you can:
 

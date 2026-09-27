@@ -15,7 +15,7 @@ import classes from './TokenVisualizer.module.css';
 
 // Raw-text overlay editor for the three-layer token hierarchy. The editable
 // surface is the TOKEN layer (rendered as badges over the document text); a
-// token split into more than one word is a multi-word token (orange). Sentences
+// token split into more than one word is a multi-word token (teal). Sentences
 // are shown by a green border on each sentence's first token and toggled by
 // clicking a token (split/merge server-side).
 //

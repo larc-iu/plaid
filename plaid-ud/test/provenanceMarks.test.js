@@ -93,3 +93,28 @@ test('the auto colours for labels use no violet and no amber', () => {
   assert.ok(seen.size >= 8, 'every slot of the palette is reached');
   for (const c of seen) assert.ok(!provenanceHue(hue(c)), `${c} (hue ${Math.round(hue(c))})`);
 });
+
+// The Accept and Discard pair is quiet by its outline, not by opacity: dimmed,
+// the violet and the red fell below AA contrast on white.
+test('the review pair is at full strength at rest', () => {
+  const pair = rule(uiCss, '.plaid-review.plaid-review--accept');
+  assert.ok(pair, 'the rule exists');
+  assert.doesNotMatch(pair, /opacity/);
+  assert.match(pair, /background-color:\s*transparent/);
+  assert.doesNotMatch(uiCss.match(/\.plaid-review[^{]*\{[^}]*\}/g).join('\n'), /opacity/);
+});
+
+// A flash that lands on a sentence, and the multi-word token chip, are not
+// provenance, so neither wears amber (or orange beside it) nor violet.
+test('the hand-off flash and the multi-word token chip use no violet and no amber', async () => {
+  const tv = await read('../src/components/editor/TokenVisualizer.module.css');
+  const editor = await read('../src/components/editor/AnnotationEditor.jsx');
+  const hexes = (text) => [...text.matchAll(/#[0-9a-f]{6}\b/gi)].map((m) => m[0]);
+  const flash = rule(tv, ".sentence[data-flash='true']");
+  const chip = rule(tv, ".badge[data-mwt='true']");
+  const chipHover = rule(tv, ".badge[data-mwt='true']:hover");
+  const ring = editor.match(/boxShadow: '([^']*)'/)[1];
+  for (const c of hexes([flash, chip, chipHover, ring].join('\n'))) {
+    assert.ok(!provenanceHue(hue(c)), `${c} (hue ${Math.round(hue(c))})`);
+  }
+});
