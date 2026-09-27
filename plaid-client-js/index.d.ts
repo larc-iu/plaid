@@ -140,8 +140,38 @@ interface VocabLinksBundle {
   delete(id: string, auditMessage?: string): Promise<any>;
 }
 
+/** What `vocabLayers.restoreItem` did, or with `dryRun` would do. */
+interface VocabItemRestoreSummary {
+  /** The entry was gone and came back under its old id. */
+  inserted: boolean;
+  /** A living entry's form was set back. */
+  form: boolean;
+  /** A living entry's fields were set back. */
+  metadata: boolean;
+  /** 0 when nothing changes. */
+  total: number;
+}
+
 interface VocabLayersBundle {
-  get(id: string, includeItems?: boolean): Promise<any>;
+  /** `asOf` reads the vocabulary as it was at that instant. */
+  get(id: string, includeItems?: boolean, asOf?: string): Promise<any>;
+  /** One entry as it was at `asOf`, also when it has been deleted since. */
+  getItemAt(id: string, itemId: string, asOf: string): Promise<any>;
+  audit(
+    id: string,
+    startTime?: string,
+    endTime?: string,
+    opTypes?: string[] | string,
+  ): Promise<any[]>;
+  auditPage(id: string, opts?: AuditPageOptions): Promise<Page>;
+  /** Put one entry back as it was at `asOf`. Maintainers of the vocabulary only. */
+  restoreItem(
+    id: string,
+    itemId: string,
+    asOf: string,
+    options?: { dryRun?: boolean },
+    auditMessage?: string,
+  ): Promise<VocabItemRestoreSummary>;
   delete(id: string, auditMessage?: string): Promise<any>;
   update(id: string, name: string, auditMessage?: string): Promise<any>;
   setConfig(

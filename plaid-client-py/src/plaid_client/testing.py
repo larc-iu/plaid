@@ -297,10 +297,10 @@ class _Batch:
             setattr(self, name, Resource(self, name))
         # The client's own resources, bound to this batch so their writes
         # queue. One a test swapped in for its own is used as it is.
-        for name in ('documents', 'comments', 'guidelines'):
-            resource = getattr(client, name)
+        for name in ('documents', 'comments', 'guidelines', 'vocab_layers'):
+            resource = getattr(client, name, None)
             if isinstance(resource, (FakeClient._Documents, FakeClient._Comments,
-                                     FakeClient._Guidelines)):
+                                     FakeClient._Guidelines, FakeClient._VocabLayers)):
                 setattr(self, name, type(resource)(self))
         if isinstance(client.user_data, FakeClient._UserData):
             self.user_data = _BatchUserData(self, client.user_data)
@@ -675,13 +675,22 @@ class FakeClient:
     Without ``projects``, ``projects.get`` answers ``project`` whatever id it
     is given. ``services`` is ``{pid: [service entries]}``, what
     ``messages.discover_services`` answers for each project.
+
+    ``vocabularies`` is ``{vid: vocabulary}``, each as the server's
+    ``vocab_layers.get(..., include_items=True)`` answers (``items`` included),
+    and ``vocab_audit`` is ``{vid: [audit entries]}``. ``vocab_layers.get``,
+    ``get_item_at``, ``audit`` and ``audit_page`` answer from them, and an
+    entry restore answers, done or dry, with ``vocab_restore_summary``. An
+    ``as_of`` is accepted and answered with the fixture as it is: the fake
+    has no history.
     """
 
     #: resources a caller may write through, each recording under its own name.
     RESOURCES = ('tokens', 'spans', 'relations', 'texts', 'vocab_links', 'vocab_items')
 
     def __init__(self, documents, fails=None, *, project=None, audit=None, guidelines=None,
-                 comments=None, restore_summary=None, projects=None, services=None):
+                 comments=None, restore_summary=None, projects=None, services=None,
+                 vocabularies=None, vocab_audit=None, vocab_restore_summary=None):
         self._documents = documents if isinstance(documents, dict) else list(documents)
         self.base_url = 'http://plaid.internal:8085'
         self.token = 'tok'
@@ -720,6 +729,11 @@ class FakeClient:
             for pid, spec in projects.items()}
         #: {pid: [service entries]} for ``messages.discover_services``
         self.services = {pid: list(entries) for pid, entries in (services or {}).items()}
+        #: {vid: vocabulary with its ``items``} for ``vocab_layers`` reads
+        self.vocabularies = dict(vocabularies or {})
+        #: {vid: [audit entries]} for ``vocab_layers.audit``
+        self.vocab_audit = {vid: list(entries) for vid, entries in (vocab_audit or {}).items()}
+        self.vocab_restore_summary = vocab_restore_summary
         self._ids = itertools.count(1)
         self._operation_depth = 0
         self.documents = FakeClient._Documents(self)
@@ -728,6 +742,10 @@ class FakeClient:
         self.guidelines = FakeClient._Guidelines(self)
         self.user_data = FakeClient._UserData(self.base_url)
         self.messages = FakeClient._Messages(self)
+        # A subclass that answers vocabulary reads its own way, as a property,
+        # keeps it.
+        if not isinstance(inspect.getattr_static(self, 'vocab_layers', None), property):
+            self.vocab_layers = FakeClient._VocabLayers(self)
         for name in self.RESOURCES:
             setattr(self, name, Resource(self, name))
 
@@ -956,6 +974,59 @@ class FakeClient:
             return [{'id': d.get('id'), 'name': d.get('name'), 'version': d.get('version'),
                      'time_created': d.get('time_created'),
                      'time_modified': d.get('time_modified')} for d in docs]
+
+    class _VocabLayers:
+        """A vocabulary's reads, its log and the restore of one entry. Reads
+        answer from ``vocabularies`` and ``vocab_audit`` (a vocabulary the fake
+        does not hold is the server's 404). The restore records like any
+        write, and queues when made on a batch."""
+
+        def __init__(self, writer):
+            self._client = writer
+            self._root = _root(writer)
+
+        def _vocabulary(self, id, path):
+            vocabulary = self._root.vocabularies.get(id)
+            if vocabulary is None:
+                raise _refusal(self._root, 404, 'Vocab layer not found', 'GET', path)
+            return vocabulary
+
+        def get(self, id, *, include_items=None, as_of=None):
+            vocabulary = self._vocabulary(id, f'/api/v1/vocab-layers/{id}')
+            if include_items:
+                return copy.deepcopy(vocabulary)
+            return copy.deepcopy({k: v for k, v in vocabulary.items() if k != 'items'})
+
+        def get_item_at(self, id, item_id, as_of):
+            path = f'/api/v1/vocab-layers/{id}/items/{item_id}'
+            for item in self._vocabulary(id, path).get('items') or []:
+                if item.get('id') == item_id:
+                    return copy.deepcopy(item)
+            raise _refusal(self._root, 404, 'The entry did not exist at that time.', 'GET', path)
+
+        def audit(self, id, *, start_time=None, end_time=None, op_types=None):
+            self._vocabulary(id, f'/api/v1/vocab-layers/{id}/audit')
+            return _audit_filter(self._root.vocab_audit.get(id, []), start_time, end_time,
+                                 op_types)
+
+        def audit_page(self, id, *, start_time=None, end_time=None,
+                       op_types=None, order=None, limit=None, cursor=None):
+            entries = self.audit(id, start_time=start_time, end_time=end_time, op_types=op_types)
+            return self._root._audit_page(entries, order, limit, cursor, start_time)
+
+        def restore_item(self, id, item_id, as_of, *, dry_run=False, audit_message=None):
+            """The server's entry restore, recorded dry or not. Either way it
+            answers with ``vocab_restore_summary``: what WOULD change, or what
+            did."""
+            writer = self._client
+            if isinstance(writer, _Batch):
+                writer.check_open(f'/api/v1/vocab-layers/{id}/items/{item_id}/restore')
+            summary = self._root.vocab_restore_summary
+            writer.fail_if_asked('vocab_layers.restore_item')
+            writer.record('vocab_layers.restore_item',
+                          {'args': (id, item_id, as_of), 'kwargs': {'dry_run': dry_run}},
+                          {'body': summary})
+            return {'batched': True} if isinstance(writer, _Batch) else summary
 
     class _Comments:
         """The project's comments, read from the fixture. A comment posted is

@@ -1,7 +1,8 @@
-// Only the bare document GET and the restore POST take `?as-of=`. The server
-// answers 400 to it on every other route, so a method elsewhere that offered
-// asOf could only fail, and did: igt's historical export passed it to the
-// vocabulary read and shipped without its vocabularies.
+// Only the document and vocabulary reads and restores take `?as-of=`. The
+// server answers 400 to it on every other route, so a method elsewhere that
+// offered asOf could only fail, and did: igt's historical export once passed
+// it to the vocabulary read before that route took it, and shipped without
+// its vocabularies.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,9 +14,15 @@ const STREAM_METHODS = new Set([
   "messages.requestService",
   "messages.attachServiceRequest",
 ]);
-const TAKES_AS_OF = new Set(["documents.get", "documents.restore"]);
+const TAKES_AS_OF = new Set([
+  "documents.get",
+  "documents.restore",
+  "vocabLayers.get",
+  "vocabLayers.getItemAt",
+  "vocabLayers.restoreItem",
+]);
 
-test("no method but the document read and restore sends as-of", async () => {
+test("no method but the document and vocabulary reads and restores sends as-of", async () => {
   process.on("unhandledRejection", () => {});
   const client = new PlaidClient("http://x", "tok");
   const sent = [];

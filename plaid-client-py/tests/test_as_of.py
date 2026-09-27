@@ -1,4 +1,4 @@
-"""Only the bare document GET and the restore POST take ``?as-of=``. The
+"""Only the document and vocabulary reads and restores take ``?as-of=``. The
 server answers 400 to it on every other route, so a method elsewhere that
 offered ``as_of`` could only fail."""
 
@@ -10,10 +10,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from plaid_client import client as real
 
-TAKES_AS_OF = {'DocumentsResource.get', 'DocumentsResource.restore'}
+TAKES_AS_OF = {'DocumentsResource.get', 'DocumentsResource.restore',
+               'VocabLayersResource.get', 'VocabLayersResource.get_item_at',
+               'VocabLayersResource.restore_item'}
 
 
-def test_no_method_but_the_document_read_and_restore_takes_as_of():
+def test_no_method_but_the_document_and_vocabulary_reads_and_restores_take_as_of():
     offenders = []
     for cls_name, cls in vars(real).items():
         if not inspect.isclass(cls) or cls.__module__ != real.__name__:

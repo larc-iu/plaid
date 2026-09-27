@@ -335,14 +335,107 @@ class PlaidClient {
 
     this.vocabLayers = {
       /**
-       * Get a vocab layer by ID
+       * Get a vocab layer by ID. With `asOf`, the vocabulary as it was at that
+       * instant, read from its history: the same shape as the live read, its
+       * entries with `includeItems`. A vocabulary that did not exist then is a
+       * 404, a malformed or pruned time a 400.
        * @param {string} id - The resource ID
        * @param {boolean} [includeItems] - Include vocab items
+       * @param {string} [asOf] - The moment to read at (ISO-8601 instant)
        */
-      get: (id, includeItems) =>
+      get: (id, includeItems, asOf) =>
         this._request("GET", `/api/v1/vocab-layers/${id}`, {
-          queryParams: { "include-items": includeItems },
+          queryParams: { "include-items": includeItems, "as-of": asOf },
         }),
+      /**
+       * One entry of the vocabulary as it was at `asOf`, also when it has
+       * been deleted since. The same shape as `vocabItems.get`. A 404 when
+       * the entry was not in this vocabulary at that time.
+       * @param {string} id - The vocabulary ID
+       * @param {string} itemId - The entry ID
+       * @param {string} asOf - The moment to read at (ISO-8601 instant)
+       */
+      getItemAt: (id, itemId, asOf) =>
+        this._request("GET", `/api/v1/vocab-layers/${id}/items/${itemId}`, {
+          queryParams: { "as-of": asOf },
+        }),
+      /**
+       * Get the audit log of a vocabulary: every change to it or to its
+       * entries, folded into entries as the document log is. Links are not
+       * listed, they belong to the document they annotate. Transparently
+       * follows pagination cursors and returns the full flat array.
+       * @param {string} id - The vocabulary ID
+       * @param {string} [startTime] - Start of time range
+       * @param {string} [endTime] - End of time range
+       * @param {string[]|string} [opTypes] - Only return operations of these
+       *   types, spelled as in an entry's `op/type` (e.g.
+       *   `['vocab-item/delete', 'vocab-item/restore']`)
+       */
+      audit: (id, startTime, endTime, opTypes) =>
+        listAll(this, `/api/v1/vocab-layers/${id}/audit`, {
+          query: {
+            "start-time": startTime,
+            "end-time": endTime,
+            "op-types": opTypesParam(opTypes),
+          },
+        }),
+      /**
+       * One page of the same log, newest-first with `order: "desc"`. Use this
+       * rather than audit() wherever the caller wants the recent end of a log
+       * that may be long: audit() walks every page before it resolves.
+       * @param {string} id - The vocabulary ID
+       * @param {object} [opts]
+       * @param {"asc"|"desc"} [opts.order] - "desc" pages newest-first
+       * @param {number} [opts.limit] - Page size (1..1000; server default 100)
+       * @param {string} [opts.cursor] - Opaque cursor from a previous page
+       * @returns {Promise<{entries: Array, nextCursor: (string|null)}>}
+       */
+      auditPage: (
+        id,
+        { startTime, endTime, opTypes, order, limit, cursor } = {},
+      ) =>
+        listPage(this, `/api/v1/vocab-layers/${id}/audit`, {
+          limit,
+          cursor,
+          query: {
+            "start-time": startTime,
+            "end-time": endTime,
+            "op-types": opTypesParam(opTypes),
+            order,
+          },
+        }),
+      /**
+       * Put one entry of the vocabulary back as it was at `asOf`, as one
+       * operation. A deleted entry comes back under its original id with its
+       * form and fields, and a living one has its form and fields set back.
+       * Links are not part of an entry: a deleted entry's links come back
+       * through each document's own `documents.restore`. Resolves to
+       * `{inserted, form, metadata, total}`, `total` 0 when nothing changes.
+       * A form set back bumps every linking document, and the new versions
+       * come back in X-Document-Versions (or, past fifty documents,
+       * X-Document-Versions-Omitted), which the client takes up as on any
+       * write. A time when the entry did not exist is a 400. Maintainers of
+       * the vocabulary only.
+       * @param {string} id - The vocabulary ID
+       * @param {string} itemId - The entry ID
+       * @param {string} asOf - The moment to go back to (ISO-8601 instant),
+       *   typically a history entry's `endTime`
+       * @param {object} [options] - `{ dryRun }`: with `dryRun` true nothing
+       *   is written and the summary says what would change
+       * @param {string} [auditMessage] - Custom audit message for this operation
+       */
+      restoreItem: (id, itemId, asOf, { dryRun } = {}, auditMessage) =>
+        this._request(
+          "POST",
+          `/api/v1/vocab-layers/${id}/items/${itemId}/restore`,
+          {
+            queryParams: {
+              "as-of": asOf,
+              "dry-run": dryRun ? "true" : undefined,
+            },
+            auditMessage,
+          },
+        ),
       /**
        * Delete a vocab layer.
        * @param {string} id - The resource ID

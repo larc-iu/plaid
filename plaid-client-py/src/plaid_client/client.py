@@ -188,15 +188,109 @@ class VocabLinksResource(_Resource):
 
 
 class VocabLayersResource(_Resource):
-    def get(self, id: str, *, include_items: bool | None = None) -> Any:
+    def get(self, id: str, *, include_items: bool | None = None,
+            as_of: str | None = None) -> Any:
         """Get a vocab layer by ID.
+
+        With ``as_of``, the vocabulary as it was at that instant, read from
+        its history: the same shape as the live read, its entries with
+        ``include_items``. A vocabulary that did not exist then is a 404, a
+        malformed or pruned time a 400.
 
         Args:
             id: The resource ID
             include_items: Include vocab items
+            as_of: The moment to read at (ISO-8601 instant)
         """
         return self._request('GET', f'/api/v1/vocab-layers/{id}',
-                             query_params={'include-items': include_items})
+                             query_params={'include-items': include_items, 'as-of': as_of})
+
+    def get_item_at(self, id: str, item_id: str, as_of: str) -> Any:
+        """One entry of the vocabulary as it was at ``as_of``, also when it
+        has been deleted since.
+
+        The same shape as ``vocab_items.get``. A 404 when the entry was not
+        in this vocabulary at that time.
+
+        Args:
+            id: The vocabulary ID
+            item_id: The entry ID
+            as_of: The moment to read at (ISO-8601 instant)
+        """
+        return self._request('GET', f'/api/v1/vocab-layers/{id}/items/{item_id}',
+                             query_params={'as-of': as_of})
+
+    def audit(self, id: str, *, start_time: str | None = None,
+              end_time: str | None = None,
+              op_types=None) -> Any:
+        """Get the audit log of a vocabulary.
+
+        Every change to the vocabulary or to its entries, folded into entries
+        as the document log is. Links are not listed, they belong to the
+        document they annotate. Transparently follows server-side pagination
+        cursors and returns the full flat list of audit entries.
+
+        Args:
+            id: The vocabulary ID
+            start_time: Start of time range
+            end_time: End of time range
+            op_types: Only return operations of these types, spelled as in an
+                entry's ``op/type`` (e.g.
+                ``['vocab-item/delete', 'vocab-item/restore']``)
+        """
+        return list_all(self._client, f'/api/v1/vocab-layers/{id}/audit',
+                        query={'start-time': start_time, 'end-time': end_time,
+                               'op-types': _op_types_param(op_types)})
+
+    def audit_page(self, id: str, *, start_time: str | None = None,
+                   end_time: str | None = None,
+                   op_types: Any = None, order: str | None = None,
+                   limit: int | None = None, cursor: str | None = None) -> Any:
+        """One page of the same log, newest-first with ``order='desc'``.
+
+        Use this rather than audit() wherever the caller wants the recent end
+        of a log that may be long: audit() walks every page before it returns.
+
+        Args:
+            order: ``'desc'`` pages newest-first; a cursor belongs to the
+                direction that produced it
+            limit: Page size (1..1000)
+            cursor: Opaque cursor from a previous page's ``next_cursor``
+        """
+        return list_page(self._client, f'/api/v1/vocab-layers/{id}/audit', limit=limit, cursor=cursor,
+                         query={'start-time': start_time, 'end-time': end_time,
+                                'op-types': _op_types_param(op_types),
+                                'order': order})
+
+    def restore_item(self, id: str, item_id: str, as_of: str, *, dry_run: bool = False,
+                     audit_message: str | None = None) -> Any:
+        """Put one entry of the vocabulary back as it was at ``as_of``, as one
+        operation.
+
+        A deleted entry comes back under its original id with its form and
+        fields, and a living one has its form and fields set back. Links are
+        not part of an entry: a deleted entry's links come back through each
+        document's own ``documents.restore``. Returns ``{'inserted', 'form',
+        'metadata', 'total'}``, ``total`` 0 when nothing changes. A form set
+        back bumps every linking document, and the new versions come back in
+        X-Document-Versions (or, past fifty documents,
+        X-Document-Versions-Omitted), which the client takes up as on any
+        write. A time when the entry did not exist is a 400. Maintainers of
+        the vocabulary only.
+
+        Args:
+            id: The vocabulary ID
+            item_id: The entry ID
+            as_of: The moment to go back to (ISO-8601 instant), typically a
+                history entry's ``end_time``
+            dry_run: When true nothing is written and the summary says what
+                would change
+            audit_message: Custom audit message for this operation
+        """
+        return self._request('POST', f'/api/v1/vocab-layers/{id}/items/{item_id}/restore',
+                             query_params={'as-of': as_of,
+                                           'dry-run': 'true' if dry_run else None},
+                             audit_message=audit_message)
 
     def delete(self, id: str, audit_message=None) -> Any:
         """Delete a vocab layer.

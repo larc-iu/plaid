@@ -229,6 +229,35 @@ def test_guidelines_comments_and_a_restore():
         denied.documents.restore('d', 'T', dry_run=True)
 
 
+def test_a_vocabularys_reads_log_and_entry_restore():
+    lex = {'id': 'v1', 'name': 'Lex', 'items': [{'id': 'i1', 'form': 'kai'}]}
+    log = [{'id': 'a1', 'time': '2026-01-01T00:00:00Z',
+            'ops': [{'type': 'vocab-item/delete', 'time': '2026-01-01T00:00:00Z'}]},
+           {'id': 'a2', 'time': '2026-02-01T00:00:00Z',
+            'ops': [{'type': 'vocab-item/restore', 'time': '2026-02-01T00:00:00Z'}]}]
+    c = _project_client(vocabularies={'v1': lex}, vocab_audit={'v1': log},
+                        vocab_restore_summary={'inserted': True, 'form': False,
+                                               'metadata': False, 'total': 1})
+    assert 'items' not in c.vocab_layers.get('v1', as_of='T')
+    assert c.vocab_layers.get('v1', include_items=True)['items'] == lex['items']
+    assert c.vocab_layers.get_item_at('v1', 'i1', 'T') == {'id': 'i1', 'form': 'kai'}
+    with pytest.raises(PlaidAPIError) as e:
+        c.vocab_layers.get_item_at('v1', 'gone', 'T')
+    assert e.value.status == 404
+    with pytest.raises(PlaidAPIError) as e:
+        c.vocab_layers.get('v2')
+    assert e.value.status == 404
+    assert [x['id'] for x in c.vocab_layers.audit('v1', op_types=['vocab-item/restore'])] == ['a2']
+    page = c.vocab_layers.audit_page('v1', order='desc', limit=1)
+    assert [x['id'] for x in page['entries']] == ['a2'] and page['next_cursor'] == '1'
+    assert c.vocab_layers.restore_item('v1', 'i1', 'T', dry_run=True)['total'] == 1
+    with c.batched() as b:
+        assert b.vocab_layers.restore_item('v1', 'i1', 'T') == {'batched': True}
+        assert c.kinds[-1] == 'vocab_layers.restore_item'  # the dry run, not the queued one
+    assert c.batches[-1] == [('vocab_layers.restore_item',
+                              {'args': ('v1', 'i1', 'T'), 'kwargs': {'dry_run': False}})]
+
+
 def test_the_user_data_store_matches_the_real_client_surface():
     """A fake that lies about a signature teaches the first caller written
     against it to call the real client wrong."""
@@ -470,6 +499,7 @@ def test_the_fake_methods_take_the_real_signatures():
              (testing.FakeClient._Guidelines, real.GuidelinesResource),
              (testing.FakeClient._UserData, real.UserDataResource),
              (testing.FakeClient._Messages, real.MessagesResource),
+             (testing.FakeClient._VocabLayers, real.VocabLayersResource),
              (testing._BatchUserData, real.UserDataResource),
              (testing._Operation, real._OperationContext)]
     for fake, real_cls in pairs:

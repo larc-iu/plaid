@@ -1613,7 +1613,7 @@ For a document's history, see the <<Audit Log>>.
 
 A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, e.g. `GET /api/v1/documents/{id}?as-of=2026-06-01T12:00:00Z&include-body=true`, and returns the document exactly as it stood at that moment — reconstructed from the audit log, so it is always available, requires no configuration, and is never stale. A few details worth knowing:
 
-* Time travel is read-only and only defined on the top-level document GET; document sub-routes (media, locks, metadata) and all other endpoints refuse `as-of` with a 400.
+* Time travel is read-only and defined on the top-level document GET and on the vocabulary reads below. Document sub-routes (media, locks, metadata) and all other endpoints refuse `as-of` with a 400.
 * A timestamp landing in the middle of an atomic batch request is treated as falling just before that request began, so you never observe a half-applied request. A batch the client split past 1,000 operations is several requests, and a moment between two of them is observed as it was.
 * A timestamp at or after the present simply returns the current state.
 * Documents that have since been deleted remain readable at timestamps when they existed, for users with current access to the project.
@@ -1622,6 +1622,18 @@ A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, 
 ==== Restoring a Document
 
 `POST /api/v1/documents/{id}/restore?as-of=2026-06-01T12:00:00Z` brings the document back to its state at that moment, as one operation. Every layer is covered: what was deleted since then comes back under its original id, what was added since is removed, and what changed is set back, token lists and metadata included. Because ids come back, anything that still refers to an entity by id, such as a comment, finds it again. A layer deleted since that time, and a vocabulary link whose entry no longer exists or whose vocabulary has left the project, cannot come back; they are skipped and listed under `skipped` in the response, along with whatever depended on them. The response is a summary of the changes, and with `dry-run=true` nothing is written and the summary says what would change. A restore is an ordinary entry in the audit log, so the state just before it can be restored in turn. Restoring requires maintainer privileges, and `document-version` applies as on any other write.
+
+=== Vocabulary Time Travel
+
+A vocabulary is shared across projects, so its history is its own rather than part of any document's.
+
+* `GET /api/v1/vocab-layers/{id}?as-of=2026-06-01T12:00:00Z&include-items=true` returns the vocabulary as it was at that moment, in the same shape as the live read, its entries included with `include-items`. A vocabulary that did not exist then is a 404. In the clients: `vocabLayers.get(id, includeItems, asOf)` and `vocab_layers.get(id, include_items=, as_of=)`.
+* `GET /api/v1/vocab-layers/{id}/items/{item-id}?as-of=...` returns one entry as it was then, also when it has been deleted since, and 404 when it was not in the vocabulary at that time. `as-of` is required. In the clients: `vocabLayers.getItemAt(id, itemId, asOf)` and `vocab_layers.get_item_at(id, item_id, as_of)`.
+* `GET /api/v1/vocab-layers/{id}/audit` is the vocabulary's audit log: every change to it or to its entries, with the same parameters, entry shape and paging as a document's log. Vocabulary links are not listed there, since they belong to the document they annotate. In the clients: `vocabLayers.audit` and `vocabLayers.auditPage`, `vocab_layers.audit` and `vocab_layers.audit_page`, taking the same arguments as the document log's.
+
+==== Restoring a Vocabulary Entry
+
+`POST /api/v1/vocab-layers/{id}/items/{item-id}/restore?as-of=...` puts one entry back as it was at that moment, as one operation. A deleted entry comes back under its original id with its form and fields, and a living entry has its form and fields set back. Links are not part of an entry, so a deleted entry's links do not come back with it: restoring each linking document to a time when the link existed brings them back, now that the entry exists again. The response is `{inserted, form, metadata, total}`, with `total` zero when nothing changes, and with `dry-run=true` nothing is written. When the form is set back, every document linking the entry gets a new version, returned in `X-Document-Versions` (past fifty documents, only their number, in `X-Document-Versions-Omitted`). A time when the entry did not exist is a 400. Restoring requires maintainer privileges on the vocabulary. In the clients: `vocabLayers.restoreItem(id, itemId, asOf, { dryRun }, auditMessage)` and `vocab_layers.restore_item(id, item_id, as_of, dry_run=, audit_message=)`.
 
 == Further Reading
 
