@@ -226,6 +226,7 @@ test('apply: a document changed since the preview stops the run after the ones b
     status: 409,
     message: 'document version mismatch',
     partial: false,
+    unsure: false,
   });
   assert.deepEqual(client.strict, [['enter', 'doc1-id'], ['exit'], ['enter', 'doc2-id'], ['exit']]);
   // The operation was still closed.
@@ -404,5 +405,50 @@ test('applySummary: the reason ends in one full stop, and a first-document refus
   assert.equal(
     applySummary({ docsChanged: 1, sentencesChanged: 1, failed: null }, reason),
     'Changed 1 sentence in 1 document.',
+  );
+});
+
+// A request whose answer never came (status 0) may have landed. The toast must
+// not say the document is unchanged.
+test('apply: a batch whose answer is lost does not report the document unchanged', async () => {
+  for (const grs of [
+    `pattern { D [form="the"]; X [upos=DET, form="a"] }
+      commands { del_node D; X.upos = PRON } strat main { rule }`,
+    LEMMA_AND_DELETE,
+  ]) {
+    const { client, project, layerInfo } = setup();
+    const plan = await planRewrite(client, { project, user: null, layerInfo, grs: parseGrs(grs) });
+    const batched = client.batched;
+    // The first request goes out and its answer is lost.
+    let first = true;
+    client.batched = async (fn) => {
+      if (!first) return batched(fn);
+      first = false;
+      throw Object.assign(new Error('Request timed out'), { status: 0 });
+    };
+    const out = await applyRewrite(client, { rows: plan.rows, docs: plan.docs, label: 'Rewrite' });
+    assert.equal(out.failed.status, 0);
+    assert.doesNotMatch(
+      applySummary(out, () => 'Could not reach the server.'),
+      /unchanged/,
+    );
+  }
+});
+
+test('applySummary: a document whose outcome is unknown may have changed', () => {
+  const failed = {
+    docId: 'd',
+    docName: 'doc1',
+    status: 0,
+    message: 'x',
+    partial: false,
+    unsure: true,
+  };
+  assert.equal(
+    applySummary(
+      { docsChanged: 0, sentencesChanged: 0, failed },
+      () => 'Could not reach the server.',
+    ),
+    'Stopped at doc1: Could not reach the server. doc1 may have changed.',
   );
 });

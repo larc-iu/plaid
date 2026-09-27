@@ -217,8 +217,9 @@ function mapPool(items, limit, fn) {
 // is refused by the server (409) before anything in it is touched. The run
 // stops at the first document that fails; the ones before it stay applied.
 // Returns { docsChanged, sentencesChanged, failed }, where `failed` is
-// { docId, docName, status, message, partial } or null. `partial` is true
-// when some of that document's writes landed and could not be taken back.
+// { docId, docName, status, message, partial, unsure } or null. `partial` is
+// true when some of that document's writes landed and could not be taken back,
+// and `unsure` when a request's answer never came, so it may have landed.
 export async function applyRewrite(client, { rows, docs, label }, onProgress) {
   const byDoc = new Map();
   for (const r of rows) {
@@ -241,6 +242,7 @@ export async function applyRewrite(client, { rows, docs, label }, onProgress) {
           status: e?.status ?? null,
           message: e?.message || String(e),
           partial: Boolean(e?.partial),
+          unsure: Boolean(e?.unsure),
         };
         break;
       } finally {
@@ -261,12 +263,18 @@ export function applySummary(out, reason) {
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const applied = `${plural(out.sentencesChanged, 'sentence')} in ${plural(out.docsChanged, 'document')}`;
   if (!out.failed) return `Changed ${applied}.`;
-  const { docName, status, partial } = out.failed;
+  const { docName, status, partial, unsure } = out.failed;
   const why = (status === 409 ? 'it changed since the preview' : reason(out.failed))
     .trim()
     .replace(/\.+$/, '');
   const parts = [`Stopped at ${docName}: ${why}.`];
-  parts.push(partial ? `${docName} is partly changed.` : `${docName} is unchanged.`);
+  parts.push(
+    partial
+      ? `${docName} is partly changed.`
+      : unsure
+        ? `${docName} may have changed.`
+        : `${docName} is unchanged.`,
+  );
   if (out.docsChanged) parts.push(`Changed ${applied} before it.`);
   return parts.join(' ');
 }
@@ -280,7 +288,8 @@ export function applySummary(out, reason) {
 // way the document lock is held across the requests so no one else writes in
 // between, and when the second batch is refused whole, the lemma spans the
 // first created are deleted again. A refusal that leaves writes behind is
-// thrown with `partial` set.
+// thrown with `partial` set, and a request whose answer never came (status 0)
+// with `unsure`, since it may have landed.
 async function applyToDocument(client, docId, doc, rows) {
   const writer = doc.writer;
   const createStamp = writer.createStamp || undefined;
@@ -302,7 +311,12 @@ async function applyToDocument(client, docId, doc, rows) {
   // An update may carry a stamp beside it, so a main write is at most two ops.
   const changeOps = tokens.length + 2 * main.length;
   if (!lemmas.length && changeOps <= MAX_BATCH_OPS) {
-    await client.batched(queueChanges);
+    try {
+      await client.batched(queueChanges);
+    } catch (e) {
+      if (e?.status === 0) e.unsure = true;
+      throw e;
+    }
     return;
   }
 
@@ -317,6 +331,7 @@ async function applyToDocument(client, docId, doc, rows) {
       } catch (e) {
         // Past MAX_BATCH_OPS the requests before the refused one landed.
         if (lemmas.length > MAX_BATCH_OPS) e.partial = true;
+        else if (e?.status === 0) e.unsure = true;
         throw e;
       }
       created = lemmas.map((w, i) => createdId(results[i]));
