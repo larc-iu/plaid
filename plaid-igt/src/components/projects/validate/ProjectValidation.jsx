@@ -53,7 +53,7 @@ const locateMetadata = async (client, projectId, field, value) => {
   };
 };
 
-const MODE_LABELS = { suggest: 'open', closed: 'closed', mixed: 'closed + lexical' };
+const MODE_LABELS = { suggest: 'open', closed: 'closed', mixed: 'closed, plus lexical glosses' };
 
 const reasonText = (violations) => {
   const unknown = violations.filter((v) => v.reason === 'unknown').map((v) => v.part);
@@ -66,7 +66,7 @@ const Occurrences = ({ res, projectId }) => (
   <div className="border-t bg-muted/20 px-3 py-2">
     {!res && <p className="text-sm text-muted-foreground">Finding occurrences…</p>}
     {res?.failed && (
-      <p className="text-sm text-destructive">Could not search for this value. Try again.</p>
+      <p className="text-sm text-destructive">Failed to search for this value. Try again.</p>
     )}
     {res && !res.failed && res.groups.length === 0 && (
       <p className="text-sm text-muted-foreground">
@@ -197,7 +197,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       );
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(humanizeError(err), 'Could not check values');
+      notifyError(humanizeError(err), 'Failed to check the values');
       setFields([]);
       setZeros([]);
     } finally {
@@ -238,7 +238,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
       record(res);
     } catch (err) {
       console.error('Could not locate value:', err);
-      notifyError(humanizeError(err), 'Could not find these values');
+      notifyError(humanizeError(err), 'Failed to find these values');
       // Record the failure. Leaving the entry unset would sit on "Finding
       // occurrences…" forever, which reads as a hang once the toast is gone.
       record({ failed: true, groups: [] });
@@ -259,21 +259,18 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
         ...tagsets,
         [g.tagsetName]: { ...t, values: [...t.values, ...fresh] },
       });
-      notifySuccess(
-        `${fresh.map((f) => `"${f.value}"`).join(', ')} added to ${g.tagsetName}`,
-        'Tagset Updated',
-      );
+      notifySuccess(`${fresh.map((f) => `“${f.value}”`).join(', ')} added to ${g.tagsetName}`);
       // The scan reads the tagset from the project, so refresh it and re-check.
       await onProjectUpdate?.();
     } catch (err) {
       console.error('Could not add to tagset:', err);
-      notifyError(humanizeError(err), 'Could not update the tagset');
+      notifyError(humanizeError(err), 'Failed to update the tagset');
     }
   };
 
   const header = (
     <ValidationHeader
-      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Closed lists apply to what you type and bulk edit, not to imports, services or the assistant, so their values show up here."
+      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Values from imports, services and the assistant are not held to closed lists."
       busy={busy}
       onCheck={scan}
       className="mb-0"

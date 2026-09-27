@@ -151,7 +151,7 @@ export const FieldsManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError('Failed to load fields configuration', 'Load Error');
+          notifyError(error, 'Failed to load the fields');
         }
       }
     };
@@ -193,7 +193,7 @@ export const FieldsManager = ({
     const trimmedName = newFieldName.trim();
 
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid Field Name');
+      notifyError('Field name cannot be empty', 'Invalid field name');
       return;
     }
 
@@ -204,7 +204,7 @@ export const FieldsManager = ({
     );
 
     if (isDuplicate) {
-      notifyError(`A ${newFieldScope} field with this name already exists`, 'Duplicate Field');
+      notifyError(`A ${newFieldScope} field with this name already exists`, 'Duplicate field');
       return;
     }
 
@@ -226,7 +226,7 @@ export const FieldsManager = ({
       setNewFieldScope(newField.scope);
       return;
     }
-    notifySuccess(`"${trimmedName}" has been added with ${newField.scope} scope`, 'Field Added');
+    notifySuccess(`${newField.scope} field “${trimmedName}” added`);
   };
 
   const handleDeleteField = async (key) => {
@@ -234,7 +234,7 @@ export const FieldsManager = ({
     const updatedFields = fields.filter((f) => fieldKey(f) !== key);
     if (!(await saveChanges(updatedFields, ignoredTokens))) return;
 
-    notifyInfo(`"${field?.name ?? key}" has been removed`, 'Field Removed');
+    notifyInfo(`Field “${field?.name ?? key}” removed`);
   };
 
   // The writing system a field's values are in, as the FLEx and ELAN exports
@@ -396,10 +396,10 @@ export const FieldsManager = ({
           title + description. */}
       <div>
         {showTitle ? (
-          <p className="mb-4 text-sm font-medium">Annotation Fields</p>
+          <p className="mb-4 text-sm font-medium">Annotation fields</p>
         ) : (
           <>
-            <h2 className="text-lg font-semibold">Annotation Fields</h2>
+            <h2 className="text-lg font-semibold">Annotation fields</h2>
             <p className="mb-4 mt-1 text-sm text-muted-foreground">
               Configure annotation fields for your project. Word scope fields apply to words,
               Morpheme scope fields apply to morphemes, and Sentence scope fields apply to entire
@@ -414,7 +414,7 @@ export const FieldsManager = ({
             <thead>
               <tr>
                 <th className="w-[15%] px-3 py-2 text-left font-medium">Scope</th>
-                <th className="px-3 py-2 text-left font-medium">Field Name</th>
+                <th className="px-3 py-2 text-left font-medium">Field name</th>
                 <th className="w-[14%] px-3 py-2 text-left font-medium">
                   <span title="The writing-system tag FieldWorks will see for this field, such as en or tur. Leave it blank unless you export to FLEx.">
                     Language
@@ -551,7 +551,7 @@ export const FieldsManager = ({
 
         {/* Add Field Form */}
         <div className="mt-4 flex flex-col gap-4">
-          <p className="text-sm font-medium">Add Field</p>
+          <p className="text-sm font-medium">Add field</p>
           <div className="flex items-center gap-2">
             <Input
               placeholder="Enter field name"
@@ -573,7 +573,7 @@ export const FieldsManager = ({
               </SelectContent>
             </Select>
             <Button onClick={handleAddField} disabled={!newFieldName.trim() || wouldBeDuplicate()}>
-              <Plus className="h-4 w-4" /> Add Field
+              <Plus className="h-4 w-4" /> Add field
             </Button>
           </div>
         </div>
@@ -582,7 +582,7 @@ export const FieldsManager = ({
       {/* Ignored Tokens Section, separated from Annotation Fields by a rule. */}
       <div className="border-t pt-6">
         <p className={showTitle ? 'mb-4 text-sm font-medium' : 'mb-1 text-lg font-semibold'}>
-          Ignored Tokens
+          Ignored tokens
         </p>
         <div className="mb-6 text-sm text-muted-foreground">
           Which tokens carry no{' '}
@@ -603,7 +603,7 @@ export const FieldsManager = ({
               className="mt-1"
             />
             <span>
-              <span className="text-sm font-medium">Unicode Punctuation (Recommended)</span>
+              <span className="text-sm font-medium">Unicode punctuation (recommended)</span>
               <span className="block text-xs text-muted-foreground">
                 Automatically ignore all Unicode punctuation characters (category 'P')
               </span>
@@ -644,7 +644,7 @@ export const FieldsManager = ({
               className="mt-1"
             />
             <span>
-              <span className="text-sm font-medium">Explicit List</span>
+              <span className="text-sm font-medium">Explicit list</span>
               <span className="block text-xs text-muted-foreground">
                 Manually specify which tokens to ignore
               </span>
@@ -653,7 +653,7 @@ export const FieldsManager = ({
 
           {ignoredTokens.mode === IGNORED_TOKEN_MODES.explicit && (
             <div className="ml-8 rounded-md border p-4">
-              <p className="mb-1 text-sm font-medium">Ignored Tokens</p>
+              <p className="mb-1 text-sm font-medium">Ignored tokens</p>
               <div className="mb-4 text-xs text-muted-foreground">
                 These specific tokens will be ignored for{' '}
                 <Badge variant="secondary" className={scopeBadgeClass('Word')}>

@@ -66,14 +66,14 @@ export const VocabularyManager = ({
         setError('');
       } catch (err) {
         console.error('Failed to load vocabularies configuration:', err);
-        setError('Failed to load vocabularies');
+        setError('Failed to load the vocabularies.');
         setVocabularies([]);
         setIsInitialized(true);
 
         if (onError) {
           onError(err);
         } else {
-          notifyError('Failed to load vocabularies configuration', 'Load Error');
+          notifyError(err, 'Failed to load the vocabularies');
         }
       } finally {
         setLoading(false);
@@ -109,7 +109,7 @@ export const VocabularyManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError('Failed to save vocabularies configuration', 'Save Error');
+          notifyError(error, 'Failed to save the vocabularies');
         }
       });
   };
@@ -150,7 +150,7 @@ export const VocabularyManager = ({
     const trimmedName = newVocabName.trim();
 
     if (!trimmedName) {
-      notifyError('Vocabulary name cannot be empty', 'Invalid Vocabulary Name');
+      notifyError('Vocabulary name cannot be empty', 'Invalid vocabulary name');
       return;
     }
 
@@ -160,7 +160,7 @@ export const VocabularyManager = ({
     );
 
     if (isDuplicate) {
-      notifyError('A vocabulary with this name already exists', 'Duplicate Vocabulary');
+      notifyError('A vocabulary with this name already exists', 'Duplicate vocabulary');
       return;
     }
 
@@ -233,11 +233,6 @@ export const VocabularyManager = ({
     ...vocab,
     tableId: `${vocab.name}-${index}`, // Unique ID for table
   }));
-  // Vocab names aren't unique server-side; two "Lexicon"s are otherwise
-  // indistinguishable here, so tag duplicates with the tail of their id.
-  const nameCounts = new Map();
-  for (const v of tableData) nameCounts.set(v.name, (nameCounts.get(v.name) || 0) + 1);
-
   // Searched and paged, as every other browsable list in the app is. Every
   // vocabulary on the server lands here, and on a shared server that is a
   // hundred rows, dozens of them named "Lexicon", with the Add field and the
@@ -260,7 +255,7 @@ export const VocabularyManager = ({
     <div className="flex flex-col gap-8">
       {/* Vocabularies Table */}
       <div>
-        {showTitle && <p className="mb-4 text-sm font-medium">Available Vocabularies</p>}
+        {showTitle && <p className="mb-4 text-sm font-medium">Vocabularies</p>}
 
         <div className="mb-2 flex flex-wrap items-center gap-3">
           <SearchInput
@@ -278,7 +273,7 @@ export const VocabularyManager = ({
             <thead>
               <tr className="bg-muted/50">
                 <th className="w-[10%] px-3 py-2 text-left font-medium">Link</th>
-                <th className="px-3 py-2 text-left font-medium">Vocabulary Name</th>
+                <th className="px-3 py-2 text-left font-medium">Vocabulary name</th>
               </tr>
             </thead>
             <tbody>
@@ -313,14 +308,6 @@ export const VocabularyManager = ({
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn(record.enabled ? '' : 'italic text-muted-foreground')}>
                         {record.name}
-                        {nameCounts.get(record.name) > 1 && record.id && (
-                          <span
-                            className="ml-1.5 font-mono text-xs text-muted-foreground"
-                            title="Two vocabularies share this name. This is the end of its id"
-                          >
-                            · {String(record.id).slice(-6)}
-                          </span>
-                        )}
                         {isLocked(record) && (
                           <span className="block text-xs not-italic text-muted-foreground">
                             Only its maintainers can link it.
@@ -417,7 +404,7 @@ export const VocabularyManager = ({
         {/* Add Custom Vocab - only in setup mode */}
         {!isSettings && (
           <div className="mt-4">
-            <p className="mb-4 text-sm font-medium">Add New Vocabulary</p>
+            <p className="mb-4 text-sm font-medium">New vocabulary</p>
             <div className="flex items-center gap-2">
               <Input
                 placeholder="Enter vocabulary name"
@@ -430,7 +417,7 @@ export const VocabularyManager = ({
                 onClick={handleAddCustomVocab}
                 disabled={!newVocabName.trim() || wouldBeDuplicate()}
               >
-                <Plus className="h-4 w-4" /> Add Vocabulary
+                <Plus className="h-4 w-4" /> Add vocabulary
               </Button>
             </div>
           </div>

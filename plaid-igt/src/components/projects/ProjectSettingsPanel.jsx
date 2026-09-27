@@ -24,7 +24,7 @@ const SECTIONS = [
   },
   {
     value: 'text-and-vocab',
-    label: 'Text and Vocab',
+    label: 'Text and vocab',
     body: ({ project, projectId, client, onProjectUpdate }) => (
       <OrthographyVocabSettings
         project={project}

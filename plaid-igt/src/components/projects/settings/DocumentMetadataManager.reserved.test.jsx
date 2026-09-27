@@ -32,7 +32,7 @@ const addField = async (name) => {
   );
   const input = container.querySelector('input[placeholder="Enter custom field name"]');
   await step(async () => typeInto(input, name));
-  const add = all(container, 'button').find((b) => b.textContent.includes('Add Field'));
+  const add = all(container, 'button').find((b) => b.textContent.includes('Add field'));
   await step(async () => add.click());
   await unmount();
   return onSaveChanges;
@@ -46,7 +46,7 @@ describe('DocumentMetadataManager reserved names', () => {
     expect(onSaveChanges).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledWith(
       'plaid is reserved for document settings',
-      'Invalid Field Name',
+      'Invalid field name',
     );
   });
 
@@ -55,7 +55,7 @@ describe('DocumentMetadataManager reserved names', () => {
     expect(onSaveChanges).not.toHaveBeenCalled();
     expect(notifyError).toHaveBeenCalledWith(
       'provSource is reserved for provenance',
-      'Invalid Field Name',
+      'Invalid field name',
     );
   });
 

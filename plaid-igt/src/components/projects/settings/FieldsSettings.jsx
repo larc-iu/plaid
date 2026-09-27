@@ -15,6 +15,7 @@ import {
 } from '@/domain/igtConfig';
 import { readTagsetName } from '@/domain/tagsets';
 import { readFieldLang, readLanguages } from '@/domain/igtConfig';
+import { notSetUp } from '@/domain/setupGuard.js';
 
 const PREDEFINED = ['Gloss', 'POS', 'Translation', 'Literal Translation', 'Note'];
 const isPredefinedField = (fieldName) => PREDEFINED.includes(fieldName);
@@ -112,7 +113,7 @@ export const FieldsSettings = ({
     // see the ones that exist right now, not the ones the last render saw.
     const layers = layersOf(await client.projects.get(projectId));
     if (!layers) {
-      throw new Error('No baseline text layer found in project');
+      throw new Error(notSetUp('No baseline text layer found in project'));
     }
     const { primary, sentence, morpheme, managed } = layers;
 
@@ -134,7 +135,7 @@ export const FieldsSettings = ({
             : primary.id;
       if (!parentLayerId) {
         throw new Error(
-          `No ${field.scope.toLowerCase()} token layer found for field ${field.name}`,
+          notSetUp(`No ${field.scope.toLowerCase()} token layer found for field ${field.name}`),
         );
       }
       const spanLayer = await client.spanLayers.create(parentLayerId, field.name);

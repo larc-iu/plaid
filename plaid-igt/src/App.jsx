@@ -159,7 +159,7 @@ function App() {
               </Route>
 
               {/* Settings used to be one long scroll at /settings before it was
-              split into General / Text and Vocab / Annotation, and the middle
+              split into General / Text and vocab / Annotation, and the middle
               section was briefly /orthography and then /lexicon. These keep the
               specific destination, rather than letting the catch-all above send
               an old bookmark to Projects. */}

@@ -90,7 +90,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     // tab still reads the config as it was when the page loaded and reports
     // that the project has no presets at all.
     onProjectUpdate?.();
-    if (successMessage) notifySuccess(successMessage, 'Export presets');
+    if (successMessage) notifySuccess(successMessage);
   };
 
   // Opening the dialog seeds the name from the format it opens on, so the
@@ -120,7 +120,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       navigate(`/projects/${projectId}/export/${preset.id}`);
     } catch (err) {
       console.error('Failed to create export preset:', err);
-      notifyError('Creating the preset failed. Try again.', 'Export presets');
+      notifyError(err, 'Failed to create the preset');
     } finally {
       setCreating(false);
     }
@@ -135,7 +135,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
       );
     } catch (err) {
       console.error('Failed to delete export preset:', err);
-      notifyError('Deleting the preset failed. Try again.', 'Export presets');
+      notifyError(err, 'Failed to delete the preset');
     } finally {
       setDeletingId(null);
     }
@@ -145,7 +145,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     return (
       <div className="pt-4">
         <div className="flex items-center gap-2 rounded-md border border-destructive/40 p-4 text-sm text-destructive">
-          <AlertTriangle className="h-4 w-4" /> Could not load the export presets.
+          <AlertTriangle className="h-4 w-4" /> Failed to load the export presets.
           <Button variant="outline" size="sm" onClick={load}>
             Retry
           </Button>
@@ -161,7 +161,7 @@ export const ExportPresetsSettings = ({ projectId, client, onProjectUpdate }) =>
     <div className="flex flex-col gap-4 pt-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Export Presets</h2>
+          <h2 className="text-lg font-semibold">Export presets</h2>
           <p className="text-sm text-muted-foreground">
             A preset fixes an export format and which orthographies, fields and options it includes.
             Open one to edit it and to run it.

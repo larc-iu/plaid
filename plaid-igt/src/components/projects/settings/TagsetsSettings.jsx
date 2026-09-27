@@ -53,7 +53,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       await client.projects.setConfig(projectId, IGT_NAMESPACE, 'tagsets', next);
     } catch (error) {
       console.error('Failed to save tagsets:', error);
-      notifyError('Failed to save tagsets', 'Save Error');
+      notifyError(error, 'Failed to save the tagsets');
       throw error;
     }
     // Hold what we just wrote until the refreshed project comes back, so the
@@ -64,7 +64,10 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
         await repointFields(meta.renamed);
       } catch (error) {
         console.error('Failed to repoint fields:', error);
-        notifyError(`Some fields still name the tagset "${meta.renamed.from}"`, 'Save Error');
+        notifyError(
+          `Some fields still name the tagset “${meta.renamed.from}”.`,
+          'Failed to update the fields',
+        );
       }
     }
     // The field table below reads the tagset names off the project, so a new
@@ -91,7 +94,7 @@ export const TagsetsSettings = ({ project, projectId, client, onProjectUpdate })
       <h2 className="text-lg font-semibold">Tagsets</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         A tagset is the list of tags a field may use, such as Leipzig glossing abbreviations for
-        Gloss or a part of speech inventory. Assign it to a field under Annotation Fields below. The
+        Gloss or a part of speech inventory. Assign it to a field under Annotation fields below. The
         lexicon is under Vocabularies, not here.
       </p>
 

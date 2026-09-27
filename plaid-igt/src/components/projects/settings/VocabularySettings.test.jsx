@@ -201,7 +201,7 @@ describe('Project settings, Vocabularies, a list that will not load', () => {
       throw new Error('HTTP 500');
     });
     const view = await mount(client);
-    expect(view.container.textContent).toMatch(/Configuration Error/);
+    expect(view.container.textContent).toMatch(/Failed to load or save the vocabularies/);
     expect(notifyError).not.toHaveBeenCalled();
     await view.unmount();
   });

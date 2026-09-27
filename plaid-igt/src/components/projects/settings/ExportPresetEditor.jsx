@@ -83,10 +83,10 @@ export const ExportPresetEditor = ({ projectId, client, presetId, onProjectUpdat
       setProject((p) => applyExportPresets(p, next));
       // See ExportPresetsSettings: the containing page holds one as well.
       onProjectUpdate?.();
-      notifySuccess(`Saved preset “${draft.name.trim()}”.`, 'Export presets');
+      notifySuccess(`Preset “${draft.name.trim()}” saved`);
     } catch (err) {
       console.error('Failed to save export preset:', err);
-      notifyError('Saving the preset failed. Try again.', 'Export presets');
+      notifyError(err, 'Failed to save the preset');
     } finally {
       setSaving(false);
     }

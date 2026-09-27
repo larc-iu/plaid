@@ -74,9 +74,9 @@ export const DocumentMetadataSettings = ({
   };
 
   // Handle errors
-  const handleError = () => {
+  const handleError = (error) => {
     setHasError(true);
-    notifyError('Failed to update document metadata configuration', 'Configuration Error');
+    notifyError(error, 'Failed to save the metadata fields');
   };
 
   if (hasError) {
@@ -85,11 +85,10 @@ export const DocumentMetadataSettings = ({
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
-            <p className="text-sm font-medium text-destructive">Configuration Error</p>
-            <p className="text-sm text-muted-foreground">
-              Failed to load or save document metadata configuration. Please refresh the page and
-              try again.
+            <p className="text-sm font-medium text-destructive">
+              Failed to load or save the metadata fields
             </p>
+            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
           </div>
         </div>
       </div>
@@ -98,7 +97,7 @@ export const DocumentMetadataSettings = ({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold">Document Metadata</h2>
+      <h2 className="text-lg font-semibold">Document metadata</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
         Configure which metadata fields are available when creating or editing documents in this
         project.

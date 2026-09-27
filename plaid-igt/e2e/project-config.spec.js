@@ -226,7 +226,7 @@ test('the project page and its settings are the shared layout', async ({ page })
   const sections = page.getByRole('navigation', { name: 'Settings' }).getByRole('link');
   await expect(sections).toHaveText([
     'General',
-    'Text and Vocab',
+    'Text and vocab',
     'Annotation',
     'Access',
     'Services',

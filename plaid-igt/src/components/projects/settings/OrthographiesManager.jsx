@@ -84,7 +84,7 @@ export const OrthographiesManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError('Failed to load orthographies configuration', 'Load Error');
+          notifyError(error, 'Failed to load the orthographies');
         }
       }
     };
@@ -106,7 +106,7 @@ export const OrthographiesManager = ({
       if (onError) {
         onError(error);
       } else {
-        notifyError('Failed to save orthographies configuration', 'Save Error');
+        notifyError(error, 'Failed to save the orthographies');
       }
     }
   };
@@ -115,7 +115,7 @@ export const OrthographiesManager = ({
     const trimmedName = newOrthographyName.trim();
 
     if (!trimmedName) {
-      notifyError('Orthography name cannot be empty', 'Invalid Orthography Name');
+      notifyError('Orthography name cannot be empty', 'Invalid orthography name');
       return;
     }
 
@@ -125,7 +125,7 @@ export const OrthographiesManager = ({
     );
 
     if (isDuplicate) {
-      notifyError('An orthography with this name already exists', 'Duplicate Orthography');
+      notifyError('An orthography with this name already exists', 'Duplicate orthography');
       return;
     }
 
@@ -139,7 +139,7 @@ export const OrthographiesManager = ({
     await saveChanges(updatedOrthographies);
 
     setNewOrthographyName('');
-    notifySuccess(`"${trimmedName}" has been added to your orthographies`, 'Orthography Added');
+    notifySuccess(`Orthography “${trimmedName}” added`);
   };
 
   const handleDeleteOrthography = async (orthographyName) => {
@@ -152,7 +152,7 @@ export const OrthographiesManager = ({
     const updatedOrthographies = orthographies.filter((orth) => orth.name !== orthographyName);
     await saveChanges(updatedOrthographies);
 
-    notifyInfo(`"${orthographyName}" has been removed`, 'Orthography Removed');
+    notifyInfo(`Orthography “${orthographyName}” removed`);
   };
 
   // Entry point for the trash button: in settings mode open the confirm
@@ -226,7 +226,7 @@ export const OrthographiesManager = ({
 
   return (
     <div className="flex flex-col gap-4">
-      {showTitle && <p className="text-sm font-medium">Available Orthographies</p>}
+      {showTitle && <p className="text-sm font-medium">Orthographies</p>}
 
       {/* Orthographies list */}
       <div className="overflow-hidden rounded-md border">
@@ -285,7 +285,7 @@ export const OrthographiesManager = ({
 
       {/* Add Custom Orthography */}
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">Add Custom Orthography</p>
+        <p className="text-sm font-medium">Add an orthography</p>
         <div className="flex items-center gap-2">
           <Input
             placeholder="Enter orthography name"
@@ -298,7 +298,7 @@ export const OrthographiesManager = ({
             onClick={handleAddCustomOrthography}
             disabled={!newOrthographyName.trim() || wouldBeDuplicate()}
           >
-            <Plus className="h-4 w-4" /> Add Orthography
+            <Plus className="h-4 w-4" /> Add orthography
           </Button>
         </div>
       </div>

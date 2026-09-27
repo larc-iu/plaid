@@ -34,7 +34,7 @@ let nextUid = 0;
 const withUid = (row) => ({ ...row, uid: `row-${nextUid++}` });
 
 /**
- * Settings → Text and Vocab → Special characters. Every code is an entry here:
+ * Settings → Text and vocab → Special characters. Every code is an entry here:
  * the built-in ones can be pointed somewhere else or taken out, and a project
  * can add its own. Only what a project actually changed is stored, so a code
  * nobody touched still picks up a correction later.
@@ -121,7 +121,7 @@ export const ComposeSettings = ({ project, projectId, client, onProjectUpdate })
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save the project codes:', err);
-      notifyError('Saving the codes failed. Please try again.', 'Error');
+      notifyError(err, 'Failed to save the codes');
     } finally {
       setSaving(false);
     }

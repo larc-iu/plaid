@@ -48,7 +48,7 @@ const SPOTS = [
     key: TASKS.LINK_VOCAB,
     label: 'Auto-link vocabulary',
     description: 'Proposes vocabulary links for unlinked words/morphemes (Auto-analyze, step 4).',
-    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent & unique matches' }],
+    builtins: [{ name: BUILTIN_LINK_PRECEDENT, label: 'Follow precedent and unique matches' }],
   },
 ];
 

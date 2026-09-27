@@ -47,7 +47,7 @@ const SETTINGS_SECTIONS = ['general', 'text-and-vocab', 'annotation', 'access', 
 // Title-bar labels for the settings sections (match ProjectSettingsPanel).
 const SECTION_TITLES = {
   general: 'General',
-  'text-and-vocab': 'Text and Vocab',
+  'text-and-vocab': 'Text and vocab',
   annotation: 'Annotation',
   access: 'Access',
   services: 'Services',

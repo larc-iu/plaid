@@ -162,7 +162,7 @@ describe('FieldsManager field order', () => {
       <FieldsManager initialData={three} />,
     );
     const input = all(container, 'input').find((i) => i.placeholder === 'Enter field name');
-    const add = all(container, 'button').find((b) => b.textContent.includes('Add Field'));
+    const add = all(container, 'button').find((b) => b.textContent.includes('Add field'));
     await step(async () => typeInto(input, 'Gloss'));
     expect(add.disabled).toBe(false);
     await step(async () => typeInto(input, 'POS'));
@@ -235,7 +235,7 @@ describe('TagsetsManager', () => {
     );
     const input = container.querySelector('input');
     await step(async () => typeInto(input, 'Leipzig'));
-    const add = all(container, 'button').find((b) => b.textContent.includes('Add Tagset'));
+    const add = all(container, 'button').find((b) => b.textContent.includes('Add tagset'));
     await step(async () => add.click());
     expect(container.textContent).toContain('Leipzig');
     expect(container.textContent).toContain('Open');
@@ -443,7 +443,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     );
     expect(notifyInfo).toHaveBeenCalledWith(
       expect.stringContaining('now uses "Leipzig 2"'),
-      'Tagset Renamed',
+      'Tagset renamed',
     );
     await unmount();
   });
@@ -568,7 +568,7 @@ describe('TagsetsManager: rename, seed and value rows', () => {
     const pl = rowInputs(container).find((i) => i.value === 'PL');
     await step(async () => blurWith(pl, 'NOM'));
     expect(onSaveChanges).not.toHaveBeenCalled();
-    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('NOM'), 'Duplicate Value');
+    expect(notifyError).toHaveBeenCalledWith(expect.stringContaining('NOM'), 'Duplicate value');
     expect(pl.value).toBe('PL');
     await unmount();
   });

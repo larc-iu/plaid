@@ -83,7 +83,7 @@ export const DocumentMetadataManager = ({
         if (onError) {
           onError(error);
         } else {
-          notifyError('Failed to load metadata configuration', 'Load Error');
+          notifyError(error, 'Failed to load the metadata fields');
         }
       }
     };
@@ -105,7 +105,7 @@ export const DocumentMetadataManager = ({
       if (onError) {
         onError(error);
       } else {
-        notifyError('Failed to save metadata configuration', 'Save Error');
+        notifyError(error, 'Failed to save the metadata fields');
       }
     }
   };
@@ -121,7 +121,7 @@ export const DocumentMetadataManager = ({
     const trimmedName = newFieldName.trim();
 
     if (!trimmedName) {
-      notifyError('Field name cannot be empty', 'Invalid Field Name');
+      notifyError('Field name cannot be empty', 'Invalid field name');
       return;
     }
 
@@ -131,7 +131,7 @@ export const DocumentMetadataManager = ({
     // as having no values at all — a silent all-clear in the Validation tab
     // rather than an error.
     if (trimmedName.includes('.')) {
-      notifyError('Field names cannot contain a period', 'Invalid Field Name');
+      notifyError('Field names cannot contain a period', 'Invalid field name');
       return;
     }
 
@@ -143,7 +143,7 @@ export const DocumentMetadataManager = ({
         trimmedName === PLAID_NAMESPACE
           ? `${trimmedName} is reserved for document settings`
           : `${trimmedName} is reserved for provenance`,
-        'Invalid Field Name',
+        'Invalid field name',
       );
       return;
     }
@@ -154,7 +154,7 @@ export const DocumentMetadataManager = ({
     );
 
     if (isDuplicate) {
-      notifyError('A field with this name already exists', 'Duplicate Field');
+      notifyError('A field with this name already exists', 'Duplicate field');
       return;
     }
 
@@ -168,14 +168,14 @@ export const DocumentMetadataManager = ({
     await saveChanges(updatedFields);
 
     setNewFieldName('');
-    notifySuccess(`"${trimmedName}" has been added to your metadata fields`, 'Field Added');
+    notifySuccess(`Field “${trimmedName}” added`);
   };
 
   const handleDeleteCustomField = async (fieldName) => {
     const updatedFields = enabledFields.filter((field) => field.name !== fieldName);
     await saveChanges(updatedFields);
 
-    notifyInfo(`"${fieldName}" has been removed`, 'Field Removed');
+    notifyInfo(`Field “${fieldName}” removed`);
   };
 
   const handleKeyPress = (event) => {
@@ -207,11 +207,7 @@ export const DocumentMetadataManager = ({
 
   // Don't render until initialized
   if (!isInitialized) {
-    return (
-      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-        Loading metadata configuration...
-      </div>
-    );
+    return <div className="rounded-lg border p-4 text-sm text-muted-foreground">Loading…</div>;
   }
 
   // Prepare data for the table
@@ -234,14 +230,14 @@ export const DocumentMetadataManager = ({
     <div className="flex flex-col gap-8">
       {/* Metadata Fields Table */}
       <div>
-        {showTitle && <p className="mb-4 text-sm font-medium">Available Metadata Fields</p>}
+        {showTitle && <p className="mb-4 text-sm font-medium">Metadata fields</p>}
 
         <div className="overflow-hidden rounded-md border">
           <table className="w-full text-sm">
             <thead>
               <tr>
                 <th className="w-[10%] px-3 py-2 text-left font-medium">Enabled</th>
-                <th className="px-3 py-2 text-left font-medium">Field Name</th>
+                <th className="px-3 py-2 text-left font-medium">Field name</th>
                 {tagsetNames.length > 0 && (
                   <th className="w-[22%] px-3 py-2 text-left font-medium">Tagset</th>
                 )}
@@ -392,7 +388,7 @@ export const DocumentMetadataManager = ({
               onClick={handleAddCustomField}
               disabled={!newFieldName.trim() || wouldBeDuplicate()}
             >
-              <Plus className="h-4 w-4" /> Add Field
+              <Plus className="h-4 w-4" /> Add field
             </Button>
           </div>
         </div>

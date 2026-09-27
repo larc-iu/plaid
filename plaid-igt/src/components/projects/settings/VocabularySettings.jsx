@@ -80,11 +80,10 @@ export const VocabularySettings = ({ projectId, client }) => {
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
-            <p className="text-sm font-medium text-destructive">Configuration Error</p>
-            <p className="text-sm text-muted-foreground">
-              Failed to load or save vocabularies configuration. Please refresh the page and try
-              again.
+            <p className="text-sm font-medium text-destructive">
+              Failed to load or save the vocabularies
             </p>
+            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
           </div>
         </div>
       </div>

@@ -122,7 +122,7 @@ export const LanguagesSettings = ({ project, projectId, client, onProjectUpdate 
       onProjectUpdate?.();
     } catch (err) {
       console.error('Failed to save project languages:', err);
-      notifyError('Saving the languages failed. Please try again.', 'Error');
+      notifyError(err, 'Failed to save the languages');
     } finally {
       setSaving(false);
     }

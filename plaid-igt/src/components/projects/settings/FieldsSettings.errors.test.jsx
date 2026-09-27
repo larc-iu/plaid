@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
 import { notifySuccess, notifyError } from '@/utils/feedback';
 
-// A refused save in Settings > Fields said "Field Added", then replaced the
+// A refused save in Settings > Fields said the field was added, then replaced the
 // whole section with a dead "refresh the page" panel. A save shows at once,
 // is put back when refused, says why, and leaves every control in place.
 
@@ -93,7 +93,7 @@ const mount = async (client, onProjectUpdate = vi.fn(async () => {})) => {
 };
 const nameBox = () => document.querySelector('input[placeholder="Enter field name"]');
 const addButton = () =>
-  all(document.body, 'button').find((b) => b.textContent.trim() === 'Add Field');
+  all(document.body, 'button').find((b) => b.textContent.trim() === 'Add field');
 const rowNames = (c) => all(c, 'tbody tr').map((tr) => tr.textContent);
 
 afterEach(() => vi.clearAllMocks());
@@ -119,7 +119,7 @@ describe('Settings > Fields when a save is refused', () => {
     await unmount();
   });
 
-  it('says Field Added only once the save has landed, and sends the rest as one batch', async () => {
+  it('says the field was added only once the save has landed, and sends the rest as one batch', async () => {
     const client = fakeClient();
     const { container, step, unmount } = await mount(client);
     await step(() => typeInto(nameBox(), 'Note2'));

@@ -598,7 +598,7 @@ An import from FLEx, ELAN, or CLDF fills these in from the file when the project
 The language identity travels with the project into exports such as CLDF, where a dataset without a Glottocode cannot be linked to any other.
 A code that looks wrong is pointed out but still saved, since a project may document something the catalogues have no entry for.
 
-== Text and Vocab
+== Text and vocab
 
 Three things live here:
 
@@ -1078,7 +1078,7 @@ In any field that holds language data, type a backslash followed by a two-letter
 |===
 
 The codes are Praat's, so if you already use Praat they are the ones you know.
-There are over four hundred of them, and the full list is under **Settings → Text and Vocab → Special characters**.
+There are over four hundred of them, and the full list is under **Settings → Text and vocab → Special characters**.
 For anything not in the list, `\u0250` and the like give any character by its Unicode number.
 Type two backslashes for a plain backslash.
 

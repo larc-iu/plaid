@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { OrthographiesManager } from './OrthographiesManager.jsx';
 import { notifyError } from '@/utils/feedback';
+import { notSetUp } from '@/domain/setupGuard.js';
 import {
   findBaselineTextLayer,
   findWordTokenLayer,
@@ -107,18 +108,18 @@ export const OrthographiesSettings = ({ projectId, client }) => {
       const project = await client.projects.get(projectId);
 
       if (!project.textLayers || project.textLayers.length === 0) {
-        throw new Error('No text layers found in project');
+        throw new Error(notSetUp('No text layers found in project'));
       }
 
       // Find the baseline text layer (the shared substrate).
       const textLayer = findBaselineTextLayer(project.textLayers);
       if (!textLayer) {
-        throw new Error('No baseline text layer found in project');
+        throw new Error(notSetUp('No baseline text layer found in project'));
       }
 
       const wordTokenLayer = findWordTokenLayer(textLayer.tokenLayers);
       if (!wordTokenLayer) {
-        throw new Error('No word token layer found in project');
+        throw new Error(notSetUp('No word token layer found in project'));
       }
       const tokenLayerId = wordTokenLayer.id;
 
@@ -165,9 +166,9 @@ export const OrthographiesSettings = ({ projectId, client }) => {
   };
 
   // Handle errors
-  const handleError = () => {
+  const handleError = (error) => {
     setHasError(true);
-    notifyError('Failed to update orthographies configuration', 'Configuration Error');
+    notifyError(error, 'Failed to save the orthographies');
   };
 
   if (hasError) {
@@ -176,11 +177,10 @@ export const OrthographiesSettings = ({ projectId, client }) => {
         <div className="flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 text-destructive" />
           <div>
-            <p className="text-sm font-medium text-destructive">Configuration Error</p>
-            <p className="text-sm text-muted-foreground">
-              Failed to load or save orthographies configuration. Please refresh the page and try
-              again.
+            <p className="text-sm font-medium text-destructive">
+              Failed to load or save the orthographies
             </p>
+            <p className="text-sm text-muted-foreground">Refresh the page and try again.</p>
           </div>
         </div>
       </div>
@@ -191,8 +191,8 @@ export const OrthographiesSettings = ({ projectId, client }) => {
     <div>
       <h2 className="text-lg font-semibold">Orthographies</h2>
       <p className="mb-4 mt-1 text-sm text-muted-foreground">
-        The ways this project’s text is written. Baseline is the token layer’s own and cannot be
-        removed. Add others for IPA, another writing system, or a normalized form.
+        The ways this project’s text is written. Baseline cannot be removed. Add others for IPA,
+        another writing system, or a normalized form.
       </p>
 
       <OrthographiesManager

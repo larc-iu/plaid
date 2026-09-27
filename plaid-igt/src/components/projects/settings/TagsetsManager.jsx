@@ -79,7 +79,7 @@ export const TagsetsManager = ({
   // The wording that differs between a project's tagsets and a vocabulary's:
   // where a field gets assigned, what the seed reads, what a delete leaves
   // alone.
-  emptyHint = 'No tagsets yet. Add one, then assign it to a field under Annotation Fields.',
+  emptyHint = 'No tagsets yet. Add one, then assign it to a field under Annotation fields.',
   seedLabel = 'Add values used in this project',
   valuesNoun = 'annotations',
   enforceNote = 'Closed lists apply to what you type. Values brought in by imports, services or the assistant are not checked. The Validation tab lists them.',
@@ -122,20 +122,20 @@ export const TagsetsManager = ({
     const name = newTagsetName.trim();
     if (!name) return;
     if (draft[name]) {
-      notifyError(`A tagset named "${name}" already exists`, 'Duplicate Tagset');
+      notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
       return;
     }
     await save({ ...draft, [name]: { delimiters: '', mode: MODES.SUGGEST, values: [] } });
     setNewTagsetName('');
     setOpenName(name);
-    notifySuccess(`"${name}" has been created`, 'Tagset Added');
+    notifySuccess(`Tagset “${name}” added`);
   };
 
   const handleRenameTagset = async (from, to) => {
     const name = to.trim();
     if (!name || name === from) return;
     if (draft[name]) {
-      notifyError(`A tagset named "${name}" already exists`, 'Duplicate Tagset');
+      notifyError(`A tagset named "${name}" already exists`, 'Duplicate tagset');
       return;
     }
     // Object order is the display order, so rebuild in place rather than
@@ -151,7 +151,7 @@ export const TagsetsManager = ({
     if (fields.length) {
       notifyInfo(
         `${fields.length} field${fields.length === 1 ? '' : 's'} now use${fields.length === 1 ? 's' : ''} "${name}"`,
-        'Tagset Renamed',
+        'Tagset renamed',
       );
     }
   };
@@ -161,7 +161,7 @@ export const TagsetsManager = ({
     delete next[name];
     await save(next);
     if (openName === name) setOpenName(null);
-    notifyInfo(`"${name}" has been removed`, 'Tagset Removed');
+    notifyInfo(`Tagset “${name}” removed`);
   };
 
   const handleAddValues = async (name, records) => {
@@ -174,7 +174,7 @@ export const TagsetsManager = ({
       // looking for a bug in the wrong place.
       notifyInfo(
         records.length ? 'Every value found is already in the tagset' : 'No values found',
-        'Nothing to Add',
+        'Nothing to add',
       );
       return 0;
     }
@@ -194,7 +194,7 @@ export const TagsetsManager = ({
   const seedWith = async (name, records) => {
     setSeedPending(null);
     const n = await handleAddValues(name, records);
-    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'} found in this project`, 'Seeded');
+    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'} found in this project`);
   };
 
   // The attested rows are per-tagset (they come from the fields referencing it),
@@ -214,7 +214,7 @@ export const TagsetsManager = ({
       setSeedPending({ name, tags, lexical });
     } catch (error) {
       console.error('Failed to read attested values:', error);
-      notifyError('Could not read the values already used in this project', 'Seed Failed');
+      notifyError(error, 'Failed to read the values used in this project');
     }
   };
 
@@ -225,7 +225,7 @@ export const TagsetsManager = ({
       .filter(Boolean)
       .map((value) => ({ value }));
     const n = await handleAddValues(name, records);
-    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'}`, 'Values Added');
+    if (n) notifySuccess(`Added ${n} value${n === 1 ? '' : 's'}`);
     setPasteText('');
     setPasteOpen(false);
   };
@@ -239,7 +239,7 @@ export const TagsetsManager = ({
       changes.value !== undefined &&
       draft[name].values.some((v, i) => i !== index && v.value === changes.value)
     ) {
-      notifyError(`"${changes.value}" is already in the tagset`, 'Duplicate Value');
+      notifyError(`"${changes.value}" is already in the tagset`, 'Duplicate value');
       return false;
     }
     const values = draft[name].values.map((v, i) => (i === index ? { ...v, ...changes } : v));
@@ -648,7 +648,7 @@ export const TagsetsManager = ({
           onKeyDown={(e) => e.key === 'Enter' && handleAddTagset()}
         />
         <Button onClick={handleAddTagset} disabled={!newTagsetName.trim()}>
-          <Plus className="h-4 w-4" /> Add Tagset
+          <Plus className="h-4 w-4" /> Add tagset
         </Button>
       </div>
 
