@@ -9,8 +9,8 @@ import { readableDescription } from '../../lib/auditText.js';
 // The audit log arrives already folded into logical units by the server: a
 // labeled operation ("Merge morphemes"), else an atomic batch, else a lone
 // write. `entry.ops` is the unit's full membership (oldest first); `time` is
-// the head op's time and `endTime` the last member's — the state AFTER the
-// whole operation, which is what selecting a unit travels to.
+// the head op's time and `endTime` the time to read at to see the whole
+// operation done, which is what selecting a unit travels to.
 //
 // Rows size to their content (no fixed-height virtualization): a lone write
 // is two short lines, a multi-op unit adds a count badge and can expand.
@@ -56,12 +56,19 @@ export const HistoryDrawer = ({
     });
   };
 
-  // Selecting a unit views the document as it was AFTER the whole operation;
-  // selecting one of its member ops views the state right after that op.
+  // Selecting a unit views the document as it was AFTER the whole operation.
+  // Selecting one of its member ops views the state right after that op, or
+  // after its whole batch when it ran in one: a batch is atomic, so a time
+  // inside it reads as before the batch, and a restore from there would undo
+  // the op. The server sends that time as the op's `endTime`.
   const selectUnit = (entry) =>
     onSelectEntry({ id: entry.id, time: entry.endTime || entry.time, label: unitLabel(entry) });
   const selectOp = (op) =>
-    onSelectEntry({ id: op.id, time: op.time, label: readableDescription(op.description) });
+    onSelectEntry({
+      id: op.id,
+      time: op.endTime || op.time,
+      label: readableDescription(op.description),
+    });
 
   const renderOp = (entry, op, isLast) => {
     const isSelected = selectedEntry?.id === op.id;
