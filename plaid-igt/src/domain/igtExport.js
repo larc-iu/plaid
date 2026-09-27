@@ -225,10 +225,17 @@ const texGloss = (s, pieces) => {
 // gloss like PST//FUT) is braced too, where the delimiter cannot see it.
 // A run of whitespace becomes one space, since a blank line inside \gll or
 // \gla would end the paragraph.
+//
+// ExPex also stops ("Extra \else") or misaligns the line when a \gla word is
+// one escaped special alone (\{, \_, \$, \textbackslash{}), braced or not, so
+// a cell that opens with a special opens with an empty group, which it prints
+// as nothing.
 const texWord = (render) => (s) => {
   const text = texLine(s);
   if (text === '') return '{}';
-  return text.includes(' ') || text.includes('//') ? `{${render(text)}}` : render(text);
+  const lead = LATEX_SPECIALS[text[0]] ? '{}' : '';
+  const body = lead + render(text);
+  return text.includes(' ') || text.includes('//') ? `{${body}}` : body;
 };
 const texCell = texWord(texEscape);
 // A gloss line's cells, each read by its morpheme pieces when it has them

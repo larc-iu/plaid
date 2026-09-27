@@ -33,6 +33,23 @@ describe('ExPex', () => {
     expect(out).toContain("\\glft {`See http://example.org/a now'} //");
   });
 
+  // ExPex stops with "Extra \else", or misaligns the example, on a \gla word
+  // that is one escaped special alone (compiled with ExPex 5.1b from CTAN).
+  // An empty group in front, which prints nothing, keeps it an ordinary word.
+  it('opens a cell that starts with a LaTeX special with an empty group', () => {
+    const out = formatExpex(
+      sentence([
+        ['{', '}'],
+        ['_', 'x{y}'],
+        ['~a', '$'],
+        ['\\', 'a\\'],
+      ]),
+      F,
+    );
+    expect(out).toContain('\\gla {}\\{ {}\\_ {}\\textasciitilde{}a {}\\textbackslash{} //');
+    expect(out).toContain('\\glb {}\\} x\\{y\\} {}\\$ a\\textbackslash{} //');
+  });
+
   it('keeps a translation with a blank line in one paragraph', () => {
     expect(formatExpex(sentence([['a', 'a']], 'one\n\ntwo'), F)).toContain("\\glft {`one two'} //");
     expect(formatGb4e(sentence([['a', 'a']], 'one\n\ntwo'), F)).toContain("\\glt `one two'");
