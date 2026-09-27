@@ -75,3 +75,19 @@ describe('a word on the Tokenize tab', () => {
     await view.unmount();
   });
 });
+
+// The splitter lays a word's letters out as boxes in a flex row, which takes
+// its order from the row's direction. In an Arabic document a Latin word or a
+// number would then read backwards ("Plaid" as "dialP"), so the box takes the
+// word's own direction, as every value does.
+describe('the splitter', () => {
+  it("lays a word's letters out in the word's own direction", async () => {
+    const word = { id: 'w2', begin: 0, end: 5, content: 'Plaid', isToken: true };
+    const view = await mount({}, { piece: word, sentence: { id: 's1', pieces: [word] } });
+    await view.step(() => click(view.container.querySelector('.token')));
+    const box = view.container.querySelector('.splitter-box');
+    expect(box).not.toBeNull();
+    expect(box.getAttribute('dir')).toBe('auto');
+    await view.unmount();
+  });
+});

@@ -632,9 +632,12 @@ function TokenSplitter({ ops, token, close }) {
     await ops.splitToken(token.id, wordOffset);
   }
 
+  // The letters are boxes in a flex row, which orders them by its direction,
+  // so the box takes the word's own: a Latin word or a number in an Arabic
+  // sentence reads left to right, as it does in the row around it.
   const chars = Array.from(token.content);
   return (
-    <span className="splitter-box" onMouseLeave={close}>
+    <span className="splitter-box" dir="auto" onMouseLeave={close}>
       {chars.map((char, index) => (
         <div key={token.begin + index} className="splitter-char-container">
           <span className="splitter-char">{char}</span>
