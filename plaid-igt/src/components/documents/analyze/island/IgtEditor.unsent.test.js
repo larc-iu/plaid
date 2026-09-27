@@ -121,3 +121,41 @@ describe('the island asks before the tab closes', () => {
     expect(e.defaultPrevented).toBe(true);
   });
 });
+
+describe('a cell typed in again while its earlier edit waits behind a refusal', () => {
+  it('keeps the newer text when the earlier edit comes back unsaved', async () => {
+    const { doc, client } = mount();
+    const b = cell('ma:m-2:Gloss');
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
+    const create = client.spans.create;
+    let hold;
+    let first = true;
+    client.spans.create = async (...args) => {
+      if (!first) return create(...args);
+      first = false;
+      await new Promise((r) => (hold = r));
+      throw new Error('refused');
+    };
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    focus(b);
+    type(b, 'x');
+    focus(a);
+    focus(b);
+    type(b, 'xyz');
+    await settle();
+    hold();
+    await settle(30);
+    client.spans.create = create;
+    expect(document.activeElement).toBe(b);
+    expect(b.value).toBe('xyz');
+    // Leaving the cell sends it.
+    b.blur();
+    await settle(30);
+    const gloss = doc.sentences[0].tokens.flatMap((t) => t.morphemes).find((m) => m.id === 'm-2')
+      .annotations.Gloss;
+    expect(gloss?.value).toBe('xyz');
+  });
+});

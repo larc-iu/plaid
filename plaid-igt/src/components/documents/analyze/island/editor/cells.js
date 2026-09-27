@@ -462,6 +462,11 @@ export const cells = {
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
       if (!cell) return;
       const active = document.activeElement;
+      // Typed into again since this edit was committed: that text is newer,
+      // and leaving the cell sends it.
+      if (active === cell && cell.value !== typed && cell.value !== (cell.dataset.orig ?? '')) {
+        return;
+      }
       // What the server holds under the cell now. The refetch has drawn it
       // into a cell without focus, unless a value put back earlier is still
       // standing there. `saved` alone is not it when the cell was edited twice
