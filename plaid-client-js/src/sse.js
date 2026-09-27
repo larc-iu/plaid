@@ -12,6 +12,11 @@ import { transformResponse } from './transforms.js';
 // cadences, so a healthy idle stream never trips it.
 export const SSE_IDLE_TIMEOUT_MS = 60000;
 
+// The last failure warned about per stream URL, so a stream retried every few
+// seconds through an outage warns once per distinct failure rather than once
+// per attempt. Cleared when the stream opens. Mirrors the Python client.
+const lastWarning = new Map();
+
 /**
  * Project a parsed SSE `data:` object onto what a listener callback sees.
  *
@@ -42,7 +47,10 @@ export function eventPayload(eventType, parsed) {
  *   /listen bus; service request channels pass their own. Only /listen emits
  *   `heartbeat` events needing a POST confirmation — other streams keep
  *   themselves alive with ignored SSE comments.
- * @returns {Object} SSE connection with .close(), .getStats(), .readyState
+ * @returns {Object} SSE connection with .close(), .getStats(), .readyState,
+ *   and .error: once CLOSED, why (null when this side closed it). A refused
+ *   stream's error carries the HTTP `status`, and a stream the server ended
+ *   carries an error named `StreamClosed`.
  */
 export function createSSEConnection(client, projectId, onEvent, path) {
   const streamPath = path || `/api/v1/projects/${projectId}/listen`;
@@ -88,6 +96,7 @@ export function createSSEConnection(client, projectId, onEvent, path) {
 
   const sseConnection = {
     readyState: 0, // CONNECTING
+    error: null,
     close: () => {
       if (!isClosed) {
         isClosed = true;
@@ -130,11 +139,14 @@ export function createSSEConnection(client, projectId, onEvent, path) {
           // takes over.
           console.warn('Service registration rejected (409): another instance of this service is already connected; will retry');
         }
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        const refused = new Error(`HTTP ${response.status} ${response.statusText}`);
+        refused.status = response.status;
+        throw refused;
       }
 
       isConnected = true;
       sseConnection.readyState = 1; // OPEN
+      lastWarning.delete(url);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -188,9 +200,23 @@ export function createSSEConnection(client, projectId, onEvent, path) {
           }
         }
       }
+      if (!isClosed) {
+        // The server ended the stream, for instance because the opener lost
+        // the right to it. Say so, so a caller can tell it from a close of
+        // its own.
+        sseConnection.error = Object.assign(new Error('The server closed the stream'), {
+          name: 'StreamClosed',
+        });
+      }
     } catch (error) {
+      if (!isClosed) sseConnection.error = error;
       if (error.name !== 'AbortError') {
-        console.warn('SSE connection error:', error);
+        const url = `${client.baseUrl}${streamPath}`;
+        const message = String(error?.message || error);
+        if (lastWarning.get(url) !== message) {
+          lastWarning.set(url, message);
+          console.warn('SSE connection error:', error);
+        }
       }
     } finally {
       clearIdleTimer();

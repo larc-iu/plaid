@@ -375,6 +375,10 @@ class BaseService(ABC):
                 if not self._disconnected_projects:
                     print(f"  Reconnected to Plaid, serving "
                           f"{len(self._registrations_by_project)} project(s) again.")
+            elif event == 'stopped':
+                self._disconnected_projects.discard(project_id)
+                print(f"  Stopped serving project {self._project_label(project_id)}: "
+                      f"{detail}.")
 
     def register_service(self, project_id: str):
         """Open the inbound request channel on one project (which registers the
@@ -437,6 +441,19 @@ class BaseService(ABC):
         if current is None:
             return False
         self._project_names.update({pid: name for pid, name in current.items() if name})
+
+        # A registration that ended itself (the server refused its channel for
+        # good, see ServiceRegistration) is dropped here, so a later pass can
+        # register again if the access comes back. It already said why, so the
+        # refusal the next attempt meets is not printed a second time.
+        for pid, registration in list(self._registrations_by_project.items()):
+            if not registration.is_running():
+                del self._registrations_by_project[pid]
+                try:
+                    self.service_registrations.remove(registration)
+                except ValueError:
+                    pass
+                self._sync_failed_projects.add(pid)
 
         for pid in [pid for pid in self._registrations_by_project if pid not in current]:
             registration = self._registrations_by_project.pop(pid)

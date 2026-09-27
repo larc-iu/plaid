@@ -1223,3 +1223,98 @@ def test_an_authored_refusal_keeps_its_own_words():
         raise ValueError(said)
 
     assert _reported_error(handler) == said
+
+
+class _HTTPError(Exception):
+    """A refusal as requests raises it: the status is on ``response``."""
+
+    def __init__(self, status):
+        super().__init__(f'{status} Client Error')
+        self.response = type('R', (), {'status_code': status})()
+
+
+def test_a_reconnect_the_server_refuses_for_good_ends_the_registration():
+    """The server closes a channel whose opener lost the right to it (a
+    revoked token, no write access). Reopening it every few seconds forever
+    would hide that from the operator, so a refusal retrying cannot fix
+    ends the registration and says so."""
+    import time as _t
+    events = []
+    attempts = []
+
+    def open_channel():
+        attempts.append(1)
+        return _FakeConnection(2, error=_HTTPError(403))
+
+    reg = ServiceRegistration({'service_id': 'x'}, _FakeConnection(1),
+                              project_id='p1', service_id='x',
+                              open_channel=open_channel,
+                              on_status=lambda e, pid, d=None: events.append(e))
+    reg._connected = True
+    reg._ever_connected = True
+    reg._start_supervisor(check_interval_s=0.02)
+    try:
+        reg._connection.ready_state = 2          # the server closed the channel
+        deadline = _t.monotonic() + 3.0
+        while _t.monotonic() < deadline and 'stopped' not in events:
+            _t.sleep(0.01)
+        _t.sleep(0.1)
+        assert events == ['disconnected', 'stopped']
+        assert len(attempts) == 1
+        assert not reg.is_running()
+    finally:
+        reg.stop()
+
+
+def test_a_registration_that_ended_itself_is_served_again_once_access_returns(capsys):
+    state = {'fail': False}
+    made = []
+
+    def serve(project_id, service_info, handler, extras, on_status=None):
+        if state['fail']:
+            raise ServiceRegistrationError('lacks write access', status=403)
+        made.append(_FakeRegistration())
+        return made[-1]
+
+    svc = _make_sync_service(serve=serve)
+    svc.client.projects.current = [{'id': 'p1', 'name': 'One'}]
+    svc._sync_served_projects()
+    # Its channel was refused for good: the registration ended itself.
+    made[0].stopped = True
+    svc._on_channel_status('stopped', 'p1', 'HTTP 403')
+    state['fail'] = True
+    svc._sync_served_projects()
+    out = capsys.readouterr().out
+    assert 'Stopped serving project One (p1): HTTP 403.' in out
+    assert 'lacks write access' not in out
+    assert svc._registrations_by_project == {}
+
+    state['fail'] = False
+    svc._sync_served_projects()
+    assert set(svc._registrations_by_project) == {'p1'} and len(made) == 2
+
+
+def test_a_stream_the_server_ends_says_so():
+    """``error`` tells a server's close from one made on this side."""
+    from plaid_client import sse as sse_module
+
+    class _Lines:
+        def raise_for_status(self):
+            pass
+
+        def iter_lines(self, decode_unicode=True):
+            return iter([])
+
+        def close(self):
+            pass
+
+    client = type('C', (), {'base_url': 'http://x', 'token': 't'})()
+    original = sse_module.requests.get
+    sse_module.requests.get = lambda *a, **k: _Lines()
+    try:
+        conn = sse_module.SSEConnection(client, 'p1', lambda *a: None)
+        assert conn.wait_until_settled(timeout=2) in (1, 2)
+        conn._thread.join(timeout=2)
+        assert isinstance(conn.error, sse_module.StreamClosed)
+    finally:
+        sse_module.requests.get = original

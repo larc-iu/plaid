@@ -82,3 +82,49 @@ test('an outage reports one disconnect and one reconnect, however many retries i
     mock.timers.reset();
   }
 });
+
+test('a channel the server refuses for good ends the registration instead of retrying forever', () => {
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    const events = [];
+    const live = fakeConnection(1);
+    let opens = 0;
+    const refused = () => Object.assign(fakeConnection(2), { error: { status: 403 } });
+    const client = fakeClient(() => (opens++ === 0 ? live : refused()));
+
+    const reg = serve(client, 'p1', INFO, () => {}, {}, (event, _p, detail) =>
+      events.push(detail ? `${event}: ${detail}` : event));
+    mock.timers.tick(3000);
+    // The server closed the channel because the token lost write access.
+    live.readyState = 2;
+    mock.timers.tick(3000);   // notices, reopens: refused 403
+    mock.timers.tick(3000);   // sees the refusal
+    mock.timers.tick(3000);
+    mock.timers.tick(3000);
+    assert.equal(opens, 2, 'one reopen, then no more');
+    assert.equal(reg.isRunning(), false);
+    assert.deepEqual(events, ['registered', 'disconnected', 'stopped: HTTP 403']);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a transient refusal keeps the registration retrying', () => {
+  mock.timers.enable({ apis: ['setInterval'] });
+  try {
+    let opens = 0;
+    const client = fakeClient(() => {
+      opens += 1;
+      return Object.assign(fakeConnection(2), { error: { status: 503 } });
+    });
+    const reg = serve(client, 'p1', INFO, () => {}, {}, () => {});
+    mock.timers.tick(3000);
+    mock.timers.tick(3000);
+    mock.timers.tick(3000);
+    assert.equal(opens, 4);
+    assert.equal(reg.isRunning(), true);
+    reg.stop();
+  } finally {
+    mock.timers.reset();
+  }
+});

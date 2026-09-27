@@ -89,9 +89,11 @@ _OPEN_SETTLE_TIMEOUT_S = SSE_CONNECT_TIMEOUT_S + 5.0
 # HTTP statuses that mean "this registration will never work as configured":
 # a bad token, a token without write access to the project, a project that does
 # not exist. Retrying those forever would hide an operator error, so they are
-# raised out of `serve` instead. Everything else (the server being down or
-# restarting, a 5xx, a 409 from an instance that has not let go yet) is
-# transient, and the registration keeps retrying.
+# raised out of `serve` instead, and a reconnect refused with one ends the
+# registration (the server closes a channel whose opener lost the right to
+# it). Everything else (the server being down or restarting, a 5xx, a 409 from
+# an instance that has not let go yet) is transient, and the registration
+# keeps retrying. The JS client's serve() uses the same set.
 _PERMANENT_STATUSES = frozenset({400, 401, 403, 404, 405, 422})
 
 
@@ -230,7 +232,11 @@ class ServiceRegistration:
         reported) as connected once the server has actually answered it. An
         attempt made while the server is down settles as CLOSED within the
         connect timeout and the next tick tries again, indefinitely, so a
-        service left running through an outage of any length still comes back."""
+        service left running through an outage of any length still comes back.
+
+        An attempt the server REFUSES for a reason retrying cannot fix (see
+        ``_PERMANENT_STATUSES``: a revoked token, lost write access, a deleted
+        project) ends the registration and reports ``'stopped'``."""
         def loop():
             while not self._stop_event.wait(timeout=check_interval_s):
                 if not self._running:
@@ -262,6 +268,10 @@ class ServiceRegistration:
                     break
                 if settled == 1:
                     self._note_connected()
+                elif settled == 2 and _error_status(conn.error) in _PERMANENT_STATUSES:
+                    self.stop()
+                    self._report('stopped', _error_summary(conn.error))
+                    break
 
         self._supervisor_thread = threading.Thread(target=loop, daemon=True)
         self._supervisor_thread.start()
@@ -319,8 +329,10 @@ def serve(client, project_id, service_info, on_service_request, extras=None,
         extras: Optional additional metadata.
         on_status: Optional callback ``(event, project_id, detail)`` for
             connection-state transitions, where event is ``'registered'``,
-            ``'reconnected'``, ``'disconnected'`` or ``'waiting'``. Called once
-            per transition, not once per retry.
+            ``'reconnected'``, ``'disconnected'``, ``'waiting'``, or
+            ``'stopped'`` when a reconnect is refused for a reason retrying
+            cannot fix, which ends the registration. Called once per
+            transition, not once per retry.
 
     Returns:
         A ServiceRegistration with stop(), is_running() and is_connected().

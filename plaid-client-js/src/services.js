@@ -139,6 +139,13 @@ export function reportRequestEvent(client, projectId, requestId, body) {
 }
 
 /**
+ * HTTP statuses a refused service channel answers with that retrying cannot
+ * fix: a bad or revoked token, no write access to the project, a project that
+ * does not exist. The same set as the Python client's.
+ */
+const PERMANENT_STATUSES = new Set([400, 401, 403, 404, 405, 422]);
+
+/**
  * Register a service and handle incoming work requests.
  *
  * Opens the service's dedicated request channel — which registers it for
@@ -152,7 +159,9 @@ export function reportRequestEvent(client, projectId, requestId, body) {
  * @param {function} onServiceRequest - Handler callback (data, responseHelper)
  * @param {Object} extras - Optional additional metadata
  * @param {function} [onStatus] - Optional callback (event, projectId, detail) for
- *   connection-state transitions: 'registered', 'reconnected', 'disconnected'.
+ *   connection-state transitions: 'registered', 'reconnected', 'disconnected',
+ *   and 'stopped' when the server refuses the channel for a reason retrying
+ *   cannot fix (see PERMANENT_STATUSES), which ends the registration.
  *   Called once per transition, not once per retry.
  * @returns {Object} ServiceRegistration with .stop(), .isRunning(), .isConnected(),
  *   .serviceInfo
@@ -328,10 +337,23 @@ export function serve(client, projectId, serviceInfo, onServiceRequest, extras =
   // means a service restart. A reopened channel counts as connected only once
   // the server has actually answered it (readyState OPEN), not merely because
   // the attempt was made.
+  //
+  // A channel the server REFUSED for a reason retrying cannot fix (the token
+  // was revoked, the user lost write access, the project is gone) ends the
+  // registration instead: the server closes a channel whose opener lost the
+  // right to it, and reopening it every few seconds forever would only hide
+  // that from the operator.
   reconnectTimer = setInterval(() => {
     if (!isRunning || !connection) return;
     if (connection.readyState === 1) { noteConnected(); return; }
     if (connection.readyState === 2) { // CLOSED (dropped or failed)
+      const status = connection.error?.status;
+      if (PERMANENT_STATUSES.has(status)) {
+        noteDisconnected();
+        serviceRegistration.stop();
+        report('stopped', `HTTP ${status}`);
+        return;
+      }
       noteDisconnected();
       try { connection = openChannel(); } catch (_) { /* retry next tick */ }
     }

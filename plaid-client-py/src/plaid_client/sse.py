@@ -106,6 +106,12 @@ def _log_connection_error(e, url=None):
         logger.warning(msg)
 
 
+class StreamClosed(ConnectionError):
+    """What :attr:`SSEConnection.error` holds when the server ended the stream
+    (for instance because its opener lost the right to it), as opposed to a
+    close made on this side, which leaves ``error`` None."""
+
+
 class SSEConnection:
     """SSE connection to the listen endpoint using streaming requests.
 
@@ -281,6 +287,11 @@ class SSEConnection:
 
                     event_type = ''
                     data = ''
+
+            if not self._is_closed and not self._stop_event.is_set():
+                # The server ended the stream. Say so, so a caller can tell it
+                # from a close of its own.
+                self.error = StreamClosed('The server closed the stream')
 
         except Exception as e:
             self.error = e

@@ -77,7 +77,8 @@ interface ServiceRegistration {
 }
 
 /** Connection-state transitions reported by a service registration. */
-type ServiceStatusEvent = "registered" | "reconnected" | "disconnected";
+/** "stopped": the server refused the channel for a reason retrying cannot fix (a revoked token, no write access, no such project), which ends the registration. */
+type ServiceStatusEvent = "registered" | "reconnected" | "disconnected" | "stopped";
 
 interface ResponseHelper {
   requestId: string;
@@ -116,6 +117,11 @@ interface SSEConnection {
   close(): void;
   getStats(): any;
   readyState: number;
+  /**
+   * Once CLOSED, why: null when this side closed it. A refused stream's error
+   * carries the HTTP `status`, and one the server ended is named "StreamClosed".
+   */
+  error: (Error & { status?: number }) | null;
 }
 
 interface VocabLinksBundle {
