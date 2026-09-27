@@ -177,6 +177,35 @@
                         #{"P1"} ["L1"]))]
       (is (= :select-distinct (agg-select-key hq))))))
 
+;; igt's per-entry link count (perf-entry-link-counts, ruled a). Named, a link
+;; and a token are one row of vocab_link_tokens, so the junction cannot repeat a
+;; match once both are projected. The shorthand has no link var, and two links
+;; of one entry to one token would be two rows of one match, so it keeps it.
+(def ^:private link-count-where
+  [["vocab" "?v" {"layer" "V1"}]
+   ["link" "?l" {"item" "?v"}]
+   ["link-token" "?l" "?t"]
+   ["token" "?t" {"layer" "?tl"}]
+   ["token-layer" "?tl" {}]])
+
+(deftest aggregate-drops-distinct-over-a-named-link
+  (let [hq (qc/compile-query
+            (resolved {"where" link-count-where
+                       "return" {"group" ["?v" "?tl.config.plaid.role"] "aggregates" [["count"]]}}
+                      #{"P1"} nil))]
+    (is (some #(and (vector? %) (= :vocab_link_tokens (first %))) (:from hq)))
+    (is (= :select (agg-select-key hq)))))
+
+(deftest aggregate-keeps-distinct-over-the-vocab-link-shorthand
+  (let [hq (qc/compile-query
+            (resolved {"where" [["vocab" "?v" {"layer" "V1"}]
+                                ["vocab-link" "?t" "?v"]
+                                ["token" "?t" {"layer" "?tl"}]
+                                ["token-layer" "?tl" {}]]
+                       "return" {"group" ["?v" "?tl.config.plaid.role"] "aggregates" [["count"]]}}
+                      #{"P1"} nil))]
+    (is (= :select-distinct (agg-select-key hq)))))
+
 (deftest aggregate-drops-distinct-for-a-vocab-var
   (testing "a vocab entry is scoped by an IN over the grants, not a join to
   them, so one granted to two in-scope projects is one row and the DISTINCT goes"

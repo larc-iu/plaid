@@ -77,6 +77,9 @@
          :scalar-col {}   ; scalar var -> {:sql <col-ref> :enc <fn>}: its bound column
          :from []
          :where []
+         ;; junction alias -> the two aliases whose ids key its rows (see
+         ;; distinct-redundant?)
+         :keyed-junctions {}
          :scoped #{}}))   ; entity vars that have received a scope predicate
 
 (defn- next-alias! [st prefix]
@@ -609,6 +612,11 @@
       :link-token (let [l (av a) t (av b)
                         vlt (next-alias! st "lkt")]
                     (add-from! st [:vocab_link_tokens vlt])
+                    ;; A link names a token at most once: create refuses a
+                    ;; repeated token and a token merge moves a row only where
+                    ;; the link lacks the survivor (token/reparent-junction!).
+                    ;; So one link and one token are one junction row.
+                    (swap! st assoc-in [:keyed-junctions vlt] [l t])
                     (add-where! st [:= (col vlt :vocab_link_id) (col l :id)])
                     (add-where! st [:= (col vlt :token_id) (col t :id)]))
       :link-item  (let [l (av a) v (av b)]
@@ -1112,11 +1120,23 @@
   binds) — and keeps the DISTINCT. The test is deliberately by exclusion, so a
   join alias added later is duplicate-generating until someone proves otherwise.
 
+  The one junction proven so far is a `link-token` clause's `vocab_link_tokens`
+  (`:keyed-junctions`): it holds one row per link and token, so with both of
+  those vars projected it cannot repeat a match either. That is what lets igt's
+  per-entry link count, which names the link, skip the DISTINCT (ruled
+  perf-entry-link-counts a). The `vocab-link` shorthand joins the same table
+  with no link var, so two links of one entry to one token stay one match
+  there, and it keeps the DISTINCT.
+
   Worth the care: the DISTINCT is a temp B-tree over every match, and on the alpha
   server the project list's per-layer token count spent 3.8s in it and 0.2s without."
   [st projected-vars]
-  (let [projected-aliases (set (keep #(get-in @st [:var->alias %]) projected-vars))]
-    (every? projected-aliases (map second (:from @st)))))
+  (let [projected-aliases (set (keep #(get-in @st [:var->alias %]) projected-vars))
+        keyed (:keyed-junctions @st)
+        distinct-alias? (fn [a]
+                          (or (contains? projected-aliases a)
+                              (some->> (get keyed a) (every? projected-aliases))))]
+    (every? distinct-alias? (map second (:from @st)))))
 
 (defn compile-query
   "Resolved AST -> HoneySQL map. Throws 400 on a field path into an array, 500 on

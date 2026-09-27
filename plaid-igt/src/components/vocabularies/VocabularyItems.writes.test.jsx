@@ -612,6 +612,12 @@ describe('usage counts', () => {
     client.query = vi.fn(async () => ({ results: [['a', 'word', 3]] }));
     const view = await mount(client, '/vocabularies/v1?item=a');
     expect(usageQueries(client)).toHaveLength(1);
+    // The link is named, which lets the server count without removing
+    // duplicate matches first (perf-entry-link-counts, ruled a).
+    const [[query]] = usageQueries(client);
+    expect(query.where).toContainEqual(['link', '?l', { item: '?v' }]);
+    expect(query.where).toContainEqual(['link-token', '?l', '?t']);
+    expect(query.where.some((c) => c[0] === 'vocab-link')).toBe(false);
     await view.unmount();
   });
 

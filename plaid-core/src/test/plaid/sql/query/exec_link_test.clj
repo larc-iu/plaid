@@ -145,3 +145,25 @@
   (testing "link-token needs a link and a token"
     (is (= 400 (code-of #(qe/run db "admin@example.com"
                                  {"find" ["?l"] "where" [["link" "?l" {}] ["span" "?s" {}] ["link-token" "?l" "?s"]]}))))))
+
+;; igt's Entries screen counts each entry's uses per token-layer role. Naming
+;; the link lets the compiler skip the DISTINCT (perf-entry-link-counts, ruled
+;; a), and the counts must be the ones the shorthand gives: a link names a token
+;; once, so one link and one token are one match either way.
+(deftest a-named-link-counts-what-the-shorthand-counts
+  (let [{:keys [vl]} (build! "LinkCount")
+        counts (fn [link-clauses]
+                 (->> (qe/run db "admin@example.com"
+                              {"where" (into [["vocab" "?v" {"layer" (str vl)}]]
+                                             (concat link-clauses
+                                                     [["token" "?t" {"layer" "?tl"}]
+                                                      ["token-layer" "?tl" {}]]))
+                               "return" {"group" ["?v" "?tl"] "aggregates" [["count"]]}})
+                      :results
+                      (map (fn [[v tl n]] [(str v) (str tl) n]))
+                      set))
+        shorthand (counts [["vocab-link" "?t" "?v"]])
+        named (counts [["link" "?l" {"item" "?v"}] ["link-token" "?l" "?t"]])]
+    (is (= 3 (count shorthand)))
+    (is (= shorthand named))))
+
