@@ -148,6 +148,13 @@
   stroke-linejoin: round;
 }
 
+/* A root's label sits in the ROOT bar, where nothing crosses it, and a halo
+   there shows as a white outline on the grey bar. */
+.tree-deprel-text.tree-deprel-text--root,
+.tree-drag-label.tree-drag-label--root {
+  stroke: none;
+}
+
 .tree-deprel-text--focused {
   outline: 2px solid #2563eb;
   outline-offset: 2px;

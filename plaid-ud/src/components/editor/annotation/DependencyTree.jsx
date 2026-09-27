@@ -712,8 +712,9 @@ export const DependencyTree = forwardRef(
           focused={isFocused}
           // A basic relation the enhanced graph leaves out is faded, arc and
           // label both. `--suppressed` is the state and styles nothing (it is
-          // what a test asks about), `--dimmed` is the look.
-          className={`${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
+          // what a test asks about), `--dimmed` is the look. A root's label
+          // sits in the ROOT bar, where nothing crosses it, so it has no halo.
+          className={`${isToRoot ? ' tree-deprel-text--root' : ''}${isSuppressed ? ' tree-deprel-text--suppressed' : ''}${dimmed ? ' tree-deprel-text--dimmed' : ''}`}
           // A suppressed relation's hover record is the fact a reader cannot
           // get from the faded label alone.
           title={isSuppressed ? 'Not in the enhanced graph' : undefined}
@@ -847,7 +848,11 @@ export const DependencyTree = forwardRef(
           <path d={shape.d} />
           {shape.arrow && <polygon points={shape.arrow} />}
           {shape.label && (
-            <text x={shape.label.x} y={shape.label.y} className="tree-drag-label">
+            <text
+              x={shape.label.x}
+              y={shape.label.y}
+              className={`tree-drag-label${!below && (fromRoot || toRoot) ? ' tree-drag-label--root' : ''}`}
+            >
               {text}
             </text>
           )}
