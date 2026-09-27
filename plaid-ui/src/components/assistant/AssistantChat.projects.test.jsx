@@ -273,6 +273,36 @@ describe('AssistantChat and other projects', () => {
     await m.unmount();
   });
 
+  it('says a refusal as a toast when the list was closed while the pick was checked', async () => {
+    const client = fakeClient({ conv: { messages: [], display: [] } });
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    client.messages.discoverServices.mockImplementation(async (pid) => {
+      if (pid === 'p1') return [SERVICE];
+      await held;
+      return [];
+    });
+    const m = await mount(client);
+    await flush(m);
+    await pick(m, 'Lamkang C');
+    // Closed with the check still out.
+    await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
+    await flush(m);
+    expect(document.body.querySelector('[role="combobox"][aria-label="Project"]')).toBeNull();
+    await m.step(() => release());
+    await flush(m, 8);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError).toHaveBeenCalledWith('Assistant one is not running in Lamkang C.');
+    expect(chip(m, 'Lamkang C')).toBeNull();
+    // Opened again, the list carries no stale refusal.
+    await m.step(() => m.container.querySelector('[aria-label="Add project"]').click());
+    await flush(m);
+    expect(refusal()?.textContent ?? '').toBe('');
+    await m.unmount();
+  });
+
   it('takes a second pick after a refusal from the same list', async () => {
     const client = fakeClient({
       conv: { messages: [], display: [] },
