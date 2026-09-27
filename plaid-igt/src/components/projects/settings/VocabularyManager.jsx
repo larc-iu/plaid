@@ -136,8 +136,10 @@ export const VocabularyManager = ({
   const handleConfirmUnlink = () => {
     if (!vocabToUnlink) return;
     const { id } = vocabToUnlink;
+    // The name stays set while the dialog animates out, or its title reads
+    // "Unlink vocabulary “”" for the length of the fade. The next open
+    // replaces it.
     closeUnlinkModal();
-    setVocabToUnlink(null);
     const updatedVocabs = vocabularies.map((vocab) =>
       vocab.id === id ? { ...vocab, enabled: false } : vocab,
     );
