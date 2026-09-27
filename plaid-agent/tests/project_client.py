@@ -4,10 +4,26 @@ fixture module subclassing it with that app's project, documents and audit log."
 
 from plaid_client import testing
 
-# What a dry-run restore answers with, unless a test names its own.
-RESTORE_SUMMARY = {'total': 3, 'texts': {'updated': 1},
-                   'tokens': {'by_layer': [{'layer_id': 'sent-layer', 'inserted': 1}]},
-                   'relations': {'deleted': 1}}
+
+def _counts(inserted=0, updated=0, deleted=0, by_layer=None):
+    out = {'inserted': inserted, 'updated': updated, 'deleted': deleted}
+    return out if by_layer is None else {**out, 'by_layer': by_layer}
+
+
+# What a restore answers with, done or dry, unless a test names its own: every
+# key a real summary carries (plaid-core history/restore.clj `summarize`).
+RESTORE_SUMMARY = {
+    'name': False, 'document_metadata': False,
+    'texts': _counts(updated=1),
+    'tokens': _counts(inserted=1, by_layer=[{'layer_id': 'sent-layer', 'inserted': 1,
+                                             'updated': 0, 'deleted': 0}]),
+    'spans': _counts(by_layer=[]),
+    'relations': _counts(deleted=1, by_layer=[{'layer_id': 'rel-layer', 'inserted': 0,
+                                               'updated': 0, 'deleted': 1}]),
+    'vocab_links': _counts(),
+    'skipped': [],
+    'total': 3,
+}
 
 
 class AgentFakeClient(testing.FakeClient):

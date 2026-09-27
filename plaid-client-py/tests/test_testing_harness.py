@@ -97,8 +97,8 @@ def test_documents_given_by_id_are_read_by_id():
                                 'documents': [{'id': 'd', 'name': 'D'}]},
                                {'id': 'b', 'time': '2026-02-01T00:00:00Z', 'documents': []}])
     assert c.documents.get('e')['name'] == 'E'
-    assert c.documents.get('d', layers=['l1'])['name'] == 'D'
-    assert c.reads == [{'id': 'e', 'layers': None}, {'id': 'd', 'layers': ['l1']}]
+    assert c.documents.get('d', include_body=True, layers=[])['name'] == 'D'
+    assert c.reads == [{'id': 'e', 'layers': None}, {'id': 'd', 'layers': []}]
     assert c.kinds == ['read', 'read'] and c.writes == []
     with pytest.raises(PlaidAPIError) as e:
         c.documents.get('nope')
@@ -108,8 +108,10 @@ def test_documents_given_by_id_are_read_by_id():
     assert [e['id'] for e in c.documents.audit('d')] == ['a']
     assert [e['id'] for e in c.projects.audit('p', start_time='2026-01-15')] == ['b']
     page = c.projects.audit_page('p', order='desc', limit=1)
-    assert [e['id'] for e in page['entries']] == ['b'] and page['next_cursor'] is None
-    assert c.audit_pages == [{'order': 'desc', 'start_time': None}]
+    assert [e['id'] for e in page['entries']] == ['b'] and page['next_cursor']
+    rest = c.projects.audit_page('p', order='desc', limit=1, cursor=page['next_cursor'])
+    assert [e['id'] for e in rest['entries']] == ['a'] and rest['next_cursor'] is None
+    assert c.audit_pages == [{'order': 'desc', 'start_time': None}] * 2
 
 
 def test_a_list_of_documents_is_still_one_document_as_each_read_finds_it():
@@ -170,7 +172,7 @@ def test_a_batch_queues_until_it_submits_and_answers_per_op():
                                         'documents.patch_metadata']
     assert out[0]['body']['id'] == 'spans-1'
     assert out[1]['body']['ids'] == ['tokens-2', 'tokens-3']
-    with pytest.raises(AssertionError):
+    with pytest.raises(PlaidAPIError):
         b.submit()
     with pytest.raises(RuntimeError):
         with c.batched() as b2:
@@ -202,8 +204,9 @@ def test_guidelines_comments_and_a_restore():
                         comments=[{'id': 'c1', 'document_id': 'd', 'entity_type': 'token',
                                    'entity_id': 't1'}],
                         restore_summary={'total': 2})
-    assert c.guidelines.list('p') == [{'id': 'g1', 'title': 'T', 'pinned': False,
-                                       'updated_at': 'then', 'body_chars': 3}]
+    assert c.guidelines.list('p') == [{'id': 'g1', 'project': 'p', 'title': 'T', 'pinned': False,
+                                       'created_at': 'then', 'updated_at': 'then',
+                                       'body_chars': 3}]
     with pytest.raises(PlaidAPIError) as e:
         c.guidelines.update('g1', body='x', expected_updated_at='earlier')
     assert e.value.status == 409 and c.writes == []
@@ -219,7 +222,7 @@ def test_guidelines_comments_and_a_restore():
     assert [r['id'] for r in c.comments.list('p', document_id='d')] == ['c1']
     assert c.comments.list('p', entity_type='token', entity_id='t2') == []
     assert c.documents.restore('d', 'T', dry_run=True) == {'total': 2}
-    assert c.documents.restore('d', 'T') == {'id': 'd'}
+    assert c.documents.restore('d', 'T') == {'total': 2}
     assert [p['kwargs']['dry_run'] for p in c.payloads('documents.restore')] == [True, False]
     denied = _project_client(fails={'documents.restore': PlaidAPIError('HTTP 403', status=403)})
     with pytest.raises(PlaidAPIError):
@@ -274,3 +277,276 @@ def test_a_resource_a_test_swapped_in_is_kept_on_a_batch():
     c.projects = object()
     with c.batched() as b:
         assert b.documents is c.documents and b.projects is c.projects
+
+
+# --- the fake refuses and answers as the real client does -----------------------
+#
+# Each of these was measured against the real PlaidClient on a dev core
+# (docs/overnight-2026-09-26/PARITY.md, findings 4 to 10). A fake that is
+# kinder than the real client lets a test pass on a call that fails for real.
+
+
+def test_a_batch_refuses_what_the_real_batch_refuses():
+    c = _project_client(guidelines=[])
+    done = c.batch()
+    done.submit()
+    with pytest.raises(PlaidAPIError, match='already submitted or aborted'):
+        done.spans.create('L', ['t'], 'v')
+    with pytest.raises(PlaidAPIError, match='already submitted or aborted'):
+        done.submit()
+    dropped = c.batch()
+    dropped.abort()
+    for write in (lambda b: b.tokens.bulk_delete(['t']),
+                  lambda b: b.documents.patch_metadata('d', []),
+                  lambda b: b.comments.create('token', 't', 'x'),
+                  lambda b: b.guidelines.create('p', 'T')):
+        with pytest.raises(PlaidAPIError, match='already submitted or aborted'):
+            write(dropped)
+    with c.batched() as b:
+        with pytest.raises(PlaidAPIError, match='not nestable'):
+            b.batch()
+        with pytest.raises(PlaidAPIError, match='not nestable'):
+            b.batched()
+        with pytest.raises(PlaidAPIError, match='cannot be used in a batch'):
+            b.user_data.put('u', 'k', {'a': 1})
+        with pytest.raises(PlaidAPIError, match='cannot be used in a batch'):
+            b.user_data.delete('u', 'k')
+        assert b.user_data.list('u') == []  # a read on a batch goes over the wire
+    assert c.user_data.list('u') == [] and c.writes == [] and c.batches == []
+
+
+def test_two_single_deletes_of_one_id_refuse_the_whole_batch():
+    # plaid_delete_idempotence: the second 404s on the server, and the batch
+    # rolls back with everything else in it.
+    c = _project_client()
+    with pytest.raises(PlaidAPIError) as e:
+        with c.batched() as b:
+            b.tokens.create('L', 'text', 0, 1)
+            b.spans.delete('s1')
+            b.spans.delete(span_id='s1')
+    assert e.value.status == 404 and c.writes == [] and c.batches == []
+    # A bulk delete of a gone id is accepted, and so is one single delete per id.
+    with c.batched() as b:
+        b.spans.delete('s1')
+        b.tokens.delete('s1')
+        b.spans.bulk_delete(['s1'])
+        b.spans.bulk_delete(['s1'])
+    assert len(c.writes) == 4
+
+
+def test_comments_and_guidelines_written_on_a_batch_wait_for_it():
+    c = _project_client(guidelines=[{'id': 'g1', 'title': 'T', 'body': 'abc', 'pinned': False,
+                                     'updated_at': 'then'}])
+
+    def titles():
+        return [g['title'] for g in c.guidelines.list('p')]
+
+    b = c.batch()
+    assert b.comments.create('token', 't1', 'hm') == {'batched': True}
+    assert b.guidelines.create('p', 'New', body='b') == {'batched': True}
+    assert b.guidelines.update('g1', body='x') == {'batched': True}
+    assert titles() == ['T'] and c.guidelines.get('g1')['body'] == 'abc'
+    b.abort()
+    assert titles() == ['T'] and c.guidelines.get('g1')['body'] == 'abc' and c.writes == []
+
+    b = c.batch()
+    b.guidelines.create('p', 'New', body='b')
+    [created] = b.submit()
+    assert titles() == ['T', 'New']
+    assert c.guidelines.get(created['body']['id'])['body'] == 'b'
+
+    # The server checks expected_updated_at when the batch runs, so a stale
+    # one refuses the whole batch at submit.
+    b = c.batch()
+    b.guidelines.create('p', 'Other')
+    b.guidelines.update('g1', body='y', expected_updated_at='earlier')
+    with pytest.raises(PlaidAPIError) as e:
+        b.submit()
+    assert e.value.status == 409
+    assert titles() == ['T', 'New'] and c.guidelines.get('g1')['body'] == 'abc'
+    assert [k for k, _ in c.writes] == ['guidelines.create']
+
+
+def _layered_document():
+    return {'id': 'd', 'name': 'D', 'version': 3, 'text_layers': [{
+        'id': 'TL', 'text': {'id': 'x', 'body': 'ab'},
+        'token_layers': [
+            {'id': 'KL', 'tokens': [{'id': 't'}], 'vocabs': [{'id': 'V'}],
+             'span_layers': [
+                 {'id': 'SL', 'spans': [{'id': 's'}],
+                  'relation_layers': [{'id': 'RL', 'relations': [{'id': 'r'}]}]},
+                 {'id': 'SL2', 'spans': [{'id': 's2'}], 'relation_layers': []}]},
+            {'id': 'KL2', 'tokens': [{'id': 't2'}], 'vocabs': [], 'span_layers': []}]}]}
+
+
+def test_a_document_read_carries_only_the_layers_it_named():
+    import copy
+    doc = _layered_document()
+    c = testing.FakeClient({'d': doc})
+    assert 'text_layers' not in c.documents.get('d')
+    assert c.documents.get('d', include_body=True) == doc
+
+    [tl] = c.documents.get('d', include_body=True, layers=['SL'])['text_layers']
+    assert tl['text'] is None
+    [kl] = tl['token_layers']
+    assert kl['id'] == 'KL' and kl['tokens'] == [] and kl['vocabs'] == []
+    [sl] = kl['span_layers']
+    assert sl['id'] == 'SL' and sl['spans'] == [{'id': 's'}] and sl['relation_layers'] == []
+
+    [tl] = c.documents.get('d', include_body=True, layers='TL,RL')['text_layers']
+    assert tl['text'] == {'id': 'x', 'body': 'ab'}
+    [kl] = tl['token_layers']
+    assert kl['tokens'] == [] and [s['id'] for s in kl['span_layers']] == ['SL']
+    assert kl['span_layers'][0]['spans'] == []
+    assert kl['span_layers'][0]['relation_layers'] == [{'id': 'RL', 'relations': [{'id': 'r'}]}]
+
+    with pytest.raises(PlaidAPIError) as e:
+        c.documents.get('d', layers=['SL'])
+    assert e.value.status == 400
+    with pytest.raises(PlaidAPIError) as e:
+        c.documents.get('d', include_body=True, layers=['nope'])
+    assert e.value.status == 400
+    with pytest.raises(TypeError):
+        c.documents.get('d', True)
+    assert doc == _layered_document() and copy.deepcopy(doc) == doc
+
+
+def test_a_write_is_taken_only_as_the_real_client_takes_it():
+    c = _project_client()
+    ops = [{'op': 'set', 'path': ['k'], 'value': 1}]
+    for bad in (lambda: c.tokens.create('L', 'text', 0, 1, 5),
+                lambda: c.spans.update('s1'),
+                lambda: c.tokens.update('t1', 3),
+                lambda: c.documents.restore('d'),
+                lambda: c.comments.create('token', 't1', 'hm', 'label'),
+                lambda: c.guidelines.update('g1', 'title'),
+                lambda: c.user_data.put('u', 'k')):
+        with pytest.raises(TypeError):
+            bad()
+    assert c.writes == []
+    c.tokens.bulk_create([{'begin': 0}], audit_message='m')
+    c.tokens.bulk_update([{'id': 't', 'metadata': ops}], audit_message='m')
+    c.tokens.bulk_delete(['t'], audit_message='m')
+    c.tokens.patch_metadata('t', ops, audit_message='m')
+    c.spans.patch_metadata(span_id='s', body=ops)
+    assert c.patches('tokens') == [('t', ops), ('t', ops)] and c.patches('spans') == [('s', ops)]
+    with pytest.raises(AttributeError):
+        c.texts.bulk_update  # the real TextsResource has none
+
+
+def test_a_read_nobody_modelled_is_never_recorded_as_a_write():
+    c = _project_client()
+    with pytest.raises(NotImplementedError):
+        c.documents.check_lock('d')  # a GET the fake has no model of
+    with pytest.raises(AttributeError):
+        c.documents.get_media  # a read by its name
+    assert c.calls == []
+
+
+def test_a_signal_goes_straight_through_a_batch_and_an_upload_is_refused_on_one():
+    c = _project_client()
+    b = c.batch()
+    b.documents.acquire_lock('d')
+    assert c.kinds == ['documents.acquire_lock']
+    with pytest.raises(PlaidAPIError, match='cannot be used in a batch'):
+        b.documents.upload_media('d', ('a.wav', b'x', 'audio/wav'))
+    b.abort()
+
+
+def test_the_fake_methods_take_the_real_signatures():
+    """Derived from the real classes, so a signature that changes there fails
+    here rather than in a caller the fake let through."""
+    import inspect
+    from plaid_client import client as real
+
+    def shape(fn):
+        return [(p.name, p.kind, p.default is inspect.Parameter.empty)
+                for p in inspect.signature(fn).parameters.values()]
+
+    pairs = [(testing.FakeClient._Documents, real.DocumentsResource),
+             (testing.FakeClient._Projects, real.ProjectsResource),
+             (testing.FakeClient._Comments, real.CommentsResource),
+             (testing.FakeClient._Guidelines, real.GuidelinesResource),
+             (testing.FakeClient._UserData, real.UserDataResource),
+             (testing._BatchUserData, real.UserDataResource)]
+    for fake, real_cls in pairs:
+        own = [n for n, v in vars(fake).items() if callable(v) and not n.startswith('_')]
+        assert own, fake
+        for name in own:
+            assert hasattr(real_cls, name), f'{fake.__name__}.{name} is not on {real_cls.__name__}'
+            assert shape(getattr(fake, name)) == shape(getattr(real_cls, name)), \
+                f'{fake.__name__}.{name}'
+    for name in ('batch', 'batched', 'operation'):
+        assert shape(getattr(testing.FakeClient, name)) == shape(getattr(real.PlaidClient, name))
+    for name in ('batch', 'batched', 'submit', 'abort'):
+        assert shape(getattr(testing._Batch, name)) == shape(getattr(real.PlaidBatch, name))
+
+
+def test_a_bulk_update_entry_is_refused_as_the_server_refuses_it():
+    c = _project_client()
+    ops = [{'op': 'set', 'path': ['k'], 'value': 1}]
+    for resource, entry in [('tokens', {'id': 't', 'end': 9}),  # a 400 for real
+                            ('tokens', {'id': 't', 'end': 9, 'metadata': ops}),  # end dropped
+                            ('spans', {'id': 's', 'tokens': ['t']}),
+                            ('relations', {'id': 'r', 'source': 's'}),
+                            ('vocab_items', {'id': 'v', 'value': 'x'}),
+                            ('spans', {'value': 'x'})]:
+        with pytest.raises(PlaidAPIError) as e:
+            getattr(c, resource).bulk_update([entry])
+        assert e.value.status == 400, (resource, entry)
+    c.tokens.bulk_update([{'id': 't', 'metadata': ops}])
+    c.spans.bulk_update([{'id': 's', 'value': 'x'}])
+    c.relations.bulk_update([{'id': 'r'}])
+    c.vocab_items.bulk_update([{'id': 'v', 'form': 'f', 'metadata': ops}])
+    assert len(c.writes) == 4
+
+
+def test_the_user_data_store_answers_as_the_real_one_does():
+    c = _project_client()
+    put = c.user_data.put('u', 'k', {'snake_key': 1, 'kebab-key': 2, 'camelKey': 3, 'ns/k': 4,
+                                     '0199-abcd': 5, 'metadata': {'a-b': 1}})
+    assert put['key'] == 'k' and put['updated_at']
+    got = c.user_data.get('u', 'k')
+    # The client recases a value's keys on the way out and back, apart from
+    # what sits under `metadata`.
+    assert got['value'] == {'snake_key': 1, 'kebab_key': 2, 'camelKey': 3, 'k': 4,
+                            '0199_abcd': 5, 'metadata': {'a-b': 1}}
+    assert got['updated_at'] == put['updated_at']
+    assert c.user_data.list('u') == [{'key': 'k', 'updated_at': put['updated_at']}]
+    assert c.user_data.list_page('u')['entries'] == [{'key': 'k', 'updated_at': put['updated_at']}]
+    c.user_data.delete('u', 'k')
+    with pytest.raises(PlaidAPIError) as e:
+        c.user_data.delete('u', 'k')
+    assert e.value.status == 404
+    with pytest.raises(TypeError):
+        c.user_data.put('u', 'k', {'x': object()})  # not JSON
+
+
+def test_the_smaller_shapes_match_the_real_client():
+    summary = {'name': False, 'document_metadata': False, 'total': 0, 'skipped': []}
+    c = _project_client(restore_summary=summary,
+                        guidelines=[{'id': 'g1', 'title': 'T', 'body': '', 'pinned': False,
+                                     'updated_at': 'then'}],
+                        comments=[{'id': 'c1', 'entity_type': 'token', 'entity_id': 't1'},
+                                  {'id': 'c2', 'entity_type': 'span', 'entity_id': 's1'}])
+    # A restore answers with its summary, done or dry.
+    assert c.documents.restore('d', 'T') == summary
+    with c.operation('Merge') as op:
+        op.set_message('Merged 3')
+        with c.operation('inner') as inner:
+            inner.set_message('ignored')  # only the outermost label is refined
+    assert op.message == 'Merged 3' and op.id
+    with c.documents.locked('d', keep_alive=False) as lock:
+        assert lock.lost is None
+        lock.raise_if_lost()
+    assert c.kinds[-2:] == ['lock', 'unlock']
+    assert 'time_created' in c.projects.list_documents('p')[0]
+    [g] = c.guidelines.list('p')
+    assert g['project'] == 'p' and g['created_at']
+    updated = c.guidelines.update('g1', body='x')
+    assert updated['body'] == 'x' and updated['id'] == 'g1'
+    assert [r['id'] for r in c.comments.list('p', entity_type='span')] == ['c2']
+    with pytest.raises(PlaidAPIError) as e:
+        c.documents.get('nope')
+    assert str(e.value).startswith('HTTP 404 ') and e.value.method == 'GET'
+    assert e.value.url.endswith('/api/v1/documents/nope')
