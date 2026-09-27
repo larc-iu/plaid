@@ -50,6 +50,20 @@ describe('LinkedListPage', () => {
     await unmount();
   });
 
+  it('gives the fill column the width left over, but never less than a readable name', async () => {
+    const { container, unmount } = await mount({
+      columns: [{ ...COLUMNS[0], fill: true }, COLUMNS[1]],
+    });
+    const [name, count] = all(container, 'tbody tr')[0].querySelectorAll('td');
+    // happy-dom lays nothing out, so the classes are the contract: `max-w-0`
+    // lets a long name truncate, and without a floor it also let a narrow
+    // window squeeze the name to "Fi…" while the counts kept their width.
+    expect(name.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'max-w-0']));
+    expect(name.className.split(' ')).toContain('min-w-40');
+    expect(count.className).not.toContain('max-w-0');
+    await unmount();
+  });
+
   it('tells a count, an uncountable row and a row still counting apart', async () => {
     const { container, unmount } = await mount();
     // Gamma has no count yet, so its cell is the spinner and reads as nothing.

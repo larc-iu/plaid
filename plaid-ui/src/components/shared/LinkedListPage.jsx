@@ -44,8 +44,8 @@ export const TimeCell = ({ at }) =>
  * A column is `{key, label, align, sort, cell, nowrap, fill}`, where `cell(row)`
  * returns what goes inside the link. The `fill` column (the name) takes the
  * width the others leave and no more, so a `truncate` inside it cuts a long
- * name there. Without it the column grows to the whole name and pushes the
- * rest of the row out of sight.
+ * name there, down to a floor of 10rem. Without it the column grows to the
+ * whole name and pushes the rest of the row out of sight.
  *
  * `className` is the page's outer wrapper, because the two shells differ:
  * plaid-ud's Outlet is already padded and plaid-igt's is not.
@@ -86,7 +86,9 @@ export const LinkedListPage = ({
     sort: column.sort,
     align: column.align,
     headerClassName: column.headerClassName,
-    className: column.fill ? 'w-full max-w-0 p-0' : 'p-0',
+    // `min-w-40` is the floor: below it the table scrolls sideways, the way
+    // it did before, rather than cutting every name to its first letters.
+    className: column.fill ? 'w-full min-w-40 max-w-0 p-0' : 'p-0',
     render: (row) => linked(row, column),
   }));
 
