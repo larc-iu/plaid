@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { notifyError } from '../../lib/notify.js';
+import { Loading } from './Loading.jsx';
 
 /**
  * One project-level screen: the project read once, the app's tab strip above
@@ -55,11 +56,7 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
   return (
     <div className="w-full">
       <Tabs projectId={projectId} project={project} />
-      {loading ? (
-        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-      ) : (
-        project && children({ project, projectId, client })
-      )}
+      {loading ? <Loading /> : project && children({ project, projectId, client })}
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { plural } from '../../lib/plural.js';
 import { collationKey } from '../../domain/collation.js';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx';
+import { Loading } from './Loading.jsx';
 import { pageKey, usePagedList } from '../../hooks/usePagedList.js';
 import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';
 
@@ -154,7 +155,7 @@ export const DataTable = ({
       <ListPager {...paged} onPage={paged.setPage} position="top" />
 
       {loading && rows.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">Loading…</p>
+        <Loading />
       ) : paged.pageItems.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
           {rows.length === 0

@@ -1,6 +1,7 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Breadcrumb } from './Breadcrumb.jsx';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
 /**
@@ -43,23 +44,16 @@ export const DocumentTabStrip = ({
 
   return (
     <div className="mb-6">
-      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
-        <Link to={routes.projects} className="text-muted-foreground hover:text-foreground">
-          Projects
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <Link
-          to={routes.documents(projectId)}
-          className="min-w-0 truncate text-muted-foreground hover:text-foreground"
-        >
-          {project?.name || 'Loading…'}
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span dir="auto" className="truncate text-muted-foreground">
-          {document?.name || 'Loading…'}
-        </span>
+      <div className="mb-4 flex items-center gap-2">
+        <Breadcrumb
+          items={[
+            { label: 'Projects', to: routes.projects },
+            { label: project?.name || 'Loading…', to: routes.documents(projectId) },
+            { label: document?.name || 'Loading…' },
+          ]}
+        />
         {status && <span className="ms-auto">{status}</span>}
-      </nav>
+      </div>
 
       <Tabs value={active} onValueChange={(v) => !disabled && navigate(to[v])} guard={guard}>
         <TabsList>

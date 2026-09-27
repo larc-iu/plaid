@@ -1,9 +1,10 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '../../contexts/useAuth.js';
 import { canEditProject } from '../../domain/permissions.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Breadcrumb } from './Breadcrumb.jsx';
 import { useAssistantSubject } from '../assistant/subject.js';
 import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 
@@ -57,13 +58,13 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
 
   return (
     <div className="mb-6">
-      <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2 text-sm">
-        <Link to={appRoutes().projects} className="text-muted-foreground hover:text-foreground">
-          Projects
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="truncate text-muted-foreground">{project?.name || 'Loading…'}</span>
-      </nav>
+      <Breadcrumb
+        className="mb-4"
+        items={[
+          { label: 'Projects', to: appRoutes().projects },
+          { label: project?.name || 'Loading…' },
+        ]}
+      />
 
       {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open
           it in a new browser tab; a plain click is Radix's, and this navigates

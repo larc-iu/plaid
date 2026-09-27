@@ -4,6 +4,7 @@ import { useManagedProject } from '../../hooks/useManagedProject.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { appRoutes } from '../../lib/uiConfig.js';
 import { ActivityPanel } from './ActivityPanel.jsx';
+import { Loading } from './Loading.jsx';
 
 // Who has been working on this project, and on what. Maintainers only.
 //
@@ -19,7 +20,7 @@ export const ProjectActivityPage = ({ tabs: Tabs }) => {
 
   useDocumentTitle('Activity', project?.name);
 
-  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <Loading />;
   if (!project || !canConfigure) return null;
 
   const routes = appRoutes();
