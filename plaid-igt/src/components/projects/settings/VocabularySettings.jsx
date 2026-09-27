@@ -13,9 +13,6 @@ const refusal = (error) => error?.responseData?.error || error;
 export const VocabularySettings = ({ projectId, client }) => {
   const { user } = useAuth();
   const [hasError, setHasError] = useState(false);
-  // Bumped after a failed save, which may have linked some vocabularies and
-  // not others, so the list reloads from the server.
-  const [reloadKey, setReloadKey] = useState(0);
 
   // Load current project vocabularies
   const handleLoadData = async () => {
@@ -34,75 +31,47 @@ export const VocabularySettings = ({ projectId, client }) => {
       const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
       // Transform to component format. Linking a vocabulary takes one of its
-      // maintainers, so an unlinked row the user does not maintain is locked.
+      // maintainers, so a row the user does not maintain cannot be ticked.
       // Unlinking stays open to any project maintainer.
-      const vocabularies = allVocabs.map((vocab) => {
-        const enabled = linkedVocabIds.includes(vocab.id);
-        return {
-          name: vocab.name || vocab.id,
-          id: vocab.id,
-          enabled,
-          isCustom: false, // All existing vocabs from API are not custom
-          locked: !enabled && !canManageVocabulary(vocab, user),
-        };
-      });
+      const vocabularies = allVocabs.map((vocab) => ({
+        name: vocab.name || vocab.id,
+        id: vocab.id,
+        enabled: linkedVocabIds.includes(vocab.id),
+        isCustom: false, // All existing vocabs from API are not custom
+        canLink: canManageVocabulary(vocab, user),
+      }));
 
       return { vocabularies };
     } catch (error) {
+      // The panel below takes the screen's place. Not rethrown, since the
+      // manager would report it as a send that failed.
       console.error('Failed to load vocabularies configuration:', error);
       setHasError(true);
-      throw error;
+      return { vocabularies: [] };
     }
   };
 
-  // Save changes to the API
-  const handleSaveChanges = async (data) => {
-    try {
-      setHasError(false);
-
-      if (!client) {
-        throw new Error('Not authenticated');
-      }
-
-      // Get current project state
-      const project = await client.projects.get(projectId);
-      const currentLinkedVocabIds = (project.vocabs || []).map((v) => v.id);
-
-      // Which vocabularies should be linked. Settings only links and unlinks:
-      // a vocabulary is CREATED on the New vocabulary screen or by the setup
-      // wizard, both of which seed its fields. This screen never makes one, so
-      // handleLoadData stamps every row isCustom: false.
-      const targetLinkedVocabIds = data.vocabularies
-        .filter((vocab) => vocab.enabled)
-        .map((vocab) => vocab.id);
-
-      // Link new vocabularies BEFORE unlinking removed ones: a failure midway
-      // through the links leaves every previously linked vocab still in place,
-      // whereas unlink-first could strip links the user meant to keep. A
-      // failure during the unlinks leaves extra links — harmless, and a
-      // re-save (which re-diffs against fresh project state) cleans them up.
-      for (const vocabId of targetLinkedVocabIds) {
-        if (!currentLinkedVocabIds.includes(vocabId)) {
-          await client.projects.linkVocab(projectId, vocabId);
-        }
-      }
-
-      for (const vocabId of currentLinkedVocabIds) {
-        if (!targetLinkedVocabIds.includes(vocabId)) {
-          await client.projects.unlinkVocab(projectId, vocabId);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to save vocabularies configuration:', error);
-      throw error;
+  // Send one link or unlink. The row is already ticked or unticked on screen,
+  // and a refusal puts it back. Settings only links and unlinks: a vocabulary
+  // is CREATED on the New vocabulary screen or by the setup wizard, both of
+  // which seed its fields, so handleLoadData stamps every row isCustom: false.
+  // The send asks the project first, so a send whose premise an earlier one
+  // already settled (a refused link, then an untick) does nothing.
+  const handleSaveChanges = async ({ change }) => {
+    if (!client) throw new Error('Not authenticated');
+    if (!change) return;
+    const project = await client.projects.get(projectId);
+    const linked = (project.vocabs || []).some((v) => v.id === change.id);
+    if (change.enabled && !linked) {
+      await client.projects.linkVocab(projectId, change.id);
+    } else if (!change.enabled && linked) {
+      await client.projects.unlinkVocab(projectId, change.id);
     }
   };
 
-  // A failed load has already swapped the screen for the panel below. A failed
-  // save says why in a toast and reloads the list.
+  // A failed send says why, and its row is already back as it was.
   const handleError = (error) => {
     notifyError(refusal(error), 'Vocabularies not updated');
-    setReloadKey((k) => k + 1);
   };
 
   if (hasError) {
@@ -132,7 +101,6 @@ export const VocabularySettings = ({ projectId, client }) => {
       </p>
 
       <VocabularyManager
-        key={reloadKey}
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}

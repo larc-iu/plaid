@@ -101,3 +101,108 @@ describe('Project settings, Vocabularies', () => {
     await view.unmount();
   });
 });
+
+// Every write shows before the server answers. A tick is a link sent, and the
+// row it ticked is what a refusal takes back, leaving any other row alone.
+describe('Project settings, Vocabularies, before the server answers', () => {
+  const held = () => {
+    let settle;
+    const promise = new Promise((resolve, reject) => {
+      settle = { resolve, reject };
+    });
+    return { promise, settle };
+  };
+  const twoOfMine = (linkVocab) => ({
+    vocabLayers: {
+      list: vi.fn(async () => [
+        { id: 'v1', name: 'Alpha', maintainers: ['me@x.org'] },
+        { id: 'v3', name: 'Gamma', maintainers: ['me@x.org'] },
+        { id: 'v4', name: 'Delta', maintainers: ['me@x.org'] },
+      ]),
+    },
+    projects: {
+      get: vi.fn(async () => ({ id: 'p1', vocabs: [{ id: 'v4' }] })),
+      linkVocab: vi.fn(linkVocab),
+      unlinkVocab: vi.fn(async () => {}),
+    },
+  });
+
+  it('ticks a row at once and sends the link', async () => {
+    const answer = held();
+    const client = twoOfMine(() => answer.promise);
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Alpha').click());
+    expect(boxOf(view.container, 'Alpha').checked).toBe(true);
+    expect(client.projects.linkVocab).toHaveBeenCalledWith('p1', 'v1');
+    await view.step(async () => answer.settle.resolve());
+    expect(boxOf(view.container, 'Alpha').checked).toBe(true);
+    expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+
+  it('unticks a row as soon as the unlink is confirmed', async () => {
+    const answer = held();
+    const client = twoOfMine(async () => {});
+    client.projects.unlinkVocab = vi.fn(() => answer.promise);
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Delta').click());
+    const confirm = byText(document.body, 'button', 'Unlink Vocabulary');
+    await view.step(() => confirm.click());
+    expect(boxOf(view.container, 'Delta').checked).toBe(false);
+    expect(byText(document.body, 'button', 'Unlink Vocabulary')).toBeNull();
+    await view.step(async () => answer.settle.resolve());
+    expect(client.projects.unlinkVocab).toHaveBeenCalledWith('p1', 'v4');
+    await view.unmount();
+  });
+
+  it('sends the second tick after the first, and a refusal takes back only its own row', async () => {
+    const first = held();
+    const client = twoOfMine((pid, id) => (id === 'v1' ? first.promise : Promise.resolve()));
+    const view = await mount(client);
+    await view.step(() => rowOf(view.container, 'Alpha').click());
+    await view.step(() => rowOf(view.container, 'Gamma').click());
+    expect(boxOf(view.container, 'Alpha').checked).toBe(true);
+    expect(boxOf(view.container, 'Gamma').checked).toBe(true);
+    // Gamma waits its turn behind Alpha.
+    expect(client.projects.linkVocab).toHaveBeenCalledTimes(1);
+    await view.step(async () => first.settle.reject(refused()));
+    expect(client.projects.linkVocab.mock.calls.map((c) => c[1])).toEqual(['v1', 'v3']);
+    expect(boxOf(view.container, 'Alpha').checked).toBe(false);
+    expect(boxOf(view.container, 'Gamma').checked).toBe(true);
+    expect(notifyError).toHaveBeenCalledTimes(1);
+    expect(notifyError.mock.calls[0][0]).toBe(REFUSAL);
+    await view.unmount();
+  });
+
+  it('can link a vocabulary again after unlinking one it may link', async () => {
+    const view = await mount(twoOfMine(async () => {}));
+    await view.step(() => rowOf(view.container, 'Delta').click());
+    await view.step(() => byText(document.body, 'button', 'Unlink Vocabulary').click());
+    expect(boxOf(view.container, 'Delta').disabled).toBe(false);
+    await view.unmount();
+  });
+});
+
+describe('Project settings, Vocabularies, a row the user may not link', () => {
+  it('locks again once a vocabulary they do not maintain is unlinked', async () => {
+    const view = await mount(makeClient({ linked: ['v2'] }));
+    await view.step(() => rowOf(view.container, 'Theirs').click());
+    await view.step(() => byText(document.body, 'button', 'Unlink Vocabulary').click());
+    expect(boxOf(view.container, 'Theirs').checked).toBe(false);
+    expect(boxOf(view.container, 'Theirs').disabled).toBe(true);
+    await view.unmount();
+  });
+});
+
+describe('Project settings, Vocabularies, a list that will not load', () => {
+  it('shows the panel and no toast about an update', async () => {
+    const client = makeClient();
+    client.vocabLayers.list = vi.fn(async () => {
+      throw new Error('HTTP 500');
+    });
+    const view = await mount(client);
+    expect(view.container.textContent).toMatch(/Configuration Error/);
+    expect(notifyError).not.toHaveBeenCalled();
+    await view.unmount();
+  });
+});

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, ChevronUp, ChevronDown, Unlink, AlertTriangle } from 'lucide-react';
 import { Input } from '@ui/components/ui/input';
 import { SearchInput, ListCount, ListPager } from '@ui/components/shared/list-search';
@@ -14,6 +14,14 @@ import {
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
+
+// A row the user may not link: an unlinked vocabulary whose row says so
+// (`canLink: false`, set by the screen that loaded it). A linked row is always
+// free to unlink, and once unlinked it locks again.
+const isLocked = (vocab) => !vocab.enabled && vocab.canLink === false;
+
+// A temporary id for a vocabulary the wizard will create.
+const customVocabId = () => `new-${Date.now()}`;
 
 export const VocabularyManager = ({
   initialData,
@@ -32,6 +40,9 @@ export const VocabularyManager = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [unlinkModalOpened, setUnlinkModalOpened] = useState(false);
   const [vocabToUnlink, setVocabToUnlink] = useState(null);
+
+  // Sends wait their turn, so two quick ticks reach the server in order.
+  const sends = useRef(Promise.resolve());
 
   const openUnlinkModal = () => setUnlinkModalOpened(true);
   const closeUnlinkModal = () => setUnlinkModalOpened(false);
@@ -78,25 +89,37 @@ export const VocabularyManager = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
-  const saveChanges = async (newVocabularies) => {
-    try {
-      if (onSaveChanges) {
-        await onSaveChanges({ vocabularies: newVocabularies });
-      }
-      setVocabularies(newVocabularies);
-    } catch (error) {
-      console.error('Failed to save vocabularies configuration:', error);
-      if (onError) {
-        onError(error);
-      } else {
-        notifyError('Failed to save vocabularies configuration', 'Save Error');
-      }
-    }
+  // Every change shows at once and is sent after the one before it. `change`
+  // names the one row a link or unlink touched: a refused send puts that row
+  // back, unless it has been changed again since, and leaves every other row
+  // as it is.
+  const saveChanges = (newVocabularies, change = null) => {
+    setVocabularies(newVocabularies);
+    if (!onSaveChanges) return;
+    sends.current = sends.current
+      .then(() => onSaveChanges({ vocabularies: newVocabularies, change }))
+      .catch((error) => {
+        console.error('Failed to save vocabularies configuration:', error);
+        if (change) {
+          setVocabularies((current) =>
+            current.map((vocab) =>
+              vocab.id === change.id && vocab.enabled === change.enabled
+                ? { ...vocab, enabled: !change.enabled }
+                : vocab,
+            ),
+          );
+        }
+        if (onError) {
+          onError(error);
+        } else {
+          notifyError('Failed to save vocabularies configuration', 'Save Error');
+        }
+      });
   };
 
-  const handleVocabToggle = async (vocabId, enabled) => {
-    // A locked row is one the user may not link (see VocabularySettings).
-    if (enabled && vocabularies.find((v) => v.id === vocabId)?.locked) return;
+  const handleVocabToggle = (vocabId, enabled) => {
+    const row = vocabularies.find((v) => v.id === vocabId);
+    if (enabled && row && isLocked(row)) return;
     // For settings mode, handle unlinking with confirmation
     if (isSettings && !enabled) {
       const vocab = vocabularies.find((v) => v.id === vocabId);
@@ -110,19 +133,18 @@ export const VocabularyManager = ({
     const updatedVocabs = vocabularies.map((vocab) =>
       vocab.id === vocabId ? { ...vocab, enabled } : vocab,
     );
-    await saveChanges(updatedVocabs);
+    saveChanges(updatedVocabs, { id: vocabId, enabled });
   };
 
-  const handleConfirmUnlink = async () => {
+  const handleConfirmUnlink = () => {
     if (!vocabToUnlink) return;
-
-    const updatedVocabs = vocabularies.map((vocab) =>
-      vocab.id === vocabToUnlink.id ? { ...vocab, enabled: false } : vocab,
-    );
-    await saveChanges(updatedVocabs);
-
+    const { id } = vocabToUnlink;
     closeUnlinkModal();
     setVocabToUnlink(null);
+    const updatedVocabs = vocabularies.map((vocab) =>
+      vocab.id === id ? { ...vocab, enabled: false } : vocab,
+    );
+    saveChanges(updatedVocabs, { id, enabled: false });
   };
 
   const handleAddCustomVocab = async () => {
@@ -145,24 +167,23 @@ export const VocabularyManager = ({
 
     const newVocab = {
       name: trimmedName,
-      id: `new-${Date.now()}`, // Temporary ID for new vocabs
+      id: customVocabId(),
       enabled: true, // New custom vocabs are enabled by default
       isCustom: true,
     };
 
     const updatedVocabs = [...vocabularies, newVocab];
-    await saveChanges(updatedVocabs);
+    saveChanges(updatedVocabs);
 
     setNewVocabName('');
-    // No toast. `saveChanges` awaits the save before adding the row, so the row
-    // appearing IS the confirmation, and a failure raises its own error. In the
-    // setup wizard this toast also landed bottom-right on top of the step's own
-    // Next button and swallowed the click on it.
+    // No toast. The row appearing IS the confirmation, and a failure raises
+    // its own error. In the setup wizard this toast also landed bottom-right on
+    // top of the step's own Next button and swallowed the click on it.
   };
 
   const handleDeleteCustomVocab = async (vocabId) => {
     const updatedVocabs = vocabularies.filter((vocab) => vocab.id !== vocabId);
-    await saveChanges(updatedVocabs);
+    saveChanges(updatedVocabs);
     // Likewise: the row is gone, which is the whole message.
   };
 
@@ -204,7 +225,7 @@ export const VocabularyManager = ({
     const newVocabs = [...vocabularies];
     [newVocabs[currentIndex], newVocabs[newIndex]] = [newVocabs[newIndex], newVocabs[currentIndex]];
 
-    await saveChanges(newVocabs);
+    saveChanges(newVocabs);
   };
 
   // The table's rows, ABOVE the early returns below: `usePagedList` is a hook,
@@ -282,7 +303,7 @@ export const VocabularyManager = ({
                   key={record.tableId}
                   className={cn(
                     'border-t',
-                    record.locked ? 'cursor-default' : 'cursor-pointer hover:bg-muted/50',
+                    isLocked(record) ? 'cursor-default' : 'cursor-pointer hover:bg-muted/50',
                   )}
                   onMouseEnter={() => setHoveredVocab(record.id)}
                   onMouseLeave={() => setHoveredVocab(null)}
@@ -298,7 +319,7 @@ export const VocabularyManager = ({
                       type="checkbox"
                       className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-default"
                       checked={record.enabled}
-                      disabled={record.locked}
+                      disabled={isLocked(record)}
                       aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleVocabToggle(record.id, event.target.checked)}
@@ -316,7 +337,7 @@ export const VocabularyManager = ({
                             · {String(record.id).slice(-6)}
                           </span>
                         )}
-                        {record.locked && (
+                        {isLocked(record) && (
                           <span className="block text-xs not-italic text-muted-foreground">
                             Only its maintainers can link it.
                           </span>
