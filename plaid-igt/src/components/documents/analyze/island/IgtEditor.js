@@ -195,9 +195,9 @@ export class IgtEditor {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', this._onBeforeUnload);
-    // The cells holding a value put back unsent, each registered with the
-    // leave question (_syncUnsentDrafts). Focusing one takes it up again.
-    this._unsentDrafts = new Set();
+    // The values put back unsent, by cell key, each registered with the leave
+    // question (_syncUnsentDrafts). Focusing one takes it up again.
+    this._unsent = new Map();
     this._onFocusIn = () => queueMicrotask(() => this._syncUnsentDrafts());
     this.container.addEventListener('focusin', this._onFocusIn);
     this._onAssistantFocus = this._onAssistantFocus.bind(this);
@@ -417,6 +417,7 @@ export class IgtEditor {
   // way is useSavingGuard's question, which DocumentDetail asks for the
   // document.
   _hasUnsavedWork() {
+    if (this._unsent.size) return true;
     for (const cell of this.container.querySelectorAll('.igt-field')) {
       if (cell.igtUnsent) return true;
     }
@@ -425,29 +426,61 @@ export class IgtEditor {
     return (el.value ?? '') !== (el.dataset.orig ?? '');
   }
 
-  // Every cell holding a value put back unsent (cells.js _restoreUnsent),
-  // unfocused, is a draft for the leave question, so an in-app link or Back
-  // asks about it as closing the tab does. One registration per cell, so the
-  // question counts them. A cell drops out when it is focused (leaving it
-  // sends the value), when the stored value moves on (uncontrolledValue), when
-  // it is no longer drawn, and with the island.
+  // Every value put back unsent (cells.js _restoreUnsent) is a draft for the
+  // leave question, so an in-app link or Back asks about it as closing the tab
+  // does. One registration per cell, so the question counts them.
+  //
+  // The value lives on the cell (`igtUnsent`), and `_unsent` keeps it by cell
+  // key as well, because paging throws the cell away: while its page is not
+  // drawn the value is still unsaved and still asked about, and once the page
+  // is drawn again it goes back into the new cell, if the stored value is still
+  // the one it was typed over. It drops out when its cell is focused (leaving
+  // the cell sends it), when the stored value moves on (uncontrolledValue), and
+  // with the island.
   _syncUnsentDrafts() {
-    const now = new Set();
     if (!this._destroyed) {
       for (const cell of this.container.querySelectorAll('.igt-field')) {
-        if (cell.igtUnsent) now.add(cell);
+        if (cell.igtUnsent) this._noteUnsent(cell.dataset.cellKey, cell.igtUnsent, cell);
       }
     }
-    for (const cell of this._unsentDrafts) {
-      if (now.has(cell)) continue;
-      this._unsentDrafts.delete(cell);
-      setUnsavedDraft(cell, null);
+    for (const [key, entry] of this._unsent) {
+      const cell = this._destroyed
+        ? null
+        : this.container.querySelector(`.igt-field[data-cell-key="${key}"]`);
+      let keep = !this._destroyed;
+      if (keep && cell && !cell.igtUnsent) {
+        // The cell it was put into let it go (focused, or the stored value
+        // moved on). A cell drawn afresh takes it back while the stored value
+        // is still the one it was typed over.
+        keep =
+          cell !== entry.cell &&
+          document.activeElement !== cell &&
+          (cell.value ?? '') === entry.saved;
+        if (keep) {
+          this._putBackInto(cell, entry.typed, entry.saved);
+          entry.cell = cell;
+        }
+      }
+      if (keep) continue;
+      this._unsent.delete(key);
+      setUnsavedDraft(entry, null);
     }
-    for (const cell of now) {
-      if (this._unsentDrafts.has(cell)) continue;
-      this._unsentDrafts.add(cell);
-      setUnsavedDraft(cell, 'An annotation you have typed', 'annotations you have typed');
+  }
+
+  // Remember a value put back unsent, for a cell not drawn right now.
+  _keepUnsent(key, typed, saved) {
+    this._noteUnsent(key, { typed, saved: this._unsent.get(key)?.saved ?? saved }, null);
+    this._syncUnsentDrafts();
+  }
+
+  _noteUnsent(key, { typed, saved }, cell) {
+    let entry = this._unsent.get(key);
+    if (!entry) {
+      entry = {};
+      this._unsent.set(key, entry);
+      setUnsavedDraft(entry, 'An annotation you have typed', 'annotations you have typed');
     }
+    Object.assign(entry, { typed, saved, cell });
   }
 
   _scheduleRender() {
@@ -810,14 +843,6 @@ Object.assign(
   grid,
   vocabPopover,
 );
-
-// A value put back unsent is a draft the leave question asks about. The put-back
-// is the cells mixin's, and the leave question's wiring is the editor's.
-const { _restoreUnsent } = cells;
-IgtEditor.prototype._restoreUnsent = function restoreUnsent(...args) {
-  _restoreUnsent.apply(this, args);
-  this._syncUnsentDrafts();
-};
 
 // ---------------------------------------------------------------------------
 // Hot reload

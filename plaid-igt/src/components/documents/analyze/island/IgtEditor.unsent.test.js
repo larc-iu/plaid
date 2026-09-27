@@ -196,3 +196,122 @@ describe('a cell typed in again while its earlier edit waits behind a refusal', 
     expect(gloss?.value).toBe('xyz');
   });
 });
+
+// One sentence a page, so the two words are on two pages.
+describe('a value put back unsaved, on a page the reader leaves', () => {
+  let pageSize;
+  beforeEach(() => {
+    pageSize = IgtEditor.PAGE_SIZE;
+    IgtEditor.PAGE_SIZE = 1;
+  });
+  afterEach(() => {
+    IgtEditor.PAGE_SIZE = pageSize;
+  });
+
+  function mountPaged() {
+    const raw = buildRawDoc({
+      sentences: [
+        { id: 's-1', begin: 0, end: 3 },
+        { id: 's-2', begin: 4, end: 7 },
+      ],
+    });
+    const client = makeFakeClient();
+    client.query = async () => ({ results: [] });
+    const doc = new IgtDocument({
+      raw,
+      project: { id: 'proj-1', vocabs: [], config: {}, maintainers: ['lead@x.com'], writers: [] },
+      vocabularies: {},
+      client,
+      projectId: 'proj-1',
+      user: null,
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new IgtEditor(host, doc, {});
+    const before = JSON.parse(JSON.stringify(doc.raw));
+    client.documents.get = async () => JSON.parse(JSON.stringify(before));
+    const create = client.spans.create;
+    let release;
+    client.spans.create = async (...args) => {
+      client.spans.create = create;
+      await new Promise((r) => (release = r));
+      throw new Error('refused');
+    };
+    const refuse = async () => {
+      await settle();
+      release();
+    };
+    return { doc, refuse };
+  }
+
+  it('is still there, and still asked about, when the reader comes back to its page', async () => {
+    const { refuse } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    // Typing somewhere else on the page, so the value goes back unfocused.
+    const other = [...host.querySelectorAll('[data-cell-key]')].find((el) => el !== a);
+    focus(other);
+    type(other, 'x');
+    await refuse();
+    await settle(30);
+    expect(cell('ma:m-1:Gloss').value).toBe('AAA');
+    expect(document.activeElement).toBe(other);
+    type(other, other.dataset.orig ?? '');
+    // The pager's click takes focus off the cell first.
+    other.blur();
+    editor._setPage(1);
+    await settle();
+    expect(cell('ma:m-1:Gloss')).toBe(null);
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    editor._setPage(0);
+    await settle();
+    const back = cell('ma:m-1:Gloss');
+    expect(back.value).toBe('AAA');
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    // Taken up again, it is measured against what the server holds.
+    focus(back);
+    await settle();
+    expect(back.dataset.orig).toBe('');
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+
+  it('comes back when the refusal answers while the reader is on another page', async () => {
+    const { refuse } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    a.blur();
+    editor._setPage(1);
+    await settle();
+    await refuse();
+    await settle(30);
+    expect(hasUnsavedDraft()).toBe('An annotation you have typed');
+    const e = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(true);
+    editor._setPage(0);
+    await settle();
+    expect(cell('ma:m-1:Gloss').value).toBe('AAA');
+  });
+
+  it('gives way when the stored value moved on while its page was away', async () => {
+    const { doc, refuse } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    const other = [...host.querySelectorAll('[data-cell-key]')].find((el) => el !== a);
+    focus(other);
+    await refuse();
+    await settle(30);
+    other.blur();
+    editor._setPage(1);
+    await settle();
+    await doc.updateMorphemeSpan('m-1', 'Gloss', 'OTHER', null);
+    await settle();
+    editor._setPage(0);
+    await settle();
+    expect(cell('ma:m-1:Gloss').value).toBe('OTHER');
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+});

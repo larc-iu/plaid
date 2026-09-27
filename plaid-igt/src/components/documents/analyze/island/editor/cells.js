@@ -460,7 +460,11 @@ export const cells = {
     Promise.resolve(fn()).then((ok) => {
       if (ok !== false || !key) return;
       const cell = this.container.querySelector(`[data-cell-key="${key}"]`);
-      if (!cell) return;
+      // Not drawn (the reader paged away): kept until its page is drawn again.
+      if (!cell) {
+        this._keepUnsent(key, typed, saved);
+        return;
+      }
       const active = document.activeElement;
       // Typed into again since this edit was committed: that text is newer,
       // and leaving the cell sends it.
@@ -496,7 +500,14 @@ export const cells = {
   // is still `saved` (uncontrolledValue in shared.js), and makes focusing the
   // cell measure the edit against `saved` (_stampOrig), so leaving it sends
   // the value again.
+  //
+  // Leaving the document asks about it while it stands (_syncUnsentDrafts).
   _restoreUnsent(cell, typed, saved) {
+    this._putBackInto(cell, typed, saved);
+    this._syncUnsentDrafts();
+  },
+
+  _putBackInto(cell, typed, saved) {
     cell.igtUnsent = { typed, saved };
     cell.value = typed;
     this._syncCellClasses(cell, typed, cell.igtTagset ?? null);
