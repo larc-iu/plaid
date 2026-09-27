@@ -52,10 +52,12 @@ const Row = ({ line }) => {
 export const ConlluPreview = ({ content }) => {
   const lines = content.split('\n');
   return (
-    // Focusable so the sideways scroll can be reached from the keyboard.
+    // Focusable so the sideways scroll can be reached from the keyboard, and a
+    // region so the name it is given is announced (a bare `pre` carries none).
     <pre
       dir="ltr"
       tabIndex={0}
+      role="region"
       aria-label="CoNLL-U file"
       data-testid="conllu-preview"
       className="max-h-[400lh] w-full overflow-auto whitespace-pre rounded-md border bg-muted/40 p-3 text-left font-mono text-xs leading-relaxed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

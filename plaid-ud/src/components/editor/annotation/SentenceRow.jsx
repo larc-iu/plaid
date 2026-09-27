@@ -325,7 +325,7 @@ export const SentenceRow = React.memo(
               {lowerBand.bandHeight > 0 && (
                 <div className="lower-band-spacer" style={{ height: lowerBand.bandHeight }} />
               )}
-              {hasMwt && <div className="mwt-row" />}
+              {hasMwt && <div className="mwt-row" aria-hidden />}
 
               {/* Row headers — always visible, click to expand/collapse */}
               <RowLabelHeader

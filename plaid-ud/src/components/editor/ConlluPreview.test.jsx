@@ -26,6 +26,9 @@ describe('the CoNLL-U preview', () => {
     const pre = container.querySelector('pre');
     expect(pre.textContent).toBe(FILE);
     expect(pre.getAttribute('dir')).toBe('ltr');
+    // A name on a bare `pre` is not announced: it needs a role to carry it.
+    expect(pre.getAttribute('role')).toBe('region');
+    expect(pre.getAttribute('aria-label')).toBe('CoNLL-U file');
     expect(pre.className).toContain('whitespace-pre');
     expect(pre.className).toContain('overflow-auto');
     await unmount();

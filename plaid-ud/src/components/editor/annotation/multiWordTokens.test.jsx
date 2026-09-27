@@ -125,6 +125,16 @@ describe('the bracket in the grid', () => {
     await unmount();
   });
 
+  it('is left out of what a screen reader reads, so the first word is not read as "de del"', async () => {
+    // In reading order the label falls straight after the first word's form,
+    // and the grid read aloud came out as "de del el". The Text Editor says
+    // which words are one written token.
+    const { container, unmount } = await mountRow(rows());
+    const bracket = container.querySelector('.mwt-bracket');
+    expect(bracket.closest('[aria-hidden="true"]')).not.toBe(null);
+    await unmount();
+  });
+
   it('takes no focus, so the arrow keys cross it as before', async () => {
     const { container, unmount } = await mountRow(rows());
     expect(all(container, '.mwt-row [tabindex], .mwt-row input, .mwt-row button').length).toBe(0);

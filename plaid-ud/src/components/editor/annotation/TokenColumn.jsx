@@ -125,9 +125,11 @@ export const TokenColumn = React.memo(
             sentence that has one. A token's bracket belongs to its first word
             and reaches across the rest, from the start of the first form to
             the end of the last, in whichever direction the sentence runs.
-            Nothing in it takes focus, so the arrow keys never meet it. */}
+            Nothing in it takes focus, so the arrow keys never meet it, and a
+            screen reader skips it: read in order, the label would follow the
+            first word's form ("de del el"). */}
         {mwtRow && (
-          <div className="mwt-row">
+          <div className="mwt-row" aria-hidden>
             {mwt && (
               <div className="mwt-bracket" style={{ width: `${mwt.width}px` }}>
                 <span className="mwt-bracket__form" dir="auto" title="Multi-word token">
