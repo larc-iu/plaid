@@ -119,3 +119,103 @@
       (is (= 2 (count token-rows))
           (str "Expected one audit row per updated token; got "
                (count token-rows) " — " token-rows)))))
+
+;; ---------------------------------------------------------------------------
+;; The helper writes through `UPDATE ... FROM (VALUES ...)`. It used to build
+;; one `CASE WHEN id = ? THEN ? ... ELSE col END` per column, which SQLite
+;; scans for every row it updates, so a chunk cost its size squared. That
+;; statement is kept here as the reference: the two must leave the same rows
+;; and the same audit rows.
+
+(defn- case-bulk-update!
+  "The CASE-driven statement bulk-update-by-id! used before, audit included.
+  One change: it took its columns from every id given, and a column only an
+  id that does not exist supplied became `CASE ELSE col END`, which SQLite
+  refuses. Here the columns come from the ids that exist, as in the helper
+  now."
+  [tx table pairs]
+  (let [ids (mapv first pairs)
+        id->attrs (into {} pairs)
+        pres (psc/q tx {:select [:*] :from [table] :where [:in :id ids]})
+        pre-by-id (into {} (map (juxt :id identity)) pres)
+        present-ids (filterv #(contains? pre-by-id %) ids)
+        cols (vec (distinct (mapcat (comp keys id->attrs) present-ids)))]
+    (when (seq present-ids)
+      (let [set-clause (into {}
+                             (map (fn [col]
+                                    [col (-> (into [:case]
+                                                   (mapcat (fn [id]
+                                                             (let [attrs (get id->attrs id)]
+                                                               (when (contains? attrs col)
+                                                                 [[:= :id id] (get attrs col)])))
+                                                           present-ids))
+                                             (conj :else col))]))
+                             cols)
+            posts (psc/execute-returning! tx {:update table :set set-clause
+                                              :where [:in :id present-ids] :returning [:*]})
+            post-by-id (into {} (map (juxt :id identity)) posts)]
+        ((requiring-resolve 'plaid.sql.audit-write/record-audit-writes!)
+         tx table :update
+         (keep (fn [id]
+                 (let [pre (get pre-by-id id) post (get post-by-id id)]
+                   (when (and (some? post) (not= pre post)) [id pre post])))
+               present-ids))
+        posts))))
+
+(deftest bulk-update-matches-the-case-statement-it-replaced
+  ;; Two texts with the same tokens. Each round sends the same updates, by
+  ;; token position, to the helper on one and to the old statement on the
+  ;; other: sparse columns, NULLs, values equal to the stored ones, repeated
+  ;; ids, ids that do not exist, and the map form of the input.
+  (let [{:keys [proj token-layer]} (setup-fixture! "BulkDiff")
+        tl (:text_layer_id (psc/q1 db {:select [:text_layer_id] :from [:token_layers]
+                                       :where [:= :id token-layer]}))
+        doc-a (create-test-document admin-request proj "BulkDiffA")
+        doc-b (create-test-document admin-request proj "BulkDiffB")
+        text-a (-> (create-text admin-request tl doc-a (apply str (repeat 100 "a"))) :body :id)
+        text-b (-> (create-text admin-request tl doc-b (apply str (repeat 100 "a"))) :body :id)
+        n 24
+        mk (fn [text-id]
+             (mapv #(-> (create-token admin-request token-layer text-id (mod % 10) (+ 10 %)) :body :id)
+                   (range n)))
+        as (mk text-a)
+        bs (mk text-b)
+        position (fn [ids] (into {} (map-indexed (fn [i id] [(str id) i])) ids))
+        pos-a (position as)
+        pos-b (position bs)
+        rng (java.util.Random. 7)
+        rnd (fn [k] (.nextInt rng k))
+        state (fn [ids] (mapv #(select-keys (psc/fetch-by-id db :tokens %) [:begin :end_ :precedence]) ids))
+        audits (fn [op-type pos]
+                 (->> (audit-rows-for-op (latest-op-id op-type))
+                      (filter #(= "tokens" (:target_table %)))
+                      (mapv (fn [r] [(pos (str (:target_id r))) (:change_type r)]))))
+        missing (fn [i] (parse-uuid (format "00000000-0000-7000-8000-%012d" i)))]
+    (is (= (* 2 n) (count (distinct (concat as bs)))))
+    (dotimes [round 60]
+      (let [picks (vec (repeatedly (inc (rnd 12)) #(rnd (+ n 2))))
+            spec (->> picks
+                      (map (fn [i] [i (cond-> {}
+                                        (zero? (rnd 2)) (assoc :begin (rnd 10))
+                                        (zero? (rnd 2)) (assoc :end_ (+ 10 (rnd 90)))
+                                        (zero? (rnd 3)) (assoc :precedence (when (pos? (rnd 3)) (rnd 5))))]))
+                      (filterv (comp seq second)))
+            as-map? (zero? (rnd 4))
+            input (fn [ids] (let [ps (mapv (fn [[i a]] [(if (< i n) (ids i) (missing i)) a]) spec)]
+                              (if as-map? (into {} ps) ps)))
+            pairs (fn [in] (if (map? in) (mapv (fn [k] [k (get in k)]) (sort (keys in))) in))]
+        (when (seq spec)
+          (let [ra (op/submit-operation! [tx db {:type :test/bulk-diff-new :project proj :document doc-a
+                                                 :description "new" :user "admin@example.com"}]
+                                         (crud/bulk-update-by-id! tx :tokens (input as)))
+                rb (op/submit-operation! [tx db {:type :test/bulk-diff-old :project proj :document doc-b
+                                                 :description "old" :user "admin@example.com"}]
+                                         (case-bulk-update! tx :tokens (pairs (input bs))))
+                msg (str "round " round " " (pr-str spec) (when as-map? " as a map"))]
+            (is (:success ra) msg)
+            (is (:success rb) msg)
+            (is (= (state bs) (state as)) msg)
+            (is (= (audits "test/bulk-diff-old" pos-b) (audits "test/bulk-diff-new" pos-a)) msg)
+            (is (= (set (map #(select-keys % [:begin :end_ :precedence]) (:extra rb)))
+                   (set (map #(select-keys % [:begin :end_ :precedence]) (:extra ra))))
+                msg)))))))

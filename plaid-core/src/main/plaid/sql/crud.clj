@@ -141,7 +141,7 @@
       (count rows))))
 
 (defn bulk-update-by-id!
-  "Apply per-id attribute updates in a single CASE-driven UPDATE statement.
+  "Apply per-id attribute updates, one UPDATE statement per chunk of ids.
 
   Accepts EITHER:
     - a map `id → attrs-map` (legacy API; audit rows emit in `(sort ids)`
@@ -150,24 +150,28 @@
       the supplied pair order, letting callers control ordering — e.g.
       sort by source position so the audit log reflects document order).
 
-  Each row's attrs-map should carry the same set of columns (the helper
-  builds one CASE expression per column union — rows that don't supply a
-  particular column fall through to the column's existing value via
-  `ELSE <col>`). Per-id no-ops (pre == post for the supplied attrs) are
-  skipped from the audit log, matching `update-by-id!` / `merge*`.
+  The new values travel as a VALUES table joined on the id
+  (`UPDATE t SET col = v.columnN FROM (VALUES (?, ?, ...), ...) AS v
+  WHERE t.id = v.column1`), so each row costs one index lookup. A
+  `CASE WHEN id = ? THEN ?` per column, as this helper used before, is
+  scanned for every row it updates, and a chunk cost its size squared:
+  a thousand-edit text update spent 16 s here under the write lock.
 
-  NOTE: the `ELSE <col>` self-reference means columns whose write path
-  expects pre-serialized JSON (notably `:config`) must be serialized by
-  the caller BEFORE handing the attrs map to this helper. The helper
-  does not call `psc/serialize-config` on its own — pass the raw map and
-  the `:case … :else col` fallback would compare the raw map against
-  the stored JSON string and treat every row as a change.
+  Rows may supply different columns. A column some row of the chunk
+  leaves out gets a flag beside its value, and such a row keeps the
+  column's existing value. Per-id no-ops (pre == post for the supplied
+  attrs) are skipped from the audit log, matching `update-by-id!` /
+  `merge*`.
 
-  Round-trip shape: 1 SELECT (pre-images, only when not empty) + 1 UPDATE
-  with RETURNING * (post-images), regardless of input size. Chunks the
-  input to respect SQLite's SQLITE_MAX_VARIABLE_NUMBER (~32766) ceiling —
-  each id contributes ~(2 * cols + 1) parameters to the statement, so we
-  pick a conservative chunk size.
+  NOTE: values are written as given, so columns whose write path expects
+  pre-serialized JSON (notably `:config`) must be serialized by the caller
+  BEFORE handing the attrs map to this helper. A raw map would compare
+  against the stored JSON string and read as a change on every row.
+
+  Round-trip shape per chunk: 1 SELECT (pre-images) + 1 UPDATE with
+  RETURNING * (post-images). Chunks the input to respect SQLite's
+  SQLITE_MAX_VARIABLE_NUMBER (~32766) ceiling: each id contributes at most
+  (2 * cols + 1) parameters to the statement.
 
   Returns a vector of post-image rows (across all chunks). Row order
   within each chunk follows the database's RETURNING order; audit row
@@ -187,24 +191,14 @@
            ids (mapv first pairs)
            id->attrs (into {} pairs)
            ;; Union of columns supplied across all rows (in stable order).
-           ;; Defensive guard: drop columns that are keyed nowhere across
-           ;; the input (i.e. `(contains? attrs col)` is false for every
-           ;; row). Without this, `(into [:case] ...)` would yield a bare
-           ;; `[:case :else col]` and HoneySQL would render
-           ;; `CASE ELSE col END` — invalid SQL. The check is a no-op
-           ;; for today's callers (both `text/apply-text-edits` and
-           ;; relation-layer bulk-shift populate every column on every
-           ;; row), but the guard keeps the helper composable for
-           ;; future callers and removes a sharp edge.
+           ;; A column no row supplies is not written at all.
            cols (vec (distinct
                       (filter (fn [col]
                                 (some #(contains? (second %) col) pairs))
                               (mapcat (comp keys second) pairs))))
-           ;; Conservative chunk: each row contributes (2*cols + 1) params
-           ;; (WHEN id THEN val per column, plus one id in the IN list).
-           ;; Plus 1 :else col-ref per column (no param). Stay under ~30k.
            max-rows-per-chunk (max 1 (long (/ 30000 (+ 1 (* 2 (max 1 (count cols)))))))
-           chunks (partition-all (min psc/bulk-chunk-size max-rows-per-chunk) ids)]
+           chunks (partition-all (min psc/bulk-chunk-size max-rows-per-chunk) ids)
+           qualified (keyword (str (name table) "." (name id-col)))]
        (into []
              (mapcat
               (fn [chunk-ids]
@@ -219,27 +213,40 @@
                       present-ids (filterv #(contains? pre-by-id %) chunk-ids)]
                   (if (empty? present-ids)
                     []
-                    (let [set-clause
-                          (into {}
-                                (map (fn [col]
-                                       [col (into [:case]
-                                                  (mapcat (fn [id]
-                                                            (let [attrs (get id->attrs id)]
-                                                              (when (contains? attrs col)
-                                                                [[:= id-col id] (get attrs col)])))
-                                                          present-ids))]))
-                                cols)
-                          ;; Each :case must have an :else fallback so rows
-                          ;; whose attrs map omits a column keep their
-                          ;; existing value.
-                          set-clause-with-else
-                          (into {}
-                                (map (fn [[col case-expr]]
-                                       [col (conj case-expr :else col)]))
-                                set-clause)
+                    (let [rows-ids (vec (distinct present-ids))
+                          ;; Per column: whether every row of the chunk
+                          ;; supplies it, else it carries a flag.
+                          flagged (into #{}
+                                        (remove (fn [col] (every? #(contains? (get id->attrs %) col) rows-ids)))
+                                        cols)
+                          ;; v.column1 is the id, then each column's value,
+                          ;; each flagged one followed by its flag.
+                          layout (loop [cols cols n 2 out []]
+                                   (if-let [col (first cols)]
+                                     (if (flagged col)
+                                       (recur (rest cols) (+ n 2) (conj out [col n (inc n)]))
+                                       (recur (rest cols) (inc n) (conj out [col n nil])))
+                                     out))
+                          vref (fn [n] (keyword (str "v.column" n)))
+                          set-clause (into {}
+                                           (map (fn [[col n f]]
+                                                  [col (if f
+                                                         [:case [:= (vref f) 1] (vref n) :else col]
+                                                         (vref n))]))
+                                           layout)
+                          values (mapv (fn [id]
+                                         (let [attrs (get id->attrs id)]
+                                           (into [id]
+                                                 (mapcat (fn [[col _ f]]
+                                                           (let [has? (contains? attrs col)
+                                                                 v (get attrs col)]
+                                                             (if f [v (if has? 1 0)] [v]))))
+                                                 layout)))
+                                       rows-ids)
                           posts (psc/execute-returning! tx {:update table
-                                                            :set set-clause-with-else
-                                                            :where [:in id-col present-ids]
+                                                            :set set-clause
+                                                            :from [[{:values values} :v]]
+                                                            :where [:= qualified (vref 1)]
                                                             :returning [:*]})
                           post-by-id (into {} (map (juxt id-col identity)) posts)]
                       ;; One audit row per id (in input order), skipping
