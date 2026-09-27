@@ -302,3 +302,32 @@ def test_base_service_joins_the_requesters_operation():
     svc.handle_service_request({'document_id': 'D'}, _Helper()).join(5)
     assert seen['group'] is None
     assert seen['inner_msg'] == 'inner label'
+
+
+def test_a_broadcast_message_never_joins_the_operation():
+    # A broadcast message is not written anywhere, so it has no History entry
+    # to join. Sent inside an operation it once took the group stamp and
+    # marked the group written, and the relabel then PATCHed a group that
+    # never existed. It stays batchable, so a message queued after the writes
+    # still goes out after them, only without the stamp.
+    import inspect
+
+    client = _client()
+    calls = _stub_session(client)
+    client.begin_operation('Parse')
+    client.messages.send_message('P1', {'purpose': 'parsed'})
+    assert len(calls) == 1
+    assert 'group-id' not in calls[0]['url']
+    assert client._operation_group['written'] is False
+
+    b = client.batch()
+    b.spans.set_metadata('S1', {'a': 1})
+    b.messages.send_message('P1', {'purpose': 'parsed'})
+    write, message = [op['path'] for op in b.operations]
+    b.abort()
+    assert 'group-id=' in write
+    assert message.endswith('/api/v1/projects/P1/message')
+
+    # The label parameter is gone.
+    assert list(inspect.signature(client.messages.send_message).parameters) == \
+        ['project_id', 'data']

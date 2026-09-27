@@ -2607,13 +2607,17 @@ class PlaidClient {
        * this a key such as `case-marker` would reach listeners as
        * `caseMarker` in JS and `case_marker` in Python. `listen` restores it
        * verbatim on the way in.
+       *
+       * A message is not saved and writes nothing to History, so it never
+       * joins an open operation (`withOperation`). Made on a batch it still
+       * queues, so a message queued after the writes goes out after them.
        * @param {string} projectId - The UUID of the project to send to
        * @param {any} data - The message data to send
        * @returns {Promise<any>} Response from the send operation
        */
-      sendMessage: (projectId, data, auditMessage) =>
+      sendMessage: (projectId, data) =>
         this._request("POST", `/api/v1/projects/${projectId}/message`, {
-          auditMessage,
+          noOperation: true,
           rawBody: { body: data },
         }),
 

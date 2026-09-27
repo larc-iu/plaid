@@ -32,6 +32,11 @@ import { transformRequest, transformResponse } from "./transforms.js";
 //    written and leave the relabel PATCH 404ing on a group nothing ever
 //    created.
 //
+// A broadcast message (`messages.sendMessage`) sits between a write and a
+// signal: it stays batchable, so a message queued after the writes goes out
+// after them, but it writes nothing to the audit log either. `noOperation`
+// keeps it out of an open logical operation without making it out of band.
+//
 // Strict mode stamps the expected document-version onto every write, queued
 // or not. The server checks the first write of a batch request that names the
 // document and skips the rest of that document's, so the bump one op causes
@@ -303,8 +308,15 @@ export function xhrSend(
  * for (null when it stamped nothing).
  */
 export function prepareRequest(client, method, path, options = {}) {
-  const { body, rawBody, formData, queryParams, outOfBand, auditMessage } =
-    options;
+  const {
+    body,
+    rawBody,
+    formData,
+    queryParams,
+    outOfBand,
+    noOperation,
+    auditMessage,
+  } = options;
 
   // A write must not go out on a lock that lapsed. `documents.locked()`
   // records the loss here when its keep-alive cannot renew, and from that
@@ -380,8 +392,14 @@ export function prepareRequest(client, method, path, options = {}) {
   // An out-of-band signal is not one of those writes (see the note at the top
   // of this file): it never lands in the audit log, so a stamp does nothing
   // server-side while `written` promises a group that will never exist, and
-  // the relabel PATCH then 404s.
-  if (client.operationGroup && method !== "GET" && !outOfBand) {
+  // the relabel PATCH then 404s. A broadcast message (`noOperation`) is
+  // never audited either.
+  if (
+    client.operationGroup &&
+    method !== "GET" &&
+    !outOfBand &&
+    !noOperation
+  ) {
     const group = client.operationGroup;
     const separator = url.includes("?") ? "&" : "?";
     url += `${separator}group-id=${encodeURIComponent(group.id)}`;
@@ -461,6 +479,9 @@ export async function queueRequest(batch, method, path, options = {}) {
  *                     project data: made on a batch it still goes over the
  *                     wire, and it never joins an open logical operation (see
  *                     the note at the top of this file).
+ *   noOperation     - If true, the call never joins an open logical operation
+ *                     but still queues on a batch like a write. For a
+ *                     broadcast message, which is never audited.
  *   skipResponseTransform - Return raw parsed JSON (no transformResponse)
  *   noAuth          - Skip Authorization header
  *   binaryResponse  - Return arrayBuffer instead of JSON/text

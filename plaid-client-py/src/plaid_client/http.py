@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 #    writes, and a signal that is never audited would mark the group written
 #    and leave the relabel PATCH 404ing on a group nothing ever created.
 #
+# A broadcast message (``messages.send_message``) sits between a write and
+# a signal: it stays batchable, so a message queued after the writes goes out
+# after them, but it writes nothing to the audit log either. ``no_operation``
+# keeps it out of an open logical operation without making it out of band.
+#
 # Strict mode stamps the expected document-version onto every write, queued
 # or not. The server checks the first write of a batch request that names the
 # document and skips the rest of that document's, so the bump one op causes
@@ -349,7 +354,8 @@ class _ProgressBody:
 
 
 def prepare_request(client, method, path, *, body=None, raw_body=None, form_data=False,
-                    query_params=None, out_of_band=False, audit_message=None):
+                    query_params=None, out_of_band=False, no_operation=False,
+                    audit_message=None):
     """Everything a request is before it goes anywhere: the URL with its query
     params and the stamps strict mode, a per-call audit message and an open
     logical operation add, plus the transformed body. Shared by the wire path
@@ -419,9 +425,10 @@ def prepare_request(client, method, path, *, body=None, raw_body=None, form_data
     # group lazily on whichever tagged write lands first. An out-of-band
     # signal is not one of those writes (see the note at the top of this
     # file): never audited, so a stamp does nothing server-side while
-    # ``written`` promises a group that will never exist.
+    # ``written`` promises a group that will never exist. A broadcast message
+    # (``no_operation``) is never audited either.
     group = getattr(client, '_operation_group', None)
-    if group is not None and method != 'GET' and not out_of_band:
+    if group is not None and method != 'GET' and not out_of_band and not no_operation:
         separator = '&' if '?' in url else '?'
         url += f'{separator}group-id={quote(group["id"], safe="")}'
         if group.get('message'):
@@ -458,7 +465,8 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
     if no_batch:
         raise PlaidAPIError(f'This endpoint cannot be used in a batch: {path}')
     prep = {k: v for k, v in kwargs.items()
-            if k in ('body', 'raw_body', 'form_data', 'query_params', 'audit_message')}
+            if k in ('body', 'raw_body', 'form_data', 'query_params', 'no_operation',
+                     'audit_message')}
     url, request_body, stamped_document = prepare_request(batch.client, method, path, **prep)
     operation = {
         'path': url.replace(batch.client.base_url, ''),
@@ -473,7 +481,7 @@ def queue_request(batch, method, path, *, no_batch=False, out_of_band=False, **k
 
 def make_request(client, method, path, *, body=None, raw_body=None, form_data=False,
                  query_params=None, no_batch=False, out_of_band=False,
-                 skip_response_transform=False,
+                 no_operation=False, skip_response_transform=False,
                  no_auth=False, binary_response=False, audit_message=None,
                  timeout=_UNSET, on_upload_progress=None):
     """Generic request method handling all HTTP logic.
@@ -496,6 +504,9 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
             project data: made on a batch it still goes over the wire, and it
             never joins an open logical operation (see the note at the top of
             this file).
+        no_operation: If True, the call never joins an open logical operation
+            but still queues on a batch like a write. For a broadcast message,
+            which is never audited.
         skip_response_transform: Return raw parsed JSON (no transform_response).
         no_auth: Skip Authorization header.
         binary_response: Return raw bytes instead of JSON/text.
@@ -507,7 +518,8 @@ def make_request(client, method, path, *, body=None, raw_body=None, form_data=Fa
     """
     url, request_body, _ = prepare_request(
         client, method, path, body=body, raw_body=raw_body, form_data=form_data,
-        query_params=query_params, out_of_band=out_of_band, audit_message=audit_message)
+        query_params=query_params, out_of_band=out_of_band, no_operation=no_operation,
+        audit_message=audit_message)
 
     headers = {}
     if not no_auth:

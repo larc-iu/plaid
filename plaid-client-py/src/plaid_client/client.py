@@ -1938,7 +1938,7 @@ class MessagesResource(_Resource):
         """
         return SSEConnection(self._client, project_id, on_event, path=path)
 
-    def send_message(self, project_id: str, data: Any, audit_message=None) -> Any:
+    def send_message(self, project_id: str, data: Any) -> Any:
         """Send a message to project listeners.
 
         ``data`` may be any JSON value and is sent VERBATIM (``raw_body``): a
@@ -1948,6 +1948,11 @@ class MessagesResource(_Resource):
         ``case_marker`` in Python and ``caseMarker`` in JavaScript.
         :meth:`listen` restores it verbatim on the way in.
 
+        A message is not saved and writes nothing to History, so it never
+        joins an open operation (:meth:`PlaidClient.operation`). Made on a
+        batch it still queues, so a message queued after the writes goes out
+        after them.
+
         Args:
             project_id: The UUID of the project to send to
             data: The message data to send
@@ -1956,7 +1961,7 @@ class MessagesResource(_Resource):
             Response from the send operation
         """
         return self._request('POST', f'/api/v1/projects/{project_id}/message',
-                             raw_body={'body': data}, audit_message=audit_message)
+                             raw_body={'body': data}, no_operation=True)
 
     def discover_services(self, project_id: str) -> list:
         """Discover the services seen on a project.

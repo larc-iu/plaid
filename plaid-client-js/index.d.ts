@@ -941,11 +941,8 @@ interface DocumentsBundle {
 }
 
 interface MessagesBundle {
-  sendMessage(
-    projectId: string,
-    data: any,
-    auditMessage?: string,
-  ): Promise<any>;
+  /** Broadcast to the project's listeners. Never saved and never part of an operation. */
+  sendMessage(projectId: string, data: any): Promise<any>;
   listen(
     projectId: string,
     onEvent: (eventType: string, data: any) => void | boolean,

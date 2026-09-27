@@ -254,3 +254,39 @@ test('requestService propagates the open operation in the payload', async () => 
   await assert.rejects(client.messages.requestService('P', 'svc', { documentId: 'D' }, 1000));
   assert.deepStrictEqual(sent, { 'document-id': 'D' }, 'no operation open → nothing injected');
 });
+
+// A broadcast message is not written anywhere, so it has no History entry to
+// join. Sent inside an operation it once took the group stamp and marked the
+// group written, and the relabel then PATCHed a group that never existed. It
+// stays batchable, so a message queued after the writes still goes out after
+// them, only without the stamp.
+test('a broadcast message never joins the operation, sent or queued', async () => {
+  const client = makeClient();
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url: String(url), method: opts.method });
+    return {
+      ok: true, status: 200,
+      headers: { get: (n) => (String(n).toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({}), text: async () => '',
+    };
+  };
+  client.beginOperation('Parse');
+  await client.messages.sendMessage('P1', { purpose: 'parsed' });
+  assert.strictEqual(calls.length, 1);
+  assert.ok(!calls[0].url.includes('group-id'), calls[0].url);
+  assert.strictEqual(client.operationGroup.written, false);
+
+  const b = client.batch();
+  b.spans.setMetadata('S1', { a: 1 });
+  b.messages.sendMessage('P1', { purpose: 'parsed' });
+  const [write, message] = b.operations.map(op => op.path);
+  b.abort();
+  assert.ok(write.includes('group-id='), write);
+  assert.ok(message.endsWith('/api/v1/projects/P1/message'), message);
+  assert.ok(!message.includes('group-id'), message);
+
+  // The label parameter is gone: a second argument after the data is not a
+  // History label.
+  assert.strictEqual(client.messages.sendMessage.length, 2);
+});
