@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/useAuth.js';
-import { configNamespace } from '../../lib/uiConfig.js';
 import { humanizeError } from '../../lib/errors.js';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { Button } from '../ui/button';
@@ -20,10 +19,12 @@ import { DeleteProjectCard } from './DeleteProjectCard.jsx';
  * - `onSaved()`: refreshes the caller's copy after any save here. The name
  *   shows in the breadcrumb and the project list, so a rename has to reach
  *   the screens above this one.
- * - `language`: when given, a Language card for one BCP-47 tag kept at
- *   `config.<app namespace>.language` on the project. `description` is the
- *   line under the heading, and `note(savedTag)` an optional line under the
- *   field about what the SAVED tag does.
+ * - `language`: when given, a Language card for one BCP-47 tag on the
+ *   project. `saved` is the stored tag ('' for none), and `save(tag)` writes
+ *   one, '' meaning remove it: the app keeps the tag in its own half of the
+ *   project's config, so the app writes it. `description` is the line under the
+ *   heading, and `note(savedTag)` an optional line under the field about what
+ *   the SAVED tag does.
  * - `children`: the app's own sections, drawn between Language and Delete.
  */
 export const ProjectGeneralPage = ({ project, onSaved, language = null, children }) => {
@@ -85,7 +86,7 @@ export const ProjectGeneralPage = ({ project, onSaved, language = null, children
         </CardContent>
       </Card>
 
-      {language && <LanguageCard project={project} onSaved={onSaved} {...language} />}
+      {language && <LanguageCard onSaved={onSaved} {...language} />}
 
       {children}
 
@@ -96,12 +97,7 @@ export const ProjectGeneralPage = ({ project, onSaved, language = null, children
 
 // One BCP-47 tag on the project itself, not on a layer: it is a fact about the
 // project, and readers of it (a parse spot, a frame file) need no layer config.
-const LanguageCard = ({ project, onSaved, description, note }) => {
-  const { getClient } = useAuth();
-  const ns = configNamespace();
-  const stored = project.config?.[ns]?.language;
-  const saved = typeof stored === 'string' ? stored.trim() : '';
-
+const LanguageCard = ({ onSaved, saved, save, description, note }) => {
   const [tag, setTag] = useState(saved);
   const [saving, setSaving] = useState(false);
   useEffect(() => setTag(saved), [saved]);
@@ -113,10 +109,7 @@ const LanguageCard = ({ project, onSaved, description, note }) => {
     if (!changed || saving) return;
     setSaving(true);
     try {
-      const client = getClient();
-      const next = tag.trim();
-      if (next) await client.projects.setConfig(project.id, ns, 'language', next);
-      else await client.projects.deleteConfig(project.id, ns, 'language');
+      await save(tag.trim());
       await onSaved?.();
       notifySuccess('Language saved');
     } catch (err) {

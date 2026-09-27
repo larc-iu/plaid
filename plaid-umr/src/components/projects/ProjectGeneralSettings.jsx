@@ -1,4 +1,6 @@
 import { FRAME_LANGUAGES, framesFor } from '../../domain/lexicon.js';
+import { useAuth } from '../../contexts/AuthContext.jsx';
+import { UMR_NAMESPACE, readProjectLanguage } from '../../utils/umrLayerUtils.js';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectGeneralPage } from '@ui/components/shared/ProjectGeneralPage.jsx';
 import { Loading } from '@ui/components/shared/Loading.jsx';
@@ -40,6 +42,7 @@ const rolesetNote = (savedLanguage) => {
 // only refreshed this tab would leave both stale until a reload.
 export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
   const { project, loading, fetchProject, canConfigure } = useManagedProject();
+  const { getClient } = useAuth();
 
   // Only the first load shows the line: a refetch after a save keeps the page
   // up, so a field being typed in is not taken away under the reader.
@@ -51,11 +54,20 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
     onProjectUpdate?.();
   };
 
+  // The tag is on the PROJECT, in this app's half of its config.
+  const saveLanguage = async (tag) => {
+    const client = getClient();
+    if (tag) await client.projects.setConfig(project.id, UMR_NAMESPACE, 'language', tag);
+    else await client.projects.deleteConfig(project.id, UMR_NAMESPACE, 'language');
+  };
+
   return (
     <ProjectGeneralPage
       project={project}
       onSaved={refresh}
       language={{
+        saved: readProjectLanguage(project),
+        save: saveLanguage,
         description: (
           <>
             The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>zh</code>,{' '}

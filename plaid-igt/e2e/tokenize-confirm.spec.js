@@ -6,7 +6,7 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 // material, and confirming actually removes it. Throwaway document in the
 // "E2E IGT Fixture" project, deleted afterwards.
 
-const CORE = 'http://localhost:8085';
+const CORE = process.env.PLAID_CORE_URL || 'http://localhost:8085';
 const roleOf = (l) => l?.config?.plaid?.role;
 const BODY = 'alpha beta gamma';
 

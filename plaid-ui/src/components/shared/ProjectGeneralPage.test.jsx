@@ -27,15 +27,11 @@ const cards = (root) => all(root, '.rounded-xl').map((c) => c.querySelector('div
 
 let client;
 let view;
-const project = (language) => ({
-  id: 'p1',
-  name: 'Texts',
-  config: language ? { ud: { language } } : {},
-});
+const project = () => ({ id: 'p1', name: 'Texts' });
 const mount = async (props = {}) => {
   view = await renderComponent(
     <MemoryRouter>
-      <ProjectGeneralPage project={project('en')} onSaved={vi.fn()} {...props} />
+      <ProjectGeneralPage project={project()} onSaved={vi.fn()} {...props} />
     </MemoryRouter>,
   );
   return view;
@@ -53,7 +49,7 @@ beforeEach(() => {
   auth.getClient = () => client;
   notify.notifySuccess.mockClear();
   notify.notifyError.mockClear();
-  configureUi({ ...RESTORE, configNamespace: 'ud', appRoutes: { projects: '/projects' } });
+  configureUi({ ...RESTORE, appRoutes: { projects: '/projects' } });
 });
 
 afterEach(async () => {
@@ -65,7 +61,7 @@ afterEach(async () => {
 describe('ProjectGeneralPage', () => {
   it('draws Name, Language, the app sections and Delete, in that order', async () => {
     await mount({
-      language: { description: 'The language.' },
+      language: { saved: '', save: vi.fn(), description: 'The language.' },
       children: (
         <div className="rounded-xl">
           <div>Tokenizer locale</div>
@@ -99,28 +95,34 @@ describe('ProjectGeneralPage', () => {
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
-  it('enables the language Save only once the tag differs, and writes the app namespace', async () => {
+  it('enables the language Save only once the tag differs, and hands the tag to the app', async () => {
     const onSaved = vi.fn();
-    await mount({ onSaved, language: { description: 'The language.' } });
-    const save = saves(view.container)[1];
+    const save = vi.fn(async () => {});
+    await mount({ onSaved, language: { saved: 'en', save, description: 'The language.' } });
+    const button = saves(view.container)[1];
     const field = view.container.querySelector('[aria-label="Project language"]');
     expect(field.value).toBe('en');
-    expect(save.disabled).toBe(true);
+    expect(button.disabled).toBe(true);
     await view.step(() => typeInto(field, ' en '));
-    expect(save.disabled).toBe(true);
-    await view.step(() => typeInto(field, 'de'));
-    expect(save.disabled).toBe(false);
-    await view.step(() => save.click());
-    expect(client.projects.setConfig).toHaveBeenCalledWith('p1', 'ud', 'language', 'de');
+    expect(button.disabled).toBe(true);
+    await view.step(() => typeInto(field, ' de '));
+    expect(button.disabled).toBe(false);
+    await view.step(() => button.click());
+    expect(save).toHaveBeenCalledWith('de');
     expect(onSaved).toHaveBeenCalledTimes(1);
     await view.step(() => typeInto(field, ''));
-    await view.step(() => save.click());
-    expect(client.projects.deleteConfig).toHaveBeenCalledWith('p1', 'ud', 'language');
+    await view.step(() => button.click());
+    expect(save).toHaveBeenLastCalledWith('');
   });
 
   it('says what the saved tag does, not the typed one', async () => {
     await mount({
-      language: { description: 'The language.', note: (tag) => `Saved: ${tag || 'none'}` },
+      language: {
+        saved: 'en',
+        save: vi.fn(),
+        description: 'The language.',
+        note: (tag) => `Saved: ${tag || 'none'}`,
+      },
     });
     const field = view.container.querySelector('[aria-label="Project language"]');
     await view.step(() => typeInto(field, 'de'));
