@@ -217,8 +217,26 @@ export function readEaf(xmlText, fileName = 'file.eaf') {
   // Resolve time slots now that TIME_ORDER has certainly been seen. A slot with
   // no TIME_VALUE is an unaligned anchor, which EAF allows on purpose, so the
   // annotation keeps its place in the tier and simply has no time.
+  //
+  // It still has a PLACE. TIME_ORDER lists an unaligned slot where it falls
+  // among the aligned ones, and ELAN interpolates its time from them. So each
+  // alignable annotation gets `placeMs`, the time of its start slot or else
+  // of the nearest aligned slot before it (-Infinity before the first), and
+  // `slotIndex`, that slot's position in TIME_ORDER to break ties. Ordering by
+  // the two keeps a half-aligned document in its own order.
+  const slotPlace = new Map();
+  let lastMs = -Infinity;
+  let index = 0;
+  for (const [id, ms] of timeSlots) {
+    if (ms !== null) lastMs = ms;
+    slotPlace.set(id, { placeMs: ms ?? lastMs, slotIndex: index });
+    index += 1;
+  }
   for (const tier of tiers) {
     for (const ann of tier.annotations) {
+      const place = ann.slot1 ? slotPlace.get(ann.slot1) : null;
+      ann.placeMs = place?.placeMs ?? null;
+      ann.slotIndex = place?.slotIndex ?? null;
       ann.beginMs = ann.slot1 ? (timeSlots.get(ann.slot1) ?? null) : null;
       ann.endMs = ann.slot2 ? (timeSlots.get(ann.slot2) ?? null) : null;
       delete ann.slot1;

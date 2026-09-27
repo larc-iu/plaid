@@ -404,7 +404,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       };
     };
 
-    // --- collect the utterances, ordered by time, then by document order ----
+    // --- collect the utterances, in the order TIME_ORDER places them -------
     // A text from ELAN's FLEx import is written from its words (textFromWords),
     // as FLEx writes a phrase and as the .flextext importer rebuilds one. Its
     // phrase line is another spelling of the same text: it leaves out the
@@ -439,7 +439,16 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
         `Skipped ${unplacedWords} empty word${unplacedWords === 1 ? '' : 's'} that ${unplacedWords === 1 ? 'is' : 'are'} not punctuation.`,
       );
     }
-    utterances.sort((a, b) => (a.ann.beginMs ?? Infinity) - (b.ann.beginMs ?? Infinity));
+    // An unaligned utterance sits where TIME_ORDER puts it (readEaf's
+    // `placeMs`), so a document part way through time alignment keeps its
+    // order. One with no slot at all (a reference annotation) follows, and a
+    // stable sort keeps tier order for the rest.
+    const byPlace = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    utterances.sort(
+      (a, b) =>
+        byPlace(a.ann.placeMs ?? Infinity, b.ann.placeMs ?? Infinity) ||
+        byPlace(a.ann.slotIndex ?? Infinity, b.ann.slotIndex ?? Infinity),
+    );
 
     // --- synthesize the baseline -------------------------------------------
     const pieces = [];

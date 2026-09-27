@@ -16,6 +16,7 @@ import {
   alignSegments,
 } from './buildDocuments.js';
 import { buildEafDocument } from '../../export/elan.js';
+import { makeAlignmentToken, makeSentence } from '../../export/testFixtures.js';
 
 // ---- fixtures --------------------------------------------------------------
 
@@ -468,7 +469,7 @@ describe('buildElanDocuments', () => {
     expect(build.stats.speakers).toEqual(['Ana', 'Bo']);
   });
 
-  it('puts unaligned utterances after the timed ones, in document order', () => {
+  it('keeps unaligned utterances where TIME_ORDER places them among the timed ones', () => {
     const xml = eafXml({
       types: { u: null },
       tiers: [
@@ -484,9 +485,68 @@ describe('buildElanDocuments', () => {
       ],
     });
     const { build } = buildFrom([[xml, 'x.eaf']]);
-    expect(build.documents[0].body).toBe('timed\nuntimed one\nuntimed two');
+    expect(build.documents[0].body).toBe('untimed one\ntimed\nuntimed two');
     // Only the timed one can carry alignment.
     expect(build.documents[0].alignments).toHaveLength(1);
+  });
+
+  it('orders aligned utterances by time even when TIME_ORDER lists them out of order', () => {
+    const xml = eafXml({
+      types: { u: null },
+      tiers: [
+        {
+          id: 'T',
+          type: 'u',
+          anns: [
+            ['a1', 'later', 5000, 6000],
+            ['a2', 'earlier', 1000, 2000],
+          ],
+        },
+      ],
+    });
+    const { build } = buildFrom([[xml, 'x.eaf']]);
+    expect(build.documents[0].body).toBe('earlier\nlater');
+  });
+
+  it('reads back its own export of a half-aligned document in the same order', () => {
+    // Only the second sentence is time-aligned, the ordinary state of a
+    // document part way through alignment.
+    const body = 'uno\ndos\ntres';
+    const sentence = (begin, content) =>
+      makeSentence({
+        begin,
+        end: begin + content.length,
+        tokens: [
+          {
+            id: `w${begin}`,
+            begin,
+            end: begin + content.length,
+            content,
+            metadata: {},
+            annotations: {},
+            morphemes: [],
+          },
+        ],
+      });
+    const doc = {
+      document: { id: 'd1', name: 'Half', mediaUrl: null, metadata: {} },
+      body,
+      sortedSentences: [sentence(0, 'uno'), sentence(4, 'dos'), sentence(8, 'tres')],
+      alignmentTokens: [makeAlignmentToken('a1', 4, 7, 1, 2)],
+    };
+    const xml = buildEafDocument(
+      doc,
+      {
+        orthographies: [],
+        wordFields: [],
+        morphFields: [],
+        sentFields: [],
+        segmentMorphemes: false,
+      },
+      { exportedAt: '2026-01-01T00:00:00Z' },
+    );
+    const { build } = buildFrom([[xml, 'half.eaf']]);
+    expect(build.documents[0].body).toBe(body);
   });
 
   it('tokenizes on whitespace when the corpus has no word tier', () => {
