@@ -5,6 +5,7 @@ import { configureUi } from '@ui/lib/uiConfig.js';
 import { configureAuth, onSignOut } from '@ui/services/auth.js';
 import { attachCompose } from '@/lib/composeInput.js';
 import { forgetPrecedent } from '@/domain/precedentCache.js';
+import { forgetAllLeftovers } from '@/domain/leftoverEntries.js';
 import { APP_ROUTES } from './appRoutes.js';
 import App from './App';
 // The provenance palette the apps share, then this app's own tokens.
@@ -31,6 +32,10 @@ configureAuth({ loginRoute: '#/login' });
 // The precedent counts a tab keeps in the browser hold this login's word
 // forms and values, so signing out forgets them.
 onSignOut(forgetPrecedent);
+// So do the entries a failed "+ Create" left behind, which are this login's
+// (leftoverEntries.js). The page reloads on this tab's sign-out, but a tab
+// told of a sign-out elsewhere stays.
+onSignOut(forgetAllLeftovers);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -18,7 +18,8 @@
 // new one.
 //
 // Kept in memory for the page, shared by every document, like the vocabulary
-// copies in vocabCache.js.
+// copies in vocabCache.js, and forgotten when the login signs out (main.jsx
+// hands `forgetAllLeftovers` to plaid-ui's `onSignOut`).
 
 const leftovers = new Map(); // key -> entry id
 
