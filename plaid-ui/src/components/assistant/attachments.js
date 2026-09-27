@@ -197,7 +197,7 @@ export class NotUtf8Error extends Error {
 // is what the service does too), and a NUL (UTF-16 with no mark) refuses it.
 const decodeFile = (buffer, name) => {
   try {
-    return decodeText(buffer, name, { fatal: true });
+    return decodeText(buffer, name);
   } catch (e) {
     if (e instanceof NotUtf8FileError) throw new NotUtf8Error(name || 'That file');
     throw e;
