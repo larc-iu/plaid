@@ -58,7 +58,8 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
   // inside a value would make an eleven-column row and a newline would make a
   // bare line the parser cannot place. The UI's inputs are single-line, but
   // the API, the assistant and a word carved over a tab in the Text Editor
-  // all reach here. One space each, so the file always re-parses.
+  // all reach here. One space each, so the file always re-parses. Every
+  // column and every comment line goes through these two, nothing else.
   const flat = (v) => String(v).replace(/[\t\r\n]+/g, ' ');
   const esc = (v) => (v == null || v === '' ? UNDERSCORE : flat(v));
   const serializeFeats = (feats) => {
@@ -66,6 +67,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     const values = feats
       .map((f) => f.value)
       .filter(Boolean)
+      .map(flat)
       .sort();
     return values.length > 0 ? values.join('|') : UNDERSCORE;
   };
@@ -101,7 +103,9 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
     const sentMeta = sentence.sentenceToken?.metadata || {};
     const sentIdFromMeta = sentMeta.sent_id;
     output.push(
-      sentIdFromMeta ? `# sent_id = ${sentIdFromMeta}` : `# sent_id = ${docName}-${sentIdx + 1}`,
+      sentIdFromMeta
+        ? `# sent_id = ${flat(sentIdFromMeta)}`
+        : `# sent_id = ${docName}-${sentIdx + 1}`,
     );
 
     // Emit arbitrary `# k = v` metadata sorted alphabetically. If metadata
@@ -152,7 +156,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
       // so they round-trip correctly without going through this branch.
       if (groupLen > 1) {
         const wordMeta = morphemes[i].word?.metadata || {};
-        const surfaceForm = wordMeta.form || UNDERSCORE;
+        const surfaceForm = esc(wordMeta.form);
         // MISC is not stored (see scope decisions), so the bracket row's MISC
         // column is always `_`.
         output.push(
@@ -174,7 +178,7 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
       for (let k = 0; k < groupLen; k++) {
         const m = morphemes[i + k];
         const id = i + k + 1;
-        const form = m.tokenForm || UNDERSCORE;
+        const form = esc(m.tokenForm);
         const lemma = esc(m.lemma?.value);
         const upos = esc(m.upos?.value);
         const xpos = esc(m.xpos?.value);
@@ -186,12 +190,12 @@ export function buildConllu({ name, layerInfo: info, sentences: sentenceData }) 
         if (rel) {
           if (rel.source === rel.target) {
             head = 0;
-            deprel = rel.value || UNDERSCORE;
+            deprel = esc(rel.value);
           } else {
             const h = idByLemmaSpanId.get(rel.source);
             if (h != null) {
               head = h;
-              deprel = rel.value || UNDERSCORE;
+              deprel = esc(rel.value);
             }
           }
         }
