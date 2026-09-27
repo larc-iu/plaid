@@ -7,13 +7,15 @@ import {
 } from '@ui/components/ui/dropdown-menu';
 import { keys } from '../../../lib/keymap.js';
 import { ITEMS } from './nodeMenuItems.js';
+import { wordsInDirection } from '../../../lib/siblingMoves.js';
 
 // One menu per BLOCK, not per node: a document has hundreds of nodes and a
 // menu each would be hundreds of Radix subscriptions. It hangs off an
 // invisible trigger the block moves to wherever the menu was asked for (the
 // pointer for a right-click, the button for a click on it). What it offers
-// is `nodeMenuItems.js`.
-export function NodeMenu({ at, disabled, onAction, onClose, onClosed }) {
+// is `nodeMenuItems.js`. The key beside a move is the one that makes it in
+// this sentence's `direction` (siblingMoves.js).
+export function NodeMenu({ at, direction, disabled, onAction, onClose, onClosed }) {
   return (
     <DropdownMenu open={!!at} onOpenChange={(open) => !open && onClose()}>
       <DropdownMenuTrigger asChild>
@@ -55,7 +57,7 @@ export function NodeMenu({ at, disabled, onAction, onClose, onClosed }) {
               <DropdownMenuItem key={id} disabled={!!disabled?.[id]} onSelect={() => onAction(id)}>
                 <span className="whitespace-nowrap">{label}</span>
                 <span className="ml-auto pl-6 font-mono text-[0.7rem] whitespace-nowrap text-muted-foreground">
-                  {keys.words(keyId || id)}
+                  {wordsInDirection(keys, keyId || id, direction)}
                 </span>
               </DropdownMenuItem>
             ))}

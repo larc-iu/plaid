@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { SentenceBlock } from './SentenceBlock.jsx';
+import { keys } from '../../../lib/keymap.js';
 
 // A sentence as buildDocumentGraph hands it over: three nodes, one of them
 // unaligned, one re-entrant edge, two gloss lines.
@@ -459,5 +460,145 @@ describe('SentenceBlock moving a node among its siblings', () => {
     ['rtl', 'ArrowRight', -1],
   ])('in %s, Alt+%s moves the node %i in the file', async (direction, key, step) => {
     expect(await press(direction, key)).toEqual([['e1', step]]);
+  });
+});
+
+// Left and Right trade places in an RTL sentence, in the CHORD, so a person
+// who moved one of the pair onto another key still has a key for each: with
+// Move earlier on Alt+J, swapping the ACTION made Alt+ArrowRight a second key
+// for earlier and left nothing that moved a node later.
+describe('SentenceBlock moving a node among its siblings, rebound', () => {
+  const press = async (direction, key, mods = { altKey: true }) => {
+    const { sentence, nodesById } = fixture();
+    const shifted = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canConfirm: () => false,
+      shiftEdge: (edgeId, step) => shifted.push([edgeId, step]),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        direction={direction}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === 'person',
+    );
+    await r.step(() => node.focus());
+    await r.step(() =>
+      node.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key,
+          code: key.length === 1 ? `Key${key.toUpperCase()}` : key,
+          ...mods,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    );
+    await r.unmount();
+    return shifted;
+  };
+
+  afterEach(() => keys.setOverrides({}));
+
+  it.each([
+    ['ltr', 'ArrowLeft', []],
+    ['ltr', 'ArrowRight', [['e1', 1]]],
+    ['ltr', 'j', [['e1', -1]]],
+    ['rtl', 'ArrowLeft', [['e1', 1]]],
+    ['rtl', 'ArrowRight', []],
+    ['rtl', 'j', [['e1', -1]]],
+  ])('with Move earlier on Alt+J, in %s Alt+%s moves %j', async (direction, key, moved) => {
+    keys.setOverrides({ 'node.earlier': ['Alt+J'] });
+    expect(await press(direction, key)).toEqual(moved);
+  });
+
+  // Another action on a sideways arrow means what it says in either script.
+  it('leaves an action that is not a move alone', async () => {
+    keys.setOverrides({ 'node.root': ['Alt+Shift+ArrowLeft'] });
+    const { sentence, nodesById } = fixture();
+    const roots = [];
+    const doc = {
+      graph: {},
+      canConfirmSentence: () => false,
+      canConfirm: () => false,
+      setRoot: (id) => roots.push(id),
+    };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        direction="rtl"
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === 'eat-01',
+    );
+    await r.step(() => node.focus());
+    const ev = new KeyboardEvent('keydown', {
+      key: 'ArrowLeft',
+      code: 'ArrowLeft',
+      altKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await r.step(() => node.dispatchEvent(ev));
+    expect(roots).toEqual(['n3']);
+    await r.unmount();
+  });
+});
+
+// The menu names the key that does the move in THIS sentence: in an RTL one
+// the earlier sibling is to the right, so Move earlier is Alt+Right there.
+describe('SentenceBlock node menu, the move keys', () => {
+  const rows = async (direction) => {
+    const { sentence, nodesById } = fixture();
+    const doc = { graph: {}, canConfirmSentence: () => false, canConfirm: () => false };
+    const r = await renderComponent(
+      <SentenceBlock
+        doc={doc}
+        dataVersion={1}
+        readOnly={false}
+        direction={direction}
+        sentence={sentence}
+        nodesById={nodesById}
+      />,
+    );
+    const node = all(r.container, '.umr-node').find(
+      (n) => n.querySelector('.umr-node-concept')?.textContent === 'person',
+    );
+    await r.step(() =>
+      node.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })),
+    );
+    const hint = (label) =>
+      all(document, '[role="menuitem"]')
+        .find((m) => m.firstChild?.textContent === label)
+        ?.lastChild?.textContent.replace('Option', 'Alt');
+    const out = [hint('Move earlier'), hint('Move later')];
+    await r.unmount();
+    return out;
+  };
+
+  afterEach(() => keys.setOverrides({}));
+
+  it('says Alt+← for earlier in LTR and Alt+→ in RTL', async () => {
+    expect(await rows('ltr')).toEqual(['Alt+←', 'Alt+→']);
+    expect(await rows('rtl')).toEqual(['Alt+→', 'Alt+←']);
+  });
+
+  it('says a key that is not an arrow as it is', async () => {
+    keys.setOverrides({ 'node.earlier': ['Alt+J'] });
+    expect(await rows('rtl')).toEqual(['Alt+J', 'Alt+←']);
   });
 });

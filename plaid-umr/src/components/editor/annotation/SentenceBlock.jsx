@@ -4,11 +4,13 @@ import { arrowStep } from '@ui/lib/bidi.js';
 import {
   curvePath,
   layoutSentence,
+  revealShift,
   routeBetween,
   stageLeftOffset,
 } from '../../../domain/umrLayout.js';
 import { LINE_FAMILIES, lineFamily } from './docLines.js';
 import { CANVAS_ACTIONS, keys } from '../../../lib/keymap.js';
+import { whichInDirection } from '../../../lib/siblingMoves.js';
 import { useCanvasMeasure } from './useCanvasMeasure.js';
 import { UmrNode } from './UmrNode.jsx';
 import { TokenRow } from './TokenRow.jsx';
@@ -419,7 +421,20 @@ export const SentenceBlock = React.memo(function SentenceBlock({
     (id) => {
       if (!id) return;
       takeFocus(id);
-      nodeRefs.current.get(followIds(id))?.focus();
+      const el = nodeRefs.current.get(followIds(id));
+      if (!el) return;
+      el.focus();
+      // Clear of the lane: focus alone leaves a node that is partly on
+      // screen where it is, and that part may be under the lane.
+      const canvas = scrollerRef.current;
+      if (!canvas?.clientWidth) return;
+      const pad = parseFloat(getComputedStyle(canvas).paddingLeft) || 0;
+      const shift = revealShift(
+        el.getBoundingClientRect(),
+        canvas.getBoundingClientRect(),
+        pad + MARGIN - CONST_GAP,
+      );
+      if (shift) canvas.scrollLeft += shift;
     },
     [nodeRefs, takeFocus],
   );
@@ -749,18 +764,11 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       } else if (e.key === 'Enter') await runAction('node.concept', id);
       return;
     }
-    let action = keys.which(CANVAS_ACTIONS, e);
+    // Earlier and later are READING order, so in an RTL sentence their
+    // sideways arrows mirror (siblingMoves.js).
+    const action = whichInDirection(keys, CANVAS_ACTIONS, e, direction);
     if (!action) return;
     e.preventDefault();
-    // Earlier and later are READING order. Bound to a sideways arrow they
-    // mirror in an RTL sentence as the plain arrows do (`arrowStep`), so the
-    // node moves the way the key points: there the earlier sibling is the one
-    // to the right.
-    const sideways = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
-    if (sideways && direction === 'rtl') {
-      if (action === 'node.earlier') action = 'node.later';
-      else if (action === 'node.later') action = 'node.earlier';
-    }
     await runAction(action, id);
   };
 
@@ -1542,6 +1550,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
               ))}
             <NodeMenu
               at={menu}
+              direction={direction}
               disabled={menuDisabled}
               onAction={(action) => runAction(action, menu.id)}
               onClose={() => setMenu(null)}

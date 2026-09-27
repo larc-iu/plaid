@@ -8,6 +8,7 @@ import {
   layoutSentence,
   pointOn,
   stageLeftOffset,
+  revealShift,
   DEFAULT_OPTIONS,
 } from '../src/domain/umrLayout.js';
 import { parseUmrFile } from '../src/domain/format/umrFile.js';
@@ -375,4 +376,20 @@ test('the reading direction reorders only ties, never nodes over their own words
   ];
   const flipped = items.map((it) => ({ ...it, tie: -it.tie }));
   assert.deepEqual([...placeRow(items, 10)], [...placeRow(flipped, 10)]);
+});
+
+// A node reached by the keyboard is scrolled clear of the frozen constants
+// lane. Focus alone leaves a node that is partly on screen where it is, and
+// with the lane opaque that could be all of what showed of it.
+test('a focused node is scrolled clear of the constants lane and the far edge', () => {
+  const view = { left: 0, right: 800 };
+  // Under the lane: back to its right edge and a little more.
+  assert.equal(revealShift({ left: -72, right: 210 }, view, 196), -72 - 204);
+  assert.equal(revealShift({ left: 13, right: 175 }, view, 196), 13 - 204);
+  // Clear already.
+  assert.equal(revealShift({ left: 222, right: 504 }, view, 196), 0);
+  // Past the far edge: along until its end shows.
+  assert.equal(revealShift({ left: 600, right: 900 }, view, 196), 900 - 792);
+  // Wider than the room: its start wins.
+  assert.equal(revealShift({ left: 400, right: 1400 }, view, 196), 400 - 204);
 });

@@ -26,6 +26,28 @@
 export const stageLeftOffset = ({ scrollLeft = 0, scrollWidth = 0, clientWidth = 0 }, direction) =>
   direction === 'rtl' ? Math.max(0, scrollWidth - clientWidth) + scrollLeft : scrollLeft;
 
+/**
+ * How far to scroll the canvas sideways, in physical pixels, so a node shows
+ * whole: clear of the constants lane, which is opaque and covers `cover`
+ * pixels from the visible left once anything is scrolled under it, and of the
+ * far edge. A node wider than the room keeps its start in view. The browser's
+ * own focus scroll leaves a node that is partly on screen where it is, and
+ * the part on screen could be the part under the lane.
+ *
+ * @param node  the node's box, `{ left, right }`, in client pixels
+ * @param view  the canvas's box, the same way
+ * @param cover how much of the view's left the lane covers
+ * @returns the change to make to `scrollLeft` (negative scrolls left), in
+ *   either script, since RTL's negative `scrollLeft` runs the same way
+ */
+export const revealShift = (node, view, cover, room = 8) => {
+  const lo = view.left + cover + room;
+  const hi = view.right - room;
+  if (node.left < lo) return node.left - lo;
+  if (node.right > hi) return Math.min(node.right - hi, node.left - lo);
+  return 0;
+};
+
 export const DEFAULT_OPTIONS = Object.freeze({
   // The room between the bottom of a row's tallest node and the top of the
   // next row: the lanes, and the labels floating over the children. Rows are
