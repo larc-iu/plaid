@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useLocation, Link, Navigate } from 'react-router-dom';
+import { useParams, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/useAuth.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
-import { cn } from '../../lib/utils.js';
+import { ProjectSettingsLayout } from './ProjectSettingsLayout.jsx';
+
+const endsWith = (path, slug) => path.endsWith(`/${slug}`);
 
 /**
- * A project's settings: a list of links down the left and the active section
- * beside it.
+ * A project's settings as a route of their own: the app's project tabs, then
+ * the shared settings layout (`ProjectSettingsLayout`).
  *
  * Each section is route-backed, so a deep link keeps working and the active one
  * is read off the path. Only the active section is rendered, so each fetches
- * lazily. `sections` is the app's, as data: `{ value, label, body }`, where
- * `body({ projectId, project, reload })` is that section's screen. The first is
- * the default, and the one an unknown path redirects to.
- *
- * The section list is a list of LINKS rather than a tab widget: each section IS
- * a page with its own URL, so a link is what it is.
+ * lazily. `sections` is the app's, as data: `{ value, label, body, aliases }`,
+ * where `body({ projectId, project, reload })` is that section's screen and
+ * `aliases` are the old path suffixes that now land on it (a section that was
+ * folded into this one). The first is the default, and the one an unknown path
+ * redirects to.
  */
 export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   const { projectId } = useParams();
@@ -24,10 +25,20 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
   const { getClient } = useAuth();
   const [project, setProject] = useState(null);
 
-  const matched = sections.find((s) => location.pathname.endsWith(`/${s.value}`));
+  const path = location.pathname;
+  const matched = sections.find((s) => endsWith(path, s.value));
+  const aliased = matched
+    ? null
+    : sections.find((s) => (s.aliases ?? []).some((a) => endsWith(path, a)));
   const active = matched ?? sections[0];
 
-  useDocumentTitle(active.label, project?.name);
+  // Walking from one project to another keeps this shell mounted, and the
+  // project just left is still in state until the new one answers. A section
+  // that writes takes ids off `project`, so it is handed only the one the path
+  // names, and nothing while that one loads.
+  const current = project?.id === projectId ? project : null;
+
+  useDocumentTitle(active.label, current?.name);
 
   // The full project drives the tab strip (breadcrumb and permission gating);
   // the active section's child fetches whatever else it needs.
@@ -45,41 +56,21 @@ export const ProjectSettingsShell = ({ tabs: Tabs, sections, href }) => {
 
   useEffect(loadProject, [loadProject]);
 
-  // Every hook above runs first, so this return is unconditional as far as
+  // Every hook above runs first, so these returns are unconditional as far as
   // React is concerned.
-  if (!matched) return <Navigate to={href(projectId, sections[0].value)} replace />;
+  if (!matched) {
+    return <Navigate to={href(projectId, (aliased ?? sections[0]).value)} replace />;
+  }
 
   return (
     <>
-      <Tabs projectId={projectId} project={project} />
-
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Project Settings</h1>
-      </div>
-
-      <div className="flex flex-col gap-6 sm:flex-row">
-        <nav className="flex shrink-0 flex-col gap-1 sm:w-52">
-          {sections.map(({ value, label }) => (
-            <Link
-              key={value}
-              to={href(projectId, value)}
-              aria-current={value === active.value ? 'page' : undefined}
-              className={cn(
-                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                value === active.value
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-              )}
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="min-w-0 flex-1">
-          {active.body({ projectId, project, reload: loadProject })}
-        </div>
-      </div>
+      <Tabs projectId={projectId} project={current} />
+      <ProjectSettingsLayout
+        sections={sections}
+        active={active}
+        href={(value) => href(projectId, value)}
+        bodyProps={{ projectId, project: current, reload: loadProject }}
+      />
     </>
   );
 };

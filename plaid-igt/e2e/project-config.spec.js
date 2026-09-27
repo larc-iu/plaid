@@ -208,3 +208,42 @@ test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', asy
   await expect(page.locator('.igt-vocab__opener')).toHaveCount(0);
   await expect(page.locator('.igt-field:not([disabled])')).toHaveCount(0);
 });
+
+// The project page and its settings wear the shared chrome every app wears:
+// the project's name as the heading, text tabs, and the settings sections as a
+// list of links, General first, each part of a section in a card.
+test('the project page and its settings are the shared layout', async ({ page }) => {
+  await seedAuth(page);
+  await page.goto(`/#/projects/${projectId}`);
+  const name = (await client.projects.get(projectId)).name;
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+  const tabs = page.getByRole('tablist').getByRole('tab');
+  await expect(tabs.first()).toHaveText('Documents');
+  await expect(tabs.locator('svg')).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/general$/);
+  const sections = page.getByRole('navigation', { name: 'Settings' }).getByRole('link');
+  await expect(sections).toHaveText([
+    'General',
+    'Text and Vocab',
+    'Annotation',
+    'Access',
+    'Services',
+  ]);
+  await expect(sections.first()).toHaveAttribute('aria-current', 'page');
+
+  // Access: the members and the API tokens, and the old tokens address lands there.
+  await sections.filter({ hasText: 'Access' }).click();
+  await expect(page).toHaveURL(/\/access$/);
+  await expect(page.getByText('API tokens', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+  await page.goto(`/#/projects/${projectId}/tokens`);
+  await expect(page).toHaveURL(/\/access$/);
+
+  // A section's parts sit in cards, not between rules.
+  await page.goto(`/#/projects/${projectId}/text-and-vocab`);
+  await expect(page.locator('.rounded-xl.border').filter({ hasText: 'Orthographies' })).toHaveCount(
+    1,
+  );
+});

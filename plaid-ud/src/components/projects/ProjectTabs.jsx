@@ -44,12 +44,12 @@ export const ProjectTabs = ({ projectId, project }) => {
     { value: 'activity', label: 'Activity', to: at('activity'), show: canManage },
     {
       value: 'settings',
-      label: 'Project Settings',
-      to: at(configured ? 'management' : 'configuration'),
+      label: 'Settings',
+      to: at(configured ? 'general' : 'configuration'),
       match: SETTINGS,
       show: canManage,
     },
-    { value: 'import-export', label: 'Import & Export', to: at('import-export') },
+    { value: 'import-export', label: 'Import and export', to: at('import-export') },
   ];
 
   return <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} />;

@@ -1,36 +1,23 @@
 import { useEffect } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { UserButton } from '@ui/components/shared/UserButton';
-import { useAuth } from '../../contexts/AuthContext';
-import { headerItem } from '@ui/components/shared/headerItem.js';
-import { AssistantChrome } from '@ui/components/assistant/AssistantChrome.jsx';
-import { PlaidMark } from '@ui/components/assistant/PlaidMarks.jsx';
-import { AssistantSubjectProvider } from '@ui/components/assistant/AssistantSubject.jsx';
-import { useAskAssistant, useAssistantScope } from '@ui/components/assistant/subject.js';
+import { AppShell } from '@ui/components/shared/AppShell.jsx';
+import { useAskAssistant } from '@ui/components/assistant/subject.js';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { keys } from '@/lib/keymap.js';
-import { useUserKeymap } from '@ui/hooks/useUserKeymap.js';
 
-// shadcn shell frame, and the one place the assistant panel is mounted.
-// Preflight is global now, and the two islands own their CSS and must not
-// inherit the scoped preflight reset.
+// The app shell, which is plaid-ui's, as in plaid-ud and plaid-umr: the header
+// band, the assistant panel and its chip and rail, and the one container every
+// screen renders into. It is a LAYOUT route: it mounts once and the screens
+// swap inside its `Outlet`, which is what lets the panel hold a conversation
+// from one screen to the next.
 //
-// This is a LAYOUT route: it mounts once and the screens swap inside its
-// `Outlet`. Every route used to wrap its own copy of this, which meant the
-// shell's survival across a navigation was incidental, and a panel living in it
-// could not hold a conversation from one screen to the next.
-//
-// The panel itself, the chip, the rail and the gutter are `AssistantChrome` in
-// plaid-ui: plaid-ud's shell mounts the same component. What stays here is what
-// is IGT's, which is the window bridge the lit island's "Ask" crosses.
+// What this app tells it: its assistant and keymap, its own destinations
+// (Projects and Vocabularies), its guide, that the admin area is a route here,
+// and how to tell that the assistant tab is open. What stays here is what is
+// IGT's to do inside the shell, `ShellBridges`.
 
-const Shell = () => {
-  const { user, client, logout } = useAuth();
-  // The signed-in person's own shortcuts, laid over the defaults.
-  useUserKeymap(keys);
-  const location = useLocation();
-  const subject = useAssistantScope();
-
+// Two listeners that draw nothing, mounted inside the shell because the first
+// needs its assistant context.
+const ShellBridges = () => {
   // What the reader pointed at, as {ref, label}. The interlinear grid is a lit
   // island, so its "Ask" reaches React as a window event, and the shell listens
   // rather than the document screen: the panel lives here now, and Ask has to
@@ -63,86 +50,32 @@ const Shell = () => {
     return () => document.removeEventListener('keydown', onSlash);
   }, []);
 
-  const navItem = (to, label, active) => (
-    <Link key={to} to={to} className={headerItem(active)}>
-      {label}
-    </Link>
-  );
-
-  return (
-    <AssistantChrome
-      adapter={IGT_ASSISTANT}
-      client={client}
-      user={user}
-      subject={subject}
-      routeHasProject={/^\/projects\/[^/]+/.test(location.pathname)}
-      assistantRoute={
-        /^\/projects\/[^/]+\/?$/.test(location.pathname) &&
-        new URLSearchParams(location.search).get('tab') === 'assistant'
-      }
-      className="min-h-screen bg-background text-foreground"
-    >
-      {({ chip }) => (
-        <>
-          <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            {/* One row at every width, since the document screen's sticky
-                bar sits right under it. On a phone the name leaves only the
-                mark, and the nav scrolls sideways in the room left beside the
-                account. */}
-            <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:gap-4">
-              <Link to="/projects" className="flex shrink-0 items-center gap-2 font-bold">
-                <PlaidMark className="h-[18px] w-[18px] shrink-0" />
-                <span className="sr-only sm:not-sr-only">Plaid IGT</span>
-              </Link>
-              <nav className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-                {navItem('/projects', 'Projects', location.pathname.startsWith('/projects'))}
-                {navItem(
-                  '/vocabularies',
-                  'Vocabularies',
-                  location.pathname.startsWith('/vocabularies'),
-                )}
-                {/* The user guide is published with the docs site, not bundled here. */}
-                <a
-                  href="https://larc-iu.github.io/plaid/igt-guide.html"
-                  target="_blank"
-                  rel="noreferrer"
-                  className={headerItem()}
-                >
-                  Guide
-                </a>
-              </nav>
-              <div className="ml-auto flex shrink-0 items-center gap-2">
-                {chip}
-                {/* Administration is the server's, not this project's or this
-                    screen's, so it sits with the account rather than in the nav
-                    beside Projects and Vocabularies. plaid-ud says it in the same
-                    place, where it has to be an anchor into this app. */}
-                {user?.isAdmin &&
-                  navItem('/admin', 'Admin', location.pathname.startsWith('/admin'))}
-                {user && (
-                  <UserButton
-                    user={user}
-                    client={client}
-                    onLogout={logout}
-                    profileHref="/profile"
-                  />
-                )}
-              </div>
-            </div>
-          </header>
-          <main>
-            <Outlet />
-          </main>
-        </>
-      )}
-    </AssistantChrome>
-  );
+  return null;
 };
+
+// This app's destinations on the left of the band.
+const NAV = [
+  { to: '/projects', label: 'Projects', match: (path) => path.startsWith('/projects') },
+  { to: '/vocabularies', label: 'Vocabularies', match: (path) => path.startsWith('/vocabularies') },
+];
+
+// The assistant here is a TAB on the project screen (`?tab=assistant`), not a
+// route of its own, so the path alone does not say whether it already has the
+// whole screen.
+const isAssistantRoute = ({ pathname, search }) =>
+  /^\/projects\/[^/]+\/?$/.test(pathname) && new URLSearchParams(search).get('tab') === 'assistant';
 
 export function AppLayout() {
   return (
-    <AssistantSubjectProvider>
-      <Shell />
-    </AssistantSubjectProvider>
+    <AppShell
+      adapter={IGT_ASSISTANT}
+      keymap={keys}
+      nav={NAV}
+      guideHref="https://larc-iu.github.io/plaid/igt-guide.html"
+      adminTo="/admin"
+      isAssistantRoute={isAssistantRoute}
+    >
+      <ShellBridges />
+    </AppShell>
   );
 }

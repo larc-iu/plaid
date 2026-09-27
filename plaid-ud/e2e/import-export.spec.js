@@ -46,17 +46,27 @@ test('four tabs, bulk import (newdoc split + reject), and zip export', async ({ 
 
   // --- The four project tabs render on the Documents page ---
   await page.goto(`${BASE}/#/projects/${PID}/documents`);
-  for (const name of ['Documents', 'Search', 'Project Settings', 'Import & Export']) {
+  for (const name of ['Documents', 'Search', 'Settings', 'Import and export']) {
     await expect(page.getByRole('tab', { name })).toBeVisible();
   }
 
-  // --- Project Settings has a link-list nav down the left ---
-  await page.getByRole('tab', { name: 'Project Settings' }).click();
-  await expect(page).toHaveURL(/management/);
-  await expect(page.getByRole('link', { name: 'UD Customization' })).toBeVisible();
+  // --- Settings opens on General, with a link-list nav down the left in the
+  // order every app lists it ---
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/general$/);
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText([
+    'General',
+    'UD settings',
+    'Access',
+    'Services',
+  ]);
+  // Access holds the API tokens, and the old Access Tokens address lands there.
+  await page.goto(`${BASE}/#/projects/${PID}/tokens`);
+  await expect(page).toHaveURL(/\/management$/);
+  await expect(page.getByText('API tokens', { exact: true })).toBeVisible();
 
   // --- Import / Export tab ---
-  await page.getByRole('tab', { name: 'Import & Export' }).click();
+  await page.getByRole('tab', { name: 'Import and export' }).click();
   await expect(page).toHaveURL(/import-export/);
   await expect(page.getByText(/Drop .* files here/i)).toBeVisible();
 

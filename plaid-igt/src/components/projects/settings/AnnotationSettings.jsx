@@ -5,6 +5,7 @@ import { loadAttested } from '../validate/attested.js';
 import { TagsetsSettings } from './TagsetsSettings.jsx';
 import { FieldsSettings } from './FieldsSettings.jsx';
 import { DocumentMetadataSettings } from './DocumentMetadataSettings.jsx';
+import { Card } from '@ui/components/ui/card';
 
 // Everything a tagset can govern: the interlinear tiers, the values they may
 // take, the tokens that are skipped, and the fields recorded about each
@@ -68,40 +69,49 @@ export const AnnotationSettings = ({ project, projectId, client, onProjectUpdate
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, projectId, rulesKey]);
 
+  // Each part in a card of its own, as every app's settings are laid out; the
+  // settings layout spaces them.
   return (
-    <div className="flex flex-col gap-8 pt-4 [&>*+*]:border-t [&>*+*]:pt-8">
+    <>
       {/* Tagsets: the value lists the fields below can point at. Above
           Annotation Fields because a field can only reference one that
           already exists. */}
-      <TagsetsSettings
-        project={project}
-        projectId={projectId}
-        client={client}
-        onProjectUpdate={onProjectUpdate}
-      />
+      <Card className="p-6">
+        <TagsetsSettings
+          project={project}
+          projectId={projectId}
+          client={client}
+          onProjectUpdate={onProjectUpdate}
+        />
+      </Card>
 
       {/* Annotation Fields, and the ignored-token rule that modifies the
-          Word-scope ones. Both live in FieldsSettings and save together. */}
-      <FieldsSettings
-        project={project}
-        projectId={projectId}
-        client={client}
-        tagsetNames={tagsetNames}
-        violations={violations}
-        onProjectUpdate={onProjectUpdate}
-      />
+          Word-scope ones. Both live in FieldsSettings and save together, so
+          they share a card. */}
+      <Card className="p-6">
+        <FieldsSettings
+          project={project}
+          projectId={projectId}
+          client={client}
+          tagsetNames={tagsetNames}
+          violations={violations}
+          onProjectUpdate={onProjectUpdate}
+        />
+      </Card>
 
       {/* Per-document fields (Date, Speakers, Genre). Genre and Text type are
           closed inventories far more naturally than a gloss ever is, which is
           why these take tagsets too. */}
-      <DocumentMetadataSettings
-        project={project}
-        projectId={projectId}
-        client={client}
-        tagsetNames={tagsetNames}
-        violations={violations}
-        onProjectUpdate={onProjectUpdate}
-      />
-    </div>
+      <Card className="p-6">
+        <DocumentMetadataSettings
+          project={project}
+          projectId={projectId}
+          client={client}
+          tagsetNames={tagsetNames}
+          violations={violations}
+          onProjectUpdate={onProjectUpdate}
+        />
+      </Card>
+    </>
   );
 };

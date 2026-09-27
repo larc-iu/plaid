@@ -36,6 +36,8 @@ const auth = vi.hoisted(() => ({
   logout: vi.fn(),
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => auth }));
+// The shared tab strip asks the package's own hook.
+vi.mock('@ui/contexts/useAuth.js', () => ({ useAuth: () => auth }));
 
 const { ProjectDetail } = await import('./ProjectDetail.jsx');
 
@@ -51,6 +53,7 @@ const deferred = () => {
   const pending = new Map();
   return {
     settle: (id) => pending.get(id)(PROJECTS[id]),
+    settleWith: (id, project) => pending.get(id)(project),
     client: {
       projects: {
         get: (id) => new Promise((resolve) => pending.set(id, resolve)),
@@ -135,3 +138,87 @@ describe('the project screen when the reader walks to another project', () => {
     await view.unmount();
   });
 });
+
+// The page wears the shared project tab strip: breadcrumb, a heading naming the
+// project, and text tabs that are links, with the active one read off `?tab=`
+// or the settings path by this page and handed to the strip.
+describe('the project page header', () => {
+  const at = (path) => (
+    <MemoryRouter initialEntries={[path]}>
+      <Routes>
+        <Route path="/projects/:projectId" element={<ProjectDetail />} />
+        <Route path="/projects/:projectId/general" element={<ProjectDetail />} />
+      </Routes>
+    </MemoryRouter>
+  );
+  const tabs = (container) =>
+    [...container.querySelectorAll('[role="tab"]')].map((t) => ({
+      name: t.textContent,
+      href: t.getAttribute('href'),
+      active: t.getAttribute('data-state') === 'active',
+      icon: !!t.querySelector('svg'),
+    }));
+
+  it('names the project, trails back to Projects, and draws text tabs as links', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    const view = await renderComponent(at('/projects/A?tab=search'));
+    await view.step(async () => d.settle('A'));
+
+    expect(heading(view.container)).toBe('Ayvale');
+    const crumb = view.container.querySelector('nav[aria-label="Breadcrumb"]');
+    expect(crumb.querySelector('a').getAttribute('href')).toBe('/projects');
+    expect(crumb.querySelector('[aria-current="page"]').textContent).toBe('Ayvale');
+
+    const drawn = tabs(view.container);
+    expect(drawn.map((t) => t.name)).toEqual([
+      'Documents',
+      'Search',
+      'Guidelines',
+      'Bulk Edit',
+      'Validation',
+      'Activity',
+      'Export',
+      'Settings',
+    ]);
+    expect(drawn.some((t) => t.icon)).toBe(false);
+    expect(drawn.find((t) => t.active).name).toBe('Search');
+    expect(drawn.find((t) => t.name === 'Validation').href).toBe('/projects/A?tab=validate');
+    expect(drawn.find((t) => t.name === 'Settings').href).toBe('/projects/A/general');
+    expect(drawn.find((t) => t.name === 'Export').href).toBe('/projects/A/export');
+    await view.unmount();
+  });
+
+  it('marks Settings active on a settings section', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    const view = await renderComponent(at('/projects/A/general'));
+    await view.step(async () => d.settle('A'));
+    expect(tabs(view.container).find((t) => t.active).name).toBe('Settings');
+    await view.unmount();
+  });
+
+  it('offers a reader no maintainer tabs', async () => {
+    const d = deferred();
+    auth.client = d.client;
+    auth.user = { id: 'r', isAdmin: false };
+    try {
+      const view = await renderComponent(at('/projects/A'));
+      await view.step(async () =>
+        pendingReader(d, 'A', { maintainers: [], writers: [], readers: ['r'] }),
+      );
+      expect(tabs(view.container).map((t) => t.name)).toEqual([
+        'Documents',
+        'Search',
+        'Guidelines',
+        'Export',
+      ]);
+      await view.unmount();
+    } finally {
+      auth.user = { id: 'u', isAdmin: true };
+    }
+  });
+});
+
+// Settles one project read with extra ACL fields.
+const pendingReader = (d, id, acl) => d.settleWith(id, { ...PROJECTS[id], ...acl });

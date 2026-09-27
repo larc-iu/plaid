@@ -18,6 +18,13 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
  * then, and `match` where the tab stands for several paths. The strip decides
  * which is active and draws them; which tabs a project has is the app's.
  *
+ * `active` is for an app that keeps the tab somewhere a path does not show
+ * (plaid-igt's `?tab=`): it names the active tab outright, and `match` and
+ * the path are not consulted.
+ *
+ * Above the tabs, the breadcrumb and a heading naming the project, so a reader
+ * who lands from a link is told where they are in more than a small trail.
+ *
  * It is also where the shell's assistant panel learns which project the reader
  * is on. Every project-level screen renders this strip and is already handed
  * the project, so this is the ONE place that fact exists for all of them: the
@@ -25,7 +32,13 @@ import { useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
  * of which would then have to remember it. A document has a subject of its own
  * (its editor shell publishes it) and does not render this.
  */
-export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[0]?.value }) => {
+export const ProjectTabStrip = ({
+  projectId,
+  project,
+  tabs,
+  active: activeValue,
+  defaultValue = tabs[0]?.value,
+}) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -46,6 +59,7 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
 
   const p = location.pathname;
   const active =
+    activeValue ??
     tabs.find((t) => (t.match ? t.match.test(p) : p.endsWith(`/${t.value}`)))?.value ??
     defaultValue;
   // A tab that carries `show` is offered only once it is TRUE: null is "not
@@ -59,12 +73,17 @@ export const ProjectTabStrip = ({ projectId, project, tabs, defaultValue = tabs[
   return (
     <div className="mb-6">
       <Breadcrumb
-        className="mb-4"
+        className="mb-2"
         items={[
           { label: 'Projects', to: appRoutes().projects },
           { label: project?.name || 'Loading…' },
         ]}
       />
+      {/* The name is data in any script, so it takes its own direction. The
+          minimum height holds the tabs still while the project loads. */}
+      <h1 dir="auto" className="mb-2 min-h-9 truncate text-3xl font-bold tracking-tight">
+        {project?.name}
+      </h1>
 
       {/* Every tab is a real anchor (`to`), so middle-click and cmd-click open
           it in a new browser tab; a plain click is Radix's, and this navigates

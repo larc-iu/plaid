@@ -1,21 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import {
-  Activity,
-  BookOpen,
-  Download,
-  FileText,
-  Replace,
-  Search,
-  Settings,
-  ShieldCheck,
-} from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { ProjectSearch } from './search/ProjectSearch.jsx';
 import { ProjectSettingsPanel } from './ProjectSettingsPanel';
 import { Suspended } from '@ui/components/shared/Suspended';
+import { ProjectTabStrip } from '@ui/components/shared/ProjectTabStrip.jsx';
+import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 import { lazyNamed } from '@ui/lib/lazyNamed';
 
 // The tabs a visit rarely opens ride in their own chunks: Bulk Edit,
@@ -42,12 +36,8 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { canEditProject, canManageProject } from '@ui/domain/permissions.js';
 import { useTabParam } from '@/hooks/useTabParam';
 import { contentTabsFor, TAB_ALIASES } from '@/domain/projectTabs';
-import { cn } from '@ui/lib/utils';
 import { useComposeProject } from '@/hooks/useCompose';
 import { useAssistantAvailable } from '@ui/components/assistant/useAssistantAvailable.js';
-import { useAssistantSubject } from '@ui/components/assistant/subject.js';
-import { useUnsavedGuard } from '@ui/hooks/useUnsavedDraft.js';
-import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from './assistant/adapter.js';
 
 // The settings sections live behind these path suffixes; keeping them in the
@@ -63,11 +53,12 @@ const SECTION_TITLES = {
   services: 'Services',
 };
 
-// Default project view: the document list, a query-engine-powered Search tab,
-// and (for maintainers) a Bulk Edit workbench and a Settings tab. Settings is a real panel in this tab
-// group — selecting it stays on the page and renders project administration as
-// a left-side vertical tab group (ProjectSettingsPanel), route-backed by the
-// /access, /tokens, /services, /export, /settings suffixes.
+// Default project view, under the shared project tab strip: the document list,
+// a query-engine-powered Search tab, and (for maintainers) a Bulk Edit
+// workbench and a Settings tab. The content tabs ride in `?tab=`, so the strip
+// is told which is active. Export and Settings are path-backed: Settings
+// renders project administration in the shared settings layout
+// (ProjectSettingsPanel), one section per path suffix.
 
 export const ProjectDetail = () => {
   const { projectId, presetId = null } = useParams();
@@ -176,23 +167,11 @@ export const ProjectDetail = () => {
   // `ready` while the project is still loading would correct a good link:
   // `canManage` answers false until it lands, so the list can still grow.
   const contentTabs = useMemo(() => contentTabsFor(canManage), [canManage]);
-  const [contentTab, setContentTab, tabHref] = useTabParam(contentTabs, 'documents', {
+  const [contentTab, , tabHref] = useTabParam(contentTabs, 'documents', {
     aliases: TAB_ALIASES,
     ready: !!project,
   });
   const assistantAvailable = useAssistantAvailable(client, projectId, IGT_ASSISTANT.app);
-  // A tab is a way out of typed text on the tab it leaves (a guideline).
-  const guardLeavingTab = useUnsavedGuard();
-  // The shell's panel is about this PROJECT while the reader is on any of its
-  // screens. No subject of its own: what a reader is looking at here is the
-  // project at large, and naming a screen the assistant has no tool for (the
-  // export wizard, the access list) would invite it to claim it can act there.
-  useAssistantSubject({
-    projectId,
-    projectName: project?.name,
-    canWrite,
-    contributor: !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin }),
-  });
   const activeTab = onExport ? 'export' : onSettings && canManage ? 'settings' : contentTab;
 
   // A non-maintainer who lands on a settings URL has nothing to manage; bounce
@@ -235,226 +214,150 @@ export const ProjectDetail = () => {
   // none yet.
   const documents = docs.projectId === projectId ? docs.rows : [];
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-      </div>
-    );
-  }
+  if (loading) return <Loading />;
 
   if (error || !project) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <div
-          role="alert"
-          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        >
-          {error || 'The requested project could not be found.'}
-        </div>
-      </div>
+      <Notice tone="error" role="alert" className={FORM_PAGE_WIDTH}>
+        {error || 'The requested project could not be found.'}
+      </Notice>
     );
   }
 
+  // A project with nothing to open yet: its name, and why, in place of the
+  // tabs, which would each lead somewhere empty.
+  const notice = (children) => (
+    <div className={FORM_PAGE_WIDTH}>
+      <Breadcrumb
+        className="mb-2"
+        items={[{ label: 'Projects', to: '/projects' }, { label: project.name }]}
+      />
+      <h1 dir="auto" className="truncate text-3xl font-bold tracking-tight">
+        {project.name}
+      </h1>
+      <Notice role="status" icon={null} className="mt-4">
+        {children}
+      </Notice>
+    </div>
+  );
+
   if (unfinishedImport && !(canManage && importResumeTo)) {
-    return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-        <div
-          role="status"
-          className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground"
-        >
-          The {unfinishedImport.kind} import
-          {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
-          {canManage ? ' Continuing it…' : ' Ask a project maintainer to finish it.'}
-        </div>
-      </div>
+    return notice(
+      <>
+        The {unfinishedImport.kind} import
+        {unfinishedImport.source ? ` of “${unfinishedImport.source}”` : ''} did not finish.
+        {canManage ? ' Continuing it…' : ' Ask a project maintainer to finish it.'}
+      </>,
     );
   }
 
   if (needsSetupNotice) {
-    return (
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
-        <div
-          role="status"
-          className="mt-4 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground"
-        >
-          This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT support.
-        </div>
+    return notice(
+      <>
+        This project hasn’t been set up for IGT yet. Ask a project maintainer to add IGT support.
+      </>,
+    );
+  }
+
+  const at = `/projects/${projectId}`;
+  const tabs = [
+    { value: 'documents', label: 'Documents', to: tabHref(at, 'documents') },
+    { value: 'search', label: 'Search', to: tabHref(at, 'search') },
+    { value: 'guidelines', label: 'Guidelines', to: tabHref(at, 'guidelines') },
+    { value: 'bulk', label: 'Bulk Edit', to: tabHref(at, 'bulk'), show: canManage },
+    { value: 'validate', label: 'Validation', to: tabHref(at, 'validate'), show: canManage },
+    { value: 'activity', label: 'Activity', to: tabHref(at, 'activity'), show: canManage },
+    // Offered only when an assistant is online. The tab itself still renders
+    // when it is the active one, so a link to a past conversation opens
+    // whether or not one is running: this hides the invitation, not the
+    // conversations.
+    {
+      value: 'assistant',
+      label: 'Assistant',
+      to: tabHref(at, 'assistant'),
+      show: assistantAvailable,
+      alsoWhenActive: true,
+    },
+    { value: 'export', label: 'Export', to: `${at}/export` },
+    // Entered at its first section. The path drives the panel.
+    { value: 'settings', label: 'Settings', to: `${at}/general`, show: canManage },
+  ];
+
+  // Only the active tab's body is mounted, as the tab widget's own panels did.
+  let body = null;
+  if (activeTab === 'documents') {
+    body = (
+      <DocumentList
+        documents={documents}
+        project={project}
+        projectId={projectId}
+        client={client}
+        canManage={canManage}
+        canWrite={canWrite}
+        onDocumentCreated={handleDocumentCreated}
+      />
+    );
+  } else if (activeTab === 'search') {
+    body = <ProjectSearch project={project} projectId={projectId} client={client} />;
+  } else if (activeTab === 'bulk' && canManage) {
+    body = <ProjectBulkEdit project={project} projectId={projectId} client={client} />;
+  } else if (activeTab === 'validate' && canManage) {
+    body = (
+      <ProjectValidation
+        project={project}
+        projectId={projectId}
+        client={client}
+        onProjectUpdate={refreshProject}
+      />
+    );
+  } else if (activeTab === 'activity' && canManage) {
+    body = <ProjectActivity client={client} project={project} projectId={projectId} />;
+  } else if (activeTab === 'assistant') {
+    body = (
+      <ProjectAssistant
+        projectId={projectId}
+        projectName={project?.name}
+        client={client}
+        userId={user?.id}
+        canWrite={canWrite}
+        contributor={
+          !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
+        }
+      />
+    );
+  } else if (activeTab === 'guidelines') {
+    body = <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />;
+  } else if (activeTab === 'export') {
+    // A form, so the narrower width, from the page's left edge.
+    body = (
+      <div className={FORM_PAGE_WIDTH}>
+        <ProjectExport
+          project={project}
+          projectId={projectId}
+          client={client}
+          documents={documents}
+          canManage={canManage}
+          presetId={presetId}
+          onProjectUpdate={refreshProject}
+        />
       </div>
+    );
+  } else if (activeTab === 'settings' && canManage) {
+    body = (
+      <ProjectSettingsPanel
+        project={project}
+        projectId={projectId}
+        client={client}
+        section={pathSection || 'general'}
+        onProjectUpdate={refreshProject}
+      />
     );
   }
 
   return (
-    <div
-      className={cn(
-        'mx-auto px-4 py-8',
-        // The assistant is a two-pane chat and wants the room.
-        activeTab === 'assistant' ? 'max-w-7xl' : 'max-w-5xl',
-      )}
-    >
-      <div>
-        <nav className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Link to="/projects" className="hover:text-foreground">
-            Projects
-          </Link>
-          <span>/</span>
-          <span className="text-foreground">{project.name}</span>
-        </nav>
-        <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
-      </div>
-
-      <Tabs
-        value={activeTab}
-        guard={guardLeavingTab}
-        onValueChange={(v) => {
-          if (v === 'settings') {
-            // Enter Settings via its default section; the path drives the panel.
-            navigate(`/projects/${projectId}/general`);
-          } else if (v === 'export') {
-            navigate(`/projects/${projectId}/export`);
-          } else if (onSettings || onExport) {
-            // Leaving Settings means dropping the section suffix from the URL.
-            // Path and query move together in one navigation, since a separate
-            // query update would race with this one.
-            navigate(tabHref(`/projects/${projectId}`, v));
-          } else {
-            setContentTab(v);
-          }
-        }}
-      >
-        <TabsList className="mb-2">
-          <TabsTrigger value="documents" to={tabHref(`/projects/${projectId}`, 'documents')}>
-            <FileText className="h-4 w-4" /> Documents
-          </TabsTrigger>
-          <TabsTrigger value="search" to={tabHref(`/projects/${projectId}`, 'search')}>
-            <Search className="h-4 w-4" /> Search
-          </TabsTrigger>
-          <TabsTrigger value="guidelines" to={tabHref(`/projects/${projectId}`, 'guidelines')}>
-            <BookOpen className="h-4 w-4" /> Guidelines
-          </TabsTrigger>
-          {canManage && (
-            <TabsTrigger value="bulk" to={tabHref(`/projects/${projectId}`, 'bulk')}>
-              <Replace className="h-4 w-4" /> Bulk Edit
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="validate" to={tabHref(`/projects/${projectId}`, 'validate')}>
-              <ShieldCheck className="h-4 w-4" /> Validation
-            </TabsTrigger>
-          )}
-          {canManage && (
-            <TabsTrigger value="activity" to={tabHref(`/projects/${projectId}`, 'activity')}>
-              <Activity className="h-4 w-4" /> Activity
-            </TabsTrigger>
-          )}
-          {/* Offered only when an assistant is online. The tab itself still
-              renders when it is the active one, so a link to a past
-              conversation opens whether or not one is running: this hides the
-              invitation, not the conversations. */}
-          {(assistantAvailable || activeTab === 'assistant') && (
-            <TabsTrigger value="assistant" to={tabHref(`/projects/${projectId}`, 'assistant')}>
-              <AssistantMark className="h-4 w-4" /> Assistant
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="export" to={`/projects/${projectId}/export`}>
-            <Download className="h-4 w-4" /> Export
-          </TabsTrigger>
-          {canManage && (
-            <TabsTrigger value="settings" to={`/projects/${projectId}/general`}>
-              <Settings className="h-4 w-4" /> Settings
-            </TabsTrigger>
-          )}
-        </TabsList>
-        <TabsContent value="documents">
-          <DocumentList
-            documents={documents}
-            project={project}
-            projectId={projectId}
-            client={client}
-            canManage={canManage}
-            canWrite={canWrite}
-            onDocumentCreated={handleDocumentCreated}
-          />
-        </TabsContent>
-        <TabsContent value="search">
-          <ProjectSearch project={project} projectId={projectId} client={client} />
-        </TabsContent>
-        {canManage && (
-          <TabsContent value="bulk">
-            <Suspended>
-              <ProjectBulkEdit project={project} projectId={projectId} client={client} />
-            </Suspended>
-          </TabsContent>
-        )}
-        {canManage && (
-          <TabsContent value="validate">
-            <Suspended>
-              <ProjectValidation
-                project={project}
-                projectId={projectId}
-                client={client}
-                onProjectUpdate={refreshProject}
-              />
-            </Suspended>
-          </TabsContent>
-        )}
-        {canManage && (
-          <TabsContent value="activity">
-            <div>
-              <Suspended>
-                <ProjectActivity client={client} project={project} projectId={projectId} />
-              </Suspended>
-            </div>
-          </TabsContent>
-        )}
-        <TabsContent value="assistant">
-          <Suspended>
-            <ProjectAssistant
-              projectId={projectId}
-              projectName={project?.name}
-              client={client}
-              userId={user?.id}
-              canWrite={canWrite}
-              contributor={
-                !!project && !!user && isReviewed(project, user.id, { isAdmin: !!user.isAdmin })
-              }
-            />
-          </Suspended>
-        </TabsContent>
-        <TabsContent value="guidelines">
-          <Suspended>
-            <GuidelinesTab client={client} projectId={projectId} canWrite={canWrite} />
-          </Suspended>
-        </TabsContent>
-        <TabsContent value="export">
-          <Suspended>
-            <ProjectExport
-              project={project}
-              projectId={projectId}
-              client={client}
-              documents={documents}
-              canManage={canManage}
-              presetId={presetId}
-              onProjectUpdate={refreshProject}
-            />
-          </Suspended>
-        </TabsContent>
-        {canManage && (
-          <TabsContent value="settings">
-            <ProjectSettingsPanel
-              project={project}
-              projectId={projectId}
-              client={client}
-              user={user}
-              section={pathSection || 'general'}
-              onSectionChange={(s) => navigate(`/projects/${projectId}/${s}`)}
-              onProjectUpdate={refreshProject}
-            />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+    <>
+      <ProjectTabStrip projectId={projectId} project={project} tabs={tabs} active={activeTab} />
+      <Suspended>{body}</Suspended>
+    </>
   );
 };

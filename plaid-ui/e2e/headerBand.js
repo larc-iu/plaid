@@ -1,5 +1,5 @@
-// Both apps' header spec: the band across the top, which is meant to be one
-// band in two apps.
+// Every app's header spec: the band across the top, which is meant to be one
+// band in every app (plaid-ui's AppShell draws it).
 //
 // It had drifted once already, plaid-ud carrying the account as three bare text
 // buttons at a smaller size than plaid-igt's with Sign out a stray click away
@@ -25,15 +25,33 @@ export const headerBandTests = ({
   // its logout reloads the page, and `seedAuth` primes the session again on
   // every load, so the app comes straight back signed in.
   signOut,
-  // The nav on the left of the band, where this app has one: `{ rightOf }`
-  // names a destination Admin must sit to the right of, and Admin must not be
-  // among them.
-  nav = null,
+  // The nav on the left of the band: `{ rightOf }` names a destination Admin
+  // must sit to the right of, and Admin must not be among them. Every app has
+  // one, since every app links its guide there.
+  nav = { rightOf: 'Guide' },
+  // The file name of this app's user guide on the docs site.
+  guide,
 }) => {
   const band = headerBand;
   const account = headerAccount;
 
   test.describe('the header band', () => {
+    test('links this app’s own user guide, in a new tab', async ({ page }) => {
+      await seedAuth(page);
+      await page.goto(landing);
+      const link = band(page).locator('nav').getByRole('link', { name: 'Guide' });
+      await expect(link).toBeVisible({ timeout: 15000 });
+      await expect(link).toHaveAttribute('href', new RegExp(`/${guide}$`));
+      await expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    test('stays at the top of the window down a long page', async ({ page }) => {
+      await seedAuth(page);
+      await page.goto(landing);
+      await expect(account(page)).toBeVisible({ timeout: 15000 });
+      await expect(band(page)).toHaveCSS('position', 'sticky');
+    });
+
     test('signing out is inside the account, not beside it', async ({ page }) => {
       await seedAuth(page);
       await page.goto(landing);

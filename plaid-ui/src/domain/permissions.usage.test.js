@@ -48,7 +48,7 @@ const sources = (dir) =>
 const ROLE_PICKERS = [
   'plaid-igt/src/domain/roleGrants.js',
   'plaid-igt/src/components/admin/AdminInvites.jsx',
-  'plaid-ud/src/components/projects/ProjectManagement.jsx',
+  'plaid-ud/src/domain/roleGrants.js',
 ];
 
 // Every `{...}` in `text` with its braces balanced, so an option object is seen

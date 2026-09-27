@@ -10,7 +10,7 @@
 // activity feed, the comments browser and the assistant each have one, and
 // they stand in here so that what is under test is the chrome around them.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { renderComponent, all, texts } from '../../test/renderComponent.jsx';
 
 const { auth, editor } = vi.hoisted(() => ({ auth: {}, editor: {} }));
@@ -25,10 +25,12 @@ vi.mock('../../domain/layerCounts.js', () => ({ wordCountsByProject: async () =>
 vi.mock('../../hooks/useProjectRoster.js', () => ({ useProjectRoster: () => [] }));
 
 // The bodies, each tested where it lives.
+const { chrome } = vi.hoisted(() => ({ chrome: {} }));
 vi.mock('../assistant/AssistantChrome.jsx', () => ({
-  AssistantChrome: ({ children, className }) => (
-    <div className={className}>{children({ chip: null })}</div>
-  ),
+  AssistantChrome: ({ children, className, assistantRoute }) => {
+    chrome.assistantRoute = assistantRoute;
+    return <div className={className}>{children({ chip: null })}</div>;
+  },
 }));
 vi.mock('../guidelines/GuidelinesTab.jsx', () => ({
   GuidelinesTab: ({ canWrite }) => <p>{canWrite ? 'guidelines, writable' : 'guidelines'}</p>,
@@ -175,6 +177,105 @@ describe('the shared chrome', () => {
     expect(auth.logout).toHaveBeenCalled();
   });
 
+  const shellAt = (props, path = '/projects/p1') =>
+    mount(
+      <Routes>
+        <Route element={<AppShell {...props} />}>
+          <Route path="*" element={<p>the screen</p>} />
+        </Route>
+      </Routes>,
+      path,
+    );
+  const links = () =>
+    all(view.container, 'header a').map((a) => ({
+      text: a.textContent,
+      href: a.getAttribute('href'),
+      target: a.getAttribute('target'),
+      current: a.className.includes('bg-accent '),
+    }));
+
+  // One header in every app: the app's own destinations and its guide on the
+  // left, Admin with the account on the right.
+  it('AppShell draws the app’s nav, its guide, and Admin as a route of its own', async () => {
+    await shellAt(
+      {
+        nav: [
+          { to: '/projects', label: 'Projects', match: (p) => p.startsWith('/projects') },
+          { to: '/vocabularies', label: 'Vocabularies', match: (p) => p.startsWith('/voc') },
+        ],
+        guideHref: 'https://example.org/igt-guide.html',
+        adminTo: '/admin',
+      },
+      '/vocabularies/v1',
+    );
+    const drawn = links();
+    const navLinks = all(view.container, 'header nav a').map((a) => a.textContent);
+    expect(navLinks).toEqual(['Projects', 'Vocabularies', 'Guide']);
+    expect(drawn.find((l) => l.text === 'Guide')).toMatchObject({
+      href: 'https://example.org/igt-guide.html',
+      target: '_blank',
+    });
+    expect(drawn.find((l) => l.text === 'Vocabularies').current).toBe(true);
+    expect(drawn.find((l) => l.text === 'Projects').current).toBe(false);
+    expect(drawn.find((l) => l.text === 'Admin').href).toBe('/admin');
+    // The header stays on screen down a long page, in every app.
+    expect(view.container.querySelector('header').className).toContain('sticky');
+  });
+
+  it('AppShell with no nav of its own still links its guide, and Admin leaves for igt', async () => {
+    await shellAt({ guideHref: 'https://example.org/ud-guide.html' });
+    const navLinks = all(view.container, 'header nav a').map((a) => a.textContent);
+    expect(navLinks).toEqual(['Guide']);
+    // Another app's admin area is another document: a full page load.
+    expect(links().find((l) => l.text === 'Admin').href).toMatch(/#\/admin$/);
+  });
+
+  it('AppShell asks the app whether its assistant has the screen, when the path cannot say', async () => {
+    await shellAt(
+      { isAssistantRoute: ({ search }) => new URLSearchParams(search).get('tab') === 'assistant' },
+      '/projects/p1?tab=assistant',
+    );
+    expect(chrome.assistantRoute).toBe(true);
+    await view.unmount();
+    await shellAt({}, '/projects/p1?tab=assistant');
+    expect(chrome.assistantRoute).toBe(false);
+  });
+
+  it('ProjectTabStrip names the project in a heading of its own direction', async () => {
+    await mount(
+      <ProjectTabStrip
+        projectId="p1"
+        project={{ ...PROJECT, name: 'مشروع' }}
+        tabs={[{ value: 'documents', label: 'Documents', to: '/projects/p1/documents' }]}
+      />,
+    );
+    const h1 = view.container.querySelector('h1');
+    expect(h1.textContent).toBe('مشروع');
+    expect(h1.getAttribute('dir')).toBe('auto');
+    // The current page closes the trail, dark and not a link.
+    expect(view.container.querySelector('[aria-current="page"]').tagName).toBe('SPAN');
+  });
+
+  it('ProjectTabStrip takes the active tab from an app that keeps it off the path', async () => {
+    await mount(
+      <ProjectTabStrip
+        projectId="p1"
+        project={PROJECT}
+        active="search"
+        tabs={[
+          { value: 'documents', label: 'Documents', to: '/projects/p1' },
+          { value: 'search', label: 'Search', to: '/projects/p1?tab=search' },
+        ]}
+      />,
+      '/projects/p1',
+    );
+    const active = all(view.container, '[role="tab"]').find(
+      (t) => t.getAttribute('data-state') === 'active',
+    );
+    expect(active.textContent).toBe('Search');
+    expect(active.getAttribute('href')).toBe('/projects/p1?tab=search');
+  });
+
   it('ProjectTabStrip draws the project it is on and the tabs it was given', async () => {
     await mount(
       <ProjectTabStrip
@@ -286,6 +387,104 @@ describe('the shared chrome', () => {
     expect(texts(view.container, 'nav a')).toEqual(['General', 'Services']);
     expect(text()).toContain('the services');
     expect(text()).not.toContain('the general section');
+    // The project's own heading is the tab strip's. The page adds none.
+    expect(view.container.querySelector('h1')).toBe(null);
+  });
+
+  // A section folded into another keeps its old address working.
+  it('ProjectSettingsShell sends a folded section’s old path to the section that holds it', async () => {
+    const Loc = () => <p data-testid="at">{useLocation().pathname}</p>;
+    await mount(
+      <>
+        <Routes>
+          <Route
+            path="/projects/:projectId/:section"
+            element={
+              <ProjectSettingsShell
+                tabs={Strip}
+                href={(p, s) => `/projects/${p}/${s}`}
+                sections={[
+                  { value: 'general', label: 'General', body: () => <p>general</p> },
+                  {
+                    value: 'management',
+                    label: 'Access',
+                    aliases: ['tokens'],
+                    body: () => <p>members and tokens</p>,
+                  },
+                ]}
+              />
+            }
+          />
+        </Routes>
+        <Loc />
+      </>,
+      '/projects/p1/tokens',
+    );
+    expect(view.container.querySelector('[data-testid="at"]').textContent).toBe(
+      '/projects/p1/management',
+    );
+    expect(text()).toContain('members and tokens');
+  });
+
+  // Walking from one project to the next keeps the shell mounted. Until the
+  // new project answers, a section is handed nothing rather than the old one,
+  // whose layer ids a Save would otherwise write under the new project.
+  it('ProjectSettingsShell never hands a section the project the reader left', async () => {
+    const seen = [];
+    let go;
+    const Nav = () => {
+      go = useNavigate();
+      return null;
+    };
+    let answerB;
+    const saved = client.projects.get;
+    client.projects.get = vi.fn((id) =>
+      id === 'p1'
+        ? Promise.resolve(PROJECT)
+        : new Promise((resolve) => {
+            answerB = () => resolve({ ...PROJECT, id: 'p2', name: 'Bee' });
+          }),
+    );
+    try {
+      await mount(
+        <>
+          <Nav />
+          <Routes>
+            <Route
+              path="/projects/:projectId/:section"
+              element={
+                <ProjectSettingsShell
+                  tabs={Strip}
+                  href={(p, s) => `/projects/${p}/${s}`}
+                  sections={[
+                    {
+                      value: 'general',
+                      label: 'General',
+                      body: ({ projectId, project }) => {
+                        seen.push([projectId, project?.id ?? null]);
+                        return <p>general</p>;
+                      },
+                    },
+                  ]}
+                />
+              }
+            />
+          </Routes>
+        </>,
+        '/projects/p1/general',
+      );
+      await view.step(async () => {});
+      expect(seen.at(-1)).toEqual(['p1', 'p1']);
+
+      await view.step(() => go('/projects/p2/general'));
+      expect(seen.filter(([at, of]) => of && at !== of)).toEqual([]);
+      expect(text()).toContain('strip: loading');
+
+      await view.step(async () => answerB());
+      expect(seen.at(-1)).toEqual(['p2', 'p2']);
+    } finally {
+      client.projects.get = saved;
+    }
   });
 
   it('ProjectGuidelinesPage waits for the project, then hands the tab what it may do', async () => {

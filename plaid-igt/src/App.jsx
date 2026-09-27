@@ -141,7 +141,7 @@ function App() {
                 <Route
                   path="/profile"
                   element={
-                    <UserProfile className="px-4 py-8">
+                    <UserProfile>
                       <KeyboardSettings keymap={keys} groups={KEY_GROUPS} />
                     </UserProfile>
                   }
