@@ -179,7 +179,7 @@ export const ImportElanProject = () => {
           {resumeId && (
             <ResumeBanner
               name={resumeName}
-              again="Choose the same files: what is already there is kept, and the first run’s answers are used again."
+              again="Choose the same files: what is already there is unchanged, and the first run’s answers are used again."
               onFinishAsIs={finishAsIs}
             />
           )}

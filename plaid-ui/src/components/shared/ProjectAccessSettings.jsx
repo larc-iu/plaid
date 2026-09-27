@@ -48,7 +48,7 @@ export const ProjectAccessSettings = ({ roleOptions, profileHref, onProjectUpdat
       if (!isCurrent()) return null;
       console.error('Error fetching project:', err);
       setProject(null);
-      notifyError('Failed to load project data');
+      notifyError('Failed to load the project');
       return null;
     } finally {
       if (isCurrent()) setLoading(false);

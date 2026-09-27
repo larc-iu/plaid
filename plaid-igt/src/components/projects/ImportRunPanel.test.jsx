@@ -132,7 +132,7 @@ describe('ResumeBanner', () => {
     const { container, step, unmount } = await renderComponent(
       <ResumeBanner
         name="Qusar"
-        again="Choose the same file: what is already there is kept."
+        again="Choose the same file: what is already there is unchanged."
         onFinishAsIs={onFinishAsIs}
       />,
     );

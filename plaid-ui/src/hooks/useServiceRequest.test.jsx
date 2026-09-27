@@ -262,7 +262,7 @@ describe('what a failed run says', () => {
     expect(said).toMatch(/being edited right now/);
     // The progress line is on screen for as long as the dialog is, so it says
     // the same thing rather than the raw message.
-    expect(r.hook().progressMessage).toBe(`Error: ${said}`);
+    expect(r.hook().progressMessage).toBe(said);
     await r.unmount();
   });
 });

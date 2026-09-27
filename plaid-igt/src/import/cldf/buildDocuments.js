@@ -891,7 +891,7 @@ export function buildCldfDocuments(dataset, options = {}) {
   if (objectLanguageIds.size > 1) {
     warnings.push(
       `This dataset covers ${objectLanguageIds.size} object languages. A Plaid project documents ` +
-        'one, so no language identity was set. Set it under Settings, Languages.',
+        'one, so no language identity was set. Set it under Settings → General → Languages.',
     );
   }
 

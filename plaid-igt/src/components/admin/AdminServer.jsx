@@ -123,7 +123,7 @@ export const AdminServer = ({ client }) => {
 
   const buckets = useMemo(
     () => [
-      ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: 'Login' })),
+      ...(rateLimits?.logins || []).map((b) => ({ ...b, kind: 'Sign-in' })),
       ...(rateLimits?.ips || []).map((b) => ({ ...b, kind: 'Address' })),
       ...(rateLimits?.invites || []).map((b) => ({ ...b, kind: 'Invite' })),
     ],

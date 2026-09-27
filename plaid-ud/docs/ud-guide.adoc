@@ -54,12 +54,12 @@ http://localhost:8080/ud/
 ----
 
 Sign in with the email address and password your project administrator gave you.
-Your session stays signed in until the token expires or you log out.
+Your session stays signed in until the token expires or you sign out.
 Your name at the top right opens your account, with your **Profile** and **Sign out**.
 
 The editor has three levels you move between:
 
-* **Projects**: the list of all projects you can access (your home screen after login).
+* **Projects**: the list of all projects you can access (your home screen after signing in).
 * **Documents**: the texts inside one project.
 * **A document's own tabs**: `Text Editor`, `Annotate`, `Export`, `Comments` and `Details`, switched at the top of an open document.
 
@@ -141,7 +141,7 @@ Where the tokens are shared with another Plaid app on the project, the confirmat
 
 After tokenizing, the text is shown with each token as a clickable chip:
 
-* A **green** left border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries.
+* A **green** border marks the **first token of each sentence**. Click any token to toggle whether a sentence starts there. This is how you fix sentence boundaries.
 * A **teal** chip marks a **multi-word token** (a token that contains more than one word).
 
 Hover over a token to open its panel, where you can:
@@ -220,7 +220,7 @@ A treebank records more than annotations. CoNLL-U keeps those notes as comment l
 
 **About a sentence**, under the sentence in the Annotate view, behind **Edit metadata** in the row of actions below the grid. Every sentence carries `sent_id`, CoNLL-U's own identifier for it, whether the project declares anything else or not. A free translation is conventionally `text_en`, naming the language it is in.
 
-Which fields a project offers is a maintainer's choice, under **Settings > UD settings**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
+Which fields a project offers is a maintainer's choice, under **Settings → UD settings**. A field name cannot contain a dot, and a sentence field cannot be called `sent_id` or `text`, which the exporter writes itself.
 
 Fields save as you leave them, and clearing one removes the note rather than storing a blank. A value already stored under a name the project no longer offers is still shown, marked, so it can be read and cleared instead of quietly exporting forever.
 

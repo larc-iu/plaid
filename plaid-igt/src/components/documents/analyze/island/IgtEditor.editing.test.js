@@ -264,7 +264,7 @@ describe('as a verifier over contributed work', () => {
     expect(cell('ma:m-1:Gloss').title).toBe('NOM: contributed, confirmed');
   });
 
-  it('Ctrl+Enter confirms it as is', async () => {
+  it('Ctrl+Enter accepts it as is', async () => {
     const { doc } = mount();
     await doc.updateMorphemeSpan('m-1', 'Gloss', 'PL', CONTRIBUTED);
     await settle();

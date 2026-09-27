@@ -80,7 +80,7 @@ A project with no text at all is set up in Plaid IGT or Plaid UD first.
 
 == Language
 
-**Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
+**Settings → General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
 It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
 The page names the file the saved language gets and how many rolesets are in it.
 A language with no bundled file is the ordinary case for a language being documented, and its rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
@@ -146,7 +146,7 @@ Under them, the project's gloss lines: the morphemes and their glosses grouped u
 Each line is named to its left.
 The lines of an imported file go under the words wherever the file lets that be told: a line with one item per word, a line whose hyphens and equals signs join its items into as many words as the sentence has (`’a- ní- dz- oo- d- záa =go` is one word), or a gloss line that pairs item for item with such a Morphemes line.
 Any other line, and a translation, runs as a row of its own.
-Which layers feed which lines is set in **Settings, UMR settings** (see <<Gloss lines>>).
+Which layers feed which lines is set in **Settings → UMR settings** (see <<Gloss lines>>).
 
 == The margin
 
@@ -266,7 +266,7 @@ The one kind of triple no node wears, one between two constants (`root :modal au
 
 = Gloss lines
 
-**Settings, UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
+**Settings → UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
 A line's source is the morpheme layer (written as `Morphemes`), one of the substrate's annotation layers (Plaid IGT's fields, which say their scope: a morpheme-scoped field is written as `Morpheme Gloss` or `Morpheme Category`, a word-scoped one as `Word Gloss` or `Part of Speech`, a sentence-scoped one as `Sentence Gloss`), or the lines an import stored that nothing else covers.
 **Propose lines** fills the list from the layers' names and scopes.
 `Index` and `Words` are always written.
@@ -292,7 +292,7 @@ The value sets the pickers offer and the checks accept are the official validato
 
 A document's **Comments** tab holds comments on the document and on its sentences.
 **Activity** shows who has been working on the project and on what.
-**Settings, Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
+**Settings → Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
 
 = Services
 

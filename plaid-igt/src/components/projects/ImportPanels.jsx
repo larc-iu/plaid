@@ -123,7 +123,7 @@ export const ProjectNameField = ({ id, value, onChange, disabled, resuming }) =>
     <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
     {resuming && (
       <p className="mt-1 text-xs text-muted-foreground">
-        Continuing an import into this project. What it already holds is kept.
+        Continuing an import into this project. What it already holds is unchanged.
       </p>
     )}
   </div>

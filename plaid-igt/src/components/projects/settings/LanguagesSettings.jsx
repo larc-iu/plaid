@@ -96,7 +96,7 @@ const LanguageGroup = ({ prefix, title, description, lang, onChange, coordinates
 };
 
 /**
- * Settings → Languages. Which language this project documents, and which one
+ * Settings → General → Languages. Which language this project documents, and which one
  * it glosses in. Plaid's layers are offset spaces with no language attached,
  * so this is the only place the fact is recorded, and exports that need it
  * (CLDF's LanguageTable, .flextext writing-system tags) read it from here.

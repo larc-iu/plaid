@@ -40,7 +40,7 @@ export const ProjectTabPage = ({ title, tabs: Tabs, children }) => {
       })
       .catch((err) => {
         console.error('Failed to load project:', err);
-        if (alive) notifyError('Failed to load project.');
+        if (alive) notifyError('Failed to load the project');
       })
       .finally(() => {
         if (alive) setLoading(false);

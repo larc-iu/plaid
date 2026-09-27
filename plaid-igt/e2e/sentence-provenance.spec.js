@@ -3,7 +3,7 @@ import { test, expect, seedAuth, readToken } from './fixtures.js';
 
 // A machine-made sentence value (a proposed translation) renders with the
 // same provenance styling as cells, is a stop in the unverified review
-// sweep, and Ctrl+Enter confirms it as is. Throwaway document in the
+// sweep, and Ctrl+Enter accepts it as is. Throwaway document in the
 // "E2E IGT Fixture" project.
 
 const CORE = 'http://localhost:8085';
@@ -59,7 +59,7 @@ test.afterAll(async () => {
   if (documentId) await client.documents.delete(documentId).catch(() => {});
 });
 
-test('a machine translation is violet, a sweep stop, and Ctrl+Enter confirms it as is', async ({
+test('a machine translation is violet, a sweep stop, and Ctrl+Enter accepts it as is', async ({
   page,
 }) => {
   test.skip(!trLayer, 'fixture project has no sentence field');
@@ -69,7 +69,7 @@ test('a machine translation is violet, a sweep stop, and Ctrl+Enter confirms it 
   const tr = page.locator(`.igt-field[data-cell-key="sa:${sid}:${trLayer.name}"]`);
   await expect(tr).toHaveValue('a machine draft');
   await expect(tr).toHaveClass(/igt-field--machine/);
-  await expect(tr).toHaveAttribute('title', /Ctrl\+Enter confirms/);
+  await expect(tr).toHaveAttribute('title', /Ctrl\+Enter accepts/);
   // The review sweep from a word cell lands on the translation.
   const firstCell = page.locator('.igt-island input.igt-field').first();
   await firstCell.click();

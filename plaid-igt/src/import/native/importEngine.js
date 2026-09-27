@@ -610,7 +610,7 @@ async function importNativeDocument({
         );
       } else {
         warnings.push(
-          `"${docData.name}": ${alignment.length} time alignment(s) skipped. This project is not set up for time alignment.`,
+          `"${docData.name}": ${alignment.length} time-aligned segment${alignment.length === 1 ? '' : 's'} skipped. This project is not set up for time alignment.`,
         );
       }
     }

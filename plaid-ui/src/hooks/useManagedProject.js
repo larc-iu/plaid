@@ -39,7 +39,7 @@ export const useManagedProject = () => {
     } catch (err) {
       if (!isCurrent()) return null;
       console.error('Failed to load project:', err);
-      notifyError('Failed to load project.');
+      notifyError('Failed to load the project');
       return null;
     } finally {
       if (isCurrent()) setLoading(false);

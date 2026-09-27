@@ -118,4 +118,4 @@ export const humanizeError = (error, fallback = 'Something went wrong.') => {
 export const signInError = (error) =>
   statusOf(error) === 401
     ? 'Email or password is incorrect.'
-    : humanizeError(error, 'Could not sign in.');
+    : humanizeError(error, 'Failed to sign in.');

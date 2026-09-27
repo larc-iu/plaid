@@ -101,7 +101,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
 
   const handleRevoke = async (inv) => {
     const ok = await confirm({
-      title: 'Revoke this invitation link',
+      title: 'Revoke this invitation link?',
       description: 'The link stops working immediately. Accounts made with it are unchanged.',
       confirmLabel: 'Revoke link',
       destructive: true,

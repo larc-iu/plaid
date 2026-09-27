@@ -106,7 +106,7 @@ export const useServiceRequest = (client) => {
       return;
     }
     const said = humanizeError(error, copy.errorMessage);
-    setProgressMessage(`Error: ${said}`);
+    setProgressMessage(said);
     notifyError(said, copy.errorTitle);
   }, []);
 

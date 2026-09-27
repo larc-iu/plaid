@@ -55,7 +55,7 @@ const FORMATS = {
     drop: 'Drop a .fwbackup file here, or click to choose',
     where: 'In FieldWorks: File → Project Management → Back up this Project',
     reading: 'Reading backup…',
-    again: 'Choose the same backup: what is already there is kept.',
+    again: 'Choose the same backup: what is already there is unchanged.',
     operation: 'Import FLEx project',
   },
   flextext: {
@@ -66,7 +66,7 @@ const FORMATS = {
     drop: 'Drop .flextext files here, or click to choose',
     where: 'In FieldWorks: File → Export Interlinear → FLExText',
     reading: 'Reading files…',
-    again: 'Choose the same files: what is already there is kept.',
+    again: 'Choose the same files: what is already there is unchanged.',
     operation: 'Import FLEx texts',
   },
 };

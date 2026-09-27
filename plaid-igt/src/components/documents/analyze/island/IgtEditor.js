@@ -739,7 +739,7 @@ export class IgtEditor {
         title=${violations.length
           ? this._violationText(violations, tagset)
           : ps
-            ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} confirms it as is`
+            ? `${this._cellTitle(v, ps, origin)}. ${keys.words('analyze.accept')} accepts it as is`
             : nothing}
         rows="1"
         spellcheck="false"

@@ -19,7 +19,7 @@ export const LoginForm = () => {
   const [notice] = useState(() => {
     try {
       return sessionStorage.getItem('plaid:logout-reason') === 'expired'
-        ? 'Your session has expired.'
+        ? 'Your session has expired. Sign in again.'
         : '';
     } catch {
       return '';

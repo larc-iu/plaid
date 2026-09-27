@@ -124,7 +124,7 @@ export const ImportNativeProject = () => {
           {resumeId && (
             <ResumeBanner
               name={resumeName}
-              again="Choose the same file: what is already there is kept."
+              again="Choose the same file: what is already there is unchanged."
               onFinishAsIs={finishAsIs}
             />
           )}

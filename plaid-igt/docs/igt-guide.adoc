@@ -56,12 +56,12 @@ http://localhost:8080/igt/
 ----
 
 Sign in with the email address and password your project administrator gave you, or with the password you chose when you opened an invitation link (see <<_sharing_and_permissions>>).
-Your session stays signed in until the token expires or you log out.
-Your name at the top right opens your account, with your profile and **Logout**.
+Your session stays signed in until the token expires or you sign out.
+Your name at the top right opens your account, with **Profile** and **Sign out**.
 
 The editor has a few levels you move between:
 
-* **Projects**: the list of all projects you can access. This is your home screen after login.
+* **Projects**: the list of all projects you can access. This is your home screen after signing in.
 * **Documents**: the texts inside one project. Beside the document list sit the project's own tabs: **Search**, **Assistant**, and **Export** for everyone, and **Bulk Edit**, **Validation**, **Activity**, and **Settings** for maintainers.
 * **A document's tabs**: **Baseline**, **Media**, **Tokenize**, **Analyze**, **Comments**, **Export**, and **Details**, switched at the top of an open document.
 
@@ -1022,7 +1022,7 @@ A link can be revoked at any time, and it stops working on its own if the person
 
 An **administrator** can also create accounts directly from the same Access section, and can mint a password-reset link for someone who is locked out.
 
-Scripts and services should not borrow your login.
+Scripts and services should not borrow your sign-in.
 Mint a named **API token** on your profile page instead.
 It can be revoked on its own, and its name appears in the history, so machine-made changes are told apart from yours.
 
@@ -1031,8 +1031,8 @@ It can be revoked on its own, and its name appears in the history, so machine-ma
 An administrator sees an **Admin** link in the top bar, covering the whole server rather than one project.
 
 **Users** is the account directory: create, edit, deactivate and reactivate accounts, and mint a password-reset link.
-Deactivating signs the person out, takes away their project roles and API tokens, and refuses them at login.
-Their annotations and their name on them are untouched, and reactivating restores the login.
+Deactivating signs the person out, takes away their project roles and API tokens, and refuses them at sign-in.
+Their annotations and their name on them are untouched, and reactivating restores sign-in.
 Opening an account shows the projects it can reach, the API tokens it holds, and its recent work.
 
 **Invites** is every invitation link on the server, whoever minted it, with what it grants and whether it has been used.
@@ -1051,8 +1051,8 @@ A service that has gone for good can be forgotten here.
 Opening one shows the whole conversation: what was asked, what was answered, the examples it cited, and any plan it proposed with what became of it.
 Conversations are otherwise private to the person who had them, and they are read-only here.
 
-**Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at login.
-Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a login block for someone who mistyped their password too many times.
+**Server** reports the version, how long it has been up, the size of the database and what is in it, the backups on disk, the media directory, which documents are open for editing, and which addresses are being refused at sign-in.
+Three things can be done from it, and each only ever unblocks something: take a backup now, release a document someone left open, and clear a sign-in block for someone who mistyped their password too many times.
 
 **Logs** is what the server has been doing since it last started.
 Requests are one table, with the account behind each one, and everything else is another, with warnings, errors and their stack traces.
@@ -1142,10 +1142,10 @@ A shortcut is also refused when the browser already uses it, when it would type 
 | **Alt+-** / **Alt+=** | Type a literal hyphen or equals sign in a morpheme form.
 | **Alt+0** | In a morpheme form, type the zero morph ∅.
 | **\** + a two-letter code | Type a character the keyboard lacks, anywhere language data is typed: `\sw` gives ə. See <<_typing_special_characters>>.
-| **Ctrl/Cmd+Enter** | Confirm the current word's whole analysis and jump to the next word. On a sentence field, confirm its proposed value and jump to the next sentence.
+| **Ctrl/Cmd+Enter** | Accept the current word's whole analysis and jump to the next word. On a sentence field, accept its proposed value and jump to the next sentence.
 | **Ctrl/Cmd+Backspace** | Discard the current word's unverified proposal (its machine-made morphemes, glosses, and links) and jump to the next. Anything a person made or confirmed stays. On a sentence field, discard its proposed value. **Delete** does the same as Backspace.
 | **Ctrl/Cmd+Shift+↑** / **↓** | Jump to the previous or next word or sentence field that still has unverified proposals.
-| **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** confirms it and **Backspace** removes it.
+| **Ctrl/Cmd+↑** / **↓** | Move between vocabulary links awaiting your review. On one, **Enter** accepts it and **Backspace** removes it.
 | **Shift+click** a word | Gather it into a multi-word expression (again to take it out). **Shift+←** / **Shift+→** from a word's cells do the same along the sentence, and **Ctrl** as well skips a word.
 | **Enter** (while gathering) | Link the gathered words to one entry. **Esc** drops them.
 | **Enter** / **Space** (row label) | Open the menu that picks which rows show. **Esc** closes it.

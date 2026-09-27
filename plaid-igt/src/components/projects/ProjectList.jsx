@@ -40,7 +40,7 @@ export const ProjectList = () => {
         logout('expired');
         return;
       }
-      setError('Failed to load projects');
+      setError('Failed to load the projects');
       console.error('Error fetching projects:', err);
     } finally {
       setLoading(false);

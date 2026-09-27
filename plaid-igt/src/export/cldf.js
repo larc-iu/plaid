@@ -400,14 +400,14 @@ export function buildCldfDataset({
   if (!languages?.object?.glottocode && !languages?.object?.iso639P3) {
     warnings.push(
       'The object language has no Glottocode or ISO 639-3 code, so this dataset cannot be ' +
-        'linked to other CLDF datasets. Set it under Settings → Languages.',
+        'linked to other CLDF datasets. Set it under Settings → General → Languages.',
     );
   }
   // A translation with no stated meta language is a dangling claim, so say so.
   if (o.translationField && !hasMeta) {
     warnings.push(
       'No meta language is configured, so translations carry no Meta_Language_ID. ' +
-        'Set it under Settings → Languages.',
+        'Set it under Settings → General → Languages.',
     );
   }
 

@@ -183,7 +183,7 @@ export const ImportCldfProject = () => {
           {resumeId && (
             <ResumeBanner
               name={resumeName}
-              again="Choose the same file: what is already there is kept, and the first run’s answers are used again."
+              again="Choose the same file: what is already there is unchanged, and the first run’s answers are used again."
               onFinishAsIs={finishAsIs}
             />
           )}
