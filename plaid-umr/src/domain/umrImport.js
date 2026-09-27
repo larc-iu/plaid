@@ -9,6 +9,7 @@ import { parseUmrFile } from './format/umrFile.js';
 import { DOC_CONSTANTS } from './format/inventory.js';
 import { buildDocumentGraph, wordForFile } from './sentenceGraph.js';
 import { findLostCreate } from '../../../plaid-ui/src/lib/lostCreate.js';
+import { humanizeError } from '../../../plaid-ui/src/lib/errors.js';
 
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -28,15 +29,18 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
   if (!name || !name.trim()) throw new Error('Document name is required');
   if (!text || !text.trim()) throw new Error('No content to import');
   if (!layerInfo?.isConfigured) {
-    const labels = missingUmrLayerLabels(layerInfo?.missingLayers).join(', ');
-    throw new Error(`The project is missing UMR layers: ${labels || 'set the project up first'}.`);
+    console.error(
+      'UMR layers missing:',
+      missingUmrLayerLabels(layerInfo?.missingLayers).join(', '),
+    );
+    throw new Error('This project is not set up for UMR.');
   }
 
   const parsed = parseUmrFile(text);
   if (!parsed.sentences.length) {
     const first = parsed.errors?.[0];
     throw new Error(
-      first ? `The file could not be read: ${first.message}` : 'No sentences found in the file',
+      first ? `Failed to read the file: ${first.message}` : 'No sentences found in the file.',
     );
   }
   const warnings = [
@@ -216,7 +220,7 @@ export async function importUmrDocument(client, projectId, name, text, layerInfo
       } catch (delErr) {
         console.error('Failed to clean up the document after an import failure:', delErr);
         const wrapped = new Error(
-          `${err.message} The partial document ${documentId} could not be deleted either.`,
+          `${humanizeError(err, 'Failed to import.')} The partial document “${name.trim()}” was not deleted. Delete it by hand.`,
         );
         wrapped.cause = err;
         throw wrapped;
@@ -323,7 +327,7 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       meta.rawGraph = ps.raw?.graph || '';
       meta.rawAlignment = ps.raw?.alignment || '';
       warnings.push(
-        `Sentence ${index}: the graph could not be read and is kept as text (${ps.graph.errors[0].message}).`,
+        `Sentence ${index}: unreadable graph, stored as text (${ps.graph.errors[0].message}).`,
       );
     }
     if (readable) {

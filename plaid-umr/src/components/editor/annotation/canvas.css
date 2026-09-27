@@ -17,6 +17,8 @@
   --umr-doc: hsl(220 45% 33%);
   --umr-doc-temporal: hsl(185 70% 30%);
   --umr-doc-coref: hsl(16 42% 34%);
+  /* A validation warning. Red is an error. */
+  --umr-warning: hsl(320 70% 45%);
 }
 .umr-canvas-list {
   position: relative;
@@ -181,9 +183,11 @@
 }
 /* A problem shows as the corner dot plus a ring OUTSIDE the border, so it
    shows from across a large graph and the border keeps saying who made the
-   node. */
+   node. The warning is magenta, not amber: amber is the contributor's border
+   (plaid-ui's provenance tokens), and a warning ring beside it read as one.
+   Both rings are at least 3:1 against the page. */
 .umr-node:has(> .umr-node-mark--warning) {
-  outline: 2px solid hsl(38 92% 55%);
+  outline: 2px solid var(--umr-warning);
   outline-offset: 2px;
 }
 .umr-node:has(> .umr-node-mark--error) {
@@ -503,7 +507,7 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* Validation. Color means state here: red is an error, amber a warning. */
+/* Validation. Color means state here: red is an error, magenta a warning. */
 .umr-problems-toggle {
   margin-inline-start: auto;
   display: inline-flex;
@@ -528,8 +532,8 @@
   color: hsl(0 72% 40%);
 }
 .umr-count--warning {
-  background: hsl(38 92% 50% / 0.18);
-  color: hsl(26 90% 30%);
+  background: hsl(320 70% 45% / 0.14);
+  color: hsl(320 70% 32%);
 }
 .umr-problems {
   margin: 0 16px 8px;
@@ -566,7 +570,7 @@
   background: hsl(0 84% 60%);
 }
 .umr-node-mark--warning {
-  background: hsl(38 92% 50%);
+  background: var(--umr-warning);
 }
 
 /* Text mode. */

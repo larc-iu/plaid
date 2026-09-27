@@ -115,9 +115,7 @@ describe('SentenceBlock', () => {
         dataVersion={1}
       />,
     );
-    expect(texts(r.container, '.umr-block-note')).toEqual([
-      'Graph kept as text, could not be read',
-    ]);
+    expect(texts(r.container, '.umr-block-note')).toEqual(['Unreadable graph, stored as text']);
     await r.unmount();
   });
 });

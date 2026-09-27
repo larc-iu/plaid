@@ -70,8 +70,9 @@ const Arrow = ({ id, color }) => (
 );
 
 // A chain's color, from its index, cycling through a fixed set. Blues and
-// greens only: red marks an error, violet and amber are the machine's and the
-// contributor's, teal is the temporal family and brown is coreference.
+// greens only: red marks an error and magenta a warning, violet and amber are
+// the machine's and the contributor's, teal is the temporal family and brown
+// is coreference.
 const CHAIN_COLORS = [
   'hsl(210 62% 42%)',
   'hsl(140 55% 32%)',
@@ -704,7 +705,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         title: edge
           ? `Delete ${edge.role} and ${n} node${n === 1 ? '' : 's'}`
           : `Delete ${n} nodes`,
-        description: `${doomed.map((d) => d.concept).join(', ')}. History keeps them.`,
+        description: `${doomed.map((d) => d.concept).join(', ')}. Restorable from History.`,
         confirmLabel: 'Delete',
         destructive: true,
       });
@@ -1225,7 +1226,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
             that note is the only thing between an annotator and starting it
             again over the top of one that is already there. */}
         {sentence.rawGraph && sentence.nodes.length === 0 && (
-          <span className="umr-block-note">Graph kept as text, could not be read</span>
+          <span className="umr-block-note">Unreadable graph, stored as text</span>
         )}
         {!readOnly && !textMode && doc?.canConfirmSentence(sentence.index) && (
           <button

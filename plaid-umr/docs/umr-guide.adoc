@@ -55,12 +55,12 @@ http://localhost:8080/umr/
 ----
 
 Sign in with the email address and password your project administrator gave you.
-Your name at the top right opens your account, with your profile (where the keyboard shortcuts are rebound) and **Logout**.
+Your name at the top right opens your account, with your **Profile** (where the keyboard shortcuts are rebound) and **Sign out**.
 
 The editor has three levels:
 
 * **Projects**: the list of projects you can open.
-* **Documents**: a project's documents, with the project's tabs (Guidelines, Validation, Activity, Project Settings, Import & Export).
+* **Documents**: a project's documents, with the project's tabs (Guidelines, Assistant, Validation, Activity, Settings, Import and export).
 * **A document**: its Annotate, Details, Comments and Export tabs.
 
 = Projects
@@ -68,7 +68,7 @@ The editor has three levels:
 == Creating a project
 
 **New UMR project** on the Projects page makes a project with a text layer, a sentence layer, a word layer, and the four layers UMR annotation lives in.
-Documents come in through **Import & Export**.
+Documents come in through **Import and export**.
 
 == A project from Plaid IGT or Plaid UD
 
@@ -80,7 +80,7 @@ A project with no text at all is set up in Plaid IGT or Plaid UD first.
 
 == Language
 
-**Project Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
+**Settings, General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
 It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
 The page names the file the saved language gets and how many rolesets are in it.
 A language with no bundled file is the ordinary case for a language being documented, and its rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
@@ -97,7 +97,7 @@ The concept picker then offers the roleset in place of the headword, and the arg
 
 == Importing a `.umr` file
 
-**Import & Export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker.
+**Import and export** takes `.umr` files (the UMR 2.0 release format, one file per document) by drop or picker.
 Each file becomes a document named after the file, with its sentences, words, graphs, alignments, gloss lines and document-level annotation.
 
 When the project already has a document of the file's name whose words match the file's, sentence by sentence, and which has no graph yet, the file's graphs land on that document's words instead.
@@ -110,7 +110,7 @@ Older files are read as they are: an obsolete gloss header is written back in it
 == Exporting
 
 A document's **Export** tab shows it as `.umr`, to copy or download.
-**Import & Export** exports every document of the project as a zip.
+**Import and export** exports every document of the project as a zip.
 
 The file is written in the 2026 UMR file format: a sentence's graph in PENMAN with children in the order they were made, an alignment line for every node (`0-0` for an unaligned one), and the document-level block with the temporal, modal and coreference triples of that sentence.
 A re-entrant node is written in full where it is first reached from the root and as a bare variable elsewhere.
@@ -146,7 +146,7 @@ Under them, the project's gloss lines: the morphemes and their glosses grouped u
 Each line is named to its left.
 The lines of an imported file go under the words wherever the file lets that be told: a line with one item per word, a line whose hyphens and equals signs join its items into as many words as the sentence has (`’a- ní- dz- oo- d- záa =go` is one word), or a gloss line that pairs item for item with such a Morphemes line.
 Any other line, and a translation, runs as a row of its own.
-Which layers feed which lines is set in **Project Settings, UMR settings** (see <<Gloss lines>>).
+Which layers feed which lines is set in **Settings, UMR settings** (see <<Gloss lines>>).
 
 == The margin
 
@@ -169,7 +169,7 @@ Clicking the chip goes to the next mention of the chain, in this sentence or ano
 
 The official UMR checks run as you edit.
 A sentence's header counts its errors and warnings; clicking the count lists them.
-A node a check names wears a dot and a border in red for an error or amber for a warning, with the message on hover.
+A node a check names wears a dot and a ring in red for an error or magenta for a warning, with the message on hover.
 Besides the official checks, an edge whose two nodes have come to be in different sentences (a sentence split in Plaid IGT or UD can do this) is an error on the node it leaves: it stays stored, so merging the sentences back makes it whole, but the export leaves it out.
 The project's **Validation** tab lists every problem in every document.
 
@@ -266,9 +266,9 @@ The one kind of triple no node wears, one between two constants (`root :modal au
 
 = Gloss lines
 
-**Project Settings, UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
+**Settings, UMR settings** holds the gloss lines: which of the project's layers feed the lines under the words and in an exported file, in what order.
 A line's source is the morpheme layer (written as `Morphemes`), one of the substrate's annotation layers (Plaid IGT's fields, which say their scope: a morpheme-scoped field is written as `Morpheme Gloss` or `Morpheme Category`, a word-scoped one as `Word Gloss` or `Part of Speech`, a sentence-scoped one as `Sentence Gloss`), or the lines an import stored that nothing else covers.
-**Propose from layers** fills the list from the layers' names and scopes.
+**Propose lines** fills the list from the layers' names and scopes.
 `Index` and `Words` are always written.
 
 The lines are kept in scope order, word lines first, then morpheme lines, then sentence lines, which is the order an interlinear text is read in and what lets a word's morpheme lines share their columns.
@@ -292,7 +292,7 @@ The value sets the pickers offer and the checks accept are the official validato
 
 A document's **Comments** tab holds comments on the document and on its sentences.
 **Activity** shows who has been working on the project and on what.
-**Project Settings, Users & Permissions** manages the project's members and invitation links; **Access Tokens** makes named tokens for scripts and services.
+**Settings, Access** manages the project's members and invitation links, and makes named tokens for scripts and services.
 
 = Services
 

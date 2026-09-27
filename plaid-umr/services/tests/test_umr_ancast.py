@@ -743,8 +743,7 @@ def test_a_document_that_is_not_set_up_for_umr_is_refused_once_and_named():
     helper = servicetest.run(service, REQUEST)
 
     assert len(helper.errors) == 1
-    assert 'not set up for UMR' in helper.errors[0]
-    assert 'document graph layer' in helper.errors[0]
+    assert 'This project is not fully set up.' in helper.errors[0]
     assert service.client.writes == []
 
 

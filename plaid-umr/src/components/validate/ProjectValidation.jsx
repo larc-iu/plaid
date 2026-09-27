@@ -12,7 +12,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { notifyError } from '../../utils/feedback.jsx';
 import { getUmrLayerInfo } from '../../utils/umrLayerUtils.js';
 import { validateProject } from '../../domain/validationQueries.js';
 
@@ -61,7 +61,7 @@ export const ProjectValidation = () => {
       setProblems((found || []).map((p, i) => ({ ...p, key: String(i).padStart(8, '0') })));
     } catch (err) {
       console.error('Validation scan failed:', err);
-      notifyError(humanizeError(err, 'Could not read the project.'), 'Scan failed');
+      notifyError(err, 'Failed to read the project');
     } finally {
       setBusy(false);
     }
@@ -138,7 +138,7 @@ export const ProjectValidation = () => {
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            Set up the project&apos;s UMR layers first.
+            Set the project up for UMR first.
           </p>
         )}
 

@@ -4,7 +4,7 @@ import { Info } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { getUmrLayerInfo, missingUmrLayerLabels } from '../../utils/umrLayerUtils.js';
 import { adoptSubstrate } from '../../domain/umrProjectSetup.js';
-import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { canManageProject } from '@ui/domain/permissions.js';
 import { udProjectUrl } from '@ui/domain/siblingApps.js';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
@@ -41,7 +41,7 @@ export const ProjectConfiguration = () => {
       return data;
     } catch (err) {
       console.error('Failed to load project configuration:', err);
-      notifyError('Failed to load the project.');
+      notifyError(err, 'Failed to load the project');
       return null;
     } finally {
       setLoading(false);
@@ -63,11 +63,11 @@ export const ProjectConfiguration = () => {
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await adoptSubstrate(client, getUmrLayerInfo(project));
-      notifySuccess('Layers saved');
+      notifySuccess('Set up for UMR');
       navigate(`/projects/${projectId}/documents`);
     } catch (err) {
       console.error('Failed to set the project up for UMR:', err);
-      notifyError(humanizeError(err, 'Failed to save the layers.'));
+      notifyError(err, 'Failed to set up the project');
     } finally {
       setSaving(false);
     }
@@ -87,10 +87,10 @@ export const ProjectConfiguration = () => {
         <p className="text-sm text-muted-foreground">
           {project
             ? 'Only a project maintainer can set a project up for UMR.'
-            : 'This project could not be loaded.'}
+            : 'Failed to load the project.'}
         </p>
         <Button variant="outline" size="sm" asChild>
-          <Link to={`/projects/${projectId}/documents`}>Back to Documents</Link>
+          <Link to={`/projects/${projectId}/documents`}>Back to documents</Link>
         </Button>
       </div>
     );

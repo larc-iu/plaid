@@ -108,9 +108,9 @@ const bootstrap = async (client, projectName) => {
     try {
       await client.projects.delete(projectId);
     } catch (deleteErr) {
+      console.error('Setup failed:', err, 'Delete failed:', deleteErr);
       const wrapped = new Error(
-        `Project setup failed (${err?.message || 'Unknown error'}) and the rollback failed too ` +
-          `(${deleteErr?.message || 'Unknown error'}). Delete project ${projectId} manually.`,
+        `Failed to set up the project, and the partial project was not deleted. Delete “${projectName.trim()}” by hand.`,
       );
       wrapped.cause = err;
       throw wrapped;

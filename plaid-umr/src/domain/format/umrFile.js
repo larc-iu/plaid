@@ -547,7 +547,7 @@ export function umrFileProblems(sentences) {
     if (typeof sentence.rawGraph === 'string') {
       const raw = [sentence.rawGraph, sentence.rawAlignment ?? ''].join('\n');
       if (raw.split('\n').some(isStructural)) {
-        at(null, 'The graph kept as text holds a sentence separator or a block header.');
+        at(null, 'The graph stored as text holds a sentence separator or a block header.');
       }
     } else if (sentence.graph) {
       penmanProblems(sentence.graph).forEach((p) => at(p.var, p.message));

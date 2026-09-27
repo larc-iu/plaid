@@ -60,7 +60,7 @@ export const CompareEditor = () => {
       .listDocuments(projectId)
       .then((list) => live && setDocuments((list || []).filter((d) => d.id !== documentId)))
       .catch(
-        (error) => live && setListError(humanizeError(error, 'Could not list the documents.')),
+        (error) => live && setListError(humanizeError(error, 'Failed to list the documents.')),
       );
     return () => {
       live = false;
@@ -81,7 +81,7 @@ export const CompareEditor = () => {
     if (!otherId) return undefined;
     UmrDocument.load({ client, documentId: otherId, projectId, project, user })
       .then((loaded) => live && setOther(loaded))
-      .catch((error) => live && setOtherError(humanizeError(error, 'Could not load it.')));
+      .catch((error) => live && setOtherError(humanizeError(error, 'Failed to load it.')));
     return () => {
       live = false;
     };
@@ -153,7 +153,7 @@ export const CompareEditor = () => {
 
           {otherError && (
             <p className="text-sm text-warning-foreground">
-              The other document could not be read: {otherError}
+              Failed to read the other document: {otherError}
             </p>
           )}
 

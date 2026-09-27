@@ -12,7 +12,7 @@ import { ProjectDocumentsPage } from '@ui/components/shared/ProjectDocumentsPage
 // for this app to add, and a maintainer is sent where it can be made.
 const SETUP = {
   app: 'UMR',
-  note: "UMR's layers are added beside what is already here. The text, the sentences and the words are left as they are.",
+  note: 'Adds UMR annotation. The text, sentences and words do not change.',
   adopt: (client, project, info) => adoptSubstrate(client, info),
   blocked: (info, projectId) =>
     info.textLayer && info.sentenceTokenLayer && info.wordTokenLayer

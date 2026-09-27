@@ -83,5 +83,5 @@ export function describeUmrReconcile({ removed = 0, rebound = 0, resized = 0 } =
       `put ${nodes(resized)} back over ${resized === 1 ? 'its sentence' : 'their sentences'}`,
     );
   }
-  return parts.length ? `Reconcile: ${parts.join(', ')}` : null;
+  return parts.length ? `Repaired: ${parts.join(', ')}` : null;
 }

@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { getUmrLayerInfo, readIlgConfig, UMR_NAMESPACE } from '../../utils/umrLayerUtils.js';
 import { HEADERS, proposeIlg } from '../../domain/ilg.js';
-import { notifySuccess, notifyError, humanizeError } from '../../utils/feedback.jsx';
+import { notifySuccess, notifyError } from '../../utils/feedback.jsx';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@ui/components/ui/card';
@@ -101,7 +101,7 @@ export const UmrSettings = () => {
       notifySuccess('Gloss lines saved');
     } catch (err) {
       console.error('Failed to save the gloss lines:', err);
-      notifyError(humanizeError(err, 'Failed to save the gloss lines.'));
+      notifyError(err, 'Failed to save the gloss lines');
     } finally {
       setSaving(false);
     }
@@ -211,7 +211,7 @@ export const UmrSettings = () => {
             <Plus className="h-4 w-4" /> Add line
           </Button>
           <Button type="button" variant="outline" onClick={propose} disabled={saving}>
-            Propose from layers
+            Propose lines
           </Button>
           <Button type="button" onClick={save} disabled={saving || incomplete}>
             {saving ? 'Saving…' : 'Save'}

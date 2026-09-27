@@ -79,7 +79,7 @@ function App() {
           <Route
             path="/login"
             element={
-              <LoginForm tagline="Uniform Meaning Representation Editor" homePath="/projects" />
+              <LoginForm tagline="Uniform Meaning Representation editor" homePath="/projects" />
             }
           />
           {/* Unauthenticated by necessity: whoever follows an invite link has

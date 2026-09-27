@@ -143,6 +143,6 @@ test('the audit label names what the pass changed', () => {
   assert.equal(describeUmrReconcile({}), null);
   assert.equal(
     describeUmrReconcile({ removed: 1, rebound: 2, resized: 1 }),
-    'Reconcile: removed 1 unaligned node left outside every sentence, rebound 2 unaligned nodes to the sentence they are in, put 1 unaligned node back over its sentence',
+    'Repaired: removed 1 unaligned node left outside every sentence, rebound 2 unaligned nodes to the sentence they are in, put 1 unaligned node back over its sentence',
   );
 });

@@ -106,18 +106,18 @@ export const AnnotationEditor = () => {
             <p className="font-medium">Not set up for UMR</p>
             {canManageProject(project, user) ? (
               <p className="mt-1">
-                This project has no UMR layers.{' '}
+                This project is not set up for UMR.{' '}
                 <Link
                   className="font-medium underline underline-offset-2"
                   to={`/projects/${projectId}/configuration`}
                 >
-                  Set up its layers
+                  Set it up
                 </Link>
                 .
               </p>
             ) : (
               <p className="mt-1">
-                This project has no UMR layers. A project maintainer can set it up.
+                This project is not set up for UMR. A project maintainer can set it up.
               </p>
             )}
           </Notice>

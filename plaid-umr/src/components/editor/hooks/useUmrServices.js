@@ -51,7 +51,7 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
     copy: {
       successTitle: 'Drafted',
       successMessage: 'The draft finished.',
-      errorTitle: 'Draft failed',
+      errorTitle: 'Failed to draft',
       errorMessage: 'The draft did not run.',
       stoppedTitle: 'Draft',
       // The write phase is one critical block with no checkpoint in it, so
@@ -77,7 +77,7 @@ export const useUmrServices = ({ client, projectId, doc, project, acquireWriteLo
     copy: {
       successTitle: 'Compared',
       successMessage: 'The comparison finished.',
-      errorTitle: 'Comparison failed',
+      errorTitle: 'Failed to compare',
       errorMessage: 'The comparison did not run.',
       stoppedTitle: 'Compare',
       stoppedMessage: 'No report was written.',

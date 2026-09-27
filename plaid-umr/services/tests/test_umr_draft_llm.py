@@ -539,7 +539,7 @@ def test_one_bad_sentence_does_not_throw_away_the_good_ones():
     assert (result['drafted'], result['failed']) == (1, 1)
     assert result['notice']['level'] == 'success'
     assert result['notice']['title'] == 'Drafted 1 sentence'
-    assert 'Failed 1 sentence' in result['notice']['message']
+    assert 'Failed to draft 1 sentence' in result['notice']['message']
     assert len(_ops(service.client, 'spans.bulk_create')) == 3
 
 
@@ -610,8 +610,7 @@ def test_a_project_without_the_umr_layers_is_refused_once_and_named():
     helper = servicetest.run(service, REQUEST)
 
     assert len(helper.errors) == 1
-    assert 'not set up for UMR' in helper.errors[0]
-    assert 'node layer' in helper.errors[0]
+    assert 'This project is not fully set up.' in helper.errors[0]
     assert service.client.writes == []
 
 
