@@ -426,9 +426,9 @@ def test_every_phase_of_the_parse_says_what_it_is_doing():
     service = _service()
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.beats[0] == (2, 'Acquiring the document lock…')
+    assert helper.beats[0] == (2, 'Starting…')
     assert [msg for _, msg in helper.beats] == [
-        'Acquiring the document lock…',
+        'Starting…',
         'Reading the document…',
         'Reading the document…',
         'Loading the en models…',
@@ -480,7 +480,7 @@ def test_the_model_load_and_the_parse_both_keep_talking_while_they_run():
 
 # --- stopping ----------------------------------------------------------------
 
-@pytest.mark.parametrize('stop_at', ['Acquiring the document lock…',
+@pytest.mark.parametrize('stop_at', ['Starting…',
                                      'Reading the document…',
                                      'Loading the en models…',
                                      'Parsing 13 characters…'])

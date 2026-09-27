@@ -8,6 +8,7 @@ This demonstrates how easy it is to create new tokenization services.
 import nltk
 from typing import List, Dict, Any, Tuple
 from plaid_client import BaseService, TASKS, Param, service_source
+from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.tokenization import TokenizerModel, TokenSpan, TokenProcessor, helpers
 
 
@@ -149,18 +150,11 @@ class NLTKTokenizerService(BaseService):
                 break
         
         if not text_layer:
-            response_helper.error(f"Text layer {text_layer_id} not found in document {document_id}")
-            return
-        
-        if "text" not in text_layer or text_layer["text"] is None:
-            response_helper.error(f"Text does not exist for text layer {text_layer_id}")
-            return
+            raise setup_incomplete(f"text layer {text_layer_id} not found in document {document_id}")
 
-        # Find the text content
-        text_content = text_layer["text"]["body"]
-        
+        text_content = (text_layer.get("text") or {}).get("body") or ""
         if not text_content.strip():
-            response_helper.error(f"Text content is empty for document {document_id}")
+            response_helper.error("The document has no text.")
             return
         
         # Tokenize with our model

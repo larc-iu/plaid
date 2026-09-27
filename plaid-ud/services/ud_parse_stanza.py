@@ -916,7 +916,7 @@ class StanzaParserService(BaseService):
         # duration: writes by another user are rejected with 423 while we hold
         # it, and if someone else already holds it `locked` raises and we refuse
         # rather than clobber their work.
-        response_helper.progress(2, "Acquiring the document lock…")
+        response_helper.progress(2, "Starting…")
         # Group every write this parse makes into ONE labeled audit-log entry (each
         # op keeps its own description underneath).
         # `parse_document` reports the rest of the way and is a cancellation
