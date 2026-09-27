@@ -109,7 +109,7 @@ export const FeaturesCell = React.memo(
       // feature on its way out.
       if ((e.ctrlKey || e.metaKey) && e.key !== 'Enter') return;
       if (e.key === 'Tab') {
-        if (tabTooSoon()) e.preventDefault();
+        if (tabTooSoon(e)) e.preventDefault();
         return;
       }
       const input = inputRef.current;

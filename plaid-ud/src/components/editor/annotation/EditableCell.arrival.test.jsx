@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderComponent, all } from '@ui/test/renderComponent.jsx';
+import { press } from '../../../test/keyboard.js';
 import { EditableCell } from './EditableCell.jsx';
 import { EditorSessionContext } from './editorSession.js';
 
@@ -46,6 +47,27 @@ describe('EditableCell select on arrival', () => {
 
       expect(document.activeElement).toBe(b);
       expect(selectA).not.toHaveBeenCalled();
+      await unmount();
+    });
+
+    // The select waits a tick so that a click's own caret placement cannot undo
+    // it, and a busy page can make that tick long. A key pressed inside it
+    // still has to replace the value, not go in where the click left the caret
+    // ("dog" typed into "do|g" arrived as "dodogg").
+    it(`selects a ${field} cell before the first key pressed on arrival`, async () => {
+      const { container, step, unmount } = await renderComponent(
+        <EditorSessionContext.Provider value={{ ...SESSION, vocab: { upos: ['NOUN'] } }}>
+          {cell('a', field)}
+        </EditorSessionContext.Provider>,
+      );
+      const [a] = all(container, 'input');
+
+      await step(async () => {
+        a.focus();
+        a.setSelectionRange(1, 1);
+        press(a, 'd');
+        expect([a.selectionStart, a.selectionEnd]).toEqual([0, a.value.length]);
+      });
       await unmount();
     });
   }

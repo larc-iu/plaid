@@ -2,14 +2,17 @@
 
 // Tab repeats far faster than the grid can move focus, and a held-down Tab over
 // a thousand cells used to hang the browser. One clock for the whole grid, so
-// the limit is on the grid and not on each cell in turn.
+// the limit is on the grid and not on each cell in turn. Only the key's
+// auto-repeat is dropped: a Tab pressed on purpose always leaves the cell,
+// since a dropped one keeps the caret where it was and what was typed there is
+// never sent.
 const TAB_INTERVAL_MS = 55;
 let lastTabPress = 0;
 
-/** True when this Tab came too soon after the last one and must be dropped. */
-export const tabTooSoon = () => {
+/** True when this Tab keydown is a held key's repeat that came too soon and must be dropped. */
+export const tabTooSoon = (e) => {
   const now = Date.now();
-  if (now - lastTabPress < TAB_INTERVAL_MS) return true;
+  if (e.repeat && now - lastTabPress < TAB_INTERVAL_MS) return true;
   lastTabPress = now;
   return false;
 };

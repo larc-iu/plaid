@@ -95,12 +95,20 @@ export const EditableCell = React.memo(
     // flag is the only way to say so: `blur()` inside a key handler runs the
     // blur handler before React has committed anything set alongside it.
     const cancelledRef = useRef(false);
+    const settleArrival = () => {
+      if (!selectPendingRef.current) return;
+      selectPendingRef.current = false;
+      const el = inputRef.current;
+      if (el && document.activeElement === el) el.select();
+    };
+    // Only a key that types: an arrow pressed at once still reads the caret
+    // where the arrival left it.
+    const settleArrivalFor = (e) => {
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) settleArrival();
+    };
     const selectOnArrival = () => {
       selectPendingRef.current = true;
-      setTimeout(() => {
-        const el = inputRef.current;
-        if (selectPendingRef.current && el && document.activeElement === el) el.select();
-      }, 0);
+      setTimeout(settleArrival, 0);
     };
     // Mirror `isEditing` into a ref so the value-sync effect can read the latest
     // value without listing `isEditing` in its deps (see below).
@@ -278,8 +286,13 @@ export const EditableCell = React.memo(
     };
 
     const handleKeyDown = (e) => {
+      // A character typed before the deferred select has run (a busy page delays
+      // it) still lands on a selected cell, so it replaces the value as it
+      // would a moment later, rather than going in wherever a click left the
+      // caret.
+      settleArrivalFor(e);
       // Throttle tab key presses to prevent browser hanging
-      if (e.key === 'Tab' && tabTooSoon()) {
+      if (e.key === 'Tab' && tabTooSoon(e)) {
         e.preventDefault();
         return;
       }
@@ -532,6 +545,7 @@ export const EditableCell = React.memo(
           onBlur={handleBlur}
           onSubmit={takeOption}
           onKeyDown={(e, combo) => {
+            settleArrivalFor(e);
             // Arrows belong to the grid until the user has TYPED into this cell:
             // focusing opens the full list, and arrows on a pristine cell keep
             // moving through the grid; once typing has filtered the list, the
@@ -554,7 +568,7 @@ export const EditableCell = React.memo(
               return;
             }
             if (e.key === 'Tab') {
-              if (tabTooSoon()) e.preventDefault();
+              if (tabTooSoon(e)) e.preventDefault();
               return;
             }
             if (e.key === 'Enter') {
