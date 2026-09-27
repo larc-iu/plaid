@@ -168,6 +168,30 @@ describe('authService', () => {
     }
   });
 
+  // Every tab of the browser shares one IndexedDB: a tab left open would
+  // otherwise write the counts back after another tab signed out.
+  it('lets go of what this tab keeps when another tab signs out, and stays', () => {
+    const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+    const hook = vi.fn();
+    const off = onSignOut(hook);
+    try {
+      localStorage.setItem('token', tokenFor('ada@example.com'));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'token', newValue: tokenFor('bob@example.com') }),
+      );
+      expect(hook).not.toHaveBeenCalled();
+      localStorage.removeItem('token');
+      window.dispatchEvent(new StorageEvent('storage', { key: 'token', newValue: null }));
+      expect(hook).toHaveBeenCalledTimes(1);
+      expect(hook).toHaveBeenCalledWith({ elsewhere: true });
+      window.dispatchEvent(new StorageEvent('storage', { key: null }));
+      expect(hook).toHaveBeenCalledTimes(2);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      off();
+    }
+  });
+
   it('runs no hook once it is taken back', () => {
     vi.spyOn(window.location, 'reload').mockImplementation(() => {});
     const hook = vi.fn();

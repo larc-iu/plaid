@@ -46,8 +46,9 @@ const SIGN_OUT_WAIT_MS = 2000;
 
 /**
  * Run `fn` when this tab signs out, before the page reloads. It may return a
- * promise, which is waited on for a short while. Returns a function that
- * takes the hook back.
+ * promise, which is waited on for a short while. It also runs, with
+ * `{ elsewhere: true }`, when another tab of the browser signs out, and that
+ * page stays. Returns a function that takes the hook back.
  */
 export const onSignOut = (fn) => {
   signOutHooks.add(fn);
@@ -55,10 +56,10 @@ export const onSignOut = (fn) => {
 };
 
 // Every hook, each allowed to fail, settled or timed out together.
-const runSignOutHooks = () => {
+const runSignOutHooks = (info = {}) => {
   const settled = [...signOutHooks].map((fn) => {
     try {
-      return Promise.resolve(fn()).catch(() => {});
+      return Promise.resolve(fn(info)).catch(() => {});
     } catch {
       return Promise.resolve();
     }
@@ -168,7 +169,13 @@ const adoptToken = (token) => {
 };
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === 'token') adoptToken(e.newValue);
+    if (e.key === 'token' && e.newValue) adoptToken(e.newValue);
+    // Another tab signed out (`logout` takes the token away): what this tab
+    // keeps for the login goes too, or it would write it back to a browser
+    // store the other tab has just emptied. The page itself stays.
+    else if ((e.key === 'token' || e.key === null) && !localStorage.getItem('token')) {
+      runSignOutHooks({ elsewhere: true });
+    }
   });
 }
 
