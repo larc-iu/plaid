@@ -48,63 +48,10 @@
   margin-inline-start: 80px;
 }
 
-/* Unobtrusive by default — transparent fill, light violet stroke, dimmed — so it
-   doesn't compete with the annotations. Fills in on hover. The descendant
-   selectors (and `*`) out-specify the button variant's own styles so the label
-   and icon recolor with the button. */
-.sentence-confirm .accept-predictions-btn {
-  background-color: transparent;
-  border: 1px solid #c4b5fd;
-  opacity: 0.6;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-}
-.sentence-confirm .accept-predictions-btn,
-.sentence-confirm .accept-predictions-btn * {
-  color: #7c3aed;
-}
-.sentence-confirm .accept-predictions-btn:hover {
-  opacity: 1;
-  background-color: #7c3aed;
-  border-color: #7c3aed;
-}
-.sentence-confirm .accept-predictions-btn:hover,
-.sentence-confirm .accept-predictions-btn:hover * {
-  color: #fff;
-}
+/* Accept and Discard wear plaid-ui's review pair (`plaid-review--accept`,
+   `plaid-review--discard` in its stylesheet), the same pair as plaid-umr's
+   "Accept graph". */
 
-/* "Discard predictions" is the destructive twin, so it is red rather than
-   violet and just as quiet until you are on it. Same shape as its neighbour,
-   which is what says the two are a pair. */
-.sentence-confirm .discard-predictions-btn {
-  background-color: transparent;
-  border: 1px solid #fca5a5;
-  opacity: 0.6;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-}
-.sentence-confirm .discard-predictions-btn,
-.sentence-confirm .discard-predictions-btn * {
-  color: #dc2626;
-}
-.sentence-confirm .discard-predictions-btn:hover {
-  opacity: 1;
-  background-color: #dc2626;
-  border-color: #dc2626;
-}
-.sentence-confirm .discard-predictions-btn:hover,
-.sentence-confirm .discard-predictions-btn:hover * {
-  color: #fff;
-}
-
-/* "Edit text" is always here, unlike its two neighbours, so it is quieter than
-   both: no border, and it only fills in on hover. */
 /* The four standing actions under a sentence: edit its metadata, edit its
    text, ask the assistant, comment. One treatment for all of them, because
    none is the thing you came to the sentence to do and a difference in weight
@@ -188,7 +135,7 @@
   padding: 0;
   border: none;
   border-radius: 9999px;
-  background-color: #7c3aed;
+  background-color: var(--plaid-machine);
   color: #fff;
   cursor: pointer;
   opacity: 0;
@@ -197,7 +144,7 @@
 }
 
 .word-accept:hover {
-  background-color: #6d28d9;
+  background-color: color-mix(in srgb, var(--plaid-machine) 80%, black);
 }
 .word-accept[data-show],
 .token-column:focus-within .word-accept {
@@ -313,9 +260,11 @@
 
 /* Unreviewed material (provenance convention), in the two hues the apps share:
    violet for a machine's, amber for a contributor's. Editing the cell verifies
-   it, which clears this styling; so does accepting it. The dotted underline
-   survives per-value cell colors (e.g. UPOS color coding), so the state stays
-   visible even on colored cells; uncolored cells also take the hue.
+   it, which clears this styling; so does accepting it. The pattern is
+   plaid-ui's `plaid-prov--machine` (italic, dashed underline), restated here
+   because these cells carry their own classes. The dashed underline survives
+   per-value cell colors (e.g. UPOS color coding), so the state stays visible
+   even on colored cells; uncolored cells also take the hue.
 
    A VERIFIED value renders plain, deliberately: watching the mark go is how a
    reviewer knows the confirmation landed. plaid-igt keeps a quiet mark on one
@@ -325,8 +274,9 @@
 .token-form--machine,
 .token-form--contributed {
   font-style: italic;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 3px;
 }
 .editable-field--machine,
 .token-form--machine {
@@ -443,39 +393,6 @@
 .feature-chip-input::placeholder {
   color: #999;
   font-style: italic;
-}
-
-/* The sentence's comment action, one of the four. */
-.sentence-comments {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #374151;
-  background: transparent;
-  cursor: pointer;
-  opacity: 0.55;
-  transition:
-    opacity 120ms ease,
-    background-color 120ms ease,
-    color 120ms ease;
-}
-.sentence-comments:hover {
-  opacity: 1;
-  background-color: #f3f4f6;
-  color: #111827;
-}
-/* A sentence someone has written on: the COUNT carries that, not the whole
-   control, so the four actions keep one resting appearance between them.
-   Setting opacity here would contradict that, and did: the rule had no effect
-   only because `.sentence-confirm .sentence-action` outranks it. */
-.sentence-comments--has .tabular-nums {
-  color: #2563eb;
-  font-weight: 500;
 }
 
 /* A multi-word token's bracket (TokenColumn). The row is held open in every

@@ -118,6 +118,12 @@ test('machine material is violet, a contributor’s is amber, confirmed is plain
   const colorOf = (loc) => loc.evaluate((el) => getComputedStyle(el).color);
   await expect.poll(() => colorOf(cell(page, 0, 'upos'))).toBe('rgb(109, 40, 217)');
   await expect.poll(() => colorOf(cell(page, 1, 'upos'))).toBe('rgb(180, 83, 9)');
+  // And the pattern is theirs too: italic with a DASHED underline (dotted is
+  // an opener in plaid-igt).
+  for (const i of [0, 1]) {
+    await expect(cell(page, i, 'upos')).toHaveCSS('text-decoration-style', 'dashed');
+    await expect(cell(page, i, 'upos')).toHaveCSS('font-style', 'italic');
+  }
 
   // "runs" was machine-made and confirmed, so it renders like anyone's work.
   await expect(cell(page, 2, 'upos')).not.toHaveClass(/editable-field--(machine|contributed)/);

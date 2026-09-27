@@ -157,8 +157,11 @@ test('the sentence "Accept predictions" button is subtle, prominent on hover', a
   const btn = page.locator('.accept-predictions-btn');
   await expect(btn).toBeVisible();
   expect(Number(await opacityOf(btn))).toBeLessThan(1); // dimmed by default
+  // The violet of the marks it accepts, plaid-ui's --plaid-machine.
+  await expect(btn).toHaveCSS('color', 'rgb(109, 40, 217)');
   await btn.hover();
   await expect.poll(() => opacityOf(btn)).toBe('1'); // pops on hover
+  await expect(btn).toHaveCSS('background-color', 'rgb(109, 40, 217)');
 });
 
 test('the per-word ✓ is hidden by default and reveals on keyboard focus', async ({ page }) => {

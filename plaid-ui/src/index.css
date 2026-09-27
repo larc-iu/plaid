@@ -50,12 +50,73 @@
   text-underline-offset: 3px;
 }
 
-/* The same mark on a graph node, where an underline cannot sit: a dashed
-   violet border and no fill. Sets only the border style and colour, so
-   the node keeps its own width and background. */
+/* A contributor's value that no reviewer has confirmed: the same shape in
+   amber. */
+.plaid-prov--contributed {
+  color: var(--plaid-contributed);
+  font-style: italic;
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: var(--plaid-contributed-soft);
+  text-underline-offset: 3px;
+}
+
+/* The same marks on a graph node, where an underline cannot sit: a dashed
+   border in the hue and no fill. Sets only the border style and colour, so
+   the node keeps its own width and background.
+
+   An app whose own stylesheet gives the element a border after this file
+   restates these two properties in its own rule, with these tokens: the
+   grid cells of plaid-ud (SentenceRow.css) and the nodes of plaid-umr
+   (canvas.css). */
 .plaid-prov-node--machine {
   border-style: dashed;
   border-color: var(--plaid-machine);
+}
+.plaid-prov-node--contributed {
+  border-style: dashed;
+  border-color: var(--plaid-contributed);
+}
+
+/* The review pair for a sentence or a graph: Accept in the machine's violet,
+   Discard in red, both outlined, dimmed at rest and filled on hover. Only
+   colours: the host keeps its own shape (a shadcn outline Button in plaid-ud,
+   a pill in plaid-umr). Two classes in the selector so the rule outranks the
+   host's single-class background and border, whichever stylesheet loads
+   last. */
+.plaid-review.plaid-review--accept,
+.plaid-review.plaid-review--discard {
+  background-color: transparent;
+  opacity: 0.6;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.plaid-review.plaid-review--accept {
+  border-color: var(--plaid-machine-soft);
+  color: var(--plaid-machine);
+}
+.plaid-review.plaid-review--discard {
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+.plaid-review.plaid-review--accept:hover,
+.plaid-review.plaid-review--discard:hover,
+.plaid-review.plaid-review--accept:focus-visible,
+.plaid-review.plaid-review--discard:focus-visible {
+  opacity: 1;
+}
+.plaid-review.plaid-review--accept:hover {
+  background-color: var(--plaid-machine);
+  border-color: var(--plaid-machine);
+  color: #fff;
+}
+.plaid-review.plaid-review--discard:hover {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
 }
 
 /* The assistant dock is fixed to the right edge of the window, and toasts are

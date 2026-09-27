@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Check, Undo2, PenLine, Tags } from 'lucide-react';
 import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { Button } from '@ui/components/ui/button';
-import { SentenceComments } from './SentenceComments.jsx';
+import { SentenceComments } from '@ui/components/shared/SentenceComments';
 import { SentenceMetadataDialog } from './SentenceMetadataDialog.jsx';
 import { useEditorSession } from './editorSession.js';
 
@@ -65,7 +65,7 @@ export const SentenceActions = React.memo(
           <div className="sentence-confirm">
             {!isReadOnly && onConfirmTokens && hasInferred && (
               <Button
-                className="accept-predictions-btn h-6 gap-1 px-2 text-xs"
+                className="accept-predictions-btn plaid-review plaid-review--accept h-6 gap-1 px-2 text-xs"
                 variant="outline"
                 onClick={handleConfirmSentence}
                 title="Accept every proposal in this sentence as it stands. Ctrl/Cmd+Enter does one word."
@@ -76,7 +76,7 @@ export const SentenceActions = React.memo(
             )}
             {!isReadOnly && onDiscardTokens && hasMachine && (
               <Button
-                className="discard-predictions-btn h-6 gap-1 px-2 text-xs"
+                className="discard-predictions-btn plaid-review plaid-review--discard h-6 gap-1 px-2 text-xs"
                 variant="outline"
                 onClick={handleDiscardSentence}
                 title="Delete every machine annotation in this sentence that nobody has confirmed. Ctrl/Cmd+Backspace does one word."
@@ -125,6 +125,7 @@ export const SentenceActions = React.memo(
                 anchorLabel={commentAnchorLabel}
                 canWrite={canComment}
                 canDeleteAny={canDeleteAnyComment}
+                className="sentence-action"
               />
             )}
           </div>

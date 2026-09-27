@@ -59,6 +59,12 @@ const open = async (page, tab) => {
   await page.goto(`/#/projects/${S.projectId}/documents/${S.documentId}/${tab}`);
 };
 
+// The Comments tab's thread rows, and not the breadcrumb's items above them.
+const threadRows = (page) =>
+  page.locator('li').filter({
+    has: page.locator('[aria-label="Open this thread"], [aria-label="Collapse this thread"]'),
+  });
+
 test('a sentence is named by its sent_id, or by its position when it has none', async ({
   page,
 }) => {
@@ -70,7 +76,7 @@ test('a sentence is named by its sent_id, or by its position when it has none', 
   // export; the position is the sub-heading either way. Not `exact`: the
   // heading is a bare text node beside its detail, so no ELEMENT's text is
   // just the label.
-  const rows = page.locator('li');
+  const rows = threadRows(page);
   await expect(rows.filter({ hasText: 'ewt-1' })).toHaveCount(1, { timeout: 15000 });
   await expect(rows.filter({ hasText: 'Sentence 1' })).toHaveCount(1); // the detail says where
   await expect(rows.filter({ hasText: 'Sentence 2' })).toHaveCount(1);
@@ -80,15 +86,15 @@ test("the document's own thread is pinned above the sentences", async ({ page })
   await S.client.comments.create('document', S.documentId, 'About the whole thing.', 'Doc');
   await open(page, 'comments');
 
-  const headings = page.locator('li button[type="button"]').nth(1);
+  const headings = threadRows(page).locator('button[type="button"]').nth(1);
   await expect(headings).toBeVisible({ timeout: 15000 });
   // The document's thread is first whatever the sort says.
-  await expect(page.locator('li').first()).toContainText('Doc');
+  await expect(threadRows(page).first()).toContainText('Doc');
 });
 
 test('a thread opens, takes a comment, and the Markdown renders', async ({ page }) => {
   await open(page, 'comments');
-  await page.locator('li').filter({ hasText: 'ewt-1' }).getByRole('button').first().click();
+  await threadRows(page).filter({ hasText: 'ewt-1' }).getByRole('button').first().click();
 
   const box = page.getByLabel('Add a comment');
   await expect(box).toBeVisible({ timeout: 15000 });
