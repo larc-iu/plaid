@@ -3,7 +3,9 @@
             [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.pagination :as pagination]
             [plaid.sql.audit :as audit]
-            [plaid.sql.document :as doc]))
+            [plaid.sql.document :as doc])
+  (:import (java.time Instant)
+           (java.time.format DateTimeParseException)))
 
 (defn get-project-id-from-audit-path
   "Extract project ID from audit path parameters"
@@ -51,6 +53,20 @@
         {:op-types (not-empty tokens)}))
     {:op-types nil}))
 
+;; A time-window bound, parsed to an Instant with every digit it was given.
+;; `inst?` coerced to a Date, which keeps milliseconds only, so a start at an
+;; entry's own time also took the entries earlier in that millisecond and an
+;; end there took the later ones. An entry's time has nine fraction digits.
+(def ^:private instant-param
+  [:fn {:decode/string (fn [x]
+                         (if (string? x)
+                           (try (Instant/parse x) (catch DateTimeParseException _ x))
+                           x))
+        :error/message "should be an ISO-8601 instant, e.g. 2026-05-28T09:00:00Z"
+        :json-schema/type "string"
+        :json-schema/format "date-time"}
+   #(instance? Instant %)])
+
 ;; Pagination query schema: shared by all three audit endpoints. The audit
 ;; log is always paginated into the uniform `{:entries :next-cursor}`
 ;; envelope (default page 100, max 1000); `:cursor` is the opaque token from
@@ -58,8 +74,8 @@
 ;; params on top of the shared `?limit`/`?cursor`.
 (def ^:private pagination-query
   (into [:map
-         [:start-time {:optional true} inst?]
-         [:end-time {:optional true} inst?]
+         [:start-time {:optional true} instant-param]
+         [:end-time {:optional true} instant-param]
          [:op-types {:optional true} string?]
          [:order {:optional true} [:enum "asc" "desc"]]]
         pagination/query-params))
@@ -88,8 +104,8 @@
 
 (def ^:private tally-query
   [:map
-   [:start-time {:optional true} inst?]
-   [:end-time {:optional true} inst?]
+   [:start-time {:optional true} instant-param]
+   [:end-time {:optional true} instant-param]
    [:daily {:optional true} boolean?]])
 
 (def ^:private tally-doc

@@ -118,18 +118,18 @@ The same, in JavaScript:
 
 [,javascript]
 ----
-client = PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
+const client = new PlaidClient("http://localhost:8080", "<SECRET_TOKEN>")
 
-projects = client.projects.list()
+const projects = await client.projects.list()
 console.log("Available projects:", projects)
 
-firstProjectId = projects[0].id
-firstProject = client.projects.get(firstProjectId)
+const firstProjectId = projects[0].id
+const firstProject = await client.projects.get(firstProjectId)
 console.log("First project:", firstProject)
 
-documents = await client.projects.listDocuments(firstProjectId)
-firstDocumentId = documents[0].id
-firstDocument = client.documents.get(firstDocumentId, true)
+const documents = await client.projects.listDocuments(firstProjectId)
+const firstDocumentId = documents[0].id
+const firstDocument = await client.documents.get(firstDocumentId, true)
 console.log("First document:", firstDocument)
 ----
 
@@ -196,7 +196,8 @@ Things to know:
 
 === Custom messages for single writes
 
-For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / last argument of any write method:
+For a single write, you can replace its auto-generated `description` by passing a message as the `audit_message` / `auditMessage` argument of a write method that has one.
+It is the last argument of most writes. In JavaScript, `projects.delete` and `documents.uploadMedia` take an options object after it, and user-data and comment writes take none:
 
 [,python]
 ----
@@ -419,7 +420,7 @@ The differences:
 
 | Extra fields
 | None.
-| `op/time`, `op/user`, `op/batch-id`, and `audit/api-token`.
+| `op/time`, `op/end-time`, `op/user`, `op/batch-id`, and `audit/api-token`.
 |===
 
 If you need the enriched form, treat the event as a trigger and read the endpoint, matching on `id`.
@@ -498,7 +499,8 @@ services = client.messages.discover_services(project_id)
 A project maintainer can prune the registry with `discard_service`/`discardService`, which forgets a previously-seen offline service (it reappears if it ever reconnects); discarding a currently-connected service is rejected with a 409.
 
 `request_service`/`requestService` sends work to a named service and waits for its result.
-The data you pass is delivered verbatim to the service's handler, and the value the service passes to `complete` is what you get back.
+The data you pass reaches the service's handler with its keys recased for the handler's language, as everywhere else in the API: a Python caller's `document_id` arrives in a JavaScript handler as `documentId`.
+The value the service passes to `complete` is what you get back.
 An optional progress callback fires for each `progress` update the service reports:
 
 [,python]
@@ -1143,11 +1145,10 @@ Consider this exact scenario in code:
 
 [,javascript]
 ----
-client1.spans.update(lemmaSpanOneId, "lemmaOne")
-client2.spans.update(posTagSpanTwoId, "posTagTwo")
+await client1.spans.update(lemmaSpanOneId, "lemmaOne")
+await client2.spans.update(posTagSpanTwoId, "posTagTwo")
 // Works fine
-client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
-
+await client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
 ----
 
 When client 1 executes the second lemma span's value, unless they happened to have loaded the document anew after client 2's change, they will not be aware of the new POS tag for the second word.
@@ -1157,11 +1158,12 @@ If client 1 had initiated strict mode at the beginning, then the second request 
 
 [,javascript]
 ----
+await client1.documents.get(documentId) // strict mode checks against the version last read
 client1.enterStrictMode(documentId)
-client1.spans.update(lemmaSpanOneId, "lemmaOne")
-client2.spans.update(posTagSpanTwoId, "posTagTwo")
+await client1.spans.update(lemmaSpanOneId, "lemmaOne")
+await client2.spans.update(posTagSpanTwoId, "posTagTwo")
 // Fails with HTTP 409, since client 2 made a change
-client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
+await client1.spans.update(lemmaSpanTwoId, "lemmaTwo")
 // Exit strict mode when desired
 client1.exitStrictMode()
 ----
@@ -1177,15 +1179,15 @@ Consider:
 
 [,js]
 ----
-client2.checkLock(documentId);
+await client2.documents.checkLock(documentId);
 // => HTTP 204
-client1.acquireLock(documentId);
+await client1.documents.acquireLock(documentId);
 // -> { userId: "client1", expiresAt: 1752260966446 }
-client2.checkLock(documentId);
+await client2.documents.checkLock(documentId);
 // -> { userId: "client1", expiresAt: 1752260966446 }
-client1.releaseLock(documentId);
+await client1.documents.releaseLock(documentId);
 // -> HTTP 204
-client2.checkLock(documentId);
+await client2.documents.checkLock(documentId);
 // -> HTTP 204
 ----
 
@@ -1204,7 +1206,7 @@ await client.documents.locked(documentId, async () => {
 [,python]
 ----
 with client.documents.locked(document_id):
-    # delete + recreate this document's tokens
+    rebuild_tokens(client, document_id)  # delete + recreate this document's tokens
 ----
 
 The block also renews the lock while it runs, which matters for a service.
@@ -1218,10 +1220,12 @@ Work that has not written yet can give up sooner by reading `lock.lost` on the h
 Finally, you may also submit multiple requests in **batch**es.
 Batches are **atomic** meaning that we guarantee that either they will all succeed or all fail.
 This is a very useful guarantee whenever you have sophisticated data integrity requirements that must be orchestrated using more than one request.
+The guarantee holds up to 1,000 operations, the server's cap on one batch request (`limits.batch-operations` in `GET /api/v1/info`, `MAX_BATCH_OPS` in both clients).
+Both clients send a larger batch as consecutive requests, each atomic on its own, so a failure in a later one leaves the earlier ones committed.
 
 A batch is an object rather than a mode of the client.
 `batched` hands your block a batch carrying the same resources as the client (`b.documents`, `b.tokens`, and the rest), and a write made on that batch is queued instead of sent.
-The queue is submitted as one request when the block ends, and dropped if the block raises.
+The queue is submitted when the block ends (as one request, up to the 1,000-operation cap), and dropped if the block raises.
 A write made on the *client* while a batch is open is never part of it and goes over the wire at once, so code that knows nothing of your batch cannot land inside it.
 
 Here is an example of how to submit a batch using the JavaScript client:
@@ -1600,7 +1604,7 @@ For a document's history, see the <<Audit Log>>.
 A document GET accepts an `as-of` query parameter carrying an ISO-8601 instant, e.g. `GET /api/v1/documents/{id}?as-of=2026-06-01T12:00:00Z&include-body=true`, and returns the document exactly as it stood at that moment — reconstructed from the audit log, so it is always available, requires no configuration, and is never stale. A few details worth knowing:
 
 * Time travel is read-only and only defined on the top-level document GET; document sub-routes (media, locks, metadata) and all other endpoints refuse `as-of` with a 400.
-* A timestamp landing in the middle of an atomic batch is treated as falling just before the batch began — you can never observe a half-applied batch.
+* A timestamp landing in the middle of an atomic batch request is treated as falling just before that request began, so you never observe a half-applied request. A batch the client split past 1,000 operations is several requests, and a moment between two of them is observed as it was.
 * A timestamp at or after the present simply returns the current state.
 * Documents that have since been deleted remain readable at timestamps when they existed, for users with current access to the project.
 * Access control always reflects *current* project membership, not membership as of the requested time.

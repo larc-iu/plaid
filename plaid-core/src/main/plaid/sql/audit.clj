@@ -98,7 +98,9 @@
                      the batch's own last op (see `batch-ends`)
     :audit/user      the head op's user (per-op users are on each op)
     :audit/projects / :audit/documents  distinct across members
-    :audit/ops       every member, oldest first
+    :audit/ops       every member, oldest first. An op's :op/end-time is the
+                     time to read at to see that op done: its own ts, or its
+                     batch's last op when it ran in one
     :audit/group-id + :audit/message   when the unit is a logical group
                      (message absent if the client never labeled it)
     :audit/batch-id  when the unit is an unlabeled atomic batch
@@ -111,7 +113,9 @@
         documents (batch-fetch-by-ids db :documents (mapv :document_id member-rows))
         tokens    (batch-fetch-by-ids db :api_tokens (mapv :token_id member-rows))
         groups    (batch-fetch-by-ids db :operation_groups (mapv :group_id member-rows))
-        batch-end (batch-ends db (keep #(:batch_id (peek (vec (by-unit (:unit %))))) units))
+        batch-end (batch-ends db (keep :batch_id member-rows))
+        ;; the time to read at to see this op done: its own, or its batch's end
+        end-time  (fn [row] (or (some-> (:batch_id row) batch-end) (:ts row)))
         op-summary (fn [row]
                      (let [proj (some-> (:project_id row) projects select-proj)
                            doc  (some-> (:document_id row) documents select-doc)]
@@ -119,6 +123,7 @@
                                 :op/type (some-> (:op_type row) keyword)
                                 :op/description (:description row)
                                 :op/time (:ts row)
+                                :op/end-time (end-time row)
                                 :op/user (some-> (:user_id row) users select-user)}
                          proj (assoc :op/project proj)
                          doc (assoc :op/document doc)
@@ -130,8 +135,7 @@
                   token (some-> (:token_id head) tokens select-token)]
               (cond-> {:audit/id unit
                        :audit/time head_ts
-                       :audit/end-time (let [lst (peek ops)]
-                                         (or (some-> (:batch_id lst) batch-end) (:ts lst)))
+                       :audit/end-time (end-time (peek ops))
                        :audit/user (some-> (:user_id head) users select-user)
                        ;; `keep`, not `mapv`: an op can reference a project or
                        ;; document that has since been DELETED, and its row is
@@ -156,29 +160,23 @@
 
 (defn- ts-where
   "Build a HoneySQL conjunction for an optional, inclusive :ts time range.
-  Callers pass Instants, Dates, ZonedDateTimes or ISO-8601 strings.
+  Callers pass Instants (the routes parse the query string to one, keeping
+  every digit) or ISO-8601 strings.
 
   `ts` is stored with nine fraction digits and compared as a string, so each
   bound is rendered in that same fixed width first. A shorter rendering
   sorts wrong: `...59.313Z` sorts AFTER `...59.313199571Z`, which dropped the
-  very entry whose time a caller resumed from.
-
-  A Date (what the routes' `inst?` coercion yields) holds milliseconds only,
-  so it names that whole millisecond: an end bound reaches its last
-  nanosecond, and ending a read at an entry's own time keeps the entry."
+  very entry whose time a caller resumed from."
   [start-time end-time]
-  (let [->instant (fn [x]
-                    (cond
-                      (nil? x) nil
-                      (string? x) (java.time.Instant/parse x)
-                      (instance? java.time.Instant x) x
-                      (instance? java.util.Date x) (.toInstant ^java.util.Date x)
-                      (instance? java.time.ZonedDateTime x) (.toInstant ^java.time.ZonedDateTime x)
-                      :else (throw (ex-info (str "Cannot use as an audit time bound: " (pr-str x))
-                                            {:value x}))))
-        from (some-> start-time ->instant psc/instant->iso)
-        to   (when-let [^java.time.Instant i (->instant end-time)]
-               (psc/instant->iso (if (instance? java.util.Date end-time) (.plusNanos i 999999) i)))]
+  (let [->iso (fn [x]
+                (cond
+                  (nil? x) nil
+                  (string? x) (psc/instant->iso (java.time.Instant/parse x))
+                  (instance? java.time.Instant x) (psc/instant->iso x)
+                  :else (throw (ex-info (str "Cannot use as an audit time bound: " (pr-str x))
+                                        {:value x}))))
+        from (->iso start-time)
+        to   (->iso end-time)]
     (cond-> []
       from (conj [:>= :ts from])
       to   (conj [:<= :ts to]))))

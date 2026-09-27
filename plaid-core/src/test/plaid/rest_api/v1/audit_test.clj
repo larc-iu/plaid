@@ -314,3 +314,40 @@
       (let [r (get-project-audit admin-request proj {:end-time t})]
         (assert-ok r)
         (is (= (mapv :audit/id (take 3 entries)) (ids r)))))))
+
+(deftest audit-window-bounds-are-exact-to-the-nanosecond
+  ;; Two writes in one millisecond: a bound at the second one's time takes
+  ;; that one and not the first, and a bound at the first takes the first
+  ;; and not the second. Read to the millisecond, each bound took both.
+  (let [proj (create-test-project admin-request "AuditExact")
+        last-op @#'plaid.sql.common/last-op-instant
+        ;; Put the next stamps a little ahead of the clock, on a millisecond
+        ;; boundary, so the batch's two writes land 1 ns apart in one
+        ;; millisecond whatever the machine's speed.
+        _ (reset! last-op (-> (java.time.Instant/now)
+                              (.plusMillis 200)
+                              (.truncatedTo java.time.temporal.ChronoUnit/MILLIS)))
+        resp (api-call admin-request
+                       {:method :post :path "/api/v1/batch"
+                        :body [{:path "/api/v1/documents" :method "post"
+                                :body {:project-id proj :name "First"}}
+                               {:path "/api/v1/documents" :method "post"
+                                :body {:project-id proj :name "Second"}}]})
+        ;; let the clock pass the stamps before anything else writes
+        _ (Thread/sleep 250)
+        _ (assert-ok resp)
+        entry (last (-> (get-project-audit admin-request proj) :body :entries))
+        [t1 t2] (map :op/time (:audit/ops entry))
+        op-times (fn [r] (assert-ok r) (mapv :op/time (mapcat :audit/ops (-> r :body :entries))))]
+    (is (= 2 (count (:audit/ops entry))))
+    (is (= (subs t1 0 23) (subs t2 0 23)) "both writes are in one millisecond")
+    (testing "a start at the second write leaves out the first"
+      (is (= [t2] (op-times (get-project-audit admin-request proj {:start-time t2})))))
+    (testing "an end at the first write leaves out the second"
+      (is (= [t1] (filter #{t1 t2} (op-times (get-project-audit admin-request proj {:end-time t1}))))))
+    (testing "the tally counts by the same bounds"
+      (let [r (get-audit-tally admin-request proj {:start-time t2})]
+        (assert-ok r)
+        (is (= [1] (map :operations (-> r :body :entries))))))
+    (testing "a bound that is not a time is a 400"
+      (is (= 400 (:status (get-project-audit admin-request proj {:start-time "yesterday"})))))))

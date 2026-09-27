@@ -94,9 +94,53 @@
         op-time (-> entry :audit/ops last :op/time)]
     (is (= ["before"] (span-values (hread/get-with-layer-data-at db doc-a op-time))))))
 
+(deftest an-op-inside-a-batch-ends-with-its-batch
+  ;; The history rail lets a reader pick one op of an entry. An op in a
+  ;; batch carries the batch's end time, so reading or restoring there shows
+  ;; the whole batch done rather than the state before it.
+  (let [{:keys [proj doc-a word text-b span]} (setup!)
+        _ (assert-ok (api-call admin-request
+                               {:method :post :path "/api/v1/batch"
+                                :body [{:path (str "/api/v1/spans/" span) :method "patch" :body {:value "after"}}
+                                       {:path "/api/v1/tokens" :method "post"
+                                        :body {:token-layer-id word :text text-b :begin 0 :end 1}}]}))
+        entry (last-entry doc-a)
+        op (-> entry :audit/ops last)]
+    (is (= 1 (count (:audit/ops entry))) "the document's entry holds its own op only")
+    (is (= (:audit/end-time entry) (:op/end-time op)))
+    (is (neg? (compare (:op/time op) (:op/end-time op))))
+    (is (= ["after"] (span-values (hread/get-with-layer-data-at db doc-a (:op/end-time op)))))
+    (let [resp (restore-dry-run doc-a (:op/end-time op))]
+      (assert-ok resp)
+      (is (zero? (-> resp :body :total)) (pr-str (:body resp))))
+    (testing "the project's entry gives each op the same batch end"
+      (let [pentry (last (-> (get-project-audit admin-request proj) :body :entries))]
+        (is (= 2 (count (:audit/ops pentry))))
+        (is (apply = (:audit/end-time pentry) (map :op/end-time (:audit/ops pentry))))))))
+
+(deftest an-op-in-a-group-of-batches-ends-with-its-own-batch
+  (let [{:keys [doc-a word text-b span]} (setup!)
+        group (str (random-uuid))
+        batch! (fn [value]
+                 (assert-ok (api-call admin-request
+                                      {:method :post :path (str "/api/v1/batch?group-id=" group)
+                                       :body [{:path (str "/api/v1/spans/" span) :method "patch" :body {:value value}}
+                                              {:path "/api/v1/tokens" :method "post"
+                                               :body {:token-layer-id word :text text-b :begin 0 :end 1}}]})))
+        _ (batch! "middle")
+        _ (batch! "after")
+        entry (last-entry doc-a)
+        [first-op second-op] (:audit/ops entry)]
+    (is (= 2 (count (:audit/ops entry))))
+    (is (neg? (compare (:op/end-time first-op) (:op/time second-op))))
+    (is (= (:audit/end-time entry) (:op/end-time second-op)))
+    (is (= ["middle"] (span-values (hread/get-with-layer-data-at db doc-a (:op/end-time first-op)))))
+    (is (= ["after"] (span-values (hread/get-with-layer-data-at db doc-a (:op/end-time second-op)))))))
+
 (deftest a-lone-write-ends-at-its-own-time
   (let [{:keys [doc-a span]} (setup!)]
     (assert-ok (update-span admin-request span :value "after"))
     (let [entry (last-entry doc-a)]
       (is (= (:audit/time entry) (:audit/end-time entry)))
+      (is (= (:audit/time entry) (-> entry :audit/ops first :op/end-time)))
       (check-entry-lands-after! doc-a))))
