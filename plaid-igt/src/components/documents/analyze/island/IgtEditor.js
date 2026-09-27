@@ -443,11 +443,19 @@ export class IgtEditor {
         if (cell.igtUnsent) this._noteUnsent(cell.dataset.cellKey, cell.igtUnsent, cell);
       }
     }
+    let ids = null;
     for (const [key, entry] of this._unsent) {
       const cell = this._destroyed
         ? null
         : this.container.querySelector(`.igt-field[data-cell-key="${key}"]`);
       let keep = !this._destroyed;
+      if (keep && !cell) {
+        // Not drawn: on another page, or gone from the document (a refused
+        // split takes its new morphemes with it), and then there is no cell
+        // to take it back and nothing to ask about.
+        ids ??= this._shownIds();
+        keep = ids.has(key.slice(key.indexOf(':') + 1, key.lastIndexOf(':')));
+      }
       if (keep && cell && !cell.igtUnsent) {
         // The cell it was put into let it go (focused, or the stored value
         // moved on). A cell drawn afresh takes it back while the stored value
@@ -465,6 +473,20 @@ export class IgtEditor {
       this._unsent.delete(key);
       setUnsavedDraft(entry, null);
     }
+  }
+
+  // Every sentence, word and morpheme id in the document, on any page: what a
+  // cell key names.
+  _shownIds() {
+    const ids = new Set();
+    for (const sentence of this.doc.sentences || []) {
+      ids.add(sentence.id);
+      for (const token of sentence.tokens || []) {
+        ids.add(token.id);
+        for (const morph of token.morphemes || []) ids.add(morph.id);
+      }
+    }
+    return ids;
   }
 
   // Remember a value put back unsent, for a cell not drawn right now.

@@ -295,6 +295,22 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     expect(cell('ma:m-1:Gloss').value).toBe('AAA');
   });
 
+  it('is not asked about once what it was typed into is gone from the document', async () => {
+    const { doc, refuse } = mountPaged();
+    const a = cell('ma:m-1:Gloss');
+    focus(a);
+    type(a, 'AAA');
+    a.blur();
+    editor._setPage(1);
+    await settle();
+    // The server's copy has other morphemes under the first word.
+    const gone = JSON.parse(JSON.stringify(doc.raw).replaceAll('"m-1"', '"m-9"'));
+    doc.client.documents.get = async () => JSON.parse(JSON.stringify(gone));
+    await refuse();
+    await settle(30);
+    expect(hasUnsavedDraft()).toBe(null);
+  });
+
   it('gives way when the stored value moved on while its page was away', async () => {
     const { doc, refuse } = mountPaged();
     const a = cell('ma:m-1:Gloss');
