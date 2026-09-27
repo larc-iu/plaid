@@ -800,7 +800,7 @@ export const vocabPopover = {
     const title = linked
       ? canEditEntry
         ? 'Type of the linked lexicon entry (applies to every morpheme linked to it)'
-        : 'Type comes from the linked lexicon entry; only its maintainers can change it'
+        : 'Type comes from the linked lexicon entry. Only its maintainers can change it.'
       : 'Type of this morpheme';
     return html`
       <label class="igt-vocab-pop__type" title=${title} @click=${(e) => e.stopPropagation()}>

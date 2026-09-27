@@ -272,7 +272,7 @@ export function alignWords(body, begin, end, forms) {
   );
   if (forms.length && runs.length !== forms.length && (guessed || leftOver.length)) {
     warnings.push(
-      `${plural(forms.length, 'analyzed word')} for ${plural(runs.length, 'word of text', 'words of text')}; aligned by position`,
+      `${plural(forms.length, 'analyzed word')} for ${plural(runs.length, 'word of text', 'words of text')}, aligned by position`,
     );
   }
   return { spans, warnings };

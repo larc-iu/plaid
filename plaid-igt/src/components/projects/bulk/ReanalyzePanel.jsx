@@ -112,8 +112,8 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
         </div>
         <p className="text-xs text-muted-foreground">
           Lists every occurrence of the word with the analysis it carries now. Pick the analysis
-          that should win; the ticked occurrences get it (segmentation, glosses, and links),
-          replacing whatever they had.
+          that should win. The ticked occurrences get it (segmentation, glosses, and links) in place
+          of their own.
         </p>
       </div>
       <Progress text={r.progress} />
@@ -123,7 +123,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
             <p className="py-6 text-center text-sm text-muted-foreground">
               {plan.rows.length === 0
                 ? `No occurrences of “${plan.form}”.`
-                : `“${plan.form}” occurs ${plural(plan.rows.length, 'time')}, but none of them is analyzed yet. Analyze one in a document first; then it can be applied to the rest here.`}
+                : `“${plan.form}” occurs ${plural(plan.rows.length, 'time')}, and none is analyzed. Analyze one in a document first.`}
             </p>
           ) : (
             <div className="rounded-lg border bg-card p-4">
@@ -174,9 +174,8 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
                   <strong>{b.value}</strong> in {b.field} ({b.scope})
                 </Fragment>
               ))}
-              , which its tagset does not allow. Applying it would put that value on every ticked
-              occurrence at once, so pick a different analysis or fix this one in its document
-              first.
+              , which its tagset does not allow. Pick another analysis, or fix this one in its
+              document.
             </p>
           )}
           {target && (

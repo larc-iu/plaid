@@ -392,7 +392,7 @@ export function buildElanDocuments(files, nodes, roles, options = {}) {
       const found = childrenOn(ann, tier, [node]);
       if (found.length > 1) {
         docWarnings.push(
-          `${nodeLabel(node)} has ${found.length} annotations under one parent; kept the first.`,
+          `${nodeLabel(node)} has ${found.length} annotations under one parent. The first is kept.`,
         );
       }
       return found[0]?.value?.trim() ?? '';

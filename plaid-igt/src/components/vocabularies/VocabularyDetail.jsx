@@ -1117,7 +1117,7 @@ export const VocabularyDetail = () => {
                         emptyHint="No tagsets yet. Add one, then assign it to a field above."
                         seedLabel="Add values used in this vocabulary"
                         valuesNoun="entries"
-                        enforceNote="Closed lists apply to what you type here and to Bulk Add. Values brought in by an import or a service are not checked; the item list marks them."
+                        enforceNote="Closed lists apply to what you type here and to Bulk Add. Values from an import or a service are not checked. The entry list marks them."
                       />
                     </div>
                   </div>

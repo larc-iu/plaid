@@ -42,7 +42,7 @@ export const OPERATIONS = [
   {
     id: 'merge',
     label: 'Merge lexicon entries',
-    blurb: 'Fold duplicate entries into one; every linked word or morpheme follows.',
+    blurb: 'Fold duplicate entries into one. Every linked word or morpheme follows.',
   },
 ];
 

@@ -33,7 +33,7 @@ export const grid = {
       return html` <div
         class="igt-row-label ${cls}${this._rowCls(key)}"
         data-row=${key}
-        title=${collapsed ? `${name} (${scope}) — minimized` : `${name} (${scope})`}
+        title=${collapsed ? `${name} (${scope}), minimized` : `${name} (${scope})`}
         role="button"
         tabindex="0"
         aria-expanded=${collapsed ? 'false' : 'true'}
@@ -396,7 +396,7 @@ export const grid = {
               <span
                 class="igt-sentence-anno__label"
                 data-row=${key}
-                title=${collapsed ? `${name} (sentence) — minimized` : `${name} (sentence)`}
+                title=${collapsed ? `${name} (sentence), minimized` : `${name} (sentence)`}
                 role="button"
                 tabindex="0"
                 aria-expanded=${collapsed ? 'false' : 'true'}

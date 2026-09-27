@@ -66,7 +66,7 @@ export function searchDomains(layerInfo, vocabs) {
   if ((vocabs || []).length > 0) {
     domains.push({
       id: 'lexicon',
-      label: 'Lexicon (linked items)',
+      label: 'Lexicon (linked entries)',
       kind: 'lexicon',
       vocabIds: vocabs.map((v) => v.id),
     });

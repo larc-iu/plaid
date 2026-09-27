@@ -264,8 +264,8 @@ export const MergePanel = ({ project, client }) => {
         </div>
         <p className="text-xs text-muted-foreground">
           Tick the entries to merge and choose which one survives. Every word and morpheme linked to
-          the others is re-linked to the survivor; the survivor’s own fields are kept as they are
-          and the other entries are deleted.
+          the others is re-linked to the survivor. The survivor’s fields are kept and the other
+          entries are deleted.
         </p>
       </div>
 
@@ -324,7 +324,7 @@ export const MergePanel = ({ project, client }) => {
             )}
             {items.length > 200 && shown.length === 200 && (
               <p className="px-3 py-2 text-xs text-muted-foreground">
-                Showing the first 200; narrow the filter to find others.
+                Showing the first 200. Narrow the filter to find others.
               </p>
             )}
           </div>

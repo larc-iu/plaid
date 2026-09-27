@@ -996,9 +996,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
     if (shouldStop?.()) throw new ImportCancelled();
     const target = projectVocabs.find((v) => v.name === vocab.name);
     if (!target) {
-      warnings.push(
-        `Vocabulary "${vocab.name}" has no same-named target in the project. Items skipped`,
-      );
+      warnings.push(`Vocabulary "${vocab.name}" is not in the project. Its entries were skipped.`);
       continue;
     }
     const map = await importVocabulary({

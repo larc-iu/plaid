@@ -441,7 +441,7 @@ const DocumentEditor = () => {
             {!isViewingHistorical && permissions.isReadOnly && (
               <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <p className="font-medium">Read-only</p>
-                <p className="text-xs">You have viewer access to this project.</p>
+                <p className="text-xs">You have reader access to this project.</p>
               </div>
             )}
 

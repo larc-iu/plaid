@@ -454,7 +454,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         onToggle={toggleStep}
         hint={
           serviceHint(translateSpot, 'No translation service is online.') ??
-          'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone; earlier machine drafts are refreshed.'
+          'A model drafts a free translation for every sentence, from the words and any glosses. Translations a person wrote are left alone. Earlier machine drafts are refreshed.'
         }
       >
         {steps.translate && translateSpot.service && (
@@ -482,7 +482,7 @@ export const AutoAnalyzeDialog = ({ open, onOpenChange, doc, onRunStatus }) => {
         onToggle={toggleStep}
         hint={
           serviceHint(analyzeSpot, 'No analysis service is online.') ??
-          'A model analyzes every sentence. Words a person analyzed are left alone; earlier machine proposals are refreshed.'
+          'A model analyzes every sentence. Words a person analyzed are left alone. Earlier machine proposals are refreshed.'
         }
       >
         {steps.analyze && analyzeSpot.service && (

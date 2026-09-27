@@ -120,8 +120,8 @@ export const RespellPanel = ({ project, projectId, client, layerInfo }) => {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Whole words are respelled in the baseline text; every word keeps its morphemes, glosses,
-          and lexicon links. Text outside words (punctuation between them, gaps) is left alone.
+          Whole words are respelled in the baseline text. Each keeps its morphemes, glosses, and
+          lexicon links. Text outside words (punctuation between them, gaps) is left alone.
         </p>
       </div>
       <Progress text={r.progress} />

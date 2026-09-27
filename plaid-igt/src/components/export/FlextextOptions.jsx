@@ -164,8 +164,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         <p className="text-xs text-muted-foreground">
           Writing-system codes FLEx will see (e.g. <code>lez</code>, <code>en</code>). Unknown tags
           can be remapped in FLEx at import time. A field whose name ends in a tag, like{' '}
-          <code>Gloss (nl)</code>, goes out under that tag; set any other field’s tag beside it
-          below.
+          <code>Gloss (nl)</code>, goes out under that tag. Set any other field’s tag below.
         </p>
         <LangInput
           id="ft-lang-baseline"

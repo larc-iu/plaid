@@ -218,7 +218,7 @@ export const vocabMutations = {
       this.setError(`Vocab item ${vocabItemId} not found`);
       return false;
     }
-    const label = 'Failed to link vocab item';
+    const label = 'Failed to link the entry';
     if (!this._canWrite(label)) return false;
     // Linking an unanalyzed word's morpheme makes the morpheme too: a link
     // needs a token to point at. A word id passes through.
@@ -413,7 +413,7 @@ export const vocabMutations = {
   async unlinkVocab(tokenId) {
     const { link: priorLink, vocabId: priorVocabId } = findPriorLink(this._vocabularies, tokenId);
     if (!priorLink || !priorVocabId) return false;
-    const label = 'Failed to unlink vocab item';
+    const label = 'Failed to unlink the entry';
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       if (vocabs[priorVocabId]) {
@@ -758,7 +758,7 @@ export const vocabMutations = {
       this.setError(`Vocabulary ${vocabId} not found`);
       return false;
     }
-    const label = 'Failed to create and link vocab item';
+    const label = 'Failed to create and link the entry';
     if (!this._canWrite(label)) return false;
     // Same as linkVocab: an unanalyzed word's morpheme is made too, before
     // anything points at it.

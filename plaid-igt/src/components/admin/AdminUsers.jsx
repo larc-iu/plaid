@@ -102,7 +102,7 @@ export const AdminUsers = ({ client, currentUser }) => {
             <Badge
               variant="outline"
               className="whitespace-nowrap"
-              title={`Deactivated ${timeAgo(u.deactivatedAt)} — ${fullTimestamp(u.deactivatedAt)}`}
+              title={`Deactivated ${timeAgo(u.deactivatedAt)} (${fullTimestamp(u.deactivatedAt)})`}
             >
               Deactivated
             </Badge>

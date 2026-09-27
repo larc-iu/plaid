@@ -828,7 +828,7 @@ describe('buildElanDocuments', () => {
     })();
     const { build } = buildFrom([[xml, 'x.eaf']], { [noteKey]: ROLES.SENTENCE_FIELD });
     expect(build.documents[0].sentences[0].fields).toEqual({ note: 'first' });
-    expect(build.documents[0].warnings[0]).toMatch(/kept the first/);
+    expect(build.documents[0].warnings[0]).toMatch(/The first is kept/);
   });
 });
 

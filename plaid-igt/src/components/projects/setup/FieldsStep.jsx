@@ -61,7 +61,7 @@ export const FieldsStep = ({ data, onDataChange }) => {
             fields went out blank. */}
         <p className="mt-2 text-sm text-muted-foreground">
           Every field listed here is created. <strong>Language</strong> is the writing-system tag
-          FieldWorks will see, such as <code>en</code> or <code>tur</code>; leave it blank unless
+          FieldWorks will see, such as <code>en</code> or <code>tur</code>. Leave it blank unless
           you export to FLEx.
         </p>
       </div>
