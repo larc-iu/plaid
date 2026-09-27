@@ -2,9 +2,19 @@ import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { VocabularyManager } from './VocabularyManager';
 import { notifyError } from '@/utils/feedback';
+import { useAuth } from '@/contexts/AuthContext.jsx';
+
+// What to show for a refused write: the server's own words when it gave any
+// (a refused link says who may make it), otherwise the error for the toast to
+// humanize.
+const refusal = (error) => error?.responseData?.error || error;
 
 export const VocabularySettings = ({ projectId, client }) => {
+  const { user } = useAuth();
   const [hasError, setHasError] = useState(false);
+  // Bumped after a failed save, which may have linked some vocabularies and
+  // not others, so the list reloads from the server.
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Load current project vocabularies
   const handleLoadData = async () => {
@@ -22,13 +32,19 @@ export const VocabularySettings = ({ projectId, client }) => {
       const project = await client.projects.get(projectId);
       const linkedVocabIds = (project.vocabs || []).map((v) => v.id);
 
-      // Transform to component format
-      const vocabularies = allVocabs.map((vocab) => ({
-        name: vocab.name || vocab.id,
-        id: vocab.id,
-        enabled: linkedVocabIds.includes(vocab.id),
-        isCustom: false, // All existing vocabs from API are not custom
-      }));
+      // Transform to component format. Linking a vocabulary takes one of its
+      // maintainers, so an unlinked row the user does not maintain is locked.
+      // Unlinking stays open to any project maintainer.
+      const vocabularies = allVocabs.map((vocab) => {
+        const enabled = linkedVocabIds.includes(vocab.id);
+        return {
+          name: vocab.name || vocab.id,
+          id: vocab.id,
+          enabled,
+          isCustom: false, // All existing vocabs from API are not custom
+          locked: !enabled && !user?.isAdmin && !(vocab.maintainers || []).includes(user?.id),
+        };
+      });
 
       return { vocabularies };
     } catch (error) {
@@ -77,15 +93,15 @@ export const VocabularySettings = ({ projectId, client }) => {
       }
     } catch (error) {
       console.error('Failed to save vocabularies configuration:', error);
-      setHasError(true);
       throw error;
     }
   };
 
-  // Handle errors
-  const handleError = () => {
-    setHasError(true);
-    notifyError('Failed to update vocabularies configuration', 'Configuration Error');
+  // A failed load has already swapped the screen for the panel below. A failed
+  // save says why in a toast and reloads the list.
+  const handleError = (error) => {
+    notifyError(refusal(error), 'Vocabularies not updated');
+    setReloadKey((k) => k + 1);
   };
 
   if (hasError) {
@@ -115,6 +131,7 @@ export const VocabularySettings = ({ projectId, client }) => {
       </p>
 
       <VocabularyManager
+        key={reloadKey}
         onLoadData={handleLoadData}
         onSaveChanges={handleSaveChanges}
         onError={handleError}

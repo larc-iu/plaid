@@ -95,6 +95,8 @@ export const VocabularyManager = ({
   };
 
   const handleVocabToggle = async (vocabId, enabled) => {
+    // A locked row is one the user may not link (see VocabularySettings).
+    if (enabled && vocabularies.find((v) => v.id === vocabId)?.locked) return;
     // For settings mode, handle unlinking with confirmation
     if (isSettings && !enabled) {
       const vocab = vocabularies.find((v) => v.id === vocabId);
@@ -278,7 +280,10 @@ export const VocabularyManager = ({
               {paged.pageItems.map((record) => (
                 <tr
                   key={record.tableId}
-                  className="cursor-pointer border-t hover:bg-muted/50"
+                  className={cn(
+                    'border-t',
+                    record.locked ? 'cursor-default' : 'cursor-pointer hover:bg-muted/50',
+                  )}
                   onMouseEnter={() => setHoveredVocab(record.id)}
                   onMouseLeave={() => setHoveredVocab(null)}
                   onClick={() => handleVocabToggle(record.id, !record.enabled)}
@@ -291,8 +296,9 @@ export const VocabularyManager = ({
                         at the far left. The row still toggles. */}
                     <input
                       type="checkbox"
-                      className="h-4 w-4 cursor-pointer accent-primary"
+                      className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-default"
                       checked={record.enabled}
+                      disabled={record.locked}
                       aria-label={`${record.enabled ? 'Unlink' : 'Link'} ${record.name}`}
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => handleVocabToggle(record.id, event.target.checked)}
@@ -308,6 +314,11 @@ export const VocabularyManager = ({
                             title="Two vocabularies share this name. This is the end of its id"
                           >
                             · {String(record.id).slice(-6)}
+                          </span>
+                        )}
+                        {record.locked && (
+                          <span className="block text-xs not-italic text-muted-foreground">
+                            Only its maintainers can link it.
                           </span>
                         )}
                       </span>
