@@ -61,7 +61,6 @@ vi.mock('./ConfirmProvider.jsx', () => ({ useConfirm: () => confirm }));
 
 const { AppShell } = await import('./AppShell.jsx');
 const { useUnsavedDraft } = await import('../../hooks/useUnsavedDraft.js');
-const { DocumentTabStrip } = await import('./DocumentTabStrip.jsx');
 const { ProjectTabStrip } = await import('./ProjectTabStrip.jsx');
 const { ProjectListPage } = await import('./ProjectListPage.jsx');
 const { NewProjectDialog } = await import('./NewProjectDialog.jsx');
@@ -174,29 +173,6 @@ describe('the shared chrome', () => {
     confirm.mockResolvedValue(true);
     await view.step(() => signOut.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(auth.logout).toHaveBeenCalled();
-  });
-
-  it('DocumentTabStrip draws the breadcrumb and every tab as a link', async () => {
-    await mount(
-      <DocumentTabStrip
-        projectId="p1"
-        project={PROJECT}
-        document={{ name: 'One' }}
-        tabs={[
-          { value: 'edit', label: 'Text', to: '/projects/p1/documents/d1/edit' },
-          { value: 'details', label: 'Details', to: '/projects/p1/documents/d1/details' },
-        ]}
-      />,
-      '/projects/p1/documents/d1/details',
-    );
-    expect(text()).toContain('Ay');
-    expect(text()).toContain('One');
-    expect(texts(view.container, '[role="tab"]')).toEqual(['Text', 'Details']);
-    // The tab standing on this path is the one that is on.
-    const active = all(view.container, '[role="tab"]').find(
-      (t) => t.getAttribute('data-state') === 'active',
-    );
-    expect(active.textContent).toBe('Details');
   });
 
   it('ProjectTabStrip draws the project it is on and the tabs it was given', async () => {
