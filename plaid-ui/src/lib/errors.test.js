@@ -162,4 +162,18 @@ describe('a write whose answer was lost', () => {
     expect(humanizeError(lost('POST'))).toBe(MAYBE);
     expect(humanizeError(lost('get'))).toMatch(/Could not reach the server/);
   });
+
+  // A few reads are POSTs: a query, signing in, looking an invite up. Nothing
+  // can have been saved by them.
+  it('is not a read sent as a POST', () => {
+    const at = (url, message = 'Network error: Failed to fetch') =>
+      Object.assign(new Error(`${message} at ${url}`), { status: 0, method: 'POST', url });
+    expect(isUnknownOutcome(at('http://x/api/v1/query'))).toBe(false);
+    expect(isUnknownOutcome(at('http://x/api/v1/query?as-of=2026-01-01'))).toBe(false);
+    expect(isUnknownOutcome(at('http://x/api/v1/login', 'Request timed out'))).toBe(false);
+    expect(isUnknownOutcome(at('http://x/api/v1/invites/lookup'))).toBe(false);
+    expect(signInError(at('http://x/api/v1/login'))).toMatch(/Could not reach the server/);
+    expect(isUnknownOutcome(at('http://x/api/v1/invites/redeem'))).toBe(true);
+    expect(isUnknownOutcome(at('http://x/api/v1/query-log'))).toBe(true);
+  });
 });

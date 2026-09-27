@@ -43,9 +43,16 @@ export const isUnreachable = (error) => {
 // timeout included). The server may have made the change, so it is not the
 // network's "could not reach" but its own case. The client puts the request's
 // `method` on the error, and a read changes nothing either way.
+//
+// A few reads go as a POST (a query, signing in, looking an invite up), and
+// saved nothing either way.
+const READ_POSTS = /\/api\/v1\/(query|login|invites\/lookup)(?:[?#]|$)/;
+
 export const isUnknownOutcome = (error) => {
   const method = String((error && error.method) || '').toUpperCase();
   if (!method || method === 'GET' || method === 'HEAD') return false;
+  const url = String(error.url || String(error.message || '').match(/\bat (\S+)$/)?.[1] || '');
+  if (READ_POSTS.test(url)) return false;
   const s = statusOf(error);
   return s === 0 || s === 504 || (s === null && isUnreachable(error));
 };
