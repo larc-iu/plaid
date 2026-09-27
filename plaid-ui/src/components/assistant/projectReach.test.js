@@ -114,9 +114,11 @@ describe('reachChanged', () => {
     expect(reachChanged(display, 4)).toBe(true);
   });
 
-  it('marks nothing on a message that reads its home project only', () => {
-    expect(reachChanged([user([B]), reply, user(null)], 2)).toBe(false);
+  it('marks a message whose set emptied, and nothing in a thread that never had one', () => {
+    expect(reachChanged([user([B]), reply, user(null)], 2)).toBe(true);
+    expect(reachChanged([user([B]), reply, user(null), reply, user([])], 4)).toBe(false);
     expect(reachChanged([user(null)], 0)).toBe(false);
+    expect(reachChanged([user(null), reply, user([])], 2)).toBe(false);
   });
 
   it('marks nothing on a reply', () => {
@@ -198,6 +200,15 @@ describe('the export', () => {
     const md = conversationToMarkdown(conv, null, ctx);
     expect(md.match(/\*With Lamkang B\*/g)).toHaveLength(1);
     expect(md).toContain('*With Lamkang B, Lamkang C*');
+  });
+
+  it('names the home project alone where the reader removed the others', () => {
+    const conv = {
+      display: [user([B], 'one'), reply, user(null, 'two'), reply, user(null, 'three')],
+    };
+    const md = conversationToMarkdown(conv, null, { ...ctx, projectName: 'Lamkang *A*' });
+    expect(md.match(/\*Lamkang \\\*A\\\* only\*/g)).toHaveLength(1);
+    expect(conversationToMarkdown({ display: [user(null)] }, null, ctx)).not.toContain(' only*');
   });
 
   it('says which projects a reply could not read', () => {

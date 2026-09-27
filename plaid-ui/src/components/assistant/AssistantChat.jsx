@@ -118,6 +118,8 @@ const UsageMeter = ({ usage, spend }) => {
 
 export const AssistantChat = ({
   projectId,
+  // What to call the project, on a message that reads it alone.
+  projectName = null,
   client,
   userId,
   canWrite,
@@ -872,6 +874,7 @@ export const AssistantChat = ({
                 }
                 movedHere={movedHere(display, i)}
                 reachChanged={reachChanged(display, i)}
+                homeName={projectName}
                 citeNames={d.citations?.length ? projectNamesAt(display, i) : null}
                 canWrite={canWrite}
                 contributor={contributor}

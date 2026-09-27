@@ -33,6 +33,7 @@ export const AssistantPanel = ({
       <AssistantChat
         compact
         projectId={projectId}
+        projectName={projectName}
         client={client}
         userId={userId}
         canWrite={canWrite}

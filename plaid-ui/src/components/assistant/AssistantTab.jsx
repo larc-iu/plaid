@@ -31,6 +31,7 @@ export const AssistantTab = ({
     <div className="flex h-[calc(100vh-15rem)] min-h-[32rem] gap-4">
       <AssistantChat
         projectId={projectId}
+        projectName={projectName}
         client={client}
         userId={userId}
         canWrite={canWrite}

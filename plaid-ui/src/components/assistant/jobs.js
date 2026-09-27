@@ -1,6 +1,7 @@
 import { notifySuccess, notifyError, notifyWarning } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { deleteConversationFiles } from './attachments.js';
+import { lastProjects } from './projectReach.js';
 
 // The assistant's conversations and the runs behind them: what is stored
 // where, the page-independent job registry, and starting, watching,
@@ -400,7 +401,10 @@ export const startTurn = ({ store, service, conv, prevMeta, where = null }) => {
         REQUEST_TIMEOUT_MS,
         progressOf(j),
         j.controller.signal,
-        { requestId },
+        // The other projects the message reads. The server scopes the token it
+        // hands the assistant to this project and those of these the reader
+        // can open, so a turn reaches nothing else.
+        { requestId, projectIds: lastProjects(conv.display).map((p) => p.id) },
       ),
     );
     return finishJob(j, store, service);

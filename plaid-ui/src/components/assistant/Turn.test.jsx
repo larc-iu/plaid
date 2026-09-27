@@ -102,6 +102,16 @@ describe('Turn and the other projects', () => {
     await view.unmount();
   });
 
+  it('names the home project alone where the reader removed the others', async () => {
+    const view = await draw(
+      { kind: 'user', text: 'just here' },
+      { reachChanged: true, homeName: 'Lamkang A' },
+    );
+    expect(view.container.textContent).toContain('Lamkang A only');
+    expect(view.container.textContent).not.toContain('With');
+    await view.unmount();
+  });
+
   it('says nothing where the set is the one before', async () => {
     const view = await draw(
       { kind: 'user', text: 'again', projects: [B] },

@@ -109,6 +109,7 @@ const mount = (client, conversationId = 'c1') =>
     <MemoryRouter initialEntries={['/projects/p1']}>
       <AssistantChat
         projectId="p1"
+        projectName="Lamkang A"
         client={client}
         userId="u1"
         canWrite
@@ -138,6 +139,9 @@ const typeAndSend = (m, value) =>
 
 const lastAsked = (client) =>
   client.records.get('igt:assistant:p1:conv:c1').display.findLast((d) => d.kind === 'user');
+
+// The other projects the last request named for its token (`opts.projectIds`).
+const sentProjectIds = (client) => client.messages.requestService.mock.calls.at(-1)[6].projectIds;
 
 const chip = (m, name) => m.container.querySelector(`[aria-label="Remove ${name}"]`);
 
@@ -179,6 +183,7 @@ describe('AssistantChat and other projects', () => {
     await flush(m, 8);
     expect(lastAsked(client)).toMatchObject({ text: 'and -ki?', projects: [B] });
     expect(client.messages.requestService).toHaveBeenCalledTimes(1);
+    expect(sentProjectIds(client)).toEqual([B.id]);
     expect(chip(m, 'Lamkang B')).not.toBeNull();
     await m.unmount();
   });
@@ -192,6 +197,8 @@ describe('AssistantChat and other projects', () => {
     await flush(m, 8);
     expect(lastAsked(client).text).toBe('just here now');
     expect(lastAsked(client)).not.toHaveProperty('projects');
+    expect(sentProjectIds(client)).toEqual([]);
+    expect(m.container.textContent).toContain('Lamkang A only');
     await m.unmount();
   });
 
@@ -263,6 +270,7 @@ describe('AssistantChat and other projects', () => {
     await flush(m, 8);
     expect(client.messages.requestService).toHaveBeenCalledTimes(1);
     expect(lastAsked(client)).toMatchObject({ text: 'compare -ka', projects: [B] });
+    expect(sentProjectIds(client)).toEqual([B.id]);
     await m.unmount();
   });
 

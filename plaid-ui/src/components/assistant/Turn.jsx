@@ -13,7 +13,7 @@ import { AssistantMarkdown } from './AssistantMarkdown.jsx';
 import { linkifyCitations } from './citations.js';
 import { AttachmentChip } from './AttachmentChip.jsx';
 import { PlanCard } from './PlanCard.jsx';
-import { namedCitations } from './projectReach.js';
+import { homeOnly, namedCitations } from './projectReach.js';
 import { AssistantMark } from './PlaidMarks.jsx';
 
 // One turn of a conversation as drawn: the reply with its citations, the
@@ -129,6 +129,9 @@ export const Turn = ({
   fromAnotherModel,
   movedHere,
   reachChanged = false,
+  // The name of the project the conversation lives in, for the line on a
+  // message that reads it alone.
+  homeName = null,
   // The other projects' names as of this turn (`projectNamesAt`), so a
   // citation into one of them is titled with it.
   citeNames = null,
@@ -157,18 +160,29 @@ export const Turn = ({
           </div>
         )}
         {/* The other projects this one reads, shown only where the set
-            changed, on the same terms as the place above. */}
-        {reachChanged && item.projects?.length > 0 && (
+            changed, on the same terms as the place above. Where the reader
+            removed them all, the home project is named alone. */}
+        {reachChanged && (
           <div className="flex max-w-full items-center gap-1 text-xs text-muted-foreground">
             <FolderOpen className="h-3 w-3 shrink-0" />
             <span className={NAMES}>
-              With{' '}
-              {item.projects.map((p, k) => (
-                <Fragment key={p.id ?? k}>
-                  {k > 0 && ', '}
-                  <bdi>{p.name || p.id}</bdi>
-                </Fragment>
-              ))}
+              {item.projects?.length > 0 ? (
+                <>
+                  With{' '}
+                  {item.projects.map((p, k) => (
+                    <Fragment key={p.id ?? k}>
+                      {k > 0 && ', '}
+                      <bdi>{p.name || p.id}</bdi>
+                    </Fragment>
+                  ))}
+                </>
+              ) : homeName ? (
+                <>
+                  <bdi>{homeName}</bdi> only
+                </>
+              ) : (
+                homeOnly(null)
+              )}
             </span>
           </div>
         )}

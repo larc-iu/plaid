@@ -61,20 +61,23 @@ const setKey = (projects) =>
 // Whether the message at `i` reads a different set of other projects from the
 // message before it. Marked only where it changed, the rule `movedHere` follows
 // for the place a question was asked from: a thread that kept the same projects
-// throughout says so once. A set that emptied is not marked: there is no
-// project left to name.
+// throughout says so once. A set that emptied is marked too, since that message
+// read its home project only, and the assistant is told as much. A thread that
+// never added a project marks nothing.
 export const reachChanged = (display, i) => {
   const item = display?.[i];
-  if (item?.kind !== 'user' || !item.projects?.length) return false;
+  if (item?.kind !== 'user') return false;
   const here = setKey(item.projects);
   for (let k = i - 1; k >= 0; k--) {
     if (display[k].kind === 'user') return setKey(display[k].projects) !== here;
   }
-  return true;
+  return here !== '';
 };
 
-// The line on a message, and in the export.
+// The line on a message, and in the export: the other projects it reads, or,
+// where the reader removed them all, its home project alone.
 export const withProjects = (projects) => `With ${projects.map((p) => p.name || p.id).join(', ')}`;
+export const homeOnly = (homeName) => `${homeName || 'This project'} only`;
 
 // Why a pick was refused.
 export const notServedThere = (name) => `The assistant is not available in ${name}.`;

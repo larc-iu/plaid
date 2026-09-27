@@ -10,6 +10,7 @@ import {
   projectNamesAt,
   reachChanged,
   withProjects,
+  homeOnly,
 } from './projectReach.js';
 
 // A citation's card, linked into the project it cites: another project the
@@ -68,7 +69,10 @@ export const conversationToMarkdown = (conv, meta, { origin, projectId, projectN
   display.forEach((d, i) => {
     if (d.kind === 'user') {
       out.push('## You', '');
-      if (reachChanged(display, i)) out.push(`*${markdownText(withProjects(d.projects))}*`, '');
+      if (reachChanged(display, i)) {
+        const line = d.projects?.length ? withProjects(d.projects) : homeOnly(projectName);
+        out.push(`*${markdownText(line)}*`, '');
+      }
       out.push(d.text || '', '');
     } else if (d.kind === 'error') {
       out.push(`> **Error:** ${d.text || ''}`, '');
