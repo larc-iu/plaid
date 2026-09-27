@@ -22,10 +22,11 @@ import {
   AlertDialogCancel,
 } from '@ui/components/ui/alert-dialog';
 import { ListPager } from '@ui/components/shared/list-search';
+import { Loading } from '@ui/components/shared/Loading.jsx';
 import { TALL_LIST_PAGE_SIZE, usePagedList } from '@ui/hooks/usePagedList';
 import { cn } from '@ui/lib/utils';
 import { MATCH_TYPES } from '../search/searchQueries.js';
-import { MarkedText } from '@/components/shared/MarkedText.jsx';
+import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { groupByDoc } from './bulkPlan.js';
 import { plural } from './bulkShared.js';
@@ -254,13 +255,7 @@ export const SubstitutionFields = ({
   </div>
 );
 
-export const Progress = ({ text }) =>
-  text ? (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary" />
-      {text}
-    </p>
-  ) : null;
+export const Progress = ({ text }) => (text ? <Loading label={text} className="p-0" /> : null);
 
 // ---- respell -------------------------------------------------------------------
 

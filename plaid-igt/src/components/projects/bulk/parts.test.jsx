@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { TALL_LIST_PAGE_SIZE } from '@ui/hooks/usePagedList';
-import { MatchGroups } from './parts.jsx';
+import { MatchGroups, Progress } from './parts.jsx';
 
 // A sweep over a corpus previews thousands of matches, and every row carries a
 // change grid, a marked sentence and a link into Analyze. The list is paged, so
@@ -95,5 +95,21 @@ describe('MatchGroups', () => {
     expect(heads[1]).toContain('Doc two');
     expect(rowCount(container)).toBe(6);
     await unmount();
+  });
+});
+
+describe('Progress', () => {
+  it('is the Loading line with the step named, and no spinning ring', async () => {
+    const view = await renderComponent(<Progress text="Reading document 3 of 40…" />);
+    expect(view.container.textContent).toBe('Reading document 3 of 40…');
+    expect(view.container.querySelector('.animate-spin')).toBe(null);
+    expect(view.container.querySelector('p').className).toContain('text-muted-foreground');
+    await view.unmount();
+  });
+
+  it('draws nothing once there is nothing to report', async () => {
+    const view = await renderComponent(<Progress text={null} />);
+    expect(view.container.innerHTML).toBe('');
+    await view.unmount();
   });
 });

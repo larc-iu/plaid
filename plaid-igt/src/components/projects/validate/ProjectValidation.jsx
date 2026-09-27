@@ -16,7 +16,7 @@ import { freqQueries, metadataHitsQuery, searchDomains } from '../search/searchQ
 import { runHitsSearch } from '../search/searchRunner.js';
 import { listedCount, locateFailing } from './locateFailing.js';
 import { distinctValues, loadAttested } from './attested.js';
-import { MarkedText } from '@/components/shared/MarkedText.jsx';
+import { MarkedText } from '@ui/components/shared/MarkedText.jsx';
 import { hitTo, rememberCaret } from '../search/hitLinks.js';
 import { scopeBadgeClass } from '@/domain/scopeColors';
 
