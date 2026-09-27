@@ -72,7 +72,7 @@ export const ReanalyzePanel = ({ project, projectId, client, layerInfo }) => {
         {
           analysis: target.analysis,
           label: `Re-analyze “${plan.form}” as ${label(target.analysis)}`,
-          onError: (msg) => notifyError(msg, 'Re-analyze'),
+          onError: (msg) => notifyError(msg, 'Failed to re-analyze'),
         },
       ),
     );

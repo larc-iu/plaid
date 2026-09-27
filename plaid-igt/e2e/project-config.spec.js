@@ -168,12 +168,12 @@ test('B5-13: no ignore config at all: nothing is ignored, nothing trimmed', asyn
   });
 });
 
-test('C2-01: the New Document dialog needs a name, submits on Enter, and opens the document', async ({
+test('C2-01: the New document dialog needs a name, submits on Enter, and opens the document', async ({
   page,
 }) => {
   await seedAuth(page);
   await page.goto(`/#/projects/${projectId}`);
-  await page.getByRole('button', { name: 'New Document' }).click();
+  await page.getByRole('button', { name: 'New document' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   // The dialog opens on a chooser (blank, or import from ELAN).
@@ -202,7 +202,7 @@ test('C2-03 + B1-10: a reader gets no Create button and a read-only editor', asy
   await seedAuth(page, auth);
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByText('Config doc')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'New Document' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'New document' })).toHaveCount(0);
   await openAnalyze(page, auth);
   await expect(page.locator('.igt-island')).toHaveClass(/igt-island--readonly/);
   await expect(page.locator('.igt-vocab__opener')).toHaveCount(0);

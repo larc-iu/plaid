@@ -13,7 +13,7 @@ describe('the import wizards’ notices', () => {
     const view = await renderComponent(
       <div>
         <Panel tone="warning" title="Finish the mapping" />
-        <Panel tone="error" title="Import failed" />
+        <Panel tone="error" title="Failed to import" />
         <Panel tone="success" title="Import complete" />
         <Panel title="Plain" />
       </div>,
@@ -21,7 +21,7 @@ describe('the import wizards’ notices', () => {
     const toned = all(view.container, '[data-tone]');
     expect(toned.map((n) => [n.getAttribute('data-tone'), n.textContent])).toEqual([
       ['warning', 'Finish the mapping'],
-      ['error', 'Import failed'],
+      ['error', 'Failed to import'],
       ['success', 'Import complete'],
     ]);
     // No hand-mixed amber anywhere in the box.
@@ -55,7 +55,7 @@ describe('the new project chooser', () => {
     expect(all(nav, 'a').map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
       ['Projects', '/projects'],
     ]);
-    expect(nav.querySelector('[aria-current="page"]').textContent).toBe('New Project');
+    expect(nav.querySelector('[aria-current="page"]').textContent).toBe('New project');
     await view.unmount();
   });
 });

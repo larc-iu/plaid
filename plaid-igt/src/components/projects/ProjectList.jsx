@@ -89,13 +89,12 @@ export const ProjectList = () => {
           <div className="truncate font-medium" title={p.name}>
             {p.name}
           </div>
-          <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
         </div>
       ),
     },
     {
       key: 'documents',
-      label: 'Docs',
+      label: 'Documents',
       sort: (p) => p.documentCount ?? 0,
       align: 'right',
       nowrap: true,
@@ -126,7 +125,7 @@ export const ProjectList = () => {
       title="Projects"
       action={
         <NewLinkButton to="/projects/new">
-          <Plus className="h-4 w-4" /> New Project
+          <Plus className="h-4 w-4" /> New project
         </NewLinkButton>
       }
       href={(p) => `/projects/${p.id}`}
@@ -136,7 +135,7 @@ export const ProjectList = () => {
       error={error}
       empty={{
         title: 'No projects yet',
-        hint: "Create one with New Project, or ask a project's maintainer for an invitation link.",
+        hint: "Create one with New project, or ask a project's maintainer for an invitation link.",
       }}
       tableId="projects"
       noun="project"

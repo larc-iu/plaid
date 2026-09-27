@@ -29,7 +29,7 @@ import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 export const ImportNativeProject = () => {
-  useDocumentTitle('Import Archive');
+  useDocumentTitle('Import archive');
   const { client } = useAuth();
   const fileInputRef = useRef(null);
   const [archive, setArchive] = useState(null);
@@ -61,7 +61,7 @@ export const ImportNativeProject = () => {
       setStage('review');
     } catch (e) {
       console.error('Archive read failed:', e);
-      notifyError(humanizeError(e), 'Could not read archive');
+      notifyError(humanizeError(e), 'Failed to read the archive');
       setStage('pick');
     }
   };
@@ -110,7 +110,7 @@ export const ImportNativeProject = () => {
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'New project', to: '/projects/new', fixed: true },
             { label: 'Import archive', fixed: true },
           ]}
         />
@@ -233,7 +233,7 @@ export const ImportNativeProject = () => {
                       <RefreshCw className="h-4 w-4" /> Retry import
                     </>
                   ) : (
-                    'Create project & import'
+                    'Create project and import'
                   )}
                 </Button>
               )}

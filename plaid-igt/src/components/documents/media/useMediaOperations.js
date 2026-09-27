@@ -483,7 +483,7 @@ export const useMediaOperations = () => {
           console.error('Converting the recording failed:', error);
           notifyError(
             error?.message || 'This file could not be converted. Upload it as it is.',
-            'Conversion failed',
+            'Failed to convert',
           );
           return;
         } finally {

@@ -95,7 +95,7 @@ export const ImportCldfProject = () => {
       setStage('review');
     } catch (e) {
       console.error('CLDF read failed:', e);
-      notifyError(humanizeError(e), 'Could not read dataset');
+      notifyError(humanizeError(e), 'Failed to read the dataset');
       setStage('pick');
     }
   };
@@ -160,7 +160,7 @@ export const ImportCldfProject = () => {
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'New project', to: '/projects/new', fixed: true },
             { label: 'Import CLDF', fixed: true },
           ]}
         />
@@ -452,7 +452,7 @@ export const ImportCldfProject = () => {
                       <RefreshCw className="h-4 w-4" /> Retry import
                     </>
                   ) : (
-                    'Create project & import'
+                    'Create project and import'
                   )}
                 </Button>
               )}

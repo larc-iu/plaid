@@ -41,8 +41,8 @@ export function useRecordingConversion(setMediaFiles) {
     setConverting(null);
     if (failed.length) {
       notifyError(
-        `${failed.join(', ')} could not be converted. ${failed.length === 1 ? 'It stays' : 'They stay'} as ${failed.length === 1 ? 'it is' : 'they are'}.`,
-        'Conversion failed',
+        `${failed.join(', ')} ${failed.length === 1 ? 'is' : 'are'} unchanged.`,
+        'Failed to convert',
       );
     } else if (files.length > 1) {
       notifyWarning(`Converted ${files.length} recordings.`, 'Recordings');

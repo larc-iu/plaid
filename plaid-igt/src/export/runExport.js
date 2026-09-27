@@ -42,6 +42,7 @@ import {
 import { sanitizeFilename, dedupeFilenames, assembleZip } from './files.js';
 import { formatExt } from './presets.js';
 import { plural } from '../utils/plural.js';
+import { humanizeError } from '@ui/lib/errors.js';
 
 export class ExportCancelled extends Error {
   constructor() {
@@ -265,9 +266,29 @@ export async function runExport({
 
   // Document id list for the scope.
   let docIds;
+  // A warning names a document the way the person knows it, never by its id.
+  // The project scope has the names already, and the others read the list
+  // only when a warning needs it.
+  let docNameById = null;
   if (scope.type === 'document') docIds = [scope.id];
   else if (scope.type === 'documents') docIds = [...scope.ids];
-  else docIds = (await client.projects.listDocuments(project.id)).map((d) => d.id);
+  else {
+    const listed = await client.projects.listDocuments(project.id);
+    docNameById = new Map(listed.map((d) => [d.id, d.name]));
+    docIds = listed.map((d) => d.id);
+  }
+  const docLabel = async (id) => {
+    if (!docNameById) {
+      try {
+        const listed = await client.projects.listDocuments(project.id);
+        docNameById = new Map(listed.map((d) => [d.id, d.name]));
+      } catch {
+        docNameById = new Map();
+      }
+    }
+    const name = docNameById.get(id);
+    return name ? `"${name}"` : null;
+  };
   checkStop();
 
   // Document scope downloads the bare file; project/multi-doc scopes always
@@ -329,7 +350,7 @@ export async function runExport({
     try {
       guidelines = await client.guidelines.list(project.id, { includeBodies: true });
     } catch (err) {
-      warnings.push(`Guidelines could not be fetched: ${err?.message ?? err}`);
+      warnings.push(`Guidelines could not be fetched: ${humanizeError(err)}`);
     }
   }
   checkStop();
@@ -408,7 +429,8 @@ export async function runExport({
         projectId: project.id,
       });
     } catch (err) {
-      warnings.push(`Document ${docIds[i]} failed to load: ${err?.message ?? err}`);
+      const label = await docLabel(docIds[i]);
+      warnings.push(`${label ?? 'A document'} failed to load: ${humanizeError(err)}`);
       continue;
     }
     const name = igtDoc.document?.name || docIds[i];
@@ -436,14 +458,14 @@ export async function runExport({
         // Already-compressed audio/video — store, don't deflate.
         mediaEntry = { path: mediaFile, data: bytes, opts: { level: 0 } };
       } catch (err) {
-        warnings.push(`"${name}": media could not be fetched: ${err?.message ?? err}`);
+        warnings.push(`"${name}": media could not be fetched: ${humanizeError(err)}`);
       }
     }
 
     let docComments = [];
     if (read.comments?.error) {
       const err = read.comments.error;
-      warnings.push(`"${name}": comments could not be fetched: ${err?.message ?? err}`);
+      warnings.push(`"${name}": comments could not be fetched: ${humanizeError(err)}`);
     } else if (read.comments) {
       docComments = await shapeComments(client, read.comments.list, authorNames);
     }
@@ -506,7 +528,10 @@ export async function runExport({
       const igtDoc = new IgtDocument({ raw, vocabularies: {}, client });
       harvestExampleSentences(igtDoc, docId, exampleTokensByDoc.get(docId), exampleTexts);
     } catch (err) {
-      warnings.push(`Example document ${docId} failed to load: ${err?.message ?? err}`);
+      const label = await docLabel(docId);
+      warnings.push(
+        `${label ? `Example document ${label}` : 'An example document'} failed to load: ${humanizeError(err)}`,
+      );
     }
   }
   onProgress({ done: progressTotal, total: progressTotal, name: null });
@@ -635,7 +660,7 @@ export async function runExport({
         try {
           vocabComments = await loadVocabComments(client, vocab.id, authorNames);
         } catch (err) {
-          warnings.push(`"${vocabName}": comments could not be fetched: ${err?.message ?? err}`);
+          warnings.push(`"${vocabName}": comments could not be fetched: ${humanizeError(err)}`);
         }
       }
       entries.push({

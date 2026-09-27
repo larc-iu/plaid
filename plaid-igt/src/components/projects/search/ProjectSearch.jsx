@@ -104,8 +104,8 @@ export const ProjectSearch = ({ project, projectId, client }) => {
       notifyError(
         matchType === 'regex' && err?.status === 400
           ? `Check your regex: ${detail || 'the pattern is invalid.'}`
-          : 'Search failed. Try again or simplify the query.',
-        'Search Error',
+          : 'Try again or simplify the query.',
+        'Failed to search',
       );
     } finally {
       setBusy(false);

@@ -576,7 +576,9 @@ describe('importVocabulary — entry comments', () => {
       warnings,
     });
     expect(callsOf(client, 'comments.create')).toEqual([]);
-    expect(warnings).toEqual(['"Lex": comment c9 skipped (its entry did not survive the import)']);
+    expect(warnings).toEqual([
+      '"Lex": a comment was skipped (its entry did not survive the import)',
+    ]);
   });
 
   it('runs as part of a full archive import, before the documents', async () => {
@@ -658,7 +660,7 @@ describe('runNativeImport — comments', () => {
     const result = await runNativeImport({ client, projectId: 'newp', archive });
     expect(callsOf(client, 'comments.create')).toEqual([]);
     expect(result.warnings).toContain(
-      '"Doc One": comment c1 skipped (its token did not survive the import)',
+      '"Doc One": a comment was skipped (its token did not survive the import)',
     );
   });
 

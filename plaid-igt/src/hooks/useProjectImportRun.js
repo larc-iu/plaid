@@ -97,10 +97,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
         setProgress,
       });
       if (!(await markImportFinished(client, projectId))) {
-        notifyWarning(
-          'The import record could not be cleared, so the project still opens this import.',
-          'Import complete',
-        );
+        notifyWarning('The project still opens on this import.', 'Import complete');
       }
       setResults(res);
       setStage('done');
@@ -123,7 +120,7 @@ export function useProjectImportRun({ client, kind, resumeId }) {
       setRunError(humanizeError(e));
       setStopped(cancelled);
       setStage('review');
-      if (!cancelled) notifyError(humanizeError(e), 'Import failed');
+      if (!cancelled) notifyError(humanizeError(e), 'Failed to import');
       return null;
     }
   };

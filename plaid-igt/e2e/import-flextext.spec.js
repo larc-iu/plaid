@@ -2,7 +2,7 @@ import { test, expect, seedAuth, collectClientErrors } from './fixtures.js';
 import { makeClient } from './fixtureProject.js';
 
 // A project made from .flextext files, through the page a person uses: the
-// New Project card, two files at once, the review screen, the run, and the
+// New project card, two files at once, the review screen, the run, and the
 // documents in the editor. The reader is covered by unit tests
 // (src/import/flex/flextextParser.test.js); this is the part only a live core
 // can check, that what it builds is accepted and reads back. The files are

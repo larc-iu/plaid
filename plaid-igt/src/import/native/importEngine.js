@@ -53,6 +53,7 @@ import {
   recordImportUnmarked,
 } from '../../domain/igtConfig.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import { humanizeError } from '@ui/lib/errors.js';
 
 const ITEM_SOURCE_KEY = 'nativeImportId';
 
@@ -328,7 +329,7 @@ async function postArchivedComments({
     const entityId = anchorFor(c.anchor);
     if (!entityId) {
       warnings.push(
-        `"${name}": comment ${c.id} skipped (its ${anchorNoun(c.anchor?.type)} did not survive the import)`,
+        `"${name}": a comment was skipped (its ${anchorNoun(c.anchor?.type)} did not survive the import)`,
       );
       continue;
     }
@@ -690,7 +691,9 @@ async function importNativeDocument({
     ) => {
       const tokenIds = tokens.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (tokenIds.length !== tokens.length) {
-        warnings.push(`"${docData.name}": annotation ${label} skipped (unresolvable tokens)`);
+        warnings.push(
+          `"${docData.name}": a "${name}" value was skipped (what it annotates is not in the archive)`,
+        );
         return;
       }
       const spanLayerId = spanLayerFor(scope, name, archiveLayerId);
@@ -788,14 +791,14 @@ async function importNativeDocument({
     // metadata (provenance) rides verbatim.
     progress('Linking lexicon');
     const linkSpecs = [];
-    const addLink = (ref, oldTokenIds, label) => {
+    const addLink = (ref, oldTokenIds) => {
       if (!ref) return;
       const order = ref.order ?? null;
       const itemId = itemIdMap.get(ref.itemId);
       const tokenIds = oldTokenIds.map((t) => tokenIdMap.get(t)).filter(Boolean);
       if (!itemId || tokenIds.length !== oldTokenIds.length) {
         warnings.push(
-          `"${docData.name}": vocab link ${label} skipped (unresolvable ${!itemId ? 'item' : 'tokens'})`,
+          `"${docData.name}": a lexicon link was skipped (${!itemId ? 'its entry is' : 'its words are'} not in the archive)`,
         );
         return;
       }
@@ -810,12 +813,12 @@ async function importNativeDocument({
     };
     for (const s of sentences) {
       for (const w of s.words || []) {
-        addLink(w.vocab, [w.id], `on word ${w.id}`);
-        for (const m of w.morphemes || []) addLink(m.vocab, [m.id], `on morpheme ${m.id}`);
+        addLink(w.vocab, [w.id]);
+        for (const m of w.morphemes || []) addLink(m.vocab, [m.id]);
       }
     }
     for (const extra of docData.extraVocabLinks || []) {
-      addLink(extra, extra.tokens || [], extra.id);
+      addLink(extra, extra.tokens || []);
     }
     // Same as the spans: among two links on one token the editor shows the
     // last, so the order they are made in is what a person sees.
@@ -883,7 +886,8 @@ async function importNativeDocument({
     } catch (err) {
       mediaFailed = true;
       warnings.push(
-        `"${docData.name}": media upload failed. Document left unfinished so re-importing retries it: ${err?.message ?? err}`,
+        `"${docData.name}": media upload failed. ${humanizeError(err)} The document is unfinished, ` +
+          'and importing again retries the upload.',
       );
     }
   }
@@ -957,7 +961,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
       const existing = await client.guidelines.list(projectId, { includeBodies: true });
       existing.forEach((g) => have.set(key(g), (have.get(key(g)) || 0) + 1));
     } catch (err) {
-      warnings.push(`The project's guidelines could not be read: ${err?.message ?? err}`);
+      warnings.push(`The project's guidelines could not be read: ${humanizeError(err)}`);
     }
     for (const g of wanted) {
       const left = have.get(key(g)) || 0;
@@ -971,7 +975,7 @@ async function runNativeImportImpl({ client, projectId, archive, onProgress, sho
           pinned: !!g.pinned,
         });
       } catch (err) {
-        warnings.push(`Guideline "${g.title}" could not be created: ${err?.message ?? err}`);
+        warnings.push(`Guideline "${g.title}" could not be created: ${humanizeError(err)}`);
       }
     }
   }

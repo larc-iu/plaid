@@ -123,10 +123,10 @@ export const ExportRunner = ({
       if (onDone) onDone();
     } catch (err) {
       if (err instanceof ExportCancelled) {
-        notifyWarning('Export cancelled. Nothing was downloaded.', 'Export');
+        notifyWarning('Nothing was downloaded.', 'Export cancelled');
       } else {
         console.error('Export failed:', err);
-        notifyError(humanizeError(err), 'Export failed');
+        notifyError(humanizeError(err), 'Failed to export');
       }
     } finally {
       setRunning(false);

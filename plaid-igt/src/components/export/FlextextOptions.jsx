@@ -181,7 +181,7 @@ export const FlextextOptions = ({ options, layers, onChange }) => {
         ))}
         <LangInput
           id="ft-lang-analysis"
-          label="Glosses & translations"
+          label="Glosses and translations"
           value={langs.analysis ?? ''}
           placeholder="en"
           onChange={(v) => setLangs({ analysis: v })}

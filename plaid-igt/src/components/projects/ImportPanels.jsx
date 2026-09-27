@@ -87,7 +87,7 @@ export const WarningLog = ({ log }) => {
         className="mt-2"
         onClick={() => {
           navigator.clipboard?.writeText(asText());
-          notifySuccess('Warnings copied.', 'Import');
+          notifySuccess('Warnings copied');
         }}
       >
         Copy
@@ -153,7 +153,7 @@ export const ImportRunPanel = ({
 }) => (
   <>
     {runError && stage !== 'running' && (
-      <Panel tone="error" title={stopped ? 'Import stopped' : 'Import failed'}>
+      <Panel tone="error" title={stopped ? 'Import stopped' : 'Failed to import'}>
         {!stopped && <p className="mt-1 text-xs">{runError}</p>}
         <p className="mt-1 text-xs">Retry continues where it left off.</p>
       </Panel>

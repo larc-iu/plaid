@@ -31,6 +31,7 @@ import {
 import { bulkInChunks } from '../../domain/bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
+import { humanizeError } from '@ui/lib/errors.js';
 
 export { ImportCancelled };
 
@@ -229,8 +230,8 @@ export async function importDocument({
     } catch (err) {
       mediaFailed = true;
       warnings?.push(
-        `"${doc.name}": media upload failed. The document is left unfinished so re-importing ` +
-          `retries it: ${err?.message ?? err}`,
+        `"${doc.name}": media upload failed. ${humanizeError(err)} The document is unfinished, ` +
+          'and importing again retries the upload.',
       );
     }
   }
@@ -262,7 +263,7 @@ async function addRecordingToExisting({ client, existing, doc, results, onProgre
     });
     results.recordingsAdded += 1;
   } catch (err) {
-    warn(`"${doc.name}": the recording could not be added to it: ${err?.message ?? err}`);
+    warn(`"${doc.name}": the recording could not be added to it: ${humanizeError(err)}`);
   }
 }
 

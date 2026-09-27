@@ -152,7 +152,7 @@ export const ImportElanDocuments = () => {
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(humanizeError(e), 'Could not read the files');
+      notifyError(humanizeError(e), 'Failed to read the files');
       setStage(batch.files ? 'review' : 'pick');
     }
   };
@@ -238,7 +238,7 @@ export const ImportElanDocuments = () => {
       console.error('ELAN import failed:', e);
       setRunError(humanizeError(e));
       setStage('review');
-      if (!/cancelled/i.test(e.message)) notifyError(humanizeError(e), 'Import failed');
+      if (!/cancelled/i.test(e.message)) notifyError(humanizeError(e), 'Failed to import');
     }
   };
 
@@ -440,7 +440,7 @@ export const ImportElanDocuments = () => {
                 <ElanProblems batch={batch} />
 
                 {runError && (
-                  <Panel tone="error" title="Import failed">
+                  <Panel tone="error" title="Failed to import">
                     <p className="mt-1 text-xs">{runError}</p>
                     <p className="mt-1 text-xs">
                       Retrying continues where it stopped: documents that finished are skipped, and

@@ -100,7 +100,7 @@ export const ImportElanProject = () => {
       setStage('review');
     } catch (e) {
       console.error('ELAN read failed:', e);
-      notifyError(humanizeError(e), 'Could not read the files');
+      notifyError(humanizeError(e), 'Failed to read the files');
       setStage(batch.files ? 'review' : 'pick');
     }
   };
@@ -156,7 +156,7 @@ export const ImportElanProject = () => {
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'New project', to: '/projects/new', fixed: true },
             { label: 'Import ELAN', fixed: true },
           ]}
         />

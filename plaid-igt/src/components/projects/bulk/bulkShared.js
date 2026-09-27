@@ -28,7 +28,7 @@ export const useRun = () => {
       return await fn((done, total) => setProgress(`Loading document ${done} of ${total}…`));
     } catch (err) {
       console.error(`${label}:`, err);
-      notifyError(humanizeError(err, `${label} failed.`), label);
+      notifyError(humanizeError(err), `Failed to ${label.toLowerCase()}`);
       return null;
     } finally {
       setBusy(false);

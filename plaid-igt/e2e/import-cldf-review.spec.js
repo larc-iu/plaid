@@ -200,7 +200,7 @@ test('review: reads the dataset and reports what it found', async ({ page }) => 
   // Translation (Sentence), Gloss (Morpheme), POS (Word).
   await expect(page.getByText('3 annotation fields', { exact: true })).toBeVisible();
   await expect(page.getByText(/Object language:\s*Spanish/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create project & import' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Create project and import' })).toBeEnabled();
 });
 
 test('review: the gloss scope moves the Gloss field between scopes', async ({ page }) => {
@@ -290,7 +290,7 @@ test('review: a dictionary on its own says so instead of offering a dead button'
   await upload(page, dictionaryOnly());
   await expect(page.getByText('A dictionary without examples cannot be imported')).toBeVisible();
   await expect(page.getByText(/2 entries but no ExampleTable/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create project & import' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Create project and import' })).toBeDisabled();
 });
 
 test('review: an archive with no CLDF in it is refused at the door', async ({ page }) => {

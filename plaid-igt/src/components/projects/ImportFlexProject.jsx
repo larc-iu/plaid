@@ -50,7 +50,7 @@ const FORMATS = {
   fwbackup: {
     kind: 'FLEx',
     title: 'Import from FLEx (.fwbackup)',
-    pageTitle: 'Import FLEx Project',
+    pageTitle: 'Import FLEx project',
     accept: '.fwbackup,application/zip',
     drop: 'Drop a .fwbackup file here, or click to choose',
     where: 'In FieldWorks: File → Project Management → Back up this Project',
@@ -61,7 +61,7 @@ const FORMATS = {
   flextext: {
     kind: 'FLEx .flextext',
     title: 'Import from FLEx (.flextext)',
-    pageTitle: 'Import FLEx Texts',
+    pageTitle: 'Import FLEx texts',
     accept: '.flextext',
     drop: 'Drop .flextext files here, or click to choose',
     where: 'In FieldWorks: File → Export Interlinear → FLExText',
@@ -196,7 +196,10 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
       }
     } catch (e) {
       console.error('FLEx parse failed:', e);
-      notifyError(humanizeError(e), flextext ? 'Could not read files' : 'Could not read backup');
+      notifyError(
+        humanizeError(e),
+        flextext ? 'Failed to read the files' : 'Failed to read the backup',
+      );
       setStage('pick');
     }
   };
@@ -390,7 +393,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New Project', to: '/projects/new', fixed: true },
+            { label: 'New project', to: '/projects/new', fixed: true },
             { label: fmt.title, fixed: true },
           ]}
         />
@@ -851,7 +854,7 @@ export const ImportFlexProject = ({ format = 'fwbackup' }) => {
                 >
                   {projectIdRef.current ? (
                     <>
-                      <RefreshCw className="h-4 w-4" /> Resume Import
+                      <RefreshCw className="h-4 w-4" /> Resume import
                     </>
                   ) : (
                     <>

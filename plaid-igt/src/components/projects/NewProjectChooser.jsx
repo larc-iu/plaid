@@ -53,19 +53,19 @@ const OPTIONS = [
 ];
 
 export const NewProjectChooser = () => {
-  useDocumentTitle('New Project');
+  useDocumentTitle('New project');
   return (
     <div className={FORM_PAGE_WIDTH}>
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
             { label: 'Projects', to: '/projects', fixed: true },
-            { label: 'New Project', fixed: true },
+            { label: 'New project', fixed: true },
           ]}
         />
 
         <div>
-          <h1 className="text-2xl font-bold">New Project</h1>
+          <h1 className="text-2xl font-bold">New project</h1>
         </div>
 
         <div className="flex flex-col gap-3">

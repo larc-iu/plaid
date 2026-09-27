@@ -45,12 +45,12 @@ export function useResumeImport(client) {
     if (!resumeId) return;
     const ok = await confirm({
       title: 'Use the project as it is?',
-      description: 'What the import did not reach stays missing.',
+      description: 'What the import did not reach is missing.',
       confirmLabel: 'Use it',
     });
     if (!ok) return;
     if (!(await markImportFinished(client, resumeId))) {
-      notifyError('The import record could not be cleared.', 'Not finished');
+      notifyError('The import record could not be cleared.', 'Failed to finish the import');
       return;
     }
     navigate(`/projects/${resumeId}`, { replace: true });

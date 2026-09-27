@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AudioLines, ChevronRight, PenLine, Plus } from 'lucide-react';
 import { DocumentTable } from '@ui/components/shared/DocumentTable.jsx';
-import { notifySuccess, notifyError, humanizeError } from '@/utils/feedback';
+import { notifySuccess, notifyError } from '@/utils/feedback';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
 import { Label } from '@ui/components/ui/label';
@@ -39,7 +39,7 @@ export const DocumentList = ({
 
   const handleCreateDocument = async () => {
     if (!documentName.trim()) {
-      notifyError('Name the document.', 'Error');
+      notifyError('Name the document.', 'Failed to create the document');
       return;
     }
     setIsCreating(true);
@@ -70,7 +70,7 @@ export const DocumentList = ({
           if (!isUnknownOutcome(error)) throw error;
         }
       }
-      notifySuccess(`Document "${documentName}" created`, 'Success');
+      notifySuccess(`Document “${name}” created`);
       setDocumentName('');
       setOpen(false);
       if (onDocumentCreated) onDocumentCreated({ ...newDocument, name });
@@ -78,10 +78,7 @@ export const DocumentList = ({
       navigate(`/projects/${projectId}/documents/${newDocument.id}?tab=baseline`);
     } catch (error) {
       console.error('Failed to create document:', error);
-      notifyError(
-        isUnknownOutcome(error) ? error : humanizeError(error, 'Could not create the document.'),
-        'Error',
-      );
+      notifyError(error, 'Failed to create the document');
     } finally {
       setIsCreating(false);
     }
@@ -98,7 +95,7 @@ export const DocumentList = ({
               setOpen(true);
             }}
           >
-            <Plus className="h-4 w-4" /> New Document
+            <Plus className="h-4 w-4" /> New document
           </Button>
         )}
       </div>
@@ -162,7 +159,7 @@ export const DocumentList = ({
           ) : (
             <>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="doc-name">Document Name</Label>
+                <Label htmlFor="doc-name">Document name</Label>
                 <Input
                   id="doc-name"
                   placeholder="Enter document name"

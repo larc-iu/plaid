@@ -132,7 +132,7 @@ export const MergePanel = ({ project, client }) => {
       })
       .catch((err) => {
         console.error('Load vocabulary failed:', err);
-        if (!cancelled) notifyError(humanizeError(err, 'Could not load the vocabulary.'));
+        if (!cancelled) notifyError(humanizeError(err), 'Failed to load the vocabulary');
       });
     return () => {
       cancelled = true;

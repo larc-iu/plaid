@@ -59,7 +59,7 @@ describe('ImportRunPanel', () => {
     const failed = await renderComponent(
       <ImportRunPanel stage="review" runError="The server said 500" />,
     );
-    expect(byText(failed.container, 'p', 'Import failed')).not.toBeNull();
+    expect(byText(failed.container, 'p', 'Failed to import')).not.toBeNull();
     expect(texts(failed.container, 'p')).toContain('The server said 500');
     expect(texts(failed.container, 'p')).toContain('Retry continues where it left off.');
     await failed.unmount();
@@ -84,7 +84,7 @@ describe('ImportRunPanel', () => {
         stopped={false}
       />,
     );
-    expect(byText(container, 'p', 'Import failed')).not.toBeNull();
+    expect(byText(container, 'p', 'Failed to import')).not.toBeNull();
     expect(texts(container, 'p')).toContain('The server could not cancel the pending write: 503');
     await unmount();
   });
@@ -93,7 +93,7 @@ describe('ImportRunPanel', () => {
     const { container, unmount } = await renderComponent(
       <ImportRunPanel stage="running" runError="The server said 500" progress={{ pct: 3 }} />,
     );
-    expect(byText(container, 'p', 'Import failed')).toBeNull();
+    expect(byText(container, 'p', 'Failed to import')).toBeNull();
     await unmount();
   });
 });

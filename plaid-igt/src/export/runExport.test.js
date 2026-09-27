@@ -349,7 +349,7 @@ describe('runExport', () => {
     const files = await unzipBlob(result.blob);
     expect(new TextDecoder().decode(files['Flex.lift'])).not.toContain('<example>');
     expect(result.warnings).toEqual([
-      'Example document d2 failed to load: boom',
+      'Example document "Other" failed to load: boom',
       '1 example could not be read from the document it points into and was left out of the .lift file.',
     ]);
   });
@@ -458,7 +458,7 @@ describe('runExport', () => {
     expect(
       new DOMParser().parseFromString(xml, 'text/xml').querySelectorAll('interlinear-text').length,
     ).toBe(1);
-    expect(result.warnings).toEqual(['Document d2 failed to load: boom']);
+    expect(result.warnings).toEqual(['"Beta" failed to load: boom']);
   });
 
   it('turns per-document failures into warnings, not aborts', async () => {
@@ -470,7 +470,7 @@ describe('runExport', () => {
       preset: plainPreset(),
       scope: { type: 'project' },
     });
-    expect(result.warnings).toEqual(['Document d2 failed to load: boom']);
+    expect(result.warnings).toEqual(['"Bad" failed to load: boom']);
     const entries = await unzipBlob(result.blob);
     expect(Object.keys(entries)).toEqual(['documents/Good.txt']);
   });
@@ -532,7 +532,7 @@ describe('runExport', () => {
       'documents/D5.txt',
     ]);
     expect(progress.filter((p) => p.name).map((p) => p.name)).toEqual(['D1', 'D2', 'D4', 'D5']);
-    expect(result.warnings).toEqual(['Document d3 failed to load: boom']);
+    expect(result.warnings).toEqual(['"D3" failed to load: boom']);
   });
 
   it("reads only this app's layers, except for the archive, which reads every layer", async () => {

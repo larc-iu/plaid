@@ -156,7 +156,7 @@ test('the picker is not offered where there is no annotation to ask about', asyn
   await seedAuth(page);
   await withAssistant(page);
   await page.goto('/#/projects/new');
-  await expect(page.getByRole('heading', { name: /New Project/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /New project/i })).toBeVisible();
   await expect(toggle(page)).toHaveCount(0);
 });
 
