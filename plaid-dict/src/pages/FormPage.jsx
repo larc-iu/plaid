@@ -89,7 +89,7 @@ export const FormPage = () => {
             className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
           >
             <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            <span className="font-serif" lang={objectLang}>
+            <span dir="auto" className="font-serif [overflow-wrap:anywhere]" lang={objectLang}>
               {neighbours.previous}
             </span>
           </Link>
@@ -101,7 +101,7 @@ export const FormPage = () => {
             to={formPath(slug, neighbours.next)}
             className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
           >
-            <span className="font-serif" lang={objectLang}>
+            <span dir="auto" className="font-serif [overflow-wrap:anywhere]" lang={objectLang}>
               {neighbours.next}
             </span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />

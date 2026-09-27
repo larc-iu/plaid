@@ -22,7 +22,8 @@ const goToLetter = (letter) => {
 const FormLink = ({ slug, form, lang }) => (
   <Link
     to={formPath(slug, form)}
-    className="font-serif underline-offset-4 hover:underline"
+    dir="auto"
+    className="font-serif underline-offset-4 [overflow-wrap:anywhere] hover:underline"
     lang={lang}
   >
     {form}
@@ -160,7 +161,7 @@ export const FrontPage = () => {
               </h2>
               <ul className="flex flex-wrap gap-x-4 gap-y-1">
                 {forms.map((form) => (
-                  <li key={form}>
+                  <li key={form} className="min-w-0">
                     <FormLink slug={slug} form={form} lang={objectLang} />
                   </li>
                 ))}

@@ -148,7 +148,7 @@ export const EntryArticle = ({
       <FormLabel
         form={displayForm(node.item)}
         index={node.number}
-        className="font-serif text-2xl font-semibold"
+        className="font-serif text-2xl font-semibold [overflow-wrap:anywhere]"
       />
     </span>
   );
