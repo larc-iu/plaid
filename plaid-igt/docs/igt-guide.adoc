@@ -586,7 +586,7 @@ Below it, the members who have made no changes in that window are named, which i
 The lower table is the project's history as a feed, newest first, each row naming the person, what they did, and the document it happened to.
 For one document's history, and for putting a document back the way it was, see <<_history>>.
 
-= Project Settings
+= Settings
 
 A maintainer opens a project's **Settings** tab.
 It has five sections, listed down the left side.
