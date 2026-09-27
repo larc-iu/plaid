@@ -11,6 +11,7 @@
             [plaid.sql.audit-write :as psaw]
             [plaid.sql.common :as psc]
             [plaid.sql.crud :as crud]
+            [plaid.sql.datasource :as psd]
             [plaid.sql.operation :as op :refer [submit-operation!]]
             [plaid.sql.pagination :as pagination]
             [plaid.sql.user :as user])
@@ -198,9 +199,30 @@
                                                  :document/time-created  (:created_at r)
                                                  :document/time-modified (:modified_at r)})}))
 
+(defn hidden?
+  "Is `id` a project being deleted: marked by `delete`, not yet removed by
+  `plaid.server.project-removal`? Such a project is gone to every reader and
+  writer, admins included. False for an id no project has."
+  [db id]
+  (boolean (and id
+                (psc/q1 db {:select [:id]
+                            :from [:projects]
+                            :where [:and [:= :id id] [:<> :deleted_at nil]]}))))
+
+(defn hidden-ids
+  "The ids of every project being deleted, oldest mark first."
+  [db]
+  (->> (psc/q db {:select [:id]
+                  :from [:projects]
+                  :where [:<> :deleted_at nil]
+                  :order-by [:deleted_at]})
+       (mapv :id)))
+
 (defn get
   ([db id]
-   (when-let [bare (row->project-bare (psc/fetch-by-id db :projects id))]
+   (when-let [bare (row->project-bare (psc/q1 db {:select [:*]
+                                                  :from [:projects]
+                                                  :where [:and [:= :id id] [:= :deleted_at nil]]}))]
      (-> bare
          (->> (attach-acl db id))
          (->> (enrich-layers db))))))
@@ -214,14 +236,20 @@
 (defn maintainer-ids [db id]
   (user-ids-for-role db id "maintainer"))
 
-(defn get-all-ids [db]
-  (->> (psc/q db {:select [:id] :from [:projects]})
+(defn get-all-ids
+  "Every project's id, less the ones being deleted."
+  [db]
+  (->> (psc/q db {:select [:id] :from [:projects] :where [:= :deleted_at nil]})
        (mapv :id)))
 
-(defn get-accessible-ids [db user-id]
-  (->> (psc/q db {:select-distinct [:project_id]
-                  :from [:project_users]
-                  :where [:= :user_id user-id]})
+(defn get-accessible-ids
+  "The ids of the projects `user-id` holds a role on, less the ones being
+  deleted (whose roles `delete` already removed)."
+  [db user-id]
+  (->> (psc/q db {:select-distinct [:pu.project_id]
+                  :from [[:project_users :pu]]
+                  :join [[:projects :p] [:= :p.id :pu.project_id]]
+                  :where [:and [:= :pu.user_id user-id] [:= :p.deleted_at nil]]})
        (mapv :project_id)))
 
 (defn maintainer-of-any?
@@ -379,7 +407,7 @@
 (defn get-by-name [db name]
   (when-let [row (psc/q1 db {:select [:*]
                              :from [:projects]
-                             :where [:= :name name]})]
+                             :where [:and [:= :name name] [:= :deleted_at nil]]})]
     (-> (row->project-bare row)
         (->> (attach-acl db (:id row))))))
 
@@ -463,82 +491,105 @@
                          eid))))
 
 (defn delete
-  "Delete a project — and truly delete it. A deleted project is gone: it is
-  NOT recoverable and NOT time-travelable (`plaid.history.read` refuses
-  as-of reads for documents whose project no longer exists). So, unlike
-  single-document / single-layer delete, we do NOT audit every descendant
-  row — that history would be write-only. Instead:
+  "Delete a project, and truly delete it: not recoverable, not
+  time-travelable. In ONE SHORT STEP, so saves elsewhere on the server are
+  never held up behind it:
 
-  - FK ON DELETE CASCADE sweeps the entire descendant subtree in the DB
-    engine when the `projects` row is dropped: documents → texts / tokens /
-    spans / relations / vocab_links, the text→token→span→relation layer
-    tree, and every junction table (project_users, project_vocabs,
-    span_tokens, vocab_link_tokens, ...).
-  - `entity_metadata` is the one table with no FK to its owning entity
-    (it's a polymorphic key-value table), so cascade can't reach it. We
-    bulk-delete the project's metadata rows by entity-type — scoped through
-    the project's documents (document-owned entities) or the denormalized
-    `project_id` (layers) — BEFORE dropping the project row, while the
-    referenced entity rows still exist. These sweeps are unaudited, per the
-    parent-owned-metadata contract. Vocab layers/items are global (shared
-    via project_vocabs) and are intentionally left untouched.
-  - Exactly ONE audit row is emitted: the `:projects` `:delete` row from
-    `delete-by-id!`.
+  - `projects.deleted_at` is stamped. From that moment the project is gone to
+    everyone, admins included: `get`, `get-all-ids` and
+    `get-accessible-ids` leave it out (the project list, the query
+    language's scope) and the route gate refuses it
+    (`plaid.rest-api.v1.auth/wrap-project-privileges-required`, via `hidden?`).
+  - Its roles (`project_users`), vocabulary grants (`project_vocabs`) and
+    pending invites are removed, so nothing reached through membership
+    or a grant still leads into it. These are unaudited, as the cascade that
+    used to remove them was.
+  - Exactly ONE audit row is emitted: `:projects` `:delete` with the project
+    row as its pre-image, as before.
 
-  This makes project deletion a handful of statements instead of one
-  audited DELETE per descendant — a ~200-document project was ~188k audited
-  deletes, enough to blow past the client's HTTP timeout. The result includes
-  `:deleted-document-ids`, captured inside the delete transaction, so callers
-  can remove the corresponding on-disk media after commit."
+  Everything under it is removed afterwards by
+  `plaid.server.project-removal`, one document per transaction
+  (`remove-hidden-document!`, then `remove-hidden-project!`). Removing a
+  400-document project in one transaction held the write lock for 18 s,
+  and every save on the server waited for it.
+
+  A project already being deleted answers 404, as a removed one does."
   [db eid user-id]
-  (let [deleted-document-ids (volatile! [])
-        result (submit-operation! [tx db {:type :project/delete
-                                          :project eid
-                                          :document nil
-                                          :description (str "Delete project " eid)
-                                          :user user-id}]
-                                  (let [existing (psc/fetch-by-id tx :projects eid)]
-                                    (when (nil? existing)
-                                      (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid})))
-                                    (vreset! deleted-document-ids
-                                             (->> (psc/q tx {:select [:id]
-                                                             :from [:documents]
-                                                             :where [:= :project_id eid]})
-                                                  (mapv :id)))
-                                    ;; entity_metadata cleanup (FK cascade can't reach
-                                    ;; this table). Run BEFORE the project row is dropped
-                                    ;; so the entity-id subqueries still resolve their
-                                    ;; soon-to-be-cascaded rows. Unaudited.
-                                    (let [doc-ids {:select [:id] :from [:documents] :where [:= :project_id eid]}
-                                          sweep-meta! (fn [etype table where]
-                                                        (psc/execute! tx
-                                                                      {:delete-from :entity_metadata
-                                                                       :where [:and
-                                                                               [:= :entity_type etype]
-                                                                               [:in :entity_id {:select [:id]
-                                                                                                :from [table]
-                                                                                                :where where}]]}))]
-                                      (sweep-meta! "document"       :documents       [:= :project_id eid])
-                                      (sweep-meta! "text"           :texts           [:in :document_id doc-ids])
-                                      (sweep-meta! "token"          :tokens          [:in :document_id doc-ids])
-                                      (sweep-meta! "span"           :spans           [:in :document_id doc-ids])
-                                      (sweep-meta! "relation"       :relations       [:in :document_id doc-ids])
-                                      (sweep-meta! "vocab-link"     :vocab_links     [:in :document_id doc-ids])
-                                      (sweep-meta! "text-layer"     :text_layers     [:= :project_id eid])
-                                      (sweep-meta! "token-layer"    :token_layers    [:= :project_id eid])
-                                      (sweep-meta! "span-layer"     :span_layers     [:= :project_id eid])
-                                      (sweep-meta! "relation-layer" :relation_layers [:= :project_id eid])
-                                      (psc/execute! tx
-                                                    {:delete-from :entity_metadata
-                                                     :where [:and
-                                                             [:= :entity_type "project"]
-                                                             [:= :entity_id eid]]}))
-                                    ;; One audit row; FK ON DELETE CASCADE sweeps the
-                                    ;; descendant subtree + junction tables.
-                                    (crud/delete-by-id! tx :projects eid)
-                                    eid))]
-    (assoc result :deleted-document-ids
-           (if (:success result) @deleted-document-ids []))))
+  (submit-operation! [tx db {:type :project/delete
+                             :project eid
+                             :document nil
+                             :description (str "Delete project " eid)
+                             :user user-id}]
+                     (let [existing (psc/fetch-by-id tx :projects eid)]
+                       (when (or (nil? existing) (some? (:deleted_at existing)))
+                         (throw (ex-info (psc/err-msg-not-found "Project" eid) {:code 404 :id eid})))
+                       (psc/execute! tx {:update :projects
+                                         :set {:deleted_at (psc/now-iso)}
+                                         :where [:= :id eid]})
+                       (doseq [table [:project_users :project_vocabs :invites]]
+                         (psc/execute! tx {:delete-from table :where [:= :project_id eid]}))
+                       (psaw/record-audit-write! tx :projects eid :delete existing nil)
+                       eid)))
+
+(defn- sweep-metadata!
+  "Delete the `entity_metadata` rows of the `etype` entities `table` holds
+  under `where`. The one table no FK cascade reaches (it is polymorphic), so
+  each removal step clears it BEFORE dropping the rows that own it, while
+  the subquery still finds them. Unaudited, per the parent-owned-metadata
+  contract."
+  [tx etype table where]
+  (psc/execute! tx {:delete-from :entity_metadata
+                    :where [:and
+                            [:= :entity_type etype]
+                            [:in :entity_id {:select [:id] :from [table] :where where}]]}))
+
+(defn remove-hidden-document!
+  "Remove ONE document of project `pid`, which must be being deleted, and
+  everything under it, in one transaction: its metadata, then the document
+  row, whose FK cascade takes its texts, tokens, spans, relations and vocab
+  links. Returns the removed document's id, or nil when the project has no
+  documents left (or is not being deleted, so nothing is touched). Raw and
+  unaudited: the project's one `:delete` audit row already recorded it."
+  [datasource pid]
+  (psd/with-tx [tx datasource]
+    (when-let [doc-id (:id (psc/q1 tx {:select [:d.id]
+                                       :from [[:documents :d]]
+                                       :join [[:projects :p] [:= :p.id :d.project_id]]
+                                       :where [:and [:= :d.project_id pid] [:<> :p.deleted_at nil]]
+                                       :limit 1}))]
+      (let [in-doc [:= :document_id doc-id]]
+        (sweep-metadata! tx "text" :texts in-doc)
+        (sweep-metadata! tx "token" :tokens in-doc)
+        (sweep-metadata! tx "span" :spans in-doc)
+        (sweep-metadata! tx "relation" :relations in-doc)
+        (sweep-metadata! tx "vocab-link" :vocab_links in-doc)
+        (psc/execute! tx {:delete-from :entity_metadata
+                          :where [:and [:= :entity_type "document"] [:= :entity_id doc-id]]})
+        (psc/execute! tx {:delete-from :documents :where [:= :id doc-id]}))
+      doc-id)))
+
+(defn remove-hidden-project!
+  "The last step of removing project `pid`, once `remove-hidden-document!`
+  has taken every document: the layers' and the project's own metadata, then
+  the project row, whose FK cascade takes its layers, comments, guidelines
+  and whatever else still names it. One transaction, and a short one with the
+  documents gone. Returns true when it removed the row. Does nothing to a
+  project that is not being deleted or still has documents."
+  [datasource pid]
+  (psd/with-tx [tx datasource]
+    (when (and (psc/q1 tx {:select [:id] :from [:projects]
+                           :where [:and [:= :id pid] [:<> :deleted_at nil]]})
+               (nil? (psc/q1 tx {:select [:id] :from [:documents]
+                                 :where [:= :project_id pid] :limit 1})))
+      (let [in-project [:= :project_id pid]]
+        (sweep-metadata! tx "text-layer" :text_layers in-project)
+        (sweep-metadata! tx "token-layer" :token_layers in-project)
+        (sweep-metadata! tx "span-layer" :span_layers in-project)
+        (sweep-metadata! tx "relation-layer" :relation_layers in-project))
+      (psc/execute! tx {:delete-from :entity_metadata
+                        :where [:and [:= :entity_type "project"] [:= :entity_id pid]]})
+      (psc/execute! tx {:delete-from :projects :where [:= :id pid]})
+      true)))
 
 (def ^:private purge-batch-size 5000)
 

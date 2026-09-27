@@ -173,11 +173,15 @@
   "Inject `:db` (the HikariCP DataSource) and `:secret-key` onto every request.
   The atomic batch handler passes through sub-requests with `:db` already set
   to a tx-Connection; preserve that override so sub-handlers share the batch's
-  transaction instead of opening fresh ones against the pool."
+  transaction instead of opening fresh ones against the pool.
+
+  `:plaid/datasource` is always the pool, batch or not, for work a handler
+  hands on to run after the request (a project's removal)."
   [handler db secret-key]
   (fn [request]
     (handler (-> request
                  (update :db #(or % db))
+                 (assoc :plaid/datasource db)
                  (assoc :secret-key secret-key)))))
 
 (defn- method-name [m]

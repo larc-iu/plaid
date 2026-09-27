@@ -6,7 +6,8 @@
             [plaid.server.media-maintenance :as media-maintenance]
             [plaid.server.middleware :refer [middleware]]
             [plaid.server.events] ; Start the events system
-            [plaid.rest-api.v1.project :as project]
+            [plaid.server.project-removal :as project-removal]
+            [plaid.server.sql :as sql]
             [taoensso.timbre :as log]))
 
 ;; https://github.com/ptaoussanis/sente/blob/master/src/taoensso/sente/server_adapters/jetty9.clj
@@ -30,10 +31,13 @@
         port (:port http-kit-config-with-max-body)]
     (when (nil? port)
       (throw (Exception. "http-server cannot start: no :port configured. Set [server] port in your config.toml (the bundled default is 8080).")))
-    ;; Enable background reclamation of deleted projects' audit history — a
-    ;; running-server behavior the test suite must not trigger (it would race
-    ;; tests' post-delete audit assertions). See `project/purge-deleted-projects?`.
-    (reset! project/purge-deleted-projects? true)
+    ;; A deleted project is removed in the background and its history purged,
+    ;; running-server behavior the test suite must not trigger (it asserts on
+    ;; a deleted project's audit rows). Then the removals a restart cut short.
+    ;; See `plaid.server.project-removal`.
+    (reset! project-removal/background? true)
+    (reset! project-removal/purge-history? true)
+    (project-removal/resume! sql/datasource)
     (log/info "Starting server on port" port "with max body size" max-body-bytes "bytes")
     (let [stop-server (http-kit/run-server middleware http-kit-config-with-max-body)]
       (fn []

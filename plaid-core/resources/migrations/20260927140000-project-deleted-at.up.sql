@@ -1,0 +1,11 @@
+-- A project being deleted (perf-project-delete, 2026-09-27).
+--
+-- Deleting a project used to drop it and every row under it in one
+-- transaction, and SQLite lets one transaction write at a time, so every save
+-- on the server waited for the whole cascade: 18 s for a project of 400
+-- documents, with other people's saves surviving only on the clients' retries.
+-- Now the delete stamps `deleted_at` in one short step, which hides the
+-- project everywhere at once, and a background task removes it a document at a
+-- time (`plaid.server.project-removal`). A row with `deleted_at` set is a
+-- project whose removal has not finished yet, and startup resumes it.
+ALTER TABLE projects ADD COLUMN deleted_at TEXT NULL;
