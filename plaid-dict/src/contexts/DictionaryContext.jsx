@@ -50,7 +50,7 @@ export const DictionaryProvider = () => {
         console.error('Failed to load the dictionary:', err);
         if (alive) {
           setItems([]);
-          setError('The entries could not be loaded.');
+          setError('Failed to load the entries.');
         }
       }
     })();

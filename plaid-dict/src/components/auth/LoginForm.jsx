@@ -45,7 +45,7 @@ export const LoginForm = () => {
         }
         navigate('/');
       } else {
-        setError(result.error || 'Sign-in failed.');
+        setError(result.error || 'Email or password is incorrect.');
       }
     } finally {
       setLoading(false);

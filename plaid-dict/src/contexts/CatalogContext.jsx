@@ -34,7 +34,7 @@ export const CatalogProvider = ({ children }) => {
         return;
       }
       console.error('Failed to load vocabularies:', err);
-      setError('The dictionaries could not be loaded.');
+      setError('Failed to load the dictionaries.');
     } finally {
       setLoading(false);
     }

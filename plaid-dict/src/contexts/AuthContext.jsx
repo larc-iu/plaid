@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { signInError } from '@ui/lib/errors.js';
 import { authService } from '@/services/auth';
 
 const AuthContext = createContext(null);
@@ -24,7 +25,7 @@ export const AuthProvider = ({ children }) => {
       setUser(result.user);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message || 'Login failed' };
+      return { success: false, error: signInError(error) };
     }
   };
 

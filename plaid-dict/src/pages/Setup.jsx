@@ -269,7 +269,7 @@ export const Setup = () => {
       navigate(dictionaryPath(record.slug));
     } catch (err) {
       console.error('Failed to save the dictionary record:', err);
-      notifyError(err || 'Saving failed.');
+      notifyError(err, 'Failed to save the dictionary');
     } finally {
       setSaving(false);
     }
@@ -293,7 +293,7 @@ export const Setup = () => {
       notifySuccess(`${n.toLocaleString()} ${n === 1 ? 'entry' : 'entries'} published.`);
     } catch (err) {
       console.error('Publishing every entry failed:', err);
-      notifyError('Not every entry was published. Try again.', 'Publishing stopped');
+      notifyError('Not every entry was published. Try again.', 'Failed to publish every entry');
     } finally {
       try {
         const { items: refreshed = [] } = await client.vocabLayers.get(vocabularyId, true);
