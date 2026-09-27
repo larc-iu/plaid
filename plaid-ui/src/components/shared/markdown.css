@@ -9,6 +9,12 @@
  * on the properties it sets and leaves the rest here.
  */
 
+/* A long URL or unbroken word breaks where it must instead of widening the
+   box past its card, where the card clips it. */
+.md-body {
+  overflow-wrap: anywhere;
+}
+
 .md-body > :first-child {
   margin-top: 0;
 }
@@ -95,6 +101,10 @@
   background: rgba(0, 0, 0, 0.06);
   border-radius: 4px;
   overflow-x: auto;
+  /* Takes the width it is given rather than asking for its longest line: a
+     scroller that still reports its content's width stretches the column it
+     sits in, and the card clips the scroller along with everything else. */
+  contain: inline-size;
 }
 .md-body pre code {
   background: none;
@@ -115,13 +125,17 @@
 }
 
 /* A wide table scrolls inside itself instead of stretching the column it sits
-   in — what the old `table` component override did by wrapping it in a
-   scroll container. */
+   in, which is what the old `table` component override did by wrapping it in
+   a scroll container. As a block it spans the column, the rows inside keep
+   their own width, and the containment is the same as for `pre` above. Cells
+   break at spaces only, so a wide table scrolls rather than squeezing each
+   word into a column of letters. */
 .md-body table {
   display: block;
-  width: max-content;
   max-width: 100%;
   overflow-x: auto;
+  contain: inline-size;
+  overflow-wrap: normal;
   border-collapse: collapse;
   margin: 0.5em 0;
 }
