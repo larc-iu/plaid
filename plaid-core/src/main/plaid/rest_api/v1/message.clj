@@ -23,11 +23,13 @@
   channel, `:project/readers` for a /listen stream) or is an admin. The
   project must also still exist, since the privilege check lets an admin in
   on any project id, and an admin's channel has to close when its project
-  is deleted."
-  [{:keys [db project-id user-id token-id token-version]} privilege]
+  is deleted. And a token that expires (`token-exp`, its `exp` claim) is
+  let in only until then."
+  [{:keys [db project-id user-id token-id token-version token-exp]} privilege]
   (let [account (user/get-internal db user-id)]
     (boolean
      (and account
+          (or (nil? token-exp) (< (quot (System/currentTimeMillis) 1000) token-exp))
           (prj/get db project-id)
           (nil? (:user/deactivated-at account))
           (if token-id
@@ -150,6 +152,7 @@
                               (let [opener {:user-id user-id
                                             :token-id (:api-token/id req)
                                             :token-version (-> req :jwt-data :version)
+                                            :token-exp (-> req :jwt-data :exp)
                                             :db db}]
                                 (events/register-channel-mapping! channel client-chan id stop-chan client-id opener)
                               ;; The credential was admitted by the middleware, before this
@@ -234,6 +237,19 @@
   (log/info "Closed service channel" service-id "on project" project-id
             "because its credential no longer admits it"))
 
+(defn close-at-expiry!
+  "Close service channel `entry` when the token that opened it expires, if
+  it does (`:token-exp`, a delegated token's hour). No write marks that
+  moment, so `close-lapsed-service-channels!` would not, and the channel
+  would go on receiving requests, and a delegating service the requesters'
+  tokens, under a credential no longer let in anywhere."
+  [{:keys [token-exp project-id service-id channel] :as entry}]
+  (when token-exp
+    (async/go
+      (async/<! (async/timeout (max 0 (- (* 1000 (long token-exp)) (System/currentTimeMillis)))))
+      (when (identical? channel (events/get-service-channel project-id service-id))
+        (drop-service-channel! entry)))))
+
 (defn close-lapsed-service-channels!
   "Close every live service channel whose opener would no longer be let in.
   Runs after each write that can take that right away (see
@@ -283,6 +299,7 @@
               ;; moment that credential or its user's role no longer would.
               :token-id (:api-token/id req)
               :token-version (-> req :jwt-data :version)
+              :token-exp (-> req :jwt-data :exp)
               :db db}]
     ;; Conflict pre-check must happen BEFORE as-channel — SSE headers go out
     ;; in :on-open, after which a plain 409 response is no longer possible.
@@ -332,7 +349,9 @@
                   (catch Exception e
                     (log/warn e "Failed to record seen-service row for" service-id "on project" id)))
                 (log/debug "Service channel opened for" service-id "on project" id)
-                (start-keepalive! channel)))))
+                (start-keepalive! channel)
+                (close-at-expiry! (assoc info :project-id id :service-id service-id
+                                         :user-id user-id :channel channel))))))
         :on-close
         (fn [channel _]
           (events/unregister-service-channel! id service-id channel)
@@ -471,8 +490,11 @@
       (let [request-id (or request-id (str (java.util.UUID/randomUUID)))
             scope (when delegating?
                     (delegated-projects req db id (parse-project-ids project-ids)))
+            ;; Never longer-lived than the requester's own token, so a
+            ;; delegated token cannot renew itself through a service.
             delegated-token (when delegating?
-                              (pra/issue-delegated-token! db secret-key user-id scope))
+                              (pra/issue-delegated-token! db secret-key user-id scope
+                                                          (-> req :jwt-data :exp)))
             ;; The service is told which projects the token reaches, so it
             ;; can say which of the ones it was asked about it cannot open.
             event (cond-> {:request-id request-id :requester-id user-id :data data}

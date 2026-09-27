@@ -114,14 +114,23 @@
   route outside those projects, admin and user routes included (see
   the Scoped tokens section below). A service is run by whoever connected it, so the token must
   not reach further than the request it was minted for. Returns nil if the
-  user is missing."
-  [db secret-key user-id project-ids]
-  (when-let [account (user/get-internal db user-id)]
-    (sign-user-token secret-key
-                     (:user/id account)
-                     (:user/password-changes account)
-                     (delegated-token-ttl-seconds)
-                     (vec (distinct (map (comp str/lower-case str) project-ids))))))
+  user is missing.
+
+  `not-after` is the `exp` of the credential the request came with, when it
+  has one. The new token expires no later, so a token never mints one that
+  outlives it: a delegated token that submits to a delegating service (its
+  holder's own, say) cannot renew itself that way."
+  ([db secret-key user-id project-ids]
+   (issue-delegated-token! db secret-key user-id project-ids nil))
+  ([db secret-key user-id project-ids not-after]
+   (when-let [account (user/get-internal db user-id)]
+     (sign-user-token secret-key
+                      (:user/id account)
+                      (:user/password-changes account)
+                      (cond-> (delegated-token-ttl-seconds)
+                        (number? not-after)
+                        (min (- (long not-after) (quot (System/currentTimeMillis) 1000))))
+                      (vec (distinct (map (comp str/lower-case str) project-ids)))))))
 
 (defn issue-api-token!
   "Mint + persist a named API token and return the signed JWT — the ONLY time
@@ -597,15 +606,24 @@
   "Does `request`'s user hold at least `key` on `project-id`, or admin?
 
   With a scoped token (`*token-scope*`), only on a project in scope, where
-  an admin counts as holding every level."
+  an admin counts as holding every level.
+
+  Nobody holds anything on a project being deleted (`prj/hidden?`), admins
+  included: it is gone from the moment the delete returns, although its rows
+  are still being removed in the background."
   [{db :db :as request} key project-id]
   (let [user-id (->user-id request)]
-    (if-let [scope (:auth/token-scope request)]
-      (boolean (and (in-scope? scope project-id)
-                    (or (:admin? scope) (member-at? db key project-id user-id))
-                    (pass-scope! scope)))
-      (boolean (or (user/admin? (:user/record request))
-                   (member-at? db key project-id user-id))))))
+    (cond
+      (prj/hidden? db project-id)
+      false
+
+      :else
+      (if-let [scope (:auth/token-scope request)]
+        (boolean (and (in-scope? scope project-id)
+                      (or (:admin? scope) (member-at? db key project-id user-id))
+                      (pass-scope! scope)))
+        (boolean (or (user/admin? (:user/record request))
+                     (member-at? db key project-id user-id)))))))
 
 (defn privileged?
   "Does the request's user hold at least `key` (`:project/readers`,
@@ -641,6 +659,11 @@
 
         (and scope id (not (in-scope? scope id)))
         scope-refusal
+
+        ;; A project being deleted answers an admin as a removed one does. A
+        ;; non-admin gets the 403 below, as for any project that is not theirs.
+        (and (user/admin? (:user/record request)) (prj/hidden? (:db request) id))
+        {:status 404 :body {:error "Project not found"}}
 
         :else
         {:status 403
