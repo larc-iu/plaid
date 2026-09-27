@@ -76,6 +76,7 @@ export const comments = {
     this._popoverReturnId = `comment:${entityId}`;
     this._cmtEditingId = null;
     this._cmtEditDraft = '';
+    this._cmtSyncUnsaved();
     this._popoverPos = this._computePopoverPos(anchorEl, 300, this._popWidth('comment'));
     this._render(true);
     this._focusPopover();
@@ -109,7 +110,8 @@ export const comments = {
       };
     }
     const typed = [...(this._cmtDrafts?.values() ?? [])].some((d) => d.trim());
-    const editing = this._cmtEditingId && this._cmtEditDraft.trim();
+    const edit = this._cmtEditDraft.trim();
+    const editing = this._cmtEditingId && edit && edit !== this._cmtEditOriginal;
     setUnsavedDraft(
       this,
       this._cmtSending || typed || editing ? 'The comment you have typed' : null,
@@ -171,6 +173,7 @@ export const comments = {
             startEdit: (c) => {
               this._cmtEditingId = c.id;
               this._cmtEditDraft = c.body;
+              this._cmtEditOriginal = c.body;
               this._render(true);
             },
             cancelEdit: () => {

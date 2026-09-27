@@ -138,10 +138,13 @@ describe('what the server refuses', () => {
     store._byEntity.set('i1', [c]);
     mount(store);
     host.querySelector('[aria-label="Edit this comment"]').click();
+    // An editor open on the comment as it stands has nothing to lose.
+    expect(hasUnsavedDraft()).toBe(null);
     typeInto(host.querySelector('textarea[aria-label="Edit your comment"]'), 'after');
     host.querySelector('.igt-cmt__row--editing .igt-cmt__btn--primary').click();
     await settle();
     expect(host.querySelector('textarea[aria-label="Edit your comment"]').value).toBe('after');
     expect(store.threadFor('i1')[0].body).toBe('before');
+    expect(hasUnsavedDraft()).toBe('The comment you have typed');
   });
 });

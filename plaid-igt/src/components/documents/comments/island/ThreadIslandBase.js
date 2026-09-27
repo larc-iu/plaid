@@ -56,7 +56,8 @@ export class ThreadIslandBase {
       setUnsavedDraft(this, null);
       return;
     }
-    const editing = this._editingId && this._editDraft.trim();
+    const edit = this._editDraft.trim();
+    const editing = this._editingId && edit && edit !== this._editOriginal;
     const typed = [...this._drafts.values()].some((d) => d.trim());
     setUnsavedDraft(
       this,
@@ -76,6 +77,7 @@ export class ThreadIslandBase {
   _startEdit(comment) {
     this._editingId = comment.id;
     this._editDraft = comment.body;
+    this._editOriginal = comment.body;
     this._render();
   }
 
@@ -171,6 +173,9 @@ export class ThreadIslandBase {
   }
 
   _render() {
+    // A subclass can drop an edit (switching entries), so what is unsaved is
+    // read again whenever the thread is drawn.
+    this._syncUnsaved();
     render(this._template(), this.host);
   }
 }
