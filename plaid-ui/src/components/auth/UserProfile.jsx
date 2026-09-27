@@ -12,6 +12,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { UserAvatar } from '../shared/UserAvatar';
+import { Loading } from '../shared/Loading.jsx';
+import { Notice } from '../shared/Notice.jsx';
 import { useConfirm } from '../shared/ConfirmProvider';
 import { usePasswordMinimum, passwordTooShort } from '../../hooks/usePasswordMinimum.js';
 
@@ -385,7 +387,7 @@ export const UserProfile = ({ className, children }) => {
 
           {/* One-time reveal of a freshly minted token */}
           {mintedToken && (
-            <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+            <Notice tone="warning" className="p-3">
               <p className="text-sm font-medium">Token &ldquo;{mintedToken.name}&rdquo; created</p>
               <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
                 Copy it now. It is not shown again.
@@ -402,7 +404,7 @@ export const UserProfile = ({ className, children }) => {
                   Done
                 </Button>
               </div>
-            </div>
+            </Notice>
           )}
 
           {/* Create form */}
@@ -424,10 +426,7 @@ export const UserProfile = ({ className, children }) => {
           {/* Token list */}
           <div>
             {tokensLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted border-t-primary" />
-                Loading tokens…
-              </div>
+              <Loading label="Loading tokens…" className="p-0" />
             ) : activeTokens.length === 0 ? (
               <p className="text-sm text-muted-foreground">No active tokens.</p>
             ) : (
@@ -447,7 +446,7 @@ export const UserProfile = ({ className, children }) => {
                       </p>
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       className="text-destructive hover:text-destructive"
                       onClick={() => handleRevokeToken(t)}

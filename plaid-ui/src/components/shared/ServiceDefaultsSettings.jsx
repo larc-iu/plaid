@@ -11,6 +11,7 @@ import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { ServiceParamForm } from '../services/ServiceParamForm.jsx';
 import { ServiceSummary } from '../services/ServiceSummary.jsx';
+import { Loading } from './Loading.jsx';
 import { notifySuccess, notifyError } from '../../lib/notify.js';
 import { humanizeError } from '../../lib/errors.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
@@ -39,7 +40,7 @@ const ServiceStatus = ({ service }) => (
       variant="outline"
       className={
         service.online
-          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700'
+          ? 'border-success/40 bg-success/10 text-success-foreground'
           : 'border-border bg-muted text-muted-foreground'
       }
     >
@@ -316,11 +317,7 @@ export const ServiceDefaultsSettings = ({
   );
 
   if (loading && !project) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
-      </div>
-    );
+    return <Loading />;
   }
 
   return (

@@ -4,6 +4,9 @@ import { Card } from '../ui/card';
 import { DataTable } from './data-table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
+import { Loading } from './Loading.jsx';
+import { Notice } from './Notice.jsx';
+import { PendingCell } from './PendingCell.jsx';
 
 /**
  * A number that is still being counted, could not be counted, or is a number.
@@ -12,10 +15,7 @@ import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
  * has no answer, and zero is an answer.
  */
 export const CountCell = ({ value, loading }) => {
-  if (loading && value === undefined)
-    return (
-      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
-    );
+  if (loading && value === undefined) return <PendingCell />;
   return value == null ? '—' : value.toLocaleString();
 };
 
@@ -100,18 +100,13 @@ export const LinkedListPage = ({
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-        >
+        <Notice tone="error" role="alert" className="mb-4">
           {error}
-        </div>
+        </Notice>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-muted-foreground">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-        </div>
+        <Loading />
       ) : rows.length === 0 ? (
         <Card className="p-10 text-center text-muted-foreground">
           <p className="text-lg">{empty.title}</p>

@@ -12,6 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
+import { Loading } from '../shared/Loading.jsx';
 import { Switch } from '../ui/switch.jsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select.jsx';
@@ -106,8 +107,7 @@ export const ConversationRows = ({
   onPick = null,
   onDelete,
 }) => {
-  if (loading && !rows.length)
-    return <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>;
+  if (loading && !rows.length) return <Loading className="px-2 py-3 text-xs" />;
   if (!rows.length)
     return <div className="px-2 py-3 text-xs text-muted-foreground">No conversations yet.</div>;
   return rows.map((m) => {

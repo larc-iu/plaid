@@ -105,7 +105,7 @@ const UsageMeter = ({ usage, spend }) => {
           <span
             className={cn(
               'block h-full rounded-full',
-              f >= NEARLY_FULL ? 'bg-amber-500' : 'bg-primary/50',
+              f >= NEARLY_FULL ? 'bg-warning' : 'bg-primary/50',
             )}
             style={{ width: `${Math.max(2, Math.round(f * 100))}%` }}
           />

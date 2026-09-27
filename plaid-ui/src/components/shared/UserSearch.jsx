@@ -1,6 +1,7 @@
 import { Badge } from '../ui/badge';
 import { SearchInput, ListHint } from './list-search';
 import { UserAvatar } from './UserAvatar';
+import { Loading } from './Loading.jsx';
 import { USER_SEARCH_LIMIT } from '../../hooks/useUserSearch.js';
 
 // The search box and its results wherever someone is picked out of the user
@@ -25,9 +26,7 @@ export const UserSearch = ({ client, search, renderAction }) => {
       ) : (
         active &&
         (loading ? (
-          <div className="flex justify-center py-4 text-muted-foreground">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
-          </div>
+          <Loading className="px-0 py-1" />
         ) : results.length === 0 ? (
           <p className="py-1 text-sm text-muted-foreground">
             {debounced ? 'No matching users.' : 'No other users to add.'}

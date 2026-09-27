@@ -85,7 +85,7 @@ const ThreadRow = ({
             <span dir="auto">{label}</span>
             {detail && <AnchorDetail detail={detail} excerpt={excerpt} />}
             {thread.outdated && (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">
+              <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-normal text-warning-foreground">
                 outdated
               </span>
             )}

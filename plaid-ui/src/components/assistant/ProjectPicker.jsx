@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Loader2, PanelRightClose } from 'lucide-react';
+import { PanelRightClose } from 'lucide-react';
 import { humanizeError } from '../../lib/errors.js';
 import { Button } from '../ui/button.jsx';
+import { Loading } from '../shared/Loading.jsx';
 import { AssistantMark } from './PlaidMarks.jsx';
 
 // What the dock shows before any project has been in scope: the reader has just
@@ -59,9 +60,7 @@ export const ProjectPicker = ({ client, onPick, onHide }) => {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {projects === null ? (
-          <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-          </div>
+          <Loading className="px-1 py-2 text-xs" />
         ) : error ? (
           <p className="px-1 py-2 text-xs text-destructive">{error}</p>
         ) : projects.length === 0 ? (

@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { Loading } from './Loading.jsx';
 
 // The guard every signed-in route sits behind, and what a reader sees while
 // the session is still being worked out.
@@ -20,8 +21,8 @@ export const createProtectedRoute = (useAuth, { loginPath }) => {
 
     if (loading) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <div className="min-h-screen bg-background">
+          <Loading />
         </div>
       );
     }

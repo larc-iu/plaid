@@ -10,6 +10,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
+import { Loading } from '../shared/Loading.jsx';
 
 // Why a code can be dead, in the words the holder needs. The server sends the
 // status because the holder already has the code: there is nothing left to
@@ -127,9 +128,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex justify-center py-6">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-            </div>
+            <Loading className="py-6 text-center" />
           ) : lookupError || deadMessage ? (
             <div className="flex flex-col gap-4">
               <div

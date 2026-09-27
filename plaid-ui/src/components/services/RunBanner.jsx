@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
+import { Notice } from '../shared/Notice.jsx';
+import { cn } from '../../lib/utils.js';
 import { formatElapsed } from '../../hooks/useRunProgress.js';
 
 // Why the document has stopped accepting edits, and that the run behind it is
@@ -10,6 +12,11 @@ import { formatElapsed } from '../../hooks/useRunProgress.js';
 // mounts its button, or when the page was reloaded and the run was rejoined
 // with no dialog open. So the clock ticks here in its own right: a run that
 // reports nothing for a minute still visibly has a minute on it.
+// The run is moving, so the notice's icon turns.
+const Running = ({ className, ...rest }) => (
+  <Loader2 className={cn(className, 'animate-spin')} {...rest} />
+);
+
 export function RunBanner({ label, startedAt, status, cancel }) {
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -21,9 +28,8 @@ export function RunBanner({ label, startedAt, status, cancel }) {
   }, [startedAt]);
 
   return (
-    <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    <Notice tone="warning" icon={Running} className="mb-4 px-4 py-3">
       <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
         <p className="font-medium">Editing paused</p>
         <span className="ml-auto text-xs tabular-nums">{formatElapsed(elapsedMs)}</span>
         {/* The only way to stop a run this page did not start: it lives in its
@@ -38,6 +44,6 @@ export function RunBanner({ label, startedAt, status, cancel }) {
         {label} is running.
         {status ? ` ${status}` : ''}
       </p>
-    </div>
+    </Notice>
   );
 }

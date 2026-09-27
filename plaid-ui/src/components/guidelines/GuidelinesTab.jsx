@@ -6,6 +6,7 @@ import { Input } from '../ui/input.jsx';
 import { SafeMarkdown } from '../shared/markdown.jsx';
 import { ListCount, ListPager, SearchInput } from '../shared/list-search.jsx';
 import { Suspended } from '../shared/Suspended.jsx';
+import { Loading } from '../shared/Loading.jsx';
 import { useConfirm } from '../shared/ConfirmProvider.jsx';
 import { useUnsavedDraft, useUnsavedGuard } from '../../hooks/useUnsavedDraft.js';
 import { useLatestCall } from '../../hooks/useLatestCall.js';
@@ -329,7 +330,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
         <div className="min-w-0">
           <ListPager {...paged} onPage={paged.setPage} position="top" />
           {loading ? (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">Loading…</p>
+            <Loading className="px-3 py-6 text-center" />
           ) : loadError ? (
             <p className="px-3 py-6 text-center text-sm text-destructive">{loadError}</p>
           ) : paged.pageItems.length === 0 ? (
@@ -442,6 +443,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
                     type="button"
                     variant="ghost"
                     size="icon"
+                    className="text-muted-foreground hover:text-destructive"
                     onClick={remove}
                     title="Delete"
                     aria-label="Delete"

@@ -13,7 +13,7 @@ export const inviteLinkFor = (code) => {
 // four are read at a glance down a column and "active" and "revoked" are the
 // two that matter.
 export const INVITE_STATUS_CLASS = {
-  active: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+  active: 'border-success/40 bg-success/10 text-success-foreground',
   used: 'border-border bg-muted text-muted-foreground',
   expired: 'border-border bg-muted text-muted-foreground',
   revoked: 'border-destructive/40 bg-destructive/10 text-destructive',

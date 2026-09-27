@@ -135,7 +135,7 @@ export const AssistantComposer = ({
           message is about to be typed, and with the remedy named: the new
           conversation button is a few pixels away in the header. */}
       {(full ?? 0) >= NEARLY_FULL && (
-        <p className="mx-auto mb-2 max-w-3xl text-xs text-amber-600 dark:text-amber-500">
+        <p className="mx-auto mb-2 max-w-3xl text-xs text-warning-foreground">
           This conversation is {Math.round(full * 100)}% full. Start a new one.
         </p>
       )}

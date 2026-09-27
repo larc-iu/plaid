@@ -5,10 +5,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 import { timeAgo, fullTimestamp } from '../../lib/formatTime.js';
 import { notifyWarning } from '../../lib/notify.js';
 import { textIncludes } from '../../domain/collation.js';
-
-const Spinner = () => (
-  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-primary align-middle" />
-);
+import { PendingCell } from './PendingCell.jsx';
 
 /**
  * A project's documents, with what both apps show about one: how many words it
@@ -134,13 +131,13 @@ export const DocumentTable = ({
   }, [projectId, client]);
 
   const renderWords = (documentId) => {
-    if (wordsLoading) return <Spinner />;
+    if (wordsLoading) return <PendingCell />;
     if (!hasWordLayer) return '—';
     return (wordCounts[documentId] ?? 0).toLocaleString();
   };
 
   const renderMine = (documentId) => {
-    if (mineLoading) return <Spinner />;
+    if (mineLoading) return <PendingCell />;
     const at = myLastEdits[documentId];
     if (!at) return '—';
     return (

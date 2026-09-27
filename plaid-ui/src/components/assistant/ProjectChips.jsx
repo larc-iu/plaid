@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { FolderOpen, FolderPlus, Loader2, X } from 'lucide-react';
+import { FolderOpen, FolderPlus, X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
 import { Combobox } from '../shared/combobox.jsx';
+import { Loading } from '../shared/Loading.jsx';
 import { humanizeError } from '../../lib/errors.js';
 import { atProjectCap, projectCandidates } from './projectReach.js';
 
@@ -101,9 +102,7 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="w-72 p-2">
         {projects === null ? (
-          <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
-            <Loader2 className="h-3 w-3 animate-spin" /> Loading…
-          </div>
+          <Loading className="px-1 py-1 text-xs" />
         ) : error ? (
           <p className="px-1 py-1 text-xs text-destructive">{error}</p>
         ) : options.length === 0 ? (
@@ -123,9 +122,7 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
               listClassName="max-w-[18rem]"
               optionClassName="truncate"
             />
-            {checking && (
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-            )}
+            {checking && <span className="shrink-0 text-xs text-muted-foreground">Checking…</span>}
           </div>
         )}
       </PopoverContent>

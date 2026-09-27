@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { renderComponent, texts, all } from '../../test/renderComponent.jsx';
+import { renderComponent, all } from '../../test/renderComponent.jsx';
 import { LinkedListPage, CountCell, TimeCell } from './LinkedListPage.jsx';
 
 const ROWS = [
@@ -66,12 +66,28 @@ describe('LinkedListPage', () => {
 
   it('tells a count, an uncountable row and a row still counting apart', async () => {
     const { container, unmount } = await mount();
-    // Gamma has no count yet, so its cell is the spinner and reads as nothing.
-    expect(texts(container, 'tbody tr td:nth-child(2)')).toEqual(['3', '—', '']);
+    // Gamma has no count yet, so its cell is the muted ellipsis a cell shows
+    // while it loads, not a spinning ring and not a number.
     const cells = all(container, 'tbody tr td:nth-child(2)');
-    expect(cells[2].querySelector('.animate-spin')).not.toBe(null);
-    expect(cells[1].querySelector('.animate-spin')).toBe(null);
+    expect(cells[0].textContent).toBe('3');
+    expect(cells[1].textContent).toBe('—');
+    expect(cells[2].querySelector('[data-loading]')).not.toBe(null);
+    expect(cells[2].querySelector('[aria-hidden="true"]').textContent).toBe('…');
+    expect(cells[2].querySelector('.animate-spin')).toBe(null);
+    expect(cells[1].querySelector('[data-loading]')).toBe(null);
     await unmount();
+  });
+
+  it('says Loading… while it loads, with no spinner, and wears the error tone for a failure', async () => {
+    const loading = await mount({ loading: true });
+    expect(loading.container.textContent).toContain('Loading…');
+    expect(loading.container.querySelector('.animate-spin')).toBe(null);
+    await loading.unmount();
+    const failed = await mount({ error: 'Could not reach the server' });
+    const alert = failed.container.querySelector('[role="alert"]');
+    expect(alert.getAttribute('data-tone')).toBe('error');
+    expect(alert.textContent).toBe('Could not reach the server');
+    await failed.unmount();
   });
 
   it('shows the empty card instead of a table, and the header either way', async () => {

@@ -54,7 +54,7 @@ export const PlanCard = ({
       className={cn(
         'rounded-lg border px-3 py-2 text-sm',
         undecided && 'border-primary/40 bg-primary/5',
-        status === 'applied' && 'border-green-600/40 bg-green-600/5',
+        status === 'applied' && 'border-success/40 bg-success/5',
         status === 'discarded' && 'opacity-60',
       )}
     >
@@ -84,7 +84,7 @@ export const PlanCard = ({
       </div>
       {lost && <p className="mt-2 text-xs text-muted-foreground">Applying did not finish.</p>}
       {rewrites > 0 && (
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-warning-foreground">
           <PenLine className="h-3.5 w-3.5 shrink-0" />
           {rewrites === 1
             ? `1 change rewrites ${adapter.textName}.`
@@ -212,7 +212,7 @@ const ChangeRow = ({ row, projectId, adapter }) => {
         {row.writesText && (
           <Badge
             variant="outline"
-            className="mr-1.5 border-amber-600/40 px-1 py-0 align-[1px] text-[10px] font-medium text-amber-600 dark:text-amber-500"
+            className="mr-1.5 border-warning/40 px-1 py-0 align-[1px] text-[10px] font-medium text-warning-foreground"
           >
             Rewrite
           </Badge>
