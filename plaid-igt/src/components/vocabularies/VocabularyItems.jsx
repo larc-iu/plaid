@@ -11,7 +11,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { createdId, isReviewed } from '@larc-iu/plaid-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { canEditProject } from '@ui/domain/permissions.js';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, History } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@ui/components/ui/tabs';
 import { Button } from '@ui/components/ui/button';
 import { useConfirm } from '@ui/components/shared/ConfirmProvider';
@@ -91,6 +91,11 @@ import { AssistantMark } from '@ui/components/assistant/PlaidMarks.jsx';
 import { IGT_ASSISTANT } from '../projects/assistant/adapter.js';
 import { Loading } from '@ui/components/shared/Loading.jsx';
 import { readVocabulary } from '@/domain/vocabCache';
+import { EntryRestoreDialog } from './EntryRestoreDialog';
+
+// A past state read with no entry list: one empty list, so the memos over it
+// keep their identity.
+const NO_ENTRIES = Object.freeze([]);
 
 // The Entries screen of a vocabulary. This component owns the data (the
 // entries, their usage counts) and every write, sent through `writes`, the
@@ -105,18 +110,35 @@ export const VocabularyItems = ({
   client,
   fields,
   writes,
-  canManage = true,
+  canManage: canManageNow = true,
   comments = null,
   canComment = false,
+  past = null,
+  historyPending = false,
+  canRestore = false,
+  onRestored = null,
+  onOpenHistory = null,
 }) => {
   // Re-render on comment changes, so the per-entry counts stay in step.
   useCommentStore(comments);
   // The assistant's records are keyed by the user whose store they live in.
   const { user } = useAuth();
-  const [items, setItems] = useState([]);
+  const [liveItems, setItems] = useState([]);
+  // `past` is the vocabulary as the history rail shows it (`{ time,
+  // vocabulary }`): its entries stand in for the live ones, and nothing can be
+  // edited, only put back one entry at a time (EntryRestoreDialog). The
+  // writes below all work on the live list, which stays loaded underneath.
+  const pastTime = past?.time ?? null;
+  const pastItems = past ? past.vocabulary?.items || NO_ENTRIES : null;
+  const items = pastItems ?? liveItems;
+  // Read-only from the click on a history entry, before its read lands.
+  const canManage = canManageNow && !past && !historyPending;
+  const [restoring, setRestoring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [usageCounts, setUsageCounts] = useState(null); // {itemId: n} | null
+  const [usageCountsNow, setUsageCounts] = useState(null); // {itemId: n} | null
+  // Uses are counted now, which says nothing about a past state.
+  const usageCounts = past ? null : usageCountsNow;
   const [usageKinds, setUsageKinds] = useState(null); // {itemId: {word: n, morpheme: n}} | null
 
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -343,6 +365,12 @@ export const VocabularyItems = ({
       label: itemLabel(selectedItem, numbers),
     });
   };
+
+  // The open entry as it is now, beside the one a past state shows.
+  const liveItem = useMemo(
+    () => (selectedItem ? liveItems.find((i) => i.id === selectedItem.id) || null : null),
+    [liveItems, selectedItem],
+  );
 
   const homographs = useMemo(
     () => (selectedItem ? homographGroup(items, selectedItem.id) : []),
@@ -618,7 +646,9 @@ export const VocabularyItems = ({
     // Keyed on the id the entry was first shown under, so a new entry's draft
     // is not filled again, over what is being typed, when its server id
     // replaces the pending one in the URL.
-    const seedKey = seedKeyFor(stableKey(selectedId), newParent);
+    // A past state is its own seed, so moving to it or back to now fills the
+    // form from what is shown.
+    const seedKey = seedKeyFor(stableKey(selectedId), newParent) + (pastTime ? `@${pastTime}` : '');
     if (draft.seedKey === seedKey) return;
     if (selectedId === NEW_ID && refusedNewRef.current?.seedKey === seedKey) {
       // A new entry the server refused, back in the form as it was typed.
@@ -645,7 +675,7 @@ export const VocabularyItems = ({
       form: item.form,
       fields: editableMetadata(item.metadata),
     });
-  }, [selectedId, newParent, items, tree, draft.seedKey]);
+  }, [selectedId, newParent, items, tree, draft.seedKey, pastTime]);
 
   const dirty = isNew ? isDirty(draft, null) : selectedItem ? isDirty(draft, selectedItem) : false;
   // What leaving would lose. A new sense still holding only its headword's
@@ -1020,6 +1050,20 @@ export const VocabularyItems = ({
     );
   };
 
+  // After a restore, or its undo: back to the vocabulary as it is now, read
+  // again. An entry's form or links changing moves what the Analyze tab would
+  // propose for a word, so its remembered proposals go too.
+  const afterRestore = async () => {
+    dropPrecedent();
+    await onRestored?.();
+    await fetchItems({ quiet: true });
+    // The form was filled from the entry as it read before the restore (the
+    // list is read again only after the view leaves the past state), so it is
+    // filled again from what was just read, or a Save would write the old
+    // values back.
+    if (!typedRef.current) dispatch({ type: 'draft/unseed' });
+  };
+
   // ---- TSV export (Form + every field + Uses) ----
   const handleExportTsv = () => {
     const tsv = serializeVocabTsv({
@@ -1074,7 +1118,7 @@ export const VocabularyItems = ({
       umrLinked={umrLinked}
       homographs={homographs}
       usageCounts={usageCounts}
-      usageKinds={usageKinds}
+      usageKinds={past ? null : usageKinds}
       itemTo={itemTo}
       newSenseTo={newSenseTo}
       onSave={handleSave}
@@ -1150,7 +1194,7 @@ export const VocabularyItems = ({
                   reflows either way. Just "Ask": the entry it is about is the
                   heading directly below, so naming it in the label repeated a
                   fact from a centimetre away. */}
-            <div className="mb-3 flex items-start justify-between gap-4">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
               <TabsList>
                 <TabsTrigger value="entry" to={paneTo('entry')}>
                   Entry
@@ -1172,19 +1216,45 @@ export const VocabularyItems = ({
                   )}
                 </TabsTrigger>
               </TabsList>
-              {assistantAvailable && wideEnoughForAssistant && selectedItem && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 gap-1.5"
-                  onClick={askAboutEntry}
-                  title="Ask the assistant about this entry"
-                >
-                  <AssistantMark className="h-3.5 w-3.5" />
-                  Ask
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {past && selectedItem && !liveItem && (
+                  <span className="text-xs text-muted-foreground">Deleted since</span>
+                )}
+                {past && selectedItem && canRestore && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRestoring(true)}
+                  >
+                    Restore
+                  </Button>
+                )}
+                {!past && selectedItem && onOpenHistory && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={onOpenHistory}
+                  >
+                    <History className="h-3.5 w-3.5" /> History
+                  </Button>
+                )}
+                {!past && assistantAvailable && wideEnoughForAssistant && selectedItem && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 gap-1.5"
+                    onClick={askAboutEntry}
+                    title="Ask the assistant about this entry"
+                  >
+                    <AssistantMark className="h-3.5 w-3.5" />
+                    Ask
+                  </Button>
+                )}
+              </div>
             </div>
 
             <TabsContent value="entry">
@@ -1295,6 +1365,21 @@ export const VocabularyItems = ({
         send={sendPlanned}
         onApplied={handleImported}
       />
+
+      {past && selectedItem && (
+        <EntryRestoreDialog
+          open={restoring}
+          onOpenChange={setRestoring}
+          client={client}
+          vocabularyId={vocabularyId}
+          asOf={pastTime}
+          past={selectedItem}
+          live={liveItem}
+          label={itemLabel(selectedItem, numbers)}
+          fields={fields}
+          onRestored={afterRestore}
+        />
+      )}
 
       <EntryDialogs
         dialog={dialog}

@@ -153,7 +153,7 @@ export const EntryEditor = ({
             <FormLabel form={selectedItem?.form ?? ''} index={numbers.get(selectedItem?.id)} />
           )}
         </h3>
-        {!isNew && selectedItem && (
+        {!isNew && selectedItem && usageCounts && (
           <div className="text-right text-xs text-muted-foreground">
             <span>
               {uses.toLocaleString()} use{uses === 1 ? '' : 's'}

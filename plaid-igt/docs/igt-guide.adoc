@@ -714,6 +714,9 @@ There are four operations:
 * **Re-analyze a word**: give every occurrence of a word the same analysis, chosen from the analyses it already has in the project.
 * **Merge lexicon entries**: fold duplicate entries into one, moving every link to the survivor.
 
+Respelling a lexicon entry and merging entries rename or delete them, which only a maintainer of the entry's vocabulary may do.
+Entries of a vocabulary you do not maintain are listed as *maintainers only* and are not respelled, and a merge says so.
+
 Respelling and replacing ask how to match, with the same three kinds the Search tab offers.
 Contains ignores case.
 Is exactly and matches a regular expression do not, and here a match is a write.
@@ -954,6 +957,7 @@ Results come in two views:
 
 Every change in Plaid IGT is recorded in an **audit log**, with a meaningful message and the identity of the person who made it.
 Past states of any document can be viewed, read-only.
+A past state shows each vocabulary entry as it read at that same moment, so a gloss changed since shows its old value.
 Comments are the exception: they are kept beside the data rather than in it, so they neither appear in the log nor change what a past state shows.
 
 Open a document's **history** with **History** at the end of its tab row, on any tab, or from the rail at the left edge of the editor.
@@ -972,6 +976,24 @@ The message that confirms a restore offers **Undo**, which brings that state bac
 Comments stay attached: whatever the restore brings back keeps the comments it had, and a comment on something the restore removed moves to the Comments tab's Outdated section.
 A field that was deleted after that moment cannot come back, and neither can a link to a vocabulary entry that no longer exists; the dialog says so before you confirm.
 Restoring is for a project's maintainers.
+
+== Vocabulary history
+
+A vocabulary has a history of its own.
+Open it with **History** beside the vocabulary's name, on any of its tabs.
+It lists every change to the vocabulary and to its entries: an entry added, edited, moved or deleted, a field or tagset changed, a maintainer added.
+Links are not in it: linking a word is annotation, and shows in the document's history.
+
+Selecting a history entry shows the vocabulary's entries as they were right after that change, read-only on the **Entries** tab, entries deleted since included.
+**History** on an open entry opens the same list with that entry kept open, so each state you select shows that entry as it was then.
+
+To put one entry back as it was, open it in the past state and click **Restore**.
+A dialog lists what changes: the form and each field set back, or, for an entry deleted since, the whole entry.
+The entry keeps its comments.
+Its links in documents do not come back with it.
+Each document's own restore, to a moment when a link was there, brings that link back once the entry exists again.
+The message that confirms the restore offers **Undo**, which sets the entry back again, or, for an entry the restore brought back, deletes it.
+Restoring an entry is for the vocabulary's maintainers.
 
 = Sharing and Permissions
 

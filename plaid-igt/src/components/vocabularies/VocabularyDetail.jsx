@@ -11,6 +11,8 @@ import {
   ChevronDown,
   AlertTriangle,
   MessageSquare,
+  History,
+  Info,
 } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Input } from '@ui/components/ui/input';
@@ -74,6 +76,13 @@ import { Loading } from '@ui/components/shared/Loading.jsx';
 import { Notice } from '@ui/components/shared/Notice.jsx';
 import { Breadcrumb } from '@ui/components/shared/Breadcrumb.jsx';
 import { DELETE_BUTTON_CLASS } from '@ui/lib/destructive.js';
+import { HistoryDrawer, HISTORY_DRAWER_WIDTH } from '@ui/components/shared/HistoryDrawer.jsx';
+import { fullTimestamp } from '@ui/lib/formatTime.js';
+import { useVocabHistory } from './useVocabHistory';
+
+// A tab the past state does not reach. The trigger is an anchor, which the
+// `disabled:` variant does not match, so it keys on Radix's data attribute.
+const PAST_DISABLED = 'data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
 // Radix Select has no empty-string item value, so "no tagset" needs a sentinel.
 const NO_TAGSET = '__none__';
@@ -249,6 +258,20 @@ export const VocabularyDetail = () => {
     };
   }, [client, user, vocabularyId, isNewVocabulary]);
   const canComment = canManageVocabulary(vocabulary, user) || writerThroughProject;
+
+  // The history rail: every change to the vocabulary and its entries, and the
+  // vocabulary as it was after any of them, read-only on the Entries tab. A
+  // maintainer can put one entry back from there.
+  const history = useVocabHistory({
+    client,
+    vocabularyId: isNewVocabulary ? null : vocabularyId,
+    onExpired: () => logout('expired'),
+  });
+  const pastFields = useMemo(
+    () =>
+      history.past ? normalizeVocabFields(readVocabFields(history.past.vocabulary?.config)) : null,
+    [history.past],
+  );
 
   // The tab rides in `?tab=`, so a reload or a shared link reopens the same one.
   // Only the tabs this user actually gets are legal values, so a maintainer's
@@ -965,8 +988,28 @@ export const VocabularyDetail = () => {
     );
   }
 
+  // A pick in the rail shows the Entries tab, the one place a past state is
+  // drawn. The others stay on the vocabulary as it is now.
+  const selectPast = (entry) => {
+    if (entry && activeTab !== 'items') setActiveTab('items');
+    history.select(entry);
+  };
+  const viewingPast = !!history.selected;
+
   return (
-    <div>
+    <div
+      className="transition-[margin] duration-200"
+      style={{ marginLeft: history.open ? HISTORY_DRAWER_WIDTH : 0 }}
+    >
+      <HistoryDrawer
+        isOpen={history.open}
+        onClose={history.closeHistory}
+        auditEntries={history.entries}
+        loading={history.loading}
+        error={history.error}
+        onSelectEntry={selectPast}
+        selectedEntry={history.selected}
+      />
       <div className="flex flex-col gap-6">
         <Breadcrumb
           items={[
@@ -976,8 +1019,30 @@ export const VocabularyDetail = () => {
         />
 
         {!isNewVocabulary && (
-          <div>
-            <h1 className="mb-4 text-2xl font-bold">{vocabulary?.name}</h1>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-4">
+              <h1 dir="auto" className="min-w-0 truncate text-2xl font-bold">
+                {vocabulary?.name}
+              </h1>
+              {/* Not a tab: the rail keeps whatever tab is open, the way a
+                  document's History does. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 gap-1.5"
+                onClick={history.openHistory}
+                disabled={history.open}
+              >
+                <History className="h-4 w-4" /> History
+              </Button>
+            </div>
+            {viewingPast && (
+              <Notice tone="warning" icon={Info}>
+                {history.loadingPast
+                  ? `Loading the vocabulary as of ${fullTimestamp(history.selected.time)}…`
+                  : `Read-only. This is the vocabulary as of ${fullTimestamp(history.selected.time)}.`}
+              </Notice>
+            )}
           </div>
         )}
 
@@ -987,7 +1052,12 @@ export const VocabularyDetail = () => {
               <TabsTrigger value="items" to={tabHref(vocabPath, 'items')}>
                 <BookText className="h-4 w-4" /> Entries
               </TabsTrigger>
-              <TabsTrigger value="comments" to={tabHref(vocabPath, 'comments')}>
+              <TabsTrigger
+                value="comments"
+                to={tabHref(vocabPath, 'comments')}
+                disabled={viewingPast}
+                className={PAST_DISABLED}
+              >
                 <MessageSquare className="h-4 w-4" /> Comments
                 {(comments?.count ?? 0) > 0 && (
                   <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] leading-4 tabular-nums">
@@ -996,12 +1066,22 @@ export const VocabularyDetail = () => {
                 )}
               </TabsTrigger>
               {canManageVocabulary(vocabulary, user) && (
-                <TabsTrigger value="maintainers" to={tabHref(vocabPath, 'maintainers')}>
+                <TabsTrigger
+                  value="maintainers"
+                  to={tabHref(vocabPath, 'maintainers')}
+                  disabled={viewingPast}
+                  className={PAST_DISABLED}
+                >
                   <Users className="h-4 w-4" /> Maintainers
                 </TabsTrigger>
               )}
               {canManageVocabulary(vocabulary, user) && (
-                <TabsTrigger value="settings" to={tabHref(vocabPath, 'settings')}>
+                <TabsTrigger
+                  value="settings"
+                  to={tabHref(vocabPath, 'settings')}
+                  disabled={viewingPast}
+                  className={PAST_DISABLED}
+                >
                   <Settings className="h-4 w-4" /> Settings
                 </TabsTrigger>
               )}
@@ -1012,11 +1092,16 @@ export const VocabularyDetail = () => {
                 vocabularyId={vocabularyId}
                 vocabulary={vocabulary}
                 client={client}
-                fields={fields}
+                fields={pastFields ?? fields}
                 writes={writes.entries}
                 canManage={canManageVocabulary(vocabulary, user)}
                 comments={comments}
                 canComment={canComment}
+                past={history.past}
+                historyPending={viewingPast && !history.past}
+                canRestore={canManageVocabulary(vocabulary, user)}
+                onRestored={history.backToNow}
+                onOpenHistory={history.openHistory}
               />
             </TabsContent>
 
