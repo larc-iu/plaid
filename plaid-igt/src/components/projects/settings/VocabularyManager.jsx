@@ -11,6 +11,8 @@ import { ROW_DELETE_CLASS } from '@ui/lib/destructive.js';
 import { cn } from '@ui/lib/utils';
 import { notifyError } from '@/utils/feedback';
 import { textIncludes } from '@ui/domain/collation.js';
+import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
+import { plural } from '@/utils/plural';
 
 // A row the user may not link: an unlinked vocabulary whose row says so
 // (`canLink: false`, set by the screen that loaded it). A linked row is always
@@ -27,6 +29,7 @@ export const VocabularyManager = ({
   onError,
   showTitle = true,
   isSettings = false, // New prop to control behavior differences
+  client = null, // reads each vocabulary's entry count, when given
 }) => {
   const [vocabularies, setVocabularies] = useState([]);
   const [newVocabName, setNewVocabName] = useState('');
@@ -37,6 +40,9 @@ export const VocabularyManager = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [unlinkModalOpened, setUnlinkModalOpened] = useState(false);
   const [vocabToUnlink, setVocabToUnlink] = useState(null);
+  // vocabId -> entry count. Two vocabularies may share a name, and the count
+  // is what tells them apart on screen. Absent while loading or if unreadable.
+  const [entryCounts, setEntryCounts] = useState({});
 
   // Sends wait their turn, so two quick ticks reach the server in order.
   const sends = useRef(Promise.resolve());
@@ -85,6 +91,28 @@ export const VocabularyManager = ({
     // start another load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
+
+  // One read per list, once it has loaded. A row added in the wizard is not on
+  // the server yet and has no count.
+  const serverIds = isInitialized
+    ? vocabularies
+        .filter((v) => !v.isCustom)
+        .map((v) => v.id)
+        .sort()
+        .join(' ')
+    : '';
+  useEffect(() => {
+    if (!client || !serverIds) return;
+    let cancelled = false;
+    loadEntryCounts(client, serverIds.split(' '))
+      .then((counts) => {
+        if (!cancelled) setEntryCounts(counts);
+      })
+      .catch((err) => console.error('Failed to count vocabulary entries:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [client, serverIds]);
 
   // Every change shows at once and is sent after the one before it. `change`
   // names the one row a link or unlink touched: a refused send puts that row
@@ -307,7 +335,12 @@ export const VocabularyManager = ({
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className={cn(record.enabled ? '' : 'italic text-muted-foreground')}>
-                        {record.name}
+                        <span dir="auto">{record.name}</span>
+                        {entryCounts[record.id] !== undefined && (
+                          <span className="ml-2 text-xs not-italic text-muted-foreground">
+                            {plural(entryCounts[record.id], 'entry', 'entries')}
+                          </span>
+                        )}
                         {isLocked(record) && (
                           <span className="block text-xs not-italic text-muted-foreground">
                             Only its maintainers can link it.

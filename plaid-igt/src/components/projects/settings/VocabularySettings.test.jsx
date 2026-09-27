@@ -36,6 +36,7 @@ const makeClient = ({ linked = [], link } = {}) => ({
     linkVocab: vi.fn(link ?? (async () => {})),
     unlinkVocab: vi.fn(async () => {}),
   },
+  query: vi.fn(async () => ({ results: [] })),
 });
 
 const rowOf = (root, name) => byText(root, 'tbody tr', name);
@@ -125,6 +126,7 @@ describe('Project settings, Vocabularies, before the server answers', () => {
       linkVocab: vi.fn(linkVocab),
       unlinkVocab: vi.fn(async () => {}),
     },
+    query: vi.fn(async () => ({ results: [] })),
   });
 
   it('ticks a row at once and sends the link', async () => {
@@ -190,6 +192,36 @@ describe('Project settings, Vocabularies, a row the user may not link', () => {
     await view.step(() => byText(document.body, '[role=alertdialog] button', 'Unlink').click());
     expect(boxOf(view.container, 'Theirs').checked).toBe(false);
     expect(boxOf(view.container, 'Theirs').disabled).toBe(true);
+    await view.unmount();
+  });
+});
+
+// Two vocabularies may share a name. Each row shows its entry count, which is
+// what tells them apart (a sense is not an entry).
+describe('Project settings, Vocabularies, entry counts', () => {
+  it('shows each vocabulary its entry count beside its name', async () => {
+    const client = {
+      vocabLayers: {
+        list: vi.fn(async () => [
+          { id: 'v1', name: 'Lexicon', maintainers: ['me@x.org'] },
+          { id: 'v2', name: 'Lexicon', maintainers: ['me@x.org'] },
+        ]),
+      },
+      projects: { get: vi.fn(async () => ({ id: 'p1', vocabs: [] })) },
+      query: vi.fn(async (q) =>
+        JSON.stringify(q).includes('regex')
+          ? { results: [['v2', 3]] }
+          : {
+              results: [
+                ['v1', 1],
+                ['v2', 1207],
+              ],
+            },
+      ),
+    };
+    const view = await mount(client);
+    const rows = all(view.container, 'tbody tr').map((r) => r.textContent);
+    expect(rows).toEqual(['Lexicon1 entry', 'Lexicon1,204 entries']);
     await view.unmount();
   });
 });

@@ -61,6 +61,7 @@ export const VocabularyStep = ({ data, onDataChange, client }) => {
         onSaveChanges={handleSaveChanges}
         showTitle={true}
         isSettings={false}
+        client={client}
       />
     </div>
   );

@@ -104,6 +104,7 @@ export const VocabularySettings = ({ projectId, client }) => {
         onError={handleError}
         showTitle={false}
         isSettings={true}
+        client={client}
       />
     </div>
   );

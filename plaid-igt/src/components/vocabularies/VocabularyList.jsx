@@ -9,7 +9,7 @@ import {
 } from '@ui/components/shared/LinkedListPage.jsx';
 import { notifyWarning, isPermissionError } from '@/utils/feedback';
 import { useDocumentTitle } from '@ui/hooks/useDocumentTitle.js';
-import { PARENT_KEY } from '@/domain/vocabDictionary';
+import { loadEntryCounts } from '@/domain/vocabEntryCounts.js';
 import { textIncludes } from '@ui/domain/collation.js';
 
 export const VocabularyList = () => {
@@ -46,8 +46,8 @@ export const VocabularyList = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Item counts come from a single grouped aggregate query: count vocab items
-  // grouped by their layer, across every vocab the user can read. One round trip.
+  // Entry counts come from grouped aggregate queries across every vocabulary
+  // the user can read (see loadEntryCounts).
   useEffect(() => {
     if (!vocabularies.length) return;
     let cancelled = false;
@@ -55,35 +55,10 @@ export const VocabularyList = () => {
       setCountsLoading(true);
       if (!client) return;
       try {
-        // Two grouped aggregates: every row, and the rows that are SENSES. An
-        // entry is what is left. Counting rows and calling them entries read
-        // 23 for a dictionary of 20 entries and 3 senses, and the reader beside
-        // it said something different again, so a lexicographer got two answers
-        // to "how big is this" and neither was the number of entries.
-        //
-        // A sense is a row carrying a parent (PARENT_KEY, see vocabDictionary).
-        // The query language has no "this key is set" test and cannot bind a
-        // variable to a metadata field, but a regex matching anything is the
-        // same question: it matches a row that HAS the key and skips one that
-        // does not.
-        const [all, senses] = await Promise.all([
-          client.query({
-            where: [['vocab', '?v', { layer: '?l' }]],
-            return: { group: ['?l'], aggregates: [['count']] },
-          }),
-          client.query({
-            where: [['vocab', '?v', { layer: '?l', metadata: { [PARENT_KEY]: { regex: '.*' } } }]],
-            return: { group: ['?l'], aggregates: [['count']] },
-          }),
-        ]);
-        const byLayer = {};
-        for (const [layerId, n] of all?.results || []) byLayer[layerId] = n;
-        const sensesByLayer = {};
-        for (const [layerId, n] of senses?.results || []) sensesByLayer[layerId] = n;
-        const counts = {};
-        for (const v of vocabularies) {
-          counts[v.id] = Math.max(0, (byLayer[v.id] ?? 0) - (sensesByLayer[v.id] ?? 0));
-        }
+        const counts = await loadEntryCounts(
+          client,
+          vocabularies.map((v) => v.id),
+        );
         if (!cancelled) setItemCounts(counts);
       } catch (err) {
         console.error('Vocab item-count query failed:', err);
