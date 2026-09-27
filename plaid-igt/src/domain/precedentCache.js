@@ -58,6 +58,21 @@
 // open now, at the version the counts list for it: a reload inside a
 // document edited here, or a new tab opening it, subtracts those rows and
 // folds the document live, instead of counting the project again.
+//
+// WHAT IS PROVEN BEFORE IT IS KEPT. No read here is atomic with another, so
+// a save can land between any two. The rules that keep the counts right:
+// - a document's rows are taken to be at a version only when no write of
+//   this tab's own was queued or landed while they were read, and a list of
+//   versions asked after they landed still names it (`verified`),
+// - the counts are taken to hold a document at its listed version only when
+//   the list asked after the project read names the same (`after`),
+// - only such counts and rows are kept in the browser, and a document left
+//   after an edit stands in for rows only when they are proven so. Otherwise
+//   leaving it drops the read, and the next document counts again.
+// The open document's rows, read beside the project, can miss by an edit
+// made here during the count. That is put right by counting again at the
+// next check made while nothing is being saved, not at once, since an edit
+// during every count would count the project on every keystroke.
 
 import {
   createTally,
@@ -152,16 +167,31 @@ function baselineOf(doc) {
   return { doc, dataVersion: doc.isSaving ? null : doc.dataVersion };
 }
 
+// Counts every landing of a document's rows, so a list of versions can tell
+// whether it was asked after them (`listAndNote`).
+let landings = 0;
+
 // `alongside`: read in the same breath as the project, so it is not held to
-// the project's list of versions (it could only differ by an edit landing
-// between the two, and holding it to that could read the project forever).
+// the project's list of versions at once: an edit here landing between the
+// two would read the project again on every keystroke. Whether it matches is
+// asked once the read is over (`settleRead`), and a mismatch is put right at
+// a quiet moment (`unsure`).
+//
+// `version` is the version the rows were read at, or null when that is not
+// known: a write of this tab's own was queued or landed while they were read.
+// `verified` says a list of versions asked after they landed still named that
+// version, so no save anywhere came between. Only verified rows are kept in
+// the browser or stand under an overlay.
 function fetchDoc(entry, doc, { alongside = false } = {}) {
+  const label = doc.isSaving ? null : versionOf(doc);
   const rec = {
     results: null,
     promise: null,
     overlay: null,
     failedAt: 0,
-    version: versionOf(doc),
+    version: label,
+    verified: false,
+    landed: Infinity,
     alongside,
     opened: baselineOf(doc),
   };
@@ -169,6 +199,8 @@ function fetchDoc(entry, doc, { alongside = false } = {}) {
   rec.promise = fetchRows(doc, doc.id)
     .then((results) => {
       rec.results = results;
+      if (doc.isSaving || versionOf(doc) !== label) rec.version = null;
+      rec.landed = ++landings;
       if (entry.docs.get(doc.id) === rec) persistDocs(entry);
     })
     .catch((err) => {
@@ -190,14 +222,35 @@ async function listVersions(doc) {
   return new Map((listed || []).map((d) => [d.id, d.version]));
 }
 
+// The same, and every document's rows that landed before it was asked and
+// are still at the version it names are verified: nothing was saved in that
+// document between their read and this list.
+async function listAndNote(entry, doc) {
+  const askedAfter = landings;
+  const listed = await listVersions(doc);
+  let verified = false;
+  for (const [id, rec] of entry.docs) {
+    if (!rec.results || rec.landed > askedAfter) continue;
+    rec.checked = true;
+    if (!rec.verified && rec.version != null && listed.get(id) === rec.version) {
+      rec.verified = verified = true;
+    }
+  }
+  // Rows of a document open now may be kept for a reload once verified.
+  if (verified) persistDocs(entry);
+  return listed;
+}
+
 // The project and every document's version in it, the versions first: an
 // edit landing between the two then shows as a version the rows already
 // hold, which costs a needless read and never a wrong one. `listed` is a
 // list the caller has just read.
-async function fetchProject(doc, listed = null) {
-  const versions = listed || (await listVersions(doc));
+async function fetchProject(entry, doc, listed = null) {
+  const versions = listed || (await listAndNote(entry, doc));
   return { versions, results: await fetchRows(doc) };
 }
+
+const sameVersions = (a, b) => a.size === b.size && [...a].every(([id, v]) => b.get(id) === v);
 
 // Has anything been saved since `project` was counted, other than what this
 // tab accounts for itself? See the header for the version each document is
@@ -227,9 +280,18 @@ function landed(entry) {
   return project?.results && !project.failed && project.versions ? project : null;
 }
 
+// A project read the browser may keep: every document stood still at its
+// listed version from the list before the read to the list after it, so the
+// counts hold exactly those versions. A read that only ran alongside a save
+// is right for this tab until the next count, and a reload counts again.
+function keepable(entry) {
+  const project = landed(entry);
+  return project?.exact ? project : null;
+}
+
 // Keep the counts in the browser.
 function persistProject(entry) {
-  const project = landed(entry);
+  const project = keepable(entry);
   if (!project) return;
   writeStored(entry.storeKey, {
     login: entry.login,
@@ -243,15 +305,15 @@ function persistProject(entry) {
 // Keep beside them every document left after an edit, and the rows of every
 // document open now that are the rows the counts hold for it.
 function persistDocs(entry) {
-  const project = landed(entry);
+  const project = keepable(entry);
   if (!project) return;
   const docs = [];
   for (const [id, rec] of entry.docs) {
-    if (!rec.results) continue;
+    if (!rec.results || !holds(project, rec, id)) continue;
     const open = rec.opened.doc && !rec.left;
-    if (!rec.overlay && !(open && inStep(project.versions, rec, id))) continue;
-    const { results, version, alongside, overlay, overlayVersion } = rec;
-    docs.push([id, { results, version, alongside, overlay, overlayVersion }]);
+    if (!rec.overlay && !open) continue;
+    const { results, version, overlay, overlayVersion } = rec;
+    docs.push([id, { results, version, overlay, overlayVersion }]);
   }
   writeStored(docsKeyOf(entry), { login: entry.login, readId: project.readId, docs });
 }
@@ -260,6 +322,27 @@ function persistDocs(entry) {
 // counts hold for it.
 function inStep(versions, rec, docId) {
   return rec.version != null && rec.version === versions.get(docId);
+}
+
+// Rows proven to be the rows the counts hold for the document: read at its
+// listed version, nothing saved in it until a list asked after them, and
+// nothing saved in it while the project was read either (`after`, the list
+// asked once the read was over), so the counts hold that version too.
+function holds(project, rec, docId) {
+  const listed = project.versions.get(docId);
+  return (
+    !!rec.verified && inStep(project.versions, rec, docId) && project.after?.get(docId) === listed
+  );
+}
+
+// The open document's rows, asked about since they landed, and not the rows
+// the counts hold for it: an edit here, or a save elsewhere, came between its
+// read and the project's. The tally is off by that edit until the project is
+// counted again, which happens at the next check made while nothing is being
+// saved (not at once: an edit landing during every read would count the
+// project on every keystroke).
+function unsure(project, rec, docId) {
+  return !!project.after && !!rec?.checked && !!rec.results && !holds(project, rec, docId);
 }
 
 // A fresh tab's first open: the counts the browser kept, when the versions
@@ -271,7 +354,7 @@ async function restoreOrFetch(entry, next, doc, own) {
     readStored(docsKeyOf(entry), entry.login),
   ]);
   if (stored && entry.project === next) {
-    const listed = await listVersions(doc);
+    const listed = await listAndNote(entry, doc);
     const docs = storedDocs && storedDocs.readId === stored.readId ? storedDocs.docs : [];
     // The kept documents stand beside the one being opened, whose own rows
     // are being read now.
@@ -293,6 +376,8 @@ async function restoreOrFetch(entry, next, doc, own) {
           entry.docs.set(doc.id, {
             ...keptOwn,
             alongside: false,
+            verified: true,
+            landed: 0,
             promise: null,
             failedAt: 0,
             opened: { doc, dataVersion: null },
@@ -303,10 +388,17 @@ async function restoreOrFetch(entry, next, doc, own) {
       next.results = stored.results;
       next.fetchedAt = stored.fetchedAt;
       next.readId = stored.readId;
+      // Kept only when exact (`keepable`), and already kept.
+      next.exact = true;
+      next.restored = true;
+      next.after = stored.versions;
       for (const [id, rec] of kept) {
         if (entry.docs.has(id)) continue;
         entry.docs.set(id, {
           ...rec,
+          alongside: false,
+          verified: true,
+          landed: 0,
           promise: null,
           failedAt: 0,
           opened: { doc: null, dataVersion: null },
@@ -315,13 +407,9 @@ async function restoreOrFetch(entry, next, doc, own) {
       return;
     }
   }
-  const { versions, results } = await fetchProject(doc);
+  const { versions, results } = await fetchProject(entry, doc);
   next.versions = versions;
   next.results = results;
-  if (entry.project === next) {
-    persistProject(entry);
-    persistDocs(entry);
-  }
 }
 
 // Read the project again, and this document's own rows beside it. Every
@@ -344,13 +432,9 @@ function readProject(entry, doc, { restore = false, listed = null } = {}) {
   const own = fetchDoc(entry, doc, { alongside: true });
   const read = restore
     ? restoreOrFetch(entry, next, doc, entry.docs.get(doc.id))
-    : fetchProject(doc, listed).then(({ versions, results }) => {
+    : fetchProject(entry, doc, listed).then(({ versions, results }) => {
         next.versions = versions;
         next.results = results;
-        if (entry.project === next) {
-          persistProject(entry);
-          persistDocs(entry);
-        }
       });
   next.promise = read
     .catch((err) => {
@@ -361,7 +445,27 @@ function readProject(entry, doc, { restore = false, listed = null } = {}) {
       next.promise = null;
       entry.generation++;
     });
-  return Promise.all([next.promise, own]);
+  return Promise.all([next.promise, own]).then(() => settleRead(entry, next, doc));
+}
+
+// Once the project and the opened document's rows are both in: one more list
+// of versions, asked after both. It says whether the counts are exact (every
+// document stood still through the read, so the browser may keep them) and
+// verifies the document's rows. Until it answers, nothing is kept.
+async function settleRead(entry, next, doc) {
+  if (entry.project !== next || !landed(entry)) return;
+  let after;
+  try {
+    after = await listAndNote(entry, doc);
+  } catch {
+    return;
+  }
+  if (entry.project !== next) return;
+  if (!next.exact) next.exact = sameVersions(next.versions, after);
+  if (!next.after) next.after = after;
+  entry.generation++;
+  if (!next.restored) persistProject(entry);
+  persistDocs(entry);
 }
 
 // Ask whether anything was saved since the project was counted, and count
@@ -371,9 +475,14 @@ function checkProject(entry, doc) {
   if (entry.checking) return entry.checking;
   const project = entry.project;
   project.checkedAt = Date.now();
-  const checking = listVersions(doc)
+  const checking = listAndNote(entry, doc)
     .then((listed) => {
-      if (entry.project !== project || !changedSince(entry, project, listed, doc)) return null;
+      if (entry.project !== project) return null;
+      const own = entry.docs.get(doc.id);
+      const redo =
+        changedSince(entry, project, listed, doc) ||
+        (!doc.isSaving && unsure(project, own, doc.id));
+      if (!redo) return null;
       return readProject(entry, doc, { listed });
     })
     .catch((err) => {
@@ -404,7 +513,7 @@ function outOfStep(project, rec, docId) {
  * `check`, which the editor passes when the tab comes back into view.
  */
 export function openPrecedent(doc, { check = false } = {}) {
-  if (doc?.asOf) return null;
+  if (doc?.asOf || signedOut) return null;
   const entry = entryFor(doc);
   if (!entry) return null;
   if (!vocabIdsOf(doc).length && !valuePrecedentQueries(doc.layerInfo).length) return null;
@@ -427,11 +536,13 @@ export function openPrecedent(doc, { check = false } = {}) {
     persistDocs(entry);
   }
   if (!rec || (rec.failedAt && Date.now() - rec.failedAt > RETRY_AFTER_FAIL_MS)) {
-    // Checked against the project's versions once both have landed.
-    const opened = !project.promise && checkProject(entry, doc);
-    return Promise.all([project.promise, fetchDoc(entry, doc), opened]).then(() =>
-      openPrecedent(doc),
+    // Checked against the project's versions once both have landed. The
+    // question is asked after the rows land, so it verifies them too.
+    const check = () => entry.project === project && !project.promise && checkProject(entry, doc);
+    const opened = fetchDoc(entry, doc).then(() =>
+      entry.checking ? entry.checking.then(check) : check(),
     );
+    return Promise.all([project.promise, opened]).then(() => openPrecedent(doc));
   }
   // Another model of the same document (opened again): changes are counted
   // from here, once the project is known not to have changed meanwhile.
@@ -498,6 +609,18 @@ export function leavePrecedent(doc, opts = {}) {
   // No longer open, so its rows are no longer kept for a reload inside it.
   rec.left = true;
   if (rec.opened.dataVersion !== null && doc.dataVersion === rec.opened.dataVersion) return;
+  if (entry.project?.failed && !entry.project.promise) return;
+  const project = landed(entry);
+  if (!project || project.promise || !holds(project, rec, doc.id)) {
+    // Its rows are not proven to be the ones the counts hold for it, so an
+    // overlay over them could be off for every document opened next. The
+    // project is counted again (or taken from the browser, if still good).
+    entry.project = null;
+    entry.docs.clear();
+    entry.memo = null;
+    entry.generation++;
+    return;
+  }
   rec.overlay = foldDocument(createTally(), doc.sentences, opts);
   // The version the overlay speaks for: any other version of this document
   // is a save made somewhere else.
@@ -516,13 +639,21 @@ export function dropPrecedent() {
   clearStored();
 }
 
+// Set once this tab signs out: nothing more is read in the moment before the
+// page leaves.
+let signedOut = false;
+
 /**
  * Signing out: forget every count, in this tab and in the browser, and keep
  * nothing more until the page loads again. They hold word forms, values and
  * entry ids another person at this machine should not find. Resolves once
- * the browser has let go of them.
+ * the browser has let go of them. `elsewhere`: another tab signed out, and
+ * this page stays, so only the browser's copy goes and nothing more is kept.
  */
-export function forgetPrecedent() {
-  byLogin.clear();
+export function forgetPrecedent({ elsewhere = false } = {}) {
+  if (!elsewhere) {
+    signedOut = true;
+    byLogin.clear();
+  }
   return closeStore();
 }

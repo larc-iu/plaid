@@ -260,6 +260,67 @@ describe('precedent kept across reloads', () => {
     expect(gloss(precedentBase(again))).toEqual(new Map([['eat', 1]]));
   });
 
+  // The document's own rows were read before this tab's edit landed, and the
+  // project after it: the rows taken out are not the ones the count holds.
+  it('an edit landing while the project is counted is put right at the next check', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    const opening = openPrecedent(a);
+    a.sentences = docOf(first, 'a', [['kai', 'eat']]).sentences;
+    a.dataVersion++;
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.versions.a = 2;
+    first.documentVersions = { a: 2 };
+    await opening;
+    await openPrecedent(a, { check: true });
+    await openPrecedent(a);
+    expect(gloss(precedentBase(a))).toEqual(new Map([['go', 1]]));
+    // Left, it stands in for its rows only over rows the count holds.
+    leavePrecedent(a, { wordFields: ['Gloss'] });
+    const b = docOf(first, 'b');
+    await openPrecedent(b);
+    await openPrecedent(b);
+    expect(gloss(precedentBase(b))).toEqual(new Map([['eat', 1]]));
+  });
+
+  // Someone saved the document between the editor reading it and its rows
+  // being read: the rows are newer than the version they were taken for.
+  it('rows read across a save made elsewhere are never kept for a reload', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const b = docOf(first, 'b');
+    await openPrecedent(b);
+    await openPrecedent(b);
+    leavePrecedent(b, { wordFields: ['Gloss'] });
+    const a = docOf(first, 'a', [['kai', 'go']]);
+    srv.glossByDoc.a = [['kai', 'eat']];
+    srv.versions.a = 2;
+    await openPrecedent(a);
+    await openPrecedent(a);
+    reload();
+    const second = tab(srv);
+    const again = docOf(second, 'a', [['kai', 'eat']]);
+    again.raw.version = 2;
+    await openPrecedent(again);
+    await openPrecedent(again, { check: true });
+    await openPrecedent(again);
+    expect(gloss(precedentBase(again))).toEqual(new Map([['go', 1]]));
+  });
+
+  it('another tab signing out empties the browser store and keeps this tab counting', async () => {
+    const srv = server({ a: [['kai', 'go']], b: [['kai', 'go']] });
+    const first = tab(srv);
+    const a = docOf(first, 'a');
+    await openPrecedent(a);
+    await openPrecedent(a);
+    await forgetPrecedent({ elsewhere: true });
+    expect(store.records.size).toBe(0);
+    expect(store.closed).toBe(true);
+    expect(gloss(precedentBase(a))).toEqual(new Map([['go', 1]]));
+    store.closed = false;
+  });
+
   it('signing out forgets the counts in memory and in the browser', async () => {
     const srv = server({ a: [['kai', 'go']], b: [] });
     const first = tab(srv);
@@ -270,6 +331,9 @@ describe('precedent kept across reloads', () => {
     expect(store.closed).toBe(true);
     const b = docOf(first, 'b');
     expect(precedentBase(b)).toBe(null);
+    // Nothing more is read in the moment before the page leaves.
+    expect(openPrecedent(b)).toBe(null);
+    expect(projectQueries(first)).toHaveLength(1);
     store.closed = false;
   });
 });
