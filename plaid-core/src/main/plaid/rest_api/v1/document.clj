@@ -38,6 +38,16 @@
                        :document/project)))
       :else nil)))
 
+(defn- wrap-resolve-as-of
+  "Resolve `:as-of-ts` once for the whole request. The permission check
+  (`get-project-id`, for a document deleted since) and the handler both
+  read the document at that time, and each would otherwise clamp the time
+  out of any batch again. See `plaid.history.read/resolve-time`."
+  [handler]
+  (fn [{db :db as-of-ts :as-of-ts :as request}]
+    (handler (cond-> request
+               as-of-ts (assoc :as-of-ts (hread/resolve-time db as-of-ts))))))
+
 (defn get-document-id [{params :parameters}]
   (-> params :path :document-id))
 
@@ -111,7 +121,8 @@
                              "survives when it is named or is an ancestor of a named layer, and "
                              "carries its own texts/tokens/spans/relations/vocabs only when it "
                              "is itself named.")
-               :middleware [[pra/wrap-reader-required get-project-id]]
+               :middleware [wrap-resolve-as-of
+                            [pra/wrap-reader-required get-project-id]]
                :parameters {:query [:map
                                     [:include-body {:optional true} boolean?]
                                     [:layers {:optional true} string?]]}

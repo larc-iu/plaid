@@ -106,6 +106,33 @@
         {:lte ts-iso})
       {:lte ts-iso})))
 
+;; A request that reads at one time can resolve the bound once and hand the
+;; result to every read it makes. The document GET does: its permission
+;; check reconstructs a deleted document's project at T, and the handler
+;; then reads the document at the same T. The batch clamp's first query
+;; scans `operations` by ts, which has no index led by ts, so paying it
+;; twice doubled the cost of the request.
+(defrecord ^:private ResolvedTime [bound])
+
+(defn resolve-time
+  "`ts` checked against the retention marker and clamped out of any batch
+  it lands inside, ready to pass to the reads below in place of a
+  timestamp. The work runs on first use, so a request that never reads
+  history never pays for it, and a pruned time throws where it is read."
+  [db ts]
+  (let [ts-iso (->ts-iso ts)]
+    (->ResolvedTime (delay (check-retention! db ts-iso)
+                           (effective-bound db ts-iso)))))
+
+(defn- bound-at
+  "The read bound for `ts`, a timestamp or a `resolve-time` result."
+  [db ts]
+  (if (instance? ResolvedTime ts)
+    @(:bound ts)
+    (let [ts-iso (->ts-iso ts)]
+      (check-retention! db ts-iso)
+      (effective-bound db ts-iso))))
+
 (defn- ts-clause [{:keys [lt lte]}]
   (if lt [:< :ts lt] [:<= :ts lte]))
 
@@ -274,9 +301,7 @@
   document didn't exist at `ts`, or if its project has since been deleted
   (deleted projects are not time-travelable — see `project-live?`)."
   [db doc-id ts]
-  (let [ts-iso (->ts-iso ts)
-        _ (check-retention! db ts-iso)
-        bound (effective-bound db ts-iso)
+  (let [bound (bound-at db ts)
         folded (fold-rows (q-doc-row-only db doc-id bound))
         entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
                        coerce-entity)]
@@ -287,9 +312,7 @@
   "Cheap presence probe: did `doc-id` exist at `ts` (in a still-live
   project)?"
   [db doc-id ts]
-  (let [ts-iso (->ts-iso ts)
-        _ (check-retention! db ts-iso)
-        bound (effective-bound db ts-iso)
+  (let [bound (bound-at db ts)
         entity (some-> (clojure.core/get (fold-rows (q-doc-row-only db doc-id bound))
                                          ["documents" (str doc-id)])
                        coerce-entity)]
@@ -306,9 +329,7 @@
   built into the nested read shape. nil when the document did not exist
   at `ts`, or when its project has since been deleted."
   [db doc-id ts]
-  (let [ts-iso (->ts-iso ts)
-        _ (check-retention! db ts-iso)
-        bound (effective-bound db ts-iso)
+  (let [bound (bound-at db ts)
         folded (fold-rows (q-doc-rows db doc-id bound))
         doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
                            coerce-entity)]
@@ -330,9 +351,7 @@
   the audit log (rows with ts at-or-before the bound), so every entity
   reflects the same logical moment by construction."
   [db doc-id ts]
-  (let [ts-iso (->ts-iso ts)
-        _ (check-retention! db ts-iso)
-        bound (effective-bound db ts-iso)
+  (let [bound (bound-at db ts)
         folded (fold-rows (q-doc-rows db doc-id bound))
         doc-entity (some-> (clojure.core/get folded ["documents" (str doc-id)])
                            coerce-entity)]
