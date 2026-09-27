@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IgtDocument } from './IgtDocument.js';
 import { buildRawDoc, makeFakeClient, resetIds } from './test-helpers.js';
-import { forgetAllLeftovers } from './leftoverEntries.js';
+import { forgetAllLeftovers, leftoverFor, rememberLeftover } from './leftoverEntries.js';
 
 const WRITER = { id: 'wren@example.com' };
 const MAINTAINER = { id: 'mara@example.com' };
@@ -257,5 +257,73 @@ describe('a refused "+ Create" by a maintainer of the vocabulary', () => {
     expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
     expect(count(client, 'vocabItems.delete')).toBe(1);
     expect(items.filter((i) => i.form === 'kai')).toHaveLength(1);
+  });
+});
+
+// A word of the document linked to the leftover, however the link got there,
+// makes it an entry in use: "+ Create" then makes a new one, as the popover's
+// Create row says ("already exists. This adds a separate entry").
+describe('a leftover entry that a word has been linked to since', () => {
+  // The fake core keeps the links that landed, and a refetch reads them back.
+  const keepLinks = (client, items) => {
+    const links = [];
+    const create = client.vocabLinks.create;
+    client.vocabLinks.create = (itemId, tokens, ...rest) => {
+      const res = create(itemId, tokens, ...rest);
+      const item = items.find((i) => i.id === itemId);
+      links.push({ id: res.id, tokens, vocabItem: { id: itemId, form: item?.form } });
+      return res;
+    };
+    client.documents.get = async () =>
+      buildRawDoc({ wordVocabs: [{ id: 'v1', vocabLinks: links }] });
+    return links;
+  };
+
+  it("makes a new entry once a colleague's link to it is read back", async () => {
+    const { client, items, state } = server();
+    const links = keepLinks(client, items);
+    const doc = makeDoc(client);
+    state.failNext = 1;
+    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
+    const first = items.find((i) => i.form === 'kai').id;
+    links.push({ id: 'lk-colleague', tokens: ['w-2'], vocabItem: { id: first, form: 'kai' } });
+    await doc.reload();
+    expect(word(doc, 1).vocabItem?.id).toBe(first);
+
+    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(true);
+    const kai = items.filter((i) => i.form === 'kai');
+    expect(kai).toHaveLength(2);
+    expect(word(doc, 0).vocabItem?.id).toBe(kai[1].id);
+    expect(word(doc, 1).vocabItem?.id).toBe(first);
+  });
+
+  it('makes a new entry once a link whose answer was lost turns out to have landed', async () => {
+    const { client, items } = server();
+    keepLinks(client, items);
+    const landed = client.vocabLinks.create;
+    let lose = 1;
+    client.vocabLinks.create = (...args) => {
+      const res = landed(...args);
+      if (lose-- > 0) throw new TypeError('Failed to fetch');
+      return res;
+    };
+    const doc = makeDoc(client);
+    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'kai')).toBe(false);
+    const first = items.find((i) => i.form === 'kai').id;
+    expect(word(doc, 0).vocabItem?.id).toBe(first);
+
+    expect(await doc.createAndLinkVocabItem('w-2', 'v1', 'kai')).toBe(true);
+    expect(items.filter((i) => i.form === 'kai')).toHaveLength(2);
+    expect(word(doc, 1).vocabItem?.id).not.toBe(first);
+  });
+
+  it('is not offered as the leftover while any link names it', () => {
+    rememberLeftover('v1', 'kai', {}, 'vi-kai');
+    const vocabs = (vocabLinks) => ({
+      v1: { id: 'v1', items: [{ id: 'vi-kai', form: 'kai', metadata: {} }], vocabLinks },
+    });
+    expect(leftoverFor(vocabs([]), 'v1', 'kai', {})?.id).toBe('vi-kai');
+    const mwe = { id: 'lk-1', tokens: ['w-1', 'w-2'], vocabItem: { id: 'vi-kai' } };
+    expect(leftoverFor(vocabs([mwe]), 'v1', 'kai', {})).toBeNull();
   });
 });

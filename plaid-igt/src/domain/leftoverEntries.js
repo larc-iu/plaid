@@ -11,7 +11,8 @@
 //
 // An entry is forgotten once a link to it lands, whether through the retry or
 // through picking it from the popover's list: from then on it is an entry in
-// use, and a later "+ Create" of the same form is a new entry on purpose.
+// use, and a later "+ Create" of the same form is a new entry on purpose. One
+// linked by any other route is passed over the same way (`leftoverFor`).
 // One that is not in the vocabulary as loaded, or no longer reads the same (a
 // maintainer deleted or renamed it), is passed over, and the retry makes a
 // new one.
@@ -33,12 +34,19 @@ export function rememberLeftover(vocabId, form, metadata, itemId) {
 }
 
 // The entry a failed "+ Create" of this form left in `vocabId`, as the
-// document's vocabularies hold it, or null.
+// document's vocabularies hold it, or null. One that a word of this document
+// is linked to is in use, however the link got there (an auto-link, "Analyze
+// every … like this", a colleague's pick read back by a refetch, a link whose
+// answer was lost but which landed), and is passed over like one that was
+// renamed: a "+ Create" then makes a new entry, as the popover says it will.
 export function leftoverFor(vocabularies, vocabId, form, metadata) {
   const id = leftovers.get(keyOf(vocabId, form, metadata));
   if (!id) return null;
-  const item = (vocabularies?.[vocabId]?.items || []).find((i) => i.id === id);
-  return item && item.form === form ? item : null;
+  const vocab = vocabularies?.[vocabId];
+  const item = (vocab?.items || []).find((i) => i.id === id);
+  if (!item || item.form !== form) return null;
+  if ((vocab.vocabLinks || []).some((l) => l.vocabItem?.id === id)) return null;
+  return item;
 }
 
 // A link to `itemId` has landed: it is no longer an entry nothing uses.
