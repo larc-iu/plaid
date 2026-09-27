@@ -268,27 +268,30 @@ export class DocumentModel {
     return false;
   }
 
-  // Report a failed write and refetch the document, which takes back whatever
-  // the write had already shown. `reload` is the refetch that takes it back,
-  // or null for a write that showed nothing.
-  async _writeFailed(label, err, reload) {
+  // Report a failed write. The queue then refetches the document, which takes
+  // back whatever the write had shown (`_reloadAfterFailure`).
+  _writeFailed(label, err) {
     console.error(`${label}:`, err);
     this._error = `${label}: ${err.message || 'Unknown error'}`;
     // The raw error rides along so the screen can word it (statuses, network
     // failures) while keeping the "Failed to ..." label as the title.
     if (this.onError) this.onError(this._error, err, label);
-    if (!reload) return;
-    try {
-      await reload();
-    } catch (reloadErr) {
-      console.error('Reload after failure also failed:', reloadErr);
-    }
+  }
+
+  // Say how many edits made after a refused one were not sent (WriteQueue's
+  // `_behindRefusal`). The refetch has already taken them off the screen.
+  _reportNotSent(count) {
+    const message =
+      count === 1 ? '1 later edit was not saved.' : `${count} later edits were not saved.`;
+    if (this.onError) this.onError(message, null, 'Not saved');
   }
 
   // An optimistic write in two halves. The caller has already shown the edit
   // (`_canWrite`, then `_applyRawPatch`); `send` makes the server calls, in
-  // its turn in the write queue (WriteQueue.js, which says how a refusal
-  // skips what was planned on it). A refused send reloads the document.
+  // its turn in the write queue (WriteQueue.js, which says what becomes of the
+  // edits made on top of a refused one). A refused send reloads the document,
+  // and a reload that fails is tried again until it lands, `isSaving` held
+  // all the while, since until then the screen shows what the server lacks.
   // Resolves true when `send` landed, false otherwise. `isSaving` holds while
   // anything is queued.
   //
@@ -319,8 +322,9 @@ export class DocumentModel {
       },
       {
         shown,
-        refused: (err) =>
-          this._writeFailed(label, err, shown ? () => this._reloadAfterFailure() : null),
+        refused: (err) => this._writeFailed(label, err),
+        resync: () => this._reloadAfterFailure(),
+        notSent: (count) => this._reportNotSent(count),
       },
     );
   }
@@ -432,8 +436,9 @@ export class DocumentModel {
 
   // After a refused send. The screen still holds the refused edit and the
   // edits planned on top of it, so the refetch takes them all back, and the
-  // queue skips the sends queued behind (an edit made while this fetch was on
-  // the wire included) once it has finished or failed.
+  // queue does not send the ones queued behind (an edit made while this fetch
+  // was on the wire included) once it has landed. A failure throws, and the
+  // queue tries again.
   async _reloadAfterFailure() {
     if (!this._client || !this.id) return;
     await this._fetchAndAdopt();

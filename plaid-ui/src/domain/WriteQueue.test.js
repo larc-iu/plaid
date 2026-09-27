@@ -82,6 +82,80 @@ describe('WriteQueue', () => {
     expect(sent).toEqual([]);
   });
 
+  it('tries a failed resync again until it lands, saving all the while', async () => {
+    const q = new WriteQueue({ retryDelay: () => 20 });
+    let fails = 3;
+    const resync = vi.fn(async () => {
+      if (fails-- > 0) throw new Error('offline');
+    });
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { refused: async () => {}, resync },
+    );
+    const b = q.push(async () => {});
+    await flush();
+    expect(q.isSaving).toBe(true);
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(4);
+    expect(q.isSaving).toBe(false);
+  });
+
+  it('stops retrying a resync that no retry can mend', async () => {
+    const q = new WriteQueue({ retryDelay: () => 0 });
+    const resync = vi.fn(async () => {
+      throw Object.assign(new Error('HTTP 403'), { status: 403 });
+    });
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync },
+    );
+    expect(await a).toBe(false);
+    expect(resync).toHaveBeenCalledTimes(1);
+    expect(q.isSaving).toBe(false);
+  });
+
+  it('says how many shown sends behind a refusal were not sent', async () => {
+    const q = new WriteQueue();
+    const refetch = deferred();
+    const notSent = vi.fn();
+    let late;
+    const a = q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      {
+        resync: async () => {
+          late = q.push(async () => {});
+          await refetch.promise;
+        },
+        notSent,
+      },
+    );
+    const b = q.push(async () => {});
+    const copy = q.push(async () => {}, { shown: false });
+    await flush();
+    refetch.resolve();
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(await late).toBe(false);
+    expect(await copy).toBe(true);
+    expect(notSent).toHaveBeenCalledTimes(1);
+    expect(notSent).toHaveBeenCalledWith(2);
+    // A later refusal with nothing behind it says nothing more.
+    await q.push(
+      async () => {
+        throw new Error('refused');
+      },
+      { resync: async () => {}, notSent },
+    );
+    expect(notSent).toHaveBeenCalledTimes(1);
+  });
+
   it('sends a write that showed nothing past a refusal ahead of it, and skips nothing for its own', async () => {
     const q = new WriteQueue();
     const sent = [];
@@ -147,6 +221,19 @@ describe('WriteQueue', () => {
     await q.whenIdle();
     expect(reloadDrained).toHaveBeenCalledTimes(1);
     expect(saving).toEqual([true, true, false]);
+  });
+
+  it('tries a failed refetch once drained again until it lands', async () => {
+    let fails = 2;
+    const reloadDrained = vi.fn(async () => {
+      if (fails-- > 0) throw new Error('offline');
+    });
+    const q = new WriteQueue({ reloadDrained, retryDelay: () => 0 });
+    await q.push(async () => {
+      q.reloadWhenDrained = true;
+    });
+    await q.whenIdle();
+    expect(reloadDrained).toHaveBeenCalledTimes(3);
   });
 
   it('is watched the way useSavingGuard watches a document', async () => {

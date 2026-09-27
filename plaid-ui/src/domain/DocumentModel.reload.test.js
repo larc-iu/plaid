@@ -23,6 +23,7 @@ function fakeServer() {
     withOperation: (label, fn) => fn(() => {}),
     documents: {
       get: () => {
+        if (server.offline) return Promise.reject(new Error('Network error: Failed to fetch'));
         const hold = server.gets.shift();
         const snapshot = { id: 'd1', name: server.name, values: { ...server.values } };
         return hold ? hold.promise.then(() => snapshot) : Promise.resolve(snapshot);
@@ -90,6 +91,46 @@ describe('a refetch and the edits around it', () => {
     await drain(doc);
     expect(server.values).toEqual({});
     expect(doc.raw.values).toEqual(server.values);
+  });
+
+  it('keeps saving until the screen is back in step, when the refetch after a refusal fails too', async () => {
+    // Offline: the gloss is refused and the refetch that would take it back
+    // off the screen fails as well. Until a refetch lands, the screen shows a
+    // gloss the server does not have, so the document stays saving (the
+    // close-tab guard holds) and keeps trying.
+    const { doc, server } = load();
+    doc._writes._retryDelay = () => 10;
+    const refused = deferred();
+    server.writes.push(refused);
+    server.offline = true;
+    const a = doc.set('a', 'GHOST');
+    refused.reject(new Error('Network error: Failed to fetch'));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 15));
+    expect(doc.isSaving).toBe(true);
+    expect(doc.raw.values.a).toBe('GHOST');
+    server.offline = false;
+    expect(await a).toBe(false);
+    await drain(doc);
+    expect(doc.isSaving).toBe(false);
+    expect(doc.raw.values).toEqual({});
+  });
+
+  it('says how many edits made after a refused one were not saved', async () => {
+    const { doc, server } = load();
+    const errors = [];
+    doc.onError = (msg, err, label) => errors.push({ msg, err, label });
+    const refused = deferred();
+    server.writes.push(refused);
+    const a = doc.set('a', 'uno');
+    const b = doc.set('b', 'dos');
+    const c = doc.set('c', 'tres');
+    refused.reject(new Error('500'));
+    expect(await a).toBe(false);
+    expect(await b).toBe(false);
+    expect(await c).toBe(false);
+    expect(errors.map((e) => e.label)).toEqual(['Failed to set a', 'Not saved']);
+    expect(errors[1].msg).toBe('2 later edits were not saved.');
+    expect(errors[1].err).toBe(null);
   });
 
   it('sends an edit queued behind a send that refetches, and shows it once the queue drains', async () => {
