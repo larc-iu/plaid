@@ -385,6 +385,24 @@ describe('runElanImport', () => {
       expect(client.calls.some(([m]) => m === 'documents.setMetadata')).toBe(false);
     });
 
+    it('drops a header property named like a resume stamp', async () => {
+      // Carried onto the copy, `importSource: "a.eaf"` would make the next run
+      // of a.eaf find the copy, take it for half made and delete it.
+      const client = stubClient(prior);
+      const build = {
+        ...BUILD,
+        documents: [
+          {
+            ...BUILD.documents[0],
+            metadata: { Source: 'notes', importSource: 'a.eaf', importDone: true },
+          },
+        ],
+      };
+      await runElanImport({ client, projectId: 'p1', build, priorMode: 'copy' });
+      const create = client.calls.find(([m]) => m === 'documents.create');
+      expect(create[2]).toEqual({ Source: 'notes' });
+    });
+
     it('still redoes a document an earlier run left half done', async () => {
       const client = stubClient({
         documents: [{ id: 'old', name: 'Story' }],

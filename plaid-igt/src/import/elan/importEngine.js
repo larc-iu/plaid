@@ -20,7 +20,14 @@
 // seconds, which is the whole reason an ELAN corpus is worth importing as such
 // rather than as plain text.
 
-import { ImportCancelled, importStamp, priorImports, settlePrior, unusedName } from '../resume.js';
+import {
+  IMPORT_STAMP_KEYS,
+  ImportCancelled,
+  importStamp,
+  priorImports,
+  settlePrior,
+  unusedName,
+} from '../resume.js';
 import { bulkInChunks } from '../../domain/bulk.js';
 import { recordProjectLanguages } from '../projectLanguages.js';
 import { createDocumentShell, resolveIgtTargets, setupDataFor } from '../project.js';
@@ -38,6 +45,14 @@ export function deriveSetupData(build, projectName) {
     documentMetadata: build.schema.documentMetadata.map((m) => m.name),
   });
 }
+
+// A copy's metadata: the file's own, less any key named like one of the
+// import's marks (an .eaf header property may be), which would let a later run
+// take the copy for a document it made.
+const withoutStamps = (metadata) =>
+  Object.fromEntries(
+    Object.entries(metadata || {}).filter(([k]) => !IMPORT_STAMP_KEYS.includes(k)),
+  );
 
 /** Resolve engine write targets. Throws when setup did not produce them. */
 export function resolveTargets(project, build) {
@@ -77,7 +92,7 @@ export async function importDocument({
     projectId,
     targets,
     name: copyName ?? doc.name,
-    metadata: copyName ? doc.metadata : importStamp(doc.metadata, doc.id),
+    metadata: copyName ? withoutStamps(doc.metadata) : importStamp(doc.metadata, doc.id),
     body: doc.body,
     sentences: doc.sentences,
     progress,
