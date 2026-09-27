@@ -31,6 +31,9 @@ vi.mock('../../domain/ConlluDocument.js', () => ({
       this.sentences = [];
       docs.push(this);
     }
+    hold() {
+      return () => {};
+    }
   },
 }));
 vi.mock('@ui/domain/useDocumentModel.js', () => ({ useDocumentModel: () => 0 }));
