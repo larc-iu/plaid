@@ -1067,3 +1067,99 @@
     (is (= "x. at co y" (:text/body text)))
     (is (= [:w] deleted))
     (is (= #{[:s1 0 3] [:s2 6 10] [:cow 6 8] [:co 6 8]} (extents tokens)))))
+
+;; ---------------------------------------------------------------------------
+;; apply-text-edits applies ops that stand in order in one pass. It must give
+;; what applying them one at a time gives, 400s included.
+
+(def ^:private edit-alphabet ["a" "b" " " "é" (cps acute) (cps 0x10330) (cps 0x93E) "\n" "c"])
+
+(defn- random-edit-case
+  "A body, tokens over it (some zero-width) and ops of one of three kinds:
+  edits in order made from old-body positions, ops anywhere in turn (some
+  out of bounds or malformed), and what a whole-body update makes."
+  [^java.util.Random r]
+  (let [rstr (fn [n] (apply str (repeatedly n #(nth edit-alphabet (.nextInt r (count edit-alphabet))))))
+        body (rstr (.nextInt r 40))
+        n (cp/cp-count body)
+        tokens (vec (for [i (range (.nextInt r 20))]
+                      (let [b (.nextInt r (inc n))
+                            e (if (< (.nextDouble r) 0.25) b (+ b (.nextInt r (inc (- n b)))))]
+                        (tok i b e))))
+        ops (case (.nextInt r 3)
+              0 (loop [p 0 out []]
+                  (if (or (>= p n) (< (.nextDouble r) 0.2))
+                    (#'ta/edits->ops (cond-> out
+                                       (< (.nextDouble r) 0.3) (conj {:kind :insert :at n :value (rstr (inc (.nextInt r 3)))})))
+                    (let [s (+ p (.nextInt r (inc (min 4 (- n p)))))
+                          len (.nextInt r (inc (min 4 (- n s))))
+                          v (rstr (.nextInt r 4))
+                          e (case (.nextInt r 3)
+                              0 {:kind :insert :at s :value (if (= "" v) "a" v)}
+                              1 {:kind :delete :start s :end (+ s len)}
+                              2 {:kind :replace :start s :end (+ s len) :value v})]
+                      (recur (or (:end e) (:at e)) (conj out e)))))
+              1 (loop [len n i (.nextInt r 6) out []]
+                  (if (zero? i)
+                    out
+                    (let [idx (.nextInt r (inc len))
+                          l (.nextInt r (inc (- len idx)))
+                          v (rstr (.nextInt r 4))
+                          op (case (.nextInt r 4)
+                               0 {:type :insert :index idx :value v}
+                               1 {:type "delete" :index idx :value l}
+                               2 {:type :replace :index idx :length l :value v}
+                               3 (if (.nextBoolean r)
+                                   {:type :delete :index idx :value (+ l 1 (- len idx))}
+                                   {:type :bogus :index idx}))
+                          d (case (:type op) :insert (cp/cp-count v) "delete" (- l) :replace (- (cp/cp-count v) l) 0)]
+                      (recur (+ len d) (dec i) (conj out op)))))
+              2 (let [new (rstr (.nextInt r 40))]
+                  (-> (ta/diff body new)
+                      (ta/slide-to-tokens body tokens)
+                      (ta/normalize-deletes body tokens)
+                      (ta/pair-replacements body tokens)
+                      (ta/fold-whole-words body tokens))))]
+    [body tokens ops]))
+
+(defn- edit-outcome [f ops body tokens]
+  (try (let [{:keys [text tokens deleted]} (f ops {:text/body body} tokens)]
+         [:ok text (set tokens) (set deleted)])
+       (catch clojure.lang.ExceptionInfo e [:refused (ex-message e) (ex-data e)])))
+
+(deftest applying-edits-in-one-pass-gives-what-applying-them-in-turn-does
+  (testing "a delete that closes the gap after a token, then a mark typed where the token now ends"
+    (let [body (cps "ab cd" 0x10330 "e")
+          tokens [(tok :ab 0 2) (tok :z 6 6)]
+          ops [(ta/delete-op 2 4) (ta/insert-op 2 (cps acute))]]
+      (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops body tokens)
+             (edit-outcome ta/apply-text-edits ops body tokens)))
+      (is (= #{[:ab 0 3] [:z 3 3]} (extents (:tokens (ta/apply-text-edits ops {:text/body body} tokens)))))))
+  (doseq [seed (range 1 11)]
+    (let [r (java.util.Random. seed)]
+      (dotimes [case-n 1000]
+        (let [[body tokens ops] (random-edit-case r)]
+          (is (= (edit-outcome #'ta/apply-text-edits-in-turn ops body tokens)
+                 (edit-outcome ta/apply-text-edits ops body tokens))
+              (str "seed " seed " case " case-n ": " (pr-str body) " " (pr-str ops))))))))
+
+(deftest many-edits-over-a-long-text-apply-quickly
+  ;; One edit per 50 words over 50,000 word tokens and 2,500 sentences.
+  ;; Applying each op over the whole text and every token took 11.7 s here,
+  ;; holding the write lock.
+  (let [words (vec (take 50000 (cycle ["the" "cat" "sat" "ta" "tat" "at"])))
+        old (str/join " " words)
+        new (str/join " " (map-indexed (fn [i w] (if (zero? (mod i 50)) (str w "x") w)) words))
+        tokens (word-tokens words)
+        sentences (map-indexed (fn [i [b e]] (tok [:s i] b e))
+                               (partition 2 1 (concat (take-nth 20 (map :token/begin tokens)) [(count old)])))
+        all (into tokens sentences)
+        ops (ta/diff old new)
+        t0 (System/nanoTime)
+        {:keys [text tokens deleted]} (ta/apply-text-edits ops {:text/body old} all)
+        ms (/ (- (System/nanoTime) t0) 1e6)]
+    (is (= 1000 (count ops)))
+    (is (= new (:text/body text)))
+    (is (= [] deleted))
+    (is (= 52500 (count tokens)))
+    (is (< ms 1000) (str ms " ms"))))

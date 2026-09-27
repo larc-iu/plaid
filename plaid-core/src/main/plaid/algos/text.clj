@@ -209,6 +209,34 @@
     (loop [i 0]
       (if (and (< i (alength cps)) (combining-mark? (aget cps i))) (recur (inc i)) i))))
 
+(defn- op-type [type]
+  (or (and (keyword? type) type)
+      (and (string? type) (keyword type))
+      type))
+
+(defn- check-op!
+  "The 400s `apply-text-edit` throws, for `op` applied to a text of `len`
+  code points."
+  [op len]
+  (let [{:keys [index value length]} op
+        type (op-type (:type op))]
+    (when-not (or (and (= type :insert) (int? index) (string? value))
+                  (and (= type :delete) (int? index) (int? value))
+                  (and (= type :replace) (int? index) (int? length) (string? value)))
+      (throw (ex-info (str "Malformed text edit operation: " (pr-str op)
+                           " — expected {type: \"insert\", index: int, value: string},"
+                           " {type: \"delete\", index: int, value: int}"
+                           " or {type: \"replace\", index: int, length: int, value: string}")
+                      {:code 400 :op op})))
+    (when-not (case type
+                :insert (<= 0 index len)
+                :delete (and (<= 0 index) (<= 0 value) (<= (+ index value) len))
+                :replace (and (<= 0 index) (<= 0 length) (<= (+ index length) len)))
+      (throw (ex-info (str "Text edit operation out of bounds: " (pr-str op)
+                           " (text length is " len " code points)")
+                      {:code 400 :op op :text-length len})))
+    type))
+
 (defn apply-text-edit
   "Given an operation, a text and tokens, shift :token/begin and :token/end on a list
   of tokens as appropriate. Operations are maps, with :type of :delete, :insert or
@@ -260,37 +288,12 @@
      :tokens ({:token/begin 0, :token/end 4, ...}, {:token/begin 5, :token/end 8, ...})
      :deleted ()}
   "
-  [{:keys [type index value length] :as op} text tokens]
-  (let [type (or (and (keyword? type) type)
-                 (and (string? type) (keyword type))
-                 type)]
-    ;; Client-supplied edit directives reach here unvalidated (the PATCH
-    ;; body schema is `any?`), so reject malformed/out-of-bounds ops with
-    ;; a structured 400. The old behavior returned `tokens` (a vector)
-    ;; instead of the accumulator shape, which nil'd the fold's :text and
-    ;; surfaced as a raw 500 NPE; out-of-bounds indices threw
-    ;; StringIndexOutOfBounds from cp-subs, also a 500. Both throw inside
-    ;; the operation tx body, so submit-operation* projects them cleanly.
-    (when-not (or (and (= type :insert) (int? index) (string? value))
-                  (and (= type :delete) (int? index) (int? value))
-                  (and (= type :replace) (int? index) (int? length) (string? value)))
-      (throw (ex-info (str "Malformed text edit operation: " (pr-str op)
-                           " — expected {type: \"insert\", index: int, value: string},"
-                           " {type: \"delete\", index: int, value: int}"
-                           " or {type: \"replace\", index: int, length: int, value: string}")
-                      {:code 400 :op op})))
-    (let [len (cp/cp-count (:text/body text))]
-      (when-not (case type
-                  :insert (<= 0 index len)
-                  :delete (and (<= 0 index)
-                               (<= 0 value)
-                               (<= (+ index value) len))
-                  :replace (and (<= 0 index)
-                                (<= 0 length)
-                                (<= (+ index length) len)))
-        (throw (ex-info (str "Text edit operation out of bounds: " (pr-str op)
-                             " (text length is " len " code points)")
-                        {:code 400 :op op :text-length len}))))
+  [{:keys [index value length] :as op} text tokens]
+  ;; Client-supplied edit directives reach here unvalidated (the PATCH
+  ;; body schema is `any?`), so a malformed or out-of-bounds op is a
+  ;; structured 400 (see `check-op!`), thrown inside the operation tx body
+  ;; so submit-operation* projects it cleanly.
+  (let [type (check-op! op (cp/cp-count (:text/body text)))]
     (do
       (case type
         :replace
@@ -1176,7 +1179,64 @@
                     (flush out run start))))
          (flush out run start))))))
 
-(defn apply-text-edits [ops text tokens]
+(defn- token-edit
+  "A function of one token giving what `op` (valid, its type a keyword) does
+  to it, the rules of `apply-text-edit`: the token moved or resized, or nil
+  when the op deletes it."
+  [{:keys [type index value length]}]
+  (let [shift (fn [t d] (-> t (update :token/begin + d) (update :token/end + d)))]
+    (case type
+      :insert
+      (let [offset (cp/cp-count value)
+            marks (if (pos? index) (leading-marks value) 0)]
+        (fn [{:token/keys [begin end] :as t}]
+          (cond
+            (< end index) t
+            (= end index) (cond (zero? marks) t
+                                (< begin index) (update t :token/end + marks)
+                                :else (shift t marks))
+            (< begin index) (update t :token/end + offset)
+            :else (shift t offset))))
+
+      :delete
+      (let [ei (+ index value)]
+        (fn [{:token/keys [begin end] :as t}]
+          (if (= begin end)
+            (cond (<= end index) t
+                  (< index begin ei) nil
+                  :else (shift t (- value)))
+            (cond (and (<= index begin) (<= end ei)) nil
+                  (<= end index) t
+                  (<= ei begin) (shift t (- value))
+                  (< begin index) (if (<= end ei)
+                                    (assoc t :token/end index)
+                                    (update t :token/end - value))
+                  :else (-> t (assoc :token/begin index) (update :token/end - value))))))
+
+      :replace
+      (cond
+        (zero? length) (token-edit (insert-op index value))
+        (= value "") (token-edit (delete-op index length))
+        (and (pos? index) (pos? (leading-marks value)))
+        (let [k (leading-marks value)
+              f (token-edit (insert-op index (cp/cp-subs value 0 k)))
+              g (token-edit (replace-op (+ index k) length (cp/cp-subs value k)))]
+          (fn [t] (some-> t f g)))
+        :else
+        (let [ei (+ index length)
+              delta (- (cp/cp-count value) length)
+              del (token-edit (delete-op index length))
+              ins (token-edit (insert-op index value))]
+          (fn [{:token/keys [begin end] :as t}]
+            (cond
+              (and (< begin end) (<= begin index) (<= ei end)) (update t :token/end + delta)
+              (and (= begin end) (= end ei)) (shift t delta)
+              :else (some-> t del ins))))))))
+
+(defn- apply-text-edits-in-turn
+  "`apply-text-edits` one op after another, each over the whole text and
+  every token."
+  [ops text tokens]
   (loop [accum {:deleted [] :text text :tokens tokens}
          op (first ops)
          ops (rest ops)]
@@ -1188,3 +1248,87 @@
                           (assoc :tokens (:tokens result))
                           (update :deleted into (:deleted result)))]
         (recur new-accum (first ops) (rest ops))))))
+
+(defn apply-text-edits
+  "Apply `ops` one after another to `text` and `tokens`, as `apply-text-edit`
+  does each (same result, same 400s). Returns {:text :tokens :deleted}, as
+  `apply-text-edit` does, the tokens and ids in no promised order.
+
+  Ops that each stand at or after where the one before left off (every op
+  list `diff` and the steps after it give, and most a client sends) are
+  applied in one pass: the body is built once, and each token is put through
+  only the ops that reach it, after the shift of those before it. Applying
+  each op over the whole text and every token cost seconds for a thousand
+  edits over a long text, with the write lock held. Other op lists are
+  applied in turn."
+  [ops text tokens]
+  (let [ops (vec (take-while some? ops))
+        ^String body (:text/body text)
+        ^ints o (.toArray (.codePoints body))
+        n (alength o)
+        ;; Validate as the ops come, and place each in the old body: an op
+        ;; at running index i stands at old position i - shift. `edits` is
+        ;; nil once an op stands before where the previous one left off.
+        {:keys [edits]}
+        (reduce (fn [{:keys [len shift reach edits] :as acc} op]
+                  (let [type (check-op! op len)
+                        {:keys [index value length]} op
+                        [del ins] (case type
+                                    :insert [0 (cp/cp-count value)]
+                                    :delete [value 0]
+                                    :replace [length (cp/cp-count value)])
+                        s (- index shift)
+                        t (+ s del)]
+                    (assoc acc
+                           :len (+ len (- ins del))
+                           :shift (+ shift (- ins del))
+                           :reach t
+                           :edits (when (and edits (<= reach s))
+                                    (conj edits {:op (assoc op :type type) :start s :end t
+                                                 :delta (- ins del)
+                                                 :value (if (= type :delete) "" value)})))))
+                {:len n :shift 0 :reach 0 :edits []}
+                ops)]
+    (if-not edits
+      (apply-text-edits-in-turn ops text tokens)
+      (let [k (count edits)
+            new-body (let [sb (StringBuilder.)]
+                       (loop [p 0 es edits]
+                         (if-let [{:keys [start end value]} (first es)]
+                           (do (.append sb (String. o (int p) (int (- start p))))
+                               (.append sb ^String value)
+                               (recur end (rest es)))
+                           (.append sb (String. o (int p) (int (- n p))))))
+                       (str sb))
+            ends (long-array (map :end edits))
+            ;; where each op stands when it is applied
+            at (long-array (map (comp :index :op) edits))
+            ;; the shift of the edits before each
+            before (long-array (reductions + 0 (map :delta edits)))
+            fns (mapv (comp token-edit :op) edits)
+            ;; the first index in xs whose value is at least x
+            lower (fn [^longs xs x]
+                    (loop [a 0 b (alength xs)]
+                      (if (< a b)
+                        (let [m (quot (+ a b) 2)]
+                          (if (< (aget xs m) (long x)) (recur (inc m) b) (recur a m)))
+                        a)))
+            edit-token (fn [{:token/keys [begin] :as t}]
+                         ;; The edits that end before it only shift it. From
+                         ;; the first that reaches it, each op stands at or
+                         ;; after where the one before stood, so once one
+                         ;; stands past the token's end, none of the rest
+                         ;; touches it.
+                         (let [lo (lower ends begin)
+                               d (aget before lo)
+                               t (if (zero? d)
+                                   t
+                                   (-> t (update :token/begin + d) (update :token/end + d)))]
+                           (loop [i lo t t]
+                             (if (and t (< i k) (<= (aget at i) (long (:token/end t))))
+                               (recur (inc i) ((fns i) t))
+                               t))))
+            results (mapv (fn [t] [t (edit-token t)]) tokens)]
+        {:text (assoc text :text/body new-body)
+         :tokens (into [] (keep second) results)
+         :deleted (into [] (keep (fn [[t t']] (when-not t' (:token/id t)))) results)}))))
