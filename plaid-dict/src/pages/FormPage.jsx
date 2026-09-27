@@ -82,13 +82,16 @@ export const FormPage = () => {
         ))}
       </div>
 
-      <nav className="mt-8 flex items-center justify-between border-t pt-4 text-sm">
+      {/* Two halves, not a row that shrinks both links: a long neighbour
+          shrank a short one with it, and a suffix broke between its hyphen
+          and its letter. */}
+      <nav className="mt-8 grid grid-cols-2 items-center gap-4 border-t pt-4 text-sm">
         {neighbours.previous ? (
           <Link
             to={formPath(slug, neighbours.previous)}
-            className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
+            className="inline-flex items-center gap-1.5 justify-self-start underline-offset-4 hover:underline"
           >
-            <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            <ChevronLeft className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span dir="auto" className="font-serif [overflow-wrap:anywhere]" lang={objectLang}>
               {neighbours.previous}
             </span>
@@ -99,12 +102,12 @@ export const FormPage = () => {
         {neighbours.next ? (
           <Link
             to={formPath(slug, neighbours.next)}
-            className="inline-flex items-center gap-1.5 underline-offset-4 hover:underline"
+            className="inline-flex items-center gap-1.5 justify-self-end underline-offset-4 hover:underline"
           >
             <span dir="auto" className="font-serif [overflow-wrap:anywhere]" lang={objectLang}>
               {neighbours.next}
             </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           </Link>
         ) : (
           <span />
