@@ -131,9 +131,10 @@ export const assistantProjectsTests = ({
     await page.getByRole('option', { name: C.name, exact: true }).click();
     await expect(page.getByText(`The assistant is not available in ${C.name}.`)).toBeVisible();
     await expect(page.getByRole('button', { name: `Remove ${C.name}` })).toHaveCount(0);
-    await page.keyboard.press('Escape');
 
-    await add.click();
+    // The list stays open after a refusal, for another pick. (Closing it and
+    // pressing the button again would click through the refusal's toast, which
+    // sits over the button at this width.)
     await page.getByRole('combobox', { name: 'Project' }).fill(B.name);
     await page.getByRole('option', { name: B.name, exact: true }).click();
     await expect(page.getByRole('button', { name: `Remove ${B.name}` })).toBeVisible();
