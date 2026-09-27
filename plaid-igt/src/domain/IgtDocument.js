@@ -39,7 +39,35 @@ import { alignmentMutations } from './mutations/alignment.js';
 import { analysisCopyMutations } from './mutations/analysisCopy.js';
 import { pendingMutations } from './mutations/pending.js';
 
-const cloneVocabs = (vocabularies) => JSON.parse(JSON.stringify(vocabularies));
+// A patch's own copy of the vocabularies. Everything but the entry lists is
+// copied whole: this document's links and the vocabulary's settings, which
+// are small. An entry list is the whole lexicon (a JSON copy of 20,000 entries
+// takes 35 to 70 ms, on every patch), so it is copied as a list of the same
+// entry objects. A patch adds an entry to its copy of the list, and changes an
+// entry by putting a new object in its place, never by editing the one it
+// was handed (keepUnchangedLists relies on that).
+const cloneVocabs = (vocabularies) => {
+  const out = {};
+  for (const [id, vocab] of Object.entries(vocabularies || {})) {
+    const { items, ...rest } = vocab;
+    out[id] = JSON.parse(JSON.stringify(rest));
+    if (items !== undefined) out[id].items = Array.isArray(items) ? items.slice() : items;
+  }
+  return out;
+};
+
+// A list the patch left as it was goes back to being the list it was copied
+// from, so an index built over it (vocabLookup.js, over a run's shared lists)
+// is still the one derive finds.
+const keepUnchangedLists = (next, prev) => {
+  for (const [id, vocab] of Object.entries(next || {})) {
+    const before = prev?.[id]?.items;
+    const after = vocab.items;
+    if (!Array.isArray(before) || !Array.isArray(after) || before.length !== after.length) continue;
+    if (after.every((it, i) => it === before[i])) vocab.items = before;
+  }
+  return next;
+};
 
 // Single source of truth for a loaded plaid-igt document. Wraps a raw
 // plaid-client document, knows the IGT layer model (sentences > words >
@@ -280,7 +308,7 @@ export class IgtDocument extends DocumentModel {
     return [getIgtLayerInfo(next), cloneVocabs(this._vocabularies)];
   }
   _afterPatch(next, [, nextVocabs]) {
-    this._vocabularies = nextVocabs;
+    this._vocabularies = keepUnchangedLists(nextVocabs, this._vocabularies);
   }
 
   /**

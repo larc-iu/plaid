@@ -2353,3 +2353,60 @@ describe('reload', () => {
     expect(snapshot).not.toBe(doc);
   });
 });
+
+// A patch copies the vocabularies, and the entry list is the whole lexicon: it
+// is copied as a list of the same entries, and a patch that leaves the list as
+// it was hands back the very list it was given.
+describe('the entry list across a patch', () => {
+  const lexicon = () => ({
+    v1: {
+      id: 'v1',
+      name: 'Lexicon',
+      items: [
+        { id: 'vi-1', form: 'CAT', metadata: { morphType: 'stem' } },
+        { id: 'vi-2', form: 'DOG', metadata: {} },
+      ],
+      vocabLinks: [],
+    },
+  });
+  const docWith = (vocabularies) =>
+    makeDoc({
+      project: { id: 'proj-1', vocabs: [{ id: 'v1' }], config: { plaid: {} } },
+      vocabularies,
+    });
+
+  it('a patch that does not touch the entries keeps the same list', async () => {
+    const vocabs = lexicon();
+    Object.freeze(vocabs.v1.items);
+    const doc = docWith(vocabs);
+    const before = doc.vocabularies.v1.items;
+    expect(await doc.linkVocab('w-2', 'vi-1')).toBe(true);
+    expect(doc.vocabularies.v1.items).toBe(before);
+    expect(doc.vocabularies.v1.vocabLinks).toHaveLength(1);
+    expect(doc.sentences[0].tokens[1].vocabItem?.form).toBe('CAT');
+  });
+
+  it('a new entry goes on a new list, and the list it came from is left alone', async () => {
+    const vocabs = lexicon();
+    Object.freeze(vocabs.v1.items);
+    const doc = docWith(vocabs);
+    const before = doc.vocabularies.v1.items;
+    expect(await doc.createAndLinkVocabItem('w-1', 'v1', 'the')).toBe(true);
+    const after = doc.vocabularies.v1.items;
+    expect(after).not.toBe(before);
+    expect(before.map((it) => it.form)).toEqual(['CAT', 'DOG']);
+    expect(after.map((it) => it.form)).toEqual(['CAT', 'DOG', 'the']);
+    expect(after[0]).toBe(before[0]);
+    expect(doc.sentences[0].tokens[0].vocabItem?.form).toBe('the');
+  });
+
+  it('an entry changed by a patch is a new object, and the old one is left alone', async () => {
+    const vocabs = lexicon();
+    const doc = docWith(vocabs);
+    const old = doc.vocabularies.v1.items[0];
+    expect(await doc.setVocabItemMorphType('v1', 'vi-1', 'root')).toBe(true);
+    expect(doc.vocabularies.v1.items[0].metadata.morphType).toBe('root');
+    expect(old.metadata.morphType).toBe('stem');
+    expect(doc.vocabularies.v1.items[1]).toBe(vocabs.v1.items[1]);
+  });
+});

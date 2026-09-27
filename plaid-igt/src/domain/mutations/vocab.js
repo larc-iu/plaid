@@ -459,9 +459,13 @@ export const vocabMutations = {
     this._applyRawPatch((next, info, vocabs) => {
       const v = vocabs[vocabId];
       if (!v) return;
-      (v.items || []).forEach((it) => {
-        if (it.id === itemId) it.metadata = setType(it.metadata);
-      });
+      // A new entry object in the copied list: the one there is shared with
+      // the list this patch was copied from (cloneVocabs).
+      if (Array.isArray(v.items)) {
+        v.items = v.items.map((it) =>
+          it.id === itemId ? { ...it, metadata: setType(it.metadata) } : it,
+        );
+      }
       if (morphType != null) {
         const linked = new Set(linkedMorphemes);
         (info.morphemeTokenLayer?.tokens || []).forEach((m) => {
