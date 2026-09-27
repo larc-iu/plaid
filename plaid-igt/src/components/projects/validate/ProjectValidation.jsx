@@ -4,6 +4,9 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { cn } from '@ui/lib/utils';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { Notice } from '@ui/components/shared/Notice.jsx';
+import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { notifyError, notifySuccess, humanizeError } from '@/utils/feedback';
 import { getIgtLayerInfo } from '@/domain/layerInfo';
 import { IGT_NAMESPACE } from '@/domain/igtConfig';
@@ -268,8 +271,22 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
     }
   };
 
+  const header = (
+    <ValidationHeader
+      description="Checks every value in the project against its field's tagset, and looks for zero morphs written the wrong way. Closed lists apply to what you type and bulk edit, not to imports, services or the assistant, so their values show up here."
+      busy={busy}
+      onCheck={scan}
+      className="mb-0"
+    />
+  );
+
   if (fields === null) {
-    return <p className="py-6 text-sm text-muted-foreground">Checking values…</p>;
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <Loading label="Checking values…" className="p-0" />
+      </div>
+    );
   }
 
   const totalBad = fields.reduce((a, f) => a + f.bad.length, 0);
@@ -277,23 +294,13 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <p className="text-sm text-muted-foreground">
-          Checks every value in the project against its field's tagset, and looks for zero morphs
-          written the wrong way. Closed lists apply to what you type and bulk edit, not to imports,
-          services or the assistant, so their values show up here.
-        </p>
-        <Button variant="outline" className="ml-auto shrink-0" onClick={scan} disabled={busy}>
-          {busy ? 'Checking…' : 'Re-check'}
-        </Button>
-      </div>
+      {header}
 
       {totalBad === 0 && governed.length > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-green-600/40 bg-green-50 px-4 py-3 text-sm text-green-800">
-          <Check className="h-4 w-4 shrink-0" />
+        <Notice tone="success" icon={Check} className="items-center px-4 py-3">
           Every value in {fields.length} governed field{fields.length === 1 ? '' : 's'} is in its
           tagset.
-        </div>
+        </Notice>
       )}
 
       {governed.length === 0 && (
@@ -376,7 +383,7 @@ export const ProjectValidation = ({ project, projectId, client, onProjectUpdate 
                 {g.bad.length} outside the tagset
               </span>
             ) : (
-              <span className="ml-auto flex items-center gap-1.5 text-sm text-green-700">
+              <span className="ml-auto flex items-center gap-1.5 text-sm text-success">
                 <Check className="h-4 w-4" /> All in the tagset
               </span>
             )}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check } from 'lucide-react';
-import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
 import { DataTable } from '@ui/components/shared/data-table.jsx';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { textIncludes } from '@ui/domain/collation.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
@@ -116,7 +117,7 @@ export const ProjectValidation = () => {
     [projectId],
   );
 
-  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <Loading />;
   if (!project || !canConfigure) return null;
 
   const configured = layerInfo?.isConfigured;
@@ -125,17 +126,12 @@ export const ProjectValidation = () => {
     <div className="w-full">
       <ProjectTabs projectId={projectId} project={project} />
       <div className="mx-auto w-full max-w-5xl">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Problems in this project&apos;s UMR annotation, one row each.
-            </p>
-          </div>
-          <Button variant="outline" onClick={scan} disabled={busy || !configured}>
-            {busy ? 'Checking…' : 'Check again'}
-          </Button>
-        </div>
+        <ValidationHeader
+          description="Problems in this project's UMR annotation, one row each."
+          busy={busy}
+          disabled={!configured}
+          onCheck={scan}
+        />
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -145,7 +141,7 @@ export const ProjectValidation = () => {
 
         {configured && problems?.length === 0 && !busy && (
           <p className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
-            <Check className="h-4 w-4 text-green-600" />
+            <Check className="h-4 w-4 text-success" />
             Every check passed.
           </p>
         )}

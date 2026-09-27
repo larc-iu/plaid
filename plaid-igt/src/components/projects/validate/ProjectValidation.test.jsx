@@ -165,7 +165,9 @@ describe('the scan', () => {
     // settled (no spinner), it told the user, and the page still stands.
     expect(container.textContent).not.toContain('Checking values');
     expect(notifyError).toHaveBeenCalled();
-    expect(container.textContent).toContain('Re-check');
+    expect(container.textContent).toContain('Check again');
+    // The header every app's Validation tab wears.
+    expect(container.querySelector('h2')?.textContent).toBe('Validation');
     await unmount();
   });
 });
@@ -269,10 +271,10 @@ describe('opening a morpheme field value', () => {
     await unmount();
   });
 
-  it("puts the scan's count back on a re-check", async () => {
+  it("puts the scan's count back on checking again", async () => {
     const { container, step, unmount } = await open(client());
     expect(container.textContent).toContain('2 occurrences ·');
-    await step(() => byText(container, 'button', 'Re-check').click());
+    await step(() => byText(container, 'button', 'Check again').click());
     expect(container.textContent).toContain('1 occurrence ·');
     expect(container.textContent).not.toContain('harbu');
     await unmount();

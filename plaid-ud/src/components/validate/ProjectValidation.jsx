@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
 import { Button } from '@ui/components/ui/button';
 import { Badge } from '@ui/components/ui/badge';
+import { Loading } from '@ui/components/shared/Loading.jsx';
+import { ValidationHeader } from '@ui/components/shared/ValidationHeader.jsx';
 import { useAuth } from '../../contexts/AuthContext.jsx';
 import { useManagedProject } from '@ui/hooks/useManagedProject.js';
 import { ProjectTabs } from '../projects/ProjectTabs.jsx';
@@ -217,7 +219,7 @@ export const ProjectValidation = () => {
     [client, layerInfo],
   );
 
-  if (loading) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>;
+  if (loading) return <Loading />;
   if (!project || !canConfigure) return null;
 
   const configured = layerInfo?.isConfigured;
@@ -226,18 +228,12 @@ export const ProjectValidation = () => {
     <div className="w-full">
       <ProjectTabs projectId={projectId} project={project} />
       <div className="mx-auto w-full max-w-4xl">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Validation</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Values in this project that its lists do not include. Parsers, imports and the API are
-              not held to the lists.
-            </p>
-          </div>
-          <Button variant="outline" onClick={scan} disabled={busy || !configured}>
-            {busy ? 'Checking…' : 'Check again'}
-          </Button>
-        </div>
+        <ValidationHeader
+          description="Values in this project that its lists do not include. Parsers, imports and the API are not held to the lists."
+          busy={busy}
+          disabled={!configured}
+          onCheck={scan}
+        />
 
         {!configured && (
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
@@ -245,9 +241,7 @@ export const ProjectValidation = () => {
           </p>
         )}
 
-        {configured && busy && !report && (
-          <p className="text-sm text-muted-foreground">Reading the project…</p>
-        )}
+        {configured && busy && !report && <Loading label="Reading the project…" className="p-0" />}
 
         {configured &&
           report?.map((field) => {
@@ -259,7 +253,7 @@ export const ProjectValidation = () => {
               <div key={field.key} className="mb-4 rounded-lg border">
                 <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <h2 className="font-medium">{field.label}</h2>
+                    <h3 className="font-medium">{field.label}</h3>
                     <Badge variant={field.enforced ? 'secondary' : 'outline'}>
                       {field.enforced ? 'closed' : 'open'}
                     </Badge>
@@ -279,7 +273,7 @@ export const ProjectValidation = () => {
 
                 {count === 0 ? (
                   <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="h-4 w-4 text-success" />
                     Everything stored is on the list.
                   </p>
                 ) : field.kind === 'feats' ? (
@@ -344,7 +338,7 @@ export const ProjectValidation = () => {
                             ) : (
                               <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                             )}
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                            <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                             <code>{v.value}</code>
                             <span className="text-xs text-muted-foreground">
                               {plural(v.count, 'time', 'times')}
