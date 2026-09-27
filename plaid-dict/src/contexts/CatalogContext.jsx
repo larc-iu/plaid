@@ -56,11 +56,12 @@ export const CatalogProvider = ({ children }) => {
           where: [['vocab', '?v', { layer: '?l' }]],
           return: { group: ['?l'], aggregates: [['count']] },
         });
+        // Only the layers the query answered for. It reaches a vocabulary
+        // through the projects that link it, so an unlinked one has no row,
+        // and no row is "not counted", never 0.
         const byLayer = {};
         for (const [layerId, n] of res?.results || []) byLayer[layerId] = n;
-        if (!cancelled) {
-          setItemCounts(Object.fromEntries(vocabularies.map((v) => [v.id, byLayer[v.id] ?? 0])));
-        }
+        if (!cancelled) setItemCounts(byLayer);
       } catch (err) {
         console.error('Entry-count query failed:', err);
         if (!cancelled) setItemCounts(null);
