@@ -136,7 +136,7 @@ describe('UmrNode document tags', () => {
 describe('UmrNode provenance', () => {
   const withMeta = (metadata) => ({ ...node, metadata });
 
-  it('tints a machine-drafted node and a contributor', async () => {
+  it('marks a machine-drafted node and a contributor', async () => {
     let r = await renderComponent(
       <UmrNode
         node={withMeta({ prov: 'inferred', provSource: 'service:umr-draft-llm' })}

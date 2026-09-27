@@ -11,10 +11,12 @@
   --umr-edge-lit: hsl(221 83% 53%);
   --umr-node-bg: hsl(0 0% 100%);
   --umr-node-border: hsl(214 32% 82%);
-  /* The document graph, a hue per family of relation. */
-  --umr-doc: hsl(292 60% 45%);
+  /* The document graph, a hue per family of relation: blue-grey, teal and
+     brown. Never violet or amber, which are the machine's and the
+     contributor's (plaid-ui's provenance tokens). */
+  --umr-doc: hsl(220 45% 33%);
   --umr-doc-temporal: hsl(185 70% 30%);
-  --umr-doc-coref: hsl(30 85% 38%);
+  --umr-doc-coref: hsl(16 42% 34%);
 }
 .umr-canvas-list {
   position: relative;
@@ -174,19 +176,20 @@
   font-size: 0.85em;
   color: hsl(var(--muted-foreground));
 }
-/* Provenance (the cross-app convention, plaid-ui's tokens): a node a machine
-   drafted is tinted violet and a contributor's amber, until a person's edit
-   settles it. Set on the node's own background variable so an unaligned,
-   hollow node takes the tint too, and placed above the hover, problem and
-   focus rules so each of those still owns the border. A settled node draws
-   plain: the mark is for what needs a look. */
+/* Provenance (the cross-app convention): a node a machine drafted wears a
+   dashed violet border and a contributor's a dashed amber one, until a
+   person's edit settles it. No fill: fill carries no meaning in any app.
+   plaid-ui's `plaid-prov-node--machine`, restated here because `.umr-node`
+   sets its own border after that stylesheet loads. Placed above the hover,
+   problem and focus rules so each of those still owns the border's colour.
+   A settled node draws plain: the mark is for what needs a look. */
 .umr-node--machine {
-  --umr-node-bg: var(--plaid-machine-fill);
-  border-color: var(--plaid-machine-soft);
+  border-style: dashed;
+  border-color: var(--plaid-machine);
 }
 .umr-node--contributed {
-  --umr-node-bg: var(--plaid-contributed-fill);
-  border-color: var(--plaid-contributed-soft);
+  border-style: dashed;
+  border-color: var(--plaid-contributed);
 }
 .umr-node:hover {
   border-color: var(--umr-edge);

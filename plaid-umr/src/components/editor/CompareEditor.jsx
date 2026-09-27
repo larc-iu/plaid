@@ -152,7 +152,7 @@ export const CompareEditor = () => {
           </div>
 
           {otherError && (
-            <p className="text-sm text-amber-900">
+            <p className="text-sm text-warning-foreground">
               The other document could not be read: {otherError}
             </p>
           )}
@@ -197,7 +197,7 @@ function SentenceComparison({ sentence, row, left, right, otherName }) {
           {sentence.text}
         </span>
         {row?.skipped ? (
-          <span className="text-xs text-amber-900">Not scored: {row.skipped}</span>
+          <span className="text-xs text-warning-foreground">Not scored: {row.skipped}</span>
         ) : row ? (
           SENTENCE_SCORE_LABELS.map(([key, label]) => (
             <span key={key} className="text-xs text-muted-foreground" data-sentence-score={key}>

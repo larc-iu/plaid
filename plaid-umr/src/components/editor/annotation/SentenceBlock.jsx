@@ -68,9 +68,17 @@ const Arrow = ({ id, color }) => (
   </marker>
 );
 
-// A chain's color, from its index: hues spread around the wheel.
-// Starting away from red, which marks an error.
-const chainColor = (index) => `hsl(${(210 + index * 137.5) % 360} 62% 42%)`;
+// A chain's color, from its index, cycling through a fixed set. Blues and
+// greens only: red marks an error, violet and amber are the machine's and the
+// contributor's, teal is the temporal family and brown is coreference.
+const CHAIN_COLORS = [
+  'hsl(210 62% 42%)',
+  'hsl(140 55% 32%)',
+  'hsl(75 60% 30%)',
+  'hsl(198 80% 34%)',
+  'hsl(160 60% 24%)',
+];
+const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
 // layout, edges an SVG underlay of the same size, the token row beneath.
@@ -1210,10 +1218,10 @@ export const SentenceBlock = React.memo(function SentenceBlock({
         {!readOnly && !textMode && doc?.canConfirmSentence(sentence.index) && (
           <button
             type="button"
-            className="umr-text-toggle"
+            className="umr-text-toggle plaid-review plaid-review--accept"
             onClick={() => doc.confirmSentence(sentence.index)}
           >
-            Confirm graph
+            Accept graph
           </button>
         )}
         {!readOnly && (

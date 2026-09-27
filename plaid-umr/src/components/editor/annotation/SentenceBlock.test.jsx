@@ -276,7 +276,7 @@ describe('SentenceBlock text mode', () => {
 describe('SentenceBlock review', () => {
   const button = (root, name) => all(root, 'button').find((b) => b.textContent.trim() === name);
 
-  it('offers Confirm graph while the sentence has something to confirm', async () => {
+  it("offers Accept graph, in the review pair's violet, while the sentence has something to accept", async () => {
     const { sentence, nodesById } = fixture();
     const confirmed = [];
     const doc = (open) => ({
@@ -293,7 +293,8 @@ describe('SentenceBlock review', () => {
         readOnly={false}
       />,
     );
-    await r.step(() => button(r.container, 'Confirm graph').click());
+    expect(button(r.container, 'Accept graph').classList).toContain('plaid-review--accept');
+    await r.step(() => button(r.container, 'Accept graph').click());
     expect(confirmed).toEqual([1]);
     await r.rerender(
       <SentenceBlock
@@ -304,7 +305,7 @@ describe('SentenceBlock review', () => {
         readOnly={false}
       />,
     );
-    expect(button(r.container, 'Confirm graph')).toBeUndefined();
+    expect(button(r.container, 'Accept graph')).toBeUndefined();
     await r.unmount();
   });
 });

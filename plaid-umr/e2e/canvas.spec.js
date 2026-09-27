@@ -39,7 +39,12 @@ test.describe('canvas', () => {
     // The graph's top corner, in view: the deep link scrolled to the node,
     // which can leave the top of a tall graph above the viewport, where a
     // click lands on nothing of the canvas.
-    await graph.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    // The margin keeps that corner clear of the app header, which stays on
+    // top of the page as it scrolls.
+    await graph.evaluate((el) => {
+      el.style.scrollMarginTop = '120px';
+      el.scrollIntoView({ block: 'start' });
+    });
     const box = await graph.boundingBox();
     await page.mouse.click(box.x + box.width - 4, box.y + 4);
     await expect(page.locator('.umr-node--focused')).toHaveCount(0);

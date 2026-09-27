@@ -544,6 +544,65 @@ test.describe('editing', () => {
     }
   });
 
+  // A drafted graph wears the machine's mark, a dashed violet border and no
+  // fill, until Accept graph takes it off every node at once.
+  test('a drafted graph is marked until Accept graph', async ({ page }) => {
+    const own = await makeDocument();
+    try {
+      const d = await own.client.documents.get(own.documentId, true);
+      const spans = d.textLayers[0].tokenLayers.find((t) => t.name === 'UMR nodes').spanLayers[0]
+        .spans;
+      for (const s of spans) {
+        await own.client.spans.patchMetadata(s.id, [
+          { op: 'set', path: ['prov'], value: 'inferred' },
+          { op: 'set', path: ['provSource'], value: 'service:e2e' },
+        ]);
+      }
+      const diag = collectClientErrors(page);
+      await seedAuth(page);
+      await page.goto(`/#/projects/${own.projectId}/documents/${own.documentId}/annotate`);
+      const block = page.locator('.umr-block').first();
+      await expect(block.locator('.umr-edge-label').first()).toBeVisible();
+      const nodes = await block.locator('.umr-node').count();
+      expect(nodes).toBeGreaterThan(1);
+      await expect(block.locator('.umr-node--machine')).toHaveCount(nodes);
+
+      const plain = block
+        .locator('.umr-node--machine:not(.umr-node--unaligned)')
+        .filter({ hasNot: page.locator('.umr-node-mark--warning, .umr-node-mark--error') })
+        .first();
+      const style = await plain.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { border: s.borderTopStyle, color: s.borderTopColor, fill: s.backgroundColor };
+      });
+      expect(style).toEqual({
+        border: 'dashed',
+        color: 'rgb(109, 40, 217)',
+        fill: 'rgb(255, 255, 255)',
+      });
+
+      const accept = block.getByRole('button', { name: 'Accept graph' });
+      await expect(accept).toHaveCSS('color', 'rgb(109, 40, 217)');
+      await accept.click();
+      await expect(block.locator('.umr-node--machine')).toHaveCount(0);
+      await expect(accept).toHaveCount(0);
+      await expect
+        .poll(async () => {
+          const after = await own.client.documents.get(own.documentId, true);
+          return after.textLayers[0].tokenLayers
+            .find((t) => t.name === 'UMR nodes')
+            .spanLayers[0].spans.filter((s) => s.metadata?.provConfirmed === true).length;
+        })
+        .toBeGreaterThanOrEqual(nodes);
+
+      const clean = cleanDiagnostics(diag);
+      expect(clean.failures, JSON.stringify(clean.failures, null, 2)).toEqual([]);
+      expect(clean.errors, JSON.stringify(clean.errors, null, 2)).toEqual([]);
+    } finally {
+      await own.client.documents.delete(own.documentId);
+    }
+  });
+
   // Text mode shows every node of the sentence: a part the root does not
   // reach is a graph of its own after the root's, applying the text as shown
   // changes nothing, and a node taken out of the text goes. A role UMR does

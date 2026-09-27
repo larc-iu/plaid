@@ -3,11 +3,12 @@ import { PROV_STATES, provState } from '@larc-iu/plaid-client';
 import { stableKey } from '@ui/domain/pendingIds.js';
 
 // Provenance, the cross-app convention: a node a machine drafted or a
-// contributor made is tinted until somebody settles it, in the two hues
-// every app uses. Colour means provenance here, as it does in the igt grid;
-// the tint goes the moment a person edits the node, because the edit carries
-// the writer's stamp (UmrDocument's `writer`). Marking what needs attention
-// rather than what is finished is why a verified node draws plain.
+// contributor made wears a dashed border in one of the two hues every app
+// uses until somebody settles it. Colour means provenance here, as it does in
+// the igt grid; the mark goes the moment a person edits the node, because the
+// edit carries the writer's stamp (UmrDocument's `writer`). Marking what
+// needs attention rather than what is finished is why a verified node draws
+// plain.
 const PROV_CLASS = {
   [PROV_STATES.MACHINE]: 'umr-node--machine',
   [PROV_STATES.CONTRIBUTED]: 'umr-node--contributed',
