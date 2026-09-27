@@ -253,9 +253,9 @@ test('the four things a sentence offers are one row of four, alike', async ({ pa
     await expect(strip.getByText(label, { exact: false }).first()).toBeVisible();
   }
   // One treatment, so none of them is the loudest thing here: none of these is
-  // what you came to the sentence to do.
-  // These brighten on hover OR focus, so the thing just clicked is still lit
-  // under both the caret and the pointer.
+  // what you came to the sentence to do. Quiet by weight and by having no
+  // outline or fill, never by opacity (39d2f964): dimmed, the gray fell under
+  // 3:1. So each reads at full strength, in the same color as the others.
   const stepAside = async () => {
     await page.evaluate(() => document.activeElement?.blur());
     await page.mouse.move(0, 0);
@@ -267,8 +267,10 @@ test('the four things a sentence offers are one row of four, alike', async ({ pa
   const actions = strip.locator('.sentence-action');
   const n = await actions.count();
   expect(n).toBeGreaterThanOrEqual(3);
+  const color = await actions.first().evaluate((el) => getComputedStyle(el).color);
   for (let i = 0; i < n; i += 1) {
-    await expect(actions.nth(i)).toHaveCSS('opacity', '0.55');
+    await expect(actions.nth(i)).toHaveCSS('opacity', '1');
+    await expect(actions.nth(i)).toHaveCSS('color', color);
   }
 });
 
