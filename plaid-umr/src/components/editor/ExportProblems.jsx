@@ -1,3 +1,4 @@
+import { Notice } from '@ui/components/shared/Notice.jsx';
 import { problemPlace } from '../../domain/format/umrFile.js';
 
 // The most listed at once: a corpus with a bad value on every sentence would
@@ -6,10 +7,7 @@ const SHOWN = 50;
 
 /** Why an export was refused: each stored value a .umr file cannot hold. */
 export const ExportProblems = ({ problems }) => (
-  <div
-    role="alert"
-    className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-  >
+  <Notice tone="error" role="alert">
     <p className="font-medium">Failed to export. These cannot be written to a .umr file:</p>
     <ul className="mt-1 list-disc ps-5">
       {problems.slice(0, SHOWN).map((p, i) => (
@@ -19,5 +17,5 @@ export const ExportProblems = ({ problems }) => (
       ))}
     </ul>
     {problems.length > SHOWN && <p className="mt-1">{problems.length - SHOWN} more.</p>}
-  </div>
+  </Notice>
 );
