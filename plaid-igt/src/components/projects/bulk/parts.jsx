@@ -226,7 +226,7 @@ export const SubstitutionFields = ({
     <div className="flex flex-col gap-1">
       <Label>Match</Label>
       <Select value={matchType} onValueChange={setMatchType}>
-        <SelectTrigger className="w-[150px]">
+        <SelectTrigger className="w-[240px]">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

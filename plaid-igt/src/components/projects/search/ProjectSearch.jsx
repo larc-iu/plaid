@@ -158,7 +158,7 @@ export const ProjectSearch = ({ project, projectId, client }) => {
             }}
           />
           <Select value={matchType} onValueChange={setMatchType}>
-            <SelectTrigger className="w-[150px]">
+            <SelectTrigger className="w-[240px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
