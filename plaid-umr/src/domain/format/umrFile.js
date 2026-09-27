@@ -510,7 +510,9 @@ function serializeDocGraph(docGraph) {
 // Text the file holds on one line: a line break in it would start a line the
 // reader takes for something else (a separator, a block header, a phantom
 // sentence). Written as a space, which loses nothing structural.
-const oneLine = (text) => String(text ?? '').replace(/\s*[\r\n]+\s*/g, ' ');
+// U+2028 and U+2029 count: the sentence id line is read with `.`, which stops
+// at them, and the whole line was then taken for metadata.
+const oneLine = (text) => String(text ?? '').replace(/\s*[\r\n\u2028\u2029]+\s*/g, ' ');
 
 // A line the reader takes as structure rather than as the text around it.
 const isStructural = (line) =>
@@ -531,7 +533,11 @@ export function umrFileProblems(sentences) {
   const problems = [];
   (sentences ?? []).forEach((sentence) => {
     const number = sentence.snt ?? sentence.index;
-    const at = (variable, message) => problems.push({ sentence: number, var: variable, message });
+    // Written as `# :: snt<number>`, read back only when it is digits.
+    const readable = /^[0-9]+$/.test(String(number));
+    const place = readable ? number : sentence.index;
+    const at = (variable, message) => problems.push({ sentence: place, var: variable, message });
+    if (!readable) at(null, `A sentence number cannot be written as it is: ${oneLine(number)}`);
     (sentence.meta ?? []).forEach((line) => {
       const text = oneLine(line);
       if (!text.trimStart().startsWith('#') || isStructural(text)) {

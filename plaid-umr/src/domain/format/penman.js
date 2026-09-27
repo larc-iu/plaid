@@ -67,9 +67,11 @@ export const attrValueProblem = (value) => {
       : `A quoted value needs its closing quote: ${text}`;
   }
   if (text.includes('"')) return `A value holds a quote only around the whole of it: ${text}`;
-  return NOT_IN_CONCEPT.test(text)
-    ? `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`
-    : null;
+  if (NOT_IN_CONCEPT.test(text)) {
+    return `A value cannot hold spaces, brackets, colons or #, unless it is quoted: ${text}`;
+  }
+  // Read back as a reference to a node, not as the value.
+  return VARIABLE.test(text) ? `A value cannot be a variable, unless it is quoted: ${text}` : null;
 };
 
 // A relation as the writer must find it stored: colon included, nothing
@@ -122,7 +124,12 @@ export function penmanProblems(graph) {
         const badTarget = variableFormProblem(child.value);
         if (badTarget) at(badTarget);
       } else {
-        const badValue = attrValueProblem(child.value);
+        // A value naming a node of this graph reads back as an edge to it,
+        // whatever shape the variable has.
+        const text = String(child.value ?? '').trim();
+        const badValue =
+          attrValueProblem(child.value) ||
+          (nodes.has(text) ? `A value cannot be a variable, unless it is quoted: ${text}` : null);
         if (badValue) at(badValue);
       }
     }

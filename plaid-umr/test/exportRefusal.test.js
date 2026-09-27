@@ -219,3 +219,47 @@ test('the project export names every document with a problem, and writes none', 
   });
   assert.deepEqual(umrFileProblems([]), []);
 });
+
+// Review of the refusal (2026-09-27): three more ways a file read back as
+// something other than what was stored, with no error.
+test('a bare value that reads as a variable is refused, and quoted it is written', () => {
+  const withValue = (value) =>
+    sentence({ graph: graphOf(node('s1d', 'dog', [{ rel: ':mod', kind: 'atom', value }])) });
+  // `s2x` came back as an edge to an undefined node, `s1d` as a loop.
+  for (const value of ['s2x', 's1d']) {
+    const problems = refused(withValue(value));
+    assert.equal(problems.length, 1, value);
+    assert.equal(problems[0].var, 's1d', value);
+  }
+  // A node whose variable breaks the convention is read by its definition.
+  const named = graphOf(
+    node('x', 'dog', [
+      { rel: ':ARG0', kind: 'node', value: 'y', inline: true },
+      { rel: ':mod', kind: 'atom', value: 'y' },
+    ]),
+    node('y', 'cat'),
+  );
+  assert.equal(refused(sentence({ graph: named, alignment: new Map() })).length, 1);
+  const quoted = withValue('"s2x"');
+  const back = parseUmrFile(serializeUmrFile({ sentences: [quoted] }));
+  assert.deepEqual(back.errors, []);
+  assert.equal(back.sentences[0].graph.nodes.get('s1d').children[0].kind, 'string');
+});
+
+test('a line or paragraph separator in the sentence text writes as a space', () => {
+  const s = sentence({ snt: 7, sentenceText: 'the dog barks', meta: ['# ::id a b'] });
+  const back = parseUmrFile(serializeUmrFile({ sentences: [s] })).sentences;
+  assert.equal(back.length, 1);
+  assert.equal(back[0].snt, 7);
+  assert.equal(back[0].sentenceText, 'the dog barks');
+  assert.deepEqual(back[0].meta, ['# ::id a b']);
+});
+
+test('a sentence number that is not a number is refused', () => {
+  for (const snt of [`2\n${SEPARATOR}`, '2 b', 'x']) {
+    const problems = refused(sentence({ snt }));
+    assert.equal(problems.length, 1, snt);
+    assert.equal(problems[0].sentence, 1, snt);
+  }
+  assert.doesNotThrow(() => serializeUmrFile({ sentences: [sentence({ snt: '12' })] }));
+});
