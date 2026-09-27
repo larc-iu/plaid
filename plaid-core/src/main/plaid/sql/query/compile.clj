@@ -8,9 +8,10 @@
   Three passes:
     A. scan entity clauses -> per-var constraints (layer-ids, value, doc, begin/end)
     B. for every var (incl. ones introduced only by relationships): allocate a table
-       alias, emit its base table, and emit its SCOPE predicate — an `IN <layer-ids>`
-       filter for layer-named vars, else a defense-in-depth join to the var's layer
-       table filtered by `project_id IN scope`. THE ACL INVARIANT: no entity alias is
+       alias, emit its base table, and emit its SCOPE predicate: an `IN <layer-ids>`
+       filter on its layer column, with the ids the clause names or else every
+       in-scope layer of its kind (resolve's `::layer-universe`), and for a
+       document or text a project filter. THE ACL INVARIANT: no entity alias is
        emitted without a scope predicate (asserted at the end; a miss is a 500).
     C. relationship clauses + inline relation source/target -> join predicates.
 
@@ -68,9 +69,10 @@
 ;; Mutable-ish compile state (a local atom; contained within compile-query)
 ;; ---------------------------------------------------------------------------
 
-(defn- new-state [scope kinds]
+(defn- new-state [scope universe kinds]
   (atom {:n 0
          :scope (vec scope)
+         :universe universe   ; layer table -> every in-scope layer id of it
          :kinds kinds
          :var->alias {}
          :scalar-col {}   ; scalar var -> {:sql <col-ref> :enc <fn>}: its bound column
@@ -297,10 +299,17 @@
 
 (declare ensure-var!)
 
+(defn- universe-ids
+  "Every in-scope layer id of layer `table` (resolve's `::layer-universe`)."
+  [st table]
+  (or (get-in @st [:universe table])
+      (err-500! (str "No in-scope layer ids were resolved for " (name table)) {:table table})))
+
 (defn- ensure-layer-var!
   "Allocate a layer-table alias for a LAYER variable `v` of `kind` and emit its
-  SCOPE predicate (project_id IN scope; vocab layers are global -> via
-  project_vocabs grants), registering it in :scoped. Its FILTERS — `:name`
+  SCOPE predicate (its id is one of the in-scope layers of its kind, which for
+  vocab layers means granted to an in-scope project), registering it in
+  :scoped. Its FILTERS — `:name`
   and the structural-slot joins — are emitted SEPARATELY, per clause, by
   `emit-layer-filters!` (like `emit-entity-filters!` for entity clauses), so a layer
   var re-stated inside a `:not` gets its predicates INSIDE that NOT EXISTS subquery
@@ -308,15 +317,11 @@
   projects, an unconstrained-by-id layer var ranges over EVERY matching layer in
   scope — the sanctioned intentional multi-layer match."
   [st v kind]
-  (let [a (next-alias! st (layer-alias-prefix kind))]
+  (let [a (next-alias! st (layer-alias-prefix kind))
+        table (layer-entity-table kind)]
     (swap! st assoc-in [:var->alias v] a)
-    (add-from! st [(layer-entity-table kind) a])
-    (if (= kind :vocab-layer)
-      (let [pv (next-alias! st "pv")]
-        (add-from! st [:project_vocabs pv])
-        (add-where! st [:= (col a :id) (col pv :vocab_layer_id)])
-        (add-where! st [:in (col pv :project_id) (:scope @st)]))
-      (add-where! st [:in (col a :project_id) (:scope @st)]))
+    (add-from! st [table a])
+    (add-where! st [:in (col a :id) (universe-ids st table)])
     (swap! st update :scoped conj v)))
 
 (defn- ensure-var!
@@ -324,8 +329,7 @@
   and the value/doc/begin/end filters from ALL its entity constraint maps (ANDed).
   `constraints` maps var -> vector of constraint maps. Idempotent. A LAYER var is
   handled by `ensure-layer-var!`; an entity var whose `:layer` is itself a var is
-  scoped by joining to that (scoped) layer node — the named version of the
-  defense-in-depth join."
+  also joined to that (scoped) layer node."
   [st v constraints]
   (let [kind (get-in @st [:kinds v])]
     (when (nil? kind)
@@ -351,45 +355,35 @@
             ;; the cond below would otherwise drop the literal under the layer-var arm).
             (doseq [ids layer-id-sets]
               (add-where! st [:in (col a (layer-fk kind)) (vec ids)]))
-            (cond
-              ;; :layer is a VARIABLE -> also join to the (scoped) layer node it names
-              (seq layer-vars)
-              (doseq [lv layer-vars]
-                (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st lv constraints) :id)]))
-              ;; a layer-named clause already pinned scope via the IN(s) above
-              (seq layer-id-sets) nil
-              ;; vocab layers are global — scope via project_vocabs grants
-              (= kind :vocab)
-              (let [pv (next-alias! st "pv")]
-                (add-from! st [:project_vocabs pv])
-                (add-where! st [:= (col a :vocab_layer_id) (col pv :vocab_layer_id)])
-                (add-where! st [:in (col pv :project_id) (:scope @st)]))
+            ;; No layer id of its own: the entity's layer is one of the in-scope
+            ;; layers of its kind. The ids go in as a list rather than as a join
+            ;; to the layer table filtered by project, which SQLite planned by
+            ;; walking every row of the kind on the instance (a 408 on a project
+            ;; of three spans) or by putting the tiny layer table outermost and
+            ;; repeating the whole walk per layer. A layer variable scopes the
+            ;; entity through its join instead (the variable's own id is in the
+            ;; list): the list again on the entity would be tested against every
+            ;; one of its rows, and made the project list's per-layer token
+            ;; count three times slower.
+            (when (and (empty? layer-id-sets) (empty? layer-vars) (layer-fk kind))
+              (add-where! st [:in (col a (layer-fk kind))
+                              (universe-ids st (if (= kind :vocab) :vocab_layers (layer-tbl kind)))]))
+            ;; :layer is a VARIABLE -> also join to the (scoped) layer node it names
+            (doseq [lv layer-vars]
+              (add-where! st [:= (col a (layer-fk kind)) (col (ensure-var! st lv constraints) :id)]))
+            (case kind
               ;; a document carries project_id directly
-              (= kind :document)
+              :document
               (add-where! st [:in (col a :project_id) (:scope @st)])
-              ;; a text is scoped through its document
-              (= kind :text)
-              (let [d (next-alias! st "txd")]
-                (add-from! st [:documents d])
-                (add-where! st [:= (col a :document_id) (col d :id)])
-                (add-where! st [:in (col d :project_id) (:scope @st)]))
-              ;; a vocab link lives in a document too (its item may be global, but
-              ;; the link is the project's annotation)
-              (= kind :link)
-              (let [d (next-alias! st "lkd")]
-                (add-from! st [:documents d])
-                (add-where! st [:= (col a :document_id) (col d :id)])
-                (add-where! st [:in (col d :project_id) (:scope @st)]))
-              ;; defense-in-depth: join the var's layer table, filter project_id IN scope
-              :else
-              (let [lt-table (or (layer-tbl kind)
-                                 (err-500! (str "No layer table registered for kind " kind
-                                                " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
-                                           {:kind kind}))
-                    lt (next-alias! st "lt")]
-                (add-from! st [lt-table lt])
-                (add-where! st [:= (col a (layer-fk kind)) (col lt :id)])
-                (add-where! st [:in (col lt :project_id) (:scope @st)])))
+              ;; a text is in a document, and so is a vocab link (its item may be
+              ;; global, but the link is the project's annotation)
+              (:text :link)
+              (add-where! st [:in (col a :document_id)
+                              {:select [:id] :from [:documents] :where [:in :project_id (:scope @st)]}])
+              (when-not (layer-fk kind)
+                (err-500! (str "No scope predicate registered for kind " kind
+                               " — keep entity-table/alias-prefix/layer-fk/layer-tbl in sync")
+                          {:kind kind})))
             ;; Attribute filters (value/form/doc/begin/end) are NOT emitted here —
             ;; `compile-query` Pass B and `compile-not!` emit them per-clause via
             ;; `emit-entity-filters!` so a re-stated outer var inside a `:not`
@@ -565,8 +559,7 @@
                          ;; per-hop relation filter: in the (scoped) layer set, and
                          ;; the optional :value. Correlates scope via layer-ids.
                          hop (fn [r]
-                               (let [s (next-alias! st "rcs")
-                                     sl (next-alias! st "rcsl")]
+                               (let [s (next-alias! st "rcs")]
                                  (cond-> [:and [:in (col r :relation_layer_id) layer-ids]
                                           ;; defense-in-depth: the span this hop reaches must
                                           ;; itself live in a span layer within scope, so
@@ -575,10 +568,9 @@
                                           ;; relation write-path forbids that, so this is belt &
                                           ;; braces — but it makes :related* self-sufficient.)
                                           [:exists {:select [1]
-                                                    :from [[:spans s] [:span_layers sl]]
+                                                    :from [[:spans s]]
                                                     :where [:and [:= (col s :id) (col r :target_span_id)]
-                                                            [:= (col sl :id) (col s :span_layer_id)]
-                                                            [:in (col sl :project_id) (:scope @st)]]}]]
+                                                            [:in (col s :span_layer_id) (universe-ids st :span_layers)]]}]]
                                    (contains? cmap :value)
                                    (conj (atomic-pred (col r :value) (:value cmap) psc/write-json)))))]
                      ;; transitive reachability over source_span_id -> target_span_id,
@@ -1063,7 +1055,7 @@
   PROJECTED entity/layer var: that var's `id` is its table's primary key, so the
   projected tuple identifies at most one row of the join and no two rows can be
   equal. Any OTHER alias may repeat a match — a junction row (`span_tokens`,
-  `vocab_link_tokens`), a `project_vocabs` grant, or a var joined but NOT
+  `vocab_link_tokens`), or a var joined but NOT
   projected (a multi-branch aggregate projects only the vars every alternative
   binds) — and keeps the DISTINCT. The test is deliberately by exclusion, so a
   join alias added later is duplicate-generating until someone proves otherwise.
@@ -1075,13 +1067,14 @@
     (every? projected-aliases (map second (:from @st)))))
 
 (defn compile-query
-  "Resolved AST -> HoneySQL map. Throws 500 only on internal invariant failures."
+  "Resolved AST -> HoneySQL map. Throws 400 on a field path into an array, 500 on
+  internal invariant failures."
   [resolved]
   (let [scope (::qr/scope resolved)
         ;; validate already inferred + attached the var-kinds; reuse it (fall back
         ;; to re-inferring if a caller hands us an AST that skipped validate).
         kinds (or (::ast/var-kinds resolved) (clauses/infer-kinds resolved))
-        st (new-state scope kinds)
+        st (new-state scope (::qr/layer-universe resolved) kinds)
         constraints (collect-entity-constraints (:where resolved))]
     ;; Pass B: every POSITIVELY-bound var (entity + relationship-introduced) gets
     ;; a table + scope. Vars that appear only inside a :not are existential to the

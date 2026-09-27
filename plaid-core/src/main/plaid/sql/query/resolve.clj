@@ -6,9 +6,10 @@
   compiler later inlines belongs to a project the user may read.
 
   Produces a *resolved AST*: the input AST with `::scope` (a set of project-id
-  strings) attached, and every entity clause that names a `:layer` annotated with
+  strings) and `::layer-universe` (every in-scope layer id, per layer table)
+  attached, and every entity clause that names a `:layer` annotated with
   `::layer-ids` (a vector of concrete layer-id strings). Layer-less clauses are
-  left untouched — the compiler scopes them via a defense-in-depth join.
+  left untouched: the compiler scopes their variables to the universe.
 
   All ids are normalized to strings here (SQLite stores them as TEXT; params work
   as either string or UUID, and strings keep set operations unambiguous)."
@@ -23,12 +24,13 @@
 ;; ref) and by LAYER kind (resolving a structural slot's parent-layer ref, e.g. a
 ;; token layer's :text-layer). `:text-layer` has no entity equivalent.
 (def ^:private layer-table
-  {:span         :span_layers
-   :token        :token_layers
-   :relation     :relation_layers
-   :text-layer   :text_layers
-   :token-layer  :token_layers
-   :span-layer   :span_layers})
+  {:span           :span_layers
+   :token          :token_layers
+   :relation       :relation_layers
+   :text-layer     :text_layers
+   :token-layer    :token_layers
+   :span-layer     :span_layers
+   :relation-layer :relation_layers})
 
 (defn- err! [msg data]
   (throw (ex-info msg (merge {:code 400 :query-error/stage :resolve} data))))
@@ -134,6 +136,18 @@
                         (let [ix (in-scope-layer-ids db scope kind)]
                           (swap! index-cache assoc kind ix)
                           ix)))
+        ;; Every in-scope layer id, per layer table. A variable with no layer id
+        ;; of its own is scoped by `layer_fk IN (these)` (see the compiler's
+        ;; `ensure-var!`), which lets SQLite find its rows through the layer
+        ;; index. Joining the layer table instead and filtering its project
+        ;; sent the planner through every row of that kind on the instance.
+        ;; A handful of ids per project.
+        universe (fn []
+                   (into {}
+                         (map (fn [[table kind]] [table (vec (sort (get-index kind)))]))
+                         {:text_layers :text-layer :token_layers :token
+                          :span_layers :span :relation_layers :relation
+                          :vocab_layers :vocab}))
         layer-named? #{:span :token :relation :vocab}
         resolve-clause
         (fn resolve-clause [clause]
@@ -171,4 +185,5 @@
               :else clause)))]
     (-> ast*
         (assoc :where (mapv resolve-clause (:where ast*)))
-        (assoc ::scope scope))))
+        (assoc ::scope scope)
+        (assoc ::layer-universe (universe)))))
