@@ -17,8 +17,8 @@ def test_split_word_by_left_part_or_length():
     assert 'Planned 1 change' in out
     op = w.ops[0]
     assert (op['kind'], op['word_id'], op['position'], op['morpheme_ids']) == ('split_word', 'w-1', 3, ['m-1a', 'm-1b'])
-    assert op['label'] == ('Text 1 s1.w1 "Ali-di": split into "Ali" + "-di" (its 2-morpheme analysis is deleted; '
-                           're-analyse both parts afterwards) (word values and link stay on the left part)')
+    assert op['label'] == ('Text 1 s1.w1 "Ali-di": split into "Ali" + "-di" (its 2-morpheme analysis is deleted) '
+                           '(word values and link go to the left part)')
     w2 = ws()
     call_tool(w2, 'split_word', {'document': 'd1', 'ref': 's1.w3', 'at': '3'})
     assert w2.ops[0]['position'] == 14 and w2.ops[0]['morpheme_ids'] == [] and '(its' not in w2.ops[0]['label']
@@ -64,8 +64,8 @@ def test_delete_word_and_sentence_ops():
     out = call_tool(w, 'delete_word', {'document': 'd1', 'refs': ['s1.w3', 's1.w1']})
     assert 'Planned 2 changes' in out
     assert w.ops[0] == {'kind': 'delete_word', 'word_id': 'w-3', 'morpheme_ids': [], 'link_ids': [],
-                        'label': 'Text 1 s1.w3 "akuna": delete the word token (the text stays)'}
-    assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link go' in w.ops[1]['label']
+                        'label': 'Text 1 s1.w3 "akuna": delete the word token (the text is unchanged)'}
+    assert w.ops[1]['word_id'] == 'w-1' and w.ops[1]['morpheme_ids'] == ['m-1a', 'm-1b'] and 'analysis, values, and link are deleted' in w.ops[1]['label']
 
     out = call_tool(w, 'split_sentence', {'document': 'd1', 'ref': 's1', 'before_word': 2})
     assert 'Planned 1 change' in out

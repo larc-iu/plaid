@@ -738,6 +738,17 @@ def _parse(client, op, document_id: str, notes: List[str], b, total: int) -> Non
     except TimeoutError:
         # The request outlives the call: the parse is probably still running,
         # so saying it failed would be worse than saying what is true.
-        notes.append(f'the parser stopped reporting on {document_id}; it may still be running')
+        notes.append(f'the parser stopped reporting on {_doc_name(client, document_id)}, '
+                     f'and may still be running')
     except Exception as e:  # noqa: BLE001 - whatever the service said, the user needs it
-        raise PlanError(f'the parser refused {document_id}: {e}', b.applied, total) from e
+        raise PlanError(f'the parser refused {_doc_name(client, document_id)}: {e}', b.applied, total) from e
+
+
+def _doc_name(client, document_id: str) -> str:
+    """A document as the user knows it, for a line they read: by name, never
+    by id. Only a failure asks, so the read is not on the way of a parse."""
+    try:
+        name = client.documents.get(document_id).get('name')
+    except Exception:  # noqa: BLE001 - a name is a nicety, never a second failure
+        name = None
+    return f'"{name}"' if name else 'a document'

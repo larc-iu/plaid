@@ -31,6 +31,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any, Dict, List, Optional, Tuple
 
 from plaid_client import ROLES, find_by_role
+from plaid_client.workflows.messages import setup_incomplete
 
 from ..core.guidelines import Guideline, load as load_guidelines
 from ..core.project import find_layer, word_ref  # noqa: F401  (re-exported: the tools import it from here)
@@ -157,13 +158,13 @@ def load_project(client, project_id: str) -> UdProject:
     guidelines = load_guidelines(client, project_id)
     text_layer = find_by_role(p.get('text_layers'), ROLES.BASELINE)
     if not text_layer:
-        raise ValueError('This project has no baseline text layer (not set up for UD?)')
+        raise setup_incomplete('no baseline text layer (not set up for UD?)')
     token_layers = text_layer.get('token_layers') or []
     sent = find_by_role(token_layers, ROLES.SENTENCE)
     token = find_by_role(token_layers, ROLES.WORD)
     word = find_by_role(token_layers, ROLES.SYNTACTIC_WORD)
     if not sent or not token or not word:
-        raise ValueError('This project lacks a sentence, token or word layer (not set up for UD?)')
+        raise setup_incomplete('no sentence, token or word layer (not set up for UD?)')
 
     span_layers: Dict[str, str] = {}
     configs: Dict[str, dict] = {}
@@ -174,9 +175,8 @@ def load_project(client, project_id: str) -> UdProject:
                 configs[key] = sl.get('config') or {}
     missing = [k for k in SPAN_KEYS if k not in span_layers]
     if missing:
-        raise ValueError('This project is missing its ' + ', '.join(missing)
-                         + ' layer' + ('s' if len(missing) > 1 else '')
-                         + '. A maintainer can finish setting it up on the project page.')
+        raise setup_incomplete('missing the ' + ', '.join(missing) + ' layer'
+                               + ('s' if len(missing) > 1 else ''))
 
     relation_layer_id, relation_config = None, {}
     enhanced_layer_id = None
@@ -189,8 +189,7 @@ def load_project(client, project_id: str) -> UdProject:
             elif _ud(rl.get('config'), ENHANCED_KEY) is True:
                 enhanced_layer_id = rl['id']
     if not relation_layer_id:
-        raise ValueError('This project has no dependency relation layer '
-                         '(a maintainer can finish setting it up on the project page).')
+        raise setup_incomplete('no dependency relation layer')
 
     language = _ud(p.get('config'), 'language')
     return UdProject(

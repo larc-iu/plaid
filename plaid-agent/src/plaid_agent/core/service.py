@@ -58,6 +58,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
 
 from plaid_client import BaseService, TASKS, service_source
+from plaid_client.service import requester_message
 
 from . import filetools
 from . import prompt as shared_prompt
@@ -499,7 +500,7 @@ class BaseAssistantService(BaseService):
         if item.get('status') == 'applied' or (plan_id in self._applied_plans):
             settled()
             response_helper.complete({'kind': 'applied', 'applied': 0, 'counts': [], 'duplicate': True,
-                                      'message': 'This plan was already applied; nothing was written again.'})
+                                      'message': 'This plan was already applied. Nothing was written again.'})
             return
         if item.get('status') == 'discarded':
             settled()
@@ -516,9 +517,8 @@ class BaseAssistantService(BaseService):
         stale = stale_documents(client, plan.get('documents') or [])
         if stale:
             settled()
-            response_helper.error('Nothing was written: ' + '; '.join(stale)
-                                  + '. The plan was made against an older state of the data (its character '
-                                  'offsets and ids may no longer fit). Ask the assistant to plan again.')
+            response_helper.error('Nothing was written. ' + ' '.join(_sentence(s) for s in stale)
+                                  + ' Ask the assistant to plan again.')
             return
         response_helper.progress(10, 'Applying changes…')
         summary = plan.get('summary') or self.summarize(ops)
@@ -535,10 +535,9 @@ class BaseAssistantService(BaseService):
             # ops, and one op can be several calls, so the two together read as
             # "failed after 10 of 3 changes were applied".
             response_helper.error(
-                f'The plan failed part-way: {e}. '
-                + ('Some of its changes were written before it failed and they stand '
-                   '(see recent_changes); the rest were not applied.' if e.applied
-                   else 'Nothing was written.'))
+                f'Failed to apply the plan: {e}. '
+                + ('Stopped partway. What was written before the failure is in the documents.'
+                   if e.applied else 'Nothing was written.'))
             return
         except ValueError as e:
             settled()
@@ -555,15 +554,14 @@ class BaseAssistantService(BaseService):
         # Say so rather than leave it looking undecided.
         if not settled(settle_plan(conv, index, 'applied', note, as_human=as_human)):
             response_helper.error(
-                'The changes were applied, but the conversation could not be marked as such: '
-                'someone else wrote to it first. Do not approve this plan again, and check '
-                'recent_changes for what landed.')
+                'The changes were applied, but this conversation was changed elsewhere and does not '
+                'show it. Do not approve this plan again.')
             return
         response_helper.progress(100, 'Done')
         response_helper.complete({
             'kind': 'applied', 'applied': sum(counts.values()),
             'counts': [{'kind': k, 'count': n} for k, n in counts.items()],
-            'message': f'Applied {self.summarize(ops)}.' + (' ' + '; '.join(notes) if notes else ''),
+            'message': f'Applied {self.summarize(ops)}.' + ''.join(' ' + _sentence(n) for n in notes),
         })
 
     @staticmethod
@@ -615,6 +613,18 @@ def build_web_config(args) -> 'WebConfig | None':
                      deny_hosts=tuple(h for h in (host,) if h))
 
 
+def _sentence(text: str) -> str:
+    """A note as a sentence of its own on screen, where a semicolon run of
+    them read as one long clause."""
+    text = str(text).strip()
+    return text[:1].upper() + text[1:] + ('' if text.endswith('.') else '.')
+
+
+def _named(name) -> str:
+    """A document as the user knows it: by name, never by id."""
+    return f'document "{name}"' if name else 'a document'
+
+
 def stale_documents(client, documents: list) -> list:
     """Which of the plan's documents changed since it was made: every write
     inside a document bumps its version, so a version mismatch means the
@@ -629,16 +639,16 @@ def stale_documents(client, documents: list) -> list:
                        'against it')
             continue
         if d.get('version') is None:
-            out.append(f'document "{d.get("name") or d["id"]}" was recorded without a version, so '
+            out.append(f'{_named(d.get("name"))} was recorded without a version, so '
                        f'whether it has changed since the plan was made cannot be told')
             continue
         try:
             now = client.documents.get(d['id'])
         except Exception as e:  # noqa: BLE001 - deleted or unreadable: the plan cannot apply
-            out.append(f'document "{d.get("name") or d["id"]}" could not be read ({e})')
+            out.append(f'{_named(d.get("name"))} could not be read ({requester_message(e)})')
             continue
         if now.get('version') != d['version']:
-            out.append(f'document "{now.get("name") or d.get("name") or d["id"]}" has changed since the plan was made')
+            out.append(f'{_named(now.get("name") or d.get("name"))} has changed since the plan was made')
     return out
 
 # The stamp that records which place a question was asked from, written onto

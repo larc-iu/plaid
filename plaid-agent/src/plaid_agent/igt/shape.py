@@ -114,9 +114,9 @@ def t_split_word(ws: Workspace, document: str, ref: str, at) -> str:
     note = ''
     if w.morphemes and (len(w.morphemes) > 1 or w.morphemes[0].fields or w.morphemes[0].link
                         or (w.morphemes[0].metadata or {}).get('form')):
-        note = f' (its {len(w.morphemes)}-morpheme analysis is deleted; re-analyse both parts afterwards)'
+        note = f' (its {len(w.morphemes)}-morpheme analysis is deleted)'
     if w.fields or w.link:
-        note += ' (word values and link stay on the left part)'
+        note += ' (word values and link go to the left part)'
     ws.add_op({'kind': 'split_word', 'word_id': w.id, 'position': w.begin + n, 'morpheme_ids': morphs,
                'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": split into "{left}" + "{right}"{note}'})
     return ws.planned_note(1)
@@ -190,11 +190,11 @@ def t_delete_word(ws: Workspace, document: str, refs) -> str:
             if len([t for t in l.tokens if t not in going]) < 2:
                 gone_mwes.add(l.id)
                 dropped.append(l)
-        note = ' (its analysis, values, and link go; the text stays)' if had else ' (the text stays)'
+        note = ' (its analysis, values, and link are deleted, the text is unchanged)' if had else ' (the text is unchanged)'
         if dropped:
             note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in dropped) + ' goes with it)'
         elif w.mwes:
-            note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in w.mwes) + ' keeps its other words)'
+            note += ' (the multi-word expression ' + ', '.join(f'"{l.form}"' for l in w.mwes) + ' is left with its other words)'
         staged.append({'kind': 'delete_word', 'word_id': w.id, 'morpheme_ids': [m.id for m in w.morphemes],
                        'link_ids': [l.id for l in dropped],
                        'label': f'{ws.doc_label(doc.id)} {ref} "{w.surface}": delete the word token{note}'})

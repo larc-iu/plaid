@@ -25,6 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 import regex as uregex
 from plaid_client import ROLES, find_by_role
+from plaid_client.workflows.messages import setup_incomplete
 from plaid_client.workflows.igt import read_tagsets, read_tagset_name, vocab_tagset_for, mode_rule, value_lines
 from .vocab import normalize_vocab_fields, vocab_field_summary
 
@@ -257,13 +258,13 @@ def load_project(client, project_id: str) -> IgtProject:
     guidelines = load_guidelines(client, project_id)
     text_layer = find_by_role(p.get('text_layers'), ROLES.BASELINE)
     if not text_layer:
-        raise ValueError('This project has no baseline text layer (not set up for IGT?)')
+        raise setup_incomplete('no baseline text layer (not set up for IGT?)')
     token_layers = text_layer.get('token_layers') or []
     sent = find_by_role(token_layers, ROLES.SENTENCE)
     word = find_by_role(token_layers, ROLES.WORD)
     morph = find_by_role(token_layers, ROLES.MORPHEME)
     if not sent or not word:
-        raise ValueError('This project lacks a sentence or word token layer (not set up for IGT?)')
+        raise setup_incomplete('no sentence or word token layer (not set up for IGT?)')
     tagsets = read_tagsets(p.get('config'))
     entries = []
     for tk in (sent, word, morph):

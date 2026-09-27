@@ -166,7 +166,7 @@ class Reader:
         # the read is still running or starts here. A walk that reported only
         # the documents it had to wait for would go quiet exactly when the
         # reading ahead is working, which reads as a hang.
-        self._on_progress(f'Reading "{label or doc_id}"…')
+        self._on_progress(f'Reading "{label}"…' if label else 'Reading a document…')
         if future is not None:
             doc = future.result()
             self._start_more()

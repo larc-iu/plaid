@@ -714,7 +714,7 @@ def test_a_parser_that_goes_quiet_is_reported_as_maybe_still_running(ws, monkeyp
 
     monkeypatch.setattr('plaid_client.services.request_service', timeout)
     counts = execute_plan(ws.client, ws.ops, source='s', label='l', stamp_mode='verified')
-    assert counts['notes'] == ['the parser stopped reporting on ud1; it may still be running']
+    assert counts['notes'] == ['the parser stopped reporting on "Viaje", and may still be running']
 
 
 def test_a_search_spreads_its_hits_over_several_documents():

@@ -4,6 +4,7 @@ import pytest
 
 from plaid_agent.ud.project import (load_project, parse_document, parse_ref, render_document,
                                     render_sentence, resolve, word_ref)
+from plaid_client.workflows.messages import SETUP_INCOMPLETE
 from fixtures import FakeClient
 from ud_fixtures import DEPREL, FEATS, LEMMA, PID, UPOS, WORD_LAYER, document_raw, project_raw, ud_client
 
@@ -29,12 +30,15 @@ def test_the_layers_are_found_by_role_and_by_ud_flag(project):
     assert project.relation_layer_id == DEPREL
 
 
-def test_a_project_missing_a_layer_says_which():
+def test_a_project_missing_a_layer_says_which(caplog):
+    """The user reads the one setup line, the operator's log says which."""
     raw = project_raw()
     words = raw['text_layers'][0]['token_layers'][2]
     words['span_layers'] = [s for s in words['span_layers'] if s['id'] != UPOS]
-    with pytest.raises(ValueError, match='missing its upos layer'):
+    with pytest.raises(ValueError) as refused:
         load_project(FakeClient(project=raw, documents={'ud1': document_raw()}), PID)
+    assert str(refused.value) == SETUP_INCOMPLETE
+    assert 'missing the upos layer' in caplog.text
 
 
 def test_upos_is_closed_and_xpos_is_the_projects_own(project):

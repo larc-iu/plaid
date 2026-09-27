@@ -155,7 +155,7 @@ class Workspace(BaseWorkspace):
         if did not in self._docs:
             entry = next((d for d in self.documents() if d['id'] == did), {})
             self._docs[did] = self.reader.get(did, self._version_of(entry),
-                                              entry.get('name') or did)
+                                              entry.get('name') or '')
         return self._docs[did]
 
     def all_docs(self) -> List[IgtDoc]:
