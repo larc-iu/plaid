@@ -397,7 +397,7 @@ const DocumentEditor = () => {
           label="Open history"
           title="Open history"
           onClick={openHistory}
-          className="z-[1000]"
+          className="z-30"
         >
           <History className="h-4 w-4 text-white opacity-0 transition-opacity group-hover:opacity-100" />
         </EdgeRail>
