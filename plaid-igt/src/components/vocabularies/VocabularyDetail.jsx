@@ -1283,7 +1283,7 @@ export const VocabularyDetail = () => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete vocabulary</DialogTitle>
+            <DialogTitle>Delete vocabulary?</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">

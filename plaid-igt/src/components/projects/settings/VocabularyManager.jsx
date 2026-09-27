@@ -165,7 +165,7 @@ export const VocabularyManager = ({
     if (!vocabToUnlink) return;
     const { id } = vocabToUnlink;
     // The name stays set while the dialog animates out, or its title reads
-    // "Unlink vocabulary “”" for the length of the fade. The next open
+    // "Unlink vocabulary “”?" for the length of the fade. The next open
     // replaces it.
     closeUnlinkModal();
     const updatedVocabs = vocabularies.map((vocab) =>
@@ -463,7 +463,7 @@ export const VocabularyManager = ({
         onOpenChange={(o) => {
           if (!o) closeUnlinkModal();
         }}
-        title={`Unlink vocabulary “${vocabToUnlink?.name ?? ''}”`}
+        title={`Unlink vocabulary “${vocabToUnlink?.name ?? ''}”?`}
         confirmLabel="Unlink"
         onConfirm={handleConfirmUnlink}
       >

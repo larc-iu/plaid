@@ -32,7 +32,7 @@ export const EntryDialogs = ({
       >
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete entry</AlertDialogTitle>
+            <AlertDialogTitle>Delete entry?</AlertDialogTitle>
           </AlertDialogHeader>
           <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3">
             <div className="flex items-start gap-2">

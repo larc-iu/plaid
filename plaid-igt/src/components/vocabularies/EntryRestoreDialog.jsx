@@ -171,7 +171,7 @@ export const EntryRestoreDialog = ({
     <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle dir="auto">Restore “{label}”</DialogTitle>
+          <DialogTitle dir="auto">Restore “{label}”?</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">

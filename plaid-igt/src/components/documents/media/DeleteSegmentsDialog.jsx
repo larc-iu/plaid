@@ -40,7 +40,7 @@ export function DeleteSegmentsDialog({ open, onOpenChange, doc, alignmentTokens 
     <ConfirmDeleteDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Delete segments"
+      title="Delete segments?"
       confirmLabel={count ? `Delete ${count} ${noun}` : 'Delete'}
       confirmDisabled={count === 0}
       onConfirm={confirm}

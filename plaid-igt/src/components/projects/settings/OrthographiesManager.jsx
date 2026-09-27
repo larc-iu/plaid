@@ -312,7 +312,7 @@ export const OrthographiesManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title={`Remove orthography “${pendingDelete?.name ?? ''}”`}
+        title={`Remove orthography “${pendingDelete?.name ?? ''}”?`}
         confirmLabel="Remove"
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}

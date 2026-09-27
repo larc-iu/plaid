@@ -680,7 +680,7 @@ export const FieldsManager = ({
         onOpenChange={(o) => {
           if (!o) setPendingDelete(null);
         }}
-        title={`Delete field “${pendingDelete?.name ?? ''}”`}
+        title={`Delete field “${pendingDelete?.name ?? ''}”?`}
         confirmLabel="Delete"
         confirmDisabled={pendingDelete?.count === undefined}
         onConfirm={handleConfirmDelete}

@@ -655,7 +655,7 @@ export const TagsetsManager = ({
       <ConfirmDeleteDialog
         open={pendingDelete !== null}
         onOpenChange={(o) => !o && setPendingDelete(null)}
-        title={`Delete tagset “${pendingDelete ?? ''}”`}
+        title={`Delete tagset “${pendingDelete ?? ''}”?`}
         confirmLabel="Delete"
         onConfirm={() => {
           const name = pendingDelete;

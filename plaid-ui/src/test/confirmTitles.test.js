@@ -6,11 +6,9 @@ import { repoRoot } from './apps.js';
 // Every confirm's title is a question ("Delete token?", "Delete project?"),
 // by ruling (2026-09-27). The titles are strings at the call sites, so the
 // rule is read off the source: each `confirm({ title })` and each
-// `<ConfirmDeleteDialog title>` in the trees below.
-//
-// plaid-igt and plaid-umr are not listed yet: their titles were being changed
-// by their own lanes when this was written. Add them here once those land.
-const TREES = ['plaid-ui/src', 'plaid-ud/src', 'plaid-dict/src'];
+// `<ConfirmDeleteDialog title>` in the trees below. plaid-igt's own test
+// (src/test/confirmTitles.test.js there) also reads its hand-built dialogs.
+const TREES = ['plaid-ui/src', 'plaid-ud/src', 'plaid-umr/src', 'plaid-igt/src', 'plaid-dict/src'];
 
 const sources = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -21,7 +19,10 @@ const sources = (dir) =>
 
 // The string literals in an expression: a ternary's two branches, a template.
 const LITERAL = /'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
-const literals = (expr) => [...expr.matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
+// A literal compared against (`kind === 'merge' ? …`) is not one of them.
+const COMPARED = /[!=]==?\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
+const literals = (expr) =>
+  [...expr.replace(COMPARED, '').matchAll(LITERAL)].map((m) => m[1] ?? m[2] ?? m[3]);
 
 // From an opening brace at `at`, the text up to its matching close.
 const braced = (text, at) => {
@@ -64,12 +65,14 @@ describe('confirm titles', () => {
       '});',
       '<ConfirmDeleteDialog open title="Delete project" onConfirm={go}>',
       '<ConfirmDeleteDialog title={`Delete “${x}”?`}>',
+      "<ConfirmDeleteDialog title={kind === 'merge' ? 'Merge words?' : 'Split word'}>",
     ].join('\n');
     expect(confirmTitles(src).map((t) => literals(t.expr))).toEqual([
       ['Delete token'],
       ['Delete yours?', "Delete ${name}'s?"],
       ['Delete project'],
       ['Delete “${x}”?'],
+      ['Merge words?', 'Split word'],
     ]);
   });
 

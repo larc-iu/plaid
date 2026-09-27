@@ -292,7 +292,7 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Clear all tokens"
+        title="Clear all tokens?"
         confirmLabel="Clear"
         onConfirm={() => {
           setConfirmClear(null);
@@ -315,7 +315,7 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) setConfirmClear(null);
         }}
-        title="Reset sentences"
+        title="Reset sentences?"
         confirmLabel="Reset"
         onConfirm={() => {
           setConfirmClear(null);
@@ -337,7 +337,7 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingDelete();
         }}
-        title="Delete token"
+        title="Delete token?"
         confirmLabel="Delete"
         onConfirm={() => ops.confirmPendingDelete()}
       >
@@ -363,7 +363,7 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingStructural();
         }}
-        title={ops.pendingStructural?.kind === 'merge' ? 'Merge words' : 'Split word'}
+        title={ops.pendingStructural?.kind === 'merge' ? 'Merge words?' : 'Split word?'}
         confirmLabel={ops.pendingStructural?.kind === 'merge' ? 'Merge' : 'Split'}
         onConfirm={() => ops.confirmPendingStructural()}
       >
@@ -390,7 +390,7 @@ export function DocumentTokenize() {
         onOpenChange={(o) => {
           if (!o) ops.cancelPendingTokenize();
         }}
-        title="Re-tokenize document"
+        title="Re-tokenize document?"
         confirmLabel="Re-tokenize"
         onConfirm={() => ops.confirmPendingTokenize()}
       >
