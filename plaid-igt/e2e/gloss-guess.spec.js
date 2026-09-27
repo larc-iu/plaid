@@ -110,11 +110,14 @@ async function openAnalyze(page) {
   await page.waitForLoadState('networkidle');
 }
 
+// Every request that can change something. A query is a POST but only reads, and
+// the grid sends its own a moment after the first column shows, so it is not one.
 const writes = (page) => {
   const seen = [];
   page.on('request', (r) => {
-    if (r.method() !== 'GET' && r.url().includes('/api/v1/'))
-      seen.push(`${r.method()} ${new URL(r.url()).pathname}`);
+    const path = new URL(r.url()).pathname;
+    if (r.method() !== 'GET' && path.startsWith('/api/v1/') && path !== '/api/v1/query')
+      seen.push(`${r.method()} ${path}`);
   });
   return seen;
 };
