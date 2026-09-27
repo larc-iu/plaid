@@ -47,12 +47,21 @@ export const centeredScrollLeft = (left, right, viewport, scrollWidth) =>
 // backslash-escaped, which CommonMark allows for any ASCII punctuation, and
 // line breaks become one space. The result is one line of literal text,
 // safe in a link label, a heading, a bold run and a table cell alike.
-const MARKDOWN_SPECIAL = /[\\`*_[\](<>|~#]/g;
+// - `&` starts an entity reference, so `&amp;` in a name printed as `&`
+// - GFM links a bare `http://`, `https://`, `ftp://` or `www.` wherever it
+//   appears, and inside such a link every escape shows as a backslash
+//   (`a\_b`). The scheme's colon or the dot after `www` is escaped, so the
+//   URL stays text and reads as it was written.
+const MARKDOWN_SPECIAL = /[\\`*_[\](<>|~#&]/g;
+const BARE_URL_START = /\b(https?|ftp)(:\/\/)|\b(www)(\.)/gi;
 
 export const markdownText = (text) =>
   String(text ?? '')
     .replace(/[\r\n]+/g, ' ')
-    .replace(MARKDOWN_SPECIAL, '\\$&');
+    .replace(MARKDOWN_SPECIAL, '\\$&')
+    .replace(BARE_URL_START, (m, scheme, rest, www, dot) =>
+      scheme ? `${scheme}\\${rest}` : `${www}\\${dot}`,
+    );
 
 // The same rule under the names the apps' citation writers use.
 export const linkLabel = markdownText;

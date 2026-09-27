@@ -33,6 +33,13 @@ const HOSTILE = [
   'Doc\\]',
   '<javascript:alert(1)>',
   '<b>x</b>',
+  // A bare URL is linked by GFM, which then shows the escapes inside it.
+  'see http://x.org/a_b_(c)*d*',
+  'HTTPS://x.org/a_b',
+  'www.x.org/a_b',
+  '<https://x.org/a_b>',
+  // An entity reference would print as the character it names.
+  'AT&amp;T &copy; &#65;',
 ];
 
 describe('tableCell', () => {
