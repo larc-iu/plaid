@@ -29,7 +29,7 @@
 ;; here would otherwise silently match nothing.
 (def ^:private op-type-pattern #"[a-z][a-z0-9-]*/[a-z][a-z0-9-]*")
 
-(def ^:private op-types-doc
+(def op-types-doc
   (str "Pass ?op-types= with a comma-separated list of op types "
        "(e.g. span-layer/create,span-layer/delete) to return only matching "
        "operations, spelled exactly as an entry's op/type. Filtering applies "
@@ -72,7 +72,7 @@
 ;; envelope (default page 100, max 1000); `:cursor` is the opaque token from
 ;; the previous page's `:next-cursor`. Adds the audit-only time-window
 ;; params on top of the shared `?limit`/`?cursor`.
-(def ^:private pagination-query
+(def pagination-query
   (into [:map
          [:start-time {:optional true} instant-param]
          [:end-time {:optional true} instant-param]
@@ -80,12 +80,12 @@
          [:order {:optional true} [:enum "asc" "desc"]]]
         pagination/query-params))
 
-(def ^:private order-doc
+(def order-doc
   (str " Pass ?order=desc to page newest-first, which is what a feed wants; the "
        "default is oldest-first. A cursor belongs to the direction that "
        "produced it and must not be replayed against the other one."))
 
-(defn- audit-response
+(defn audit-response
   "Shared handler body: parse `?op-types=`, then page. A malformed op type is
   a 400 — silently returning nothing would look like 'no such activity'."
   [{:keys [start-time end-time op-types order] :as query} fetch]

@@ -1,15 +1,70 @@
 (ns plaid.rest-api.v1.vocab-layer
-  (:require [plaid.rest-api.v1.auth :as pra]
+  (:require [plaid.history.read :as hread]
+            [plaid.history.vocab-restore :as vrestore]
+            [plaid.rest-api.v1.audit :as audit-routes]
+            [plaid.rest-api.v1.auth :as pra]
             [plaid.rest-api.v1.middleware :as prm]
             [plaid.rest-api.v1.layer :refer [layer-config-routes]]
             [plaid.rest-api.v1.pagination :as pagination]
             [reitit.coercion.malli]
-            [plaid.sql.vocab-layer :as vocab]))
+            [plaid.sql.audit :as audit]
+            [plaid.sql.vocab-layer :as vocab])
+  (:import (java.time Instant)
+           (java.time.format DateTimeParseException)))
 
 (defn get-vocab-id
   "Extract vocab ID from request parameters"
   [{params :parameters}]
   (-> params :path :id))
+
+;; ============================================================
+;; History
+;;
+;; A vocabulary's past is read from the audit log like a document's
+;; (`plaid.history.read`): the vocabulary as it was at a time, one entry as
+;; it was, the list of changes, and putting one entry back
+;; (audit-vocab-history, ruled 2026-09-27). Access is today's: a reader of
+;; the vocabulary now may read any of its past, and only a maintainer may
+;; put an entry back.
+;; ============================================================
+
+(def ^:private as-of-routes
+  "The routes of this group that take `?as-of=` themselves, as
+  [method path-regex]. Every other one refuses it (`wrap-reject-as-of`)."
+  [[:get #"/api/v1/vocab-layers/[0-9a-fA-F-]{36}/?"]
+   [:get #"/api/v1/vocab-layers/[0-9a-fA-F-]{36}/items/[0-9a-fA-F-]{36}/?"]
+   [:post #"/api/v1/vocab-layers/[0-9a-fA-F-]{36}/items/[0-9a-fA-F-]{36}/restore/?"]])
+
+(defn wrap-reject-as-of-elsewhere
+  "`wrap-reject-as-of` for every route of the vocabulary group but the three
+  that read or restore at a time (`as-of-routes`), which parse the value
+  themselves."
+  [handler]
+  (let [reject (prm/wrap-reject-as-of handler)]
+    (fn [{:keys [request-method uri] :as request}]
+      (if (some (fn [[m re]] (and (= m request-method) (re-matches re (or uri ""))))
+                as-of-routes)
+        (handler request)
+        (reject request)))))
+
+(defn- parse-as-of
+  "The `?as-of=` value as an Instant, or nil when it does not parse."
+  [s]
+  (when s
+    (try (Instant/parse s) (catch DateTimeParseException _ nil))))
+
+(def ^:private invalid-as-of
+  "Invalid as-of value (expected ISO-8601 instant, e.g. 2026-05-28T09:00:00Z): ")
+
+(defn- history-error
+  "A thrown history read as a response: a structured code where the throw
+  carries one (404, 400), 400 for a time below the pruned history."
+  [e]
+  (let [{:keys [code type]} (ex-data e)]
+    (if (= type :history/pruned)
+      {:status 400 :body {:error (ex-message e)}}
+      {:status (or code 500)
+       :body {:error (if (and code (< code 500)) (ex-message e) "Internal error")}})))
 
 (def vocab-layer-routes
   ["/vocab-layers"
@@ -34,20 +89,33 @@
 
    ["/:id"
     {:parameters {:path [:map [:id :uuid]]}
-     :get {:summary "Get a vocab layer by ID"
+     :get {:summary (str "Get a vocab layer by ID. With <query>as-of</query> (an ISO-8601 instant), the vocabulary "
+                         "as it was at that time, entries included with <query>include-items</query>, read from its "
+                         "history; 404 when it did not exist then.")
            :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
-           :parameters {:query [:map [:include-items {:optional true} boolean?]]}
+           :parameters {:query [:map
+                                [:include-items {:optional true} boolean?]
+                                [:as-of {:optional true} :string]]}
            :handler (fn [{{{:keys [id]} :path
-                           {:keys [include-items]} :query}
+                           {:keys [include-items as-of]} :query}
                           :parameters
                           db :db
                           :as req}]
-                      (let [vocab-layer (vocab/get db id include-items)]
-                        (if vocab-layer
-                          {:status 200
-                           :body vocab-layer}
-                          {:status 404
-                           :body {:error "Vocab layer not found"}})))}
+                      (let [ts (parse-as-of as-of)]
+                        (if (and as-of (nil? ts))
+                          {:status 400 :body {:error (str invalid-as-of as-of)}}
+                          (try
+                            (let [vocab-layer (if ts
+                                                (hread/get-vocab-at db id ts include-items)
+                                                (vocab/get db id include-items))]
+                              (if vocab-layer
+                                {:status 200
+                                 :body vocab-layer}
+                                {:status 404
+                                 :body {:error (if ts
+                                                 "The vocabulary did not exist at that time."
+                                                 "Vocab layer not found")}}))
+                            (catch clojure.lang.ExceptionInfo e (history-error e))))))}
 
      :patch {:summary "Update a vocab layer's name."
              :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
@@ -77,6 +145,72 @@
                               {:status 204} db documents)
                              {:status (or code 500)
                               :body {:error (or error "Internal server error")}})))}}]
+
+   ["/:id/audit"
+    {:parameters {:path [:map [:id :uuid]]}
+     :get {:summary (str "Get the audit log of a vocabulary: every change to it or to its entries, "
+                         "folded into entries the way the document log is. Links are not listed here, "
+                         "they are part of the document they annotate. "
+                         audit-routes/op-types-doc audit-routes/order-doc)
+           :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
+           :parameters {:query audit-routes/pagination-query}
+           :handler (fn [{{{:keys [id]} :path query :query} :parameters db :db}]
+                      (audit-routes/audit-response
+                       query
+                       (fn [opts start end] (audit/get-vocab-audit-log db id start end opts))))}}]
+
+   ["/:id/items/:item-id"
+    {:parameters {:path [:map [:id :uuid] [:item-id :uuid]]}
+     :get {:summary (str "Get one entry of the vocabulary as it was at <query>as-of</query> (an ISO-8601 "
+                         "instant), read from its history, also when it has been deleted since. "
+                         "404 when the entry was not in this vocabulary at that time.")
+           :middleware [[pra/wrap-vocab-reader-required get-vocab-id]]
+           :parameters {:query [:map [:as-of :string]]}
+           :handler (fn [{{{:keys [id item-id]} :path {:keys [as-of]} :query} :parameters db :db}]
+                      (if-let [ts (parse-as-of as-of)]
+                        (try
+                          (if-let [item (hread/get-vocab-item-at db id item-id ts)]
+                            {:status 200 :body item}
+                            {:status 404 :body {:error "The entry did not exist at that time."}})
+                          (catch clojure.lang.ExceptionInfo e (history-error e)))
+                        {:status 400 :body {:error (str invalid-as-of as-of)}}))}}]
+
+   ["/:id/items/:item-id/restore"
+    {:parameters {:path [:map [:id :uuid] [:item-id :uuid]]}
+     :post {:summary (str "Put one entry of the vocabulary back as it was at <query>as-of</query> (an ISO-8601 "
+                          "instant), as one operation. A deleted entry comes back under its original id with its "
+                          "form and fields. A living entry has its form and fields set back. Links are not part "
+                          "of an entry: a deleted entry's links come back through each document's own restore. "
+                          "The response is a summary: <body>inserted</body>, <body>form</body> and "
+                          "<body>metadata</body> say what changed, <body>total</body> is zero when nothing did. "
+                          "With <query>dry-run</query> true nothing is written and the summary says what would "
+                          "change. A form set back restates every document linking the entry: their versions are "
+                          "bumped and returned in X-Document-Versions. Requires maintainer rights on the vocabulary.")
+            :middleware [[pra/wrap-vocab-maintainer-required get-vocab-id]]
+            :parameters {:query [:map
+                                 [:as-of :string]
+                                 [:dry-run {:optional true} boolean?]]}
+            :handler (fn [{{{:keys [id item-id]} :path {:keys [as-of dry-run]} :query} :parameters
+                           db :db
+                           user-id :user/id}]
+                       (let [ts (parse-as-of as-of)]
+                         (cond
+                           (nil? ts)
+                           {:status 400 :body {:error (str invalid-as-of as-of)}}
+
+                           dry-run
+                           (try
+                             {:status 200 :body (vrestore/preview db id item-id ts)}
+                             (catch clojure.lang.ExceptionInfo e (history-error e)))
+
+                           :else
+                           (let [{:keys [success extra code error documents]}
+                                 (vrestore/restore db id item-id ts user-id)]
+                             (if success
+                               (prm/assoc-document-versions-in-header
+                                {:status 200 :body extra} db documents)
+                               {:status (or code 500)
+                                :body {:error (or error "Internal server error")}})))))}}]
 
    ;; Maintainer management endpoints
    ["/:id"
