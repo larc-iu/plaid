@@ -114,7 +114,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  useDocumentTitle('Import / Export', project?.name);
+  useDocumentTitle('Import and export', project?.name);
 
   // Import state
   const [files, setFiles] = useState([]);
@@ -148,7 +148,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           logout();
           return;
         }
-        setLoadError(humanizeError(err, 'This project could not be loaded.'));
+        setLoadError(humanizeError(err, 'Failed to load this project.'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -191,7 +191,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
       importFile = await format.prepareImport({ client, project, projectId, user });
     } catch (err) {
       console.error('Import failed:', err);
-      notifyError(humanizeError(err, 'Import failed.'));
+      notifyError(humanizeError(err, 'Failed to import.'));
       setImporting(false);
       return;
     }
@@ -209,7 +209,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
           file: file.name,
           name,
           status: 'rejected',
-          reason: err instanceof NotUtf8FileError ? err.message : 'Could not read file',
+          reason: err instanceof NotUtf8FileError ? err.message : 'Failed to read the file',
         });
         continue;
       }
@@ -291,7 +291,7 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
         return;
       }
       console.error('Export failed:', err);
-      notifyError(humanizeError(err, 'Export failed.'));
+      notifyError(humanizeError(err, 'Failed to export.'));
     } finally {
       setExporting(false);
     }
@@ -356,20 +356,18 @@ export const ProjectImportExportPage = ({ tabs: Tabs, setupHref, format }) => {
                       is offered the way to. */}
                   {canManage ? (
                     <p>
-                      This project&apos;s {format.app} layers are not set up, so there is nothing to
-                      import into.{' '}
+                      This project is not set up for {format.app}.{' '}
                       <Link
                         className="text-primary underline underline-offset-4"
                         to={setupHref(projectId)}
                       >
-                        Set up its layers
-                      </Link>{' '}
-                      first.
+                        Set it up
+                      </Link>
                     </p>
                   ) : (
                     <p>
-                      This project&apos;s {format.app} layers are not set up, so there is nothing to
-                      import into. A project maintainer can set it up.
+                      This project is not set up for {format.app}. A project maintainer can set it
+                      up.
                     </p>
                   )}
                 </Notice>

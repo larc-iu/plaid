@@ -50,7 +50,7 @@ export function useDocumentHistory({ documentId, client, onExpired }) {
       console.error('Error fetching audit log:', err);
       // The rail renders this verbatim, and a raw client message carries the
       // request URL and the ids it was given.
-      setError(humanizeError(err, 'The history could not be read.'));
+      setError(humanizeError(err, 'Failed to read the history.'));
     } finally {
       if (mine === readRef.current) setLoadingAudit(false);
     }

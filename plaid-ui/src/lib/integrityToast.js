@@ -15,6 +15,9 @@ import { appName } from './uiConfig.js';
 
 const TOAST_ID = 'plaid-integrity-findings';
 
+export const INTEGRITY_DESCRIPTION =
+  'This document has problems that could not be repaired. Copy the details for a bug report.';
+
 /**
  * The findings as one line each, machine-pasteable into a bug report.
  */
@@ -37,20 +40,16 @@ export const reportIntegrityFindings = (findings, { documentId } = {}) => {
   );
   console.groupEnd();
 
-  // Errors speak for the batch when there are any: a warning alongside them is
-  // not what the reader needs to hear first.
+  // The findings themselves are written for a developer ("3 orphan
+  // morpheme(s) remain after auto-repair"), so the toast says one generic line
+  // and the findings go to the console and to Copy details.
   const errors = findings.filter((f) => f.severity === 'error');
-  const headline = errors.length ? errors : findings;
-  const reason =
-    headline.length === 1
-      ? headline[0].message
-      : `${headline.length} issues found. The browser console has the details.`;
   const detail = formatFindingsForClipboard(findings, { documentId });
 
   const show = errors.length ? toast.error : toast.warning;
   show('Data integrity issue detected', {
     id: TOAST_ID,
-    description: reason,
+    description: INTEGRITY_DESCRIPTION,
     duration: Infinity,
     action: {
       label: 'Copy details',

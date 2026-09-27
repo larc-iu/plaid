@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
         error:
           statusOf(error) === 404
             ? 'This invitation link is not valid.'
-            : humanizeError(error, 'Could not redeem this invite.'),
+            : humanizeError(error, 'Failed to redeem this invite.'),
       };
     }
   };

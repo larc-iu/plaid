@@ -127,9 +127,7 @@ describe('ProjectMembers', () => {
     });
 
     expect(client.projects.removeMaintainer).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('Cannot modify own permissions', {
-      description: 'You cannot change your own role',
-    });
+    expect(toast.error).toHaveBeenCalledWith('You cannot change your own role.', {});
     await unmount();
   });
 

@@ -88,7 +88,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
         exists
           ? `An account already exists for ${newUser.email}.`
           : humanizeError(err, 'Failed to create the account.'),
-        'Could not create the account',
+        'Failed to create the account',
       );
     } finally {
       setCreating(false);
@@ -123,12 +123,12 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       const newIsAdmin =
         editForm.isAdmin !== (editingUser.isAdmin || false) ? editForm.isAdmin : undefined;
       await client.users.update(editingUser.id, newPassword, newDisplayName, newIsAdmin);
-      notifySuccess('User updated', 'Success');
+      notifySuccess('User updated');
       setEditingUser(null);
       await changed();
     } catch (err) {
       console.error('Error updating user:', err);
-      notifyError(humanizeError(err), 'Could not save the account');
+      notifyError(humanizeError(err), 'Failed to save the account');
     } finally {
       setSavingEdit(false);
     }
@@ -144,7 +144,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       setResetCode(inv.code);
     } catch (err) {
       console.error('Error creating reset link:', err);
-      notifyError(humanizeError(err), 'Could not create the reset link');
+      notifyError(humanizeError(err), 'Failed to create the reset link');
     } finally {
       setResetting(false);
     }
@@ -161,7 +161,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       await changed();
     } catch (err) {
       console.error('Error deactivating user:', err);
-      notifyError(humanizeError(err), 'Could not deactivate the account');
+      notifyError(humanizeError(err), 'Failed to deactivate the account');
     } finally {
       setDeactivating(false);
     }
@@ -174,7 +174,7 @@ export const useUserAdmin = ({ client, currentUser, onChanged }) => {
       await changed();
     } catch (err) {
       console.error('Error reactivating user:', err);
-      notifyError(humanizeError(err), 'Could not reactivate the account');
+      notifyError(humanizeError(err), 'Failed to reactivate the account');
     }
   };
 

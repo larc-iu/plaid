@@ -63,7 +63,7 @@ export const RestoreDialog = ({
         if (!cancelled) setPreview(s);
       })
       .catch((err) => {
-        if (!cancelled) setError(restoreError(err, 'That state could not be read.'));
+        if (!cancelled) setError(restoreError(err, 'Failed to read that state.'));
       });
     return () => {
       cancelled = true;
@@ -91,7 +91,7 @@ export const RestoreDialog = ({
       const ok = await confirm({
         title: 'Undo the restore?',
         description:
-          'The document has been edited since the restore. Going back to the state before it takes those edits too. History keeps them.',
+          'The document has been edited since the restore. Going back to the state before it takes those edits too.',
         confirmLabel: 'Undo the restore',
         destructive: true,
       });
@@ -151,7 +151,7 @@ export const RestoreDialog = ({
       await onRestored?.();
     } catch (err) {
       console.error('Restore failed:', err);
-      notifyError(restoreError(err, 'The restore was not applied.'), 'Restore failed');
+      notifyError(restoreError(err, 'The restore was not applied.'), 'Failed to restore');
       await onRestored?.();
     } finally {
       setBusy(false);

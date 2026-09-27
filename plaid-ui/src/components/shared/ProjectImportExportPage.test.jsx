@@ -235,7 +235,7 @@ describe('a project the app has no layers in', () => {
     format.layerInfo = () => ({ isConfigured: false });
     const view = await mount(format);
     const box = view.container.querySelector('[data-tone="warning"]');
-    expect(box.textContent).toContain("This project's XY layers are not set up");
+    expect(box.textContent).toContain('This project is not set up for XY.');
     expect(box.querySelector('a').getAttribute('href')).toBe('/setup/p1');
     await view.unmount();
   });

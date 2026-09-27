@@ -15,14 +15,19 @@ export const notifySuccess = (message, title, options) =>
 // and no toast shows an internal URL or a bare id. A write whose answer was
 // lost did not fail as far as anyone knows, so its title says so instead of
 // the caller's "Failed to ...".
-export const notifyError = (message, title = 'Error', options) =>
-  toast.error(isUnknownOutcome(message) ? UNKNOWN_OUTCOME_TITLE : title, {
-    description: humanizeError(message),
-    ...options,
-  });
+//
+// With no title the message itself is the title: a generic "Error" or
+// "Warning" says nothing the toast's colour does not.
+export const notifyError = (message, title, options) => {
+  if (isUnknownOutcome(message)) {
+    return toast.error(UNKNOWN_OUTCOME_TITLE, { description: humanizeError(message), ...options });
+  }
+  const said = humanizeError(message);
+  return toast.error(title || said, { ...(title ? { description: said } : {}), ...options });
+};
 
-export const notifyWarning = (message, title = 'Warning', options) =>
-  toast.warning(title, { description: message, ...options });
+export const notifyWarning = (message, title, options) =>
+  toast.warning(title || message, { ...(title ? { description: message } : {}), ...options });
 
 // Neither good news nor bad: a run someone stopped, a state that simply is.
 export const notifyInfo = (message, title, options) =>

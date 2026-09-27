@@ -160,7 +160,7 @@ describe('a write whose answer was lost', () => {
 
   it('says it may or may not have been saved', () => {
     expect(humanizeError(lost('POST'))).toBe(MAYBE);
-    expect(humanizeError(lost('get'))).toMatch(/Could not reach the server/);
+    expect(humanizeError(lost('get'))).toMatch(/Failed to reach the server/);
   });
 
   // An edit made on a row whose create was refused names it by the id it was
@@ -191,7 +191,7 @@ describe('a write whose answer was lost', () => {
     expect(isUnknownOutcome(at('http://x/api/v1/query?as-of=2026-01-01'))).toBe(false);
     expect(isUnknownOutcome(at('http://x/api/v1/login', 'Request timed out'))).toBe(false);
     expect(isUnknownOutcome(at('http://x/api/v1/invites/lookup'))).toBe(false);
-    expect(signInError(at('http://x/api/v1/login'))).toMatch(/Could not reach the server/);
+    expect(signInError(at('http://x/api/v1/login'))).toMatch(/Failed to reach the server/);
     expect(isUnknownOutcome(at('http://x/api/v1/invites/redeem'))).toBe(true);
     expect(isUnknownOutcome(at('http://x/api/v1/query-log'))).toBe(true);
   });

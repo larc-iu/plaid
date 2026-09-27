@@ -151,8 +151,8 @@ describe('ServiceDefaultsSettings', () => {
     });
     const { unmount } = await mount({ client });
 
-    expect(toast.error).toHaveBeenCalledWith('Could not load the services', {
-      description: 'Could not reach the server. Check your connection and try again.',
+    expect(toast.error).toHaveBeenCalledWith('Failed to load the services', {
+      description: 'Failed to reach the server. Check your connection and try again.',
     });
     await unmount();
   });

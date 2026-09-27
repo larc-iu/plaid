@@ -102,7 +102,7 @@ export const useServiceRequest = (client) => {
   const fail = useCallback((error, copy) => {
     if (error?.pending) {
       setProgressMessage('Lost contact with the service.');
-      notifyWarning(copy.lostMessage, copy.stoppedTitle || copy.errorTitle);
+      notifyWarning(copy.lostMessage, copy.stoppedTitle);
       return;
     }
     const said = humanizeError(error, copy.errorMessage);
@@ -123,15 +123,15 @@ export const useServiceRequest = (client) => {
       if (!projectId || !documentId || !serviceId || isProcessing) return;
 
       const {
-        successTitle = 'Service Complete',
+        successTitle,
         successMessage = 'Finished.',
-        errorTitle = 'Service Failed',
+        errorTitle = 'Failed to run the service',
         errorMessage = 'The service reported an error.',
         // The run's plain name, for the one message that is neither a success
         // nor a failure. Whatever a stopped run had already written is kept, so
         // a run that writes nothing (speech detection) says something else.
         stoppedTitle,
-        stoppedMessage = 'Stopped. What it had already written stays.',
+        stoppedMessage = 'Stopped partway. What ran before the stop is in the document.',
         // `(result) => {level, title, message}`, for a caller that can tell a
         // real success from a run that did nothing. See `succeed`.
         notice,

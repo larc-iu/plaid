@@ -171,7 +171,7 @@ export const persistConv = (store, conv, meta, { metaOnly = false } = {}) => {
     })
     .catch((e) => {
       console.error('[Assistant] could not save the conversation', e);
-      notifyError(humanizeError(e, 'The conversation could not be saved.'));
+      notifyError(humanizeError(e, 'Failed to save the conversation.'));
     })
     .finally(() => {
       // Nothing queued behind this one: stop holding the chain.
@@ -297,7 +297,7 @@ const finishJob = async (j, store, service) => {
           messages: dropUnanswered(conv),
           display: [
             ...conv.display,
-            { kind: 'error', text: humanizeError(j.error, 'The assistant could not answer.') },
+            { kind: 'error', text: humanizeError(j.error, 'The assistant failed to answer.') },
           ],
         };
       }
@@ -427,7 +427,7 @@ export const applyToasts = (j, summary, { docked = false } = {}) => {
   if (j.error?.pending) {
     notifyWarning(LOST_CONTACT, 'Assistant');
   } else if (j.error && j.error.status !== 404) {
-    notifyError(humanizeError(j.error, 'The changes could not be applied.'), 'Not applied');
+    notifyError(humanizeError(j.error, 'Failed to apply the changes.'), 'Not applied');
   } else if (j.outcome && !j.outcome.duplicate && !docked) {
     notifySuccess(j.outcome.message || `Applied ${summary}.`, 'Changes applied');
   }

@@ -138,7 +138,7 @@ function SpotCard({
       <CardContent className="space-y-2">
         {spot.builtins.length === 0 && spotServices.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No service for this spot has connected to this project. Start one to see it here.
+            No service for this task has connected to this project.
           </p>
         ) : (
           <div className="space-y-2">
@@ -252,7 +252,7 @@ export const ServiceDefaultsSettings = ({
       setDirty(false);
     } catch (error) {
       if (!isCurrent()) return;
-      notifyError(humanizeError(error), 'Could not load the services');
+      notifyError(humanizeError(error), 'Failed to load the services');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -293,7 +293,7 @@ export const ServiceDefaultsSettings = ({
       setDirty(false);
       notifySuccess('Service defaults saved');
     } catch (error) {
-      notifyError(humanizeError(error), 'Could not save the defaults');
+      notifyError(humanizeError(error), 'Failed to save the defaults');
     } finally {
       setSaving(false);
     }
@@ -305,7 +305,7 @@ export const ServiceDefaultsSettings = ({
       await client.messages.discardService(projectId, serviceId);
       await load();
     } catch (error) {
-      notifyError(humanizeError(error), 'Could not forget the service');
+      notifyError(humanizeError(error), 'Failed to forget the service');
     }
   };
 
@@ -324,8 +324,7 @@ export const ServiceDefaultsSettings = ({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-sm text-muted-foreground">
-          Services that have connected to this project are remembered here, online or not. Set a
-          default and default options for each spot.
+          Set a default service and its options for each task.
         </p>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -357,9 +356,7 @@ export const ServiceDefaultsSettings = ({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Other services</CardTitle>
-            <CardDescription>
-              Seen on this project, but not used by any spot in this app.
-            </CardDescription>
+            <CardDescription>Seen on this project, not used by any task here.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {unmatched.map((svc) => (

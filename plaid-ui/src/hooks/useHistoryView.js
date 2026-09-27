@@ -85,7 +85,7 @@ export function useHistoryView({ documentId, client, doc, reload, onExpired }) {
       console.error('Failed to load snapshot:', err);
       // Keep showing what is on screen, and put the rail back where the view
       // actually is.
-      notifyError(err, 'That snapshot could not be loaded');
+      notifyError(err, 'Failed to load that snapshot');
       setSelectedEntry(shown.current);
     } finally {
       if (mine === selection.current) setLoadingSnapshot(false);

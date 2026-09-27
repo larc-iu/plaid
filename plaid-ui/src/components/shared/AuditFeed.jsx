@@ -95,7 +95,7 @@ export const AuditFeed = ({
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading the audit feed:', err);
-      notifyError(humanizeError(err), 'Could not load the recent changes');
+      notifyError(humanizeError(err), 'Failed to load the recent changes');
       setEntries([]);
       setCursor(null);
     } finally {
@@ -122,7 +122,7 @@ export const AuditFeed = ({
       setCursor(page.nextCursor || null);
     } catch (err) {
       if (!isCurrent()) return;
-      notifyError(humanizeError(err), 'Could not load the older changes');
+      notifyError(humanizeError(err), 'Failed to load the older changes');
     } finally {
       if (isCurrent()) setLoadingMore(false);
     }

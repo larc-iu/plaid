@@ -54,7 +54,7 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
       .then((all) => alive && setProjects(all || []))
       .catch((e) => {
         if (!alive) return;
-        setError(humanizeError(e, 'Your projects could not be loaded.'));
+        setError(humanizeError(e, 'Failed to load your projects.'));
         setProjects([]);
       });
     return () => {

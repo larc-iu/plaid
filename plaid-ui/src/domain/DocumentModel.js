@@ -28,7 +28,7 @@ const cloneRaw = (raw) => JSON.parse(JSON.stringify(raw));
 
 // The audit label every heal write of a reconcile pass folds under, until the
 // pass names what it changed (see `describeReconcile`).
-const RECONCILE_LABEL = 'Reconcile layers on open';
+const RECONCILE_LABEL = 'Repair on open';
 
 // What an edit planned on an out-of-date document is refused with, unsent: the
 // conflict the edit before it met, so every screen words it the same way.

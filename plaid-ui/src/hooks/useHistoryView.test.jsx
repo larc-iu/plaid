@@ -243,7 +243,7 @@ describe('the history view', () => {
     await view.step(() => api.selectEntry(ENTRY_A));
     await settle();
     // The error OBJECT is the message, so the toast reads its status off it.
-    expect(notifyError).toHaveBeenCalledWith(err, 'That snapshot could not be loaded');
+    expect(notifyError).toHaveBeenCalledWith(err, 'Failed to load that snapshot');
     // The rail and the page agree again: both say live, which is what is up.
     expect(api.selectedEntry).toBe(null);
     expect(api.isViewingHistorical).toBe(false);

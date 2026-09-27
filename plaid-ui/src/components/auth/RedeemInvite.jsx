@@ -47,7 +47,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
   const [error, setError] = useState('');
 
   const isReset = preview?.kind === 'password-reset';
-  useDocumentTitle(isReset ? 'Set a New Password' : 'Accept Invitation');
+  useDocumentTitle(isReset ? 'Set a new password' : 'Accept invitation');
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +60,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
           setLookupError(
             err.status === 404
               ? 'That invite link is not valid. Check that you copied the whole link.'
-              : 'Could not check this invite link. Try again in a moment.',
+              : 'Failed to check this invite link. Try again in a moment.',
           );
         }
       } finally {
@@ -103,7 +103,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
     setError(
       result.status === 409
         ? 'An account already exists for that email address.'
-        : result.error || 'Could not redeem this invite.',
+        : result.error || 'Failed to redeem this invite.',
     );
   };
 
@@ -122,7 +122,7 @@ export const RedeemInvite = ({ loginPath, homePath }) => {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <CardTitle className="text-2xl">
-            {isReset ? 'Set a New Password' : 'Accept Your Invitation'}
+            {isReset ? 'Set a new password' : 'Accept your invitation'}
           </CardTitle>
           <CardDescription>{subtitle}</CardDescription>
         </CardHeader>

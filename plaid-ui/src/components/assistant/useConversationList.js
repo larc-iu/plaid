@@ -40,7 +40,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
       return metas;
     } catch (e) {
       console.error('[Assistant] could not load conversations', e);
-      notifyError(humanizeError(e, 'Past conversations could not be loaded.'));
+      notifyError(humanizeError(e, 'Failed to load past conversations.'));
       return [];
     } finally {
       setLoading(false);
@@ -94,7 +94,7 @@ export const useConversationList = ({ client, userId, app, projectId, onRemoved 
         setRows((prev) => prev.filter((row) => row.id !== m.id));
         removedRef.current?.(m.id);
       } catch (e) {
-        notifyError(humanizeError(e, 'The conversation could not be deleted.'));
+        notifyError(humanizeError(e, 'Failed to delete the conversation.'));
       }
     },
     [store],

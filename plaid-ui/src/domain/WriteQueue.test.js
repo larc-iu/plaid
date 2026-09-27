@@ -406,7 +406,7 @@ describe('WriteQueue', () => {
     ['a gateway timeout', () => Object.assign(new Error('HTTP 504'), { status: 504 })],
     ['a request that timed out', () => new Error('Request timed out at http://x/api')],
   ])('keeps retrying %s, which a toast calls the network', async (_, fail) => {
-    expect(humanizeError(fail())).toMatch(/Could not reach the server/);
+    expect(humanizeError(fail())).toMatch(/Failed to reach the server/);
     const outOfStep = vi.fn();
     const q = new WriteQueue({ retryDelay: () => 0, onOutOfStep: outOfStep });
     let fails = 6;

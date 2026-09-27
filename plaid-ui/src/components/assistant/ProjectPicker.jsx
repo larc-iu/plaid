@@ -32,7 +32,7 @@ export const ProjectPicker = ({ client, onPick, onHide }) => {
       })
       .catch((e) => {
         if (!alive) return;
-        setError(humanizeError(e, 'Your projects could not be loaded.'));
+        setError(humanizeError(e, 'Failed to load your projects.'));
         setProjects([]);
       });
     return () => {

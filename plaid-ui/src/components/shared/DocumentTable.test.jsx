@@ -48,7 +48,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('DocumentTable', () => {
   it('counts the layer it was given, and reads zero for a document with none', async () => {
     const { container, unmount } = await mount();
-    expect(texts(container, 'tbody tr td:first-child')).toEqual(['AlphaID: d1', 'BetaID: d2']);
+    expect(texts(container, 'tbody tr td:first-child')).toEqual(['Alpha', 'Beta']);
     expect(wordCells(container)).toEqual(['42', '0']);
     await unmount();
   });
@@ -129,7 +129,7 @@ describe('DocumentTable', () => {
       }),
     });
     expect(toast.warning).toHaveBeenCalledWith('Column unavailable', {
-      description: 'Your last edit could not be loaded for the document list.',
+      description: 'Failed to load your last edits for the document list.',
     });
     const mine = all(container, 'tbody tr').map((tr) => tr.children[3].textContent.trim());
     expect(mine).toEqual(['—', '—']);

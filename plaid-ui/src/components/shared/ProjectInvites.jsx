@@ -55,7 +55,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading invites:', err);
-      notifyError(humanizeError(err), 'Could not load the invitation links');
+      notifyError(humanizeError(err), 'Failed to load the invitation links');
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -71,11 +71,11 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
     const maxUses = parseInt(form.maxUses, 10);
     const ttlDays = parseInt(form.ttlDays, 10);
     if (!Number.isInteger(maxUses) || maxUses < 1) {
-      notifyError('Number of uses must be at least 1', 'Error');
+      notifyError('Number of uses must be at least 1.');
       return;
     }
     if (!Number.isInteger(ttlDays) || ttlDays < 1) {
-      notifyError('Expiry must be at least 1 day', 'Error');
+      notifyError('Expiry must be at least 1 day.');
       return;
     }
     try {
@@ -93,7 +93,7 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
       await load();
     } catch (err) {
       console.error('Error creating invite:', err);
-      notifyError(humanizeError(err), 'Could not create the link');
+      notifyError(humanizeError(err), 'Failed to create the link');
     } finally {
       setCreating(false);
     }
@@ -102,19 +102,18 @@ export const ProjectInvites = ({ projectId, projectName, client, canManage, role
   const handleRevoke = async (inv) => {
     const ok = await confirm({
       title: 'Revoke this invitation link',
-      description:
-        'The link stops working immediately. Anyone who already used it keeps their account and access.',
+      description: 'The link stops working immediately. Accounts made with it are unchanged.',
       confirmLabel: 'Revoke link',
       destructive: true,
     });
     if (!ok) return;
     try {
       await client.invites.revoke(inv.id);
-      notifySuccess('Invitation link revoked', 'Success');
+      notifySuccess('Invitation link revoked');
       await load();
     } catch (err) {
       console.error('Error revoking invite:', err);
-      notifyError(humanizeError(err), 'Could not revoke the invitation link');
+      notifyError(humanizeError(err), 'Failed to revoke the invitation link');
     }
   };
 

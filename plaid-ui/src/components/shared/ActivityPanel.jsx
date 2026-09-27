@@ -78,7 +78,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
     } catch (err) {
       if (!isCurrent()) return;
       console.error('Error loading activity:', err);
-      notifyError(humanizeError(err), 'Could not load the activity');
+      notifyError(humanizeError(err), 'Failed to load the activity');
     } finally {
       if (isCurrent()) setLoading(false);
     }

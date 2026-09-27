@@ -87,7 +87,7 @@ export const DocumentTable = ({
           setHasWordLayer(false);
           setWordCounts({});
           notifyWarning(
-            'Word counts could not be loaded for the document list.',
+            'Failed to load word counts for the document list.',
             'Word counts unavailable',
           );
         }
@@ -117,7 +117,7 @@ export const DocumentTable = ({
         if (!cancelled) {
           setMyLastEdits({});
           notifyWarning(
-            'Your last edit could not be loaded for the document list.',
+            'Failed to load your last edits for the document list.',
             'Column unavailable',
           );
         }
@@ -178,7 +178,6 @@ export const DocumentTable = ({
                 than a taller row. break-words so a single very long token
                 still cannot force the column wider. */}
             <div className="break-words font-medium">{d.name}</div>
-            <div className="truncate text-xs text-muted-foreground">ID: {d.id}</div>
           </div>,
         ),
     },

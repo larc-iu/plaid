@@ -100,11 +100,11 @@ export const ProjectDocumentsPage = ({
       const client = getClient();
       if (!client) throw new Error('Not authenticated');
       await setup.adopt(client, project, info);
-      notifySuccess('Layers saved');
+      notifySuccess(`Set up for ${setup.app}`);
       await fetchProjectAndDocuments();
     } catch (err) {
       console.error(`Failed to set the project up for ${setup.app}:`, err);
-      notifyError(humanizeError(err, 'Failed to save the layers.'));
+      notifyError(humanizeError(err, 'Failed to set up the project.'));
     } finally {
       setSettingUp(false);
     }

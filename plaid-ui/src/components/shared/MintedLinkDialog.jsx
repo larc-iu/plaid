@@ -28,7 +28,7 @@ export const MintedLinkDialog = ({ code, onClose, title = 'Invitation link creat
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      notifyError('Could not copy. Select the link and copy it manually.', 'Copy failed');
+      notifyError('Select the link and copy it manually.', 'Failed to copy');
     }
   };
 

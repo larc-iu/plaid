@@ -74,7 +74,7 @@ export const setProjectRole = async ({
   onDataUpdate,
 }) => {
   if (userId === currentUserId) {
-    notifyError('You cannot change your own role', 'Cannot modify own permissions');
+    notifyError('You cannot change your own role.');
     return;
   }
   const current = roleOf(project, userId);
@@ -89,7 +89,7 @@ export const setProjectRole = async ({
   else if (newRole === 'reader') await client.projects.addReader(projectId, userId);
 
   await onDataUpdate(); // re-resolves the members
-  notifySuccess('Permissions updated', 'Success');
+  notifySuccess('Permissions updated');
 };
 
 /**

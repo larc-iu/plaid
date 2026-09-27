@@ -390,7 +390,7 @@ export const AssistantChat = ({
         }
       } catch (e) {
         if (seq === openSeq.current) {
-          notifyError(humanizeError(e, 'That conversation could not be opened.'));
+          notifyError(humanizeError(e, 'Failed to open that conversation.'));
           // A link to a conversation that is gone: back to a new one.
           if (convIdRef.current === id) setConvIdRef.current(null, { replace: true });
         }
@@ -541,7 +541,7 @@ export const AssistantChat = ({
       try {
         await uploadAttachments(store, base.id, pending);
       } catch (e) {
-        notifyError(humanizeError(e, 'The file could not be attached, so nothing was sent.'));
+        notifyError(humanizeError(e, 'Failed to attach the file. Nothing was sent.'));
         return;
       } finally {
         setAttaching(false);
@@ -612,12 +612,12 @@ export const AssistantChat = ({
         try {
           read.push(await readAttachment(file, budget));
         } catch (e) {
-          notifyError(humanizeError(e, `${file.name} could not be read.`));
+          notifyError(humanizeError(e, `Failed to read ${file.name}.`));
         }
       }
       if (read.length) setAttachments((prev) => [...prev, ...read]);
     } catch (e) {
-      notifyError(humanizeError(e, 'That file could not be read.'));
+      notifyError(humanizeError(e, 'Failed to read that file.'));
     } finally {
       setAttaching(false);
     }

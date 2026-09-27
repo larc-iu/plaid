@@ -23,7 +23,7 @@ export const isPermissionError = (error) => {
   return /no accessible projects|lacks sufficient privileges|not authoriz/i.test(msg);
 };
 
-const UNREACHABLE = 'Could not reach the server. Check your connection and try again.';
+const UNREACHABLE = 'Failed to reach the server. Check your connection and try again.';
 
 // A failure that is the network's and passes once it is back. The write queue
 // (domain/WriteQueue.js) waits out exactly these, so what a toast calls "Could

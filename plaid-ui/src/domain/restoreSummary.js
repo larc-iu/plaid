@@ -74,7 +74,9 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     if (!n || layer?.words === null) continue;
     const words = layer?.words || roleWords[layer?.role];
     lines.push(
-      words ? plural(n, ...words) : `${plural(n, 'token')} in ${layer?.name ?? 'a layer'}`,
+      words
+        ? plural(n, ...words)
+        : `${plural(n, 'token')}${layer?.name ? ` in ${layer.name}` : ''}`,
     );
   }
   for (const e of summary.spans?.byLayer || []) {
@@ -94,7 +96,7 @@ export const changeLines = (summary, layers = {}, roleWords = {}) => {
     lines.push(
       layer?.words
         ? plural(n, ...layer.words)
-        : `${plural(n, 'relation')} in ${layer?.name ?? 'a layer'}`,
+        : `${plural(n, 'relation')}${layer?.name ? ` in ${layer.name}` : ''}`,
     );
   }
   if (changed(summary.vocabLinks)) {

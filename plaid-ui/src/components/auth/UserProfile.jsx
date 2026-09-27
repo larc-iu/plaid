@@ -57,10 +57,10 @@ export const UserProfile = ({ className, children }) => {
       // the user chose it.
       const updated = await client.users.setAvatar(user.id, file);
       updateUser({ avatarHash: updated.avatarHash });
-      notifySuccess('Profile picture updated', 'Success');
+      notifySuccess('Profile picture updated');
     } catch (err) {
       console.error('Error uploading profile picture:', err);
-      notifyError(humanizeError(err), 'Could not upload the picture');
+      notifyError(humanizeError(err), 'Failed to upload the picture');
     } finally {
       setAvatarBusy(false);
     }
@@ -71,10 +71,10 @@ export const UserProfile = ({ className, children }) => {
     try {
       await client.users.deleteAvatar(user.id);
       updateUser({ avatarHash: null });
-      notifySuccess('Profile picture removed', 'Success');
+      notifySuccess('Profile picture removed');
     } catch (err) {
       console.error('Error removing profile picture:', err);
-      notifyError(humanizeError(err), 'Could not remove the picture');
+      notifyError(humanizeError(err), 'Failed to remove the picture');
     } finally {
       setAvatarBusy(false);
     }
@@ -101,7 +101,7 @@ export const UserProfile = ({ className, children }) => {
       setTokens(result || []);
     } catch (err) {
       console.error('Error loading API tokens:', err);
-      notifyError(humanizeError(err), 'Could not load the tokens');
+      notifyError(humanizeError(err), 'Failed to load the tokens');
     } finally {
       setTokensLoading(false);
     }
@@ -117,7 +117,7 @@ export const UserProfile = ({ className, children }) => {
     e.preventDefault();
     const name = newTokenName.trim();
     if (!name) {
-      notifyError('Name the token', 'Could not create the token');
+      notifyError('Name the token', 'Failed to create the token');
       return;
     }
     try {
@@ -129,7 +129,7 @@ export const UserProfile = ({ className, children }) => {
       await loadTokens();
     } catch (err) {
       console.error('Error creating API token:', err);
-      notifyError(humanizeError(err), 'Could not create the token');
+      notifyError(humanizeError(err), 'Failed to create the token');
     } finally {
       setCreatingToken(false);
     }
@@ -153,11 +153,11 @@ export const UserProfile = ({ className, children }) => {
     try {
       await client.apiTokens.revoke(user.id, token.id);
       if (mintedToken && mintedToken.id === token.id) setMintedToken(null);
-      notifySuccess('API token revoked', 'Success');
+      notifySuccess('API token revoked');
       await loadTokens();
     } catch (err) {
       console.error('Error revoking API token:', err);
-      notifyError(humanizeError(err), 'Could not revoke the token');
+      notifyError(humanizeError(err), 'Failed to revoke the token');
     }
   };
 
@@ -184,14 +184,14 @@ export const UserProfile = ({ className, children }) => {
     setLoading(true);
     try {
       if (!client) throw new Error('Not authenticated');
-      if (!user.id) throw new Error('Could not get current user ID');
+      if (!user.id) throw new Error('Not signed in.');
 
       const updateData = {};
       if (fields.displayName !== user.displayName) updateData.displayName = fields.displayName;
       if (fields.newPassword) updateData.password = fields.newPassword;
 
       if (Object.keys(updateData).length === 0) {
-        notifyWarning('No changes to save', 'No Changes');
+        notifyWarning('No changes to save');
         setLoading(false);
         return;
       }
@@ -205,7 +205,7 @@ export const UserProfile = ({ className, children }) => {
       );
       const updatedUserData = await client.users.get(user.id);
 
-      notifySuccess('Profile updated', 'Success');
+      notifySuccess('Profile updated');
       setIsEditing(false);
       setFields(EMPTY(updatedUserData.displayName));
       localStorage.setItem('displayName', updatedUserData.displayName);
@@ -215,7 +215,7 @@ export const UserProfile = ({ className, children }) => {
         isAdmin: updatedUserData.isAdmin || false,
       });
     } catch (err) {
-      notifyError(humanizeError(err), 'Could not save the profile');
+      notifyError(humanizeError(err), 'Failed to save the profile');
     } finally {
       setLoading(false);
     }
@@ -237,7 +237,7 @@ export const UserProfile = ({ className, children }) => {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">User Profile</CardTitle>
+          <CardTitle className="text-xl">User profile</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex items-center gap-4">
@@ -376,7 +376,7 @@ export const UserProfile = ({ className, children }) => {
           unlike the session token. They carry the same permissions as you. */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">API Tokens</CardTitle>
+          <CardTitle className="text-xl">API tokens</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">

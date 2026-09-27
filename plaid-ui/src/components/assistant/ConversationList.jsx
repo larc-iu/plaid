@@ -257,7 +257,7 @@ export const ExportMenu = ({ conv, meta, projectId, projectName, adapter }) => {
       await navigator.clipboard.writeText(build());
       notifySuccess('The conversation was copied as Markdown.', 'Copied');
     } catch (e) {
-      notifyError(humanizeError(e, 'Could not copy to the clipboard.'), 'Not copied');
+      notifyError(humanizeError(e, 'Failed to copy to the clipboard.'), 'Not copied');
     }
   };
   return (

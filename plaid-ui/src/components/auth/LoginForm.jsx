@@ -16,7 +16,7 @@ import { PlaidMark } from '../assistant/PlaidMarks.jsx';
  * Preflight is global, so this wrapper is simply the screen's own root.
  */
 export const LoginForm = ({ tagline, homePath }) => {
-  useDocumentTitle('Sign In');
+  useDocumentTitle('Sign in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

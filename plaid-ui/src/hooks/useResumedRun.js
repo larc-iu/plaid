@@ -45,13 +45,13 @@ export function useResumedRun(client, doc, acquireWriteLock) {
         if (result?.stopped === true) {
           // Someone stopped it — from this page's banner, or another of their
           // tabs. Not a finish, and not a failure.
-          notifyInfo('Stopped. What it had already written stays.', record.label);
+          notifyInfo('Stopped partway. What ran before the stop is in the document.', record.label);
         } else if (record.multiStep) {
           // Auto-analyze's steps are ordered here, in the browser, so the page
           // that went away took the rest of the run with it. Say so rather
           // than implying the whole thing finished.
           notifyWarning(
-            `${record.label} was interrupted. The step that was running finished; the ones after it did not.`,
+            `${record.label} was interrupted. The step that was running finished. The ones after it did not.`,
             record.label,
           );
         } else {
@@ -73,7 +73,7 @@ export function useResumedRun(client, doc, acquireWriteLock) {
           );
         } else {
           console.error('Could not rejoin the service request:', error);
-          notifyWarning(`${record.label} could not be rejoined.`, record.label);
+          notifyWarning('Failed to rejoin the run.', record.label);
         }
       } finally {
         if (!stillOut) clearRunRecord(documentId);

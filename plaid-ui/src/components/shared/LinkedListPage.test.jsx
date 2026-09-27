@@ -90,10 +90,10 @@ describe('LinkedListPage', () => {
     expect(loading.container.textContent).toContain('Loading…');
     expect(loading.container.querySelector('.animate-spin')).toBe(null);
     await loading.unmount();
-    const failed = await mount({ error: 'Could not reach the server' });
+    const failed = await mount({ error: 'Failed to reach the server' });
     const alert = failed.container.querySelector('[role="alert"]');
     expect(alert.getAttribute('data-tone')).toBe('error');
-    expect(alert.textContent).toBe('Could not reach the server');
+    expect(alert.textContent).toBe('Failed to reach the server');
     await failed.unmount();
   });
 

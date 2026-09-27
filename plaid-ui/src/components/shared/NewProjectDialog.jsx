@@ -32,7 +32,7 @@ export const NewProjectDialog = ({ isOpen, onClose, onSuccess, title, create, ch
       onSuccess(await create(getClient(), projectName));
     } catch (err) {
       console.error('Error creating project:', err);
-      setError(humanizeError(err, 'The project could not be created.'));
+      setError(humanizeError(err, 'Failed to create the project.'));
     } finally {
       setLoading(false);
     }

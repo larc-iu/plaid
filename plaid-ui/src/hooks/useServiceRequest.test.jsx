@@ -74,7 +74,7 @@ describe('a run that was stopped', () => {
     expect(notify.notifySuccess).not.toHaveBeenCalled();
     expect(notify.notifyError).not.toHaveBeenCalled();
     expect(notify.notifyInfo).toHaveBeenCalledWith(
-      'Stopped. What it had already written stays.',
+      'Stopped partway. What ran before the stop is in the document.',
       'Tokenization',
     );
     // Not 100%: nothing finished.

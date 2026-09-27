@@ -57,8 +57,8 @@ export function useReconcileOnOpen({ doc, asOf, canWrite, onRepaired }) {
         // a timeout or a transport error on a large document.
         if (result.error) {
           notifyError(
-            `Could not auto-repair this document. Try reloading. (${humanizeError(result.error)})`,
-            'Repair failed',
+            `${humanizeError(result.error)} Try reloading.`,
+            'Failed to repair the document',
           );
           return;
         }

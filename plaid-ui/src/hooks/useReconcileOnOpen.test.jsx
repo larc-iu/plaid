@@ -149,7 +149,7 @@ describe('the reconcile gate', () => {
     await settle();
     expect(notifyError).toHaveBeenCalledWith(
       expect.stringContaining('the span layer is gone'),
-      'Repair failed',
+      'Failed to repair the document',
     );
     // A failure does not also report findings from the same pass.
     expect(reportIntegrityFindings).not.toHaveBeenCalled();

@@ -77,7 +77,7 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
         if (!cancelled) {
           setWordCounts({}); // leave counts unknown -> "—"
           notifyWarning(
-            'Word counts could not be loaded for the project list.',
+            'Failed to load word counts for the project list.',
             'Word counts unavailable',
           );
         }
@@ -109,7 +109,6 @@ export const ProjectListPage = ({ wordLayerId, seedLayerId, newProject, form: Ne
           <div className="truncate font-medium" title={p.name}>
             {p.name}
           </div>
-          <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
         </div>
       ),
     },

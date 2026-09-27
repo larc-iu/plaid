@@ -7,27 +7,34 @@ const toast = Object.assign(vi.fn(), {
 });
 vi.mock('sonner', () => ({ toast }));
 
-const { notifyError } = await import('./notify.js');
+const { notifyError, notifyWarning } = await import('./notify.js');
 
 beforeEach(() => toast.error.mockClear());
 
 describe('notifyError', () => {
   it('says what a locked document means, not "Locked"', () => {
     notifyError({ status: 423, message: 'HTTP 423 Locked at http://localhost:8085/api/v1/spans' });
-    expect(toast.error).toHaveBeenCalledWith('Error', {
-      description:
-        'This document is being edited right now (by another user or a service). Try again in a moment.',
-    });
+    expect(toast.error).toHaveBeenCalledWith(
+      'This document is being edited right now (by another user or a service). Try again in a moment.',
+      {},
+    );
   });
 
   it('reads a status off a bare message too', () => {
     notifyError('HTTP 423 Locked');
-    expect(toast.error.mock.calls[0][1].description).toMatch(/being edited right now/);
+    expect(toast.error.mock.calls[0][0]).toMatch(/being edited right now/);
   });
 
   it('does not show a message that names a record by its id', () => {
     notifyError('HTTP 400 bad thing 01a04095-38c4-74d1-8450-a7d6a0267af7 at http://x/api/v1/spans');
-    expect(toast.error.mock.calls[0][1].description).toBe('Something went wrong.');
+    expect(toast.error.mock.calls[0][0]).toBe('Something went wrong.');
+  });
+
+  it('never titles a toast with a bare "Error" or "Warning"', () => {
+    notifyError('Expiry must be at least 1 day.');
+    expect(toast.error).toHaveBeenCalledWith('Expiry must be at least 1 day.', {});
+    notifyWarning('No changes to save');
+    expect(toast.warning).toHaveBeenCalledWith('No changes to save', {});
   });
 
   it('leaves an ordinary message alone', () => {

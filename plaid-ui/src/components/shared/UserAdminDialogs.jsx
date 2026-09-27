@@ -40,7 +40,7 @@ export const UserAdminDialogs = ({ controller }) => {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New User</DialogTitle>
+            <DialogTitle>Create user</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -103,7 +103,7 @@ export const UserAdminDialogs = ({ controller }) => {
               Cancel
             </Button>
             <Button onClick={createUser} disabled={creating}>
-              {creating ? 'Creating…' : 'Create User'}
+              {creating ? 'Creating…' : 'Create user'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -117,7 +117,7 @@ export const UserAdminDialogs = ({ controller }) => {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingUser ? `Edit User: ${editingUser.displayName}` : ''}</DialogTitle>
+            <DialogTitle>{editingUser ? `Edit user: ${editingUser.displayName}` : ''}</DialogTitle>
           </DialogHeader>
           {editingUser && (
             <>
@@ -186,7 +186,7 @@ export const UserAdminDialogs = ({ controller }) => {
                     Cancel
                   </Button>
                   <Button onClick={updateUser} disabled={savingEdit}>
-                    {savingEdit ? 'Saving…' : 'Update User'}
+                    {savingEdit ? 'Saving…' : 'Save'}
                   </Button>
                 </div>
               </DialogFooter>

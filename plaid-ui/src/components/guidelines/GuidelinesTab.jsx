@@ -118,7 +118,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       setLoadError(null);
     } catch (error) {
       if (!isCurrent()) return;
-      setLoadError(humanizeError(error, 'Could not load the guidelines.'));
+      setLoadError(humanizeError(error, 'Failed to load the guidelines.'));
     } finally {
       if (isCurrent()) setLoading(false);
     }
@@ -144,7 +144,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       } catch (error) {
         if (cancelled || !isCurrent()) return;
         setOpened(null);
-        notifyError(humanizeError(error, 'Could not open that guideline.'));
+        notifyError(humanizeError(error, 'Failed to open that guideline.'));
       }
     })();
     return () => {
@@ -241,7 +241,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
         );
       } else {
         notifyError(
-          isUnknownOutcome(error) ? error : humanizeError(error, 'Could not save the guideline.'),
+          isUnknownOutcome(error) ? error : humanizeError(error, 'Failed to save the guideline.'),
         );
       }
     } finally {
@@ -256,7 +256,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       setOpened(updated);
       setEntries((prev) => prev.map((g) => (g.id === opened.id ? { ...g, pinned: next } : g)));
     } catch (error) {
-      notifyError(humanizeError(error, 'Could not change that.'));
+      notifyError(humanizeError(error, 'Failed to change that.'));
     }
   };
 
@@ -274,7 +274,7 @@ export function GuidelinesTab({ client, projectId, canWrite }) {
       await load();
       notifySuccess('Guideline deleted.');
     } catch (error) {
-      notifyError(humanizeError(error, 'Could not delete the guideline.'));
+      notifyError(humanizeError(error, 'Failed to delete the guideline.'));
     }
   };
 

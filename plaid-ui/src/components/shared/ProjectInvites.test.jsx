@@ -116,17 +116,13 @@ describe('ProjectInvites', () => {
     await step(() => typeInto(document.querySelector('#invite-uses'), '0'));
     await step(() => byText(document.body, 'button', 'Create link').click());
     expect(create).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('Error', {
-      description: 'Number of uses must be at least 1',
-    });
+    expect(toast.error).toHaveBeenCalledWith('Number of uses must be at least 1.', {});
 
     await step(() => typeInto(document.querySelector('#invite-uses'), '2'));
     await step(() => typeInto(document.querySelector('#invite-ttl'), ''));
     await step(() => byText(document.body, 'button', 'Create link').click());
     expect(create).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('Error', {
-      description: 'Expiry must be at least 1 day',
-    });
+    expect(toast.error).toHaveBeenCalledWith('Expiry must be at least 1 day.', {});
     await unmount();
   });
 

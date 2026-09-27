@@ -75,8 +75,8 @@ describe('the API token failures', () => {
     await view.step(() => typeInto(name, 'Stanza'));
     await submitAround(view, name);
 
-    expect(toast.error).toHaveBeenCalledWith('Could not create the token', {
-      description: 'Could not reach the server. Check your connection and try again.',
+    expect(toast.error).toHaveBeenCalledWith('Failed to create the token', {
+      description: 'Failed to reach the server. Check your connection and try again.',
     });
     expect(JSON.stringify(toast.error.mock.calls)).not.toContain('http');
     await view.unmount();
@@ -90,7 +90,7 @@ describe('the API token failures', () => {
     await submitAround(view, view.container.querySelector('#token-name'));
 
     expect(create).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('Could not create the token', {
+    expect(toast.error).toHaveBeenCalledWith('Failed to create the token', {
       description: 'Name the token',
     });
     await view.unmount();

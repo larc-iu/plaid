@@ -75,7 +75,7 @@ const openCreate = async (view) => {
 
 const submit = async (view) => {
   await view.step(async () => {
-    click(byText(document.body, 'button', 'Create User'));
+    click(byText(document.querySelector('[role="dialog"]'), 'button', 'Create user'));
     await new Promise((r) => setTimeout(r, 0));
   });
 };
@@ -110,8 +110,8 @@ describe('creating an account from the access screen', () => {
     await submit(view);
 
     expect(client.users.create).toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('Could not create the account', {
-      description: 'Could not reach the server. Check your connection and try again.',
+    expect(toast.error).toHaveBeenCalledWith('Failed to create the account', {
+      description: 'Failed to reach the server. Check your connection and try again.',
     });
     await view.unmount();
   });
