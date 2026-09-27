@@ -14,6 +14,7 @@
                                     assert-created assert-ok assert-no-content
                                     assert-status with-clean-db]]
             [plaid.history.read :as hread]
+            [plaid.history.restore :as restore]
             [plaid.sql.common :as psc]
             [plaid.sql.document :as doc]
             [plaid.test-helpers :refer :all]))
@@ -256,6 +257,13 @@
       (assert-status 400 (restore! admin-request doc-id "yesterday")))
     (testing "a stale document version"
       (assert-status 409 (restore! admin-request doc-id t :version 1)))))
+
+(deftest a-misfit-is-named-by-the-layer-name-alone
+  ;; The restore dialog shows this message as it stands: the layer by its
+  ;; own name, and the offsets and modes only in the ex-data and the log.
+  (let [e (#'restore/violation {:id "l1" :name "Morphemes"} "tokens 0-3 and 2-5 overlap")]
+    (is (= "The state at that time no longer fits \"Morphemes\" as it is now." (ex-message e)))
+    (is (= {:code 409 :layer "l1" :detail "tokens 0-3 and 2-5 overlap"} (ex-data e)))))
 
 ;; ============================================================
 ;; Random edits, seeded

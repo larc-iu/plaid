@@ -90,8 +90,7 @@
        [tx db {:type :text/migrate-offsets
                :project pid
                :document did
-               :description (str "Reinterpret token offsets of text " text-id
-                                 " as Unicode code points")
+               :description (str "Repaired: recounted character positions of text " text-id)
                :user user-id}]
        (let [body (:body (psc/fetch-by-id tx :texts text-id))
              tokens (psc/q tx {:select [:id :begin :end_]

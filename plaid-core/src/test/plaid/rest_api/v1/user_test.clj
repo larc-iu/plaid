@@ -266,7 +266,18 @@
       ;; admin@example.com (the fixture admin) is the only admin here.
       (let [resp (rest-handler (admin-request :delete "/api/v1/users/admin@example.com"))]
         (is (= 400 (:status resp)))
-        (is (re-find #"last admin" (:error (parse-response-body resp))))))))
+        (is (re-find #"last admin" (:error (parse-response-body resp))))))
+
+    (testing "the sole-maintainer guard names the projects, not their ids"
+      (let [create #(parse-response-body
+                     (rest-handler (-> (user1-request :post "/api/v1/projects")
+                                       (mock/json-body {:name %}))))
+            _ (create "Zapotec texts")
+            _ (create "Ainu songs")
+            resp (rest-handler (admin-request :delete "/api/v1/users/user1@example.com"))]
+        (is (= 400 (:status resp)))
+        (is (= "Cannot deactivate user1@example.com: they are the only maintainer of \"Ainu songs\", \"Zapotec texts\"."
+               (:error (parse-response-body resp))))))))
 
 (deftest user-list-search-and-auth
   ;; The roster list/search (GET /users) is admin-OR-maintainer only, with a

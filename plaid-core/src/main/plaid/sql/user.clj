@@ -534,11 +534,16 @@
                                          {:code 400 :id eid})))
                        (let [orphan-projects (projects-where-user-is-sole-maintainer tx eid)]
                          (when (seq orphan-projects)
-                           (throw (ex-info
-                                   (str "Cannot deactivate user " eid
-                                        ": they are the sole maintainer of project(s) "
-                                        (clojure.string/join ", " orphan-projects))
-                                   {:code 400 :id eid :projects orphan-projects}))))
+                           ;; Named by project, not id: an id in the message
+                           ;; is all a screen can drop, and the reason with it.
+                           (let [names (->> (psc/fetch-ids tx :projects orphan-projects)
+                                            (map #(str "\"" (:name %) "\""))
+                                            sort)]
+                             (throw (ex-info
+                                     (str "Cannot deactivate " eid
+                                          ": they are the only maintainer of "
+                                          (clojure.string/join ", " names) ".")
+                                     {:code 400 :id eid :projects orphan-projects})))))
                        (audit-and-cascade-project-memberships! tx eid)
                        (audit-and-cascade-vocab-maintainerships! tx eid)
                        (let [ts (:ts psaw/*op*)]

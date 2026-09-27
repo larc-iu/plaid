@@ -780,7 +780,7 @@
   [tx project-id user-id next-role]
   (when (and (not= next-role "maintainer")
              (seq (sole-maintainer-project-ids tx user-id project-id)))
-    (throw (ex-info (str "Cannot remove the last maintainer of project " project-id)
+    (throw (ex-info "A project needs at least one maintainer."
                     {:code 400 :project-id project-id :user-id user-id}))))
 
 (defn add-role!

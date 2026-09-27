@@ -27,7 +27,7 @@
   vocabulary entry is gone or whose vocabulary left the project, and
   whatever depends on those. The final state is validated once, layer
   by layer (bounds, overlap mode, nesting); a violation rolls the whole
-  operation back with a 409 naming the layer.
+  operation back with a 409 naming the layer by its name.
 
   A dry run builds the same plan from a plain read and reports what
   would change without opening an operation."
@@ -38,7 +38,8 @@
             [plaid.sql.constraints.token :as tc]
             [plaid.sql.document-rows :as drows]
             [plaid.sql.metadata :as metadata]
-            [plaid.sql.operation :refer [submit-operation!]])
+            [plaid.sql.operation :refer [submit-operation!]]
+            [taoensso.timbre :as log])
   (:import (clojure.lang ExceptionInfo)))
 
 ;; ============================================================
@@ -235,10 +236,15 @@
 (defn- code-points [^String s]
   (if s (.codePointCount s 0 (.length s)) 0))
 
-(defn- violation [layer detail]
-  (ex-info (str "The state at that time no longer fits the layer "
-                (pr-str (:name layer)) ": " detail)
-           {:code 409 :layer (:id layer)}))
+(defn- violation
+  "The 409 a misfit rolls back with. The restore dialog shows its message
+  as it stands, so the message names the layer only by its own name
+  (\"Morphemes\"), and what exactly does not fit (offsets, overlap mode,
+  the parent layer) goes to the log and the ex-data."
+  [layer detail]
+  (log/info "Restore refused: layer" (:id layer) (pr-str (:name layer)) "no longer fits:" detail)
+  (ex-info (str "The state at that time no longer fits " (pr-str (:name layer)) " as it is now.")
+           {:code 409 :layer (:id layer) :detail detail}))
 
 (defn- validate-final-state!
   "Every token layer of the document, checked in memory against its

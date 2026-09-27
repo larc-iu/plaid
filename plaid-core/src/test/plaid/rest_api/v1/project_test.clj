@@ -159,7 +159,11 @@
       (is (= #{"user1@example.com"} (maintainers))))
 
     (testing "demoting them with a grant is refused"
-      (assert-bad-request (add-reader admin-request pid "user1@example.com"))
+      (let [resp (add-reader admin-request pid "user1@example.com")]
+        (assert-bad-request resp)
+        ;; Said without the project's id, which a screen can only drop
+        ;; along with the reason.
+        (is (= "A project needs at least one maintainer." (-> resp :body :error))))
       (assert-bad-request (add-writer admin-request pid "user1@example.com"))
       (is (= #{"user1@example.com"} (maintainers))))
 
