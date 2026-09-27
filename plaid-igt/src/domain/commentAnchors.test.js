@@ -166,4 +166,17 @@ describe('buildEntryAnchorIndex', () => {
     expect(anchorCaption(index.get('i1'))).toBe('gam, house');
     expect(anchorCaption(index.get('i2'))).toBe('ar');
   });
+
+  it('counts a label in code points and cuts it at a character a person sees as one', () => {
+    // 32 code points, 34 UTF-16 units: it fits whole.
+    const fits = `${'a'.repeat(30)}😀😀`;
+    // A letter and its combining mark straddle the cut.
+    const long = `${'b'.repeat(30)}e\u0301${'c'.repeat(10)}`;
+    const index = buildEntryAnchorIndex([
+      { id: 'i1', form: fits },
+      { id: 'i2', form: long },
+    ]);
+    expect(index.get('i1').label).toBe(fits);
+    expect(index.get('i2').label).toBe(`${'b'.repeat(30)}…`);
+  });
 });

@@ -14,6 +14,8 @@
 // not depend on what a document looks like, so the screens take it from
 // there directly.
 
+import { clipText } from '@ui/lib/text.js';
+
 const QUOTE_LIMIT = 60;
 
 // The sentence as a thread shows it: one line, cut short. It is also the
@@ -23,7 +25,7 @@ const excerptOf = (text) => {
   const clean = String(text || '')
     .replace(/\s+/gu, ' ')
     .trim();
-  return clean.length > QUOTE_LIMIT ? `${clean.slice(0, QUOTE_LIMIT - 1)}…` : clean;
+  return [...clean].length > QUOTE_LIMIT ? `${clipText(clean, QUOTE_LIMIT - 1)}…` : clean;
 };
 
 const quote = (excerpt) => (excerpt ? `“${excerpt}”` : '');

@@ -33,3 +33,21 @@ describe('a sentence anchor', () => {
     expect(index.get('s3')).toMatchObject({ detail: '', excerpt: '' });
   });
 });
+
+describe('a long sentence anchor', () => {
+  it('counts in code points and cuts at a character a person sees as one', () => {
+    // 60 code points, 62 UTF-16 units: it fits whole.
+    const fits = `${'a'.repeat(58)}😀😀`;
+    // A letter and its combining mark straddle the cut.
+    const long = `${'b'.repeat(58)}e\u0301${'c'.repeat(10)}`;
+    const index = buildAnchorIndex({
+      id: 'd',
+      sentences: [
+        { id: 's1', text: fits, sentenceToken: { metadata: {} } },
+        { id: 's2', text: long, sentenceToken: { metadata: {} } },
+      ],
+    });
+    expect(index.get('s1').excerpt).toBe(fits);
+    expect(index.get('s2').excerpt).toBe(`${'b'.repeat(58)}…`);
+  });
+});

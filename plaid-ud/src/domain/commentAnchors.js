@@ -14,6 +14,8 @@
 // looks like. Re-exported so this file is the one place the app asks about an
 // anchor.
 
+import { clipText } from '@ui/lib/text.js';
+
 export { anchorCaption } from '@ui/domain/commentAnchors';
 
 const QUOTE_LIMIT = 60;
@@ -25,7 +27,7 @@ const excerptOf = (text) => {
   const clean = String(text || '')
     .replace(/\s+/gu, ' ')
     .trim();
-  return clean.length > QUOTE_LIMIT ? `${clean.slice(0, QUOTE_LIMIT - 1)}…` : clean;
+  return [...clean].length > QUOTE_LIMIT ? `${clipText(clean, QUOTE_LIMIT - 1)}…` : clean;
 };
 
 const quote = (excerpt) => (excerpt ? `“${excerpt}”` : '');

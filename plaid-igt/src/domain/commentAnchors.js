@@ -13,15 +13,18 @@
 //
 // Framework-agnostic, like everything else under domain/.
 
-// Longest form we will inline into a label before trimming. Long enough for a
-// real word or a short translation, short enough that a thread heading stays
-// one line.
+import { clipText } from '@ui/lib/text.js';
+
+// Longest form we will inline into a label before trimming, in code points.
+// Long enough for a real word or a short translation, short enough that a
+// thread heading stays one line.
 const MAX_QUOTE = 32;
 
+// Cut at a character a person sees as one, never inside it.
 const quote = (s) => {
   const t = String(s ?? '').trim();
   if (!t) return '';
-  return t.length > MAX_QUOTE ? `${t.slice(0, MAX_QUOTE - 1)}…` : t;
+  return [...t].length > MAX_QUOTE ? `${clipText(t, MAX_QUOTE - 1)}…` : t;
 };
 
 /**
