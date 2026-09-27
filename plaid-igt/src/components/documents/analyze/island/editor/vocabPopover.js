@@ -571,7 +571,7 @@ export const vocabPopover = {
                           >×${it._prec}</span
                         >`
                       : nothing}
-                    ${confirmable ? html`<span class="igt-vocab-pop__ok">confirm</span>` : nothing}
+                    ${confirmable ? html`<span class="igt-vocab-pop__ok">accept</span>` : nothing}
                     ${canTakeAll && i === activeIdx
                       ? html`<span
                           class="igt-vocab-pop__take-all"

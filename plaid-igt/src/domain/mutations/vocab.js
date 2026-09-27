@@ -193,7 +193,7 @@ export const vocabMutations = {
     if (!link || !vocabId) return false;
     const confirm = this.confirmStamp(link.metadata);
     if (!confirm) return false;
-    const label = 'Failed to confirm link';
+    const label = 'Failed to accept link';
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);
@@ -712,7 +712,7 @@ export const vocabMutations = {
     const { link, vocabId } = findLinkById(this._vocabularies, linkId);
     const confirm = link ? this.confirmStamp(link.metadata) : null;
     if (!confirm) return false;
-    const label = 'Failed to confirm multi-word expression';
+    const label = 'Failed to accept multi-word expression';
     if (!this._canWrite(label)) return false;
     this._applyRawPatch((next, info, vocabs) => {
       const l = (vocabs[vocabId]?.vocabLinks || []).find((x) => x.id === link.id);

@@ -249,11 +249,11 @@ export const chrome = {
     const manage = canLink ? ' · manage' : '';
     const linked = single ? `Linked to "${form}"` : `linked to "${form}"`;
     if (state === PROV_STATES.MACHINE)
-      return `${single ? 'Auto-linked' : 'auto-linked'} to "${form}": open to confirm or change`;
+      return `${single ? 'Auto-linked' : 'auto-linked'} to "${form}": open to accept or change`;
     if (state === PROV_STATES.CONTRIBUTED)
       return this.doc.isContributor
         ? `${linked}: contributed, awaiting review${manage}`
-        : `${linked}: contributed. Open to confirm or change`;
+        : `${linked}: contributed. Open to accept or change`;
     if (state === PROV_STATES.VERIFIED)
       return `${linked}: ${origin === PROV.CONTRIBUTED ? 'contributed' : 'auto-linked'}, confirmed${manage}`;
     return `${linked}${manage}`;

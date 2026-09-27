@@ -151,7 +151,7 @@ test('A4-05/06: Enter confirms the focused machine chip and Delete unlinks, focu
   await expect(chip(ids.m[1])).toHaveClass(/igt-vocab__hint--machine/);
   await expect(chip(ids.m[1])).toHaveAttribute(
     'title',
-    /Auto-linked to .*open to confirm or change/,
+    /Auto-linked to .*open to accept or change/,
   );
   await chip(ids.m[1]).focus();
   await page.keyboard.press('Enter');
