@@ -114,7 +114,7 @@ async function executeProjectSetupImpl({
 
   // Step 1: Create project if new (skip if a prior attempt already did).
   if (isNewProject && !resumeProjectId && setupData.basicInfo?.projectName) {
-    updateProgress(10, 'Creating new project...');
+    updateProgress(10, 'Creating new project…');
     const newProject = await client.projects.create(setupData.basicInfo.projectName);
     currentProjectId = newProject.id;
     resources.project = newProject;
@@ -144,18 +144,18 @@ async function executeProjectSetupImpl({
   let textLayerId = baselineLayer?.id ?? null;
   let needsBaselineTag = !!halfMadeBaseline;
   if (adoptedBaseline) {
-    updateProgress(20, 'Using shared text layer...');
+    updateProgress(20, 'Using shared text layer…');
     // Adopted baseline already carries role=baseline — no re-stamp needed.
   } else if (halfMadeBaseline) {
-    updateProgress(20, 'Using existing text layer...');
+    updateProgress(20, 'Using existing text layer…');
   } else if (isNewProject) {
-    updateProgress(20, 'Creating text layer...');
+    updateProgress(20, 'Creating text layer…');
     const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
     textLayerId = textLayer.id;
     resources.textLayer = textLayer;
     needsBaselineTag = true;
   } else if (setupData.layerSelection?.textLayerType === 'new') {
-    updateProgress(20, 'Creating text layer...');
+    updateProgress(20, 'Creating text layer…');
     const textLayer = await client.textLayers.create(currentProjectId, BASELINE_LAYER_NAME);
     textLayerId = textLayer.id;
     resources.textLayer = textLayer;
@@ -165,7 +165,7 @@ async function executeProjectSetupImpl({
     setupData.layerSelection?.selectedTextLayerId
   ) {
     textLayerId = setupData.layerSelection.selectedTextLayerId;
-    updateProgress(20, 'Using existing text layer...');
+    updateProgress(20, 'Using existing text layer…');
     needsBaselineTag = true;
   }
   if (needsBaselineTag && textLayerId) {
@@ -244,7 +244,7 @@ async function executeProjectSetupImpl({
       'partitioning',
       undefined,
       28,
-      'Creating sentence layer...',
+      'Creating sentence layer…',
     );
 
     tokenLayerId = await ensureTokenLayer(
@@ -255,7 +255,7 @@ async function executeProjectSetupImpl({
       'non-overlapping',
       sentenceTokenLayerId,
       32,
-      'Creating token layer...',
+      'Creating token layer…',
     );
 
     morphemeLayerId = await ensureTokenLayer(
@@ -266,7 +266,7 @@ async function executeProjectSetupImpl({
       'any',
       tokenLayerId,
       35,
-      'Creating morpheme layer...',
+      'Creating morpheme layer…',
     );
 
     await ensureTokenLayer(
@@ -277,13 +277,13 @@ async function executeProjectSetupImpl({
       'non-overlapping',
       undefined,
       38,
-      'Creating alignment token layer...',
+      'Creating alignment token layer…',
     );
   }
 
   // Step 5: Configure orthographies on the word token layer
   if (tokenLayerId && setupData.orthographies?.orthographies) {
-    updateProgress(40, 'Configuring orthographies...');
+    updateProgress(40, 'Configuring orthographies…');
     const orthographiesConfig = setupData.orthographies.orthographies
       .filter((orth) => !orth.isBaseline)
       .map((orth) => ({ name: orth.name }));
@@ -299,7 +299,7 @@ async function executeProjectSetupImpl({
   // Step 6: Create span layers for annotation fields. Resume-safe: reuse a
   // same-name layer under the chosen parent and just (re)stamp its scope.
   if (tokenLayerId && sentenceTokenLayerId) {
-    updateProgress(50, 'Creating annotation field layers...');
+    updateProgress(50, 'Creating annotation field layers…');
     const createdSpanLayers = [];
 
     const existingSpanLayersByParent = new Map();
@@ -326,7 +326,7 @@ async function executeProjectSetupImpl({
                 ? morphemeLayerId
                 : tokenLayerId;
 
-          updateProgress(50, `Creating span layer: ${field.name} (${field.scope})...`);
+          updateProgress(50, `Creating span layer: ${field.name} (${field.scope})…`);
           const existing = (existingSpanLayersByParent.get(parentLayerId) || []).find(
             (sl) => sl.name === field.name,
           );
@@ -389,7 +389,7 @@ async function executeProjectSetupImpl({
 
   // Step 7: Configure ignored tokens on the word token layer
   if (tokenLayerId && setupData.fields?.ignoredTokens) {
-    updateProgress(60, 'Configuring ignored tokens...');
+    updateProgress(60, 'Configuring ignored tokens…');
     await client.tokenLayers.setConfig(
       tokenLayerId,
       IGT_NAMESPACE,
@@ -401,7 +401,7 @@ async function executeProjectSetupImpl({
   // Step 8: Vocabularies. Resume-safe: already-linked vocabs are reused, and
   // so is one an interrupted run made and did not get to link.
   if (setupData.vocabulary?.vocabularies?.length > 0) {
-    updateProgress(70, 'Configuring vocabularies...');
+    updateProgress(70, 'Configuring vocabularies…');
     const enabledVocabs = setupData.vocabulary.vocabularies.filter((vocab) => vocab.enabled);
     const linkedVocabs = existingProject?.vocabs || [];
     const vocabulariesProcessed = [];
@@ -449,7 +449,7 @@ async function executeProjectSetupImpl({
           }
           let newVocab = await madeEarlier(vocab.name);
           if (!newVocab) {
-            updateProgress(70, `Creating vocabulary: ${vocab.name}...`);
+            updateProgress(70, `Creating vocabulary: ${vocab.name}…`);
             newVocab = await client.vocabLayers.create(vocab.name);
             // Said before it is linked, so a run that dies in between leaves
             // a record naming it and the next one finishes it rather than
@@ -481,7 +481,7 @@ async function executeProjectSetupImpl({
             vocabulariesProcessed.push(vocab);
             continue;
           }
-          updateProgress(70, `Linking vocabulary: ${vocab.name}...`);
+          updateProgress(70, `Linking vocabulary: ${vocab.name}…`);
           await client.projects.linkVocab(currentProjectId, vocab.id);
           vocabulariesProcessed.push(vocab);
         }
@@ -494,7 +494,7 @@ async function executeProjectSetupImpl({
   }
 
   // Step 9: Configure document metadata
-  updateProgress(80, 'Configuring document metadata...');
+  updateProgress(80, 'Configuring document metadata…');
   let enabledFields =
     setupData.documentMetadata?.enabledFields?.filter((field) => field.enabled) || [];
   if (!setupData.documentMetadata?.enabledFields) {
@@ -517,7 +517,7 @@ async function executeProjectSetupImpl({
 
   // Step 10: Mark initialized — ONLY if every step succeeded.
   if (failures.length === 0) {
-    updateProgress(90, 'Finalizing setup...');
+    updateProgress(90, 'Finalizing setup…');
     await client.projects.setConfig(currentProjectId, IGT_NAMESPACE, 'initialized', true);
   }
 

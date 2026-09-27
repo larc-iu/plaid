@@ -57,8 +57,8 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
       if (result.alreadyInitialized) {
         notifyError(
-          'This project is already initialized with Plaid IGT. Re-running setup is not supported. Create a new project instead.',
-          'Project Already Initialized',
+          'This project is already set up for Plaid IGT. Create a new project instead.',
+          'Already set up',
         );
         return;
       }
@@ -69,27 +69,24 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         setErrors(result.failures);
         notifyError(
           `${result.failures.length} setup step${result.failures.length === 1 ? '' : 's'} failed. ` +
-            'The project has NOT been marked ready. Fix the issue or use Retry Setup to finish.',
-          'Setup Incomplete',
+            'The project is not ready until Retry setup finishes.',
+          'Setup incomplete',
         );
         return;
       }
 
-      updateProgress(100, 'Setup complete!');
+      updateProgress(100, 'Setup complete');
       setCreatedResources(result.resources);
       setIsComplete(true);
 
-      notifySuccess(
-        'Your project has been successfully configured with Plaid IGT.',
-        'Setup Complete',
-      );
+      notifySuccess('Setup complete');
 
       navigate(`/projects/${result.projectId}`);
     } catch (error) {
       console.error('Setup failed:', error);
-      setErrors((prev) => [...prev, `Setup failed: ${humanizeError(error)}`]);
+      setErrors((prev) => [...prev, humanizeError(error)]);
 
-      notifyError(humanizeError(error), 'Setup failed');
+      notifyError(humanizeError(error), 'Failed to set up the project');
     } finally {
       setIsExecuting(false);
     }
@@ -98,17 +95,10 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
   // Review Section Components
   const ProjectInfoReview = () => (
     <div className="rounded-lg border bg-card p-4">
-      <p className="mb-2 font-medium">Project Information</p>
-      {isNewProject && setupData.basicInfo?.projectName && (
-        <p className="text-sm">
-          <strong>Project Name:</strong> {setupData.basicInfo.projectName}
-        </p>
-      )}
-      {!isNewProject && (
-        <p className="text-sm">
-          <strong>Project ID:</strong> {projectId}
-        </p>
-      )}
+      <p className="mb-2 font-medium">Project</p>
+      <p className="text-sm">
+        <strong>Name:</strong> {setupData.basicInfo?.projectName}
+      </p>
     </div>
   );
 
@@ -122,16 +112,16 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
     if (isNewProject) {
       return (
         <div className="rounded-lg border bg-card p-4">
-          <p className="mb-2 font-medium">Layer Configuration</p>
+          <p className="mb-2 font-medium">Layers</p>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">Token Layer:</p>
+              <p className="text-sm font-medium">Token layer:</p>
               <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Tokens
               </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">Morpheme Layer:</p>
+              <p className="text-sm font-medium">Morpheme layer:</p>
               <Badge className="border-transparent bg-success/15 text-success-foreground">
                 New: Main Morphemes
               </Badge>
@@ -145,17 +135,17 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Layer Configuration</p>
+        <p className="mb-2 font-medium">Layers</p>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Text Layer:</p>
+            <p className="text-sm font-medium">Text layer:</p>
             {layerData.textLayerType === 'adopted' ? (
               <Badge className="border-transparent bg-blue-100 text-blue-700">
                 Reusing existing baseline
               </Badge>
             ) : layerData.textLayerType === 'existing' ? (
               <Badge className="border-transparent bg-blue-100 text-blue-700">
-                Existing: {layerData.selectedTextLayerId}
+                Existing: {layerData.selectedTextLayerName}
               </Badge>
             ) : layerData.textLayerType === 'new' ? (
               <Badge className="border-transparent bg-success/15 text-success-foreground">
@@ -166,13 +156,13 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             )}
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Token Layer:</p>
+            <p className="text-sm font-medium">Token layer:</p>
             <Badge className="border-transparent bg-success/15 text-success-foreground">
               Main Tokens
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">Morpheme Layer:</p>
+            <p className="text-sm font-medium">Morpheme layer:</p>
             <Badge className="border-transparent bg-success/15 text-success-foreground">
               Main Morphemes
             </Badge>
@@ -191,7 +181,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Document Metadata Fields</p>
+        <p className="mb-2 font-medium">Document metadata fields</p>
         <ul className="list-disc pl-5 text-sm">
           {enabledFields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
@@ -233,7 +223,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
     return (
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 font-medium">Annotation Fields</p>
+        <p className="mb-2 font-medium">Annotation fields</p>
         <ul className="list-disc pl-5 text-sm">
           {fieldsData.fields.map((field) => (
             <li key={`${field.scope}-${field.name}`}>
@@ -243,12 +233,12 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
         </ul>
         {fieldsData.ignoredTokens && (
           <div className="mt-4">
-            <p className="mb-1 text-sm font-medium">Ignored Tokens Configuration:</p>
+            <p className="mb-1 text-sm font-medium">Ignored tokens:</p>
             <p className="text-sm">
               Mode:{' '}
               {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation
-                ? 'Unicode Punctuation'
-                : 'Explicit List'}
+                ? 'Unicode punctuation'
+                : 'Explicit list'}
             </p>
             {fieldsData.ignoredTokens.mode === IGNORED_TOKEN_MODES.punctuation &&
               fieldsData.ignoredTokens.unicodePunctuationExceptions?.length > 0 && (
@@ -311,13 +301,10 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
     return (
       <div className="flex flex-col gap-6">
         <Notice tone="success" className="p-4">
-          <p className="font-medium">Setup Complete!</p>
-          <p className="mt-1">
-            Your project has been successfully configured with Plaid IGT. Redirecting to project...
-          </p>
+          <p className="font-medium">Setup complete</p>
         </Notice>
         <div className="rounded-lg border bg-card p-4">
-          <p className="mb-2 font-medium">Setup Summary</p>
+          <p className="mb-2 font-medium">Summary</p>
           <div className="flex flex-col gap-2">
             {createdResources.project && (
               <p className="text-sm">✓ Project created: {createdResources.project.name}</p>
@@ -348,22 +335,22 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
             )}
             {createdResources.vocabularies?.length > 0 && (
               <p className="text-sm">
-                ✓ Vocabularies: {createdResources.vocabularies.length} configured
+                ✓ Vocabularies: {createdResources.vocabularies.length} linked
               </p>
             )}
           </div>
         </div>
-        <Loading label="Redirecting to project..." className="p-0 text-center" />
+        <Loading label="Opening the project…" className="p-0 text-center" />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <p>Please review your choices below.</p>
+      <p>Review your choices.</p>
 
       <div className="flex flex-col gap-4">
-        <ProjectInfoReview />
+        {isNewProject && <ProjectInfoReview />}
         {!isNewProject && <LayerSelectionReview />}
         <DocumentMetadataReview />
         <OrthographiesReview />
@@ -376,10 +363,10 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
           !setupData.fields?.fields?.length &&
           !setupData.vocabulary?.vocabularies?.some((v) => v.enabled) && (
             <div className="rounded-lg border bg-card p-4">
-              <p className="mb-2 font-medium">Additional Configuration</p>
+              <p className="mb-2 font-medium">Other settings</p>
               <p className="text-sm text-muted-foreground">
-                No additional configuration selected. Document metadata, orthographies, annotation
-                fields and vocabularies are in project settings.
+                None chosen. Document metadata, orthographies, annotation fields and vocabularies
+                are under Settings.
               </p>
             </div>
           )}
@@ -389,7 +376,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
 
       {errors.length > 0 && (
         <Notice tone="error" className="p-4">
-          <p className="font-medium">Setup Errors</p>
+          <p className="font-medium">Setup errors</p>
           <div className="mt-1 flex flex-col gap-2">
             {errors.map((error, index) => (
               <p key={index} className="text-muted-foreground">
@@ -403,7 +390,7 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       {isExecuting && (
         <div className="rounded-lg border bg-card p-4">
           <div className="flex flex-col gap-2">
-            <p className="font-medium">Executing Setup...</p>
+            <p className="font-medium">Setting up…</p>
             <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
               <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
             </div>
@@ -415,11 +402,11 @@ export const ConfirmationStep = ({ setupData, isNewProject, projectId, client })
       <div className="flex items-center justify-end gap-2">
         {errors.length > 0 && (
           <Button variant="outline" onClick={executeSetup} disabled={isExecuting}>
-            <RefreshCw className="h-4 w-4" /> Retry Setup
+            <RefreshCw className="h-4 w-4" /> Retry setup
           </Button>
         )}
         <Button onClick={executeSetup} disabled={isExecuting}>
-          {isNewProject ? 'Create Project' : 'Initialize Project'}
+          {isNewProject ? 'Create project' : 'Set up project'}
         </Button>
       </div>
     </div>

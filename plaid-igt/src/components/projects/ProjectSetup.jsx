@@ -18,7 +18,7 @@ import { ConfirmationStep } from './setup/ConfirmationStep';
 import { FORM_PAGE_WIDTH } from '@ui/lib/pageWidth.js';
 
 export const ProjectSetup = () => {
-  useDocumentTitle('Project Setup');
+  useDocumentTitle('Project setup');
   const { projectId } = useParams();
   const { client } = useAuth();
 
@@ -48,7 +48,7 @@ export const ProjectSetup = () => {
       ? [
           {
             id: 'basic-info',
-            title: 'Basic Information',
+            title: 'Basic information',
             icon: Info,
             component: BasicInfoStep,
           },
@@ -58,7 +58,7 @@ export const ProjectSetup = () => {
       ? [
           {
             id: 'layer-selection',
-            title: 'Layer Selection',
+            title: 'Text layer',
             icon: Layers,
             component: LayerSelectionStep,
           },
@@ -66,7 +66,7 @@ export const ProjectSetup = () => {
       : []),
     {
       id: 'document-metadata',
-      title: 'Document Metadata',
+      title: 'Document metadata',
       icon: FileText,
       component: DocumentMetadataStep,
     },
@@ -146,24 +146,22 @@ export const ProjectSetup = () => {
             isNewProject
               ? [
                   { label: 'Projects', to: '/projects', fixed: true },
-                  { label: 'New Project', to: '/projects/new', fixed: true },
+                  { label: 'New project', to: '/projects/new', fixed: true },
                   { label: 'Start from scratch', fixed: true },
                 ]
               : [
                   { label: 'Projects', to: '/projects', fixed: true },
-                  { label: 'Project Setup', fixed: true },
+                  { label: 'Project setup', fixed: true },
                 ]
           }
         />
 
         <div>
-          <h1 className="text-2xl font-bold">
-            {isNewProject ? 'Create New Project' : 'Project Setup'}
-          </h1>
+          <h1 className="text-2xl font-bold">{isNewProject ? 'New project' : 'Project setup'}</h1>
           <p className="text-sm text-muted-foreground">
             {isNewProject
               ? 'Set up a new Plaid IGT project.'
-              : 'Configure your existing project for annotation with Plaid IGT.'}
+              : 'Set this project up for Plaid IGT.'}
           </p>
         </div>
 

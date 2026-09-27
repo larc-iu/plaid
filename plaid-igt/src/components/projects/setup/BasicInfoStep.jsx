@@ -13,16 +13,13 @@ export const BasicInfoStep = ({ data, onDataChange }) => {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label>
-          Project Name <span className="text-destructive">*</span>
+          Project name <span className="text-destructive">*</span>
         </Label>
         <Input
           placeholder="Enter a name for your project"
           value={data?.projectName || ''}
           onChange={handleProjectNameChange}
         />
-        <p className="text-xs text-muted-foreground">
-          Choose a descriptive name for your linguistic annotation project
-        </p>
       </div>
     </div>
   );

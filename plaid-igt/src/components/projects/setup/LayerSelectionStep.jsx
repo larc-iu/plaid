@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from '@ui/components/ui/select';
 import { findBaselineTextLayer } from '@/domain/igtConfig';
+import { humanizeError } from '@/utils/feedback';
 
 // When initializing an EXISTING project, the only thing a user might need to
 // decide is which text layer is the baseline — and even that is automatic when
@@ -43,7 +44,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
       } catch (err) {
         if (cancelled) return;
         console.error('Error fetching project:', err);
-        setError('Failed to load project data');
+        setError(humanizeError(err));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -72,7 +73,12 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
     if (adoptedBaseline) {
       onDataChange({ ...data, textLayerType: 'adopted', adoptedBaselineId: adoptedBaseline.id });
     } else if (textLayers.length === 1) {
-      onDataChange({ ...data, textLayerType: 'existing', selectedTextLayerId: textLayers[0].id });
+      onDataChange({
+        ...data,
+        textLayerType: 'existing',
+        selectedTextLayerId: textLayers[0].id,
+        selectedTextLayerName: textLayers[0].name,
+      });
     } else if (textLayers.length === 0) {
       onDataChange({ ...data, textLayerType: 'new' });
     }
@@ -83,6 +89,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
       ...data,
       textLayerType: value,
       selectedTextLayerId: null,
+      selectedTextLayerName: null,
     });
   };
 
@@ -90,17 +97,18 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
     onDataChange({
       ...data,
       selectedTextLayerId: value,
+      selectedTextLayerName: textLayers.find((layer) => layer.id === value)?.name ?? null,
     });
   };
 
   if (loading) {
-    return <Loading label="Loading project layers..." className="p-0 text-center" />;
+    return <Loading label="Loading…" className="p-0 text-center" />;
   }
 
   if (error) {
     return (
       <Notice tone="error" className="p-4">
-        <p className="font-medium">Error</p>
+        <p className="font-medium">Failed to load the project</p>
         <p className="mt-1 text-muted-foreground">{error}</p>
       </Notice>
     );
@@ -114,9 +122,8 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
         <Notice tone="info" className="p-4">
           <p className="font-medium">This project already has a compatible text layer</p>
           <p className="mt-1">
-            Plaid IGT will reuse the existing baseline text layer and automatically create any word,
-            morpheme, sentence, and alignment layers it needs. There's nothing to configure here.
-            Continue to the next step.
+            Plaid IGT uses the existing baseline text layer and creates the word, morpheme,
+            sentence, and alignment layers it needs.
           </p>
         </Notice>
       </div>
@@ -131,14 +138,14 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
       <div>
         <p className="text-sm">
           Choose the text layer Plaid IGT should use as the baseline.
-          <strong> Text layers</strong> contain the baseline text content of your documents. The
-          word and morpheme token layers are created automatically. You don't need to name them.
+          <strong> Text layers</strong> hold the baseline text of your documents. The word and
+          morpheme token layers are created with it.
         </p>
       </div>
 
       {/* Text Layer Selection */}
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-4 font-medium">Text Layer</p>
+        <p className="mb-4 font-medium">Text layer</p>
 
         <div className="flex flex-col gap-4">
           <label className="flex items-center gap-2 text-sm">
@@ -173,7 +180,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
             </div>
           )}
           {data?.textLayerType === 'existing' && selectableTextLayers.length === 0 && (
-            <p className="ml-6 text-sm text-muted-foreground">No existing text layers found</p>
+            <p className="ml-6 text-sm text-muted-foreground">No text layers</p>
           )}
 
           <label className="flex items-center gap-2 text-sm">
@@ -188,9 +195,7 @@ export const LayerSelectionStep = ({ data, onDataChange, projectId, client }) =>
             Create new text layer
           </label>
           {data?.textLayerType === 'new' && (
-            <p className="ml-6 text-sm text-muted-foreground">
-              A new baseline text layer will be created automatically.
-            </p>
+            <p className="ml-6 text-sm text-muted-foreground">Creates a new baseline text layer.</p>
           )}
         </div>
       </div>
