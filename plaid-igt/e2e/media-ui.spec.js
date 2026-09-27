@@ -126,8 +126,13 @@ test('the transcript adds a segment at the playhead and Enter saves an edit', as
   // A click on the segment in the timeline lands in its transcript row, with
   // no popover in the way, and the page itself does not move: only the
   // transcript's own box may scroll, or the timeline would leave the viewport.
+  // Playwright scrolls a target into view before it clicks, and the page is
+  // still settling after the tab opened, so that scroll is taken out of the
+  // interval measured: the page is where the click finds it before it is read.
+  const segment = page.locator('[title^="hello there"]');
+  await segment.scrollIntoViewIfNeeded();
   const pageY = await page.evaluate(() => window.scrollY);
-  await page.locator('[title^="hello there"]').click();
+  await segment.click();
   await expect(page.getByLabel('Segment 1 text')).toBeFocused();
   await expect(page.getByText('New segment', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.scrollY)).toBe(pageY);
