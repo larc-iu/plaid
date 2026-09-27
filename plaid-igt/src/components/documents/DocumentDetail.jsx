@@ -271,18 +271,28 @@ const DocumentEditor = () => {
   // from the interlinear Auto-analyze dialog (see AutoAnalyzeDialog + autoPass.js).
 
   // The breadcrumb: pinned beside the tabs once the document is open, on its
-  // own above the title while it is still being checked.
+  // own above the title while it is still being checked. One line: a long
+  // project or document name is cut short, with the whole of it as its title.
+  const projectName = doc?.project?.name || 'Project';
+  const documentName = doc?.document?.name || 'Document';
   const crumbs = (
-    <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
-      <Link to="/projects" className="hover:text-foreground">
+    <nav className="flex min-w-0 max-w-full items-center gap-1.5 text-sm text-muted-foreground">
+      <Link to="/projects" className="shrink-0 hover:text-foreground">
         Projects
       </Link>
-      <span>/</span>
-      <Link to={`/projects/${projectId}`} className="hover:text-foreground">
-        {doc?.project?.name || 'Project'}
+      <span className="shrink-0">/</span>
+      <Link
+        to={`/projects/${projectId}`}
+        dir="auto"
+        title={projectName}
+        className="min-w-0 truncate hover:text-foreground"
+      >
+        {projectName}
       </Link>
-      <span>/</span>
-      <span className="text-foreground">{doc?.document?.name || 'Document'}</span>
+      <span className="shrink-0">/</span>
+      <span dir="auto" title={documentName} className="min-w-0 truncate text-foreground">
+        {documentName}
+      </span>
     </nav>
   );
 
