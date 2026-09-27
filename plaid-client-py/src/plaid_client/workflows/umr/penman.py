@@ -88,7 +88,9 @@ def variable_from(token: str) -> str:
 # What a concept or a bare value cannot hold: what ends a TOKEN, and a quote,
 # which starts a string. Written anyway, the value reads back as something
 # else (`big dog` as `big`, a line break and `:ARG0 (...)` as an extra node).
-_NOT_IN_TOKEN = re.compile(r'[\s():#"]')
+# U+FEFF is whitespace to the app's reader (JavaScript's \s) and not to
+# Python's, so it is named.
+_NOT_IN_TOKEN = re.compile(r'[\s\ufeff():#"]')
 
 
 def concept_problem(concept) -> Optional[str]:
@@ -135,6 +137,9 @@ def attr_value_problem(value) -> Optional[str]:
         return f'A value holds a quote only around the whole of it: {text}'
     if _NOT_IN_TOKEN.search(text):
         return f'A value cannot hold spaces, brackets, colons or #, unless it is quoted: {text}'
+    if is_variable(text):
+        # Read back as a reference to a node, not as the value.
+        return f'A value cannot be a variable, unless it is quoted: {text}'
     return None
 
 

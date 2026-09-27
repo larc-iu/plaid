@@ -80,3 +80,19 @@ def test_the_checks_match_the_apps():
     assert attr_value_problem('"a b: (c)"') is None and attr_value_problem('-') is None
     assert variable_form_problem('s1x2y') and variable_form_problem('a/b')
     assert variable_form_problem('x1') is None and variable_form_problem('s12ab3') is None
+
+
+def test_the_checks_refuse_what_the_app_refuses():
+    """Review of the port (2026-09-27): a byte order mark ends a token for the
+    app's reader, and a bare value shaped like a variable reads back as an
+    edge. Both passed here while the app's export refused them."""
+    assert concept_problem('a﻿b') and attr_value_problem('a﻿b')
+    assert variable_form_problem('s1﻿x')
+    assert attr_value_problem('s2x') and attr_value_problem('s1d')
+    assert attr_value_problem('"s2x"') is None and attr_value_problem('S2x') is None
+
+
+def test_a_value_shaped_like_a_variable_is_refused(ws):
+    out = run(ws, 'set_attribute_for_concept', concept='dog', rel=':mod', value='s2x')
+    assert ws.ops == [], out
+    assert 'variable' in out, out
