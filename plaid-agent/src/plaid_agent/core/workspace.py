@@ -29,6 +29,13 @@ WEB_READ_REFUSAL = (
     'found and what you would change, and let them ask for it. The next turn can plan it '
     'without looking anything up.')
 
+# A workspace on a project other than the conversation's own reads and never
+# stages (see core/reach.py). Said where the change was refused, with both
+# names, so the model can still tell the user what it would have planned.
+READ_ONLY_REFUSAL = (
+    'This conversation plans changes in "{home}" only. Tell the user what you would change in '
+    '"{here}" and let them make it there.')
+
 
 class BaseWorkspace:
     """What one turn holds while its tools run.
@@ -89,6 +96,13 @@ class BaseWorkspace:
         # The turn's document reads. Made on first use so a turn that reads no
         # document opens no thread pool.
         self._reader = None
+        # The other projects this turn may read (a core.reach.Reach), or None
+        # when it reads this project alone. ``home`` is False on the workspace
+        # of another project, and ``writable`` False wherever nothing may be
+        # staged: both are set by the reach, never by a tool.
+        self.reach = None
+        self.home = True
+        self.writable = True
 
     def close(self) -> None:
         """Release what the turn held: the code worker and any reads still
@@ -265,6 +279,7 @@ class BaseWorkspace:
         Every tool that proposes anything comes through here, which is why the
         refusals a plan owes itself live here rather than in the tools.
         """
+        self.refuse_read_only()
         if self.web is not None and getattr(self.web, 'read', False):
             raise ToolError(WEB_READ_REFUSAL)
         at = self.replacing(op)
@@ -290,6 +305,7 @@ class BaseWorkspace:
         three of them and then answered with an error, so the user would have
         approved a change the model never told them about.
         """
+        self.refuse_read_only()
         self.reserve(len(ops))
         # Each op against the plan AS IT STANDS, never against the batch's own
         # earlier ops, so a tool naming four words is refused here before any
@@ -302,6 +318,13 @@ class BaseWorkspace:
         with self.staging():
             for op in ops:
                 self.add_op(op)
+
+    def refuse_read_only(self) -> None:
+        """Nothing is staged on a workspace that may only be read: another
+        project's, in a conversation that belongs to one project."""
+        if not self.writable:
+            home = self.reach.home_project.name if self.reach is not None else ''
+            raise ToolError(READ_ONLY_REFUSAL.format(home=home, here=self.project.name))
 
     @contextmanager
     def staging(self):

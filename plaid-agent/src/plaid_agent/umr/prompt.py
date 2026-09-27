@@ -103,12 +103,26 @@ WEB = webtools.prompt(
     'Citation tags are for project sentences only; link a web source as ordinary Markdown.')
 
 
-def build_system_prompt(project: UmrProject, web: bool = False) -> str:
+def shape_lines(project: UmrProject) -> list:
+    """The project's shape as the prompt states it: its language, its gloss
+    lines and whether it has morphemes. The whole prompt says it of the
+    project the user is in, and a turn that may read other projects says it
+    of each of them."""
     lines = [f'- Language: {project.language}'] if project.language else []
     gloss = gloss_headers(project)
     lines.append('- Gloss lines under each sentence: ' + (', '.join(gloss) if gloss else 'none'))
     lines.append('- Morphemes: ' + ('read from the project\'s morpheme layer'
                                     if project.morpheme_layer_id else 'this project has none'))
+    return lines
+
+
+def project_brief(project: UmrProject) -> str:
+    """Another project's shape, for a turn that may read it."""
+    return '\n'.join(shape_lines(project))
+
+
+def build_system_prompt(project: UmrProject, web: bool = False) -> str:
+    lines = shape_lines(project)
     # Not str.format: a project's own values may contain braces, and a
     # guideline body is prose someone typed, so it certainly does.
     out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))

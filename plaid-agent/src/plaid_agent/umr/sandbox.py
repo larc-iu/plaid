@@ -101,7 +101,8 @@ def api(ws: Workspace) -> Dict[str, Callable]:
     # one included), so it is asked for here rather than at the top.
     from .query import _display, _layer_index
     from .toolkit import WRITE_TOOLS, call_tool
-    return sandbox.api(ws, lambda doc: view(doc, ws.project), call_tool, WRITE_TOOLS, _layer_index, _display)
+    return sandbox.api(ws, lambda doc: view(doc, ws.project), call_tool, WRITE_TOOLS, _layer_index, _display,
+                       view_of=lambda w: (lambda doc: view(doc, w.project)))
 
 
 def t_run_code(ws: Workspace, code: str = None) -> str:
@@ -109,4 +110,4 @@ def t_run_code(ws: Workspace, code: str = None) -> str:
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(UMR_HELP, filetools.code_help(ws))
+    return sandbox.help_text(UMR_HELP, filetools.code_help(ws), ws)

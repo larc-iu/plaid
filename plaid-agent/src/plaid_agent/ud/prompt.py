@@ -114,7 +114,10 @@ def _values(name: str, project: UdProject) -> str:
     return f'- {name} ({rule}): ' + ', '.join(shown) + more
 
 
-def build_system_prompt(project: UdProject, web: bool = False) -> str:
+def shape_lines(project: UdProject) -> list:
+    """The project's shape as the prompt states it: its language and its
+    controlled values. The whole prompt says it of the project the user is
+    in, and a turn that may read other projects says it of each of them."""
     lines = [f'- Language: {project.language}'] if project.language else []
     for name in ('upos', 'xpos', 'deprel'):
         lines.append(_values(name, project))
@@ -125,6 +128,16 @@ def build_system_prompt(project: UdProject, web: bool = False) -> str:
             f'{k}={"/".join(v)}' if v else k for k, v in sorted(feats.items())))
     else:
         lines.append('- features: no inventory set, any Feature=Value is allowed')
+    return lines
+
+
+def project_brief(project: UdProject) -> str:
+    """Another project's shape, for a turn that may read it."""
+    return '\n'.join(shape_lines(project))
+
+
+def build_system_prompt(project: UdProject, web: bool = False) -> str:
+    lines = shape_lines(project)
     # Not str.format: a project's own values may contain braces. A guideline
     # body is prose someone typed, so it certainly does.
     out = SYSTEM.replace('{project_name}', project.name).replace('{shape}', '\n'.join(lines))

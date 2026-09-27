@@ -93,3 +93,14 @@ GUIDELINES_INLINE_CHARS = 24000
 # Example lines a bulk answer shows before "… n more". Enough to see what the
 # pattern did, few enough to leave room for the answer around it.
 SAMPLE_LINES = 8
+
+# Projects one conversation may read, the one it belongs to included. Each
+# other project costs a paragraph of the system prompt on every turn, so this
+# bounds the prompt as much as the reads. Advertised to the browser as
+# ``extras.max_projects``, so the control that adds a project stops at the
+# same number the service holds to.
+MAX_PROJECTS = 5
+
+# Characters of the system prompt one other project's paragraph may take. Past
+# it the paragraph is cut and says where the rest is.
+OTHER_PROJECT_CHARS = 3000

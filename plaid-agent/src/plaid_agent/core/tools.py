@@ -109,7 +109,38 @@ def tools_for(ws, tools: List[Dict[str, Any]], web_tools, code_tools,
         hidden |= set(code_tools)
     if not getattr(ws, 'files', None):
         hidden |= set(file_tools)
-    return [t for t in tools if t['function']['name'] not in hidden]
+    offered = [t for t in tools if t['function']['name'] not in hidden]
+    reach = getattr(ws, 'reach', None)
+    if reach is None or not reach.others:
+        return offered
+    return [with_project(t, reach) if reads_a_project(t, web_tools, code_tools, file_tools) else t
+            for t in offered]
+
+
+def reads_a_project(tool: Dict[str, Any], *local) -> bool:
+    """Whether a tool reads the project it is handed, and so takes ``project``
+    in a turn that may read several. Not a plan tool, since a plan changes
+    the conversation's own project only, not a tool that acts on the plan,
+    not a reference text, and not one that reads the web, the attached files
+    or runs code, which are the turn's rather than a project's."""
+    from .reach import PLAN_TOOLS
+    f = tool['function']
+    name = f['name']
+    if f['description'].startswith('PLAN:') or name in PLAN_TOOLS or name.endswith('_help'):
+        return False
+    return not any(name in names for names in local)
+
+
+def with_project(tool: Dict[str, Any], reach) -> Dict[str, Any]:
+    """A copy of ``tool`` that also takes ``project``: one of the projects this
+    turn may read, named as :meth:`core.reach.Reach.labels` names them."""
+    labels = reach.labels()
+    f = tool['function']
+    params = f['parameters']
+    prop = {'type': 'string', 'enum': labels,
+            'description': f'Which project to read. Leave it out for "{labels[0]}".'}
+    return {**tool, 'function': {**f, 'parameters': {
+        **params, 'properties': {**params.get('properties', {}), 'project': prop}}}}
 
 
 def list_documents(ws, pattern: str = None, limit: int = None, offset: int = 0) -> str:

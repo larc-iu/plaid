@@ -15,6 +15,10 @@ attributed to them in the audit log, and the record is theirs.
 Request data:
     project_id       the project (a service instance may serve many)
     conversation_id  the conversation to continue
+    (projects)       not a request field: the other projects the user added to the
+                     conversation ride on their message's display item as
+                     ``projects: [{id, name}]``, and the turn may READ those as well
+                     (see core/reach.py). Plans stay in project_id.
     where            optional: {kind, id} for what the user is looking at, sent fresh
                      with EVERY turn because the panel outlives the screen it was
                      opened from and the user walks between documents while it stays
@@ -56,6 +60,10 @@ from urllib.parse import urlsplit
 from plaid_client import BaseService, TASKS, service_source
 
 from . import filetools
+from . import prompt as shared_prompt
+from .guidelines import in_reading_order
+from .limits import MAX_PROJECTS
+from .reach import Reach
 from .agent import (ModelConfig, ModelTooSlow, PING_TIMEOUT_S, Toolkit, TurnCancelled,
                     context_window, ping_model, run_turn)
 from .files import Attachments
@@ -115,6 +123,12 @@ class BaseAssistantService(BaseService):
 
     def system_prompt(self, project, web: bool) -> str:
         """What the model is told before the conversation."""
+        raise NotImplementedError
+
+    def project_brief(self, project) -> str:
+        """Another project's shape, in the lines the app's own prompt states
+        its project's shape in, for a turn that may read it. The harness adds
+        its name and its guideline titles, and cuts it to a budget."""
         raise NotImplementedError
 
     #: How this app writes a reference to a place in a document, for the focus
@@ -226,6 +240,10 @@ class BaseAssistantService(BaseService):
         # every turn to a service that could not find the conversation.
         self.extras['model'] = self.cfg.model
         self.extras['app'] = self.APP
+        # How many projects one conversation may read, its own included. The
+        # browser offers to add projects only when this is here, and stops at
+        # it: the one number, so the control and the service cannot disagree.
+        self.extras['max_projects'] = MAX_PROJECTS
         print(f'Model: {self.cfg.model}' + (f' via {self.cfg.api_base}' if self.cfg.api_base else ''))
         # Ask the model one question before registering. A service that cannot
         # reach its model has nothing to offer, and the operator is here NOW.
@@ -297,6 +315,35 @@ class BaseAssistantService(BaseService):
             self._turn(client, project, store, conv_id, conv, meta, request_id, response_helper,
                        request_data)
 
+    def open_project(self, client, project_id: str):
+        """A project other than the conversation's own, loaded for a turn to
+        read, or raises. Read with the requester's own client, so the server
+        checks the user's own role in it, and opened only where this same
+        assistant is online: an operator who kept a model off a project keeps
+        that project's text away from the model."""
+        served = client.messages.discover_services(project_id) or []
+        if not any(s.get('service_id') == self.service_id and s.get('online') is not False
+                   for s in served if isinstance(s, dict)):
+            raise LookupError(f'{self.service_id} is not online in project {project_id}')
+        return self.load_project(client, project_id)
+
+    def open_reach(self, client, ws, joined) -> Optional[Reach]:
+        """The other projects this turn may read, or None when the user added
+        none. ``joined`` is what their message carries."""
+        if not joined:
+            return None
+        return Reach(ws, joined, lambda pid: self.open_project(client, pid),
+                     lambda project: self.make_workspace(client, project, ws.on_progress))
+
+    def other_projects_note(self, reach: Reach) -> str:
+        """The paragraph of the system prompt about the other projects."""
+        labels = reach.labels()
+        briefs = [shared_prompt.project_brief(
+                      label, self.project_brief(p),
+                      [g.title for g in in_reading_order(getattr(p, 'guidelines', None) or [])])
+                  for label, p in zip(labels[1:], reach.others)]
+        return shared_prompt.other_projects(labels[0], briefs, [u['name'] for u in reach.unavailable])
+
     def _write(self, store: ConversationStore, conv_id: str, conv: dict, meta: dict, request_id) -> bool:
         """Write the outcome, unless the conversation moved on meanwhile (its
         pending marker names another request, or it was deleted): then the
@@ -340,6 +387,12 @@ class BaseAssistantService(BaseService):
         ws.files = Attachments.of(store, conv_id, conv['display'])
         last_user = next((d for d in reversed(conv['display'] or []) if d.get('kind') == 'user'), None)
         transcript = filetools.stamp(transcript, ws.files.named((last_user or {}).get('files') or []))
+        # The other projects the user added to the conversation, read from their
+        # own message and nowhere else. Stamped onto the question when the set
+        # changed, after the files note and before the place stamp, which has to
+        # stay first on the line.
+        reach = self.open_reach(client, ws, (last_user or {}).get('projects'))
+        transcript = projects_stamped(transcript, reach.labels() if reach else [project.name])
         # Where this question was asked from, stamped onto the question itself.
         # The panel outlives the screen it was opened from, so one thread can
         # hold questions asked from several places, and the system note below
@@ -350,6 +403,8 @@ class BaseAssistantService(BaseService):
         if self.web_cfg is not None:
             ws.web = session_for(self.web_cfg, transcript)
         system = self.system_prompt(project, web=ws.web is not None)
+        if reach is not None:
+            system = f'{system}\n\n{self.other_projects_note(reach)}'
         # Asked from inside a screen that is about one thing: say which, so an
         # unqualified question is about it. Nothing is taken away.
         if where and where[2]:
@@ -385,6 +440,8 @@ class BaseAssistantService(BaseService):
         item = assistant_item(turn.text, ws.plan_payload(), self.citations(ws, turn.text),
                               turn.steps, turn.summary, model, usage,
                               guidelines_in_context(getattr(project, 'guidelines', None) or []))
+        if reach is not None and reach.unavailable:
+            item['unavailable_projects'] = [dict(u) for u in reach.unavailable]
         done = prune({'messages': transcript + turn.messages, 'display': conv['display'] + [item]},
                      record_budget(client))
         try:
@@ -499,13 +556,15 @@ class BaseAssistantService(BaseService):
     @staticmethod
     def _release(ws) -> None:
         """Let the workspace give back what it held for the turn (a code
-        worker): the turn is over whichever way it ended."""
-        close = getattr(ws, 'close', None)
-        if close:
-            try:
-                close()
-            except Exception:  # noqa: BLE001 - releasing must never turn a finished turn into a failed one
-                traceback.print_exc()
+        worker, and the workspaces of any other projects it read): the turn is
+        over whichever way it ended."""
+        for thing in (getattr(ws, 'reach', None), ws):
+            close = getattr(thing, 'close', None)
+            if close:
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - releasing must never turn a finished turn into a failed one
+                    traceback.print_exc()
 
     def _remember_applied(self, plan_id: str) -> None:
         self._applied_plans.append(plan_id)
@@ -606,6 +665,40 @@ def stamped(transcript: List[Dict[str, Any]], place: Optional[tuple]) -> List[Di
     last = transcript[-1]
     note = _STAMP.format(noun=place[0], name=place[1])
     return transcript[:-1] + [{**last, 'content': f'{note}\n\n{last.get("content") or ""}'}]
+
+
+# The stamp that records which projects a conversation may read, written onto
+# the question when the set changed, on the same only-on-change rule as the
+# place stamp above and for the same reason. It is not at the start of the
+# message (the place stamp is), so it is looked for on a line of its own.
+_PROJECTS_STAMP = '[Projects in this conversation: {names}]'
+_PROJECTS_RE = re.compile(r'^\[Projects in this conversation: .*\]$', re.M)
+
+
+def _projects_line(labels: List[str]) -> str:
+    names = ', '.join(f'"{label}"' for label in labels)
+    return _PROJECTS_STAMP.format(names=names if len(labels) > 1 else f'{names} only')
+
+
+def projects_stamped(transcript: List[Dict[str, Any]], labels: List[str]) -> List[Dict[str, Any]]:
+    """The transcript with its last message stamped with the projects this
+    turn may read (the conversation's own first), if that set changed since
+    the last stamp. A conversation that never read another project carries
+    no stamp at all, and one that stops says so once."""
+    if not labels or not transcript or transcript[-1].get('role') != 'user':
+        return transcript
+    line = _projects_line(labels)
+    was = None
+    for m in reversed(transcript[:-1]):
+        content = m.get('content') if m.get('role') == 'user' else None
+        found = _PROJECTS_RE.findall(content) if isinstance(content, str) else []
+        if found:
+            was = found[-1]
+            break
+    if was == line or (was is None and len(labels) == 1):
+        return transcript
+    last = transcript[-1]
+    return transcript[:-1] + [{**last, 'content': f'{line}\n\n{last.get("content") or ""}'}]
 
 
 # What the model is told when the user asks from inside a document.

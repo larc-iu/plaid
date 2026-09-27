@@ -196,12 +196,26 @@ query() for counting where it can count. Errors come back as text; fix the code 
 '''
 
 
-def help_text(app_half: str, extra: str = '') -> str:
+# Added to the help only in a turn that may read other projects.
+PROJECTS_HELP = '''
+OTHER PROJECTS
+  documents(), load(document) and query(q) each take project="<name>" to read one of the other projects
+  in this conversation: {labels}. Without it they read "{home}". plan() stages changes in "{home}" only.
+'''
+
+
+def help_text(app_half: str, extra: str = '', ws=None) -> str:
     """The shared half, the app's half, and whatever this conversation adds to
-    both (at present, the files the user attached: see
-    :func:`.filetools.code_help`)."""
-    return HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX,
-                       turn_seconds=TURN_EXEC_SECONDS) + app_half + extra
+    both: the files the user attached (see :func:`.filetools.code_help`),
+    and the other projects the turn may read, when there are any."""
+    out = HELP.format(modules=', '.join(MODULES), output_max=OUTPUT_MAX,
+                      turn_seconds=TURN_EXEC_SECONDS) + app_half + extra
+    reach = getattr(ws, 'reach', None)
+    if reach is not None and reach.others:
+        labels = reach.labels()
+        out += (PROJECTS_HELP.replace('{home}', labels[0])
+                .replace('{labels}', ', '.join(f'"{label}"' for label in labels[1:])))
+    return out
 
 
 def schemas(subject: str) -> List[Dict[str, Any]]:
@@ -263,31 +277,53 @@ def load_proxy(ws, view: Callable[[Any], Any]) -> Callable[[str], Any]:
 
 
 def api(ws, view: Callable[[Any], Any], call_tool, write_tools,
-        layer_index: Callable, display: Callable) -> Dict[str, Callable]:
+        layer_index: Callable, display: Callable,
+        view_of: Optional[Callable[[Any], Callable[[Any], Any]]] = None) -> Dict[str, Callable]:
     """The names the code runs against. An app supplies what only it knows:
     how one of its documents looks as plain data (``view``), its tool table,
-    and how its layer names are read back from the project.
+    and how its layer names are read back from the project. ``view_of(ws)``
+    is the view for another workspace, for an app whose view reads the
+    project as well as the document; without it ``view`` serves every one.
 
     ``documents`` and ``query`` are the same wherever they are offered, so they
     are written here: three copies of the query wrapper is three places for the
     refusal to stop being turned into something the code can catch.
+
+    In a turn that may read other projects, ``documents``, ``load`` and
+    ``query`` each take ``project=`` as the read tools do, and ``plan`` hands
+    it on to the plan tool, which refuses it (see core/reach.py).
     """
     from . import filetools
     from .query import QueryRefused, parse_query, rewrite, run as run_query
+    from .reach import target
+    loads: Dict[int, Callable[[str], Any]] = {}
 
-    def documents():
-        return [{'id': d['id'], 'name': d.get('name') or ''} for d in ws.documents()]
+    def workspace(project):
+        try:
+            return target(ws, project)
+        except ToolError as e:
+            raise ValueError(str(e))
 
-    def query(q):
+    def documents(project=None):
+        return [{'id': d['id'], 'name': d.get('name') or ''} for d in workspace(project).documents()]
+
+    def load(document, project=None):
+        w = workspace(project)
+        if id(w) not in loads:
+            loads[id(w)] = load_proxy(w, view_of(w) if view_of and w is not ws else view)
+        return loads[id(w)](document)
+
+    def query(q, project=None):
+        w = workspace(project)
         try:
             parsed = parse_query(q)
-            idx = layer_index(ws)
-            docs = {(d.get('name') or '').casefold(): d['id'] for d in ws.documents()}
-            return run_query(ws.client, rewrite(parsed, idx, display(idx), docs), ws.project.id)
+            idx = layer_index(w)
+            docs = {(d.get('name') or '').casefold(): d['id'] for d in w.documents()}
+            return run_query(w.client, rewrite(parsed, idx, display(idx), docs), w.project.id)
         except (QueryRefused, ToolError) as e:
             raise ValueError(str(e))
 
-    return {'documents': documents, 'load': load_proxy(ws, view), 'query': query,
+    return {'documents': documents, 'load': load, 'query': query,
             'plan': plan_proxy(ws, call_tool, write_tools),
             **filetools.api(ws)}
 

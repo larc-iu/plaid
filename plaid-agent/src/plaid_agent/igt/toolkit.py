@@ -19,7 +19,8 @@ from ..core.webtools import t_read_url, t_web_search
 from ..core.guidelines import (t_add_guideline, t_read_guideline, t_revise_guideline,
                                t_rewrite_guideline)
 from ..core.limits import MAX_SENTENCES_PER_READ, OVERVIEW_DOCS
-from ..core.tools import fn, limit_arg, read_document as t_read_document, run_tool, tools_for as core_tools_for
+from ..core.tools import ToolError, fn, limit_arg, read_document as t_read_document, run_tool, tools_for as core_tools_for
+from ..core.reach import route
 
 from .bulk import (t_copy_to_orthography, t_delete_entry, t_merge_entries, t_rename_document,
                    t_rename_entry, t_replace_in_field, t_respell_all, t_set_analysis_for_form,
@@ -341,6 +342,12 @@ def call_tool(ws: Workspace, name: str, args: Dict[str, Any]) -> str:
     fn = _IMPL.get(name)
     if not fn:
         return f'Unknown tool {name}'
+    # The project the call names, in a turn that may read several: its own
+    # workspace, and the arguments without the name (see core/reach.py).
+    try:
+        ws, args = route(ws, name, args)
+    except ToolError as e:
+        return f'Error: {e}'
     return run_tool(ws, name, fn, args)
 
 

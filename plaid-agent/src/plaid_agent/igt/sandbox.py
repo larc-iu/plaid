@@ -98,4 +98,4 @@ def t_run_code(ws: Workspace, code: str = None) -> str:
 
 
 def t_code_help(ws: Workspace) -> str:
-    return sandbox.help_text(IGT_HELP, filetools.code_help(ws))
+    return sandbox.help_text(IGT_HELP, filetools.code_help(ws), ws)

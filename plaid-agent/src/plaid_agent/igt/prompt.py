@@ -12,6 +12,9 @@ from .project import IgtProject, SCOPES, tagset_lines
 
 # Values of one tagset shown in the system prompt. Project_overview lists the rest.
 PROMPT_TAGSET_VALUES = 120
+# The same for another project a turn may read, whose whole paragraph has a
+# budget of its own (core.limits.OTHER_PROJECT_CHARS).
+BRIEF_TAGSET_VALUES = 30
 
 _SYSTEM = '''You are the assistant inside Plaid IGT, a tool linguists use to build interlinear glossed text (IGT): \
 documents of a language under study, segmented into sentences and words, with words split into morphemes, \
@@ -115,7 +118,11 @@ def lexicon_focus_note(name: str) -> str:
             f'Open another vocabulary only when the question names it or asks you to compare.')
 
 
-def build_system_prompt(project: IgtProject, web: bool = False) -> str:
+def shape_lines(project: IgtProject, max_tagset_values: int = PROMPT_TAGSET_VALUES) -> list:
+    """The project's shape as the prompt states it: its fields, its tagsets,
+    its orthographies and its lexicons. The whole prompt says it of the
+    project the user is in, and a turn that may read other projects says it
+    of each of them too, more briefly."""
     lines = []
     for scope in SCOPES:
         fs = project.fields_by_scope(scope)
@@ -123,10 +130,20 @@ def build_system_prompt(project: IgtProject, web: bool = False) -> str:
             lines.append(f'- {scope} fields: ' + ', '.join(f.name for f in fs))
     if not project.morpheme_layer_id:
         lines.append('- No morpheme layer (words cannot be segmented here).')
-    for i, line in enumerate(tagset_lines(project, max_values=PROMPT_TAGSET_VALUES)):
+    for i, line in enumerate(tagset_lines(project, max_values=max_tagset_values)):
         lines.append(('- ' if i == 0 else '') + line)
     lines.append('- Orthographies: ' + (', '.join(project.orthographies) or 'none'))
     lines.append('- Lexicons: ' + (', '.join(v['name'] for v in project.vocabs) or 'none'))
+    return lines
+
+
+def project_brief(project: IgtProject) -> str:
+    """Another project's shape, for a turn that may read it."""
+    return '\n'.join(shape_lines(project, BRIEF_TAGSET_VALUES))
+
+
+def build_system_prompt(project: IgtProject, web: bool = False) -> str:
+    lines = shape_lines(project)
     # Not str.format: field and layer names in the shape may contain braces.
     # The number the overview really shows, before the project's own text goes
     # in: written out as a word here, the prompt promised a hundred documents

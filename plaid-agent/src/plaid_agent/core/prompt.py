@@ -23,6 +23,8 @@ way the app's prompt joins its paragraphs and bullets.
 import re
 from typing import Mapping, Sequence
 
+from .limits import OTHER_PROJECT_CHARS
+
 # The contract the user reads the plan card under, which is the harness's and
 # not any app's. ``{project_name}`` is filled in when the prompt is built.
 PLAN_CONTRACT = '''You work for the person chatting with you, on the project "{project_name}". You can read the \
@@ -195,3 +197,57 @@ def code_section(*, triggers: str, outright: str) -> str:
     knows what is there, and nothing more.
     """
     return filled(CODE, {'triggers': triggers, 'outright': outright})
+
+
+# The paragraph a turn that may read other projects adds after the app's own
+# prompt. The home project's rules above stay the rules: another project is
+# evidence to compare against, never a place to plan in.
+OTHER_PROJECTS = '''OTHER PROJECTS IN THIS CONVERSATION
+The user is working in "{home}", and every tool reads "{home}" unless you pass project. They also opened \
+the projects below, and every read tool takes project="<name>" to read one of them. Say which project each \
+finding comes from, and cite a sentence in another project with project="<name>" in the tag. Changes can be \
+planned in "{home}" only.'''
+
+# The same heading when every project the user added failed to open, so the
+# model can say so rather than answer as if it had compared.
+NO_OTHER_PROJECTS = '''OTHER PROJECTS IN THIS CONVERSATION
+The user asked to include other projects, and none of them could be opened this turn. Every tool reads \
+"{home}" only.'''
+
+
+def project_brief(label: str, shape: str, titles: Sequence[str],
+                  budget: int = OTHER_PROJECT_CHARS) -> str:
+    """One other project's paragraph: its shape as the app renders it, and the
+    titles of its guidelines. Titles only, pinned ones included: a body in the
+    prompt reads as a rule for the project the user is working in, and it is
+    one read_guideline call away.
+
+    Cut at ``budget`` characters on a line boundary, and a cut paragraph says
+    where the rest is, because a budgeted render states what it showed."""
+    quoted = ', '.join(f'"{t}"' for t in titles)
+    lines = [f'PROJECT: "{label}"', *[line for line in shape.split('\n') if line],
+             (f'- Guidelines: {quoted} (read_guideline with project="{label}")' if titles
+              else '- Guidelines: none written')]
+    full = '\n'.join(lines)
+    if len(full) <= budget:
+        return full
+    tail = f'project_overview with project="{label}" shows the rest.'
+    kept = [lines[0]]
+    used = len(lines[0]) + 1 + len(tail)
+    for line in lines[1:]:
+        if used + len(line) + 1 > budget:
+            break
+        kept.append(line)
+        used += len(line) + 1
+    return '\n'.join([*kept, tail])
+
+
+def other_projects(home: str, briefs: Sequence[str], unavailable: Sequence[str]) -> str:
+    """What the model is told about the other projects a turn may read.
+    ``briefs`` are :func:`project_brief` paragraphs, ``unavailable`` the names
+    of the projects the user added that did not open."""
+    heading = (OTHER_PROJECTS if briefs else NO_OTHER_PROJECTS).replace('{home}', home)
+    parts = [heading, *briefs]
+    if unavailable:
+        parts.append(' '.join(f'"{name}" could not be opened.' for name in unavailable))
+    return '\n\n'.join(parts)
