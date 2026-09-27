@@ -17,6 +17,8 @@ import {
 import { isValidMorphType } from '../affixMarkers.js';
 import { pendingId, settledId } from '@ui/domain/pendingIds.js';
 import { lexiconView } from '../vocabDictionary.js';
+import { forgetLeftover, leftoverFor, rememberLeftover } from '../leftoverEntries.js';
+import { canManageVocabulary } from '@ui/domain/permissions.js';
 
 // Not the shared CHUNK (domain/bulk.js): this writes through an ATOMIC BATCH
 // rather than a bulk endpoint, and a link replacement emits 2 ops apiece
@@ -293,6 +295,7 @@ export const vocabMutations = {
         );
         ids.set(linkId, createdId(result));
       }
+      forgetLeftover(settledId(vocabItemId));
       this._settle(ids);
     });
   },
@@ -407,6 +410,7 @@ export const vocabMutations = {
     });
     const newIds = createdIds(results[0]);
     plan.links.forEach((l, i) => ids.set(l.id, newIds[i]));
+    forgetLeftover(itemId);
   },
 
   // Remove the single-token vocab link for `tokenId`, if any.
@@ -545,6 +549,7 @@ export const vocabMutations = {
         tokens.map(settledId),
         stamp || undefined,
       );
+      forgetLeftover(settledId(vocabItemId));
       this._settle(new Map([[linkId, createdId(result)]]));
     });
   },
@@ -553,7 +558,8 @@ export const vocabMutations = {
   // phrase) and link it to the words. The item is created outside the link
   // call so the link can reference its id. `replaceLinkId` names an existing
   // MWE link over these words to retire in the same batch (the popover's
-  // "+ Create" on an already-linked expression).
+  // "+ Create" on an already-linked expression). A retry after a refused
+  // link links the entry the first try made (leftoverEntries.js).
   async createAndLinkMwe(tokenIds, vocabId, form, metadata = {}, replaceLinkId = null) {
     if (!this._vocabularies[vocabId]) {
       this.setError(`Vocabulary ${vocabId} not found`);
@@ -565,7 +571,10 @@ export const vocabMutations = {
     if (!this._canWrite(label)) return false;
     const metadataArg = Object.keys(metadata || {}).length > 0 ? metadata : undefined;
     const stamp = this.createStamp || undefined;
-    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    const leftover = leftoverFor(this._vocabularies, vocabId, form, metadata);
+    const newItem = leftover
+      ? { id: leftover.id, form: leftover.form, metadata: leftover.metadata || {} }
+      : { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     this._applyRawPatch((next, info, vocabs) => {
       if (replaceLinkId) {
@@ -577,7 +586,7 @@ export const vocabMutations = {
       const tv = vocabs[vocabId];
       if (!tv) return;
       if (!Array.isArray(tv.items)) tv.items = [];
-      tv.items.push({ ...newItem });
+      if (!leftover) tv.items.push({ ...newItem });
       if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
       tv.vocabLinks.push({
         id: linkId,
@@ -588,20 +597,29 @@ export const vocabMutations = {
     });
     return this._queueWrite(label, async () => {
       const ids = new Map();
-      const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
-      const itemId = createdId(createResult);
-      ids.set(newItem.id, itemId);
-      const members = tokens.map(settledId);
-      if (replaceLinkId) {
-        const results = await this._client.batched(async (b) => {
-          b.vocabLinks.delete(settledId(replaceLinkId));
-          b.vocabLinks.create(itemId, members, stamp);
-        });
-        ids.set(linkId, createdId(results[results.length - 1]));
-      } else {
-        const linkResult = await this._client.vocabLinks.create(itemId, members, stamp);
-        ids.set(linkId, createdId(linkResult));
+      let itemId = leftover?.id;
+      if (!leftover) {
+        itemId = createdId(await this._client.vocabItems.create(vocabId, form, metadataArg));
+        ids.set(newItem.id, itemId);
+        rememberLeftover(vocabId, form, metadata, itemId);
       }
+      const members = tokens.map(settledId);
+      try {
+        if (replaceLinkId) {
+          const results = await this._client.batched(async (b) => {
+            b.vocabLinks.delete(settledId(replaceLinkId));
+            b.vocabLinks.create(itemId, members, stamp);
+          });
+          ids.set(linkId, createdId(results[results.length - 1]));
+        } else {
+          const linkResult = await this._client.vocabLinks.create(itemId, members, stamp);
+          ids.set(linkId, createdId(linkResult));
+        }
+      } catch (err) {
+        if (!leftover) await this._takeBackLeftover(vocabId, itemId);
+        throw err;
+      }
+      forgetLeftover(itemId);
       this._settle(ids);
     });
   },
@@ -646,6 +664,7 @@ export const vocabMutations = {
         b.vocabLinks.delete(settledId(prior.id));
         b.vocabLinks.create(settledId(vocabItemId), tokens.map(settledId), stamp);
       });
+      forgetLeftover(settledId(vocabItemId));
       this._settle(new Map([[newLinkId, createdId(results[results.length - 1])]]));
     });
   },
@@ -794,7 +813,12 @@ export const vocabMutations = {
     const cachedType = isMorpheme ? newType : null;
     if (cachedType) creates.forEach((c) => (c.metadata = { ...c.metadata, morphType: cachedType }));
     const patchType = cachedType && !creates.length;
-    const newItem = { id: pendingId(), form, metadata: metadata || {} };
+    // A retry after a refused link links the entry the first try made,
+    // rather than a second one spelled the same (leftoverEntries.js).
+    const leftover = leftoverFor(this._vocabularies, vocabId, form, metadata);
+    const newItem = leftover
+      ? { id: leftover.id, form: leftover.form, metadata: leftover.metadata || {} }
+      : { id: pendingId(), form, metadata: metadata || {} };
     const linkId = pendingId();
     // "Create and link every ‹roa› in this text": the others that read the
     // same and have no link, in the same operation as the create.
@@ -815,7 +839,7 @@ export const vocabMutations = {
       const tv = vocabs[vocabId];
       if (tv) {
         if (!Array.isArray(tv.items)) tv.items = [];
-        tv.items.push({ ...newItem });
+        if (!leftover) tv.items.push({ ...newItem });
         if (!Array.isArray(tv.vocabLinks)) tv.vocabLinks = [];
         tv.vocabLinks.push({
           id: linkId,
@@ -835,13 +859,12 @@ export const vocabMutations = {
       const ids = new Map();
       const serverId = (id) => ids.get(id) || settledId(id);
       await this._sendMorphemes([...creates, ...others.creates], ids);
-      const createResult = await this._client.vocabItems.create(vocabId, form, metadataArg);
-      const newItemId = createdId(createResult);
-      ids.set(newItem.id, newItemId);
-      // An entry is made before anything can point at it, so a failure in the
-      // writes below used to leave it behind: the person tried again and the
-      // lexicon grew a homonym. Nothing else can have reached it yet, so it is
-      // taken back out on the way past.
+      let newItemId = leftover?.id;
+      if (!leftover) {
+        newItemId = createdId(await this._client.vocabItems.create(vocabId, form, metadataArg));
+        ids.set(newItem.id, newItemId);
+        rememberLeftover(vocabId, form, metadata, newItemId);
+      }
       try {
         const token = serverId(targetTokenId);
         if (priorLink || patchType) {
@@ -862,14 +885,26 @@ export const vocabMutations = {
         }
         await this._sendLinkMany(others, ids);
       } catch (err) {
-        try {
-          await this._client.vocabItems.delete(newItemId);
-        } catch (e) {
-          console.error('Could not remove the entry a failed link left behind:', e);
-        }
+        if (!leftover) await this._takeBackLeftover(vocabId, newItemId);
         throw err;
       }
+      forgetLeftover(newItemId);
       this._settle(ids);
     });
+  },
+
+  // A "+ Create" whose link was refused has left its new entry behind.
+  // Nothing but this edit can have reached it yet, so one who may delete
+  // entries (a maintainer of the vocabulary, or an admin) takes it back out.
+  // For anyone else, or when the delete fails too, it stays remembered and
+  // the retry links it (leftoverEntries.js).
+  async _takeBackLeftover(vocabId, itemId) {
+    if (!canManageVocabulary(this._vocabularies[vocabId], this._user)) return;
+    try {
+      await this._client.vocabItems.delete(itemId);
+      forgetLeftover(itemId);
+    } catch (e) {
+      console.error('Could not remove the entry a failed link left behind:', e);
+    }
   },
 };

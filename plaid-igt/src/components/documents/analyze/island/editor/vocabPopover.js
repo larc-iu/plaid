@@ -16,6 +16,7 @@ import {
 } from '@/domain/precedent';
 import { leavePrecedent, openPrecedent, precedentBase } from '@/domain/precedentCache';
 import { sameFormUnlinked, sameFormUnanalyzed } from '@/domain/linkEverywhere.js';
+import { leftoverFor } from '@/domain/leftoverEntries.js';
 import { numHtml } from './shared.js';
 import { keys } from '@/lib/keymap.js';
 
@@ -295,10 +296,22 @@ export const vocabPopover = {
     // spelled like an existing one. Preview the number it would get (existing
     // count + 1) and say so, since a duplicate is usually a mis-click on the
     // existing entry. Only ENTRIES count, since a new one is an entry.
+    // After a refused link, "+ Create" links the entry the first try made
+    // (leftoverEntries.js) rather than adding one, so that entry is not
+    // counted as another spelled alike.
+    const retryOf =
+      canCreate && effectiveForm
+        ? leftoverFor(
+            this.doc.vocabularies,
+            activeVocab.id,
+            effectiveForm,
+            isMwe ? { morphType: this._mweTypeFor(this._mweTargetIds()) } : {},
+          )
+        : null;
     const newFormDupes =
       canCreate && effectiveForm
         ? (activeVocab.items || []).filter(
-            (it) => it.form === effectiveForm && !it.metadata?.parent,
+            (it) => it.form === effectiveForm && !it.metadata?.parent && it.id !== retryOf?.id,
           ).length
         : 0;
     const newFormSub = newFormDupes >= 1 ? String(newFormDupes + 1) : null;
