@@ -232,7 +232,7 @@ describe('a value put back unsaved, on a page the reader leaves', () => {
     client.documents.get = async () => JSON.parse(JSON.stringify(before));
     const create = client.spans.create;
     let release;
-    client.spans.create = async (...args) => {
+    client.spans.create = async () => {
       client.spans.create = create;
       await new Promise((r) => (release = r));
       throw new Error('refused');
