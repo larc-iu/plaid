@@ -100,9 +100,21 @@ const TabsList = React.forwardRef(({ className, style, onScroll, ...props }, ref
   React.useEffect(() => {
     const list = inner.current;
     if (!list || typeof ResizeObserver === 'undefined') return undefined;
+    // The tabs too, not only the strip: once the strip is as wide as its box,
+    // a label that grows (a count going from 9 to 10) changes what overflows
+    // without changing the strip's own size.
     const observer = new ResizeObserver(measure);
-    observer.observe(list);
-    return () => observer.disconnect();
+    const watch = () => {
+      observer.observe(list);
+      for (const tab of list.children) observer.observe(tab);
+    };
+    watch();
+    const added = new MutationObserver(watch);
+    added.observe(list, { childList: true });
+    return () => {
+      added.disconnect();
+      observer.disconnect();
+    };
   }, [measure]);
 
   // Radix flips `data-state` on the triggers rather than re-rendering this, so
