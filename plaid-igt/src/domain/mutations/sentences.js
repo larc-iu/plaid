@@ -63,7 +63,8 @@ export const sentenceMutations = {
   // by the next: a later position inside a sentence an earlier one already
   // split lands in the new right half, which the local patch has by then.
   // Positions are taken in order and a position that no longer splits
-  // anything (a sentence already begins there) is passed over. Every new
+  // anything (a sentence already begins there, or it falls inside a word) is
+  // passed over, or refused when the caller is not quiet. Every new
   // sentence shows at once.
   async splitSentencesAt(positions, { quiet = true } = {}) {
     const sorted = [...new Set(positions)].sort((a, b) => a - b);
@@ -108,6 +109,13 @@ export const sentenceMutations = {
     }
     if (charPos === containing.begin) {
       if (!quiet) this.setError('Cannot split at the first character of a sentence');
+      return null;
+    }
+    // A word belongs to one sentence. A cut through it would split its
+    // morphemes and leave both halves with no form or gloss.
+    const words = this.layerInfo.primaryTokenLayer?.tokens || [];
+    if (words.some((w) => w.begin < charPos && charPos < w.end)) {
+      if (!quiet) this.setError('Cannot split a sentence inside a word');
       return null;
     }
     return containing;

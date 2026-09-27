@@ -780,6 +780,28 @@ describe('sentence boundary ops', () => {
     expect(await doc.splitSentencesAt([])).toBe(false);
   });
 
+  // A cut strictly inside a word would split the word's morphemes and leave
+  // both halves with no form or gloss. A word's own edges are fine.
+  it('splitSentence refuses a position inside a word', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ body: 'the cat' }) });
+    expect(await doc.splitSentence(5)).toBe(false);
+    expect(doc.error).toMatch(/inside a word/i);
+    expect(doc.client.calls.filter((c) => c.kind === 'tokens.split')).toHaveLength(0);
+    expect(doc.sentences).toHaveLength(1);
+  });
+
+  it('splitSentencesAt passes over a position inside a word and makes the rest', async () => {
+    const doc = makeDoc({ raw: buildRawDoc({ body: 'the cat' }) });
+    expect(await doc.splitSentencesAt([1, 3, 5])).toBe(true);
+    const splits = doc.client.calls.filter((c) => c.kind === 'tokens.split');
+    expect(splits.map((c) => c.args[1])).toEqual([3]);
+    expect(doc.sentences.map((s) => [s.begin, s.end])).toEqual([
+      [0, 3],
+      [3, 7],
+    ]);
+    expect(await doc.splitSentencesAt([5])).toBe(false);
+  });
+
   it('mergeSentence reparents the merged-away sentence spans onto prev', async () => {
     // Two sentences; a Translation annotation lives on the SECOND one. After
     // merging it into the first, the server reparents that span onto the
