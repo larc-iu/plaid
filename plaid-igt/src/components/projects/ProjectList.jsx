@@ -82,10 +82,13 @@ export const ProjectList = () => {
     {
       key: 'name',
       label: 'Project',
+      fill: true,
       sort: (p) => p.name?.toLowerCase() ?? '',
       cell: (p) => (
         <div className="min-w-0">
-          <div className="truncate font-medium">{p.name}</div>
+          <div className="truncate font-medium" title={p.name}>
+            {p.name}
+          </div>
           <div className="truncate text-xs text-muted-foreground">ID: {p.id}</div>
         </div>
       ),
@@ -95,6 +98,7 @@ export const ProjectList = () => {
       label: 'Docs',
       sort: (p) => p.documentCount ?? 0,
       align: 'right',
+      nowrap: true,
       cell: (p) => p.documentCount ?? 0,
     },
     {
@@ -104,6 +108,7 @@ export const ProjectList = () => {
       // when the comparator gave it -1.
       sort: (p) => wordCounts[p.id] ?? null,
       align: 'right',
+      nowrap: true,
       cell: (p) => <CountCell value={wordCounts[p.id]} loading={wordsLoading} />,
     },
     {
@@ -111,6 +116,7 @@ export const ProjectList = () => {
       label: 'Updated',
       sort: (p) => (p.lastModified ? new Date(p.lastModified).getTime() : null),
       align: 'right',
+      nowrap: true,
       cell: (p) => <TimeCell at={p.lastModified} />,
     },
   ];

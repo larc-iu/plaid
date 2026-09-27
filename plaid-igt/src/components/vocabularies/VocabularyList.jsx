@@ -111,10 +111,13 @@ export const VocabularyList = () => {
     {
       key: 'name',
       label: 'Vocabulary',
+      fill: true,
       sort: (v) => v.name?.toLowerCase() ?? '',
       cell: (v) => (
         <div className="min-w-0">
-          <div className="truncate font-medium">{v.name}</div>
+          <div className="truncate font-medium" title={v.name}>
+            {v.name}
+          </div>
         </div>
       ),
     },
@@ -125,6 +128,7 @@ export const VocabularyList = () => {
       // the way it did when the comparator gave it -1.
       sort: (v) => itemCounts[v.id] ?? null,
       align: 'right',
+      nowrap: true,
       cell: (v) => <CountCell value={itemCounts[v.id]} loading={countsLoading} />,
     },
     {

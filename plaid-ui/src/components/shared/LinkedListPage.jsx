@@ -41,8 +41,11 @@ export const TimeCell = ({ at }) =>
  * link fills it: that is what `columns` gives up in exchange for naming only
  * its content.
  *
- * A column is `{key, label, align, sort, cell, nowrap}`, where `cell(row)`
- * returns what goes inside the link.
+ * A column is `{key, label, align, sort, cell, nowrap, fill}`, where `cell(row)`
+ * returns what goes inside the link. The `fill` column (the name) takes the
+ * width the others leave and no more, so a `truncate` inside it cuts a long
+ * name there. Without it the column grows to the whole name and pushes the
+ * rest of the row out of sight.
  *
  * `className` is the page's outer wrapper, because the two shells differ:
  * plaid-ud's Outlet is already padded and plaid-igt's is not.
@@ -83,7 +86,7 @@ export const LinkedListPage = ({
     sort: column.sort,
     align: column.align,
     headerClassName: column.headerClassName,
-    className: 'p-0',
+    className: column.fill ? 'w-full max-w-0 p-0' : 'p-0',
     render: (row) => linked(row, column),
   }));
 
