@@ -124,9 +124,10 @@ export const AddProject = ({ client, homeId, joined, max, disabled = false, onPi
           <p className="px-1 py-1 text-xs text-muted-foreground">No other projects.</p>
         ) : (
           <>
-            {/* Above the field, where the list that opens below it never
-                covers it. Always in the page, so a screen reader hears each
-                refusal as it is written. */}
+            {/* Above the field, and kept until the next pick. The option
+                list, opened again for that pick, may lie over it, and never
+                the other way round. Always in the page, so a screen reader
+                hears each refusal as it is written. */}
             <p
               role="status"
               className={refused ? 'px-1 pb-1.5 text-xs text-destructive' : 'sr-only'}
