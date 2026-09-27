@@ -4,6 +4,7 @@ import traceback
 from plaid_client import (BaseService, TASKS, Param, ROLES, find_by_role,
                           stamp_inferred, is_protected, service_source)
 from plaid_client.service import progress_heartbeat
+from plaid_client.workflows.messages import setup_incomplete
 
 
 def prov_fragment(language):
@@ -18,16 +19,6 @@ def prov_fragment(language):
         service_source('stanza-parser'),
         detail={'model': f'stanza=={stanza.__version__}', 'language': language},
     )
-
-
-# What a request on a project whose setup is missing a piece says on screen.
-# The missing piece goes to the console only (see `_not_set_up`).
-NOT_SET_UP = "This project is not fully set up. A project maintainer can finish setup."
-
-
-def _not_set_up(detail):
-    print(f"Project setup incomplete: {detail}", flush=True)
-    return RuntimeError(NOT_SET_UP)
 
 
 # Stanza ships UD models for many languages; offer a common subset. (value, label)
@@ -420,7 +411,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         text_layers = full_document["text_layers"]
         text_layer = find_by_role(text_layers, ROLES.BASELINE)
         if not text_layer:
-            raise _not_set_up("no baseline-role text layer")
+            raise setup_incomplete("no baseline-role text layer")
         text_id = text_layer["text"]["id"]
         body = text_layer["text"]["body"]
         if not (body or "").strip():
@@ -435,7 +426,7 @@ def parse_document(pipeline_provider, client, document_id, language='en', overwr
         morpheme_layer = find_by_role(token_layers, ROLES.SYNTACTIC_WORD)
 
         if not (sentence_layer and word_layer and morpheme_layer):
-            raise _not_set_up("no sentence, word or syntactic-word token layer")
+            raise setup_incomplete("no sentence, word or syntactic-word token layer")
 
         span_layers = morpheme_layer.get("span_layers", [])
         form_layer = span_layer_by_ud_config(span_layers, "form", "Form")

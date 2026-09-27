@@ -16,6 +16,7 @@ import types
 import pytest
 from plaid_client import testing as servicetest
 from plaid_client.http import PlaidAPIError
+from plaid_client.workflows.messages import SETUP_INCOMPLETE
 
 SERVICES = pathlib.Path(__file__).resolve().parent.parent
 
@@ -382,8 +383,7 @@ def test_a_project_without_the_substrate_is_refused_once_and_named():
     service = _service(documents=[doc])
     helper = servicetest.run(service, REQUEST)
 
-    assert helper.errors == [
-        'Stanza Parser: This project is not fully set up. A project maintainer can finish setup.']
+    assert helper.errors == [SETUP_INCOMPLETE]
     assert service.client.writes == []
 
 
