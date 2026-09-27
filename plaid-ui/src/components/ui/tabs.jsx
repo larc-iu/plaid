@@ -96,11 +96,14 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => {
     };
   }, []);
 
+  // Start-aligned, never centred: a centred row that overflows spills past its
+  // START edge too, where no scroll position reaches, and the first tab was
+  // cut to "cuments".
   return (
     <TabsPrimitive.List
       ref={inner}
       className={cn(
-        'inline-flex h-9 max-w-full items-center justify-center gap-1 overflow-x-auto border-b text-muted-foreground',
+        'inline-flex h-9 max-w-full items-center justify-start gap-1 overflow-x-auto border-b text-muted-foreground',
         className,
       )}
       {...props}
