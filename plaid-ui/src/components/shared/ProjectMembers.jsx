@@ -12,12 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { DataTable } from './data-table';
 import { UserAvatar } from './UserAvatar';
 import { notifyError } from '../../lib/notify.js';
-import {
-  ROLE_RANK,
-  aclMemberIds,
-  roleOf,
-  setProjectRoleReporting,
-} from '../../domain/projectRoles.js';
+import { ROLE_RANK, aclMemberIds, roleOf, setProjectRole } from '../../domain/projectRoles.js';
 
 /**
  * Everyone explicitly granted a role on a project, what they may do, and whose
@@ -44,10 +39,22 @@ export const ProjectMembers = ({
 }) => {
   const [members, setMembers] = useState([]);
   const [membersLoading, setMembersLoading] = useState(true);
-  const [updatingUser, setUpdatingUser] = useState(null);
-  // { id, on } while a toggle is in flight, so the box shows the new state at
-  // once instead of snapping back until the project refreshes.
-  const [updatingReview, setUpdatingReview] = useState(null);
+  // Role and review changes show at once, before the server has them. Each map
+  // holds what a row was changed to (user id -> role, or -> reviewed) until
+  // the project, refetched, says the same. A refused change is taken out
+  // again. `sendingRole` is the rows whose role change is on its way: a second
+  // change to the same row waits for it, since each is a remove then an add.
+  const [shownRole, setShownRole] = useState(() => new Map());
+  const [shownReview, setShownReview] = useState(() => new Map());
+  const [sendingRole, setSendingRole] = useState(() => new Set());
+  // Review marks are one list in the project config. They are sent one at a
+  // time, and each write is worked out when its turn comes, from the project
+  // as it stands then and the marks still shown, so a refused one is not
+  // carried by the next.
+  const reviewTail = useRef(Promise.resolve());
+  const pendingReview = useRef(new Map());
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
   // Resolve ACL member ids to user objects (project-sized, so per-id GETs are
   // fine). Keyed on WHO is on the ACL, not on the project object: a refetch
@@ -86,20 +93,69 @@ export const ProjectMembers = ({
     };
   }, [aclKey, projectLoaded, client]);
 
-  const rows = members.map((m) => ({ ...m, role: roleOf(project, m.id) }));
+  // Drop what the refetched project now agrees with.
+  useEffect(() => {
+    const settled = (map, stored) => {
+      const next = new Map([...map].filter(([id, value]) => stored(id) !== value));
+      return next.size === map.size ? map : next;
+    };
+    setShownRole((m) => settled(m, (id) => roleOf(project, id)));
+    pendingReview.current = settled(pendingReview.current, (id) =>
+      readReview(project?.config).users.includes(id),
+    );
+    setShownReview(pendingReview.current);
+  }, [project]);
+
+  const withEntry = (map, key, value) => {
+    const next = new Map(map);
+    if (value === undefined) next.delete(key);
+    else next.set(key, value);
+    return next;
+  };
+
+  const rows = members.map((m) => ({
+    ...m,
+    role: shownRole.has(m.id) ? shownRole.get(m.id) : roleOf(project, m.id),
+  }));
+
+  // The refetch after a change that landed. Its failure is not the change's:
+  // the row already shows what the server holds.
+  const refetch = async () => {
+    try {
+      await onDataUpdate();
+    } catch (err) {
+      console.error('Error refreshing the project:', err);
+    }
+  };
 
   const setRole = async (userId, newRole) => {
-    setUpdatingUser(userId);
-    await setProjectRoleReporting({
-      client,
-      project,
-      projectId,
-      userId,
-      newRole,
-      currentUserId: currentUser?.id,
-      onDataUpdate,
-    });
-    setUpdatingUser(null);
+    if (userId === currentUser?.id || sendingRole.has(userId)) return;
+    setShownRole((m) => withEntry(m, userId, newRole));
+    setSendingRole((s) => new Set(s).add(userId));
+    try {
+      await setProjectRole({
+        client,
+        project,
+        projectId,
+        userId,
+        newRole,
+        currentUserId: currentUser?.id,
+        onDataUpdate: refetch,
+      });
+    } catch (err) {
+      console.error('Error updating role:', err);
+      setShownRole((m) => withEntry(m, userId, undefined));
+      notifyError(err, 'Failed to update permissions');
+      // A role change is a remove then an add, and the add may be the half
+      // that was refused.
+      await refetch();
+    } finally {
+      setSendingRole((s) => {
+        const next = new Set(s);
+        next.delete(userId);
+        return next;
+      });
+    }
   };
 
   // Whose work is reviewed (the cross-app `plaid.review` norm, provenance
@@ -114,19 +170,34 @@ export const ProjectMembers = ({
     );
   };
 
-  const setReviewed = async (userId, on) => {
-    try {
-      setUpdatingReview({ id: userId, on });
-      const next = withReviewedUser(project?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY], userId, on);
-      await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
-      await onDataUpdate();
-    } catch (err) {
-      console.error('Error updating review:', err);
-      notifyError('Failed to update review', 'Error');
-    } finally {
-      setUpdatingReview(null);
-    }
+  const showReview = (userId, on) => {
+    pendingReview.current = withEntry(pendingReview.current, userId, on);
+    setShownReview(pendingReview.current);
   };
+
+  const setReviewed = (userId, on) => {
+    showReview(userId, on);
+    const send = async () => {
+      // The stored list with every mark still shown over it.
+      let next = projectRef.current?.config?.[PLAID_NAMESPACE]?.[REVIEW_KEY];
+      for (const [id, mark] of pendingReview.current) next = withReviewedUser(next, id, mark);
+      try {
+        await client.projects.setConfig(projectId, PLAID_NAMESPACE, REVIEW_KEY, next);
+      } catch (err) {
+        console.error('Error updating review:', err);
+        showReview(userId, undefined);
+        notifyError(err, 'Failed to update review');
+        return;
+      }
+      await refetch();
+    };
+    reviewTail.current = reviewTail.current.then(send);
+  };
+
+  const reviewedShown = (m) =>
+    shownReview.has(m.id)
+      ? shownReview.get(m.id)
+      : isReviewed(project, m.id, { isAdmin: m.isAdmin });
 
   const columns = [
     {
@@ -142,8 +213,8 @@ export const ProjectMembers = ({
             avatarHash={m.avatarHash}
             className="h-7 w-7"
           />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 [overflow-wrap:anywhere]">
+            <div className="flex flex-wrap items-center gap-x-2">
               <span className="font-medium">{m.displayName}</span>
               {m.isAdmin && <Badge variant="secondary">Admin</Badge>}
             </div>
@@ -161,9 +232,9 @@ export const ProjectMembers = ({
           <Select
             value={m.role}
             onValueChange={(v) => setRole(m.id, v)}
-            disabled={m.id === currentUser?.id || updatingUser === m.id}
+            disabled={m.id === currentUser?.id || sendingRole.has(m.id)}
           >
-            <SelectTrigger className="h-8 w-40" aria-label={`${m.displayName} project role`}>
+            <SelectTrigger className="h-8 w-36" aria-label={`${m.displayName} project role`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -195,12 +266,8 @@ export const ProjectMembers = ({
           type="checkbox"
           className="h-4 w-4 cursor-pointer accent-primary disabled:cursor-not-allowed"
           aria-label={`Review ${m.displayName}'s work`}
-          checked={
-            updatingReview?.id === m.id
-              ? updatingReview.on
-              : isReviewed(project, m.id, { isAdmin: m.isAdmin })
-          }
-          disabled={updatingReview?.id === m.id || reviewedByRole(m)}
+          checked={reviewedShown(m)}
+          disabled={reviewedByRole(m)}
           title={
             reviewedByRole(m)
               ? `Every ${projectRole(project, m.id, { isAdmin: m.isAdmin })} is reviewed in this project`

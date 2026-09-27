@@ -153,6 +153,116 @@ describe('ProjectMembers', () => {
     await unmount();
   });
 
+  // Pick a role in a row's Select, the way the keyboard does.
+  const pickRole = async (step, container, name, label) => {
+    const trigger = container.querySelector(`button[aria-label="${name} project role"]`);
+    await step(async () => {
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const option = [...document.querySelectorAll('[role="option"]')].find((o) =>
+      o.textContent.trim().startsWith(label),
+    );
+    await step(async () => {
+      option.focus();
+      option.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  };
+
+  it('shows a new role before the server has it, and takes it back with the reason when refused', async () => {
+    const client = makeClient();
+    let refuse;
+    client.projects.addMaintainer = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          refuse = () => reject(Object.assign(new Error('HTTP 403 Forbidden'), { status: 403 }));
+        }),
+    );
+    const onDataUpdate = vi.fn(async () => {});
+    const { container, step, unmount } = await mount({ client, onDataUpdate });
+    await pickRole(step, container, 'Ada', 'Maintainer');
+    const trigger = container.querySelector('button[aria-label="Ada project role"]');
+    expect(trigger.textContent).toContain('Maintainer');
+    await step(async () => {
+      refuse();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(trigger.textContent).toContain('Writer');
+    expect(toast.error).toHaveBeenCalledWith('Failed to update permissions', {
+      description: "You don't have permission to do that.",
+    });
+    // The remove half may have landed: the project is read again.
+    expect(onDataUpdate).toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('keeps a review mark that landed when the refetch after it fails, and says nothing', async () => {
+    const onDataUpdate = vi.fn(async () => {
+      throw new Error('Network error: Failed to fetch');
+    });
+    const { container, step, unmount } = await mount({ onDataUpdate });
+    const box = container.querySelector('input[aria-label="Review Ada\'s work"]');
+    await step(async () => {
+      box.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(box.checked).toBe(true);
+    expect(toast.error).not.toHaveBeenCalled();
+    await unmount();
+  });
+
+  it('shows a review mark at once, and takes it back with the reason when refused', async () => {
+    const client = makeClient();
+    let refuse;
+    client.projects.setConfig = vi.fn(
+      () => new Promise((_, reject) => (refuse = () => reject(new Error('HTTP 500 boom')))),
+    );
+    const { container, step, unmount } = await mount({ client });
+    const box = container.querySelector('input[aria-label="Review Ada\'s work"]');
+    await step(async () => {
+      box.click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(box.checked).toBe(true);
+    await step(async () => {
+      refuse();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(box.checked).toBe(false);
+    expect(toast.error).toHaveBeenCalledWith('Failed to update review', {
+      description: 'The server hit an unexpected error. Try again in a moment.',
+    });
+    await unmount();
+  });
+
+  it('sends each review mark with the ones still shown, and not one that was refused', async () => {
+    const project = { ...PROJECT, writers: ['ada@example.com', 'bo@example.com'] };
+    USERS['bo@example.com'] = { id: 'bo@example.com', displayName: 'Bo', isAdmin: false };
+    const client = makeClient();
+    const sent = [];
+    let first = true;
+    client.projects.setConfig = vi.fn(async (_p, _ns, _key, value) => {
+      sent.push(value);
+      if (first) {
+        first = false;
+        throw new Error('HTTP 500 boom');
+      }
+    });
+    const { container, step, unmount } = await mount({ client, project });
+    await step(async () => {
+      container.querySelector('input[aria-label="Review Ada\'s work"]').click();
+      container.querySelector('input[aria-label="Review Bo\'s work"]').click();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(sent).toHaveLength(2);
+    expect(JSON.stringify(sent[0])).toContain('ada@example.com');
+    expect(JSON.stringify(sent[1])).toContain('bo@example.com');
+    expect(JSON.stringify(sent[1])).not.toContain('ada@example.com');
+    await unmount();
+  });
+
   it('cannot unmark someone whose whole role is reviewed', async () => {
     const project = { ...PROJECT, config: { plaid: { review: { roles: ['writer'] } } } };
     const { container, unmount } = await mount({ project });
