@@ -335,7 +335,7 @@ export const AdminServer = ({ client }) => {
           rowKey={(b) => `${b.kind}:${b.ip}:${b.userId || ''}`}
           id="admin-rate-limits"
           defaultSort={{ key: 'failures', dir: 'desc' }}
-          noun="address"
+          noun={['address', 'addresses']}
           empty="Nothing recorded in the last 15 minutes."
           actions={
             buckets.length > 0 && (

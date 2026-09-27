@@ -141,6 +141,8 @@ export const AuditFeed = ({
           {
             key: 'user',
             label: 'Person',
+            // A name reads as one unit: the Change and Where columns wrap first.
+            className: 'whitespace-nowrap',
             sort: (e) => (e.user?.displayName || e.user?.id || '').toLowerCase(),
             render: (e) => e.user?.displayName || e.user?.id || '—',
           },

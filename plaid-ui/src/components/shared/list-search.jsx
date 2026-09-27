@@ -12,6 +12,7 @@ import {
 import { Button } from '../ui/button.jsx';
 import { Input } from '../ui/input.jsx';
 import { cn } from '../../lib/utils.js';
+import { plural } from '../../lib/plural.js';
 
 // The chrome every browsable list in the app wears: one search box, one count,
 // one pager. Kept together so that a list of documents, of lexicon entries and
@@ -53,16 +54,8 @@ export const SearchInput = React.forwardRef(
 );
 SearchInput.displayName = 'SearchInput';
 
-// English enough for the nouns lists here use: entry/entries, item/items, and
-// the irregulars a list has actually needed.
-const IRREGULAR = { person: 'people' };
-
-const plural = (n, noun) =>
-  n === 1
-    ? noun
-    : (IRREGULAR[noun] ?? (/[^aeiou]y$/.test(noun) ? `${noun.slice(0, -1)}ies` : `${noun}s`));
-
 // How much of the list a search is hiding. Sits beside the search box.
+// `noun` is a singular, or a [singular, plural] pair (see lib/plural.js).
 export const ListCount = ({ shown, total, noun = 'item', className }) => (
   <span className={cn('whitespace-nowrap text-xs text-muted-foreground', className)}>
     {shown === total

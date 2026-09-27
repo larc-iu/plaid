@@ -119,7 +119,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
               avatarHash={row.user.avatarHash}
               className="h-6 w-6"
             />
-            <span>{nameOf(row)}</span>
+            <span className="whitespace-nowrap">{nameOf(row)}</span>
           </div>
         ) : (
           <span className="text-muted-foreground">Before accounts were recorded</span>
@@ -185,7 +185,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
             avatarHash={m.avatarHash}
             className="h-6 w-6"
           />
-          <span>{m.displayName || m.id}</span>
+          <span className="whitespace-nowrap">{m.displayName || m.id}</span>
         </div>
       ),
     },
@@ -227,7 +227,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
           placeholder: 'Search people…',
           match: (row, q) => textIncludes(nameOf(row), q),
         }}
-        noun="person"
+        noun={['person', 'people']}
         empty="Nothing in this window."
         loading={loading}
       />
@@ -245,7 +245,7 @@ export const ActivityPanel = ({ client, projectId, roster, projectHref, document
             placeholder: 'Search people…',
             match: (m, q) => textIncludes(m.displayName || m.id, q),
           }}
-          noun="person"
+          noun={['person', 'people']}
         />
       )}
 

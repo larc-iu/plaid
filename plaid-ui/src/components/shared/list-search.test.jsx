@@ -28,9 +28,13 @@ describe('ListCount', () => {
     expect(await text({ shown: 3, total: 3, noun: 'vocabulary' })).toBe('3 vocabularies');
   });
 
-  it('knows the irregulars a list has needed', async () => {
-    expect(await text({ shown: 7, total: 7, noun: 'person' })).toBe('7 people');
-    expect(await text({ shown: 1, total: 1, noun: 'person' })).toBe('1 person');
+  it('takes an irregular plural from the pair the caller gives', async () => {
+    const person = ['person', 'people'];
+    expect(await text({ shown: 7, total: 7, noun: person })).toBe('7 people');
+    expect(await text({ shown: 1, total: 1, noun: person })).toBe('1 person');
+    expect(await text({ shown: 2, total: 3, noun: ['address', 'addresses'] })).toBe(
+      '2 of 3 addresses',
+    );
   });
 
   it('does not invent irregulars it was not taught', async () => {

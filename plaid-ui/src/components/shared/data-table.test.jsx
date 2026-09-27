@@ -29,7 +29,7 @@ const table = (props = {}) =>
         columns={COLUMNS}
         rowKey={(r) => r.id}
         id="test-people"
-        noun="person"
+        noun={['person', 'people']}
         {...props}
       />
     </MemoryRouter>,
@@ -174,6 +174,30 @@ describe('DataTable', () => {
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
     expect(container.textContent).toContain('No people match “zzz”.');
+    await unmount();
+  });
+
+  // Built from `noun` when the caller gives no line of its own. It used to
+  // append an s, which read "No vocabularys match." and "No persons match.".
+  it.each([
+    [['person', 'people'], 'No people match.'],
+    ['vocabulary', 'No vocabularies match.'],
+    [['address', 'addresses'], 'No addresses match.'],
+  ])('says no %s match in the plural', async (noun, line) => {
+    const { container, step, unmount } = await table({
+      noun,
+      search: { match: (r, q) => r.name.toLowerCase().includes(q) },
+    });
+    const box = container.querySelector('input');
+    const setValue = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    ).set;
+    await step(() => {
+      setValue.call(box, 'zzz');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.textContent).toContain(line);
     await unmount();
   });
 

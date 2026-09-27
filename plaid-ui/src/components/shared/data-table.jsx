@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { plural } from '../../lib/plural.js';
 import { collationKey } from '../../domain/collation.js';
 import { Button } from '../ui/button.jsx';
 import { SearchInput, ListCount, ListPager, SortHeader } from './list-search.jsx';
@@ -28,6 +29,10 @@ import { listPrefKey, useStickySort } from '../../hooks/useStickyState.js';
 // `.toLowerCase().includes(q)`: `e` plus a combining dot below and the single
 // character are different strings, and which one a row carries depends on the
 // keyboard, the export or the paste it came from.
+//
+// `noun` names a row in the count and in "No ... match.": a singular, or a
+// [singular, plural] pair for an irregular one ('person' alone would read
+// "persons").
 //
 // `expand(row)` makes rows openable: it returns what to draw underneath one,
 // in a full-width cell, and a chevron column appears in front. Use it when a
@@ -156,7 +161,7 @@ export const DataTable = ({
             ? empty
             : typeof noMatch === 'function'
               ? noMatch(query.trim())
-              : noMatch || `No ${noun}s match.`}
+              : noMatch || `No ${plural(2, noun)} match.`}
         </p>
       ) : (
         <div className="overflow-x-auto">
