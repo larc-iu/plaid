@@ -20,7 +20,7 @@ const FILES = {
 export const FRAME_LANGUAGES = Object.freeze({
   en: { name: 'English', rolesets: 8733 },
   zh: { name: 'Chinese', rolesets: 16891 },
-  ar: { name: 'Arabic', rolesets: 10073 },
+  ar: { name: 'Arabic', rolesets: 10041 },
   pt: { name: 'Portuguese', rolesets: 1410 },
 });
 

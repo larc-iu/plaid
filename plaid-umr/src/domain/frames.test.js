@@ -7,7 +7,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { FRAME_LANGUAGES, argSummary, argsOf, baseTag, framesFor } from './lexicon.js';
+import { FRAME_LANGUAGES, argSummary, argsOf, baseTag, framesFor, sensesFor } from './lexicon.js';
+import { repair } from '../data/frames/fix-arabic.mjs';
 
 const FILE = {
   en: 'english.json',
@@ -60,6 +61,99 @@ describe('the bundled frame files', () => {
     const pt = read(FILE.pt);
     expect(argsOf(pt, 'abandonar-01').length).toBeGreaterThan(0);
     expect(argSummary(pt['abandonar-01'])).not.toMatch(/object Object/);
+  });
+});
+
+// Upstream keyed 1382 Arabic rolesets with Latin letters for أ إ آ ؤ ذ ء
+// (`تXكير-01`) and 106 with a doubled hyphen where a vowel class was lost
+// (`نزح--01`), so no typed word was offered them. fix-arabic.mjs repairs them.
+describe('the Arabic frame file', () => {
+  const arabic = read(FILE.ar);
+  const renames = read('arabic-renames.json');
+
+  it('offers a repaired roleset for its word', () => {
+    const ids = (word) => sensesFor(arabic, word).map((s) => s.id);
+    expect(ids('\u062a\u0630\u0643\u064a\u0631')).toContain('\u062a\u0630\u0643\u064a\u0631-01'); // تذكير
+    expect(ids('\u0646\u0632\u062d')).toEqual(['\u0646\u0632\u062d-01', '\u0646\u0632\u062d-02']); // نزح
+    expect(ids('\u0645\u0624\u062f\u064a')).toContain('\u0645\u0624\u062f\u064a-02'); // مؤدي
+    expect(ids('\u0627\u0633\u062a\u0647\u0632\u0627\u0621')).toContain(
+      '\u0627\u0633\u062a\u0647\u0632\u0627\u0621-01', // استهزاء
+    );
+  });
+
+  it('keeps Latin letters only in the six ids that spell English words', () => {
+    const latin = Object.keys(arabic).filter((id) => /[A-Za-z]/.test(id));
+    expect(latin).toHaveLength(6);
+    latin.forEach((id) => expect(id).toMatch(/[ce]/));
+  });
+
+  // Each of these is a second verb of its root (أثر--01 beside أثر-01), so
+  // taking the hyphen off would take the other's id.
+  it('keeps a doubled hyphen only where the plain id is another roleset', () => {
+    const doubled = Object.keys(arabic).filter((id) => id.includes('--'));
+    expect(doubled).toHaveLength(22);
+    doubled.forEach((id) => {
+      const plain = id.replace('--', '-');
+      expect(arabic[plain]).toBeDefined();
+      expect(arabic[plain]).not.toEqual(arabic[id]);
+    });
+  });
+
+  it('records every changed id, and each points at a roleset', () => {
+    expect(Object.keys(renames)).toHaveLength(1461);
+    Object.entries(renames).forEach(([old, id]) => {
+      expect(arabic[old]).toBeUndefined();
+      expect(arabic[id]).toBeDefined();
+    });
+  });
+
+  it('changes nothing when run again on its own output', () => {
+    const again = repair(arabic);
+    expect(again.renames).toEqual({});
+    expect(again.frames).toEqual(arabic);
+  });
+
+  it('merges a repaired id into an identical roleset and leaves a different one', () => {
+    const out = repair({
+      'Oثر-01': { ARG0: 'a' },
+      'Oثر--01': { ARG0: 'b' },
+      'Oثر--02': { ARG0: 'c' },
+      'قر-01': { ARG0: 'x' },
+      'قر--01': { ARG0: 'x' },
+      'دeفeند-01': { ARG0: 'd' },
+    });
+    expect(out.frames).toEqual({
+      'أثر-01': { ARG0: 'a' },
+      'أثر--01': { ARG0: 'b' },
+      'أثر-02': { ARG0: 'c' },
+      'قر-01': { ARG0: 'x' },
+      'دeفeند-01': { ARG0: 'd' },
+    });
+    expect(out.renames).toEqual({
+      'Oثر-01': 'أثر-01',
+      'Oثر--01': 'أثر--01',
+      'Oثر--02': 'أثر-02',
+      'قر--01': 'قر-01',
+    });
+    expect(out.leftLatin).toEqual(['دeفeند-01']);
+    expect(out.leftTaken).toEqual(['Oثر--01']);
+  });
+
+  // Not in today's file, but a later upstream may key one roleset both ways.
+  it('never takes the id of a roleset that already had it', () => {
+    const out = repair({
+      'Oفك-01': { ARG0: 'new' },
+      'أفك-01': { ARG0: 'old' },
+      'Oمن-01': { ARG0: 'same' },
+      'أمن-01': { ARG0: 'same' },
+    });
+    expect(out.frames).toEqual({
+      'Oفك-01': { ARG0: 'new' },
+      'أفك-01': { ARG0: 'old' },
+      'أمن-01': { ARG0: 'same' },
+    });
+    expect(out.renames).toEqual({ 'Oمن-01': 'أمن-01' });
+    expect(out.leftTaken).toEqual(['Oفك-01']);
   });
 });
 
