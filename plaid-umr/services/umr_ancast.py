@@ -49,8 +49,8 @@ from typing import Any, Dict, List, Optional
 from plaid_client import BaseService, Param, TASKS
 from plaid_client.service import check_unchanged
 from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, group_of, penman_nodes,
-                                        read_document, resolve_layers, serialize_penman,
-                                        tree_edges)
+                                        penman_of, read_document, resolve_layers,
+                                        serialize_penman, tree_edges)
 
 DEFAULT_SERVICE_ID = 'umr-ancast'
 
@@ -259,6 +259,29 @@ def read_umr(raw):
 def render_umr(raw) -> str:
     """One document, from Plaid's storage model to `.umr` text."""
     return read_umr(raw)[1]
+
+
+def sentence_graph(document, index: int) -> str:
+    """Sentence ``index``'s graph as PENMAN, exactly as the app's
+    ``UmrDocument.penmanOf`` has it: the stored graph, or the text of one the
+    import could not read. What a report row records of each side, so the
+    Compare tab can tell a sentence edited since the scoring from one that was
+    not."""
+    if not 1 <= index <= len(document.sentences):
+        return ''
+    sentence = document.sentences[index - 1]
+    if sentence.nodes:
+        return penman_of(document, sentence)
+    return sentence.raw_graph if isinstance(sentence.raw_graph, str) else ''
+
+
+def with_scored_graphs(sentences, this_graph, other_graph):
+    """Each row with the two graphs it scored, ``thisGraph`` and
+    ``otherGraph``. A report is read beside the live documents, and the
+    version cannot say which sentences moved: writing the report is itself an
+    edit of this document."""
+    return [{**row, 'thisGraph': sentence_graph(this_graph, row['index']),
+             'otherGraph': sentence_graph(other_graph, row['index'])} for row in sentences]
 
 
 def words_of(document) -> List[List[str]]:
@@ -693,6 +716,7 @@ class UmrAncastService(BaseService):
 
         progress.report(ScoreProgress.SCORE, 0.0, f'Scoring against {other_name}…')
         scores, sentences = score_umr(this_text, other_text, scope)
+        sentences = with_scored_graphs(sentences, this_graph, other_graph)
         skipped = len([s for s in sentences if s['skipped']])
         scored = len(sentences) - skipped
 

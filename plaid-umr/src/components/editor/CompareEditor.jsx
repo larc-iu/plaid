@@ -169,6 +169,8 @@ export const CompareEditor = () => {
                 left={doc.penmanOf(sentence.index)}
                 right={other ? other.penmanOf(sentence.index) : null}
                 otherName={report.against?.name || 'the other document'}
+                thisHref={annotateHref(projectId, documentId)}
+                otherHref={report.against?.id ? annotateHref(projectId, report.against.id) : null}
               />
             ))}
           </div>
@@ -178,6 +180,20 @@ export const CompareEditor = () => {
   );
 };
 
+// The Annotate tab of a document, opened on one sentence and, given a
+// variable, on that node.
+const annotateHref = (projectId, documentId) => (index, variable) => {
+  const params = new URLSearchParams({ sent: String(index) });
+  if (variable) params.set('var', variable);
+  return `/projects/${projectId}/documents/${documentId}/annotate?${params}`;
+};
+
+// Whether either side's graph is not the one the report scored: an edit since
+// the comparison. The report records the two graphs it scored, since the
+// document's version cannot say which sentences moved.
+const changedSince = (row, left, right) =>
+  !!row && (row.thisGraph !== left || (right != null && row.otherGraph !== right));
+
 const formatWhen = (iso) => {
   const d = iso ? new Date(iso) : null;
   return d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : 'undated';
@@ -186,8 +202,8 @@ const formatWhen = (iso) => {
 // One sentence: its scores, and the two graphs side by side. On each side
 // the variables of the nodes that disagree are marked, and the pairs are
 // listed under them, the ones whose concepts differ first and with both
-// concepts.
-function SentenceComparison({ sentence, row, left, right, otherName }) {
+// concepts. The sentence number and each marked variable open Annotate on it.
+function SentenceComparison({ sentence, row, left, right, otherName, thisHref, otherHref }) {
   const { mine, theirs } = sentenceMarks(row);
   const pairs = row?.matches || [];
   const differ = pairs.filter(conceptsDiffer);
@@ -195,7 +211,13 @@ function SentenceComparison({ sentence, row, left, right, otherName }) {
   return (
     <section className="rounded-md border" data-compare-sentence={sentence.index}>
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b px-4 py-2">
-        <span className="font-semibold tabular-nums">{sentence.index}</span>
+        <Link
+          className="font-semibold tabular-nums underline-offset-2 hover:underline"
+          to={thisHref(sentence.index)}
+          data-sentence-link
+        >
+          {sentence.index}
+        </Link>
         <span className="min-w-0 flex-1 truncate text-sm" dir="auto">
           {sentence.text}
         </span>
@@ -210,13 +232,24 @@ function SentenceComparison({ sentence, row, left, right, otherName }) {
         ) : (
           <span className="text-xs text-muted-foreground">Not in the report</span>
         )}
+        {changedSince(row, left, right) && (
+          <span className="text-xs text-warning-foreground" data-changed-since>
+            Changed since this comparison.
+          </span>
+        )}
       </header>
       <div className="grid gap-4 p-4 md:grid-cols-2">
-        <GraphColumn title="This document" text={left} marks={mine} />
+        <GraphColumn
+          title="This document"
+          text={left}
+          marks={mine}
+          hrefFor={(v) => thisHref(sentence.index, v)}
+        />
         <GraphColumn
           title={otherName}
           text={right}
           marks={theirs}
+          hrefFor={otherHref ? (v) => otherHref(sentence.index, v) : null}
           placeholder={right == null ? 'Loading…' : undefined}
         />
       </div>
@@ -268,7 +301,7 @@ function Pair({ match, withConcepts = false }) {
   );
 }
 
-function GraphColumn({ title, text, marks, placeholder }) {
+function GraphColumn({ title, text, marks, hrefFor, placeholder }) {
   const segments = markVariables(text || '', marks);
   return (
     <div className="min-w-0">
@@ -278,7 +311,13 @@ function GraphColumn({ title, text, marks, placeholder }) {
           segments.map((seg, i) =>
             seg.mark ? (
               <mark key={i} className={MARK_CLASS[seg.mark]} data-mark={seg.mark}>
-                {seg.text}
+                {hrefFor ? (
+                  <Link className="underline-offset-2 hover:underline" to={hrefFor(seg.text)}>
+                    {seg.text}
+                  </Link>
+                ) : (
+                  seg.text
+                )}
               </mark>
             ) : (
               <span key={i}>{seg.text}</span>

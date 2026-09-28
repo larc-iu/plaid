@@ -462,7 +462,13 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert sentence['skipped'] is None
     assert sentence['at'] == report['at']
     assert set(sentence) == {'index', 'at', 'concept', 'labeled', 'unlabeled', 'weighted',
-                             'smatch', 'matches', 'unmatched', 'unmatchedOther', 'skipped'}
+                             'smatch', 'matches', 'unmatched', 'unmatchedOther', 'skipped',
+                             'thisGraph', 'otherGraph'}
+    # The two graphs it scored, as the app's text mode prints them, so the tab
+    # can tell a sentence edited since from one that was not.
+    assert sentence['thisGraph'].startswith('(s1b / bark-01')
+    assert '(s1d / dog)' in sentence['thisGraph']
+    assert '(s1d / cat)' in sentence['otherGraph']
     # bark-01 is in both, and `dog` and `cat` are each its :ARG0, so the
     # metric pairs them on structure rather than leaving two nodes unmatched.
     # The report says what the pair is: two different concepts. The other
