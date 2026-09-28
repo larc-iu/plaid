@@ -1716,6 +1716,9 @@ describe('SentenceBlock leaving a sentence', () => {
     expect(goToSentence).toHaveBeenLastCalledWith(4, 1);
     await r.step(() => press(leave, 'PageUp'));
     expect(goToSentence).toHaveBeenLastCalledWith(4, -1);
+    // A letter, as Keyboard settings would allow it: the pair never fires
+    // from a text box.
+    expect(keys.check('canvas.nextSentence', 'j')).toBeNull();
     await r.step(() => keys.setOverrides({ 'canvas.nextSentence': ['j'] }));
     await r.step(() => press(leave, 'j'));
     expect(goToSentence).toHaveBeenLastCalledWith(4, 1);

@@ -172,6 +172,8 @@ export const KEY_ACTIONS = [
     group: 'canvas',
     label: 'Next sentence',
     keys: ['PageDown'],
+    // Never from a text box (SentenceBlock), so a letter may take it.
+    outsideText: true,
   },
   {
     id: 'canvas.previousSentence',
@@ -179,6 +181,8 @@ export const KEY_ACTIONS = [
     group: 'canvas',
     label: 'Previous sentence',
     keys: ['PageUp'],
+    // Never from a text box (SentenceBlock), so a letter may take it.
+    outsideText: true,
   },
   {
     id: 'canvas.newRoot',
