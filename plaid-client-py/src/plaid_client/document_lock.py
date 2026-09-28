@@ -9,8 +9,9 @@ then writes, so for most of its run it holds nothing. The lock lapses in
 silence, a person's edit lands between the read the work was planned from and
 the write about to go out, and the write clobbers it.
 
-A ``locked()`` block therefore renews on a timer of its own. The renewal is a
-plain acquire: the server refreshes a lock whose holder asks for it again.
+A ``locked()`` block therefore renews on a timer of its own. The renewal is an
+acquire that names the holder's ``lock_id``: the server refreshes the lock that
+id holds, and refuses one somebody else holds (the same user included).
 
 The beat is unconditional rather than "only when no write has gone out
 recently". The request layer knows the method of a call but not which document
@@ -162,10 +163,12 @@ class DocumentLock:
     earlier, between steps of work that has not written anything yet.
     """
 
-    __slots__ = ('document_id', '_keeper')
+    __slots__ = ('document_id', 'lock_id', '_keeper')
 
-    def __init__(self, document_id, keeper=None):
+    def __init__(self, document_id, keeper=None, lock_id=None):
         self.document_id = document_id
+        #: The holder id the acquire answered with.
+        self.lock_id = lock_id
         self._keeper = keeper
 
     @property

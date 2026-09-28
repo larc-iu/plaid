@@ -169,8 +169,8 @@ test('an out-of-band signal never joins the operation', async () => {
   const id = client.beginOperation('Parse the document');
 
   await client.documents.acquireLock('D1');   // taking the lock
-  await client.documents.acquireLock('D1');   // the keep-alive beat
-  await client.documents.releaseLock('D1');
+  await client.documents.renewLock('D1', 'L1'); // the keep-alive beat
+  await client.documents.releaseLock('D1', 'L1');
   await client.messages.cancelServiceRequest('P1', 'R1');
   await reportRequestEvent(client, 'P1', 'R1', { status: 'progress' });
   await client.admin.backup();

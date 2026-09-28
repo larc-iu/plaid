@@ -177,8 +177,8 @@ def _client(monkeypatch, keeper_cls=None):
     class _Session:
         def request(self, **kw):
             sent.append((kw.get('method'), kw.get('url', '')))
-            if kw.get('url', '').endswith('/lock'):
-                return _Resp({'user-id': 'me', 'expires-at': 0})
+            if '/lock' in kw.get('url', ''):
+                return _Resp({'lock-id': 'L1', 'user-id': 'me', 'expires-at': 0})
             return _Resp({})
 
         def close(self):
@@ -196,6 +196,7 @@ class _ManualKeeper:
     made = []
 
     def __init__(self, refresh, document_id, ttl_s, *, on_lost=None, **kwargs):
+        self.refresh = refresh
         self.document_id = document_id
         self.ttl_s = ttl_s
         self._on_lost = on_lost
@@ -228,7 +229,82 @@ def test_a_block_renews_while_it_runs_and_stops_renewing_on_the_way_out(monkeypa
     assert keeper.stopped is True
     assert keeper.document_id == 'd1'
     assert sent == [('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock'),
-                    ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock')]
+                    ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')]
+
+
+def test_the_block_renews_and_releases_with_the_holder_id_the_acquire_named(monkeypatch):
+    client, sent = _client(monkeypatch, _ManualKeeper)
+    with client.documents.locked('d1') as lock:
+        assert lock.lock_id == 'L1'
+        _ManualKeeper.made[0].refresh('d1')
+    assert sent == [('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock'),
+                    ('POST', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1'),
+                    ('DELETE', 'http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1')]
+
+
+class _PerHolderCore:
+    """plaid-core's lock rule, per holder: an acquire without an id is a new
+    holder and is refused while anyone holds the document, and only the
+    holder's id renews or releases it."""
+
+    def __init__(self):
+        self.holder = None
+        self.minted = 0
+
+    def request(self, **kw):
+        from urllib.parse import parse_qs, urlparse
+        url = urlparse(kw.get('url', ''))
+        lock_id = parse_qs(url.query).get('lock-id', [None])[0]
+        method = kw.get('method')
+        if method == 'POST':
+            if self.holder is not None and self.holder != lock_id:
+                return _Denied423()
+            if lock_id is None:
+                self.minted += 1
+                lock_id = f'L{self.minted}'
+            self.holder = lock_id
+            return _Resp({'lock-id': lock_id, 'user-id': 'me', 'expires-at': 0})
+        if method == 'DELETE':
+            if self.holder == lock_id:
+                self.holder = None
+            return _Resp({})
+        return _Resp({})
+
+    def close(self):
+        pass
+
+
+class _Denied423:
+    ok = False
+    status_code = 423
+    headers = {'content-type': 'application/json'}
+    text = '{}'
+    reason = 'Locked'
+
+    def json(self):
+        return {'error': 'Document is locked', 'user-id': 'me'}
+
+
+def test_a_second_block_of_the_same_user_is_refused_and_cannot_release_the_first(monkeypatch):
+    # Two approvals by one person on one document at once. Each is its own
+    # holder, so the second gets the 423 instead of sharing the lock, and its
+    # way out does not release the lock from under the first.
+    monkeypatch.setattr('plaid_client.client.LockKeeper', _ManualKeeper)
+    core = _PerHolderCore()
+    first = PlaidClient('http://plaid.internal:8085', 'tok')
+    second = PlaidClient('http://plaid.internal:8085', 'tok')
+    first.session = core
+    second.session = core
+    with first.documents.locked('d1') as held:
+        with pytest.raises(PlaidAPIError) as caught:
+            with second.documents.locked('d1'):
+                pytest.fail('the second block ran')
+        assert caught.value.status == 423
+        assert core.holder == held.lock_id
+        # The first's beat still renews it.
+        _ManualKeeper.made[0].refresh('d1')
+        assert core.holder == held.lock_id
+    assert core.holder is None
 
 
 def test_a_lost_lock_stops_the_next_write(monkeypatch):

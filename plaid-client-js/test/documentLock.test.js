@@ -153,6 +153,8 @@ test("a 423 loses the lock at once", async () => {
  * A real client whose fetch is stubbed. `lockReplies` is consulted per POST to
  * the lock route; anything else answers 200 with an empty object.
  */
+const isLock = (url) => new URL(url).pathname.endsWith("/lock");
+
 function stubbedClient(lockReplies) {
   const client = new PlaidClient("http://plaid.internal:8085", "tok");
   const sent = [];
@@ -172,7 +174,7 @@ function stubbedClient(lockReplies) {
       json: async () => body,
       text: async () => "{}",
     });
-    if (String(url).endsWith("/lock") && method === "POST") {
+    if (isLock(url) && method === "POST") {
       const reply = lockReplies[Math.min(locks++, lockReplies.length - 1)];
       if (reply === 423) {
         return {
@@ -189,7 +191,11 @@ function stubbedClient(lockReplies) {
           text: async () => "{}",
         };
       }
-      return ok({ "user-id": "me", "expires-at": Date.now() + reply });
+      return ok({
+        "lock-id": "L1",
+        "user-id": "me",
+        "expires-at": Date.now() + reply,
+      });
     }
     return ok({});
   };
@@ -224,7 +230,7 @@ test("a block renews while it runs, and stops renewing on the way out", async ()
       // Two minutes of a parse that writes nothing.
       for (let i = 0; i < 4; i++) await advance(30000);
     });
-    const locks = sent.filter((r) => r.url.endsWith("/lock"));
+    const locks = sent.filter((r) => isLock(r.url));
     // Take, renew at 30/60/90/120, release. Without the beat the lock would
     // have been gone from the 60-second mark.
     assert.deepEqual(
@@ -318,7 +324,7 @@ test("keepAlive false takes the lock and starts nothing", async () => {
     );
     assert.equal(out, "done");
     assert.deepEqual(
-      sent.filter((r) => r.url.endsWith("/lock")).map((r) => r.method),
+      sent.filter((r) => isLock(r.url)).map((r) => r.method),
       ["POST", "DELETE"],
     );
   });
@@ -335,5 +341,86 @@ test("another user's lock still refuses before the block runs", async () => {
       (e) => e.status === 423 && /someone@else\.com/.test(e.message),
     );
     assert.equal(ran, false);
+  });
+});
+
+test("the block renews and releases with the holder id the acquire named", async () => {
+  await withStub(async () => {
+    const { client, sent } = stubbedClient([60000]);
+    await client.documents.locked("d1", async (lock) => {
+      assert.equal(lock.lockId, "L1");
+      await advance(30000);
+    });
+    assert.deepEqual(
+      sent.filter((r) => isLock(r.url)).map((r) => [r.method, r.url]),
+      [
+        ["POST", "http://plaid.internal:8085/api/v1/documents/d1/lock"],
+        [
+          "POST",
+          "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
+        ],
+        [
+          "DELETE",
+          "http://plaid.internal:8085/api/v1/documents/d1/lock?lock-id=L1",
+        ],
+      ],
+    );
+  });
+});
+
+test("a second block of the same user is refused and cannot release the first", async () => {
+  // Two approvals by one person on one document at once. plaid-core's rule is
+  // per holder: an acquire without an id is a new holder, refused while anyone
+  // holds the document, and only the holder's id renews or releases it.
+  await withStub(async () => {
+    let holder = null;
+    let minted = 0;
+    const reply = (status, body) => ({
+      ok: status < 400,
+      status,
+      statusText: status === 423 ? "Locked" : "OK",
+      headers: {
+        get: (n) =>
+          String(n).toLowerCase() === "content-type"
+            ? "application/json"
+            : null,
+      },
+      json: async () => body,
+      text: async () => JSON.stringify(body),
+    });
+    globalThis.fetch = async (url, opts = {}) => {
+      const method = opts.method || "GET";
+      const lockId = new URL(url).searchParams.get("lock-id");
+      if (method === "POST") {
+        if (holder !== null && holder !== lockId)
+          return reply(423, { error: "Document is locked", "user-id": "me" });
+        const id = lockId ?? `L${++minted}`;
+        holder = id;
+        return reply(200, {
+          "lock-id": id,
+          "user-id": "me",
+          "expires-at": Date.now() + 60000,
+        });
+      }
+      if (method === "DELETE" && holder === lockId) holder = null;
+      return reply(200, {});
+    };
+    const first = new PlaidClient("http://plaid.internal:8085", "tok");
+    const second = new PlaidClient("http://plaid.internal:8085", "tok");
+    await first.documents.locked("d1", async (held) => {
+      let ran = false;
+      await assert.rejects(
+        second.documents.locked("d1", async () => {
+          ran = true;
+        }),
+        (e) => e.status === 423,
+      );
+      assert.equal(ran, false);
+      assert.equal(holder, held.lockId);
+      // The first's beat still renews it.
+      await advance(30000);
+      assert.equal(holder, held.lockId);
+    });
+    assert.equal(holder, null);
   });
 });

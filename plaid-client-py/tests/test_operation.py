@@ -203,8 +203,8 @@ def test_an_out_of_band_signal_never_joins_the_operation():
     gid = client.begin_operation('Parse the document')
 
     client.documents.acquire_lock('D1')          # taking the lock
-    client.documents.acquire_lock('D1')          # the keep-alive beat
-    client.documents.release_lock('D1')
+    client.documents.renew_lock('D1', 'L1')      # the keep-alive beat
+    client.documents.release_lock('D1', 'L1')
     cancel_service_request(client, 'P1', 'R1')
     _report_event(client, 'P1', 'R1', {'status': 'progress'})
     client.admin.backup()

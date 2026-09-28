@@ -909,6 +909,8 @@ interface TokenLayersBundle {
 /** Handle passed to a `documents.locked()` block. */
 export declare class DocumentLock {
   readonly documentId: string;
+  /** The holder id the acquire answered with. */
+  readonly lockId: string | null;
   /** The DocumentLockLost if the lock lapsed, else null. */
   readonly lost: DocumentLockLost | null;
   /** Throw if the lock lapsed; call it between steps that have not written. */
@@ -927,12 +929,22 @@ export const DOCUMENT_LOCK_TTL_MS: 60000;
 
 interface DocumentsBundle {
   checkLock(documentId: string): Promise<any>;
+  /** Take the lock as a new holder. The answer's `lockId` names it. */
   acquireLock(documentId: string, auditMessage?: string): Promise<any>;
-  releaseLock(documentId: string, auditMessage?: string): Promise<any>;
+  renewLock(
+    documentId: string,
+    lockId: string,
+    auditMessage?: string,
+  ): Promise<any>;
+  releaseLock(
+    documentId: string,
+    lockId: string,
+    auditMessage?: string,
+  ): Promise<any>;
   /**
    * Hold the document's lock for the length of `fn`, renewing it while `fn`
-   * runs and releasing it on the way out. Rejects with a 423 if another user
-   * holds it, and with DocumentLockLost if a renewal fails.
+   * runs and releasing it on the way out. Rejects with a 423 if it is already
+   * held, and with DocumentLockLost if a renewal fails.
    */
   locked<T>(
     documentId: string,

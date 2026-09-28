@@ -10,8 +10,9 @@
  * silence, a person's edit lands between the read the work was planned from and
  * the write about to go out, and the write clobbers it.
  *
- * A `locked()` block therefore renews on a timer of its own. The renewal is a
- * plain acquire: the server refreshes a lock whose holder asks for it again.
+ * A `locked()` block therefore renews on a timer of its own. The renewal is an
+ * acquire that names the holder's `lockId`: the server refreshes the lock that
+ * id holds, and refuses one somebody else holds (the same user included).
  *
  * The beat is unconditional rather than "only when no write has gone out
  * recently". The request layer knows the method of a call but not which
@@ -203,8 +204,10 @@ export class LockKeeper {
  * between steps of work that has not written anything yet.
  */
 export class DocumentLock {
-  constructor(documentId, keeper) {
+  constructor(documentId, keeper, lockId = null) {
     this.documentId = documentId;
+    /** The holder id the acquire answered with. */
+    this.lockId = lockId;
     this._keeper = keeper;
   }
 
@@ -255,12 +258,13 @@ export async function withDocumentLock(
     throw error;
   }
 
+  const lockId = info?.lockId ?? null;
   let keeper = null;
   if (keepAlive) {
     const ttlMs = lockTtlMs(info?.expiresAt, Date.now());
     client.documentLockLost = null;
     keeper = new LockKeeper(
-      (id) => client.documents.acquireLock(id),
+      (id) => client.documents.renewLock(id, lockId),
       documentId,
       ttlMs,
       {
@@ -275,7 +279,7 @@ export async function withDocumentLock(
   let result;
   let threw = false;
   try {
-    result = await fn(new DocumentLock(documentId, keeper));
+    result = await fn(new DocumentLock(documentId, keeper, lockId));
   } catch (error) {
     threw = true;
     throw error;
@@ -286,7 +290,7 @@ export async function withDocumentLock(
     // Best-effort release: the server TTL reclaims a stranded lock, and we must
     // not let a release failure mask the real error from the body.
     try {
-      await client.documents.releaseLock(documentId);
+      await client.documents.releaseLock(documentId, lockId);
     } catch {
       /* the lock expires on its own */
     }

@@ -1681,7 +1681,11 @@ class DocumentsResource(_Resource):
         return self._request('GET', f'/api/v1/documents/{document_id}/lock')
 
     def acquire_lock(self, document_id: str, audit_message=None) -> Any:
-        """Acquire or refresh a document lock.
+        """Acquire a document lock as a new holder.
+
+        The answer's ``lock_id`` names the holder: :meth:`renew_lock` and
+        :meth:`release_lock` take it. While the lock is held, a second acquire
+        is refused with HTTP 423, whoever makes it, this user included.
 
         out_of_band: the lock is a signal, not project data (see the note at
         the top of http.py). Queued on a batch it would be taken only at
@@ -1695,8 +1699,23 @@ class DocumentsResource(_Resource):
         return self._request('POST', f'/api/v1/documents/{document_id}/lock',
                              audit_message=audit_message, out_of_band=True)
 
-    def release_lock(self, document_id: str, audit_message=None) -> Any:
-        """Release a document lock.
+    def renew_lock(self, document_id: str, lock_id: str, audit_message=None) -> Any:
+        """Renew the lock ``lock_id`` holds, or take it again under that id if
+        it expired and nobody took it since. HTTP 423 if another holder has it.
+
+        out_of_band, for the same reason as :meth:`acquire_lock`.
+
+        Args:
+            document_id: The document ID
+            lock_id: The ``lock_id`` :meth:`acquire_lock` answered with
+        """
+        return self._request('POST', f'/api/v1/documents/{document_id}/lock',
+                             query_params={'lock-id': lock_id},
+                             audit_message=audit_message, out_of_band=True)
+
+    def release_lock(self, document_id: str, lock_id: str, audit_message=None) -> Any:
+        """Release the lock ``lock_id`` holds. Idempotent: a lock that holder
+        no longer has is left alone.
 
         out_of_band, for the same reason as :meth:`acquire_lock`: queued, the
         lock would be held until the batch submits, and not released at all
@@ -1704,8 +1723,10 @@ class DocumentsResource(_Resource):
 
         Args:
             document_id: The document ID
+            lock_id: The ``lock_id`` :meth:`acquire_lock` answered with
         """
         return self._request('DELETE', f'/api/v1/documents/{document_id}/lock',
+                             query_params={'lock-id': lock_id},
                              audit_message=audit_message, out_of_band=True)
 
     @contextmanager
@@ -1718,10 +1739,11 @@ class DocumentsResource(_Resource):
         tokenizer that deletes and recreates a document's tokens/spans/relations
         (a single atomic call doesn't need this). While the lock is held, writes
         to the document by ANOTHER user are rejected by the server with HTTP 423;
-        the holder's own writes pass and refresh the lock. If another user
-        already holds it, this raises :class:`PlaidAPIError` (``status == 423``,
-        the same Locked code the server returns when rejecting another user's
-        write) with a readable message and the block does NOT run::
+        the holder's own writes pass and refresh the lock. If anyone already
+        holds it, another block of this same user included, this raises
+        :class:`PlaidAPIError` (``status == 423``, the same Locked code the
+        server returns when rejecting another user's write) with a readable
+        message and the block does NOT run::
 
             with client.documents.locked(doc_id):
                 ...delete + recreate tokens...
@@ -1745,12 +1767,13 @@ class DocumentsResource(_Resource):
                 wants no background thread.
 
         Notes:
-        - The lock is per-USER and TTL-bound (server default 60s, and the
-          acquire response's ``expires_at`` is what the renewal reads). Writes
-          to the document renew it server-side too.
-        - NOT re-entrant: nesting two ``locked(same_doc)`` blocks would release
-          on the inner exit and leave the outer unprotected. Lock at exactly one
-          level per call path.
+        - The lock is per HOLDER and TTL-bound (server default 60s, and the
+          acquire response's ``expires_at`` is what the renewal reads). Each
+          block is its own holder, named by ``lock.lock_id``, and only that id
+          renews or releases it. Writes carry no id: they pass for the user
+          who holds the lock, and renew it server-side too.
+        - NOT re-entrant: a nested ``locked(same_doc)`` block is a second
+          holder and gets the 423. Lock at exactly one level per call path.
         - A lost lock is recorded on the CLIENT, like strict mode, so it stops
           every write the client makes (on any batch of it too) and not only
           the ones this block makes.
@@ -1769,17 +1792,18 @@ class DocumentsResource(_Resource):
                     original_error=e) from e
             raise
         client = self._client
+        lock_id = (info or {}).get('lock_id')
         keeper = None
         if keep_alive:
             ttl_s = lock_ttl_s((info or {}).get('expires_at'), time.time())
             client.document_lock_lost = None
             keeper = LockKeeper(
-                self.acquire_lock, document_id, ttl_s,
+                lambda doc_id: self.renew_lock(doc_id, lock_id), document_id, ttl_s,
                 on_lost=lambda lost: setattr(client, 'document_lock_lost', lost))
             keeper.start()
         raised = False
         try:
-            yield DocumentLock(document_id, keeper)
+            yield DocumentLock(document_id, keeper, lock_id)
         except BaseException:
             raised = True
             raise
@@ -1791,7 +1815,7 @@ class DocumentsResource(_Resource):
             # Best-effort release: the server TTL reclaims a stranded lock, and
             # we must not let a release failure mask the real error from the body.
             try:
-                self.release_lock(document_id)
+                self.release_lock(document_id, lock_id)
             except Exception as release_err:
                 logging.getLogger(__name__).warning(
                     "Failed to release lock on document %s: %s", document_id, release_err)

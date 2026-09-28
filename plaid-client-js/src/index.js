@@ -1787,7 +1787,11 @@ class PlaidClient {
       checkLock: (documentId) =>
         this._request("GET", `/api/v1/documents/${documentId}/lock`),
       /**
-       * Acquire or refresh a document lock.
+       * Acquire a document lock as a new holder.
+       *
+       * The answer's `lockId` names the holder: `renewLock` and `releaseLock`
+       * take it. While the lock is held, a second acquire is refused with
+       * HTTP 423, whoever makes it, this user included.
        *
        * outOfBand: the lock is a signal, not project data (see the note at
        * the top of http.js). Queued on a batch it would be taken only at
@@ -1802,13 +1806,29 @@ class PlaidClient {
           outOfBand: true,
         }),
       /**
-       * Release a document lock. outOfBand, for the same reason as
+       * Renew the lock `lockId` holds, or take it again under that id if it
+       * expired and nobody took it since. HTTP 423 if another holder has it.
+       * outOfBand, for the same reason as acquireLock.
+       * @param {string} documentId - The document ID
+       * @param {string} lockId - The `lockId` acquireLock answered with
+       */
+      renewLock: (documentId, lockId, auditMessage) =>
+        this._request("POST", `/api/v1/documents/${documentId}/lock`, {
+          queryParams: { "lock-id": lockId },
+          auditMessage,
+          outOfBand: true,
+        }),
+      /**
+       * Release the lock `lockId` holds. Idempotent: a lock that holder no
+       * longer has is left alone. outOfBand, for the same reason as
        * acquireLock: queued, the lock would be held until the batch submits,
        * and not released at all if it aborts.
        * @param {string} documentId - The document ID
+       * @param {string} lockId - The `lockId` acquireLock answered with
        */
-      releaseLock: (documentId, auditMessage) =>
+      releaseLock: (documentId, lockId, auditMessage) =>
         this._request("DELETE", `/api/v1/documents/${documentId}/lock`, {
+          queryParams: { "lock-id": lockId },
           auditMessage,
           outOfBand: true,
         }),
@@ -1826,9 +1846,9 @@ class PlaidClient {
        * tokenizer that deletes and recreates a document's tokens, spans and
        * relations. A single atomic call does not need it. While the lock is
        * held, writes to the document by ANOTHER user are refused with HTTP
-       * 423; the holder's own writes pass and renew it. If another user
-       * already holds it this rejects with a readable 423 and `fn` does not
-       * run.
+       * 423; the holder's own writes pass and renew it. If anyone already
+       * holds it, another block of this same user included, this rejects with
+       * a readable 423 and `fn` does not run.
        *
        * The lock is renewed for as long as `fn` runs, so work that computes
        * for minutes before it writes holds the lock the whole time rather than
@@ -1838,11 +1858,13 @@ class PlaidClient {
        * success. `fn` receives a lock handle and may read `lock.lost` (or call
        * `lock.raiseIfLost()`) to give up sooner.
        *
-       * NOT re-entrant: nesting two `locked()` blocks on one document would
-       * release on the inner exit and leave the outer unprotected. Lock at
-       * exactly one level per call path. A lost lock is recorded on the
-       * CLIENT, like strict mode, so it stops every write the client makes
-       * (on any batch of it too) and not only the ones this block makes.
+       * The lock is per HOLDER: each block is its own, named by
+       * `lock.lockId`, and only that id renews or releases it. NOT
+       * re-entrant: a nested `locked()` block on one document is a second
+       * holder and gets the 423. Lock at exactly one level per call path. A
+       * lost lock is recorded on the CLIENT, like strict mode, so it stops
+       * every write the client makes (on any batch of it too) and not only the
+       * ones this block makes.
        * @param {string} documentId - The document ID
        * @param {(lock: DocumentLock) => any} fn - The work to run while holding it
        * @param {object} [options] - `{ keepAlive }`: renew on a timer (default true)
