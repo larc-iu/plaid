@@ -140,8 +140,10 @@ picked up as they appear); pass one or more project ids to serve just those.
 The reply is streamed to the Assistant tab as the model writes it. A provider
 that misbehaves under streaming can be run with `--no-stream`, and the reply
 then arrives whole. Each model call has a deadline, `--timeout` seconds
-(default 120, the same flag the model services take). A turn whose model does
-not answer in that time fails, and the reader can retry it.
+(default 120, the same flag the model services take). A call that does not
+answer in that time is tried once more, and then the turn fails and the reader
+can retry it. `--max-steps` caps the tool-call rounds of one turn (default 50),
+and `--temperature` and `--max-tokens` are passed to the model as they are.
 
 The panel shows how full a conversation is against the model's context
 window and warns near the limit. The window is litellm's figure for the model
