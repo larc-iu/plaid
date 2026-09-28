@@ -81,7 +81,8 @@ A project with no text at all is set up in Plaid IGT or Plaid UD first.
 == Language
 
 **Settings → General** holds the project's language as a BCP-47 tag (`en`, `zh`, `arp`).
-It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled) and the code on exported gloss headers.
+It selects the frame file the concept picker offers senses from (English, Chinese, Arabic and Portuguese are bundled).
+An exported gloss header carries the language of its own gloss line, not the project's.
 The page names the file the saved language gets and how many rolesets are in it.
 A language with no bundled file is the ordinary case for a language being documented, and its rolesets come from the project's vocabulary instead (see <<Vocabulary>>).
 

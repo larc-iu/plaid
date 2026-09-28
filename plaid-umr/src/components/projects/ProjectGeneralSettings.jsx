@@ -71,8 +71,7 @@ export const ProjectGeneralSettings = ({ onProjectUpdate }) => {
         description: (
           <>
             The language this project annotates, as a BCP-47 tag (<code>en</code>, <code>zh</code>,{' '}
-            <code>arp</code>). It picks the rolesets the concept editor offers, and it is the
-            language code on an exported document.
+            <code>arp</code>). It picks the rolesets the concept editor offers.
           </>
         ),
         note: rolesetNote,
