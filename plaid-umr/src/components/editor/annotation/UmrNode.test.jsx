@@ -217,7 +217,7 @@ describe('UmrNode provenance', () => {
       [null, null],
       [
         { prov: 'inferred', provSource: 'service:umr-draft-llm', provConfirmed: true },
-        'Machine-suggested, confirmed',
+        'Machine-made, confirmed',
       ],
       [
         { prov: 'contributed', provSource: 'user:a@b.com', provConfirmed: true },

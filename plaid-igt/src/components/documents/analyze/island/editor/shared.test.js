@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { anchoredPos } from './shared.js';
+import { PROV, PROV_STATES } from '@larc-iu/plaid-client';
+import { anchoredPos, provTitle } from './shared.js';
 
 // Where the grid's floating surfaces sit. All three (the popover, the row menu,
 // the alternatives list) share this, so the edges are worth pinning: an edge
@@ -58,5 +59,21 @@ describe('anchoredPos', () => {
 
   it('is nothing at all without an opener', () => {
     expect(anchoredPos(null, { width: 240, height: 80 })).toBeNull();
+  });
+});
+
+// "machine-made" names machine output on screen in every app (the owner's
+// ruling of 2026-09-28): the legend, igt's tooltips and UMR's alike.
+describe('the provenance tooltip', () => {
+  it('says machine-made, unverified or confirmed', () => {
+    expect(provTitle('kai', PROV_STATES.MACHINE, PROV.INFERRED, false)).toMatch(
+      /^kai: machine-made, unverified\. /,
+    );
+    expect(provTitle('kai', PROV_STATES.VERIFIED, PROV.INFERRED, false)).toBe(
+      'kai: machine-made, confirmed',
+    );
+    expect(provTitle('kai', PROV_STATES.VERIFIED, PROV.CONTRIBUTED, false)).toBe(
+      'kai: contributed, confirmed',
+    );
   });
 });

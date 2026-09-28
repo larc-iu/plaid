@@ -24,7 +24,7 @@ const provTitle = (metadata) => {
   if (state !== PROV_STATES.VERIFIED) return PROV_TITLE[state];
   return provOrigin(metadata) === PROV.CONTRIBUTED
     ? 'Contributed, confirmed'
-    : 'Machine-suggested, confirmed';
+    : 'Machine-made, confirmed';
 };
 
 // "2 errors, 1 warning", for a node's accessible name.

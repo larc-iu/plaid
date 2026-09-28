@@ -93,9 +93,12 @@ export const grid = {
     // show the same violet/dashed treatment on the form band; Ctrl+Enter on
     // the word confirms the token along with its analysis.
     const wp = provDisplay(token.metadata);
+    // The value is put in front after the word is swapped, so a word that
+    // reads "machine-made" is not the one swapped.
     const wpTitle = wp
-      ? provTitle(token.content, wp, provOrigin(token.metadata), this.doc.isContributor).replace(
-          'machine-suggested',
+      ? token.content +
+        provTitle('', wp, provOrigin(token.metadata), this.doc.isContributor).replace(
+          'machine-made',
           'machine-tokenized',
         )
       : token.content;

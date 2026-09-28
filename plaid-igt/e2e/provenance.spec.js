@@ -118,7 +118,7 @@ test('A2-03/05: editing a machine gloss verifies it in one batch; clearing delet
   await openAnalyze(page);
   const cell = page.locator(`.igt-field[data-cell-key="ma:${ids.m[0]}:Gloss"]`);
   await expect(cell).toHaveClass(/igt-field--machine/);
-  await expect(cell).toHaveAttribute('title', /machine-suggested, unverified/);
+  await expect(cell).toHaveAttribute('title', /machine-made, unverified/);
   const seen = writes(page);
   await cell.click();
   await page.keyboard.press('Control+a');

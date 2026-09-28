@@ -127,12 +127,12 @@ export const PULSE_CLASS = 'igt-confirmed';
 // proposals only.
 const reviewHint = () => `Edit to fix, ${keys.words('analyze.accept')} accepts the whole word`;
 const provStateText = (state, origin, contributor) => {
-  if (state === PROV_STATES.MACHINE) return `machine-suggested, unverified. ${reviewHint()}`;
+  if (state === PROV_STATES.MACHINE) return `machine-made, unverified. ${reviewHint()}`;
   if (state === PROV_STATES.CONTRIBUTED)
     return contributor
       ? 'contributed, awaiting review'
       : `contributed, unverified. ${reviewHint()}`;
-  return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-suggested, confirmed';
+  return origin === PROV.CONTRIBUTED ? 'contributed, confirmed' : 'machine-made, confirmed';
 };
 export const provTitle = (value, state, origin, contributor) =>
   `${value}: ${provStateText(state, origin, contributor)}`;
