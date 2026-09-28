@@ -117,3 +117,42 @@ test('Text mode keeps a node an import brought under an attribute', async () => 
   assert.ok(await doc.moveEdge(edge.id, byVar(doc, 's1f').id));
   assert.deepEqual(errors, []);
 });
+
+// A concept is a write too: giving a node the concept that makes a relation
+// it already has value-only (a name's :opN, :ARG2 of have-polarity-91) puts
+// a node there as surely as a new edge does.
+test('the canvas refuses a concept that puts a node it points at under a value-only relation', async () => {
+  const { doc, calls, errors } = load();
+  const and = byVar(doc, 's1a');
+  assert.equal(await doc.setConcept(and.id, 'name'), false);
+  assert.deepEqual(errors, ["':op1' takes a value, not a node."]);
+  assert.equal(await doc.setConcept(byVar(doc, 's1l').id, 'have-polarity-91'), true);
+  assert.equal(
+    calls.filter((c) => c.name !== 'operation').length > 0,
+    true,
+    'a concept that leaves every edge where it may stand is written',
+  );
+});
+
+test('Text mode refuses a concept that puts a node it points at under a value-only relation', async () => {
+  const { doc, errors } = load();
+  const text = doc.penmanOf(1).replace('(s1a / and', '(s1a / name');
+  assert.notEqual(text, doc.penmanOf(1), 'fixture');
+  assert.equal(await doc.applyPenman(1, text), false);
+  assert.deepEqual(errors, ["s1a: ':op1' takes a value, not a node."]);
+});
+
+test('a name an import brought with a node under :op1 keeps it through a concept edit elsewhere', async () => {
+  const source = fs
+    .readFileSync(FIXTURE, 'utf8')
+    .replace('(s1n / name :op1 "Philippines")', '(s1n / name :op1 (s1z / thing))');
+  const plan = planImport(parseUmrFile(source).sentences, []);
+  const { client } = recordingClient();
+  const doc = new UmrDocument({ raw: rawFromPlan(plan), client });
+  const errors = [];
+  doc.onError = (msg) => errors.push(msg);
+  assert.ok(byVar(doc, 's1z'), 'fixture');
+  const text = doc.penmanOf(1).replace('override-91', 'override-92');
+  assert.ok(await doc.applyPenman(1, text));
+  assert.deepEqual(errors, []);
+});

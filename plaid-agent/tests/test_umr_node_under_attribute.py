@@ -45,3 +45,31 @@ def test_a_new_node_under_a_relation_that_takes_one_is_planned():
     ws, out = _apply(SENTENCE_1_PENMAN.replace(
         ':refer-number singular)', ':refer-number singular\n        :mod (s1y / big))'))
     assert ws.ops, out
+
+
+def _ws_with_edge(role):
+    """The fixture with s1b's edge to s1d under ``role``."""
+    from umr_fixtures import document_raw
+    doc = document_raw()
+    rels = doc['text_layers'][0]['token_layers'][2]['span_layers'][0]['relation_layers'][0]
+    rels['relations'][0]['value'] = role
+    return umr_ws(umr_client(documents={'umr1': doc}))
+
+
+@pytest.mark.parametrize('role, concept', [(':op1', 'name'), (':ARG2', 'have-polarity-91')])
+def test_a_concept_that_puts_a_node_it_points_at_under_a_value_only_relation_is_refused(
+        role, concept):
+    ws = _ws_with_edge(role)
+    text = (f'(s1b / {concept}\n    {role} (s1d / dog\n        :refer-number singular)\n'
+            '    :aspect performance)')
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
+    assert ws.ops == [], out
+    assert f"s1b: '{role}' takes a value, not a node." in out, out
+
+
+def test_a_concept_whose_edge_the_same_text_removes_is_planned():
+    ws = _ws_with_edge(':op1')
+    text = '(s1b / name\n    :op1 "Rex"\n    :aspect performance)'
+    out = call_tool(ws, 'apply_penman', {'document': 'Story', 'sentence': 1, 'text': text})
+    assert any(op['kind'] == 'set_concept' for op in ws.ops), out
+

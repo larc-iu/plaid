@@ -141,7 +141,8 @@ class Workspace(BaseWorkspace):
                 problems.append(new_variable_problem(op.get('var'), op.get('sentence'),
                                                      self._taken_variables(doc, replacing)))
         if kind == 'set_concept':
-            problems.append(concept_problem(op.get('concept')))
+            problems += [concept_problem(op.get('concept')),
+                         self._concept_under_problem(op, doc, replacing)]
         if kind == 'create_edge':
             problems += [relation_form_problem(op.get('role')),
                          self._node_under_problem(op, doc, replacing)]
@@ -181,6 +182,36 @@ class Workspace(BaseWorkspace):
             node = doc.nodes_by_id.get(op.get('source_span_id'))
             concept = node.concept if node is not None else None
         return node_under_attribute_problem(op.get('role'), concept)
+
+    def _concept_under_problem(self, op: Dict[str, Any], doc: Optional[UmrDoc],
+                               replacing: Optional[int] = None) -> Optional[str]:
+        """Why the concept ``op`` gives a stored node puts a node it points at
+        under a relation that then takes a value only (a name's ``:opN``,
+        ``:ARG2`` of have-polarity-91), or None, as the app's canvas and Text
+        mode refuse it (``UmrDocument._newlyUnderProblem``). The node's stored
+        edges the plan does not delete count, and one already in such a place
+        under the stored concept (an import brought it) is kept. The new
+        edges from it come after this op in the one Text-mode change a plan
+        may make to a sentence, and :meth:`_node_under_problem` asks them of
+        this concept."""
+        node = doc.nodes_by_id.get(op.get('span_id')) if doc is not None else None
+        if node is None:
+            return None
+        gone = set()
+        for i, o in enumerate(self.ops):
+            if i == replacing or o.get('document_id') != op.get('document_id'):
+                continue
+            if o.get('kind') == 'delete_edge':
+                gone.add(o.get('relation_id'))
+            elif o.get('kind') == 'delete_node':
+                gone.update(o.get('relation_ids') or [])
+        for e in node.out:
+            if e.id in gone or node_under_attribute_problem(e.role, node.concept):
+                continue
+            why = node_under_attribute_problem(e.role, op.get('concept'))
+            if why:
+                return why
+        return None
 
     def _taken_variables(self, doc: UmrDoc, replacing: Optional[int] = None) -> set:
         """Every variable the document holds once this plan is applied, as far

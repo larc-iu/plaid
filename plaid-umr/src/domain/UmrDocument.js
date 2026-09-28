@@ -262,7 +262,8 @@ export class UmrDocument extends DocumentModel {
     const targets = this._entryTargets(nodeId, everywhere);
     if (!change || !targets.length) return Promise.resolve(false);
     const concept = nfc(change.to);
-    if (this._refused(conceptProblem(concept))) return Promise.resolve(false);
+    const under = targets.map((n) => this._newlyUnderProblem(n, concept)).find(Boolean);
+    if (this._refused(conceptProblem(concept), under)) return Promise.resolve(false);
     const label = 'Failed to change the concept';
     if (!this._canWrite(label)) return Promise.resolve(false);
     const writes = targets.map((n) => [n.id, this._editStampOps(n.metadata)]);
@@ -1003,7 +1004,7 @@ export class UmrDocument extends DocumentModel {
     const had = node.metadata?.[UMR_NAMESPACE]?.entry ?? null;
     const entryChanges = had !== entry && (node.concept !== concept || entry !== null);
     if (node.concept === concept && !entryChanges) return false;
-    const refused = conceptProblem(concept);
+    const refused = conceptProblem(concept) || this._newlyUnderProblem(node, concept);
     if (refused) {
       this.setError(refused);
       return false;
@@ -1099,6 +1100,19 @@ export class UmrDocument extends DocumentModel {
     if (!why || !nodeId) return why;
     const stored = (this.node(nodeId)?.attrs ?? []).some((a) => a.rel === r && a.value === value);
     return stored ? null : why;
+  }
+
+  // Why giving `node` the concept `concept` would put a node it points at
+  // under a relation that then takes a value only (a name's `:opN`, `:ARG2`
+  // of have-polarity-91), or null. An edge already in such a place under the
+  // node's present concept (an import brought it) is kept.
+  _newlyUnderProblem(node, concept) {
+    for (const edge of node.out ?? []) {
+      if (nodeUnderAttributeProblem(edge.role, node.concept)) continue;
+      const why = nodeUnderAttributeProblem(edge.role, concept);
+      if (why) return why;
+    }
+    return null;
   }
 
   // The first of `problems` that is not null, shown, and whether there was
@@ -2153,7 +2167,10 @@ export class UmrDocument extends DocumentModel {
           this.relationProblem(child.rel, at) ||
           (child.kind !== 'node'
             ? this.attrValueProblem(child.rel, child.value, at)
-            : at.edgeId
+            : // An edge kept where it already stood under a value-only
+              // relation (an import brought it) stays. A kept edge a new
+              // concept puts there is refused like a new one.
+              at.edgeId && nodeUnderAttributeProblem(child.rel, old.concept)
               ? null
               : nodeUnderAttributeProblem(child.rel, node.concept));
         if (bad) errors.push({ message: `${v}: ${bad}` });
