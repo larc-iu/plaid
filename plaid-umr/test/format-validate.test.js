@@ -786,4 +786,45 @@ describe('temporal contradictions', () => {
       ],
     );
   });
+
+  // Sentence n says s(n-1)y :before snx and snx :before sny: one timeline.
+  const timeline = (n, last = []) =>
+    doc(
+      Array.from({ length: n }, (_, i) => ({
+        temporal: [
+          i === 0 ? 'document-creation-time :before s1x' : `s${i}y :before s${i + 1}x`,
+          `s${i + 1}x :before s${i + 1}y`,
+          ...(i === n - 1 ? last : []),
+        ],
+      })),
+    );
+
+  test('a relation inferred along a timeline names every stated relation it follows from, in order, once', () => {
+    const findings = validateDocument(timeline(4, ['s4y :before s1x'])).filter(
+      (f) => f.code === 'temporal-mismatch',
+    );
+    assert.equal(
+      findings[0].message,
+      "The temporal relations contradict each other: they give both 's4y :after s1x' (from (s4x :before s4y), (s3y :before s4x), (s3x :before s3y), (s2y :before s3x), (s2x :before s2y), (s1y :before s2x), (s1x :before s1y)) and 's4y :before s1x' (from (s4y :before s1x)).",
+    );
+    // validate.py finds 26 on this document.
+    assert.equal(findings.length, 26);
+  });
+
+  test('an edit that leaves the temporal and coreference relations alone reuses the answer', () => {
+    const sentences = timeline(300);
+    let started = performance.now();
+    assert.deepEqual(mismatches(sentences), []);
+    const first = performance.now() - started;
+    // The same relations over a changed graph: a concept edited in sentence 1.
+    const edited = sentences.map((s, i) => (i === 0 ? { ...s, graph: { ...s.graph } } : s));
+    started = performance.now();
+    assert.deepEqual(mismatches(edited), []);
+    const again = performance.now() - started;
+    assert.ok(again < first / 4, `the second check took ${again} ms, the first ${first} ms`);
+    // A changed relation is checked afresh.
+    const contradicted = timeline(300, ['s300y :before s1x']);
+    assert.equal(mismatches(contradicted)[0].join(' '), '300 s300y :after :before s1x');
+    assert.deepEqual(mismatches(sentences), []);
+  });
 });

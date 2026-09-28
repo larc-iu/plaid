@@ -921,14 +921,39 @@ const OPPOSITE = { ':before': ':after', ':after': ':before' };
 
 const saying = (relation) => (relation === ':identity' ? 'corefers with' : relation);
 
+// A reason is the list of stated relations a temporal relation follows from:
+// a stated relation's is `[triple]`, and an inferred one's joins two reasons
+// as `{ first, then }` rather than copying them. Copied, the lists grew with
+// the chain on each of the (events squared) relations a timeline infers, and
+// a 300-sentence timeline took seconds on every edit. `reasonList` spells one
+// out, in order, each relation once.
+function reasonList(reason) {
+  const out = new Set();
+  const seen = new Set();
+  const stack = [reason];
+  while (stack.length) {
+    const r = stack.pop();
+    if (Array.isArray(r)) r.forEach((t) => out.add(t));
+    else if (!seen.has(r)) {
+      // A reason met again adds nothing its first visit did not.
+      seen.add(r);
+      stack.push(r.then, r.first);
+    }
+  }
+  return [...out];
+}
+
 class TemporalGraph {
   constructor(report) {
     this.graph = new Map();
+    // The nodes in sorted order, kept in order as they arrive rather than sorted
+    // again for every stated relation.
+    this.sorted = [];
     this.report = report;
   }
 
   nodes() {
-    return [...this.graph.keys()].sort();
+    return this.sorted.slice();
   }
 
   get(n0, n1) {
@@ -946,7 +971,17 @@ class TemporalGraph {
       if (edge.relation !== relation) this.report(n0, edge, relation, n1, reason);
       return;
     }
-    if (!this.graph.has(n0)) this.graph.set(n0, new Map());
+    if (!this.graph.has(n0)) {
+      this.graph.set(n0, new Map());
+      // Where `sort()` puts it: before the first node that sorts after it.
+      let [lo, hi] = [0, this.sorted.length];
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (this.sorted[mid] < n0) lo = mid + 1;
+        else hi = mid;
+      }
+      this.sorted.splice(lo, 0, n0);
+    }
     this.graph.get(n0).set(n1, { relation, reason });
   }
 
@@ -954,7 +989,7 @@ class TemporalGraph {
   // node known before it (validate.py:1916-2011).
   state(n0, relation, n1, reason) {
     this.add(n0, relation, n1, reason);
-    const also = (other) => [...reason, ...other];
+    const also = (other) => ({ first: reason, then: other });
     if (relation === ':before' || relation === ':after') {
       const opposite = OPPOSITE[relation];
       this.add(n1, opposite, n0, reason);
@@ -1018,6 +1053,23 @@ class TemporalGraph {
  * @returns {Array<{level, code, message, var?, sentence}>}
  */
 function temporalMismatches(sentences) {
+  // The answer turns on the temporal and coreference relations and the
+  // sentence numbers alone, so an edit to anything else (a concept, an
+  // attribute, a word) reuses the last one: over a long timeline the
+  // inference itself takes a few hundred milliseconds.
+  const key = JSON.stringify(
+    sentences.map((s, i) => [s.index ?? i + 1, s.docGraph?.temporal, s.docGraph?.coref]),
+  );
+  if (key !== lastTemporal.key) {
+    lastTemporal.key = key;
+    lastTemporal.findings = inferTemporalMismatches(sentences);
+  }
+  return lastTemporal.findings.map((f) => ({ ...f }));
+}
+
+const lastTemporal = { key: null, findings: [] };
+
+function inferTemporalMismatches(sentences) {
   const triple = (a, relation, b) => `(${a} ${relation} ${b})`;
   const indexOf = (sentence, i) => sentence.index ?? i + 1;
 
@@ -1045,7 +1097,7 @@ function temporalMismatches(sentences) {
   const findings = [];
   let current = null;
   const temporal = new TemporalGraph((n0, older, relation, n1, reason) => {
-    const from = (why) => [...new Set(why)].join(', ');
+    const from = (why) => reasonList(why).join(', ');
     findings.push({
       level: 'error',
       code: 'temporal-mismatch',
