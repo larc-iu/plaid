@@ -1700,8 +1700,10 @@ class DocumentsResource(_Resource):
                              audit_message=audit_message, out_of_band=True)
 
     def renew_lock(self, document_id: str, lock_id: str, audit_message=None) -> Any:
-        """Renew the lock ``lock_id`` holds, or take it again under that id if
-        it expired and nobody took it since. HTTP 423 if another holder has it.
+        """Renew the lock ``lock_id`` holds while it is live. HTTP 423 if
+        another holder has it, and also once it has expired or been dropped,
+        even when nobody holds the document now: a renewal never takes a free
+        document.
 
         out_of_band, for the same reason as :meth:`acquire_lock`.
 

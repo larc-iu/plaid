@@ -158,9 +158,10 @@ export class LockKeeper {
       try {
         await this._refresh(this._documentId);
       } catch (error) {
-        // 423 is definitive: somebody else holds the document now, so ours had
-        // already expired. Anything else may be a blip, and is only fatal once
-        // the lock we are renewing has actually run out.
+        // 423 is definitive: somebody else holds the document now, or ours
+        // expired or was dropped, and the server never takes it back.
+        // Anything else may be a blip, and is only fatal once the lock we are
+        // renewing has actually run out.
         if (error?.status === 423 || this._clock() >= deadline) {
           this._fail(error);
           return;

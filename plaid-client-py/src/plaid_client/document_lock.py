@@ -126,9 +126,10 @@ class LockKeeper:
             try:
                 self._refresh(self._document_id)
             except Exception as error:
-                # 423 is definitive: somebody else holds the document now, so
-                # ours had already expired. Anything else may be a blip, and is
-                # only fatal once the lock we are renewing has actually run out.
+                # 423 is definitive: somebody else holds the document now, or
+                # ours expired or was dropped, and the server never takes it
+                # back. Anything else may be a blip, and is only fatal once the
+                # lock we are renewing has actually run out.
                 if getattr(error, 'status', 0) == 423 or self._clock() >= deadline:
                     self._fail(error)
                     return

@@ -931,6 +931,7 @@ interface DocumentsBundle {
   checkLock(documentId: string): Promise<any>;
   /** Take the lock as a new holder. The answer's `lockId` names it. */
   acquireLock(documentId: string, auditMessage?: string): Promise<any>;
+  /** Renew `lockId`'s lock while it is live. 423 once it has lapsed. */
   renewLock(
     documentId: string,
     lockId: string,

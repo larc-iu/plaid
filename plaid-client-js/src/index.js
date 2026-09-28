@@ -1806,8 +1806,9 @@ class PlaidClient {
           outOfBand: true,
         }),
       /**
-       * Renew the lock `lockId` holds, or take it again under that id if it
-       * expired and nobody took it since. HTTP 423 if another holder has it.
+       * Renew the lock `lockId` holds while it is live. HTTP 423 if another
+       * holder has it, and also once it has expired or been dropped, even when
+       * nobody holds the document now: a renewal never takes a free document.
        * outOfBand, for the same reason as acquireLock.
        * @param {string} documentId - The document ID
        * @param {string} lockId - The `lockId` acquireLock answered with
