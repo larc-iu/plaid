@@ -279,6 +279,11 @@ In a right-to-left document the arrows follow the screen, so Alt+Right moves ear
 * Drag the grip under a node onto another node, a word, empty space or a margin constant to make a relation from it.
 * **r** adds a second parent to the focused node: pick the parent from the list of the sentence's nodes, or click it, then give the relation.
 
+A relation that takes a value does not take a node: `:aspect` and the other attributes with a set of values, `:li`, `:list-item`, `:wiki`, a name's `:op1`, `:op2` and so on, and `:ARG2` of `have-polarity-91`.
+A new edge there, made, moved or relabeled, is refused with `':aspect' takes a value, not a node.`
+The assistant and **Draft** refuse it too.
+An edge an imported file brought there is kept, and the Validation tab lists it.
+
 While **u** or **Add a child** waits for its click, the arrows still move and Escape leaves it.
 Other keys do nothing until it ends, except the digits, Backspace and Enter of **u**.
 The list of **m** and **r** closes on Escape, and ends the wait with it.
@@ -290,7 +295,7 @@ Typing searches the bundled frame file too, on any node, so `buy` finds `buy-01`
 In Arabic a word also finds its roleset with one proclitic (و ف ب ل ك ال) and a suffix taken off, so وقالت offers `قال-01`, and the word's own roleset comes first.
 A hamza on the alif and a tatweel make no difference: أعلن finds `اعلن-01`, and قـال finds `قال-01`.
 * **:** (colon) edits the relation to the parent. The picker lists the parent roleset's own arguments first, with what each means.
-* **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. A time is written bare, `:time 15:30`. `:modal-strength` is last and marked deprecated, since modality belongs in the document graph. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
+* **a** opens the attribute picker. Aspect, person and number are lattices: pick the coarsest value you are sure of, and the finer values under it appear. The other attributes are lists, and anything without a set (`:quant`, `:wiki`) is a text line at the bottom. A time is written bare, `:time 15:30`. A list item is `:li` with the item's place as a number (`:li 1`, and `:li -1` for the last) or its label in quotes (`:li "(a)"`). `:list-item` is the same relation and takes the same values. `:modal-strength` is last and marked deprecated, since modality belongs in the document graph. Every pick is saved at once. Arrows move, Enter picks, Backspace clears the row, Escape closes.
 A value the official validator cannot read (`Imperative`, `.5`, `""`) is refused with the reason. One an imported file carried is kept, exported as it came, and listed on the Validation tab.
 * **v** renames the variable. A variable is `s`, the sentence number, letters, and a number, unique in the document. A variable cannot be `s8s0` and the like, which the file uses for sentence 8's document-level block. A name that is taken or malformed is refused with the reason under the box, which stays open to correct it.
 A new node's variable is made from its concept's first letter, from a to z: an accented letter gives its base letter (`ébrio` gives `s4e`), and anything else gives `x`.
@@ -322,7 +327,7 @@ Ctrl+Enter (Cmd+Enter) applies, as **Apply** does.
 **Apply** compares the text with the stored graph, node by variable and edge by relation and target, and writes the difference as one operation: a node that is new in the text is made unaligned (anchor it on the canvas afterwards), a node missing from the text is deleted with what only it reached, a changed root moves the root.
 An empty text deletes every node of the sentence.
 The line under the text names every concept Apply changes, by variable (`s9x changes from sleep-01 to cat, s9y from cat to sleep-01.`). Nodes are matched by variable, so exchanging two variables exchanges their concepts, and each node keeps its words and document-level relations.
-Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, a new edge that closes a cycle through anything but `:quote`, and a value the official validator cannot read, with the reason. A value a node already has from an import is kept as it is.
+Apply refuses what the canvas refuses: a new node's variable that is malformed or used elsewhere in the document, a relation UMR does not have, a new edge that closes a cycle through anything but `:quote`, a new node under a relation that takes a value (`s1a: ':li' takes a value, not a node.`), and a value the official validator cannot read, with the reason. A value a node already has from an import is kept as it is.
 A variable typed over is read as a rename when one variable goes and one arrives and they are plainly the same node: the same concept, under the same parents by the same relations, or both the sentence's root. The node keeps its anchor, its edges and its document-level relations, and the line under the text says which name changed.
 Anything less clear-cut, two variables typed over at once or a concept changed along with the name, is a node deleted and a node made, and the line names what Apply would delete that way.
 Cancel with unapplied changes asks first.
@@ -363,7 +368,8 @@ Compare and Comments are not shown at a past state.
 
 = Validation
 
-The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, temporal relations that contradict each other once what follows from them is counted (`s1x :before s2y` with `s2y :before s1x`), a node whose vocabulary entry now reads another concept, and the rest.
+The **Validation** tab lists what the official UMR checks find in every document of the project: unknown relations, values outside their set, an event without `:aspect`, alignment problems, references a sentence cannot make, values the official validator cannot read (a capital letter, an accented letter or a space in a bare value, a bare value that starts like a variable such as `s1x-b`, an empty string or a quote inside one), a variable, concept or value not in Unicode NFC, coreference between an event and an entity, coreferent nodes with different Wikidata ids, temporal relations that contradict each other once what follows from them is counted (`s1x :before s2y` with `s2y :before s1x`), a list item that is neither a number nor a quoted label (`:li first`), a node under a relation that takes a value, a node whose vocabulary entry now reads another concept, and the rest.
+The contradictions one temporal relation sets off in a sentence are one row, with their count (`26 contradictions follow from the temporal relation (s4y :before s1x).`). **Show list** under it lists them, and **Hide list** folds them again.
 A graph kept as text is one error, with what the parser found.
 Two nodes of one sentence under the same variable are an error, and the export refuses the document until one is renamed.
 The same checks mark the canvas as you edit.
@@ -372,6 +378,7 @@ Each row links to its sentence, at the node it names.
 The table's page is in the address, so Back from a row's sentence returns to that page.
 
 The value sets the pickers offer and the checks accept are the official validator's.
+The one exception is `:li`: the official validator refuses every value under it, the guidelines' own `:li "(a)"` included, and takes the same values under `:list-item`.
 
 = Comments, Activity, Sharing
 
