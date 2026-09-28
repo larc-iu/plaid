@@ -488,6 +488,26 @@ def test_a_run_writes_the_report_on_the_scored_document_and_reports_the_scores()
     assert service.client.operations == ['AnCast adjudication against Bo']
 
 
+def test_a_row_records_every_part_of_a_graph_as_the_tab_prints_it():
+    # A sentence with a part its root does not reach: the tab's penmanOf
+    # prints it after the root's graph, so a row holding the root's graph
+    # alone read as "Changed since this comparison." straight after the run.
+    graph = _barking()
+    graph['nodes'] = graph['nodes'] + [_node('s1t', 'thing', [(0, 3)])]
+    graph['edges'] = graph['edges'] + [(2, 1, ':mod', 0)]
+    service = _service([_document(DOC, name='Ann', **graph),
+                        _document(OTHER, name='Bo', **_barking_and_now())])
+    servicetest.run(service, REQUEST)
+
+    [sentence] = _report(service.client)['sentences']
+    assert sentence['thisGraph'] == ('(s1b / bark-01\n'
+                                     '    :ARG0 (s1d / dog)\n'
+                                     '    :aspect process)\n'
+                                     '\n'
+                                     '(s1t / thing\n'
+                                     '    :mod s1d)')
+
+
 def test_the_notice_rounds_a_half_up_as_the_tab_does():
     """The tab prints `Math.round(x * 100)`, half up. Python's round() takes a
     half to the even side, which would print 82% for 0.825 where the tab

@@ -503,6 +503,31 @@ def penman_of(doc: UmrDocument, sentence: Sentence) -> str:
     return penman.graph_text(penman_nodes(doc, sentence), root)
 
 
+def sentence_penman(doc: UmrDocument, sentence: Sentence) -> str:
+    """EVERY node of a sentence as PENMAN, as the app's ``penmanOf`` and text
+    mode print it (``sentenceGraph.js`` ``sentencePenman``): the root's graph,
+    then each part the root does not reach as a graph of its own, in the order
+    of the roots and then of the nodes, parted by a blank line. A node is
+    written out once, in the first graph that reaches it. :func:`penman_of`
+    is the root's graph alone, as the file writes it."""
+    every = penman_nodes(doc, sentence)
+    shown: set = set()
+    parts: List[str] = []
+    for top in [r.var for r in sentence.roots] + list(every):
+        if top in shown or top not in every:
+            continue
+        nodes = {v: n for v, n in every.items() if v not in shown}
+        parts.append(penman.graph_text(nodes, top))
+        stack = [top]
+        while stack:
+            v = stack.pop()
+            if v in shown or v not in nodes:
+                continue
+            shown.add(v)
+            stack.extend(c.value for c in nodes[v].children if c.kind == penman.NODE)
+    return '\n\n'.join(parts)
+
+
 def reachable_from_root(doc: UmrDocument, sentence: Sentence) -> set:
     """The concept span ids the sentence's first root reaches. The PENMAN text is
     the root's graph, so only what the root reaches is the text's to change: a

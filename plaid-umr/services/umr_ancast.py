@@ -49,7 +49,7 @@ from typing import Any, Dict, List, Optional
 from plaid_client import BaseService, Param, TASKS
 from plaid_client.service import check_unchanged
 from plaid_client.workflows.umr import (UMR_NAMESPACE, Graph, group_of, penman_nodes,
-                                        penman_of, read_document, resolve_layers,
+                                        read_document, resolve_layers, sentence_penman,
                                         serialize_penman, tree_edges)
 
 DEFAULT_SERVICE_ID = 'umr-ancast'
@@ -263,15 +263,15 @@ def render_umr(raw) -> str:
 
 def sentence_graph(document, index: int) -> str:
     """Sentence ``index``'s graph as PENMAN, exactly as the app's
-    ``UmrDocument.penmanOf`` has it: the stored graph, or the text of one the
-    import could not read. What a report row records of each side, so the
-    Compare tab can tell a sentence edited since the scoring from one that was
-    not."""
+    ``UmrDocument.penmanOf`` has it: every part of the stored graph, not only
+    the root's, or the text of one the import could not read. What a report
+    row records of each side, so the Compare tab can tell a sentence edited
+    since the scoring from one that was not."""
     if not 1 <= index <= len(document.sentences):
         return ''
     sentence = document.sentences[index - 1]
     if sentence.nodes:
-        return penman_of(document, sentence)
+        return sentence_penman(document, sentence)
     return sentence.raw_graph if isinstance(sentence.raw_graph, str) else ''
 
 
