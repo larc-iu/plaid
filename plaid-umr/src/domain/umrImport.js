@@ -396,8 +396,11 @@ export function planImport(parsedSentences, warnings = [], { existing = null } =
       ilg: (ps.ilg || []).filter((l) => !['index', 'words', 'sentence'].includes(l.key)),
       meta: ps.meta || [],
     };
+    // The file's text where the body is only its words joined. Onto an
+    // existing document the body is the text, and a copy stored beside it
+    // would go stale at the next edit in IGT.
     const sentenceText = (ps.sentenceText || '').trim();
-    if (sentenceText && sentenceText !== line) meta.text = sentenceText;
+    if (!existing && sentenceText && sentenceText !== line) meta.text = sentenceText;
     sentences.push({ index, begin, end, words, meta });
 
     // Any graph with a parse error is kept as text, a graph whose root could

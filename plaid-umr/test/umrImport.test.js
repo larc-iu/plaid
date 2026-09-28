@@ -226,3 +226,35 @@ describe("the project's document of the file's name", () => {
     assert.equal(target.note, '"doc" has no words.');
   });
 });
+
+// Onto an existing document (an IGT text), the body is the sentence's text:
+// the file's Sentence line is not stored beside it, where it would go stale.
+test('an attach keeps no copy of the text the document already has', () => {
+  const text = file({}).replace(
+    'Words: the cat sleeps',
+    'Words: the cat sleeps\nSentence: The cat sleeps.',
+  );
+  const parsed = parseUmrFile(text);
+  assert.equal(parsed.sentences[0].sentenceText, 'The cat sleeps.');
+  assert.equal(planImport(parsed.sentences, []).sentences[0].meta.text, 'The cat sleeps.');
+  const existing = {
+    sentences: [
+      {
+        begin: 0,
+        end: 16,
+        words: ['the', 'cat', 'sleeps'].map((w, i) => ({
+          index: i + 1,
+          begin: 0,
+          end: 1,
+          text: w,
+        })),
+        triples: [],
+      },
+    ],
+    constants: [],
+    nodesById: new Map(),
+  };
+  const plan = planImport(parsed.sentences, [], { existing });
+  assert.equal(plan.sentences[0].meta.text, undefined);
+  assert.ok(!plan.sentences[0].meta.ilg.some((l) => l.key === 'sentence'));
+});
