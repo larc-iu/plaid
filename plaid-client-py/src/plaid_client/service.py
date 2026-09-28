@@ -312,11 +312,22 @@ class BaseService(ABC):
         # service's own ``with client.operation(...)`` then flattens into it
         # (outer label wins). Popped so it never reaches process_request as a
         # stray parameter. Adopted on whichever client does the writing.
+        #
+        # Joined under the requester's name: core labels a group's History
+        # entry from its first write, and when the service writes first (igt
+        # Transcribe on a document with no transcript yet) that entry would
+        # otherwise read "by <operator>" and name the person who asked
+        # nowhere. When the requester wrote first, the entry already has its
+        # label and this one is not used.
         group = request_data.pop('operation_group', None) if isinstance(request_data, dict) else None
         joined = bool(group and isinstance(group, dict) and group.get('id'))
         op_client = requester or self.client
         if joined:
-            op_client.begin_operation(group.get('message'), group_id=group['id'])
+            from plaid_client.workflows.requester import requester_of
+            message = group.get('message')
+            if message:
+                message = requester_of(self.client, request_data).label(message)
+            op_client.begin_operation(message, group_id=group['id'])
         try:
             self.process_request(request_data, response_helper)
         except ServiceCancelled:

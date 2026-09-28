@@ -304,6 +304,70 @@ def test_base_service_joins_the_requesters_operation():
     assert seen['inner_msg'] == 'inner label'
 
 
+def _joining_service(users_get):
+    """A service that records the group it runs under and the params of its
+    first write, with the client's user read stubbed."""
+    from plaid_client.service import BaseService
+
+    seen = {}
+
+    class _Svc(BaseService):
+        def process_request(self, request_data, response_helper):
+            seen['message'] = self.client._operation_group['message']
+            seen['first'] = _params(_queue(self.client)[0])
+
+    svc = _Svc('svc', 'Svc', 'test')
+    svc.client = _client()
+    svc.client.users.get = users_get
+
+    class _Helper:
+        def progress(self, *a): pass
+        def complete(self, *a): pass
+        def error(self, *a): seen['error'] = a
+
+    return svc, _Helper(), seen
+
+
+def test_a_joined_operation_names_the_requester_when_the_service_writes_first():
+    # igt Transcribe on a document with no transcript: the app opens
+    # "Transcribe audio (Whisper)" and the service's write comes first, so
+    # core names the History entry from the service's group-message. It must
+    # carry the requester, or the entry reads "by <operator>" and names
+    # nobody who asked.
+    gid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    svc, helper, seen = _joining_service(lambda uid: {'id': uid, 'display_name': 'Ana Second'})
+    svc.handle_service_request(
+        {'document_id': 'D', 'requester_id': 'second@x.com',
+         'operation_group': {'id': gid, 'message': 'Transcribe audio (Whisper)'}},
+        helper).join(5)
+    assert 'error' not in seen
+    assert seen['message'] == 'Transcribe audio (Whisper), requested by Ana Second'
+    assert seen['first']['group-id'] == gid
+    assert seen['first']['group-message'] == 'Transcribe audio (Whisper), requested by Ana Second'
+
+
+def test_a_joined_operation_falls_back_to_the_requester_id_and_leaves_no_requester_alone():
+    gid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
+    def unreadable(uid):
+        raise RuntimeError('404 Not found')
+
+    svc, helper, seen = _joining_service(unreadable)
+    svc.handle_service_request(
+        {'requester_id': 'second@x.com', 'operation_group': {'id': gid, 'message': 'Parse'}},
+        helper).join(5)
+    assert seen['first']['group-message'] == 'Parse, requested by second@x.com'
+
+    # No requester (a run started outside a service request): the label as it came.
+    def never(uid):
+        raise AssertionError('no user to read')
+
+    svc, helper, seen = _joining_service(never)
+    svc.handle_service_request({'operation_group': {'id': gid, 'message': 'Parse'}}, helper).join(5)
+    assert 'error' not in seen
+    assert seen['first']['group-message'] == 'Parse'
+
+
 def test_a_broadcast_message_never_joins_the_operation():
     # A broadcast message is not written anywhere, so it has no History entry
     # to join. Sent inside an operation it once took the group stamp and
