@@ -1118,6 +1118,33 @@
             (str (pr-str old) " -> " (pr-str new) ": " (pr-str (extents tokens))))
         (is (= want (extents tokens)) (str (pr-str old) " -> " (pr-str new)))))))
 
+(deftest a-word-deleted-at-the-edge-of-a-token-over-several-words-takes-its-space-along
+  ;; UMR anchors a node aligned to words next to each other on one token over
+  ;; them. Deleting the word at either edge could take the space before it
+  ;; or the one after it for the same text, both cut the node, and the tie
+  ;; stayed where the diff put it, which left the node on `tatu ` or ` tatu`.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        spaced? (fn [body {:token/keys [begin end]}]
+                  (let [x (cp/cp-subs body begin end)] (not= x (str/trim x))))]
+    (doseq [[old new tokens want]
+            [["a tatu the x\n" "a tatu x\n"
+              [(on :w (tok :a 0 1)) (on :w (tok :tatu 2 6)) (on :w (tok :the 7 10)) (on :w (tok :x 11 12))
+               (on :u (tok :node 2 10))]
+              [2 6]]
+             ;; a word respelled before, so the delete stands apart
+             ["mat tatu the\n" "mXt the\n"
+              [(on :w (tok :mat 0 3)) (on :w (tok :tatu 4 8)) (on :w (tok :the 9 12)) (on :u (tok :node 4 12))]
+              [4 7]]
+             ["שלום on sat the\n" "של𐍂ם sat the\n"
+              [(on :w (tok :a 0 4)) (on :w (tok :on 5 7)) (on :w (tok :sat 8 11)) (on :w (tok :the 12 15))
+               (on :u (tok :node 5 11))]
+              [5 8]]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens)
+            node (first (filter (comp #{:node} :token/id) tokens))]
+        (is (= new (:text/body text)))
+        (is (= want [(:token/begin node) (:token/end node)]) (str (pr-str old) " -> " (pr-str new)))
+        (is (not-any? #(spaced? new %) tokens) (str (pr-str old) " -> " (pr-str new)))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.

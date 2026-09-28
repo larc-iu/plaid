@@ -510,6 +510,14 @@
 ;; body and leaves `cow` whole. Editscript's own choices inside a changed
 ;; stretch have the same freedom.
 
+(defn- space?
+  "Whether code point `c` separates words, as the apps' tokenizers take it
+  (JavaScript's `\\s`): Java's whitespace, and also the no-break spaces
+  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters."
+  [c]
+  (let [c (int c)]
+    (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF))))
+
 (def ^:private slide-reach
   "How far an edit is moved at most, in code points each way. A word edit's
   equivalent places lie within about a word of each other, and the bound
@@ -539,7 +547,12 @@
   an insert inside it, and the one beginning there when its letter before
   changes. Doubling the `a` of `tat! a. tat` before the `a` gives it to the
   sentence before and puts the sentence boundary inside `aa`, where doubling
-  it after the `a` keeps both sentences on their words."
+  it after the `a` keeps both sentences on their words.
+
+  A delete that cuts a token at one end and leaves it ending (or beginning)
+  on a space it did not have there counts that token half again, so of the
+  two ways to delete a word at the edge of a token over several words (a
+  UMR node), the one taking the space on the far side wins."
   [^ints o tokens partitioning edit]
   (let [n (alength o)
         ;; The edge of the text and a space both only separate, so a word
@@ -549,15 +562,27 @@
                      :apart))
         apart (fn [c] (if (Character/isWhitespace (int c)) :apart c))]
     (if (= :delete (:kind edit))
-      (let [{s :start e :end} edit]
-        (count (filter (fn [{:token/keys [begin end]}]
-                         (cond
-                           (= begin end) (< s begin e)
-                           (and (< s end) (> e begin)) (not (and (<= s begin) (<= end e)))
-                           (= end s) (not= (at s) (at e))
-                           (= begin e) (not= (at (dec e)) (at (dec s)))
-                           :else false))
-                       tokens)))
+      (let [{s :start e :end} edit
+            sp? (fn [i] (space? (aget o i)))]
+        (+ (count (filter (fn [{:token/keys [begin end]}]
+                            (cond
+                              (= begin end) (< s begin e)
+                              (and (< s end) (> e begin)) (not (and (<= s begin) (<= end e)))
+                              (= end s) (not= (at s) (at e))
+                              (= begin e) (not= (at (dec e)) (at (dec s)))
+                              :else false))
+                          tokens))
+           ;; A token the delete cuts at one end, and leaves ending (or
+           ;; beginning) on a space it did not have there, counts half
+           ;; again: a UMR node over `tatu the` keeps `tatu` when ` the` is
+           ;; deleted, and `tatu ` when `the ` is.
+           (/ (count (filter (fn [{:token/keys [begin end]}]
+                               (or (and (< begin s) (< s end) (<= end e)
+                                        (sp? (dec s)) (not (sp? (dec end))))
+                                   (and (<= s begin) (< begin e) (< e end)
+                                        (sp? e) (not (sp? begin)))))
+                             tokens))
+              2)))
       (let [a (:at edit)
             v (.toArray (.codePoints ^String (:value edit)))
             ;; A token ending at `a` gets a new letter after it, one
@@ -829,14 +854,6 @@
                    (and (<= s begin) (<= end e)
                         (not (and (<= begin s) (<= e end)))))
                  tokens)))
-
-(defn- space?
-  "Whether code point `c` separates words, as the apps' tokenizers take it
-  (JavaScript's `\\s`): Java's whitespace, and also the no-break spaces
-  (U+00A0, U+2007, U+202F) and U+FEFF, which Java counts as letters."
-  [c]
-  (let [c (int c)]
-    (or (Character/isWhitespace c) (Character/isSpaceChar c) (= c 0xFEFF))))
 
 ;; A word replaced by another comes out of the diff as pieces with kept
 ;; letters between them: `cow` to `abc` is insert `ab`, keep `c`, delete
