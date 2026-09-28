@@ -633,6 +633,23 @@
                               :else false))
                           tokens)))))))
 
+(defn- slide-cuts
+  "How many of `tokens` a delete at this place takes part of (none for an
+  insert). Among the places that disturb equally (see `slide-cost`), the one
+  cutting fewest wins, since a token whose neighbouring letter changes keeps
+  its letters and a cut one does not. Deleting `atut` from `tatuthe`,
+  glossed `t` + `he`, cuts `tatu` and `the` and takes the whole `t`, and
+  deleting `tatu` changes only the letter before `the` and its `t`: both
+  disturb two tokens. Inserts keep their ties as `slide-cost` settles them."
+  [tokens edit]
+  (if (= :delete (:kind edit))
+    (let [{s :start e :end} edit]
+      (count (filter (fn [{:token/keys [begin end]}]
+                       (and (< begin end) (< s end) (> e begin)
+                            (not (and (<= s begin) (<= end e)))))
+                     tokens)))
+    0))
+
 (defn- slide-places
   "Every place `edit` (old-body coordinates, over the code points `o`) could
   stand for the same resulting string without reaching `lo` or `hi`, the
@@ -698,9 +715,9 @@
   "Rewrite `ops` (as produced by `diff` for `old`) so that each delete or
   insert that stands apart from the others, and could stand elsewhere for the
   same resulting string, stands where it disturbs the fewest of `tokens`
-  (old-body code-point offsets, see `slide-cost`), the nearest such place
-  when there are several. An edit that disturbs no more than any other place
-  stays where it is. Edits that touch stay together, since
+  (old-body code-point offsets, see `slide-cost`). Among several such
+  places the one that cuts fewest of them wins (see `slide-cuts`), then the
+  nearest, so an edit already at such a place stays there. Edits that touch stay together, since
   `pair-replacements` reads them as one respelling. The reconstructed string
   is unchanged. `partitioning` is the set of the tokens' layers that are
   partitions (see `slide-cost`)."
@@ -734,9 +751,11 @@
                                   here (cost e)]
                               (if (zero? here)
                                 e
-                                ;; The fewest cuts, then the nearest place. The sort
-                                ;; is stable and `places` starts with the edit itself.
+                                ;; The fewest disturbed, then the fewest cut, then
+                                ;; the nearest place. The sort is stable and
+                                ;; `places` starts with the edit itself.
                                 (first (sort-by (juxt cost
+                                                      #(slide-cuts near %)
                                                       #(Math/abs (long (- (start-of %) (start-of e)))))
                                                 places))))))))
                 []

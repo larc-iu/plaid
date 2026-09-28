@@ -377,17 +377,6 @@
 
 ;; ---------------------------------------------------------------- open classes
 
-;; The deleted run of a case: the items of sentence `si` that were deleted,
-;; and the items either side of it.
-(defn- deleted-run [{:keys [doc info]}]
-  (when-let [del (:del info)]
-    (let [sent (doc (:si info))
-          i (first (keep-indexed #(when (del (:id %2)) %1) sent))
-          j (inc (last (keep-indexed #(when (del (:id %2)) %1) sent)))]
-      {:before (get sent (dec i)) :run (subvec sent i j) :after (get sent j)})))
-
-(defn- item-text [{:keys [pre w post sep]}] (str pre w post sep))
-
 (def ^:private open-classes
   "Classes of case the chain still gets wrong, all older than the fixes of
   2026-09-28 this test was written to hold. Each is a predicate over the
@@ -398,19 +387,7 @@
    ;; `tatu a` to `Xtu` gives the word only `tu`).
    :kept-letters-found-elsewhere
    (fn [{{{:keys [mode near? shared?]} :shape} :info}]
-     (and shared? (not near?) (not= mode :whole)))
-
-   ;; Without spaces, the slide counts a word whose neighbouring letter
-   ;; changes as disturbed, so a deleted run whose first letter is also the
-   ;; letter after it (`café|athekaki|ab`) stays where it cuts `ab`.
-   :deleted-run-slides-between-words-without-spaces
-   (fn [c]
-     (when-let [{:keys [before run after]} (deleted-run c)]
-       (let [d (cps (apply str (map item-text run)))
-             prev (some-> before item-text cps peek)
-             next (some-> after item-text cps first)]
-         (and (some #(= "" (:sep %)) (cons before run))
-              (or (= (first d) next) (= (peek d) prev))))))})
+     (and shared? (not near?) (not= mode :whole)))})
 
 (defn- open-class [c]
   (some (fn [[k pred]] (when (pred c) k)) open-classes))

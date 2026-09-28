@@ -1276,6 +1276,32 @@
            (into {} (map (juxt :token/id (juxt :token/begin :token/end)))
                  (:tokens (ta/keep-edges-off-spaces old tokens result #{:s})))))))
 
+(deftest a-word-deleted-between-words-without-spaces-leaves-the-next-one-whole
+  ;; Without spaces, deleting a word whose first letter is also the next
+  ;; one's could stand where it cuts the next word and takes its first
+  ;; morpheme whole, which disturbs as many tokens as deleting the word
+  ;; itself does (that one changes the letter before the next word and its
+  ;; morpheme). The place that cuts fewer wins.
+  (let [on (fn [layer t] (assoc t :token/layer layer))
+        w (fn [id b e] (on :w (tok id b e)))
+        m (fn [id b e] (on :m (tok id b e)))]
+    (doseq [[old new tokens want]
+            [["tatuthe\n" "the\n"
+              [(on :s (tok :s 0 8)) (w :tatu 0 4) (w :the 4 7) (m :t 4 5) (m :he 5 7)]
+              {:the "the" :t "t" :he "he"}]
+             ["aab\n" "ab\n"
+              [(on :s (tok :s 0 4)) (w :a 0 1) (w :ab 1 3) (m :a1 1 2) (m :b 2 3)]
+              {:ab "ab" :a1 "a" :b "b"}]
+             ["caféathekakiab\n" "caféab\n"
+              [(on :s (tok :s 0 15)) (w :café 0 4) (w :a 4 5) (w :the 5 8) (w :kaki 8 12) (w :ab 12 14)
+               (m :a1 12 13) (m :b 13 14)]
+              {:café "café" :ab "ab" :a1 "a" :b "b"}]]]
+      (let [{:keys [text tokens]} (body-edit old new tokens #{:s})
+            body (:text/body text)
+            read (into {} (map (fn [{:token/keys [id begin end]}] [id (cp/cp-subs body begin end)])) tokens)]
+        (is (= new body))
+        (is (= want (select-keys read (keys want))) (str (pr-str old) " -> " (pr-str new)))))))
+
 (deftest two-edits-sliding-towards-each-other-do-not-meet
   ;; Each delete cuts a token where it stands and could slide into the run of
   ;; `a` between them, and both would have taken the same letter.
