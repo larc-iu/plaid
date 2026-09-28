@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { PROV_STATES, provState } from '@larc-iu/plaid-client';
+import { PROV, PROV_STATES, provOrigin, provState } from '@larc-iu/plaid-client';
 import { stableKey } from '@ui/domain/pendingIds.js';
 
 // Provenance, the cross-app convention: a node a machine drafted or a
@@ -17,6 +17,30 @@ const PROV_TITLE = {
   [PROV_STATES.MACHINE]: 'Machine-made, unverified',
   [PROV_STATES.CONTRIBUTED]: 'Contributed, unverified',
 };
+// A verified node draws plain, and its tooltip still says where it came
+// from, in igt's words (provTitle there).
+const provTitle = (metadata) => {
+  const state = provState(metadata);
+  if (state !== PROV_STATES.VERIFIED) return PROV_TITLE[state];
+  return provOrigin(metadata) === PROV.CONTRIBUTED
+    ? 'Contributed, confirmed'
+    : 'Machine-suggested, confirmed';
+};
+
+// "2 errors, 1 warning", for a node's accessible name.
+const countOf = (n, one) => (n ? `${n} ${one}${n === 1 ? '' : 's'}` : null);
+const problemWords = (problems) => {
+  if (!problems?.length) return null;
+  const errors = problems.filter((p) => p.level === 'error').length;
+  return [countOf(errors, 'error'), countOf(problems.length - errors, 'warning')]
+    .filter(Boolean)
+    .join(', ');
+};
+
+// A document tag read aloud: the node's own end, which the tag marks with a
+// dot, said in words, in the order the relation runs.
+const tagWords = (out, rel, ends) =>
+  out ? `this node ${rel} ${ends}` : `${ends} ${rel} this node`;
 
 // The most document tags a node wears, and the most other ends one tag
 // lists. Past either, one fewer and a `+k` that lists them all: nearly every
@@ -52,6 +76,9 @@ export const UmrNode = React.memo(function UmrNode({
   onDocTagClick,
   onMenu,
   onAction,
+  // How the node hangs from its parent, for its accessible name: "ARG0 of
+  // leave-02". Null for a node with no parent.
+  parent = null,
 }) {
   // One rule for the whole node: a click FOCUSES it, and a second click on
   // one of its parts opens that part's editor. Without it, a click meant to
@@ -76,7 +103,15 @@ export const UmrNode = React.memo(function UmrNode({
   const style = position
     ? { left: `${position.x - position.width / 2}px`, top: `${position.y}px` }
     : { left: 0, top: 0, visibility: 'hidden' };
-  const label = [node.var, node.concept].filter(Boolean).join(' ');
+  // What a screen reader says for the node: "s1p person, ARG0 of leave-02",
+  // "s1l leave-02, root", then its problems.
+  const label = [
+    [node.var, node.concept].filter(Boolean).join(' '),
+    node.root ? 'root' : parent,
+    problemWords(problems),
+  ]
+    .filter(Boolean)
+    .join(', ');
   const prov = provState(node.metadata);
   // The tags as drawn: one per relation and direction, the other ends listed
   // in it, so four `:full-affirmative` relations are one tag.
@@ -110,6 +145,7 @@ export const UmrNode = React.memo(function UmrNode({
       className="umr-doc-tag-end umr-doc-more"
       role={live ? 'button' : undefined}
       title={list.map((t) => t.text).join('\n')}
+      aria-label={`${list.length} more document relations`}
       onClick={live ? act('node.docRelations') : undefined}
     >
       +{list.length}
@@ -134,7 +170,7 @@ export const UmrNode = React.memo(function UmrNode({
       tabIndex={tabIndex}
       role="button"
       aria-label={label}
-      title={PROV_TITLE[prov]}
+      title={provTitle(node.metadata)}
       data-node-id={node.id}
       data-prov={PROV_CLASS[prov] ? prov : undefined}
       onPointerDownCapture={() => {
@@ -172,6 +208,7 @@ export const UmrNode = React.memo(function UmrNode({
           className="umr-chain"
           style={{ '--chain': chain.color }}
           title={`Coreference chain ${chain.index + 1}: ${chain.size} mentions. Click for the next.`}
+          aria-label={`Next mention in coreference chain ${chain.index + 1}, ${chain.size} mentions`}
           onClick={(e) => {
             e.stopPropagation();
             onChainClick?.(chain.index, node.id);
@@ -258,11 +295,21 @@ export const UmrNode = React.memo(function UmrNode({
             }
             // One triple: the whole tag is its click. Several: each end is.
             const single = tags.length === 1;
+            const hidden = tags.length - ends.length;
+            const said = tagWords(
+              out,
+              t.rel,
+              ends.map((one) => one.otherVar).join(' ') + (hidden ? ` and ${hidden} more` : ''),
+            );
+            const dot = <span aria-hidden="true">●</span>;
             return (
               <span
                 key={key}
                 className="umr-doc-tag"
-                role={single && clickable ? 'button' : undefined}
+                // A tag that is not one button is a group of them, named for
+                // what the whole tag says.
+                role={single && clickable ? 'button' : 'group'}
+                aria-label={said}
                 tabIndex={single ? -1 : undefined}
                 data-triple-id={single ? t.id : undefined}
                 data-group={t.group}
@@ -276,11 +323,11 @@ export const UmrNode = React.memo(function UmrNode({
               >
                 {out ? (
                   <>
-                    ● {t.rel} {endSpans}
+                    {dot} {t.rel} {endSpans}
                   </>
                 ) : (
                   <>
-                    {endSpans} {t.rel} ●
+                    {endSpans} {t.rel} {dot}
                   </>
                 )}
               </span>
@@ -296,7 +343,7 @@ export const UmrNode = React.memo(function UmrNode({
           type="button"
           className="umr-more"
           tabIndex={-1}
-          aria-label="Actions"
+          aria-label={`Actions for ${node.var || node.concept}`}
           title="Actions (or right-click)"
           onClick={(e) => {
             e.stopPropagation();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { SentenceBlock } from './SentenceBlock.jsx';
 import { CrossLinks } from './CrossLinks.jsx';
 import { EditorLegend } from './EditorLegend.jsx';
@@ -105,16 +105,17 @@ export const UmrCanvas = ({
   // What is waiting to be focused once its page has rendered. A selector for
   // the element, and a nonce so the same target asked twice is answered twice.
   const [pending, setPending] = useState(null);
+  // `replace` for a turn the reader did not ask for as such: the deep link's,
+  // whose URL is already the history entry. A turn to the page already shown
+  // writes nothing (usePagedList).
   const reveal = useCallback(
-    (sentenceIndex, selector) => {
+    (sentenceIndex, selector, { replace = false } = {}) => {
       const target = pageOfSentence.get(String(sentenceIndex));
       if (target == null) return;
-      // Turning to the page already shown would push a second history entry
-      // of the same URL, and Back would take two presses.
-      if (target !== page) setPage(target);
+      setPage(target, { replace });
       setPending({ selector, nonce: Date.now() });
     },
-    [pageOfSentence, setPage, page],
+    [pageOfSentence, setPage],
   );
 
   useEffect(() => {
@@ -129,14 +130,23 @@ export const UmrCanvas = ({
   // Jump to a node anywhere in the document: a chain hop, or a click on a
   // reentrant edge's far end. A constant sits in every block's margin, so it
   // is found where the reader is.
+  //
+  // One function for the life of the canvas: a sentence block is memoized,
+  // and a prop that changed with every version re-rendered all of them on
+  // every edit. The graph is read when a jump is asked for, and `reveal`
+  // (which changes with the page) through a ref.
+  const revealRef = useRef(reveal);
+  useLayoutEffect(() => {
+    revealRef.current = reveal;
+  }, [reveal]);
   const goToNode = useCallback(
     (nodeId) => {
-      const node = graph.nodesById.get(nodeId);
+      const node = doc.graph.nodesById.get(nodeId);
       const selector = `[data-node-id="${nodeId}"]`;
-      if (node?.sentence != null) reveal(node.sentence, selector);
+      if (node?.sentence != null) revealRef.current(node.sentence, selector);
       else focusElement(window.document.querySelector(selector));
     },
-    [graph, reveal],
+    [doc],
   );
 
   // The deep link: ?sent=<sentence number> scrolls to that sentence's block
@@ -159,7 +169,8 @@ export const UmrCanvas = ({
     const drawn = varParam && sentence?.nodes.some((n) => n.var === varParam);
     const named = drawn ? varParam : root;
     const node = named ? `[data-node-var="${CSS.escape(named)}"]` : '.umr-node';
-    reveal(index, `${block} ${node}`);
+    // The link is the history entry already: its page is written in place.
+    reveal(index, `${block} ${node}`, { replace: true });
   }, [sentParam, varParam, focusNonce, reveal, doc]);
 
   // Opening a document leaves focus on the page, where every key of the
@@ -231,8 +242,6 @@ export const UmrCanvas = ({
           key={sentence.tokenId}
           doc={doc}
           sentence={sentence}
-          nodesById={graph.nodesById}
-          dataVersion={doc.dataVersion}
           direction={doc.textDirection}
           readOnly={readOnly}
           frames={frames}

@@ -160,17 +160,100 @@ describe('UmrNode provenance', () => {
     await r.unmount();
   });
 
+  // Plain, and a confirmed node's tooltip still names where it came from, in
+  // igt's words.
   it('draws a settled node plain, confirmed or hand-made', async () => {
-    for (const metadata of [
-      null,
-      { prov: 'inferred', provSource: 'service:umr-draft-llm', provConfirmed: true },
+    for (const [metadata, title] of [
+      [null, null],
+      [
+        { prov: 'inferred', provSource: 'service:umr-draft-llm', provConfirmed: true },
+        'Machine-suggested, confirmed',
+      ],
+      [
+        { prov: 'contributed', provSource: 'user:a@b.com', provConfirmed: true },
+        'Contributed, confirmed',
+      ],
     ]) {
       const r = await renderComponent(<UmrNode node={withMeta(metadata)} position={position} />);
       const box = r.container.querySelector('.umr-node');
       expect(box.className).not.toMatch(/umr-node--(machine|contributed)/);
       expect(box.hasAttribute('data-prov')).toBe(false);
-      expect(box.hasAttribute('title')).toBe(false);
+      expect(box.getAttribute('title')).toBe(title);
       await r.unmount();
     }
+  });
+});
+
+// What a screen reader hears, as CANVAS.md specified: the node, where it
+// hangs, its problems, and names for the controls inside it.
+describe('UmrNode names', () => {
+  const name = (r) => r.container.querySelector('.umr-node').getAttribute('aria-label');
+
+  it('names the node with its parent and relation, or as the root', async () => {
+    let r = await renderComponent(
+      <UmrNode node={node} position={position} parent="ARG0 of leave-02" />,
+    );
+    expect(name(r)).toBe('s2t thing, ARG0 of leave-02');
+    await r.unmount();
+    r = await renderComponent(<UmrNode node={{ ...node, root: true }} position={position} />);
+    expect(name(r)).toBe('s2t thing, root');
+    await r.unmount();
+  });
+
+  it('counts its problems', async () => {
+    const problems = [
+      { level: 'error', message: 'a' },
+      { level: 'error', message: 'b' },
+      { level: 'warning', message: 'c' },
+    ];
+    const r = await renderComponent(
+      <UmrNode node={node} position={position} parent="mod of city" problems={problems} />,
+    );
+    expect(name(r)).toBe('s2t thing, mod of city, 2 errors, 1 warning');
+    await r.unmount();
+  });
+
+  it('names the menu button for its node, and the chain chip for what it does', async () => {
+    const r = await renderComponent(
+      <UmrNode
+        node={node}
+        position={position}
+        onMenu={() => {}}
+        chain={{ index: 0, color: 'blue', size: 3 }}
+      />,
+    );
+    expect(r.container.querySelector('.umr-more').getAttribute('aria-label')).toBe(
+      'Actions for s2t',
+    );
+    expect(r.container.querySelector('.umr-chain').getAttribute('aria-label')).toBe(
+      'Next mention in coreference chain 1, 3 mentions',
+    );
+    await r.unmount();
+  });
+
+  it("says a tag's dot as this node, in the order the relation runs", async () => {
+    const tags = [
+      tag('a', ':before', 's3b', { out: true, group: 'temporal' }),
+      tag('b', ':full-affirmative', 'author', { group: 'modal' }),
+      tag('c', ':same-entity', 's1p'),
+      tag('d', ':same-entity', 's4p'),
+    ];
+    const r = await renderComponent(
+      <UmrNode node={node} position={position} docTags={tags} onDocTagClick={() => {}} />,
+    );
+    expect(all(r.container, '.umr-doc-tag').map((t) => t.getAttribute('aria-label'))).toEqual([
+      'this node :before s3b',
+      'author :full-affirmative this node',
+      's1p s4p :same-entity this node',
+    ]);
+    expect(all(r.container, '.umr-doc-tag').map((t) => t.getAttribute('role'))).toEqual([
+      'button',
+      'button',
+      'group',
+    ]);
+    // The dot itself is not read.
+    const dots = all(r.container, '.umr-doc-tag [aria-hidden="true"]');
+    expect(dots.map((d) => d.textContent)).toEqual(['●', '●', '●']);
+    await r.unmount();
   });
 });

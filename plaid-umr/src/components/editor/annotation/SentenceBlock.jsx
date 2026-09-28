@@ -82,6 +82,30 @@ const CHAIN_COLORS = [
 ];
 const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 
+// The whole document's nodes, read from the document at the moment of each
+// lookup. A block renders again only when its own sentence does (the domain
+// keeps an untouched sentence's object across versions), so a map handed down
+// as a prop was a new one every version and re-rendered every block on the
+// page, and a map kept from the block's last render would be stale by the
+// time a key or a pick reads it. What the block DRAWS from other sentences
+// (a far end's variable, concept, sentence, chain) is part of what makes its
+// sentence a new object, so reading live never draws something stale.
+const liveNodes = (doc) => ({
+  get: (id) => doc.graph.nodesById.get(id),
+  has: (id) => doc.graph.nodesById.has(id),
+  values: () => doc.graph.nodesById.values(),
+});
+
+// How a node hangs from its parent, for its accessible name: "ARG0 of
+// leave-02", and an inverse role reads on its own, "ARG0-of person".
+const parentWords = (edge, nodesById) => {
+  const parent = edge ? nodesById.get(edge.source) : null;
+  if (!parent) return null;
+  const role = edge.role.replace(/^:/, '');
+  const name = parent.concept || parent.var;
+  return /-of$/.test(role) ? `${role} ${name}` : `${role} of ${name}`;
+};
+
 // One sentence: the graph over its words. Nodes are HTML boxes placed by the
 // layout, edges an SVG underlay of the same size, the token row beneath.
 //
@@ -92,11 +116,9 @@ const chainColor = (index) => CHAIN_COLORS[index % CHAIN_COLORS.length];
 export const SentenceBlock = React.memo(function SentenceBlock({
   doc,
   sentence,
-  nodesById,
   // Jump to a node anywhere in the document. The canvas owns it, because the
   // node may be on a page that is not in the DOM yet.
   goToNode,
-  dataVersion,
   direction = 'ltr',
   readOnly = true,
   frames = null,
@@ -115,6 +137,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   canDeleteAnyComment = false,
 }) {
   const confirm = useConfirm();
+  const nodesById = useMemo(() => liveNodes(doc), [doc]);
   // Problems by the node they name, for the marks; the rest belong to the
   // sentence as a whole.
   const problemsByNode = useMemo(() => {
@@ -238,9 +261,9 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   const pressedEmptyRef = useRef(false);
   // Whether that press came with an editor or the menu open.
   const pressedWithEditorRef = useRef(false);
-  const { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes } = useCanvasMeasure(
-    `${dataVersion}:${sentence.index}`,
-  );
+  // Measured again whenever the sentence is a new object, which is whenever
+  // anything it draws has changed.
+  const { canvasRef, wordRef, nodeRef, nodeRefs, columns, sizes } = useCanvasMeasure(sentence);
 
   const layout = useMemo(() => {
     const first = sentence.words[0];
@@ -281,7 +304,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
   // A focused node that the last edit removed is no longer focused.
   useEffect(() => {
     if (focusedId && !nodesById.has(focusedId)) setFocusedId(null);
-  }, [focusedId, nodesById, setFocusedId]);
+  }, [focusedId, nodesById, sentence, setFocusedId]);
 
   // Focus back from text mode (leaveTextMode). A node the document has and
   // this block has not drawn yet is waited for. With none, or once it has
@@ -855,8 +878,25 @@ export const SentenceBlock = React.memo(function SentenceBlock({
       }
       return;
     }
+    const plain = !e.altKey && !e.ctrlKey && !e.metaKey;
+    // A mode waits for a click on its target. The arrows still move, and Tab
+    // on the mode's own node still starts a child typed instead of clicked
+    // (the menu's "Add a child", then Tab). Every other key waits with it, as
+    // the node's menu and its parts do: Enter on the node the arrows had
+    // reached opened that node's editor with the mode still waiting, a mode
+    // and an editor at once on two nodes.
+    if (mode) {
+      const arrow = e.key.startsWith('Arrow') && plain;
+      const ownTab = e.key === 'Tab' && plain && id === mode.nodeId;
+      if (!arrow && !ownTab) {
+        if (e.key === 'Enter' || e.key === 'Tab' || keys.which(CANVAS_ACTIONS, e)) {
+          e.preventDefault();
+        }
+        return;
+      }
+    }
     const fixedKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter'];
-    if (fixedKeys.includes(e.key) && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (fixedKeys.includes(e.key) && plain) {
       e.preventDefault();
       if (e.key === 'ArrowUp') focusNode(treeEdgeInto(id)?.source);
       else if (e.key === 'ArrowDown') focusNode(treeChildren(id)[0]);
@@ -1634,6 +1674,7 @@ export const SentenceBlock = React.memo(function SentenceBlock({
                 tabIndex={i === 0 ? 0 : -1}
                 readOnly={readOnly}
                 problems={problemsByNode.get(node.id)}
+                parent={parentWords(treeEdgeInto(node.id), nodesById)}
                 chain={chainOf(node)}
                 onChainClick={onChainClick}
                 docTags={docTagsByNode.get(node.id)}

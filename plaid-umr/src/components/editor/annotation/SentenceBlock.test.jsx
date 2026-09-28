@@ -2,8 +2,25 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { CommentStore } from '@ui/domain/CommentStore.js';
 import { renderComponent, all, texts } from '@ui/test/renderComponent.jsx';
 import { ConfirmProvider } from '@ui/components/shared/ConfirmProvider.jsx';
-import { SentenceBlock } from './SentenceBlock.jsx';
+import { useMemo } from 'react';
+import { SentenceBlock as Block } from './SentenceBlock.jsx';
 import { keys } from '../../../lib/keymap.js';
+
+// The canvas hands a block the live document, and the block reads the whole
+// document's nodes from `doc.graph` when it needs them. A test builds the map
+// itself and hands it in here, where it is set on the stub in place: a
+// rerender with a new map and a new sentence is what a new version of the
+// document is, and a rerender with neither is a version that left this
+// sentence alone.
+const SentenceBlock = ({ doc, nodesById = new Map(), dataVersion: _version, ...props }) => {
+  const stub = useMemo(
+    () => doc ?? { canConfirmSentence: () => false, canDiscardSentence: () => false },
+    [doc],
+  );
+  if (!stub.graph) stub.graph = {};
+  stub.graph.nodesById = nodesById;
+  return <Block doc={stub} {...props} />;
+};
 
 // A sentence as buildDocumentGraph hands it over: three nodes, one of them
 // unaligned, one re-entrant edge, two gloss lines.
@@ -1198,6 +1215,86 @@ describe('SentenceBlock text mode, focus after Apply', () => {
     await r.step(() => button(r.container, 'Text').click());
     await r.step(() => button(r.container, 'Cancel').click());
     expect(document.activeElement).toBe(r.container.querySelector('.umr-graph'));
+    await r.unmount();
+  });
+});
+
+// V8 F3, the half that needs no ruling: a mode waits for a click on its
+// target, and until a key can pick one, no key opens an editor while it
+// waits. Enter on the node the arrows had reached opened that node's concept
+// editor with "Click the new parent" still up.
+describe('SentenceBlock keys in a mode', () => {
+  const docStub = () => ({
+    graph: {},
+    canConfirmSentence: () => false,
+    canDiscardSentence: () => false,
+    canConfirm: () => false,
+  });
+  const press = (el, key, init = {}) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    );
+  const nodeByVar = (root, v) => root.querySelector(`[data-node-var="${v}"]`);
+  const editorOpen = (root) => !!root.querySelector('.umr-inline-editor');
+  const modeOn = (root) => !!root.querySelector('.umr-block-note--mode');
+
+  const mount = async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(
+      <SentenceBlock doc={docStub()} readOnly={false} sentence={sentence} nodesById={nodesById} />,
+    );
+    return r;
+  };
+
+  for (const [key, mode] of [
+    ['m', 'move'],
+    ['r', 'second parent'],
+    ['u', 'anchor'],
+  ]) {
+    it(`opens no editor on Enter, Tab or a letter in ${mode} mode, on another node`, async () => {
+      const r = await mount();
+      const eat = nodeByVar(r.container, 's1e');
+      await r.step(() => eat.focus());
+      await r.step(() => press(eat, key));
+      expect(modeOn(r.container)).toBe(true);
+      // The arrows still move: up to the parent.
+      await r.step(() => press(eat, 'ArrowUp'));
+      const leave = nodeByVar(r.container, 's1l');
+      expect(document.activeElement).toBe(leave);
+      for (const k of ['Enter', 'Tab', 'v', 'c']) {
+        await r.step(() => press(leave, k));
+        expect(editorOpen(r.container)).toBe(false);
+      }
+      expect(modeOn(r.container)).toBe(true);
+      await r.step(() => press(leave, 'Escape'));
+      expect(modeOn(r.container)).toBe(false);
+      await r.unmount();
+    });
+  }
+
+  it("still takes Tab on the mode's own node, a child typed instead of clicked", async () => {
+    const r = await mount();
+    const leave = nodeByVar(r.container, 's1l');
+    await r.step(() => leave.focus());
+    await r.step(() => press(leave, 'm'));
+    await r.step(() => press(leave, 'Tab'));
+    expect(editorOpen(r.container)).toBe(true);
+    expect(modeOn(r.container)).toBe(false);
+    await r.unmount();
+  });
+});
+
+// V8 F5: a node's accessible name says where it hangs, as CANVAS.md
+// specified ("s1p person, ARG0 of leave-02").
+describe('SentenceBlock node names', () => {
+  it('names each node with the relation from its parent', async () => {
+    const { sentence, nodesById } = fixture();
+    const r = await renderComponent(<SentenceBlock sentence={sentence} nodesById={nodesById} />);
+    expect(all(r.container, '.umr-node').map((n) => n.getAttribute('aria-label'))).toEqual([
+      's1l leave-02',
+      's1p person, ARG0 of leave-02',
+      's1e eat-01, purpose of leave-02',
+    ]);
     await r.unmount();
   });
 });
